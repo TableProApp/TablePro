@@ -30,4 +30,15 @@ final class MaintenanceMenuDelegate: NSObject, NSMenuDelegate {
             menu.addItem(item)
         }
     }
+
+    /// Implementing this keeps AppKit's key-equivalent search from rebuilding the menu on every
+    /// modified keystroke, which would re-enter the plugin for items that carry no key equivalent.
+    func menuHasKeyEquivalent(
+        _ menu: NSMenu,
+        for event: NSEvent,
+        target: AutoreleasingUnsafeMutablePointer<AnyObject?>,
+        action: UnsafeMutablePointer<Selector?>
+    ) -> Bool {
+        false
+    }
 }

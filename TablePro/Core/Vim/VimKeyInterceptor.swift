@@ -10,6 +10,31 @@ import CodeEditSourceEditor
 import CodeEditTextView
 import os
 
+/// Which window a key event seen by the app-wide monitor belongs to
+enum VimKeyEventScope: Equatable {
+    case editorText
+    case editorAuxiliary
+    case foreign
+}
+
+/// Every editor tab is its own window and each one installs an app-wide key monitor,
+/// so an event belongs to an interceptor only while that editor's own window tree
+/// holds key focus. Without the key check a background editor consumes Escape for the
+/// whole app.
+enum VimKeyEventScopeResolver {
+    static func scope(
+        eventWindowIsEditorWindow: Bool,
+        eventWindowIsEditorDescendant: Bool,
+        eventWindowIsAbsent: Bool,
+        editorWindowTreeIsKey: Bool
+    ) -> VimKeyEventScope {
+        guard editorWindowTreeIsKey else { return .foreign }
+        if eventWindowIsEditorWindow { return .editorText }
+        guard eventWindowIsEditorDescendant || eventWindowIsAbsent else { return .foreign }
+        return .editorAuxiliary
+    }
+}
+
 /// Intercepts keyboard events and routes them through the Vim engine
 @MainActor
 final class VimKeyInterceptor {
@@ -18,11 +43,14 @@ final class VimKeyInterceptor {
     private let _monitor = OSAllocatedUnfairLock<Any?>(initialState: nil)
     private weak var controller: TextViewController?
     private let _popupCloseObserver = OSAllocatedUnfairLock<Any?>(initialState: nil)
+    private let _keyWindowObservers = OSAllocatedUnfairLock<[Any]>(initialState: [])
+    private var isEditorFirstResponder = false
     private(set) var isEditorFocused = false
 
     deinit {
         if let monitor = _monitor.withLock({ $0 }) { NSEvent.removeMonitor(monitor) }
         if let observer = _popupCloseObserver.withLock({ $0 }) { NotificationCenter.default.removeObserver(observer) }
+        for observer in _keyWindowObservers.withLock({ $0 }) { NotificationCenter.default.removeObserver(observer) }
     }
 
     init(engine: VimEngine, inlineSuggestionManager: InlineSuggestionManager?) {
@@ -48,7 +76,7 @@ final class VimKeyInterceptor {
                 guard let self,
                       let closingWindow = notification.object as? NSWindow,
                       closingWindow.windowController is SuggestionController,
-                      let editorWindow = self.controller?.textView.window,
+                      let editorWindow = self.controller?.textView?.window,
                       editorWindow.childWindows?.contains(closingWindow) == true,
                       let currentEvent = triggeringEvent,
                       currentEvent.type == .keyDown,
@@ -61,18 +89,20 @@ final class VimKeyInterceptor {
             }
         }
         }
+
+        installKeyWindowObservers()
     }
 
     func editorDidFocus() {
-        guard !isEditorFocused else { return }
-        isEditorFocused = true
-        installMonitor()
+        guard !isEditorFirstResponder else { return }
+        isEditorFirstResponder = true
+        refreshFocusState()
     }
 
     func editorDidBlur() {
-        guard isEditorFocused else { return }
-        isEditorFocused = false
-        removeMonitor()
+        guard isEditorFirstResponder else { return }
+        isEditorFirstResponder = false
+        refreshFocusState()
     }
 
     /// Route an Escape press from outside the local event monitor (e.g. a SwiftUI menu
@@ -89,12 +119,60 @@ final class VimKeyInterceptor {
 
     /// Remove all monitors and observers
     func uninstall() {
+        isEditorFirstResponder = false
         isEditorFocused = false
         removeMonitor()
         _popupCloseObserver.withLock {
             if let observer = $0 { NotificationCenter.default.removeObserver(observer) }
             $0 = nil
         }
+        _keyWindowObservers.withLock {
+            for observer in $0 { NotificationCenter.default.removeObserver(observer) }
+            $0 = []
+        }
+    }
+
+    // MARK: - Focus State
+
+    private func installKeyWindowObservers() {
+        let names: [Notification.Name] = [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification]
+        let observers: [Any] = names.map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.refreshFocusState()
+                }
+            }
+        }
+        _keyWindowObservers.withLock { $0 = observers }
+    }
+
+    private func refreshFocusState() {
+        let focused = isEditorFirstResponder && editorWindowTreeIsKey()
+        guard focused != isEditorFocused else { return }
+        isEditorFocused = focused
+        if focused {
+            installMonitor()
+            return
+        }
+        removeMonitor()
+    }
+
+    /// A text view with no window cannot receive key events at all, so focus tracking
+    /// stays driven by the first responder until the editor is mounted.
+    private func editorWindowTreeIsKey() -> Bool {
+        guard let editorWindow = controller?.textView?.window else { return true }
+        if editorWindow.isKeyWindow { return true }
+        guard let keyWindow = NSApp.keyWindow else { return false }
+        return isDescendant(keyWindow, of: editorWindow)
+    }
+
+    private func isDescendant(_ window: NSWindow?, of editorWindow: NSWindow) -> Bool {
+        var parent = window?.parent
+        while let current = parent {
+            if current === editorWindow { return true }
+            parent = current.parent
+        }
+        return false
     }
 
     private func installMonitor() {
@@ -137,13 +215,17 @@ final class VimKeyInterceptor {
         // goes to the input context until the marking session ends.
         guard !textView.hasMarkedText() else { return event }
 
-        // Esc must always reach the engine while the editor is focused and we are not
-        // already in normal mode. We get here only when `isEditorFocused` is true (the
-        // local monitor's outer guard), so the editor *is* the focused editor of this
-        // app. event.window can be nil (synthesized) or a child popup window — in any
-        // of those cases the keystroke would otherwise miss the engine and Vim would
-        // get stuck in insert (the symptom: pressing Esc just after typing ';' at the
-        // very end of the buffer when an autocomplete or inline-suggestion path is up).
+        let scope = VimKeyEventScopeResolver.scope(
+            eventWindowIsEditorWindow: event.window === editorWindow,
+            eventWindowIsEditorDescendant: isDescendant(event.window, of: editorWindow),
+            eventWindowIsAbsent: event.window == nil,
+            editorWindowTreeIsKey: editorWindowTreeIsKey()
+        )
+        guard scope != .foreign else { return event }
+
+        // Esc still has to reach the engine when the event carries no window (synthesized)
+        // or belongs to an autocomplete popup owned by this editor, otherwise Vim stays
+        // stuck in insert (symptom: Esc right after typing ';' at the end of the buffer).
         if event.keyCode == 53, engine.mode != .normal {
             inlineSuggestionManager?.dismissSuggestion()
             closeSuggestionPopup()
@@ -151,8 +233,7 @@ final class VimKeyInterceptor {
             return nil
         }
 
-        guard event.window === editorWindow,
-              textView.window?.firstResponder === textView else {
+        guard scope == .editorText, editorWindow.firstResponder === textView else {
             return event
         }
 

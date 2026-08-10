@@ -97,7 +97,7 @@ final class AppSettingsManager {
         didSet {
             storage.saveKeyboard(keyboard)
             syncTracker.markDirty(.settings, id: "keyboard")
-            MainMenuBuilder.applyShortcuts(keyboard)
+            MainMenuBuilder.syncKeyEquivalents(keyboard: keyboard)
         }
     }
 

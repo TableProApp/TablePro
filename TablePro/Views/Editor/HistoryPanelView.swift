@@ -201,7 +201,9 @@ private extension HistoryPanelView {
         Divider()
 
         Button(role: .destructive) {
-            deleteEntry(entry)
+            Task { @MainActor in
+                await deleteEntry(entry)
+            }
         } label: {
             Label(String(localized: "Delete"), systemImage: "trash")
         }
@@ -301,6 +303,15 @@ private extension HistoryPanelView {
     }
 }
 
+// MARK: - Selection
+
+extension HistoryPanelView {
+    static func selectionIndex(afterDeleting deletedIndex: Int, remainingCount: Int) -> Int? {
+        guard remainingCount > 0, deletedIndex >= 0 else { return nil }
+        return min(deletedIndex, remainingCount - 1)
+    }
+}
+
 // MARK: - Actions
 
 private extension HistoryPanelView {
@@ -326,27 +337,26 @@ private extension HistoryPanelView {
         }
     }
 
-    func deleteEntry(_ entry: QueryHistoryEntry) {
-        Task { @MainActor in
-            _ = await dataProvider.deleteEntry(id: entry.id)
-            entries = dataProvider.historyEntries
-        }
+    func deleteEntry(_ entry: QueryHistoryEntry) async {
+        _ = await dataProvider.deleteEntry(id: entry.id)
+        entries = dataProvider.historyEntries
     }
 
     func deleteSelectedEntry() {
-        guard let entry = selectedEntry else { return }
-        let currentIndex = entries.firstIndex(of: entry)
-        deleteEntry(entry)
+        guard let entry = selectedEntry,
+              let deletedIndex = entries.firstIndex(where: { $0.id == entry.id }) else { return }
 
-        // After deletion triggers reload, select adjacent entry
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(50))
-            if let idx = currentIndex, !entries.isEmpty {
-                let newIndex = min(idx, entries.count - 1)
-                if newIndex >= 0, newIndex < entries.count {
-                    selectedEntryID = entries[newIndex].id
-                }
+            await deleteEntry(entry)
+
+            guard let index = Self.selectionIndex(
+                afterDeleting: deletedIndex,
+                remainingCount: entries.count
+            ) else {
+                selectedEntryID = nil
+                return
             }
+            selectedEntryID = entries[index].id
         }
     }
 

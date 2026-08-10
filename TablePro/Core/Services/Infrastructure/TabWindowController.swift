@@ -133,6 +133,11 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         let t0 = Date()
         guard let window = notification.object as? NSWindow else { return }
 
+        // Key equivalents are global while the text-focus yield that removes them is
+        // per-window, so the window coming forward has to re-state the menu it
+        // inherits. Without this, a yield another window installed never lifts.
+        MainMenuBuilder.syncKeyEquivalents()
+
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.startActivationConnectIfNeeded()
         }
@@ -156,6 +161,11 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         let seq = MainContentCoordinator.nextSwitchSeq()
         let t0 = Date()
         guard let window = notification.object as? NSWindow else { return }
+
+        // Closing or backgrounding this window leaves its yield on a menu it no longer
+        // owns, and the window taking over may not be one of ours.
+        MainMenuBuilder.syncKeyEquivalents()
+
         guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }
         Self.lifecycleLogger.debug(
             "[switch] windowDidResignKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public)"

@@ -283,13 +283,11 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     }
 
     private func insertStoreIndex(anchoredBy sender: Any?, below: Bool) -> Int {
-        let anchorDisplayRow: Int? = if let item = sender as? NSMenuItem {
-            item.tag
-        } else if below {
-            state.selectedRowIndices.max()
-        } else {
-            state.selectedRowIndices.min()
-        }
+        let anchorDisplayRow = InspectorRowMenuBuilder.insertAnchorDisplayRow(
+            sender: sender,
+            selectedDisplayRows: state.selectedRowIndices,
+            below: below
+        )
         return InspectorRowInsertion.storeIndex(
             anchorDisplayRow: anchorDisplayRow,
             below: below,
@@ -309,10 +307,9 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     }
 
     @objc func inspectorRenameColumn(_ sender: Any?) {
-        guard let menuItem = sender as? NSMenuItem,
-              let inspector = inspectorDocument,
-              menuItem.tag >= 0, menuItem.tag < inspector.columnNames.count else { return }
-        let column = menuItem.tag
+        guard let inspector = inspectorDocument,
+              let column = InspectorColumnMenuBuilder.clickedColumn(from: sender),
+              column >= 0, column < inspector.columnNames.count else { return }
         let current = inspector.columnNames[column]
         promptForColumnName(title: String(localized: "Rename Column"), initial: current) { [weak self] name in
             guard let self, let name, !name.isEmpty, name != current else { return }
@@ -343,7 +340,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
 
     private func columnInsertAnchor(from sender: Any?, toRight: Bool) -> Int? {
         guard let inspector = inspectorDocument else { return nil }
-        let clicked = (sender as? NSMenuItem).map(\.tag)
+        let clicked = InspectorColumnMenuBuilder.clickedColumn(from: sender)
         return InspectorColumnTargets.insertAnchor(
             clicked: clicked,
             fullySelected: selectedFullColumns(),
@@ -424,8 +421,8 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     private func structuralTargetColumn(from sender: Any?) -> Int? {
         guard let inspector = inspectorDocument, !inspector.columnNames.isEmpty else { return nil }
         let count = inspector.columnNames.count
-        if let menuItem = sender as? NSMenuItem, menuItem.tag >= 0, menuItem.tag < count {
-            return menuItem.tag
+        if let clicked = InspectorColumnMenuBuilder.clickedColumn(from: sender), clicked >= 0, clicked < count {
+            return clicked
         }
         if let first = gridDelegate.coordinator?.selectionController.selection.affectedColumns.min(),
            first >= 0, first < count {
@@ -455,12 +452,12 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         mode.selectedSegment = 0
         let stack = accessoryStack(with: [field, mode])
         alert.accessoryView = stack
+        alert.window.initialFirstResponder = field
 
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             self?.applySplit(column: column, separator: field.stringValue, isRegex: mode.selectedSegment == 1)
         }
-        DispatchQueue.main.async { alert.window.makeFirstResponder(field) }
     }
 
     private func promptMergeColumns(_ column: Int) {
@@ -480,6 +477,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         field.placeholderString = String(localized: "Separator (optional)")
         field.usesSingleLineMode = true
         alert.accessoryView = accessoryStack(with: [field])
+        alert.window.initialFirstResponder = field
 
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn, let self, let inspector = self.inspectorDocument else { return }
@@ -487,7 +485,6 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             inspector.mergeColumns(at: column, separator: field.stringValue)
             if let removedName { self.removeLayoutKey(removedName) }
         }
-        DispatchQueue.main.async { alert.window.makeFirstResponder(field) }
     }
 
     private func applySplit(column: Int, separator: String, isRegex: Bool) {
@@ -608,12 +605,10 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         textField.stringValue = initial
         textField.usesSingleLineMode = true
         alert.accessoryView = textField
+        alert.window.initialFirstResponder = textField
         alert.beginSheetModal(for: window) { response in
             let trimmed = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             completion(response == .alertFirstButtonReturn ? trimmed : nil)
-        }
-        DispatchQueue.main.async {
-            alert.window.makeFirstResponder(textField)
         }
     }
 

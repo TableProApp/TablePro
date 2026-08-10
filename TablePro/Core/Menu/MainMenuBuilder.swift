@@ -33,20 +33,37 @@ enum MainMenuBuilder {
         NSApp.mainMenu = build(keyboard: keyboard)
     }
 
-    static func applyShortcuts(_ keyboard: KeyboardSettings) {
-        guard let menu = NSApp.mainMenu else { return }
-        MainMenuKeyEquivalentSync.apply(keyboard: keyboard, to: menu)
+    /// The menu bar's key equivalents are one global resource, so exactly one function
+    /// computes them, from the keyboard settings and the key window's text-focus state.
+    /// A rebind, a settings sync, a focus transition and a key-window change all route
+    /// here, so no two writers can disagree, and the result is idempotent: applying it
+    /// twice for the same inputs produces the same menu.
+    static func syncKeyEquivalents() {
+        syncKeyEquivalents(keyboard: AppSettingsManager.shared.keyboard)
     }
 
-    /// Re-applies key equivalents with the focused text field's claim honoured, so a
-    /// grid shortcut that duplicates a standard text-editing binding stops swallowing
-    /// the keystroke while the field has focus.
-    static func applyTextInputYield(keyboard: KeyboardSettings, actions: MainContentCommandActions) {
+    static func syncKeyEquivalents(keyboard: KeyboardSettings) {
         guard let menu = NSApp.mainMenu else { return }
+        syncKeyEquivalents(keyboard: keyboard, actions: keyWindowCommandActions(), to: menu)
+    }
+
+    /// `actions` is nil whenever the key window owns none (the welcome window, Settings,
+    /// a window that is still connecting, or no key window at all). Nothing yields then,
+    /// which restores every key equivalent a text field had stripped.
+    static func syncKeyEquivalents(
+        keyboard: KeyboardSettings,
+        actions: MainContentCommandActions?,
+        to menu: NSMenu
+    ) {
         MainMenuKeyEquivalentSync.applyTextInputYield(
             keyboard: keyboard,
-            yields: { action, key in actions.yieldsToFocusedTextInput(action, boundKey: key) },
+            yields: { action, key in actions?.yieldsToFocusedTextInput(action, boundKey: key) ?? false },
             to: menu
         )
+    }
+
+    private static func keyWindowCommandActions() -> MainContentCommandActions? {
+        guard let window = NSApp.keyWindow else { return nil }
+        return MainContentCoordinator.coordinator(forWindow: window)?.commandActions
     }
 }
