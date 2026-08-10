@@ -31,6 +31,10 @@ extension MainSplitViewController {
         commandActions?.deleteSelectedRows()
     }
 
+    @objc func copySelectedRows(_ sender: Any?) {
+        commandActions?.copySelectedRows()
+    }
+
     @objc func copyRowsWithHeaders(_ sender: Any?) {
         commandActions?.copySelectedRowsWithHeaders()
     }

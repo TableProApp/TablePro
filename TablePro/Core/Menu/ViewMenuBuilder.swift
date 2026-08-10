@@ -116,7 +116,7 @@ enum ViewMenuBuilder {
                 modifiers: [.command, .option]
             ),
             MenuItemFactory.item(
-                String(localized: "Customize Toolbar\u{2026}"),
+                String(localized: "Customize Toolbar..."),
                 action: #selector(NSWindow.runToolbarCustomizationPalette(_:))
             ),
             MenuItemFactory.separator,

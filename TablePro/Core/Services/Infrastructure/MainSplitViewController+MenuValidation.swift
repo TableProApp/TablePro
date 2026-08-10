@@ -30,6 +30,8 @@ struct MenuValidationContext: Equatable {
     var canEditViewDefinition = false
     var canCreateDatabase = false
     var hasMaintenanceOperations = false
+    var canUndo = false
+    var canRedo = false
     var hasImportFormats = false
     var supportsContainerSwitching = false
     var supportsBackup = false
@@ -100,9 +102,15 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isCurrentTabEditable && !context.isReadOnly
         case #selector(truncateTable(_:)):
             return context.hasTableSelection && !context.isReadOnly
+        case #selector(undo(_:)):
+            return context.canUndo
+        case #selector(redo(_:)):
+            return context.canRedo
         case #selector(copy(_:)):
             return context.hasRowSelection || context.hasTableSelection
-        case #selector(copyRowsWithHeaders(_:)), #selector(copyRowsAsJson(_:)):
+        case #selector(copySelectedRows(_:)),
+             #selector(copyRowsWithHeaders(_:)),
+             #selector(copyRowsAsJson(_:)):
             return context.hasRowSelection
         case #selector(delete(_:)):
             return context.isCurrentTabEditable || context.hasTableSelection
@@ -164,6 +172,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             canEditViewDefinition: actions.canEditViewDefinition,
             canCreateDatabase: actions.canCreateDatabase,
             hasMaintenanceOperations: !actions.maintenanceOperations.isEmpty,
+            canUndo: actions.canUndo,
+            canRedo: actions.canRedo,
             hasImportFormats: !actions.availableImportFormats.isEmpty,
             supportsContainerSwitching: actions.supportsContainerSwitching,
             supportsBackup: actions.supportsBackup,
@@ -199,6 +209,22 @@ extension MainSplitViewController: NSMenuItemValidation {
             menuItem.title = isWorkspaceRailEnabled
                 ? String(localized: "Hide Workspace Rail")
                 : String(localized: "Show Workspace Rail")
+        case #selector(undo(_:)):
+            menuItem.title = commandActions?.resolvedUndoTitle ?? String(localized: "Undo")
+        case #selector(redo(_:)):
+            menuItem.title = commandActions?.resolvedRedoTitle ?? String(localized: "Redo")
+        case #selector(toggleFilterBar(_:)):
+            menuItem.title = commandActions?.isFilterBarVisible == true
+                ? String(localized: "Hide Filter Bar")
+                : String(localized: "Show Filter Bar")
+        case #selector(toggleQueryHistory(_:)):
+            menuItem.title = commandActions?.isQueryHistoryVisible == true
+                ? String(localized: "Hide Query History")
+                : String(localized: "Show Query History")
+        case #selector(toggleResults(_:)):
+            menuItem.title = commandActions?.isResultsVisible == true
+                ? String(localized: "Hide Results")
+                : String(localized: "Show Results")
         case #selector(pinResult(_:)):
             menuItem.title = commandActions?.isResultTabPinned == true
                 ? String(localized: "Unpin Result")

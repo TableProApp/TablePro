@@ -60,5 +60,13 @@ extension MainContentCommandActions {
         let owns = window?.firstResponder is NSTextInputClient
         guard owns != focusOwnsTextInput else { return }
         focusOwnsTextInput = owns
+        applyMenuKeyEquivalentYield()
+    }
+
+    /// Only the key window's own tracking may rewrite the menu, or a background
+    /// window's focus change would strip key equivalents from the window in front.
+    private func applyMenuKeyEquivalentYield() {
+        guard let window, window.isKeyWindow else { return }
+        MainMenuBuilder.applyTextInputYield(keyboard: AppSettingsManager.shared.keyboard, actions: self)
     }
 }

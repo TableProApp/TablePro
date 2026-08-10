@@ -86,7 +86,7 @@ enum EditMenuBuilder {
         MenuItemFactory.submenu(String(localized: "Copy Special"), items: [
             MenuItemFactory.item(
                 String(localized: "Copy Rows"),
-                action: #selector(KeyHandlingTableView.copyRowsAsTSV(_:)),
+                action: #selector(MainSplitViewController.copySelectedRows(_:)),
                 shortcut: .copyRowsExplicit,
                 keyboard: keyboard
             ),
@@ -108,7 +108,7 @@ enum EditMenuBuilder {
     private static func findSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.submenu(String(localized: "Find"), items: [
             MenuItemFactory.item(
-                String(localized: "Find\u{2026}"),
+                String(localized: "Find..."),
                 action: #selector(MainSplitViewController.performFind(_:)),
                 keyEquivalent: "f",
                 modifiers: .command
@@ -152,11 +152,11 @@ enum EditMenuBuilder {
                 action: #selector(InspectorViewController.inspectorInsertColumnRight(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "Split Column\u{2026}"),
+                String(localized: "Split Column..."),
                 action: #selector(InspectorViewController.inspectorSplitColumn(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "Merge Columns\u{2026}"),
+                String(localized: "Merge Columns..."),
                 action: #selector(InspectorViewController.inspectorMergeColumns(_:))
             ),
             MenuItemFactory.item(
@@ -171,7 +171,7 @@ enum EditMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
-                String(localized: "Set CSV Properties\u{2026}"),
+                String(localized: "Set CSV Properties..."),
                 action: #selector(InspectorViewController.inspectorSetCSVProperties(_:))
             )
         ])

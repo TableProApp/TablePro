@@ -37,4 +37,16 @@ enum MainMenuBuilder {
         guard let menu = NSApp.mainMenu else { return }
         MainMenuKeyEquivalentSync.apply(keyboard: keyboard, to: menu)
     }
+
+    /// Re-applies key equivalents with the focused text field's claim honoured, so a
+    /// grid shortcut that duplicates a standard text-editing binding stops swallowing
+    /// the keystroke while the field has focus.
+    static func applyTextInputYield(keyboard: KeyboardSettings, actions: MainContentCommandActions) {
+        guard let menu = NSApp.mainMenu else { return }
+        MainMenuKeyEquivalentSync.applyTextInputYield(
+            keyboard: keyboard,
+            yields: { action, key in actions.yieldsToFocusedTextInput(action, boundKey: key) },
+            to: menu
+        )
+    }
 }

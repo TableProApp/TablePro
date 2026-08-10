@@ -7,12 +7,16 @@ import AppKit
 
 /// Which maintenance operations exist depends on the driver and on what is selected,
 /// so the submenu is filled when it opens rather than at build time. `menuNeedsUpdate`
-/// is AppKit's hook for exactly that.
+/// is AppKit's hook for exactly that, and the responder chain resolves the window the
+/// same way it will resolve the item the user picks.
 @MainActor
 final class MaintenanceMenuDelegate: NSObject, NSMenuDelegate {
+    private static let action = #selector(MainSplitViewController.runMaintenanceOperation(_:))
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        let operations = NSApp.keyWindow?.mainSplitViewController?.commandActions?.maintenanceOperations ?? []
+        let controller = NSApp.target(forAction: Self.action, to: nil, from: nil) as? MainSplitViewController
+        let operations = controller?.commandActions?.maintenanceOperations ?? []
         guard !operations.isEmpty else {
             let empty = NSMenuItem(title: String(localized: "No Operations Available"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
@@ -20,22 +24,10 @@ final class MaintenanceMenuDelegate: NSObject, NSMenuDelegate {
             return
         }
         for operation in operations {
-            let item = NSMenuItem(
-                title: operation,
-                action: #selector(MainSplitViewController.runMaintenanceOperation(_:)),
-                keyEquivalent: ""
-            )
+            let item = NSMenuItem(title: operation, action: Self.action, keyEquivalent: "")
             item.target = nil
             item.representedObject = operation
             menu.addItem(item)
         }
-    }
-}
-
-extension NSWindow {
-    /// The connection window's own controller, or nil for any other window. Used only
-    /// by menu delegates, which run while the menu opens and have no responder to ask.
-    var mainSplitViewController: MainSplitViewController? {
-        contentViewController as? MainSplitViewController
     }
 }

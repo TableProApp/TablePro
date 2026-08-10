@@ -10,7 +10,7 @@ enum FileMenuBuilder {
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.menu(String(localized: "File"), items: [
             MenuItemFactory.item(
-                String(localized: "New Connection\u{2026}"),
+                String(localized: "New Connection..."),
                 action: #selector(AppDelegate.newConnection(_:)),
                 shortcut: .newConnection,
                 keyboard: keyboard
@@ -29,7 +29,7 @@ enum FileMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "Open File\u{2026}"),
+                String(localized: "Open File..."),
                 action: #selector(MainSplitViewController.openSQLFile(_:)),
                 shortcut: .openFile,
                 keyboard: keyboard
@@ -42,7 +42,7 @@ enum FileMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
-                String(localized: "Save As\u{2026}"),
+                String(localized: "Save As..."),
                 action: #selector(MainSplitViewController.saveDocumentAs(_:)),
                 shortcut: .saveAs,
                 keyboard: keyboard
@@ -83,11 +83,11 @@ enum FileMenuBuilder {
             exportSubmenu(keyboard: keyboard),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "Backup Dump\u{2026}"),
+                String(localized: "Backup Dump..."),
                 action: #selector(MainSplitViewController.backupDatabase(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "Restore Dump\u{2026}"),
+                String(localized: "Restore Dump..."),
                 action: #selector(MainSplitViewController.restoreDatabase(_:))
             )
         ])
@@ -96,22 +96,22 @@ enum FileMenuBuilder {
     private static func importSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
         let container = MenuItemFactory.submenu(String(localized: "Import"), items: [
             MenuItemFactory.item(
-                String(localized: "Import Connections\u{2026}"),
+                String(localized: "Import Connections..."),
                 action: #selector(AppDelegate.importConnections(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "Import from URL\u{2026}"),
+                String(localized: "Import from URL..."),
                 action: #selector(AppDelegate.importFromURL(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "Import from Other App\u{2026}"),
+                String(localized: "Import from Other App..."),
                 action: #selector(AppDelegate.importFromOtherApp(_:))
             )
         ])
         container.submenu?.insertItem(.separator(), at: 0)
         container.submenu?.insertItem(
             MenuItemFactory.item(
-                String(localized: "Import Data\u{2026}"),
+                String(localized: "Import Data..."),
                 action: #selector(MainSplitViewController.importData(_:)),
                 shortcut: .importData,
                 keyboard: keyboard
@@ -124,18 +124,18 @@ enum FileMenuBuilder {
     private static func exportSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.submenu(String(localized: "Export"), items: [
             MenuItemFactory.item(
-                String(localized: "Export Tables\u{2026}"),
+                String(localized: "Export Tables..."),
                 action: #selector(MainSplitViewController.exportTables(_:)),
                 shortcut: .export,
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
-                String(localized: "Export Results\u{2026}"),
+                String(localized: "Export Results..."),
                 action: #selector(MainSplitViewController.exportQueryResults(_:))
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "Export Connections\u{2026}"),
+                String(localized: "Export Connections..."),
                 action: #selector(AppDelegate.exportConnections(_:))
             )
         ])

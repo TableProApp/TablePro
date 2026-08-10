@@ -14,19 +14,19 @@ enum DatabaseMenuBuilder {
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.menu(String(localized: "Database"), items: [
             MenuItemFactory.item(
-                String(localized: "Switch Connection\u{2026}"),
+                String(localized: "Switch Connection..."),
                 action: #selector(MainSplitViewController.switchConnection(_:)),
                 shortcut: .switchConnection,
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
-                String(localized: "Open Database\u{2026}"),
+                String(localized: "Open Database..."),
                 action: #selector(MainSplitViewController.openContainerSwitcher(_:)),
                 shortcut: .openDatabase,
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
-                String(localized: "Quick Switcher\u{2026}"),
+                String(localized: "Quick Switcher..."),
                 action: #selector(MainSplitViewController.openQuickSwitcher(_:)),
                 shortcut: .quickSwitcher,
                 keyboard: keyboard
@@ -40,15 +40,15 @@ enum DatabaseMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "New Database\u{2026}"),
+                String(localized: "New Database..."),
                 action: #selector(MainSplitViewController.createNewDatabase(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "New Table\u{2026}"),
+                String(localized: "New Table..."),
                 action: #selector(MainSplitViewController.createNewTable(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "New View\u{2026}"),
+                String(localized: "New View..."),
                 action: #selector(MainSplitViewController.createNewView(_:))
             ),
             MenuItemFactory.separator,
@@ -57,7 +57,7 @@ enum DatabaseMenuBuilder {
                 action: #selector(MainSplitViewController.showTableStructure(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "Edit View Definition\u{2026}"),
+                String(localized: "Edit View Definition..."),
                 action: #selector(MainSplitViewController.editViewDefinition(_:))
             ),
             maintenanceSubmenu(),

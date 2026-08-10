@@ -18,7 +18,7 @@ extension AppDelegate: NSMenuItemValidation {
     }
 
     @objc func openIntegrations(_ sender: Any?) {
-        WindowOpener.shared.openSettings()
+        WindowOpener.shared.openIntegrationsActivity()
     }
 
     @objc func openSettings(_ sender: Any?) {

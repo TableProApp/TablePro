@@ -365,8 +365,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         applyPaneChrome()
         applyWindowTitle()
         SessionRecoveryTracker.sync()
-        if view.window?.isKeyWindow == true {
-        }
     }
 
     /// Repainted on every phase change for the same reason the panes are. Leaving it out is
@@ -418,10 +416,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     /// key-window lookup or focus registry is involved.
     var commandActions: MainContentCommandActions? {
         sessionState?.coordinator.commandActions
-    }
-
-    var menuChangeManager: DataChangeManager? {
-        sessionState?.changeManager
     }
 
     var currentPane: ConnectionWindowPane {

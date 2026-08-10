@@ -259,9 +259,9 @@ struct DatabaseMenuCommandTests {
     func deferredCommandsArePresent() {
         let titles = (databaseMenu()?.items ?? []).map(\.title)
         for expected in [
-            String(localized: "New Database\u{2026}"),
+            String(localized: "New Database..."),
             String(localized: "Show Table Structure"),
-            String(localized: "Edit View Definition\u{2026}"),
+            String(localized: "Edit View Definition..."),
             String(localized: "Table Maintenance"),
             String(localized: "Disconnect"),
             String(localized: "Reconnect")

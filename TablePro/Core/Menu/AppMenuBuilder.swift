@@ -20,17 +20,17 @@ enum AppMenuBuilder {
                 action: #selector(AppDelegate.showAboutPanel(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "Check for Updates\u{2026}"),
+                String(localized: "Check for Updates..."),
                 action: #selector(AppDelegate.checkForUpdates(_:))
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "Integrations\u{2026}"),
+                String(localized: "Integrations..."),
                 action: #selector(AppDelegate.openIntegrations(_:))
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "Settings\u{2026}"),
+                String(localized: "Settings..."),
                 action: #selector(AppDelegate.openSettings(_:)),
                 keyEquivalent: ",",
                 modifiers: .command

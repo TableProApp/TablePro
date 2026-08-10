@@ -20,11 +20,18 @@ private final class EditorWindow: NSWindow {
 
     override func newWindowForTab(_ sender: Any?) {
         guard let coordinator = MainContentCoordinator.coordinator(forWindow: self),
-              let actions = coordinator.commandActions else {
-            super.newWindowForTab(sender)
-            return
-        }
+              let actions = coordinator.commandActions else { return }
         actions.newTab()
+    }
+
+    /// `NSWindow` implements `newWindowForTab:`, so the responder chain stops here and
+    /// never reaches the split view controller's validation. Without this the item
+    /// stays enabled on a window that is connecting, failed, or disconnected.
+    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(newWindowForTab(_:)) else {
+            return super.validateMenuItem(menuItem)
+        }
+        return MainContentCoordinator.coordinator(forWindow: self)?.commandActions?.isConnected == true
     }
 }
 

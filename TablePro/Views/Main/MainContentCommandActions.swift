@@ -364,7 +364,7 @@ final class MainContentCommandActions {
         coordinator?.hasAnyUnsavedWork() ?? false
     }
 
-    private var isUsersRolesTab: Bool {
+    internal var isUsersRolesTab: Bool {
         coordinator?.tabManager.selectedTab?.tabType == .usersRoles
     }
 
@@ -1040,9 +1040,6 @@ final class MainContentCommandActions {
             coordinator?.structureActions?.undo?()
             return
         }
-        if NSApp.sendAction(NSSelectorFromString("undo:"), to: nil, from: nil) {
-            return
-        }
         coordinator?.contentWindow?.undoManager?.undo()
     }
 
@@ -1053,9 +1050,6 @@ final class MainContentCommandActions {
         }
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.redo?()
-            return
-        }
-        if NSApp.sendAction(NSSelectorFromString("redo:"), to: nil, from: nil) {
             return
         }
         coordinator?.contentWindow?.undoManager?.redo()
