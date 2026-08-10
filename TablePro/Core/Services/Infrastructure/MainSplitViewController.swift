@@ -426,6 +426,20 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         )
     }
 
+    /// The one answer to "does this window have a database to talk to". `releaseSession` keeps the
+    /// coordinator alive across a reconnect on purpose, so the object graph outliving a session
+    /// says nothing about the connection; only the phase separates dialing from connected from
+    /// failed. The pane is part of the answer because a phase with nothing renderable behind it
+    /// shows no content view for a command to act on.
+    static func isConnected(phase: ConnectionWindowPhase, pane: ConnectionWindowPane) -> Bool {
+        guard phase == .connected else { return false }
+        return pane == .content
+    }
+
+    var isConnected: Bool {
+        Self.isConnected(phase: phase, pane: currentPane)
+    }
+
     private var paneConnection: DatabaseConnection? {
         payloadConnection ?? currentSession?.connection
     }

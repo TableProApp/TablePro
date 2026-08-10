@@ -276,7 +276,11 @@ final class MainContentCommandActions {
 
     // MARK: - Per-Window State (replaces AppState.shared for menu enablement)
 
-    var isConnected: Bool { coordinator != nil }
+    /// Answered by the window that owns this instance, because only its `ConnectionWindowPhase`
+    /// can tell a window that is dialing or has failed from one that is connected. This object
+    /// existing proves nothing: it is kept alive across a lost session so a reconnect can restore
+    /// the user's tabs.
+    var isConnected: Bool { coordinator?.splitViewController?.isConnected ?? false }
     var isQueryExecuting: Bool { coordinator?.toolbarState.isExecuting ?? false }
 
     var safeModeLevel: SafeModeLevel { coordinator?.toolbarState.safeModeLevel ?? connection.safeModeLevel }

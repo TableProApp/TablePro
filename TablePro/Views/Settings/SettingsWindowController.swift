@@ -31,15 +31,15 @@ internal final class SettingsWindowController: NSWindowController {
 
         let window = NSWindow(contentViewController: panes)
         window.title = String(localized: "Settings")
-        window.identifier = NSUserInterfaceItemIdentifier(SceneId.settings)
+        window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.settings)
         window.styleMask = [.titled, .closable]
         window.toolbarStyle = .preference
         window.isRestorable = false
         window.setContentSize(SettingsPaneTabViewController.paneSize)
-        window.setFrameAutosaveName(SceneId.settings)
+        window.setFrameAutosaveName(WindowIdentifier.settings)
         /// A programmatic window keeps whatever origin AppKit gave it, so the first launch
         /// after the SwiftUI scene is gone has no saved frame to restore.
-        if !window.setFrameUsingName(SceneId.settings) {
+        if !window.setFrameUsingName(WindowIdentifier.settings) {
             window.center()
         }
         self.init(window: window)
@@ -148,8 +148,4 @@ private struct SettingsPaneContent: View {
             AccountSettingsView()
         }
     }
-}
-
-internal extension SceneId {
-    static let settings = "settings"
 }

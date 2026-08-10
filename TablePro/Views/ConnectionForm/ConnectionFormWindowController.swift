@@ -48,11 +48,11 @@ internal final class ConnectionFormWindowController: NSWindowController, NSWindo
 
         let window = NSWindow(contentViewController: hosting)
         window.title = Self.initialTitle(for: request)
-        window.identifier = NSUserInterfaceItemIdentifier(SceneId.connectionForm)
+        window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.connectionForm)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isRestorable = false
         window.setContentSize(NSSize(width: 820, height: 600))
-        window.setFrameAutosaveName(SceneId.connectionForm)
+        window.setFrameAutosaveName(WindowIdentifier.connectionForm)
         self.init(window: window)
         window.delegate = self
     }

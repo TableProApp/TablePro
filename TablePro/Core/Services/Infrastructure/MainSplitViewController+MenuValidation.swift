@@ -9,6 +9,9 @@ import AppKit
 /// per validation pass. Keeping it a plain value keeps `isEnabled` pure and testable,
 /// the same split `MainWindowToolbar+Validation` uses for the toolbar.
 struct MenuValidationContext: Equatable {
+    /// Comes from the window's own `ConnectionWindowPhase`, never from the presence of a
+    /// coordinator: the coordinator deliberately outlives a lost session so a reconnect keeps
+    /// the user's tabs, which made every connection-scoped command stay lit while dialing.
     var isConnected = false
     var isReadOnly = false
     var isTableTab = false
@@ -32,6 +35,7 @@ struct MenuValidationContext: Equatable {
     var hasMaintenanceOperations = false
     var canUndo = false
     var canRedo = false
+    var hasEditorForFind = false
     var hasImportFormats = false
     var supportsContainerSwitching = false
     var supportsBackup = false
@@ -41,6 +45,12 @@ struct MenuValidationContext: Equatable {
 }
 
 extension MainSplitViewController: NSMenuItemValidation {
+    /// A command that reaches the database carries `isConnected` even when it already has a
+    /// selection or tab condition of its own. Those conditions are not a substitute for it: a
+    /// window that is not connected shows the connecting or unavailable pane with its sidebar and
+    /// inspector collapsed, while the coordinator keeps the last tab and selection it saw so a
+    /// reconnect can restore them. Without it, Truncate Table and Delete stay lit over an error
+    /// screen, pointed at a session that is gone.
     static func isEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool {
         switch selector {
         case #selector(openSQLFile(_:)),
@@ -99,9 +109,13 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canSaveAsFavorite
 
         case #selector(addRow(_:)), #selector(duplicateRow(_:)):
-            return context.isCurrentTabEditable && !context.isReadOnly
+            return context.isConnected && context.isCurrentTabEditable && !context.isReadOnly
         case #selector(truncateTable(_:)):
-            return context.hasTableSelection && !context.isReadOnly
+            return context.isConnected && context.hasTableSelection && !context.isReadOnly
+        case #selector(performFind(_:)):
+            return context.hasEditorForFind || (context.isConnected && context.isTableTab)
+        case #selector(findNext(_:)), #selector(findPrevious(_:)):
+            return context.hasEditorForFind
         case #selector(undo(_:)):
             return context.canUndo
         case #selector(redo(_:)):
@@ -113,18 +127,18 @@ extension MainSplitViewController: NSMenuItemValidation {
              #selector(copyRowsAsJson(_:)):
             return context.hasRowSelection
         case #selector(delete(_:)):
-            return context.isCurrentTabEditable || context.hasTableSelection
+            return context.isConnected && (context.isCurrentTabEditable || context.hasTableSelection)
 
         case #selector(createNewTable(_:)), #selector(createNewView(_:)):
             return context.isConnected && !context.isReadOnly
         case #selector(createNewDatabase(_:)):
             return context.canCreateDatabase
         case #selector(showTableStructure(_:)):
-            return context.canShowTableStructure
+            return context.isConnected && context.canShowTableStructure
         case #selector(editViewDefinition(_:)):
-            return context.canEditViewDefinition
+            return context.isConnected && context.canEditViewDefinition
         case #selector(runMaintenanceOperation(_:)):
-            return context.hasMaintenanceOperations
+            return context.isConnected && context.hasMaintenanceOperations
         case #selector(openContainerSwitcher(_:)):
             return context.isConnected && context.supportsContainerSwitching
         case #selector(showServerDashboard(_:)):
@@ -151,7 +165,7 @@ extension MainSplitViewController: NSMenuItemValidation {
     var menuValidationContext: MenuValidationContext {
         guard let actions = commandActions else { return MenuValidationContext() }
         return MenuValidationContext(
-            isConnected: actions.isConnected,
+            isConnected: isConnected,
             isReadOnly: actions.isReadOnly,
             isTableTab: actions.isTableTab,
             isCurrentTabEditable: actions.isCurrentTabEditable,
@@ -174,6 +188,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasMaintenanceOperations: !actions.maintenanceOperations.isEmpty,
             canUndo: actions.canUndo,
             canRedo: actions.canRedo,
+            hasEditorForFind: EditorEventRouter.shared.keyWindowHasEditor,
             hasImportFormats: !actions.availableImportFormats.isEmpty,
             supportsContainerSwitching: actions.supportsContainerSwitching,
             supportsBackup: actions.supportsBackup,

@@ -80,6 +80,12 @@ internal final class EditorEventRouter {
 
     // MARK: - Public API
 
+    /// Whether the key window has an editor that can service a find. The Find commands are
+    /// otherwise enabled with nothing to search, and selecting one does nothing at all.
+    internal var keyWindowHasEditor: Bool {
+        editor(for: NSApp.keyWindow) != nil
+    }
+
     internal func showFindPanelForKeyWindow() {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
         coordinator.showFindPanel()

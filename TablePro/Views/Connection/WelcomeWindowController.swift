@@ -34,7 +34,7 @@ internal final class WelcomeWindowController: NSWindowController {
 
         let window = NSWindow(contentViewController: hosting)
         window.title = String(localized: "Welcome to TablePro")
-        window.identifier = NSUserInterfaceItemIdentifier(SceneId.welcome)
+        window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.welcome)
         window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
@@ -46,7 +46,7 @@ internal final class WelcomeWindowController: NSWindowController {
         /// window tabbing on, so this window has to opt out for itself.
         window.tabbingMode = .disallowed
         window.setContentSize(Self.contentSize)
-        window.applyAutosaveName(SceneId.welcome)
+        window.applyAutosaveName(WindowIdentifier.welcome)
         self.init(window: window)
     }
 }

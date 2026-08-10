@@ -211,6 +211,156 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.openContainerSwitcher(_:)), context))
     }
 
+    /// Everything a connection-scoped command could also need is switched on, so `isConnected`
+    /// is the only thing left that can disable them.
+    private func capableContext(phase: ConnectionWindowPhase, pane: ConnectionWindowPane) -> MenuValidationContext {
+        var context = capableContext()
+        context.isConnected = MainSplitViewController.isConnected(phase: phase, pane: pane)
+        return context
+    }
+
+    private func capableContext() -> MenuValidationContext {
+        var context = MenuValidationContext()
+        context.isTableTab = true
+        context.hasQueryText = true
+        context.hasPendingChanges = true
+        context.hasDataPendingChanges = true
+        context.hasImportFormats = true
+        context.supportsBackup = true
+        context.supportsRestore = true
+        context.supportsContainerSwitching = true
+        context.supportsServerDashboard = true
+        context.supportsUserManagement = true
+        context.isCurrentTabEditable = true
+        context.hasTableSelection = true
+        context.canShowTableStructure = true
+        context.canEditViewDefinition = true
+        context.hasMaintenanceOperations = true
+        return context
+    }
+
+    /// A window whose coordinator is alive is exactly the case the old `coordinator != nil`
+    /// check got wrong, so every phase is resolved with a renderable session behind it.
+    private func livePane(for phase: ConnectionWindowPhase) -> ConnectionWindowPane {
+        ConnectionWindowPaneResolver.pane(phase: phase, hasConnection: true, hasRenderableSession: true)
+    }
+
+    private var connectionScopedSelectors: [Selector] {
+        [
+            #selector(MainSplitViewController.refreshDatabase(_:)),
+            #selector(MainSplitViewController.exportTables(_:)),
+            #selector(MainSplitViewController.openQuickSwitcher(_:)),
+            #selector(MainSplitViewController.goToNextPage(_:)),
+            #selector(MainSplitViewController.saveDocument(_:)),
+            #selector(MainSplitViewController.saveDocumentAs(_:)),
+            #selector(MainSplitViewController.importData(_:)),
+            #selector(MainSplitViewController.backupDatabase(_:)),
+            #selector(MainSplitViewController.restoreDatabase(_:)),
+            #selector(MainSplitViewController.executeQuery(_:)),
+            #selector(MainSplitViewController.previewSQL(_:)),
+            #selector(MainSplitViewController.createNewTable(_:)),
+            #selector(MainSplitViewController.openContainerSwitcher(_:)),
+            #selector(MainSplitViewController.showServerDashboard(_:)),
+            #selector(MainSplitViewController.showUsersAndRoles(_:)),
+            #selector(MainSplitViewController.toggleFilterBar(_:))
+        ]
+    }
+
+    /// Gated on a grid, a tab or a sidebar selection the coordinator keeps across a lost session,
+    /// so each one needs the connection too or it stays lit over the unavailable pane.
+    private var contentScopedSelectors: [Selector] {
+        [
+            #selector(MainSplitViewController.addRow(_:)),
+            #selector(MainSplitViewController.duplicateRow(_:)),
+            #selector(MainSplitViewController.truncateTable(_:)),
+            #selector(MainSplitViewController.delete(_:)),
+            #selector(MainSplitViewController.showTableStructure(_:)),
+            #selector(MainSplitViewController.editViewDefinition(_:)),
+            #selector(MainSplitViewController.runMaintenanceOperation(_:))
+        ]
+    }
+
+    @Test("A stale selection does not keep content commands enabled without a connection")
+    func contentCommandsNeedTheConnection() {
+        var context = capableContext()
+        context.isConnected = false
+        for selector in contentScopedSelectors {
+            #expect(!enabled(selector, context), "\(selector) stayed enabled without a connection")
+        }
+        context.isConnected = true
+        for selector in contentScopedSelectors {
+            #expect(enabled(selector, context), "\(selector) stayed disabled while connected")
+        }
+    }
+
+    @Test("Only a connected phase enables connection-scoped commands")
+    func onlyConnectedPhaseEnablesCommands() {
+        let disabled: [ConnectionWindowPhase] = [
+            .idle,
+            .connecting,
+            .unavailable(.notConnected),
+            .unavailable(.cancelled),
+            .unavailable(.disconnected(nil)),
+            .unavailable(.disconnectedByUser),
+            .unavailable(.failed(ConnectionFailureInfo(message: "connection refused"))),
+            .unavailable(.pluginMissing(ConnectionFailureInfo(message: "plugin missing"))),
+            .closing
+        ]
+        let gated = connectionScopedSelectors + contentScopedSelectors
+        for phase in disabled {
+            let context = capableContext(phase: phase, pane: livePane(for: phase))
+            for selector in gated {
+                #expect(!enabled(selector, context), "\(selector) stayed enabled in phase \(phase)")
+            }
+        }
+
+        let connected = capableContext(phase: .connected, pane: livePane(for: .connected))
+        for selector in gated {
+            #expect(enabled(selector, connected), "\(selector) stayed disabled while connected")
+        }
+    }
+
+    @Test("A connected phase with nothing renderable enables nothing")
+    func connectedWithoutRenderableSessionStaysDisabled() {
+        let pane = ConnectionWindowPaneResolver.pane(
+            phase: .connected,
+            hasConnection: true,
+            hasRenderableSession: false
+        )
+        let context = capableContext(phase: .connected, pane: pane)
+        #expect(!context.isConnected)
+        #expect(!enabled(#selector(MainSplitViewController.executeQuery(_:)), context))
+    }
+
+    @Test("Connection state comes from the phase, not from a surviving object graph")
+    func connectionStateFollowsPhase() {
+        #expect(MainSplitViewController.isConnected(phase: .connected, pane: .content))
+        #expect(!MainSplitViewController.isConnected(phase: .connecting, pane: .connecting))
+        #expect(!MainSplitViewController.isConnected(phase: .idle, pane: .content))
+        #expect(!MainSplitViewController.isConnected(phase: .closing, pane: .empty))
+        #expect(!MainSplitViewController.isConnected(
+            phase: .unavailable(.disconnectedByUser),
+            pane: .unavailable(.disconnectedByUser)
+        ))
+    }
+
+    @Test("Find needs somewhere to search: an editor, or a table tab to filter")
+    func findNeedsAnEditor() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.performFind(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.findNext(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.findPrevious(_:)), context))
+        context.isTableTab = true
+        #expect(enabled(#selector(MainSplitViewController.performFind(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.findNext(_:)), context))
+        context.isTableTab = false
+        context.hasEditorForFind = true
+        #expect(enabled(#selector(MainSplitViewController.performFind(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.findNext(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.findPrevious(_:)), context))
+    }
+
     @Test("An unknown selector stays enabled so the chain can answer for it")
     func unknownSelectorsFallThrough() {
         #expect(enabled(#selector(NSWindow.performClose(_:)), MenuValidationContext()))

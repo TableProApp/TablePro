@@ -48,8 +48,15 @@ extension MainSplitViewController {
         NSApp.sendAction(#selector(NSResponder.cancelOperation(_:)), to: nil, from: nil)
     }
 
+    /// One Find command, and the front content decides what finding means: a table tab filters
+    /// its rows, anything else searches the editor's text. Two menu items competing for the same
+    /// key is what the old routing enum existed to work around.
     @objc func performFind(_ sender: Any?) {
-        EditorEventRouter.shared.showFindPanelForKeyWindow()
+        guard commandActions?.isTableTab == true else {
+            EditorEventRouter.shared.showFindPanelForKeyWindow()
+            return
+        }
+        commandActions?.toggleFilterPanel()
     }
 
     @objc func findNext(_ sender: Any?) {

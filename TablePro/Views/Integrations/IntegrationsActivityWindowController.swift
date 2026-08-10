@@ -31,10 +31,10 @@ internal final class IntegrationsActivityWindowController: NSWindowController {
 
         let window = NSWindow(contentViewController: hosting)
         window.title = String(localized: "Integrations Activity")
-        window.identifier = NSUserInterfaceItemIdentifier(SceneId.integrationsActivity)
+        window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.integrationsActivity)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(NSSize(width: 960, height: 600))
-        window.setFrameAutosaveName(SceneId.integrationsActivity)
+        window.setFrameAutosaveName(WindowIdentifier.integrationsActivity)
         self.init(window: window)
     }
 }

@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Find, Find Next and Find Previous no longer stay available when there is nothing to search.
+- Menu commands that need a database now stay disabled while a window is connecting, after a failed connect, and after a disconnect. Truncate Table, Delete and Add Row could previously still be chosen on a window whose session was gone.
+
 - Insert Row Above, Insert Row Below, Insert Column Left, Insert Column Right, Split Column and Merge Columns in the Edit menu now act on the selected row or column instead of always the first one.
 - New Tab no longer looks available on the welcome, settings, connection and integrations windows, where it did nothing.
 - Deleting a query history entry now selects the next entry reliably instead of racing a timer.
@@ -41,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The menu bar is rebuilt on native macOS menus. Every command now enables and disables from the state of the window you are actually using, so items no longer read as available when they are not, or stay greyed out after you switch windows.
 - New Database and Query menus hold the connection, database, and table commands that used to be spread across File, Edit, and View.
-- `Cmd+F` now always opens Find. The table filter bar moved to `Cmd+Option+F`, matching TablePlus, Postico, and Sequel Ace, and Focus Sidebar Filter moved to `Ctrl+Cmd+Option+F`. Shortcuts you assigned yourself are untouched.
+- `Cmd+F` finds in whatever is in front of you: it filters rows in a table tab, searches the text in the SQL editor, and filters the CSV inspector. Toggle Filter Bar also has its own `Cmd+Option+F`, and Focus Sidebar Filter moved to `Ctrl+Cmd+Option+F`. Shortcuts you assigned yourself are untouched.
 - The CSV and JSON editing commands are grouped into one Edit submenu and now dim per command rather than all at once.
 - Connecting to a database now fills the window instead of framing a spinner with an empty sidebar and inspector, and it names the step it is on: opening the tunnel, negotiating encryption, authenticating, preparing the session. PostgreSQL, CockroachDB, Redshift, ClickHouse, and Redis report their own handshake steps; the rest report the steps around the driver. A step that stalls says so rather than spinning silently.
 - A connection that fails now shows the database's own error wherever the connect started, including from a link or a database file, and offers Copy Details. Those routes used to drop the real message and report only that the connection had closed.
