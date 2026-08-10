@@ -194,47 +194,54 @@ extension MainSplitViewController: NSMenuItemValidation {
         return Self.isEnabled(action, context: menuValidationContext)
     }
 
+    /// Assigning a title or state that has not changed still posts an item-changed notification,
+    /// which makes an open menu re-lay-out and cancel tracking. Validation runs on every menu
+    /// update, so the writes have to be conditional or the menu bar flickers and a click on an
+    /// item dismisses the menu instead of firing it.
     private func applyDynamicTitle(to menuItem: NSMenuItem) {
         guard let action = menuItem.action else { return }
         switch action {
         case #selector(toggleSidebar(_:)):
-            menuItem.title = isSidebarCollapsed
-                ? String(localized: "Show Sidebar")
-                : String(localized: "Hide Sidebar")
+            setTitle(isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar", on: menuItem)
         case #selector(toggleInspector(_:)):
-            menuItem.title = isInspectorVisible
-                ? String(localized: "Hide Inspector")
-                : String(localized: "Show Inspector")
+            setTitle(isInspectorVisible ? "Hide Inspector" : "Show Inspector", on: menuItem)
         case #selector(toggleWorkspaceRail(_:)):
-            menuItem.title = isWorkspaceRailEnabled
-                ? String(localized: "Hide Workspace Rail")
-                : String(localized: "Show Workspace Rail")
+            setTitle(isWorkspaceRailEnabled ? "Hide Workspace Rail" : "Show Workspace Rail", on: menuItem)
         case #selector(undo(_:)):
-            menuItem.title = commandActions?.resolvedUndoTitle ?? String(localized: "Undo")
+            setResolvedTitle(commandActions?.resolvedUndoTitle ?? String(localized: "Undo"), on: menuItem)
         case #selector(redo(_:)):
-            menuItem.title = commandActions?.resolvedRedoTitle ?? String(localized: "Redo")
+            setResolvedTitle(commandActions?.resolvedRedoTitle ?? String(localized: "Redo"), on: menuItem)
         case #selector(toggleFilterBar(_:)):
-            menuItem.title = commandActions?.isFilterBarVisible == true
-                ? String(localized: "Hide Filter Bar")
-                : String(localized: "Show Filter Bar")
+            setTitle(commandActions?.isFilterBarVisible == true ? "Hide Filter Bar" : "Show Filter Bar", on: menuItem)
         case #selector(toggleQueryHistory(_:)):
-            menuItem.title = commandActions?.isQueryHistoryVisible == true
-                ? String(localized: "Hide Query History")
-                : String(localized: "Show Query History")
+            setTitle(
+                commandActions?.isQueryHistoryVisible == true ? "Hide Query History" : "Show Query History",
+                on: menuItem
+            )
         case #selector(toggleResults(_:)):
-            menuItem.title = commandActions?.isResultsVisible == true
-                ? String(localized: "Hide Results")
-                : String(localized: "Show Results")
+            setTitle(commandActions?.isResultsVisible == true ? "Hide Results" : "Show Results", on: menuItem)
         case #selector(pinResult(_:)):
-            menuItem.title = commandActions?.isResultTabPinned == true
-                ? String(localized: "Unpin Result")
-                : String(localized: "Pin Result")
+            setTitle(commandActions?.isResultTabPinned == true ? "Unpin Result" : "Pin Result", on: menuItem)
         case #selector(useFlatSidebarLayout(_:)):
-            menuItem.state = commandActions?.sidebarLayout == .flat ? .on : .off
+            setState(commandActions?.sidebarLayout == .flat ? .on : .off, on: menuItem)
         case #selector(useTreeSidebarLayout(_:)):
-            menuItem.state = commandActions?.sidebarLayout == .tree ? .on : .off
+            setState(commandActions?.sidebarLayout == .tree ? .on : .off, on: menuItem)
         default:
             return
         }
+    }
+
+    private func setTitle(_ key: String.LocalizationValue, on menuItem: NSMenuItem) {
+        setResolvedTitle(String(localized: key), on: menuItem)
+    }
+
+    private func setResolvedTitle(_ title: String, on menuItem: NSMenuItem) {
+        guard menuItem.title != title else { return }
+        menuItem.title = title
+    }
+
+    private func setState(_ state: NSControl.StateValue, on menuItem: NSMenuItem) {
+        guard menuItem.state != state else { return }
+        menuItem.state = state
     }
 }
