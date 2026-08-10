@@ -29,9 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A connection that fails now shows the database's own error wherever the connect started, including from a link or a database file, and offers Copy Details. Those routes used to drop the real message and report only that the connection had closed.
 - Opening a table or query from a link now opens its window straight away, so a slow connect has somewhere to report progress and a failed one has somewhere to explain itself.
 - A saved pre-connect script no longer runs when the app reopens a session on its own. The window waits with a Connect button, which asks before running it.
+- Running a query or opening a table now replaces whatever that tab was already running, instead of being ignored until the first one finished.
 
 ### Fixed
 
+- Clicking a table while another one is still loading now loads the table you clicked. The tab used to fill with the previous table's rows under the new table's name, and the table you clicked never loaded at all.
+- Stop no longer aborts a save, a discard, or a schema change. It cancels reads only, so a write can no longer be cut off half way.
 - A window being connected is now named after the connection instead of "SQL Query", which named a tab it did not have yet.
 - A window that loses its connection no longer keeps the name of the table it stopped showing. Its name and its native tab label now follow what the window is actually displaying.
 - The titlebar no longer repeats itself, so a window with no tabs open reads "My Database" rather than "My Database - My Database".

@@ -17,7 +17,7 @@ final class QueryExecutionCoordinator {
 
     func runAllStatements() {
         guard let (tab, index) = parent.tabManager.selectedTabAndIndex,
-              !tab.execution.isExecuting,
+              !parent.tabExecution.isExecuting(tab.id),
               tab.tabType == .query else { return }
 
         let fullQuery = tab.content.query

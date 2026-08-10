@@ -271,7 +271,7 @@ extension QueryExecutionCoordinator {
     func launchPhase2Work(
         tableName: String,
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         connectionType: DatabaseType,
         schemaTask: Task<FetchedTableSchema, Error>?
     ) {
@@ -290,11 +290,11 @@ extension QueryExecutionCoordinator {
                 if let schema {
                     applySchemaMetadata(schema, tabId: tabId, tableName: tableName)
                 }
-                if capturedGeneration == parent.queryGeneration {
+                if parent.tabExecution.isCurrent(claim) {
                     resolveRowCount(
                         tableName: tableName,
                         tabId: tabId,
-                        capturedGeneration: capturedGeneration,
+                        claim: claim,
                         connectionType: connectionType
                     )
                 }
@@ -398,13 +398,13 @@ extension QueryExecutionCoordinator {
     func launchPhase2Count(
         tableName: String,
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         connectionType: DatabaseType
     ) {
         resolveRowCount(
             tableName: tableName,
             tabId: tabId,
-            capturedGeneration: capturedGeneration,
+            claim: claim,
             connectionType: connectionType
         )
     }
@@ -412,7 +412,7 @@ extension QueryExecutionCoordinator {
     func resolveRowCount(
         tableName: String,
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         connectionType: DatabaseType
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
@@ -489,7 +489,7 @@ extension QueryExecutionCoordinator {
             }
 
             await MainActor.run {
-                guard capturedGeneration == parent.queryGeneration else { return }
+                guard parent.tabExecution.isCurrent(claim) else { return }
                 parent.currentRowCountTask = nil
                 guard let outcome else { return }
                 parent.tabManager.mutate(tabId: tabId) { tab in

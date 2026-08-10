@@ -26,7 +26,7 @@ extension MainContentCoordinator {
     /// Accepts the plugin-kit `ExplainVariant` type for generic dispatch.
     func runVariantExplain(_ variant: ExplainVariant) {
         guard let (tab, _) = tabManager.selectedTabAndIndex,
-              !tab.execution.isExecuting else { return }
+              !tabExecution.isExecuting(tab.id) else { return }
 
         let fullQuery = tab.content.query
 

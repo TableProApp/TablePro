@@ -38,6 +38,7 @@ internal struct TabExecutionRegistry {
     }
 
     private var entries: [UUID: Entry] = [:]
+    private var contentEpochs: [UUID: Int] = [:]
     private var lastEpoch: Int = 0
 
     internal init() {}
@@ -45,7 +46,19 @@ internal struct TabExecutionRegistry {
     internal mutating func claim(_ tabId: UUID) -> TabExecutionClaim {
         lastEpoch += 1
         entries[tabId] = Entry(epoch: lastEpoch, phase: .preparing)
+        contentEpochs[tabId] = lastEpoch
         return TabExecutionClaim(tabId: tabId, epoch: lastEpoch)
+    }
+
+    /// Identity of what the tab is currently showing, which outlives the claim that produced it.
+    /// Background work that augments an already-applied result (exact row count, fetch all) has no
+    /// claim of its own to validate, so it captures this and compares before writing back.
+    internal func contentEpoch(for tabId: UUID) -> Int {
+        contentEpochs[tabId] ?? 0
+    }
+
+    internal func isSameContent(_ epoch: Int, for tabId: UUID) -> Bool {
+        contentEpoch(for: tabId) == epoch
     }
 
     internal func isCurrent(_ claim: TabExecutionClaim) -> Bool {
@@ -62,10 +75,22 @@ internal struct TabExecutionRegistry {
     /// precisely the case the old per-window counter could not represent and the bug walked through.
     internal mutating func invalidate(_ tabId: UUID) {
         entries.removeValue(forKey: tabId)
+        lastEpoch += 1
+        contentEpochs[tabId] = lastEpoch
     }
 
     internal mutating func invalidateAll() {
+        let tabIds = Set(entries.keys).union(contentEpochs.keys)
         entries.removeAll()
+        for tabId in tabIds {
+            lastEpoch += 1
+            contentEpochs[tabId] = lastEpoch
+        }
+    }
+
+    internal mutating func forget(_ tabId: UUID) {
+        entries.removeValue(forKey: tabId)
+        contentEpochs.removeValue(forKey: tabId)
     }
 
     /// Ends a claim that ran to completion. A claim that is no longer current settles nothing, so a

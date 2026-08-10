@@ -77,7 +77,7 @@ extension QueryExecutionCoordinator {
         originalSQL: String? = nil
     ) {
         guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
-              !selectedTab.execution.isExecuting else { return }
+              !parent.tabExecution.isExecuting(selectedTab.id) else { return }
 
         guard let scope = parent.scope(for: selectedTab) else {
             parent.tabManager.mutate(at: index) {
@@ -95,8 +95,6 @@ extension QueryExecutionCoordinator {
             }
             parent.currentQueryTask = nil
         }
-        parent.queryGeneration += 1
-        let capturedGeneration = parent.queryGeneration
 
         parent.tabManager.mutate(at: index) { tab in
             tab.execution.isExecuting = true
@@ -114,6 +112,7 @@ extension QueryExecutionCoordinator {
 
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id
+        let claim = parent.tabExecution.claim(tabId)
 
         let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
         let (tableName, isEditable) = parent.resolveTableEditability(tab: tab, sql: sql)
@@ -139,7 +138,7 @@ extension QueryExecutionCoordinator {
                 let fetchResult = try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: DatabaseManager.shared.executionRoute(for: scope),
-                    tracksCancellation: true
+                    cancellation: .cancellableRead
                 ) { [queryExecutor = parent.queryExecutor] driver in
                     try await queryExecutor.executeQuery(
                         driver: driver,
@@ -167,7 +166,7 @@ extension QueryExecutionCoordinator {
                     isEditable: isEditable,
                     sql: sql,
                     connection: conn,
-                    capturedGeneration: capturedGeneration,
+                    claim: claim,
                     originalParameters: originalParameters,
                     nativeParameters: parameters,
                     originalSQL: originalSQL
@@ -178,7 +177,7 @@ extension QueryExecutionCoordinator {
                         launchPhase2Work(
                             tableName: tableName,
                             tabId: tabId,
-                            capturedGeneration: capturedGeneration,
+                            claim: claim,
                             connectionType: conn.type,
                             schemaTask: schemaTask
                         )
@@ -186,14 +185,14 @@ extension QueryExecutionCoordinator {
                         launchPhase2Count(
                             tableName: tableName,
                             tabId: tabId,
-                            capturedGeneration: capturedGeneration,
+                            claim: claim,
                             connectionType: conn.type
                         )
                     }
                 } else if !isEditable || tableName == nil {
                     await MainActor.run { [weak self] in
                         guard let self else { return }
-                        guard capturedGeneration == parent.queryGeneration else { return }
+                        guard parent.tabExecution.isCurrent(claim) else { return }
                         guard !Task.isCancelled else { return }
                         parent.changeManager.clearChangesAndUndoHistory()
                     }
@@ -209,7 +208,7 @@ extension QueryExecutionCoordinator {
                     parent.currentQueryTask = nil
                     parent.toolbarState.setExecuting(false)
                     if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
-                    guard capturedGeneration == parent.queryGeneration else { return }
+                    guard parent.tabExecution.isCurrent(claim) else { return }
                     handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
                 }
             }
@@ -225,7 +224,7 @@ extension QueryExecutionCoordinator {
         bypassRowLimit: Bool = false
     ) {
         guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
-              !selectedTab.execution.isExecuting else { return }
+              !parent.tabExecution.isExecuting(selectedTab.id) else { return }
 
         let missing = parameters.filter {
             !$0.isNull && $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -252,8 +251,6 @@ extension QueryExecutionCoordinator {
         )?.parameterStyle ?? .questionMark
 
         parent.currentQueryTask?.cancel()
-        parent.queryGeneration += 1
-        let capturedGeneration = parent.queryGeneration
 
         parent.tabManager.mutate(at: index) { tab in
             tab.execution.isExecuting = true
@@ -264,6 +261,7 @@ extension QueryExecutionCoordinator {
 
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id
+        let claim = parent.tabExecution.claim(tabId)
         let totalCount = statements.count
         let tabType = parent.tabManager.tabs[index].tabType
 
@@ -285,7 +283,7 @@ extension QueryExecutionCoordinator {
                 prepared: prepared,
                 scope: scope,
                 mode: transactionKind.declaresWrite ? .readWrite : .serverDefault,
-                capturedGeneration: capturedGeneration
+                claim: claim
             )
 
             switch outcome {
@@ -304,7 +302,7 @@ extension QueryExecutionCoordinator {
                 let lastSelectIndex = results.lastIndex { !$0.columns.isEmpty }
                 applyMultiStatementResults(
                     tabId: tabId,
-                    capturedGeneration: capturedGeneration,
+                    claim: claim,
                     cumulativeTime: results.reduce(0) { $0 + $1.executionTime },
                     totalRowsAffected: results.reduce(0) { $0 + $1.rowsAffected },
                     lastSelectResult: lastSelectIndex.map { results[$0] },
@@ -323,7 +321,7 @@ extension QueryExecutionCoordinator {
                     errorDescription: errorDescription,
                     connection: conn,
                     tabId: tabId,
-                    capturedGeneration: capturedGeneration,
+                    claim: claim,
                     statements: statements,
                     executedCount: results.count,
                     totalCount: totalCount,
@@ -359,18 +357,18 @@ extension QueryExecutionCoordinator {
         prepared: [PreparedStatement],
         scope: DatabaseScope,
         mode: PluginTransactionAccessMode,
-        capturedGeneration: Int
+        claim: TabExecutionClaim
     ) async -> MultiStatementOutcome {
         do {
             return try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
                 route: DatabaseManager.shared.executionRoute(for: scope),
-                tracksCancellation: true
+                cancellation: .cancellableRead
             ) { driver in
                 await self.runPreparedStatements(
                     prepared,
                     mode: mode,
-                    capturedGeneration: capturedGeneration,
+                    claim: claim,
                     driver: driver
                 )
             }
@@ -385,7 +383,7 @@ extension QueryExecutionCoordinator {
     private func runPreparedStatements(
         _ prepared: [PreparedStatement],
         mode: PluginTransactionAccessMode,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         driver: DatabaseDriver
     ) async -> MultiStatementOutcome {
         let useTransaction = driver.supportsTransactions
@@ -399,7 +397,7 @@ extension QueryExecutionCoordinator {
 
         var results: [QueryResult] = []
         for statement in prepared {
-            guard !Task.isCancelled, capturedGeneration == parent.queryGeneration else {
+            guard !Task.isCancelled, parent.tabExecution.isCurrent(claim) else {
                 await rollback(driver: driver, useTransaction: useTransaction)
                 return .cancelled
             }
@@ -476,7 +474,7 @@ extension QueryExecutionCoordinator {
         isEditable: Bool,
         sql: String,
         connection: DatabaseConnection,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         originalParameters: [QueryParameter],
         nativeParameters: [Any?],
         originalSQL: String? = nil
@@ -490,7 +488,7 @@ extension QueryExecutionCoordinator {
             parent.toolbarState.setExecuting(false)
             parent.toolbarState.lastQueryDuration = fetchResult.executionTime
 
-            if capturedGeneration != parent.queryGeneration || Task.isCancelled {
+            if !parent.tabExecution.isCurrent(claim) || Task.isCancelled {
                 parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
                 return
             }
@@ -528,7 +526,7 @@ extension QueryExecutionCoordinator {
         errorDescription: String,
         connection: DatabaseConnection,
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         statements: [String],
         executedCount: Int,
         totalCount: Int,
@@ -536,7 +534,7 @@ extension QueryExecutionCoordinator {
         failedSQL: String?,
         resultSets: inout [ResultSet]
     ) async {
-        if capturedGeneration != parent.queryGeneration {
+        if !parent.tabExecution.isCurrent(claim) {
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }

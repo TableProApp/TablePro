@@ -18,7 +18,7 @@ extension MainContentCoordinator {
         tabId: UUID,
         sql: String,
         connection conn: DatabaseConnection,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         isAutoLoad: Bool,
         trigger: TableLoadTrigger,
         traceToken: TableLoadTraceToken?
@@ -31,7 +31,7 @@ extension MainContentCoordinator {
         toolbarState.setExecuting(false)
         traceExecutionFailed(traceToken, error: error)
         if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
-        guard capturedGeneration == queryGeneration else { return }
+        guard tabExecution.isCurrent(claim) else { return }
         if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
             pendingLoadTrigger = trigger
             return
@@ -39,8 +39,8 @@ extension MainContentCoordinator {
         handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
     }
 
-    func clearChangesIfCurrent(generation: Int) {
-        guard generation == queryGeneration, !Task.isCancelled else { return }
+    func clearChangesIfCurrent(claim: TabExecutionClaim) {
+        guard tabExecution.isCurrent(claim), !Task.isCancelled else { return }
         changeManager.clearChangesAndUndoHistory()
     }
 
@@ -95,7 +95,7 @@ extension MainContentCoordinator {
     func launchPhase2(
         tableName: String,
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         connectionType: DatabaseType,
         needsMetadataFetch: Bool,
         schemaTask: Task<FetchedTableSchema, Error>?
@@ -104,7 +104,7 @@ extension MainContentCoordinator {
             launchPhase2Count(
                 tableName: tableName,
                 tabId: tabId,
-                capturedGeneration: capturedGeneration,
+                claim: claim,
                 connectionType: connectionType
             )
             return
@@ -112,7 +112,7 @@ extension MainContentCoordinator {
         launchPhase2Work(
             tableName: tableName,
             tabId: tabId,
-            capturedGeneration: capturedGeneration,
+            claim: claim,
             connectionType: connectionType,
             schemaTask: schemaTask
         )
@@ -121,14 +121,14 @@ extension MainContentCoordinator {
     func launchPhase2Work(
         tableName: String,
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         connectionType: DatabaseType,
         schemaTask: Task<FetchedTableSchema, Error>?
     ) {
         queryExecutionCoordinator.launchPhase2Work(
             tableName: tableName,
             tabId: tabId,
-            capturedGeneration: capturedGeneration,
+            claim: claim,
             connectionType: connectionType,
             schemaTask: schemaTask
         )
@@ -137,13 +137,13 @@ extension MainContentCoordinator {
     func launchPhase2Count(
         tableName: String,
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         connectionType: DatabaseType
     ) {
         queryExecutionCoordinator.launchPhase2Count(
             tableName: tableName,
             tabId: tabId,
-            capturedGeneration: capturedGeneration,
+            claim: claim,
             connectionType: connectionType
         )
     }

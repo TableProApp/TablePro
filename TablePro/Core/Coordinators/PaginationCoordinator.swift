@@ -132,7 +132,7 @@ final class PaginationCoordinator {
         parent.cancelInFlightQueryTask()
         parent.currentRowCountTask?.cancel()
         parent.currentRowCountTask = nil
-        parent.queryGeneration += 1
+        parent.tabExecution.invalidateAll()
         parent.toolbarState.setExecuting(false)
         for idx in parent.tabManager.tabs.indices {
             if parent.tabManager.tabs[idx].execution.isExecuting
@@ -169,7 +169,7 @@ final class PaginationCoordinator {
 
         parent.tabManager.mutate(at: index) { $0.pagination.isCountingExact = true }
 
-        let capturedGeneration = parent.queryGeneration
+        let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         parent.currentRowCountTask = Task(priority: .userInitiated) { [parent] in
             let count = await Self.exactRowCount(
                 scope: scope,
@@ -180,7 +180,7 @@ final class PaginationCoordinator {
             )
 
             guard !Task.isCancelled else { return }
-            guard capturedGeneration == parent.queryGeneration else { return }
+            guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
             parent.currentRowCountTask = nil
             parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.pagination.isCountingExact = false
@@ -217,7 +217,7 @@ final class PaginationCoordinator {
     func fetchAllRows() {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
               !tab.pagination.isLoadingMore,
-              !tab.execution.isExecuting,
+              !parent.tabExecution.isExecuting(tab.id),
               tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
 
@@ -258,7 +258,7 @@ final class PaginationCoordinator {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         guard !parent.tabManager.tabs[idx].pagination.isLoadingMore else { return }
 
-        let capturedGeneration = parent.queryGeneration
+        let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let storedParamValues = parent.tabManager.tabs[idx].pagination.baseQueryParameterValues
 
         parent.tabManager.mutate(at: idx) { $0.pagination.isLoadingMore = true }
@@ -276,7 +276,7 @@ final class PaginationCoordinator {
                 let result = try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: route,
-                    tracksCancellation: true
+                    cancellation: .cancellableRead
                 ) { driver in
                     try await driver.executeUserQuery(
                         query: baseQuery,
@@ -291,7 +291,7 @@ final class PaginationCoordinator {
 
                 await MainActor.run { [weak self] in
                     guard let self, !parent.isTearingDown else { return }
-                    guard capturedGeneration == parent.queryGeneration else {
+                    guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else {
                         parent.tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
                         parent.toolbarState.setExecuting(false)
                         return
@@ -321,7 +321,7 @@ final class PaginationCoordinator {
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    let isStale = capturedGeneration != parent.queryGeneration
+                    let isStale = !parent.tabExecution.isSameContent(contentEpoch, for: tabId)
                     let isCancelled = DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled
                     parent.tabManager.mutate(tabId: tabId) { tab in
                         tab.pagination.isLoadingMore = false
