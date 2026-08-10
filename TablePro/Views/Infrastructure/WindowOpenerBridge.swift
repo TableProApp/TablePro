@@ -20,7 +20,6 @@ internal struct WindowOpenerBridge: View {
         WindowOpener.shared.setConnectionFormPresenter { request in
             openWindow(id: SceneId.connectionForm, value: request)
         }
-        WindowOpener.shared.setIntegrationsActivityPresenter { openWindow(id: SceneId.integrationsActivity) }
         WindowOpener.shared.setSettingsPresenter { openSettings() }
     }
 }

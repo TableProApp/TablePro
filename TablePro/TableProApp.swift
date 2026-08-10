@@ -1005,13 +1005,6 @@ struct TableProApp: App {
         .defaultSize(width: 820, height: 600)
         .commandsRemoved()
 
-        Window("Integrations Activity", id: SceneId.integrationsActivity) {
-            IntegrationsActivityView()
-                .background(WindowOpenerBridge())
-                .environment(\.appServices, .live)
-        }
-        .windowResizability(.contentMinSize)
-        .defaultSize(width: 960, height: 600)
         .commands {
             AppMenuCommands(
                 settingsManager: AppSettingsManager.shared,
