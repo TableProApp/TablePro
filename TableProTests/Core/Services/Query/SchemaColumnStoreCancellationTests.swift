@@ -141,6 +141,59 @@ struct SchemaColumnStoreCancellationTests {
         #expect(store.cached("users")?.columns == ["id"])
     }
 
+    /// The defect: a cancelled waiter's cleanup runs on a deferred hop. If its own load finishes
+    /// and a new caller takes the key before that hop lands, the hop used to decrement the new
+    /// load's waiter count to zero and cancel a fetch nobody had abandoned.
+    @Test("A withdrawal aimed at a finished load cannot cancel the one that replaced it")
+    func staleWithdrawalCannotCancelTheNextLoad() async {
+        let store = SchemaColumnStore()
+        let abandonedProbe = FetchProbe()
+
+        let abandoned = Task { await store.load("users", fetch: abandonedProbe.fetch) }
+        #expect(await Self.wait(until: { store.loadID(for: "users") != nil }))
+        let staleLoadID = store.loadID(for: "users")
+        abandoned.cancel()
+        await abandoned.value
+        #expect(store.loadID(for: "users") == nil)
+
+        let liveProbe = FetchProbe()
+        let live = Task { await store.load("users", fetch: liveProbe.fetch) }
+        #expect(await Self.wait(until: { liveProbe.startCount == 1 }))
+        #expect(store.loadID(for: "users") != staleLoadID)
+
+        if let staleLoadID {
+            store.withdrawWaiterForTesting(from: "users", loadID: staleLoadID)
+        }
+
+        #expect(liveProbe.cancelCount == 0)
+
+        liveProbe.release()
+        await live.value
+
+        #expect(liveProbe.finishCount == 1)
+        #expect(store.cached("users")?.columns == ["id", "name"])
+    }
+
+    /// A cancelled fetch that finishes late must not overwrite the result of the fetch that
+    /// replaced it, so the write is gated on still owning the key.
+    @Test("A superseded fetch cannot write its result over a newer one")
+    func supersededFetchCannotOverwriteNewerResult() async {
+        let store = SchemaColumnStore()
+        let stale = FetchProbe()
+        stale.result = (["stale"], [])
+
+        let abandoned = Task { await store.load("users", fetch: stale.fetch) }
+        #expect(await Self.wait(until: { stale.startCount == 1 }))
+        abandoned.cancel()
+        await abandoned.value
+
+        let fresh = FetchProbe()
+        fresh.release()
+        await store.load("users", fetch: fresh.fetch)
+
+        #expect(store.cached("users")?.columns == ["id", "name"])
+    }
+
     private static func wait(
         until condition: () -> Bool,
         within timeout: Duration = .seconds(2)

@@ -4,17 +4,20 @@ import Foundation
 final class SchemaColumnStore {
     typealias Entry = (columns: [String], primaryKeys: [String])
 
-    /// One fetch shared by every caller asking for the same key while it is in flight. It is only
-    /// cancelled once the last of them has given up, because cancelling on the first departure
-    /// would abandon a fetch the others are still waiting on.
+    /// One fetch shared by every caller asking for the same key while it is in flight.
+    ///
+    /// `id` is what makes the sharing safe. A waiter's cleanup runs on a deferred hop, so by the
+    /// time it lands the key can already belong to a different fetch. Everything that mutates a
+    /// load, or writes the result of one, checks the id it started with first.
     private struct Load {
+        let id: Int
         let task: Task<Void, Never>
         var liveWaiters: Int
     }
 
     private var entries: [String: Entry] = [:]
     private var loads: [String: Load] = [:]
-    private var generation = 0
+    private var lastLoadID = 0
 
     func cached(_ key: String) -> Entry? {
         entries[key]
@@ -35,21 +38,19 @@ final class SchemaColumnStore {
     func load(_ key: String, fetch: @escaping () async -> Entry?) async {
         if entries[key] != nil { return }
 
-        let task = joinLoad(key, fetch: fetch)
-        let startedGeneration = generation
+        let load = joinLoad(key, fetch: fetch)
 
         await withTaskCancellationHandler {
-            await task.value
+            await load.task.value
         } onCancel: {
-            Task { @MainActor [weak self] in self?.withdrawWaiter(from: key) }
+            Task { @MainActor [weak self] in self?.withdrawWaiter(from: key, loadID: load.id) }
         }
 
-        guard generation == startedGeneration else { return }
+        guard loads[key]?.id == load.id else { return }
         loads.removeValue(forKey: key)
     }
 
     func removeAll() {
-        generation += 1
         for load in loads.values { load.task.cancel() }
         loads.removeAll()
         entries.removeAll()
@@ -59,29 +60,45 @@ final class SchemaColumnStore {
     /// the entry there is a window where the task is already cancelled, and a caller that adopted
     /// it would wait for a fetch that is never going to produce anything. Clicking back to a table
     /// just after clicking away from it lands exactly there.
-    private func joinLoad(_ key: String, fetch: @escaping () async -> Entry?) -> Task<Void, Never> {
+    private func joinLoad(_ key: String, fetch: @escaping () async -> Entry?) -> Load {
         if var existing = loads[key], !existing.task.isCancelled {
             existing.liveWaiters += 1
             loads[key] = existing
-            return existing.task
+            return existing
         }
 
+        lastLoadID += 1
+        let id = lastLoadID
         let task = Task { [weak self] in
             guard let entry = await fetch() else { return }
-            self?.entries[key] = entry
+            guard let self, self.loads[key]?.id == id else { return }
+            self.entries[key] = entry
         }
-        loads[key] = Load(task: task, liveWaiters: 1)
-        return task
+        let load = Load(id: id, task: task, liveWaiters: 1)
+        loads[key] = load
+        return load
     }
 
     #if DEBUG
     internal func waiterCount(for key: String) -> Int {
         loads[key]?.liveWaiters ?? 0
     }
+
+    internal func loadID(for key: String) -> Int? {
+        loads[key]?.id
+    }
+
+    internal func withdrawWaiterForTesting(from key: String, loadID: Int) {
+        withdrawWaiter(from: key, loadID: loadID)
+    }
     #endif
 
-    private func withdrawWaiter(from key: String) {
-        guard var load = loads[key] else { return }
+    /// Ignores a withdrawal aimed at a load this key no longer holds. The hop that calls this is
+    /// scheduled when a waiter is cancelled and runs later, by which time its load may have
+    /// finished and a different caller may own the key. Without the id check that late hop
+    /// decrements a stranger's waiter count and cancels a fetch somebody is still waiting on.
+    private func withdrawWaiter(from key: String, loadID: Int) {
+        guard var load = loads[key], load.id == loadID else { return }
         load.liveWaiters -= 1
         loads[key] = load
         guard load.liveWaiters <= 0 else { return }
