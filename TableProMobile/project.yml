@@ -1,0 +1,202 @@
+name: TableProMobile
+
+# TableProMobile.xcodeproj is generated from this file and is not in git.
+# Run scripts/generate-project.sh from the repo root; it generates both projects.
+# Build settings shared with the macOS project live in ../Configs/.
+
+options:
+  minimumXcodeGenVersion: "2.46.0"
+  projectFormat: xcode16_0
+  defaultConfig: Release
+  developmentLanguage: en
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+  groupSortPosition: top
+  transitivelyLinkDependencies: false
+  localPackagesGroup: Packages
+  deploymentTarget:
+    iOS: "18.0"
+
+configs:
+  Debug: debug
+  Release: release
+
+configFiles:
+  Debug: ../Configs/Debug.xcconfig
+  Release: ../Configs/Release.xcconfig
+
+packages:
+  TableProCore:
+    path: ../Packages/TableProCore
+  TableProOracle:
+    path: ../Packages/TableProOracle
+
+targets:
+
+  TableProMobile:
+    type: application
+    platform: iOS
+    sources:
+      - path: TableProMobile
+        excludes:
+          - Info.plist
+      # Live Activity and shared-store types the widget extension owns.
+      - TableProWidget/Shared/QueryActivityAttributes.swift
+      - TableProWidget/Shared/SharedConnectionStore.swift
+      - TableProWidget/Shared/WidgetConnectionItem.swift
+      # FreeTDS bridging the iOS build compiles directly; there is no plugin
+      # bundle on iOS, so the driver links into the app.
+      - ../Plugins/MSSQLDriverPlugin/FreeTDSConnection.swift
+      - ../Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
+    configFiles:
+      Debug: ../Configs/Version-iOS.xcconfig
+      Release: ../Configs/Version-iOS.xcconfig
+    dependencies:
+      - target: TableProWidgetExtension
+        embed: true
+        codeSign: true
+        removeHeaders: true
+        copy:
+          destination: plugins
+      - package: TableProCore
+        products:
+          - TableProAnalytics
+          - TableProDatabase
+          - TableProImport
+          - TableProModels
+          - TableProMSSQLCore
+          - TableProPluginKit
+          - TableProQuery
+          - TableProSync
+          - TableProSyncTransport
+      - package: TableProOracle
+        product: TableProOracleCore
+      - framework: ../Libs/ios/DuckDB.xcframework
+        embed: false
+      - framework: ../Libs/ios/FreeTDS.xcframework
+        embed: false
+      - framework: ../Libs/ios/Hiredis-SSL.xcframework
+        embed: false
+      - framework: ../Libs/ios/Hiredis.xcframework
+        embed: false
+      - framework: ../Libs/ios/LibPQ.xcframework
+        embed: false
+      - framework: ../Libs/ios/LibSSH2.xcframework
+        embed: false
+      - framework: ../Libs/ios/MariaDB.xcframework
+        embed: false
+      - framework: ../Libs/ios/OpenSSL-Crypto.xcframework
+        embed: false
+      - framework: ../Libs/ios/OpenSSL-SSL.xcframework
+        embed: false
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: NO
+        CODE_SIGN_ENTITLEMENTS: TableProMobile/TableProMobileRelease.entitlements
+        DEVELOPMENT_TEAM: $(TABLEPRO_DEVELOPMENT_TEAM)
+        ENABLE_PREVIEWS: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: TableProMobile/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: TablePro
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/Frameworks"
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -lz
+          - -liconv
+          - -lc++
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProMobile
+        PRODUCT_NAME: $(TARGET_NAME)
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_EMIT_LOC_STRINGS: YES
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2 $(SRCROOT)/TableProMobile/CBridges/CFreeTDS $(SRCROOT)/TableProMobile/CBridges/CDuckDB
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+  TableProWidgetExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: TableProWidget
+        excludes:
+          - Info.plist
+    configFiles:
+      Debug: ../Configs/Version-iOS.xcconfig
+      Release: ../Configs/Version-iOS.xcconfig
+    dependencies:
+      - sdk: SwiftUI.framework
+      - sdk: WidgetKit.framework
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME: WidgetBackground
+        CODE_SIGN_ENTITLEMENTS: TableProWidgetExtension.entitlements
+        DEVELOPMENT_TEAM: $(TABLEPRO_DEVELOPMENT_TEAM)
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: TableProWidget/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: TableProWidget
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/Frameworks"
+          - "@executable_path/../../Frameworks"
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProMobile.Widget
+        PRODUCT_NAME: $(TARGET_NAME)
+        SKIP_INSTALL: YES
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+  TableProMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - TableProMobileTests
+    dependencies:
+      - target: TableProMobile
+    settings:
+      base:
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "1.0"
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProMobileTests
+        PRODUCT_NAME: $(TARGET_NAME)
+        STRING_CATALOG_GENERATE_SYMBOLS: NO
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_EMIT_LOC_STRINGS: NO
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2 $(SRCROOT)/TableProMobile/CBridges/CFreeTDS $(SRCROOT)/TableProMobile/CBridges/CDuckDB
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+schemes:
+  TableProMobile:
+    build:
+      targets:
+        TableProMobile: all
+      parallelizeBuild: true
+      buildImplicitDependencies: true
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - name: TableProMobileTests
+          parallelizable: true
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+      revealArchiveInOrganizer: true

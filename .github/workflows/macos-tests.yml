@@ -8,7 +8,8 @@ on:
       - "Packages/**"
       - "LocalPackages/**"
       - "TableProTests/**"
-      - "TablePro.xcodeproj/**"
+      - "project.yml"
+      - "Configs/**"
       - "Libs/**"
       - ".github/workflows/macos-tests.yml"
   push:
@@ -19,7 +20,8 @@ on:
       - "Packages/**"
       - "LocalPackages/**"
       - "TableProTests/**"
-      - "TablePro.xcodeproj/**"
+      - "project.yml"
+      - "Configs/**"
       - "Libs/**"
       - ".github/workflows/macos-tests.yml"
   workflow_dispatch:
@@ -103,7 +105,13 @@ jobs:
       - name: Create Secrets.xcconfig
         env:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
-        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Secrets.xcconfig
+        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Configs/Secrets.xcconfig
+
+      - name: Setup XcodeGen
+        uses: ./.github/actions/setup-xcodegen
+
+      - name: Generate Xcode project
+        run: scripts/generate-project.sh
 
       - name: Resolve Swift package dependencies
         run: |

@@ -8,7 +8,8 @@ description: Clone, configure signing, and build TablePro in Xcode
 | Software | Version | Notes |
 |----------|---------|-------|
 | Xcode | 26.0+ | Ships the macOS 26 SDK the app builds against. Every CI job pins 26.4.1. |
-| Swift | 5.9 language mode | Comes with Xcode, set by `SWIFT_VERSION` in the project |
+| Swift | 5 language mode | Comes with Xcode, set by `SWIFT_VERSION` in `Configs/Base.xcconfig` |
+| XcodeGen | 2.46.0 | Generates `TablePro.xcodeproj` from `project.yml`. `brew install xcodegen` |
 
 The app references macOS 26 SDK symbols (`NSGlassEffectView` in the quick switcher), so an older Xcode cannot compile it. The deployment target stays at macOS 14.0 Sonoma, which is what the built app runs on, not what you build on.
 
@@ -41,18 +42,21 @@ Optional but recommended:
     </Warning>
   </Step>
 
-  <Step title="Create build config">
-    ```bash
-    touch Secrets.xcconfig
-    ```
-
-    Empty file is fine for development. Production builds use this for API keys.
-  </Step>
-
   <Step title="Install tools">
     ```bash
-    brew install swiftlint swiftformat
+    brew install xcodegen swiftlint swiftformat
     ```
+  </Step>
+
+  <Step title="Generate the Xcode project">
+    ```bash
+    scripts/generate-project.sh
+    ```
+
+    `TablePro.xcodeproj` and `TableProMobile/TableProMobile.xcodeproj` are generated from
+    `project.yml` and are not in git. Run this again after changing `project.yml` or
+    `Configs/`, and after adding, moving, or deleting a source file: XcodeGen collects
+    sources at generation time, so a new file is not in the project until you regenerate.
   </Step>
 
   <Step title="Open in Xcode">
@@ -62,22 +66,25 @@ Optional but recommended:
   </Step>
 
   <Step title="Configure signing">
-    1. Select the **TablePro** target
-    2. Go to **Signing & Capabilities**, **Debug** sub-tab
-    3. Change **Team** to your Apple Developer account (a free personal team works)
-    4. Change the **Bundle Identifier** from `com.TablePro` to something unique, for example `com.yourhandle.TablePro`
-
-    The Debug configuration signs with `TablePro.Debug.entitlements`, which drops
-    the iCloud capability, so a free personal team can sign it without a paid
-    Apple Developer Program membership. If another target still shows a team
-    error (a driver plugin or the MCP server), set its **Team** the same way.
-
-    Do not commit the resulting `project.pbxproj` changes; they break official
-    Release signing. Hide them locally:
-
     ```bash
-    git update-index --skip-worktree TablePro.xcodeproj/project.pbxproj
+    cp Configs/Secrets.xcconfig.example Configs/Secrets.xcconfig
     ```
+
+    Set your own team and a unique bundle identifier:
+
+    ```
+    TABLEPRO_DEVELOPMENT_TEAM = YOUR_TEAM_ID
+    TABLEPRO_APP_BUNDLE_IDENTIFIER = com.yourhandle.TablePro
+    ```
+
+    A free personal team works. The Debug configuration signs with
+    `TablePro.Debug.entitlements`, which drops the iCloud capability, so no paid Apple
+    Developer Program membership is needed. Plugin bundles and the MCP server sign ad-hoc,
+    so they need no team at all.
+
+    `Configs/Secrets.xcconfig` is gitignored, so these settings cannot reach a commit, and
+    they survive regenerating the project. Do not change signing in the Xcode UI: the
+    project is generated, and the next `scripts/generate-project.sh` discards the edit.
   </Step>
 
   <Step title="Build and run">
@@ -179,7 +186,7 @@ CI rejects warnings, so plain `swiftlint lint` is not enough. Full tooling refer
 | Linker errors about missing symbols | Run `scripts/download-libs.sh` |
 | SPM resolution fails | Clean build folder (`Cmd+Shift+K`), reopen Xcode |
 | Build fails after pulling | Delete derived data: `rm -rf ~/Library/Developer/Xcode/DerivedData` |
-| Missing `Secrets.xcconfig` error | Run `touch Secrets.xcconfig` in project root |
+| `TablePro.xcodeproj` does not exist | Run `scripts/generate-project.sh` |
 | Code signing errors | Change Team in Signing & Capabilities |
 
 <Note>

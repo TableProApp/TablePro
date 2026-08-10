@@ -14,6 +14,9 @@ set -euo pipefail
 #   layout): bump currentPluginKitVersion in PluginManager.swift, raise TableProPluginKitVersion in
 #   every plugin Info.plist, then run scripts/release-all-plugins.sh <newVersion>.
 #
+# Both sides are generated from their project.yml first, so this regenerates
+# TablePro.xcodeproj in the working tree as well as in the base checkout.
+#
 # Usage: scripts/check-pluginkit-abi.sh [base-ref]   (default: origin/main)
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,7 +31,11 @@ RESULT=""
 build_interface() {
     local dir="$1" out="$2" sym interface
     sym="$(mktemp -d)"
-    [ -f "$dir/Secrets.xcconfig" ] || touch "$dir/Secrets.xcconfig"
+    if ! (cd "$dir" && xcodegen generate --quiet --spec project.yml) >"$sym/generate.log" 2>&1; then
+        RESULT="failed"
+        tail -20 "$sym/generate.log"
+        return
+    fi
     if ! xcodebuild -project "$dir/TablePro.xcodeproj" -target TableProPluginKit -configuration Debug \
             -skipPackagePluginValidation build SYMROOT="$sym" >"$sym/build.log" 2>&1; then
         RESULT="failed"

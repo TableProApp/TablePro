@@ -9,11 +9,6 @@ on:
       - "docs/**"
       - ".vscode/**"
 
-env:
-  XCODE_PROJECT: TablePro.xcodeproj
-  XCODE_SCHEME: TablePro
-  BUILD_CONFIGURATION: Release
-
 jobs:
   lint:
     name: SwiftLint
@@ -90,7 +85,10 @@ jobs:
       - name: Create Secrets.xcconfig
         env:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
-        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Secrets.xcconfig
+        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Configs/Secrets.xcconfig
+
+      - name: Setup XcodeGen
+        uses: ./.github/actions/setup-xcodegen
 
       - name: Import signing certificate
         env:
@@ -213,7 +211,10 @@ jobs:
       - name: Create Secrets.xcconfig
         env:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
-        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Secrets.xcconfig
+        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Configs/Secrets.xcconfig
+
+      - name: Setup XcodeGen
+        uses: ./.github/actions/setup-xcodegen
 
       - name: Import signing certificate
         env:

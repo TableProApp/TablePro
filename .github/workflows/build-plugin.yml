@@ -16,9 +16,6 @@ on:
 permissions:
   contents: write
 
-env:
-  XCODE_PROJECT: TablePro.xcodeproj
-
 jobs:
   resolve-tags:
     name: Resolve Plugin Tags
@@ -96,6 +93,9 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.4.1"
+
+      - name: Setup XcodeGen
+        uses: ./.github/actions/setup-xcodegen
 
       - name: Download static libraries
         env:
@@ -253,23 +253,11 @@ jobs:
               exit 1 ;;
           esac
 
-          # The app target is the only one with a real version; every plugin,
-          # test, and framework target is pinned to MARKETING_VERSION = 1.0,
-          # and target order in the pbxproj is not stable.
-          MIN_APP_VERSION=$(grep -E 'MARKETING_VERSION\s*=\s*[0-9]' \
-            TablePro.xcodeproj/project.pbxproj \
-            | sed 's/.*MARKETING_VERSION = \(.*\);/\1/' | tr -d ' ' \
-            | grep -v '^1\.0$' | sort -u | head -1)
-          if [ -z "$MIN_APP_VERSION" ] || [ "$MIN_APP_VERSION" = "1.0" ]; then
-            echo "::error::Could not resolve the app MARKETING_VERSION (got '$MIN_APP_VERSION')"
-            exit 1
-          fi
-          DISTINCT_COUNT=$(grep -E 'MARKETING_VERSION\s*=\s*[0-9]' \
-            TablePro.xcodeproj/project.pbxproj \
-            | sed 's/.*MARKETING_VERSION = \(.*\);/\1/' | tr -d ' ' \
-            | grep -v '^1\.0$' | sort -u | wc -l | tr -d ' ')
-          if [ "$DISTINCT_COUNT" != "1" ]; then
-            echo "::error::Expected exactly one non-1.0 MARKETING_VERSION, found $DISTINCT_COUNT"
+          # Configs/Version.xcconfig is the single declaration of the app version.
+          MIN_APP_VERSION=$(sed -n 's/^MARKETING_VERSION[[:space:]]*=[[:space:]]*//p' \
+            Configs/Version.xcconfig | tr -d ' ')
+          if [ -z "$MIN_APP_VERSION" ]; then
+            echo "::error::MARKETING_VERSION missing from Configs/Version.xcconfig"
             exit 1
           fi
 

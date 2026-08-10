@@ -2,6 +2,22 @@
 #
 # gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
 
+## Generated Xcode projects
+#
+# Both projects are generated from their project.yml by scripts/generate-project.sh.
+# Package.resolved is not generated: it pins every Swift package revision for CI, so
+# it stays tracked inside the otherwise-ignored project bundles.
+/TablePro.xcodeproj/
+!/TablePro.xcodeproj/project.xcworkspace/
+!/TablePro.xcodeproj/project.xcworkspace/xcshareddata/
+!/TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+!/TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+/TableProMobile/TableProMobile.xcodeproj/
+!/TableProMobile/TableProMobile.xcodeproj/project.xcworkspace/
+!/TableProMobile/TableProMobile.xcodeproj/project.xcworkspace/xcshareddata/
+!/TableProMobile/TableProMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+!/TableProMobile/TableProMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+
 ## User settings
 xcuserdata/
 
@@ -136,14 +152,10 @@ Derived/
 # SwiftFormat
 .swiftformat.lock
 
-# Sourcery
-Sourcery/GeneratedMocks
-
 # XCFilelists
 *.xcfilelists
 
 # Build artifacts
-build/
 *.xcarchive
 
 # Static libraries (downloaded from GitHub Releases via scripts/download-libs.sh)
@@ -151,10 +163,8 @@ Libs/*.a
 Libs/.downloaded
 Libs/dylibs/
 Libs/ios/
-fix-1322-plugin-abi-and-registry-overhaul.diff
 
 # Issue analysis blueprints (local only)
 .analysis/
 .docs/
-Local.xcconfig
 /plans/reports

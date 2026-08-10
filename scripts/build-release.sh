@@ -263,8 +263,10 @@ bundle_dylibs() {
     # the build machine runs macOS 26.0, libpq will require 26.0 symbols
     # (e.g. strchrnul) that don't exist on earlier OS versions → launch crash.
     echo "   Verifying deployment target compatibility..."
+    # Read the deployment target off the built app rather than the project file: the
+    # bundle is the only source that cannot disagree with what actually shipped.
     local deploy_target
-    deploy_target=$(grep -m 1 'MACOSX_DEPLOYMENT_TARGET' "$PROJECT/project.pbxproj" | awk -F'= ' '{print $2}' | tr -d ' ;')
+    deploy_target=$(plutil -extract LSMinimumSystemVersion raw -o - "$app_path/Contents/Info.plist" 2>/dev/null || true)
     if [ -n "$deploy_target" ]; then
         local deploy_major
         deploy_major=$(echo "$deploy_target" | cut -d. -f1)
@@ -319,22 +321,24 @@ build_for_arch() {
     echo "📦 Creating OpenSSL shared dylibs for $arch..."
     scripts/create-openssl-dylibs.sh "$arch"
 
+    # TablePro.xcodeproj is generated and not in git, so a fresh checkout has none.
+    scripts/generate-project.sh
+
     # Persistent SPM package cache (speeds up CI on self-hosted runners)
     SPM_CACHE_DIR="${HOME}/.spm-cache"
     mkdir -p "$SPM_CACHE_DIR"
 
-    # Inject provisioning profile UUID into pbxproj for the main app target only.
-    # Command-line PROVISIONING_PROFILE_SPECIFIER applies to ALL targets (plugins,
-    # SPM packages) which breaks them. Instead, replace the empty specifier in
-    # the main app target's build settings directly.
+    # Resolve the provisioning profile UUID. Only the app target reads
+    # TABLEPRO_PROVISIONING_PROFILE (see Configs/Base.xcconfig), so passing it on the
+    # xcodebuild command line reaches the app and nothing else. A bare
+    # PROVISIONING_PROFILE_SPECIFIER override would hit every plugin and package target.
+    PROFILE_ARGS=()
     PROFILE_PATH=$(find ~/Library/MobileDevice/Provisioning\ Profiles -name "*.provisionprofile" -print -quit 2>/dev/null)
     if [ -n "${PROFILE_PATH:-}" ]; then
         PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH" 2>/dev/null)" || true)
         if [ -n "${PROFILE_UUID:-}" ]; then
-            echo "📋 Injecting provisioning profile into pbxproj: $PROFILE_UUID"
-            # The main app target has PROVISIONING_PROFILE_SPECIFIER = "";
-            # Other targets don't have this key at all, so this is safe.
-            sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = \"\";/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";/g" "$PROJECT/project.pbxproj"
+            echo "📋 Using provisioning profile: $PROFILE_UUID"
+            PROFILE_ARGS=("TABLEPRO_PROVISIONING_PROFILE=$PROFILE_UUID")
         fi
     fi
 
@@ -354,6 +358,7 @@ build_for_arch() {
         LLVM_LTO=YES_THIN \
         CLANG_COVERAGE_MAPPING=NO \
         ENABLE_CODE_COVERAGE=NO \
+        ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} \
         ${ANALYTICS_HMAC_SECRET:+ANALYTICS_HMAC_SECRET="$ANALYTICS_HMAC_SECRET"} \
         -skipPackagePluginValidation \
         -clonedSourcePackagesDirPath "$SPM_CACHE_DIR" \

@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Building from source now needs XcodeGen. Both Xcode projects are generated from `project.yml` by `scripts/generate-project.sh` and are no longer in git, so signing settings live in `Configs/Secrets.xcconfig` instead of a project file you had to keep out of your commits.
 - Settings opens in a standard preferences window with a toolbar instead of a tab strip.
 
 - The menu bar is rebuilt on native macOS menus. Every command now enables and disables from the state of the window you are actually using, so items no longer read as available when they are not, or stay greyed out after you switch windows.

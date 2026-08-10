@@ -22,15 +22,19 @@ TablePro is a native macOS database client (SwiftUI + AppKit) — a fast, lightw
 
 - **Source**: `TablePro/` — `Core/` (business logic, services), `Views/` (UI), `Models/` (data structures), `ViewModels/`, `Extensions/`, `Theme/`
 - **Plugins**: `Plugins/` — `.tableplugin` bundles + `TableProPluginKit` shared framework.
-    - **Bundled in app**: MySQL, PostgreSQL, SQLite, ClickHouse, Redis, CSV, JSON, SQL export, XLSX export, MQL export, SQL import. Shipped only inside the app bundle. **Never publish bundled plugins to the registry.** Updates ride with the next app release.
-    - **Registry-only**: MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL, Snowflake, Elasticsearch. Distributed via [TableProApp/plugins](https://github.com/TableProApp/plugins) `plugins.json`, installed into the user plugins directory.
+    - **Bundled in app** (the 14 targets in the app's copy-to-PlugIns phase in `project.yml`): MySQL, PostgreSQL, SQLite, ClickHouse, Redis, CSV export, JSON export, SQL export, XLSX export, MQL export, SQL import, JSON import, CSV import, CSV inspector. Shipped only inside the app bundle. **Never publish bundled plugins to the registry.** Updates ride with the next app release.
+    - **Registry-only** (the other 16): MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL, Snowflake, Elasticsearch, Beancount, SurrealDB, Teradata, Trino. Distributed via [TableProApp/plugins](https://github.com/TableProApp/plugins) `plugins.json`, installed into the user plugins directory.
 - **C bridges**: Each plugin contains its own C bridge module (e.g., `Plugins/MySQLDriverPlugin/CMariaDB/`, `Plugins/PostgreSQLDriverPlugin/CLibPQ/`)
 - **Static libs**: `Libs/` — pre-built `.a` files. `Libs/ios/` — xcframeworks for iOS. Both downloaded via `scripts/download-libs.sh` (not in git)
-- **SPM deps**: CodeEditSourceEditor (`main` branch, tree-sitter editor), Sparkle (2.8.1, auto-update), OracleNIO. Managed via Xcode, no `Package.swift`.
+- **SPM deps**: declared in `project.yml`. Vendored local packages under `LocalPackages/` (CodeEditSourceEditor, CodeEditTextView, CodeEditLanguages) and `Packages/` (TableProCore, TableProOracle); remote packages are Sparkle, swift-certificates and Yams. Revisions are pinned by the tracked `Package.resolved` inside each generated `.xcodeproj`.
 
 ## Build & Development Commands
 
 ```bash
+# First-time setup (and after any project.yml / Configs change, or adding a source file)
+scripts/download-libs.sh          # static libraries, not in git
+scripts/generate-project.sh       # generates both .xcodeproj bundles from project.yml
+
 # Build (development) — -skipPackagePluginValidation required for SwiftLint plugin in CodeEditSourceEditor
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
 
@@ -57,8 +61,7 @@ xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginV
 # DMG
 scripts/create-dmg.sh
 
-# Static libraries (first-time setup or after lib updates)
-scripts/download-libs.sh          # Download from GitHub Releases (skips if already present)
+# Static libraries (after lib updates)
 scripts/download-libs.sh --force  # Re-download and overwrite
 ```
 
@@ -86,6 +89,19 @@ gh release upload libs-v1 /tmp/tablepro-libs-ios-v1.tar.gz --clobber --repo Tabl
 
 ## Architecture
 
+### Project Generation
+
+`TablePro.xcodeproj` and `TableProMobile/TableProMobile.xcodeproj` are **generated artifacts**. They are gitignored and must never be hand-edited or committed. The source of truth is:
+
+- `project.yml` / `TableProMobile/project.yml`: targets, sources, dependencies, schemes, and per-target build settings
+- `Configs/*.xcconfig`: project-wide and per-configuration build settings, shared by both projects
+- `Configs/Version.xcconfig`: the app's `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, read by the release skill and by `build-plugin.yml`
+- `Configs/Secrets.xcconfig`: gitignored, pulled in with `#include?`, holds `ANALYTICS_HMAC_SECRET` and per-developer signing overrides. `Configs/Secrets.xcconfig.example` is the template.
+
+Run `scripts/generate-project.sh` after editing any of those, and after adding, moving, or deleting a source file: XcodeGen globs sources at generation time, so a new file is not in the project until you regenerate. Changing signing in the Xcode UI is pointless, because the next generate discards it; set `TABLEPRO_DEVELOPMENT_TEAM` and `TABLEPRO_APP_BUNDLE_IDENTIFIER` in `Configs/Secrets.xcconfig` instead.
+
+The 30 plugin bundles share one `DriverPlugin` target template; a plugin declares only its folder, principal class, and any C-library link flags. Every target gets a shared scheme named after it, which is what `scripts/build-plugin.sh -scheme <PluginTarget>` builds. The `AllPlugins` aggregate target compile-checks all 30, including the registry-only ones the app does not embed.
+
 ### Plugin System
 
 All database drivers are `.tableplugin` bundles loaded at runtime by `PluginManager` (`Core/Plugins/`):
@@ -96,7 +112,7 @@ All database drivers are `.tableplugin` bundles loaded at runtime by `PluginMana
 - **DatabaseManager** (`Core/Database/DatabaseManager.swift`) — connection pool, lifecycle, primary interface for views/coordinators
 - **ConnectionHealthMonitor** — 30s ping, auto-reconnect with exponential backoff
 
-When adding a new driver: create a new plugin bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver`, add target to pbxproj, add `DatabaseType` static constant, add case to `resolve_plugin_info()` in `.github/workflows/build-plugin.yml`, add row to `docs/index.mdx` supported databases table, and add CHANGELOG entry. See `docs/development/plugin-system/` for details.
+When adding a new driver: create a new plugin bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver`, add the target to `project.yml`, add `DatabaseType` static constant, add case to `resolve_plugin_info()` in `.github/workflows/build-plugin.yml`, add row to `docs/index.mdx` supported databases table, and add CHANGELOG entry. See `docs/development/plugin-system/` for details.
 
 When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (with default implementation), then update `PluginDriverAdapter` to bridge it to `DatabaseDriver`. This is an additive, ABI-safe change (see below) and needs no version bump.
 
@@ -110,7 +126,7 @@ When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (
 
 **Bump `currentPluginKitVersion` (in `PluginManager.swift`) and `TableProPluginKitVersion` in every plugin `Info.plist` ONLY for a breaking change**: changing or removing an existing requirement's signature, adding a requirement without a default, adding a case to a `@frozen` enum, or changing a frozen type's layout. Mark a public enum `@frozen` only when an exhaustive switch over it forces it (the compiler flags the switch) and its case set is genuinely closed; leave the rest non-frozen so they can gain cases. `PluginCapability` stays non-frozen with `@unknown default` because it is a growing capability set, not a closed vocabulary. The driver protocols and transfer structs stay non-frozen so they can grow. The strict version gate in `validateBundleVersions` still rejects a stale plugin cleanly after a breaking bump (no `EXC_BAD_INSTRUCTION`).
 
-**ABI check** (manual): `scripts/check-pluginkit-abi.sh [base-ref]` builds TableProPluginKit at the current tree and at the base ref with the same toolchain, then diffs their public interfaces. There is no committed baseline, so a Swift version difference between machines never produces a false diff. Run it before merging any change under `Plugins/TableProPluginKit/**`, comparing against the merge base. A reported diff is a real ABI change: additive needs no bump; breaking needs the version bump above plus `release-all-plugins.sh`. (Until Library Evolution is on the base too, the base emits no interface and the check passes as a bootstrap.)
+**ABI check** (manual): `scripts/check-pluginkit-abi.sh [base-ref]` generates the project from `project.yml` on both sides, builds TableProPluginKit at the current tree and at the base ref with the same toolchain, then diffs their public interfaces. A base ref that predates `project.yml` cannot be compared. There is no committed baseline, so a Swift version difference between machines never produces a false diff. Run it before merging any change under `Plugins/TableProPluginKit/**`, comparing against the merge base. A reported diff is a real ABI change: additive needs no bump; breaking needs the version bump above plus `release-all-plugins.sh`. (Until Library Evolution is on the base too, the base emits no interface and the check passes as a bootstrap.)
 
 **Post-ABI-bump checklist (mandatory, breaking bumps only)**: Bumps are now rare (only the breaking changes listed above). After one, every registry-published plugin must be rebuilt against the new ABI. Run `release-all-plugins.sh` for the new version BEFORE or WITH the app release, never after, or users on the new app hit `noCompatibleBinary` until the registry catches up. App auto-update reconciliation handles the user-facing recovery, but the registry has to carry binaries for the new PluginKit version first.
 
@@ -222,7 +238,7 @@ private static let logger = Logger(subsystem: "com.TablePro", category: "Compone
 
 - **No comments** — code must be self-explanatory through naming and structure. Never add comments that describe what code does, reference tasks/tickets, or explain callers.
 - **Early returns** — use `guard` and early `return` instead of nested `if/else` blocks. Flatten control flow.
-- **4 spaces** indentation (never tabs except Makefile/pbxproj)
+- **4 spaces** indentation (never tabs)
 - **120 char** target line length (SwiftFormat); SwiftLint warns at 180, errors at 300
 - **K&R braces**, LF line endings, no semicolons, no trailing commas
 - **Imports**: system frameworks alphabetically → third-party → local, blank line after imports

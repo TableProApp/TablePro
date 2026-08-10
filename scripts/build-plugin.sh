@@ -52,7 +52,8 @@ build_plugin() {
     echo "Building $PLUGIN_TARGET ($arch)..." >&2
 
     # Use -scheme (not -target) with -derivedDataPath to ensure proper
-    # transitive SPM dependency resolution in explicit module builds
+    # transitive SPM dependency resolution in explicit module builds.
+    # project.yml declares one shared scheme per plugin target, named after the target.
     DERIVED_DATA_DIR="build/DerivedData"
 
     local marketing_version_arg=""
@@ -191,6 +192,10 @@ notarize_zip() {
         exit 1
     fi
 }
+
+# TablePro.xcodeproj is generated and not in git, so a fresh checkout has none.
+# Generation also declares the per-plugin scheme this script builds with.
+scripts/generate-project.sh
 
 # Clean DerivedData for fresh builds; preserve BUILD_DIR across arch invocations
 rm -rf build/DerivedData

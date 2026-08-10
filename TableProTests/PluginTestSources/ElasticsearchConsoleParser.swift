@@ -1,1 +1,0 @@
-../../Plugins/ElasticsearchDriverPlugin/ElasticsearchConsoleParser.swift

@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "TableProMobile/**"
+      - "Configs/**"
       - "Packages/TableProCore/**"
       - "Libs/**"
       - ".github/workflows/ios-tests.yml"
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - "TableProMobile/**"
+      - "Configs/**"
       - "Packages/TableProCore/**"
       - "Libs/**"
       - ".github/workflows/ios-tests.yml"
@@ -63,10 +65,11 @@ jobs:
           echo "::error::$device_name simulator is not available and the runtime download failed."
           exit 1
 
-      # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so the
-      # checked-in example template is enough for the project to resolve.
-      - name: Stub Secrets.xcconfig
-        run: cp TableProMobile/Secrets.xcconfig.example TableProMobile/Secrets.xcconfig
+      - name: Setup XcodeGen
+        uses: ./.github/actions/setup-xcodegen
+
+      - name: Generate Xcode project
+        run: scripts/generate-project.sh
 
       - name: Cache static libraries
         uses: actions/cache@v4

@@ -5,6 +5,12 @@ description: Development builds, release builds, static libraries, DMG packaging
 
 ## Development Builds
 
+<Note>
+`TablePro.xcodeproj` is generated from `project.yml` by `scripts/generate-project.sh` and is not
+in git. Run it after cloning, after editing `project.yml` or `Configs/`, and after adding, moving,
+or deleting a source file. See [Development Setup](/development/setup).
+</Note>
+
 ### Xcode
 
 - `Cmd+R` to build and run
@@ -27,7 +33,7 @@ xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug bui
 `-skipPackagePluginValidation` is required on every `xcodebuild` invocation. `scripts/build-release.sh`, `scripts/build-plugin.sh`, and `scripts/check-pluginkit-abi.sh` all pass it.
 </Note>
 
-Debug builds use automatic signing with an Apple Development identity. Switch the **Team** in Signing & Capabilities to your own Apple Developer account (a free account works), see [Development Setup](/development/setup). Signing matters even locally: plugin signature verification derives the required team from the running app's signature.
+Debug builds use automatic signing with an Apple Development identity. Set `TABLEPRO_DEVELOPMENT_TEAM` in `Configs/Secrets.xcconfig` to your own Apple Developer account (a free account works), see [Development Setup](/development/setup). Signing matters even locally: plugin signature verification derives the required team from the running app's signature.
 
 ## Release Builds
 
@@ -56,6 +62,7 @@ Static `.a` files (libmariadb, libpq, libsybdb, and others) are hosted on the `l
 ```bash
 scripts/download-libs.sh          # Download (skips if already present)
 scripts/download-libs.sh --force  # Re-download and overwrite
+scripts/generate-project.sh       # Regenerate both .xcodeproj bundles from project.yml
 ```
 
 ### Publishing Libraries (Maintainers)

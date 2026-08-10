@@ -2,30 +2,41 @@
 
 ## Setup
 
-Requirements: macOS 14.0+, Xcode 15+. Optional: SwiftLint, SwiftFormat, GitHub CLI (`gh`).
+Requirements: macOS 14.0+, Xcode 26.0+, [XcodeGen](https://github.com/yonaskolb/XcodeGen). Optional: SwiftLint, SwiftFormat, GitHub CLI (`gh`).
 
 Fork the repo on GitHub, then:
 
 ```bash
 git clone https://github.com/<your-fork>/TablePro.git && cd TablePro
+brew install xcodegen swiftlint swiftformat
 scripts/download-libs.sh
-touch Secrets.xcconfig
-brew install swiftlint swiftformat
+scripts/generate-project.sh
 ```
+
+`TablePro.xcodeproj` is generated from `project.yml` and is not in git. Re-run
+`scripts/generate-project.sh` whenever you change `project.yml` or `Configs/`, and whenever you
+add, move, or delete a source file. Never hand-edit the generated project: the next generate
+throws the edit away.
 
 ### Building with a personal Apple team
 
-To Debug-build under your own team, open `TablePro.xcodeproj`, select the `TablePro` target, then **Signing & Capabilities → Debug** sub-tab:
-
-1. **Team**: pick your personal team. If another target fails to sign later, repeat there.
-2. **Bundle Identifier**: change `com.TablePro` to something unique (e.g. `com.<yourhandle>.TablePro`).
-3. **Code Signing Entitlements** (Build Settings tab): switch Debug to `TablePro/TablePro.Debug.entitlements`. It ships in the repo and drops iCloud, which free teams don't support. Sync auto-disables at runtime.
-
-Don't commit the resulting `pbxproj` changes. They break official Release signing. Skip them locally:
+Copy the template and fill in your own team. `Configs/Secrets.xcconfig` is gitignored, so your
+signing settings can never reach a commit and they survive regenerating the project.
 
 ```bash
-git update-index --skip-worktree TablePro.xcodeproj/project.pbxproj
+cp Configs/Secrets.xcconfig.example Configs/Secrets.xcconfig
 ```
+
+```
+TABLEPRO_DEVELOPMENT_TEAM = YOUR_TEAM_ID
+TABLEPRO_APP_BUNDLE_IDENTIFIER = com.<yourhandle>.TablePro
+```
+
+The Debug configuration already uses `TablePro/TablePro.Debug.entitlements`, which drops iCloud
+because free teams don't support it. Sync auto-disables at runtime.
+
+Don't change signing in the Xcode UI: the project is generated, so the next
+`scripts/generate-project.sh` discards it.
 
 To verify: save a connection password, relaunch, reopen. The password should still be there.
 
@@ -91,8 +102,11 @@ Checklist:
 ## Project Layout
 
 ```
+project.yml            Xcode project definition (XcodeGen); .xcodeproj is generated, not in git
+Configs/               Shared build settings (.xcconfig), app version, secrets template
 TablePro/              App source (Core/, Views/, Models/, ViewModels/, Extensions/, Theme/)
 Plugins/               .tableplugin bundles + TableProPluginKit framework
+TableProMobile/        iOS app, widget extension, and its own project.yml
 Libs/                  Pre-built static libraries (downloaded via script, not in git)
 TableProTests/         Tests
 docs/                  Mintlify docs site
@@ -101,7 +115,7 @@ scripts/               Build and release scripts
 
 ## Adding a Database Driver
 
-Drivers are `.tableplugin` bundles loaded at runtime. Create a new bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver` from `TableProPluginKit`, and add the target to the Xcode project.
+Drivers are `.tableplugin` bundles loaded at runtime. Create a new bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver` from `TableProPluginKit`, and add the target to `project.yml`.
 
 Full guide: [docs/development/plugin-registry](https://docs.tablepro.app/development/plugin-registry)
 
