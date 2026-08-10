@@ -2,15 +2,13 @@
 //  CommandActionsRegistry.swift
 //  TablePro
 //
-//  Singleton that tracks the `MainContentCommandActions` of the currently
-//  key main window. Exists because `@FocusedValue(\.commandActions)` is not
-//  reliable in our NSHostingView-hosted setup: each `NSHostingController`
-//  (toolbar items + main content) is its own SwiftUI scene context, and
-//  focus-scene-value propagation breaks once a toolbar Button takes scene
-//  focus. The registry is updated on `windowDidBecomeKey` from
-//  `TabWindowController`, then read by `AppMenuCommands` as a fallback when
-//  `@FocusedValue` returns nil — so menu shortcuts (Cmd+T, Cmd+1...9, etc.)
-//  stay live regardless of which sub-NSHostingController holds focus.
+//  Tracks the `MainContentCommandActions` of the currently key main window for
+//  SwiftUI views that need it while they do not hold focus. `@FocusedValue` only
+//  resolves for the focused view hierarchy, and each `NSHostingController` in a
+//  main window is its own scene context, so an unfocused panel reads nil.
+//
+//  The menu bar does not use this. Menu items dispatch through the responder
+//  chain, which resolves the key window's own controller every time.
 //
 
 import Foundation
@@ -25,11 +23,6 @@ final class CommandActionsRegistry {
     /// key window is not a main window (welcome / connection-form / settings).
     var current: MainContentCommandActions?
 
-    /// The key window's connection lifecycle state. Separate from `current` because
-    /// `MainContentCommandActions` only exists while the window is showing a session, and
-    /// Disconnect and Reconnect have to stay correct on either side of that: Reconnect is needed
-    /// precisely when there is no session left to own the actions.
-    var connectionWindow: ConnectionWindowCommandState?
 
     private init() {}
 }

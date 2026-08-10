@@ -617,6 +617,10 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         }
     }
 
+    @objc func performFind(_ sender: Any?) {
+        toggleInspectorFilter(sender)
+    }
+
     @objc func toggleInspectorFilter(_ sender: Any?) {
         let wasActive = isFilterActive
         state.isFilterVisible.toggle()
