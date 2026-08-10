@@ -61,6 +61,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         NSWindow.allowsAutomaticWindowTabbing = true
+        MainMenuBuilder.install(keyboard: AppSettingsManager.shared.keyboard)
         KeyRepeatFilter.shared.install()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords

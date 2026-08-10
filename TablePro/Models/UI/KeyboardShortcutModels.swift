@@ -449,6 +449,18 @@ struct KeyboardSettings: Codable, Equatable {
         return KeyboardShortcut(equivalent, modifiers: key.eventModifiers)
     }
 
+    /// The AppKit key equivalent for the given action's menu item, resolved through
+    /// user overrides. Returns nil under the same conditions as `keyboardShortcut(for:)`:
+    /// a cleared binding, an unrepresentable key, or a bare key, which reaches the
+    /// focused responder directly rather than through a global menu key-equivalent.
+    func menuKeyEquivalent(for action: ShortcutAction) -> (characters: String, modifiers: NSEvent.ModifierFlags)? {
+        guard let key = shortcut(for: action), !key.isCleared, key.hasModifier || key.isFunctionKey,
+              let characters = key.menuKeyEquivalent else {
+            return nil
+        }
+        return (characters, key.modifierFlags)
+    }
+
     /// A tooltip/help string that appends the action's resolved shortcut, e.g.
     /// "Switch Connection (⌃⌘C)". Returns just the label when the shortcut is
     /// cleared or unset. Reflects user overrides because it resolves through

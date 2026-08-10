@@ -414,6 +414,17 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         inspectorHosting.rootView = AnyView(buildInspectorView())
     }
 
+    /// The command surface every menu action forwards into. Menu items reach this
+    /// window because AppKit resolved them against its responder chain, so no
+    /// key-window lookup or focus registry is involved.
+    var commandActions: MainContentCommandActions? {
+        sessionState?.coordinator.commandActions
+    }
+
+    var menuChangeManager: DataChangeManager? {
+        sessionState?.changeManager
+    }
+
     var currentPane: ConnectionWindowPane {
         ConnectionWindowPaneResolver.pane(
             phase: phase,
