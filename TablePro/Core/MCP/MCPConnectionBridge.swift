@@ -9,8 +9,10 @@ public actor MCPConnectionBridge {
 
     func listConnections() async -> JsonValue {
         let (connections, activeSessions) = await MainActor.run {
+            let defaultPolicy = AppSettingsManager.shared.ai.defaultConnectionPolicy
             let conns = ConnectionStorage.shared.loadConnections()
                 .filter { $0.externalAccess != .blocked }
+                .filter { ($0.aiPolicy ?? defaultPolicy) != .never }
             let sessions = DatabaseManager.shared.activeSessions
             return (conns, sessions)
         }

@@ -24,7 +24,16 @@ struct MCPHttpRequestRouter: Sendable {
         let clientAddress: MCPClientAddress = await context.clientAddress()
         let now = await clock.now()
 
-        await context.setOrigin(head.headers.value(for: "Origin"))
+        let origin = head.headers.value(for: "Origin")
+        await context.setOrigin(origin)
+
+        // A browser attacking the loopback server through DNS rebinding always sends an Origin.
+        // A native client sends none, so an absent header stays allowed. This runs before every
+        // route, including the ones that authenticate themselves.
+        if let origin, !origin.isEmpty, !MCPCorsHeaders.isAllowed(origin: origin) {
+            await respondHttpForbiddenOrigin(context: context)
+            return
+        }
 
         if head.method == .post, stripQueryString(head.path) == "/v1/integrations/exchange" {
             await handleIntegrationsExchange(body: body, context: context)
@@ -424,6 +433,15 @@ struct MCPHttpRequestRouter: Sendable {
             status: .notFound,
             error: "not_found",
             errorDescription: "TablePro's MCP server does not provide this endpoint."
+        )
+        await context.cancel()
+    }
+
+    private func respondHttpForbiddenOrigin(context: HttpConnectionContext) async {
+        await context.writePlainJsonError(
+            status: .forbidden,
+            error: "forbidden_origin",
+            errorDescription: "This origin is not allowed to reach TablePro's MCP server."
         )
         await context.cancel()
     }
