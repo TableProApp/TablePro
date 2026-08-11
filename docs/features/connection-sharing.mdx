@@ -136,6 +136,8 @@ Use `$VAR` and `${VAR}` in `.tablepro` files. Resolved from TablePro's process e
 
 Connections in `~/Library/Application Support/TablePro/connections.json` can declare where their password comes from instead of storing it in the Keychain. Useful when a script provisions connections, for example one Docker database per git worktree. The password resolves at connect time and is not synced to iCloud, since the path, variable, or command is specific to one Mac.
 
+TablePro keeps a signature for `connections.json`, so it can tell whether the file it is reading is the one it last wrote. If the file changed outside the app, password sources do not run and the connection reports why. Open the connection and save it from TablePro to accept the change. This is what stops a program that can write to your home folder from adding a `command` source and getting it executed the next time TablePro reopens your session.
+
 Add a `passwordSource` object to the connection:
 
 ```json
