@@ -37,10 +37,14 @@ final class IOSDriverFactory: DriverFactory {
                 ssl: DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
             )
         case .redis:
-            let dbIndex = Int(connection.database) ?? 0
+            let dbIndex = RedisDatabaseIndex.resolve(
+                additionalFields: connection.additionalFields,
+                database: connection.database
+            )
             return RedisDriver(
                 host: connection.host,
                 port: connection.port,
+                username: connection.username,
                 password: password,
                 database: dbIndex,
                 ssl: DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
