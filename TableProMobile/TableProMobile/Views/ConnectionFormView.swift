@@ -14,13 +14,17 @@ struct ConnectionFormView: View {
     @State private var showNewDatabaseAlert = false
     @State private var hapticSuccess = false
     @State private var hapticError = false
+    @State private var pasteTarget: CertificateRole?
+    @State private var showPKCS12Password = false
 
     var onSave: (DatabaseConnection) -> Void
 
-    enum ActiveFilePicker: Identifiable {
+    enum ActiveFilePicker: Identifiable, Hashable {
         case sqliteDatabase
         case duckdbDatabase
         case sshKey
+        case certificate(CertificateRole)
+        case pkcs12
         var id: Int { hashValue }
     }
 
@@ -33,6 +37,18 @@ struct ConnectionFormView: View {
         Binding(
             get: { activeFilePicker != nil },
             set: { if !$0 { activeFilePicker = nil } }
+        )
+    }
+
+    private func present(_ picker: ActiveFilePicker) {
+        pendingFilePicker = picker
+        activeFilePicker = picker
+    }
+
+    private var showCertificateError: Binding<Bool> {
+        Binding(
+            get: { viewModel.certificateError != nil },
+            set: { if !$0 { viewModel.dismissCertificateError() } }
         )
     }
 
@@ -79,9 +95,15 @@ struct ConnectionFormView: View {
                                 Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
                                 Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
                             }
-                        } else {
-                            Toggle("SSL", isOn: $viewModel.sslEnabled)
                         }
+                    }
+                    if viewModel.usesCertificateSection {
+                        ConnectionSSLSection(
+                            viewModel: viewModel,
+                            onChooseFile: { present(.certificate($0)) },
+                            onChoosePKCS12: { present(.pkcs12) },
+                            onPaste: { pasteTarget = $0 }
+                        )
                     }
                     sshSection(viewModel: viewModel)
                 }
@@ -90,6 +112,7 @@ struct ConnectionFormView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .task {
+                viewModel.loadCertificateSummaries()
                 await viewModel.loadStoredCredentials(secureStore: appState.secureStore)
             }
             .navigationTitle(viewModel.isEditing ? String(localized: "Edit Connection") : String(localized: "New Connection"))
@@ -114,8 +137,27 @@ struct ConnectionFormView: View {
                 case .sqliteDatabase: viewModel.handleSQLiteFilePicker(result)
                 case .duckdbDatabase: viewModel.handleDuckDBFilePicker(result)
                 case .sshKey: viewModel.handleSSHKeyFilePicker(result)
+                case .certificate(let role): viewModel.importCertificateFile(result, role: role)
+                case .pkcs12:
+                    viewModel.stagePKCS12(result)
+                    showPKCS12Password = viewModel.pendingPKCS12 != nil
                 case nil: break
                 }
+            }
+            .sheet(item: $pasteTarget) { role in
+                CertificatePasteSheet(viewModel: viewModel, role: role)
+            }
+            .alert("Certificate Password", isPresented: $showPKCS12Password) {
+                SecureField("Password", text: $viewModel.pkcs12Password)
+                Button("Import") { viewModel.importPKCS12() }
+                Button("Cancel", role: .cancel) { viewModel.cancelPKCS12() }
+            } message: {
+                Text("Enter the password used when the certificate file was exported.")
+            }
+            .alert("Certificate", isPresented: showCertificateError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.certificateError ?? "")
             }
             .alert("New Database", isPresented: $showNewDatabaseAlert) {
                 TextField("Database name", text: $viewModel.newDatabaseName)
@@ -478,8 +520,19 @@ struct ConnectionFormView: View {
         switch picker {
         case .sqliteDatabase: return sqliteContentTypes
         case .duckdbDatabase: return duckDBContentTypes
+        case .certificate: return certificateContentTypes
+        case .pkcs12: return pkcs12ContentTypes
         default: return [.data]
         }
+    }
+
+    private var certificateContentTypes: [UTType] {
+        [UTType.x509Certificate, .text, .data]
+    }
+
+    private var pkcs12ContentTypes: [UTType] {
+        let extensions = ["p12", "pfx"]
+        return [UTType.pkcs12] + extensions.compactMap { UTType(filenameExtension: $0) } + [.data]
     }
 
     private var sqliteContentTypes: [UTType] {

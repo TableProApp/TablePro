@@ -283,6 +283,12 @@ private actor MySQLActor {
         if let caPath = ssl.existingCACertificatePath {
             _ = caPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CA, $0) }
         }
+        if let clientCertPath = ssl.existingClientCertificatePath {
+            _ = clientCertPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CERT, $0) }
+        }
+        if let clientKeyPath = ssl.existingClientKeyPath {
+            _ = clientKeyPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_KEY, $0) }
+        }
 
         guard let portU32 = UInt32(exactly: port), (1...65_535).contains(port) else {
             mysql_close(handle)

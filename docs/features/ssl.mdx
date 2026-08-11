@@ -51,6 +51,18 @@ Preferred mode tries TLS first. What happens if the server doesn't support TLS d
 - **Teradata**: opens a TLS transport, then retries on a plain socket if that transport fails to come up
 - **Trino**: no fallback. Preferred sends every request over HTTPS, same as Required.
 
+## On iPhone and iPad
+
+MySQL, PostgreSQL and Redis connections have an SSL section with the same four modes. When the mode is anything but Disabled, three rows appear: CA Certificate, Client Certificate and Client Key.
+
+Each row takes a file, or pasted text if getting a file into the Files app is awkward. Client Certificate also accepts a PKCS#12 (`.p12` or `.pfx`) file, which fills in both the certificate and its key from one import. A `.p12` needs the password it was exported with; iOS cannot read one exported without a password.
+
+A private key protected by its own passphrase is rejected on import. Remove the passphrase, or export a `.p12` instead.
+
+Certificates you import on iOS stay on that device. They are held in the keychain, marked so they never reach iCloud Keychain or a device backup, and are written to disk only while a connection is open. They are not synced, so a connection set up on the Mac needs its certificates imported again on each iPhone or iPad. The certificate paths configured on the Mac are left untouched.
+
+If a certificate goes missing, the connection reports it by name instead of connecting without it.
+
 ## Troubleshooting
 
 ### "FATAL: no pg_hba.conf entry for host ... no encryption"

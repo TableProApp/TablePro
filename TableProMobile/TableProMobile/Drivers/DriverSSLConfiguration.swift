@@ -36,6 +36,15 @@ struct DriverSSLConfiguration: Equatable, Sendable {
         clientKeyPath = configuration.clientKeyPath
     }
 
+    func applying(_ materialized: MaterializedCertificates) -> DriverSSLConfiguration {
+        DriverSSLConfiguration(
+            mode: mode,
+            caCertificatePath: materialized.caCertificatePath ?? caCertificatePath,
+            clientCertificatePath: materialized.clientCertificatePath ?? clientCertificatePath,
+            clientKeyPath: materialized.clientKeyPath ?? clientKeyPath
+        )
+    }
+
     var isEnabled: Bool { mode != .disable }
     var verifiesCertificate: Bool { mode == .verifyCa || mode == .verifyFull }
     var verifiesHostname: Bool { mode == .verifyFull }
@@ -75,8 +84,20 @@ struct DriverSSLConfiguration: Equatable, Sendable {
     }
 
     var existingCACertificatePath: String? {
-        guard verifiesCertificate,
-              let path = caCertificatePath,
+        guard verifiesCertificate else { return nil }
+        return Self.existingPath(caCertificatePath)
+    }
+
+    var existingClientCertificatePath: String? {
+        Self.existingPath(clientCertificatePath)
+    }
+
+    var existingClientKeyPath: String? {
+        Self.existingPath(clientKeyPath)
+    }
+
+    private static func existingPath(_ path: String?) -> String? {
+        guard let path,
               !path.isEmpty,
               FileManager.default.fileExists(atPath: path) else { return nil }
         return path
