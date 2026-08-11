@@ -278,7 +278,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
             let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(authMethod: authMethod)
-            let options = MSSQLConnectionOptions(
+            var options = MSSQLConnectionOptions(
                 host: config.host,
                 port: config.port,
                 user: config.username,
@@ -290,6 +290,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 kerberosCachePath: kerberosCachePath,
                 kerberosServicePrincipal: kerberosServicePrincipal
             )
+            options.certificateVerification = MSSQLSSLMapping.certificateVerification(for: config.ssl.mode)
+            options.caCertificatePath = config.ssl.caCertificatePath
             conn = FreeTDSConnection(options: options)
             try await conn.connect()
         } catch let error as MSSQLCoreError {

@@ -126,6 +126,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     private var _isCancelled = false
 
     private static let kerberosEnvLock = NSLock()
+    private static let freetdsConfEnvLock = NSLock()
     private static let deadlineQueue = DispatchQueue(label: "com.TablePro.freetds.connect-deadline", qos: .userInitiated)
     private static let connectDeadlineMarginSeconds = 5
 
@@ -200,8 +201,11 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         #endif
 
         freetdsClearError(for: nil)
-        let serverName = "\(options.host):\(options.port)"
-        guard let proc = withKerberosEnvironmentIfNeeded({ dbopen(login, serverName) }) else {
+        let verifies = options.certificateVerification != .none
+        let serverName = verifies ? MSSQLFreeTDSConfig.serverEntryName : "\(options.host):\(options.port)"
+        guard let proc = withFreeTDSConfigIfNeeded({
+            self.withKerberosEnvironmentIfNeeded { dbopen(login, serverName) }
+        }) else {
             let detail = freetdsGetError(for: nil)
             let msg = detail.isEmpty ? "Check host, port, credentials, and TLS settings" : detail
             if let kind = MSSQLTLSClassifier.classifySSLError(detail) {
@@ -213,6 +217,47 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             throw MSSQLCoreError.connectionFailed("Failed to connect to \(options.host):\(options.port): \(msg)")
         }
         return proc
+    }
+
+    /// A verifying mode needs `ca file` and `check certificate hostname`, which dblib cannot set.
+    /// The generated config is written 0600 and FREETDSCONF points at it only for this dbopen, so
+    /// a machine's own freetds.conf is untouched on every other connection.
+    private func withFreeTDSConfigIfNeeded(
+        _ body: () -> UnsafeMutablePointer<DBPROCESS>?
+    ) -> UnsafeMutablePointer<DBPROCESS>? {
+        guard options.certificateVerification != .none else { return body() }
+
+        let contents = MSSQLFreeTDSConfig.configuration(
+            host: options.host,
+            port: options.port,
+            encryptionFlag: options.encryptionFlag,
+            verification: options.certificateVerification,
+            caCertificatePath: options.caCertificatePath
+        )
+
+        let path = NSTemporaryDirectory() + "tablepro-freetds-\(UUID().uuidString).conf"
+        guard let data = contents.data(using: .utf8),
+              FileManager.default.createFile(
+                  atPath: path,
+                  contents: data,
+                  attributes: [.posixPermissions: 0o600]
+              ) else {
+            return body()
+        }
+
+        Self.freetdsConfEnvLock.lock()
+        let previous = getenv("FREETDSCONF").map { String(cString: $0) }
+        setenv("FREETDSCONF", path, 1)
+        defer {
+            if let previous {
+                setenv("FREETDSCONF", previous, 1)
+            } else {
+                unsetenv("FREETDSCONF")
+            }
+            Self.freetdsConfEnvLock.unlock()
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        return body()
     }
 
     private func withKerberosEnvironmentIfNeeded(

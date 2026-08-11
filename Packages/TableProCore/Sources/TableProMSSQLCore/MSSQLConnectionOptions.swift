@@ -14,6 +14,11 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
     public var kerberosCachePath: String?
     public var kerberosServicePrincipal: String?
 
+    /// How far to check the server certificate. Set after init by the plugin from the
+    /// connection's SSL mode, so the existing initializer keeps its signature.
+    public var certificateVerification: MSSQLCertificateVerification = .none
+    public var caCertificatePath: String?
+
     public static let defaultPort = 1433
     public static let defaultSchema = "dbo"
     public static let defaultApplicationName = "TablePro"

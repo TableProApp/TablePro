@@ -388,6 +388,8 @@ targets:
       - Plugins/SurrealDBDriverPlugin/SurrealValue.swift
     dependencies:
       - target: TablePro
+      - package: TableProCore
+        products: [TableProMSSQLCore]
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1
