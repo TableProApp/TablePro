@@ -120,6 +120,20 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -skipPackagePluginValidation
 
+      # The TablePro scheme only builds the 14 bundled plugins, so a change confined to one
+      # of the 16 registry-only plugins compiles nowhere else in CI. AllPlugins is the only
+      # target that covers them, and build-plugin.yml does not run until a release tag.
+      - name: Compile every plugin
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme AllPlugins \
+            -destination "$TEST_DESTINATION" \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
       # Quarantined suites (driver-loading, env-coupled, or hanging headless) are listed
       # in .github/macos-test-quarantine.txt. Burn that list down over time.
       - name: Run unit tests
