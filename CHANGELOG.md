@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- SQL Server Verify CA and Verify Identity now check the certificate for real. Both used to encrypt without checking anything, while the picker said otherwise.
 - A connection's password source no longer runs if the connections file was edited outside TablePro. Save the connection again from the app to confirm the change.
 - Mobile now checks the SSH server's host key before sending any credential, and asks you the first time it sees a server. It never checked at all, so anyone intercepting the connection received the SSH password.
 - Mobile no longer drops a connection's TLS verification settings when you save an unrelated edit.
