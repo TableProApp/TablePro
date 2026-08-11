@@ -185,7 +185,11 @@ actor PluginInstaller {
             )
         }
 
-        guard let downloadURL = URL(string: binary.downloadURL) else {
+        // The registry manifest is fetched over the network, so the URL it names is untrusted
+        // input. The code-signature check is the real gate, but nothing should be fetched over
+        // cleartext on the way to it.
+        guard let downloadURL = URL(string: binary.downloadURL),
+              downloadURL.scheme?.lowercased() == "https" else {
             throw PluginError.downloadFailed("Invalid download URL")
         }
 
