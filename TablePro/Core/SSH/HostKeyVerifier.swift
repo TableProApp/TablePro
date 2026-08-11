@@ -107,9 +107,12 @@ internal enum HostKeyVerifier {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: String(localized: "Trust"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.alertStyle = .warning
+        AlertHelper.addConfirmAndCancel(
+            to: alert,
+            confirmButton: String(localized: "Trust"),
+            cancelButton: String(localized: "Cancel")
+        )
 
         if let window = AlertHelper.resolveWindow(nil) {
             return await withCheckedContinuation { continuation in
