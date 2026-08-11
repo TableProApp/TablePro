@@ -37,8 +37,16 @@ final class KeychainSecureStore: SecureStore {
         return query
     }
 
+    static func accessibility(forSync synchronizable: Bool) -> CFString {
+        synchronizable
+            ? kSecAttrAccessibleAfterFirstUnlock
+            : kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    }
+
     func store(_ value: String, forKey key: String) throws {
         guard let data = value.data(using: .utf8) else { return }
+
+        let synchronizable = AppPreferences.syncsPasswords
 
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -49,15 +57,17 @@ final class KeychainSecureStore: SecureStore {
         ]
         SecItemDelete(applyingAccessGroup(deleteQuery) as CFDictionary)
 
-        let addQuery: [String: Any] = [
+        var addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-            kSecAttrSynchronizable as String: true,
+            kSecAttrAccessible as String: Self.accessibility(forSync: synchronizable),
             kSecUseDataProtectionKeychain as String: true,
         ]
+        if synchronizable {
+            addQuery[kSecAttrSynchronizable as String] = true
+        }
         let status = SecItemAdd(applyingAccessGroup(addQuery) as CFDictionary, nil)
         if status != errSecSuccess {
             throw KeychainError.storeFailed(status)
