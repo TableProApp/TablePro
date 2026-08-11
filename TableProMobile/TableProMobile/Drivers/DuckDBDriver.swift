@@ -1,4 +1,5 @@
 import CDuckDB
+import Dispatch
 import Foundation
 import TableProDatabase
 import TableProModels
@@ -17,6 +18,7 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
     var serverVersion: String? { String(cString: duckdb_library_version()) }
+    var holdsSuspensionBlockingResource: Bool { dbPath != Self.inMemoryPath }
 
     var currentSchema: String? {
         stateLock.lock()
@@ -164,6 +166,10 @@ final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
 
 actor DuckDBActor {
     static let maxRows = 100_000
+
+    private let queue = DispatchSerialQueue(label: "com.TablePro.duckdb")
+
+    nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
 
     private var database: duckdb_database?
     var connection: duckdb_connection?

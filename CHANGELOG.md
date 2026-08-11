@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- TablePro Mobile keeps remote connections open when you switch apps, so coming back no longer reconnects and reloads everything.
+
+### Fixed
+
+- TablePro Mobile no longer gets killed by iOS when you leave the app with a DuckDB file open.
+
 ## [0.64.0] - 2026-08-10
 
 ### Added

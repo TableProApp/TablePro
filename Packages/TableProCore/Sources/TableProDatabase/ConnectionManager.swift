@@ -8,6 +8,8 @@ public final class ConnectionManager: @unchecked Sendable {
 
     private let lock = NSLock()
     private var sessions: [UUID: ConnectionSession] = [:]
+    private var teardowns: [UUID: Task<Void, Never>] = [:]
+    private var blockingTeardowns: Set<UUID> = []
 
     public init(
         driverFactory: DriverFactory,
@@ -75,25 +77,58 @@ public final class ConnectionManager: @unchecked Sendable {
     }
 
     public func disconnect(_ connectionId: UUID) async {
-        let session = removeSession(for: connectionId)
-        guard let session else { return }
-        try? await session.driver.disconnect()
-        if let sshProvider {
-            try? await sshProvider.closeTunnel(for: connectionId)
+        guard let teardown = claimTeardown(for: connectionId) else { return }
+        await teardown.value
+        finishTeardown(teardown, for: connectionId)
+    }
+
+    public var hasSuspensionBlockingResources: Bool {
+        !suspensionBlockingIds().isEmpty
+    }
+
+    public func releaseSuspensionBlockingResources() async {
+        let ids = suspensionBlockingIds()
+        guard !ids.isEmpty else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for id in ids {
+                group.addTask { await self.disconnect(id) }
+            }
         }
     }
 
-    public func disconnectAll() async {
-        let ids = allSessionIds()
-        for id in ids {
-            await disconnect(id)
-        }
-    }
-
-    private func allSessionIds() -> [UUID] {
+    private func suspensionBlockingIds() -> [UUID] {
         lock.lock()
         defer { lock.unlock() }
-        return Array(sessions.keys)
+        let connected = sessions.filter { $0.value.driver.holdsSuspensionBlockingResource }.map(\.key)
+        return Array(blockingTeardowns.union(connected))
+    }
+
+    private func claimTeardown(for connectionId: UUID) -> Task<Void, Never>? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let session = sessions.removeValue(forKey: connectionId) else {
+            return teardowns[connectionId]
+        }
+        let sshProvider = sshProvider
+        let teardown = Task {
+            try? await session.driver.disconnect()
+            if let sshProvider {
+                try? await sshProvider.closeTunnel(for: connectionId)
+            }
+        }
+        teardowns[connectionId] = teardown
+        if session.driver.holdsSuspensionBlockingResource {
+            blockingTeardowns.insert(connectionId)
+        }
+        return teardown
+    }
+
+    private func finishTeardown(_ teardown: Task<Void, Never>, for connectionId: UUID) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard teardowns[connectionId] == teardown else { return }
+        teardowns.removeValue(forKey: connectionId)
+        blockingTeardowns.remove(connectionId)
     }
 
     public func updateSession(_ connectionId: UUID, _ mutation: (inout ConnectionSession) -> Void) {
@@ -122,12 +157,5 @@ public final class ConnectionManager: @unchecked Sendable {
         lock.lock()
         sessions[id] = session
         lock.unlock()
-    }
-
-    private func removeSession(for id: UUID) -> ConnectionSession? {
-        lock.lock()
-        let session = sessions.removeValue(forKey: id)
-        lock.unlock()
-        return session
     }
 }

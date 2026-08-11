@@ -5,6 +5,7 @@ public protocol DatabaseDriver: AnyObject, Sendable {
     func connect() async throws
     func disconnect() async throws
     func ping() async throws -> Bool
+    var holdsSuspensionBlockingResource: Bool { get }
 
     func execute(query: String) async throws -> QueryResult
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error>
@@ -31,6 +32,8 @@ public protocol DatabaseDriver: AnyObject, Sendable {
 }
 
 public extension DatabaseDriver {
+    var holdsSuspensionBlockingResource: Bool { false }
+
     func executeStreaming(query: String, options: StreamOptions = .default) -> AsyncThrowingStream<StreamElement, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
