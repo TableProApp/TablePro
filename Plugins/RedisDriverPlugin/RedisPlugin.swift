@@ -22,6 +22,57 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let iconName = "redis-icon"
     static let defaultPort = 6_379
     static let additionalConnectionFields: [ConnectionField] = [
+        // Connection mode selector
+        ConnectionField(
+            id: "redisConnectionMode",
+            label: String(localized: "Connection Mode"),
+            defaultValue: "single",
+            fieldType: .picker(options: [
+                ConnectionField.PickerOption(label: "Single Node", value: "single"),
+                ConnectionField.PickerOption(label: "Sentinel (HA)", value: "sentinel"),
+            ]),
+            section: .advanced
+        ),
+
+        // Sentinel-specific fields
+        ConnectionField(
+            id: "redisSentinelNodes",
+            label: String(localized: "Sentinel Nodes"),
+            description: String(localized: "List of Sentinel addresses (one per line, format: host:port)"),
+            defaultValue: "",
+            fieldType: .multilineText,
+            section: .advanced,
+            visibilityCondition: ConnectionField.VisibilityCondition(
+                fieldId: "redisConnectionMode",
+                equals: "sentinel"
+            )
+        ),
+        ConnectionField(
+            id: "redisMasterName",
+            label: String(localized: "Master Name"),
+            description: String(localized: "Name of the master to monitor"),
+            defaultValue: "mymaster",
+            fieldType: .text,
+            section: .advanced,
+            visibilityCondition: ConnectionField.VisibilityCondition(
+                fieldId: "redisConnectionMode",
+                equals: "sentinel"
+            )
+        ),
+        ConnectionField(
+            id: "redisSentinelPassword",
+            label: String(localized: "Sentinel Password"),
+            description: String(localized: "Optional password for Sentinel authentication (Redis 6.2+)"),
+            defaultValue: "",
+            fieldType: .secret,
+            section: .advanced,
+            visibilityCondition: ConnectionField.VisibilityCondition(
+                fieldId: "redisConnectionMode",
+                equals: "sentinel"
+            )
+        ),
+
+        // Standard Redis fields
         ConnectionField(
             id: "redisDatabase",
             label: String(localized: "Database Index"),

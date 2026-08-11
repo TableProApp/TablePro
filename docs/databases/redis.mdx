@@ -24,6 +24,10 @@ TablePro connects to standalone Redis servers with hiredis. Keys are grouped by 
 | **Port** | `6379` | |
 | **Username** | - | Redis 6 ACL user, sent as `AUTH username password`. Leave empty for `requirepass` auth |
 | **Password** | - | Leave empty for local dev |
+| **Connection Mode** | `Single Node` | Single Node, Sentinel (HA), or Cluster (Sharded) |
+| **Sentinel Nodes** | - | Sentinel node addresses (one per line, format: `host:port`). Shown when mode is Sentinel |
+| **Master Name** | `mymaster` | Name of the Redis master to monitor. Shown when mode is Sentinel |
+| **Sentinel Password** | - | Optional password for Sentinel authentication (Redis 6.2+). Shown when mode is Sentinel |
 | **Database Index** | `0` | 0-15 stepper, in the Advanced section |
 | **Key Separator** | `:` | Groups keys by prefix in sidebar (Advanced) |
 
@@ -34,6 +38,34 @@ Open URLs like `redis://:password@host:6379/0` or `rediss://` (TLS) from your br
 ## Amazon ElastiCache (IAM)
 
 Set **Authentication** to an AWS IAM mode (Access Key, Profile, or SSO) to connect to an IAM-enabled ElastiCache cache. TablePro generates a short-lived IAM auth token and uses it as the Redis password; the username is your IAM-enabled Redis user. Enter the AWS region and the cache name (replication group ID), and enable TLS, which ElastiCache IAM requires. Profiles resolve from `~/.aws/config` and `~/.aws/credentials`, including `credential_process`, SSO, and assumed roles.
+
+## Redis Sentinel (High Availability)
+
+For Sentinel-monitored Redis deployments, set **Connection Mode** to **Sentinel (HA)** and configure:
+
+1. **Sentinel Nodes**: List your Sentinel addresses, one per line in `host:port` format (e.g., `sentinel1:26379`)
+2. **Master Name**: The master name configured in your Sentinel (default: `mymaster`)
+3. **Sentinel Password**: Optional password for Sentinel authentication (Redis 6.2+)
+
+TablePro will:
+- Query Sentinel to discover the current master address
+- Connect to the discovered master
+- Cache the master address for 30 seconds before re-querying
+
+<Tip>
+Sentinel is ideal for automatic failover. When the master fails, Sentinel promotes a replica and TablePro discovers the new master on reconnection.
+</Tip>
+
+### Example Sentinel Configuration
+
+```
+Sentinel Nodes:
+sentinel1:26379
+sentinel2:26379
+sentinel3:26379
+
+Master Name: mymaster
+```
 
 ## SSL/TLS
 
@@ -119,7 +151,7 @@ Note that `>password` sets a password and `#hash` sets a SHA-256 hash. A 64-char
 
 ## Limitations
 
-- Cluster mode is not supported. Connect to a single node.
+- **Cluster mode** is not yet supported. For sharded deployments, connect to a single seed node directly.
 - Keys must be valid UTF-8 to appear in the grid or the sidebar tree. Values have no such limit.
 - Pub/Sub has no grid support. `PUBLISH` runs in the CLI, but there is no subscriber view.
 - The grid previews the first 100 elements of a hash, list, set, or sorted set, and a stream's newest 5 entries. The Length column shows the real size. Use `HGETALL`, `LRANGE`, or `XRANGE` in the CLI for the rest.

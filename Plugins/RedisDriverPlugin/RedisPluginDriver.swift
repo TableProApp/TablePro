@@ -30,6 +30,8 @@ extension Array where Element == [String] {
 final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private var redisConnection: RedisPluginConnection?
+    private var sentinelConnection: RedisSentinelConnection?
+    private var connectionMode: RedisConnectionMode = .single
 
     private static let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisPluginDriver")
 
@@ -64,6 +66,30 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
+        // Determine connection mode from additional fields
+        connectionMode = resolveConnectionMode()
+
+        switch connectionMode {
+        case .single:
+            try await connectSingleNode(reportingStage: report)
+        case .sentinel:
+            try await connectSentinel(reportingStage: report)
+        case .cluster:
+            // Cluster mode will be implemented in Phase 2
+            try await connectSingleNode(reportingStage: report)
+            Self.logger.warning("Cluster mode not yet implemented, falling back to single node")
+        }
+    }
+
+    private func resolveConnectionMode() -> RedisConnectionMode {
+        guard let modeString = config.additionalFields["redisConnectionMode"] as? String,
+              let mode = RedisConnectionMode(rawValue: modeString) else {
+            return .single
+        }
+        return mode
+    }
+
+    private func connectSingleNode(reportingStage report: @escaping ConnectionStageReporter) async throws {
         let sslConfig = config.ssl
         let redisDb = RedisDatabaseIndex.resolve(additionalFields: config.additionalFields, database: config.database)
 
@@ -80,9 +106,66 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         redisConnection = conn
     }
 
+    private func connectSentinel(reportingStage report: @escaping ConnectionStageReporter) async throws {
+        // Parse Sentinel configuration
+        guard let sentinelNodesString = config.additionalFields["redisSentinelNodes"] as? String,
+              !sentinelNodesString.isEmpty else {
+            throw SentinelError.invalidConfiguration("Sentinel nodes list is required")
+        }
+
+        let sentinelNodes = sentinelNodesString
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        guard !sentinelNodes.isEmpty else {
+            throw SentinelError.noSentinelNodes
+        }
+
+        let masterName = (config.additionalFields["redisMasterName"] as? String) ?? "mymaster"
+        let sentinelPassword = config.additionalFields["redisSentinelPassword"] as? String
+
+        let sentinelConfig = SentinelConfiguration(
+            sentinelNodes: sentinelNodes,
+            masterName: masterName,
+            sentinelPassword: sentinelPassword,
+            sentinelUsername: config.username.isEmpty ? nil : config.username
+        )
+
+        // Create Sentinel connection for discovery
+        let sentinel = RedisSentinelConnection(
+            config: sentinelConfig,
+            sentinelAuth: (username: config.username.isEmpty ? nil : config.username, password: sentinelPassword)
+        )
+        sentinelConnection = sentinel
+
+        // Discover master address
+        report(.connecting)
+        let (masterHost, masterPort) = try await sentinel.discoverMaster()
+
+        Self.logger.info("Discovered Redis master at \(masterHost):\(masterPort) via Sentinel")
+
+        // Connect to discovered master using standard connection
+        let sslConfig = config.ssl
+        let redisDb = RedisDatabaseIndex.resolve(additionalFields: config.additionalFields, database: config.database)
+
+        let conn = RedisPluginConnection(
+            host: masterHost,
+            port: masterPort,
+            username: config.username.isEmpty ? nil : config.username,
+            password: config.password.isEmpty ? nil : config.password,
+            database: redisDb,
+            sslConfig: sslConfig
+        )
+
+        try await conn.connect(reportingStage: report)
+        redisConnection = conn
+    }
+
     func disconnect() {
         redisConnection?.disconnect()
         redisConnection = nil
+        sentinelConnection = nil
     }
 
     func ping() async throws {

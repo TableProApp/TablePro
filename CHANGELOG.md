@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Redis Sentinel Support**: Connect to Redis Sentinel deployments for High Availability. Configure Sentinel nodes, master name, and optional Sentinel authentication. Automatically discovers the current master and handles failover. (#1021)
 - SSL settings on mobile for MySQL, PostgreSQL and Redis: a mode picker plus CA, client certificate and client key. Import a PEM file, paste one, or use a PKCS#12 file. (#2083)
 - Legacy UUID Encoding on a MongoDB connection, so binary UUIDs written by the Java, C# or Python drivers read as UUIDs instead of hex. Filters, edits and MQL exports write the same bytes back. (#2086)
 
