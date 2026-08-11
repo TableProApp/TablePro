@@ -32,7 +32,7 @@ enum ConnectionStoreIntegrity {
     private static let keyByteCount = 32
 
     private static let lock = NSLock()
-    private nonisolated(unsafe) static var cachedKey: SymmetricKey?
+    nonisolated(unsafe) private static var cachedKey: SymmetricKey?
 
     static func tagURL(for fileURL: URL) -> URL {
         fileURL.appendingPathExtension("hmac")
