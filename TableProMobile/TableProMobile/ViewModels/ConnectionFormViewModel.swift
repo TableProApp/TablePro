@@ -395,6 +395,17 @@ final class ConnectionFormViewModel {
         }
     }
 
+    /// The form models a mode for MSSQL and Oracle only, so the certificate paths it never
+    /// shows have to be carried across a save rather than dropped.
+    private func carryingCertificatePaths(_ configuration: SSLConfiguration) -> SSLConfiguration {
+        guard let stored = existingConnection?.sslConfiguration else { return configuration }
+        var merged = configuration
+        merged.caCertificatePath = stored.caCertificatePath
+        merged.clientCertificatePath = stored.clientCertificatePath
+        merged.clientKeyPath = stored.clientKeyPath
+        return merged
+    }
+
     func buildConnection() -> DatabaseConnection {
         var conn = DatabaseConnection(
             id: existingConnection?.id ?? UUID(),
@@ -409,11 +420,12 @@ final class ConnectionFormViewModel {
             groupId: groupId,
             tagIds: tagId.map { [$0] } ?? []
         )
+        conn.sslConfiguration = existingConnection?.sslConfiguration
         if type == .mssql {
-            conn.sslConfiguration = SSLConfiguration(mode: mssqlSSLMode)
+            conn.sslConfiguration = carryingCertificatePaths(SSLConfiguration(mode: mssqlSSLMode))
         }
         if type == .oracle {
-            conn.sslConfiguration = SSLConfiguration(mode: oracleSSLMode)
+            conn.sslConfiguration = carryingCertificatePaths(SSLConfiguration(mode: oracleSSLMode))
             conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.connectionType] =
                 oracleConnectionType.rawValue
             conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] = oracleServiceName
