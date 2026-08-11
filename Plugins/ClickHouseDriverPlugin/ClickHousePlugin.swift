@@ -722,6 +722,7 @@ private final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchec
     private enum Strategy {
         case skipVerify
         case verifyChain(anchor: SecCertificate?)
+        case anchorUnavailable
     }
 
     private let strategy: Strategy
@@ -739,15 +740,24 @@ private final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchec
         case .preferred, .required:
             return ClickHouseTLSDelegate(strategy: .skipVerify)
         case .verifyCa:
-            return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: loadAnchor(at: ssl.caCertificatePath)))
+            guard !ssl.caCertificatePath.isEmpty else {
+                return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: nil))
+            }
+            guard let anchor = loadAnchor(at: ssl.caCertificatePath) else {
+                return ClickHouseTLSDelegate(strategy: .anchorUnavailable)
+            }
+            return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: anchor))
         }
     }
 
+    /// A verification mode whose anchor cannot be read must fail, never quietly widen to the
+    /// system roots. `SecCertificateCreateWithData` takes DER only, so PEM is decoded first.
     private static func loadAnchor(at path: String) -> SecCertificate? {
         guard !path.isEmpty, let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
             return nil
         }
-        return SecCertificateCreateWithData(nil, data as CFData)
+        guard let der = PEMCertificateDecoder.certificateDER(from: data) else { return nil }
+        return SecCertificateCreateWithData(nil, der as CFData)
     }
 
     func urlSession(
@@ -764,6 +774,8 @@ private final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchec
         switch strategy {
         case .skipVerify:
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        case .anchorUnavailable:
+            completionHandler(.cancelAuthenticationChallenge, nil)
         case .verifyChain(let anchor):
             if let anchor {
                 SecTrustSetAnchorCertificates(serverTrust, [anchor] as CFArray)
