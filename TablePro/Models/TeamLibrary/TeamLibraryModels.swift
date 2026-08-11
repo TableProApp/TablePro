@@ -106,6 +106,25 @@ struct TeamLibraryPullResponse: Codable {
 
     static let empty = TeamLibraryPullResponse(connections: [], queryFolders: [], queries: [], fetchedAt: "")
 
+    /// A pulled connection is authored by another account and lands on this device with no
+    /// confirmation step, so anything the app would act on by itself is dropped before caching.
+    func sanitized() -> TeamLibraryPullResponse {
+        TeamLibraryPullResponse(
+            connections: connections.map {
+                Connection(
+                    id: $0.id,
+                    sourceConnectionId: $0.sourceConnectionId,
+                    payload: $0.payload.sanitizedForImport().withoutStartupCommands(),
+                    publishedBy: $0.publishedBy,
+                    publishedAt: $0.publishedAt
+                )
+            },
+            queryFolders: queryFolders,
+            queries: queries,
+            fetchedAt: fetchedAt
+        )
+    }
+
     struct Connection: Codable, Identifiable {
         let id: String
         let sourceConnectionId: String?

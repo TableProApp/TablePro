@@ -36,14 +36,15 @@ actor TeamLibraryStore {
         guard let data = try? Data(contentsOf: fileURL) else {
             return nil
         }
-        cached = try? JSONDecoder().decode(TeamLibraryPullResponse.self, from: data)
+        cached = (try? JSONDecoder().decode(TeamLibraryPullResponse.self, from: data))?.sanitized()
         return cached
     }
 
     func replace(_ response: TeamLibraryPullResponse) {
-        cached = response
+        let sanitized = response.sanitized()
+        cached = sanitized
         do {
-            try JSONEncoder().encode(response).write(to: fileURL, options: .atomic)
+            try JSONEncoder().encode(sanitized).write(to: fileURL, options: .atomic)
         } catch {
             Self.logger.error("Failed to cache team library: \(error.localizedDescription)")
         }

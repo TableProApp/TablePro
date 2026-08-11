@@ -150,11 +150,39 @@ public struct ExportableConnection: Codable {
 }
 
 public extension ExportableConnection {
-    static let importBlockedAdditionalFieldKeys: Set<String> = ["preConnectScript"]
+    static let importBlockedAdditionalFieldKeys: Set<String> = [
+        "preconnectscript",
+        "pretunnelhost",
+        "pretunnelport",
+        "promptforpassword",
+        "sslclientkeypassphrase",
+        "usepgpass",
+    ]
+
+    static let importBlockedAdditionalFieldPrefixes: Set<String> = ["aws"]
+
+    static func isImportBlockedAdditionalFieldKey(_ key: String) -> Bool {
+        let normalized = key.lowercased()
+        if importBlockedAdditionalFieldKeys.contains(normalized) { return true }
+        return importBlockedAdditionalFieldPrefixes.contains { normalized.hasPrefix($0) }
+    }
+
+    func withoutStartupCommands() -> ExportableConnection {
+        guard startupCommands != nil else { return self }
+        return ExportableConnection(
+            name: name, host: host, port: port, database: database,
+            username: username, type: type, sshConfig: sshConfig,
+            sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
+            groupName: groupName, sshProfileId: sshProfileId,
+            safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
+            additionalFields: additionalFields, redisDatabase: redisDatabase,
+            startupCommands: nil, localOnly: localOnly
+        )
+    }
 
     func sanitizedForImport() -> ExportableConnection {
         guard let additionalFields else { return self }
-        let allowed = additionalFields.filter { !Self.importBlockedAdditionalFieldKeys.contains($0.key) }
+        let allowed = additionalFields.filter { !Self.isImportBlockedAdditionalFieldKey($0.key) }
         guard allowed.count != additionalFields.count else { return self }
         return ExportableConnection(
             name: name, host: host, port: port, database: database,

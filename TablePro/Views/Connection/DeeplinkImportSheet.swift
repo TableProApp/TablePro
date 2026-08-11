@@ -67,6 +67,10 @@ struct DeeplinkImportSheet: View {
                     metadataSection
                 }
 
+                startupCommandsSection
+
+                optionsSection
+
                 if isDuplicate {
                     Section {
                         Label(
@@ -95,6 +99,7 @@ struct DeeplinkImportSheet: View {
             .padding()
         }
         .frame(width: 420)
+        .frame(maxHeight: 560)
         .onAppear { checkDuplicate() }
     }
 
@@ -134,6 +139,43 @@ struct DeeplinkImportSheet: View {
                 LabeledContent(String(localized: "Mode")) {
                     Text(ssl.mode)
                         .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var startupCommandsSection: some View {
+        if let startupCommands = connection.startupCommands,
+           !startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Section {
+                Label(
+                    String(localized: "This connection runs SQL every time it connects, using your credentials."),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(.orange)
+                .font(.callout)
+
+                Text(startupCommands)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } header: {
+                Text("Startup SQL")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var optionsSection: some View {
+        if let fields = connection.additionalFields, !fields.isEmpty {
+            Section(String(localized: "Driver Options")) {
+                ForEach(fields.keys.sorted(), id: \.self) { key in
+                    LabeledContent(key) {
+                        Text(fields[key] ?? "")
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
                 }
             }
         }
