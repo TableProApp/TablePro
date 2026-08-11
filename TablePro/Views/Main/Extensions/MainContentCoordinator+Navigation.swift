@@ -561,6 +561,13 @@ extension MainContentCoordinator {
         }
     }
 
+    func selectTab(in workspace: WorkspaceID, target: ContainerSwitchTarget?) {
+        guard let match = tabManager.tabs.first(where: {
+            WorkspaceAnchoring.containerName(of: $0, target: target) == workspace.container
+        }) else { return }
+        tabManager.selectedTabId = match.id
+    }
+
     func initRedisKeyTreeIfNeeded() {
         guard connection.type == .redis else { return }
         let sidebarState = SharedSidebarState.forConnection(connectionId)

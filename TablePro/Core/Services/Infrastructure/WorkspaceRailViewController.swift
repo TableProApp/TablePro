@@ -280,7 +280,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
-        moveBrowseCursor(of: window, to: workspace)
+        moveBrowseCursor(of: window, to: workspace, target: target)
 
         guard WorkspaceRailStore.shouldRestoreSelection(
             after: workspace,
@@ -289,7 +289,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         applySelection()
     }
 
-    private func moveBrowseCursor(of window: NSWindow, to workspace: WorkspaceID) {
+    private func moveBrowseCursor(of window: NSWindow, to workspace: WorkspaceID, target: ContainerSwitchTarget?) {
         guard !workspace.container.isEmpty else {
             Self.logger.debug("moveBrowseCursor skipped: unnamed container")
             return
@@ -321,6 +321,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             let landed = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
             if landed == workspace {
                 Self.logger.info("moveBrowseCursor landed \(Self.describe(workspace), privacy: .public)")
+                coordinator.selectTab(in: workspace, target: target)
             } else {
                 Self.logger.error(
                     """
