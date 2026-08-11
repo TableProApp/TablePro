@@ -27,6 +27,10 @@ final class ConnectionStorage {
     /// In-memory cache to avoid re-decoding JSON from file on every access
     private var cachedConnections: [DatabaseConnection]?
 
+    /// Whether the file on disk is the one TablePro last wrote. False once it has been edited by
+    /// something else, which is the signal to refuse to run a connection's password source.
+    private(set) var storeIsTrusted = true
+
     private let fileURL: URL
 
     private let keychain: any KeychainStoring
@@ -78,7 +82,21 @@ final class ConnectionStorage {
         if let cached = cachedConnections { return cached }
 
         guard let data = try? Data(contentsOf: fileURL) else {
+            storeIsTrusted = true
             return []
+        }
+
+        switch ConnectionStoreIntegrity.verify(data, fileURL: fileURL) {
+        case .trusted:
+            storeIsTrusted = true
+        case .unstamped:
+            // An install that predates the tag. Adopt the file as it stands, which is the only
+            // option without a prior baseline, and stamp it so later edits are detectable.
+            ConnectionStoreIntegrity.stamp(data, fileURL: fileURL)
+            storeIsTrusted = true
+        case .modified:
+            Self.logger.warning("connections.json changed outside TablePro; password sources will not run")
+            storeIsTrusted = false
         }
 
         do {
@@ -125,6 +143,8 @@ final class ConnectionStorage {
         do {
             let data = try encoder.encode(storedConnections)
             try data.write(to: fileURL, options: .atomic)
+            ConnectionStoreIntegrity.stamp(data, fileURL: fileURL)
+            storeIsTrusted = true
             cachedConnections = nil
             return true
         } catch {

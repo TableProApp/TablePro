@@ -580,6 +580,9 @@ enum DatabaseDriverFactory {
         }
         if let override { return override }
         if let passwordSource = connection.passwordSource {
+            guard await ConnectionStorage.shared.storeIsTrusted else {
+                throw PasswordSourceResolver.ResolutionError.storeNotTrusted
+            }
             return try await PasswordSourceResolver.resolve(passwordSource)
         }
         if connection.usePgpass {
