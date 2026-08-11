@@ -22,10 +22,21 @@ protocol ClipboardProvider {
     var hasGridRows: Bool { get }
 }
 
+extension ClipboardProvider {
+    /// Text a clipboard-history app should not retain. Providers that cannot express that
+    /// fall back to a plain write rather than refusing to copy.
+    func writeSecretText(_ text: String) {
+        writeText(text)
+    }
+}
+
 struct NSPasteboardClipboardProvider: ClipboardProvider {
     private static let tsvType = NSPasteboard.PasteboardType("public.utf8-tab-separated-values-text")
     private static let csvType = NSPasteboard.PasteboardType("public.comma-separated-values-text")
     private static let gridRowsType = NSPasteboard.PasteboardType("com.TablePro.gridRows")
+
+    /// The convention clipboard managers watch for to keep an item out of their history.
+    private static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
 
     func readText() -> String? {
         NSPasteboard.general.string(forType: .string)
@@ -41,6 +52,14 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
         pb.clearContents()
         pb.setString(text, forType: .string)
         pb.setString(text, forType: NSPasteboard.PasteboardType(UTType.utf8PlainText.identifier))
+    }
+
+    func writeSecretText(_ text: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        pb.setString(text, forType: NSPasteboard.PasteboardType(UTType.utf8PlainText.identifier))
+        pb.setString(text, forType: Self.concealedType)
     }
 
     func writeCsv(_ csv: String) {

@@ -330,7 +330,7 @@ final class PostgresDumpService {
             ? String(format: String(localized: "Process exited with code %d"), Int(result.exitCode))
             : result.stderr
         setState(.failed(message: summary))
-        Self.logger.error("\(self.kind == .backup ? "pg_dump" : "pg_restore", privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .public) stderr=\(result.stderr, privacy: .public)")
+        Self.logger.error("\(self.kind == .backup ? "pg_dump" : "pg_restore", privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .public) stderr=\(result.stderr)")
     }
 
     private func startByteSizePolling(url: URL, database: String, totalBytes: Int64?) {

@@ -187,7 +187,7 @@ extension WelcomeWindowView {
                     sshPassword: sshPw,
                     sshProfile: sshProfile
                 )
-                ClipboardService.shared.writeText(url)
+                ClipboardService.shared.writeSecretText(url)
             } label: {
                 Label(String(localized: "Copy Connection String"), systemImage: "link")
             }
