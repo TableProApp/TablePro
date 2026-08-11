@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SSL settings on mobile for MySQL, PostgreSQL and Redis: a mode picker plus CA, client certificate and client key. Import a PEM file, paste one, or use a PKCS#12 file. (#2083)
+
 ### Changed
 
 - Mobile keeps remote connections open when you switch apps.
@@ -15,10 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- SQL Server Verify CA and Verify Identity now check the certificate for real. Both used to encrypt without checking anything, while the picker said otherwise.
+- SQL Server Verify CA and Verify Identity now check the certificate for real on Mac. Both used to encrypt without checking anything, while the picker said otherwise.
 - A connection's password source no longer runs if the connections file was edited outside TablePro. Save the connection again from the app to confirm the change.
 - Mobile now checks the SSH server's host key before sending any credential, and asks you the first time it sees a server. It never checked at all, so anyone intercepting the connection received the SSH password.
-- Mobile no longer drops a connection's TLS verification settings when you save an unrelated edit.
 - libssh2 is patched against CVE-2026-55199, where a malicious SSH server could pin a CPU core before authentication.
 - An import link can no longer make TablePro fetch an AWS credential and send it to the link author's server.
 - An import link can no longer preset the fields that decide where a connection looks for its password.
@@ -35,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Mobile sends the client certificate and key on MySQL and PostgreSQL connections that use mutual TLS. (#2083)
+- Editing a connection on mobile no longer wipes its SSL settings and per-database options, which then synced the loss back to the Mac. (#2083)
+- A connection whose certificate is missing now says so, instead of connecting without it while still demanding server verification. (#2083)
 - Mobile no longer gets killed by iOS when you leave the app with a DuckDB file open.
 - Redis and Valkey ACL users can sign in on mobile. The username was dropped, so every login was rejected.
 - A rejected Redis login now says what to change.

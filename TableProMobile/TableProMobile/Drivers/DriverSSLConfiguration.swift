@@ -36,6 +36,15 @@ struct DriverSSLConfiguration: Equatable, Sendable {
         clientKeyPath = configuration.clientKeyPath
     }
 
+    func applying(_ materialized: MaterializedCertificates) -> DriverSSLConfiguration {
+        DriverSSLConfiguration(
+            mode: mode,
+            caCertificatePath: materialized.caCertificatePath ?? caCertificatePath,
+            clientCertificatePath: materialized.clientCertificatePath ?? clientCertificatePath,
+            clientKeyPath: materialized.clientKeyPath ?? clientKeyPath
+        )
+    }
+
     var isEnabled: Bool { mode != .disable }
     var verifiesCertificate: Bool { mode == .verifyCa || mode == .verifyFull }
     var verifiesHostname: Bool { mode == .verifyFull }

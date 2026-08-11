@@ -335,16 +335,14 @@ private actor PostgreSQLActor {
         // Close existing connection if reconnecting
         if let conn { PQfinish(conn); self.conn = nil }
 
-        let escapedHost = escapeConnParam(host)
-        let escapedUser = escapeConnParam(user)
-        let escapedPass = escapeConnParam(password)
-        let escapedDb = escapeConnParam(database)
-
-        var connStr = "host='\(escapedHost)' port='\(port)' dbname='\(escapedDb)' " +
-            "user='\(escapedUser)' password='\(escapedPass)' connect_timeout='10' sslmode='\(ssl.postgresSSLMode)'"
-        if let caPath = ssl.existingCACertificatePath {
-            connStr += " sslrootcert='\(escapeConnParam(caPath))'"
-        }
+        let connStr = PostgreSQLConnectionString.build(
+            host: host,
+            port: port,
+            database: database,
+            user: user,
+            password: password,
+            ssl: ssl
+        )
 
         let connection = PQconnectdb(connStr)
 
@@ -355,11 +353,6 @@ private actor PostgreSQLActor {
         }
 
         self.conn = connection
-    }
-
-    private func escapeConnParam(_ value: String) -> String {
-        value.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
     }
 
     func close() {

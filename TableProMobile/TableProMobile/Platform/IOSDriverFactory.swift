@@ -4,9 +4,24 @@ import TableProModels
 
 final class IOSDriverFactory: DriverFactory {
     private let bookmarkStore: FileBookmarkStore
+    private let materializer: CertificateMaterializer
 
-    init(bookmarkStore: FileBookmarkStore = FileBookmarkStore()) {
+    init(
+        bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
+        materializer: CertificateMaterializer = CertificateMaterializer()
+    ) {
         self.bookmarkStore = bookmarkStore
+        self.materializer = materializer
+    }
+
+    private func ssl(for connection: DatabaseConnection) throws -> DriverSSLConfiguration {
+        let declared = DriverSSLConfiguration(
+            sslEnabled: connection.sslEnabled,
+            configuration: connection.sslConfiguration
+        )
+        let resolved = declared.applying(try materializer.materialize(for: connection.id))
+        try CertificatePreflight.validate(resolved)
+        return resolved
     }
 
     func createDriver(for connection: DatabaseConnection, password: String?) throws -> any DatabaseDriver {
@@ -25,7 +40,7 @@ final class IOSDriverFactory: DriverFactory {
                 user: connection.username,
                 password: password ?? "",
                 database: connection.database,
-                ssl: DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
+                ssl: try ssl(for: connection)
             )
         case .postgresql, .redshift:
             return PostgreSQLDriver(
@@ -34,7 +49,7 @@ final class IOSDriverFactory: DriverFactory {
                 user: connection.username,
                 password: password ?? "",
                 database: connection.database,
-                ssl: DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
+                ssl: try ssl(for: connection)
             )
         case .redis:
             let dbIndex = RedisDatabaseIndex.resolve(
@@ -47,7 +62,7 @@ final class IOSDriverFactory: DriverFactory {
                 username: connection.username,
                 password: password,
                 database: dbIndex,
-                ssl: DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
+                ssl: try ssl(for: connection)
             )
         case .mssql:
             return MSSQLDriver(connection: connection, password: password)

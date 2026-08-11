@@ -32,8 +32,19 @@ final class ConnectionFormViewModel {
     var password = ""
     var database = ""
     var sslEnabled = false
+    var sslMode: SSLConfiguration.SSLMode = .disable
     var mssqlSSLMode: SSLConfiguration.SSLMode = .disable
     var oracleSSLMode: SSLConfiguration.SSLMode = .disable
+
+    // Client certificates
+    var certificateSummaries: [CertificateRole: String] = [:]
+    var certificateError: String?
+    var pastedCertificate = ""
+    var pkcs12Password = ""
+    @ObservationIgnored var pendingCertificates: [CertificateRole: String] = [:]
+    @ObservationIgnored var removedCertificates: Set<CertificateRole> = []
+    @ObservationIgnored var pendingPKCS12: Data?
+    @ObservationIgnored let certificateStore: any CertificateMaterialStoring = CertificateMaterialStore()
     var oracleConnectionType: OracleConnectionOptions.IdentifierMode = .service
     var oracleServiceName = ""
     var oracleSID = ""
@@ -90,6 +101,7 @@ final class ConnectionFormViewModel {
         let storedMode = conn.sslConfiguration?.mode ?? .disable
         mssqlSSLMode = (storedMode == .verifyCa || storedMode == .verifyFull) ? .require : storedMode
         oracleSSLMode = storedMode
+        sslMode = conn.sslConfiguration?.mode ?? (conn.sslEnabled ? .require : .disable)
         oracleConnectionType = OracleConnectionOptions.identifierMode(from: conn.additionalFields)
         oracleServiceName = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? ""
         oracleSID = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? ""
@@ -331,6 +343,8 @@ final class ConnectionFormViewModel {
         let connection = buildConnection()
         var storageFailed = false
 
+        persistCertificates(for: connection.id)
+
         if type == .duckdb {
             if duckDBInMemory {
                 bookmarkStore.delete(for: connection.id)
@@ -391,19 +405,8 @@ final class ConnectionFormViewModel {
         switch type {
         case .mssql: return mssqlSSLMode != .disable
         case .oracle: return oracleSSLMode != .disable
-        default: return sslEnabled
+        default: return sslMode != .disable
         }
-    }
-
-    /// The form models a mode for MSSQL and Oracle only, so the certificate paths it never
-    /// shows have to be carried across a save rather than dropped.
-    private func carryingCertificatePaths(_ configuration: SSLConfiguration) -> SSLConfiguration {
-        guard let stored = existingConnection?.sslConfiguration else { return configuration }
-        var merged = configuration
-        merged.caCertificatePath = stored.caCertificatePath
-        merged.clientCertificatePath = stored.clientCertificatePath
-        merged.clientKeyPath = stored.clientKeyPath
-        return merged
     }
 
     func buildConnection() -> DatabaseConnection {
@@ -420,12 +423,17 @@ final class ConnectionFormViewModel {
             groupId: groupId,
             tagIds: tagId.map { [$0] } ?? []
         )
+        conn.additionalFields = existingConnection?.additionalFields ?? [:]
         conn.sslConfiguration = existingConnection?.sslConfiguration
+
+        if usesCertificateSection {
+            conn.sslConfiguration = sslConfigurationPreservingCertificates(mode: sslMode)
+        }
         if type == .mssql {
-            conn.sslConfiguration = carryingCertificatePaths(SSLConfiguration(mode: mssqlSSLMode))
+            conn.sslConfiguration = sslConfigurationPreservingCertificates(mode: mssqlSSLMode)
         }
         if type == .oracle {
-            conn.sslConfiguration = carryingCertificatePaths(SSLConfiguration(mode: oracleSSLMode))
+            conn.sslConfiguration = sslConfigurationPreservingCertificates(mode: oracleSSLMode)
             conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.connectionType] =
                 oracleConnectionType.rawValue
             conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] = oracleServiceName
@@ -444,5 +452,15 @@ final class ConnectionFormViewModel {
             )
         }
         return conn
+    }
+
+    private func sslConfigurationPreservingCertificates(mode: SSLConfiguration.SSLMode) -> SSLConfiguration {
+        let existing = existingConnection?.sslConfiguration
+        return SSLConfiguration(
+            mode: mode,
+            caCertificatePath: existing?.caCertificatePath,
+            clientCertificatePath: existing?.clientCertificatePath,
+            clientKeyPath: existing?.clientKeyPath
+        )
     }
 }
