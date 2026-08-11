@@ -109,6 +109,10 @@ DBSIZE
 
 **Auth failed**: Verify password matches `requirepass` in `redis.conf`. For Redis 6.0+ ACL: `ACL SETUSER myuser on >password ~* +@all`
 
+With the Username field empty, TablePro sends `AUTH password`, which Redis and Valkey always check against the `default` user. An ACL user's password fails that check with `WRONGPASS invalid username-password pair or user is disabled.` Fill in Username to authenticate as that user.
+
+Note that `>password` sets a password and `#hash` sets a SHA-256 hash. A 64-character hex string is valid for both, so `ACL SETUSER myuser on #<64-hex>` is accepted where `>` was meant, and every later login fails with `WRONGPASS`. `ACL LIST` shows stored passwords as hashes, so a value copied from there is a hash, not a password.
+
 **Timeout**: Verify host/port, check network and firewall, whitelist IP for cloud-hosted Redis.
 
 **Slow key list**: `KEYS` blocks the server on a large keyspace. Browse by namespace instead, and use `SCAN` when you need a pattern match in the CLI. Check memory pressure with `INFO memory`.

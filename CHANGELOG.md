@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- TablePro Mobile keeps remote connections open when you switch apps, so coming back no longer reconnects and reloads everything.
+- Mobile keeps remote connections open when you switch apps.
 
 ### Fixed
 
@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mobile sends the client certificate and key on MySQL and PostgreSQL connections that use mutual TLS. (#2083)
 - Editing a connection on mobile no longer wipes its SSL settings and per-database options, which then synced the loss back to the Mac. (#2083)
 - A connection whose certificate is missing now says so, instead of connecting without it while still demanding server verification. (#2083)
+- Mobile no longer gets killed by iOS when you leave the app with a DuckDB file open.
+- Redis and Valkey ACL users can sign in on mobile. The username was dropped, so every login was rejected.
+- A rejected Redis login now says what to change.
+- Mobile opens the Redis database index saved on a connection, not always database 0.
 
 ## [0.64.0] - 2026-08-10
 

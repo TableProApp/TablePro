@@ -355,7 +355,7 @@ struct ConnectionFormView: View {
     @ViewBuilder
     private func serverSection(viewModel: ConnectionFormViewModel) -> some View {
         @Bindable var viewModel = viewModel
-        Section("Server") {
+        Section {
             TextField("Host", text: $viewModel.host)
                 .textInputAutocapitalization(.never)
                 .keyboardType(.URL)
@@ -363,7 +363,15 @@ struct ConnectionFormView: View {
                 .keyboardType(.numberPad)
             TextField("Username", text: $viewModel.username)
                 .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.asciiCapable)
             SecureField("Password", text: $viewModel.password)
+        } header: {
+            Text("Server")
+        } footer: {
+            if viewModel.type == .redis {
+                Text("Username is for Redis 6 and later ACL users. Leave it empty for password-only servers.")
+            }
         }
         Section("Database") {
             TextField("Database Name", text: $viewModel.database)

@@ -357,7 +357,9 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/RedshiftExternalSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
+      - Plugins/RedisDriverPlugin/RedisAuthCommand.swift
       - Plugins/RedisDriverPlugin/RedisCommandParser.swift
+      - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
       - Plugins/RedisDriverPlugin/RedisKeySummary.swift
       - Plugins/RedisDriverPlugin/RedisQueryBuilder.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift

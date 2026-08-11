@@ -48,6 +48,9 @@ targets:
       # bundle on iOS, so the driver links into the app.
       - ../Plugins/MSSQLDriverPlugin/FreeTDSConnection.swift
       - ../Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
+      # Redis credential rules the iOS driver shares with the macOS plugin.
+      - ../Plugins/RedisDriverPlugin/RedisAuthCommand.swift
+      - ../Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
     configFiles:
       Debug: ../Configs/Version-iOS.xcconfig
       Release: ../Configs/Version-iOS.xcconfig

@@ -447,13 +447,7 @@ private extension RedisPluginConnection {
     }
 
     func authenticateSync() throws {
-        guard let password, !password.isEmpty else { return }
-        let authArgs: [String]
-        if let username, !username.isEmpty {
-            authArgs = ["AUTH", username, password]
-        } else {
-            authArgs = ["AUTH", password]
-        }
+        guard let authArgs = RedisAuthCommand.arguments(username: username, password: password) else { return }
         let reply = try executeCommandSync(authArgs)
         if case .error(let msg) = reply {
             throw RedisPluginError(code: 1, message: "AUTH failed: \(msg)")
