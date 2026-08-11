@@ -77,9 +77,9 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             label: String(localized: "Legacy UUID Encoding"),
             fieldType: .dropdown(options: [
                 .init(value: "", label: String(localized: "Do Not Decode")),
-                .init(value: "javaLegacy", label: String(localized: "Java")),
-                .init(value: "csharpLegacy", label: String(localized: "C#")),
-                .init(value: "pythonLegacy", label: String(localized: "Python")),
+                .init(value: "javaLegacy", label: "Java"),
+                .init(value: "csharpLegacy", label: "C#"),
+                .init(value: "pythonLegacy", label: "Python"),
             ]),
             section: .advanced
         ),

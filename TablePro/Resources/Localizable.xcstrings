@@ -141,6 +141,12 @@
         }
       }
     },
+    "Do Not Decode" : {
+
+    },
+    "Legacy UUID Encoding" : {
+
+    },
     "—" : {
       "extractionState" : "stale",
       "localizations" : {
