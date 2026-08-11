@@ -9,12 +9,12 @@
 import Foundation
 import TableProPluginKit
 
-enum BsonValueKind {
+enum BsonValueKind: Hashable {
     case double
     case string
     case document
     case array
-    case binary
+    case binary(subtype: UInt8)
     case boolean
     case date
     case null
@@ -113,7 +113,7 @@ struct BsonDocumentFlattener {
         case .double: return "FLOAT"
         case .string, .null: return "VARCHAR"
         case .document, .array: return "JSON"
-        case .binary: return "BLOB"
+        case .binary(let subtype): return MongoDBUuidCodec.columnTypeName(forSubtype: subtype)
         case .boolean: return "BOOLEAN"
         case .date: return "TIMESTAMP"
         case .int32: return "INTEGER"
@@ -290,11 +290,11 @@ struct BsonDocumentFlattener {
             return .date
         case let binary as MongoDBBinaryValue:
             guard MongoDBUuidCodec.isDecodableUuid(binary, representation: representation) else {
-                return .binary
+                return .binary(subtype: binary.subtype)
             }
             return binary.subtype == MongoDBUuidCodec.standardUuidSubtype ? .uuid : .legacyUuid
         case is Data:
-            return .binary
+            return .binary(subtype: 0)
         case is [String: Any]:
             return .document
         case is [Any]:

@@ -237,8 +237,15 @@ struct BsonDocumentFlattenerTests {
         @Test("A legacy UUID column keeps the binary type name until a representation is set")
         func undecodedColumnStaysBinary() {
             let kinds = FlattenFixture.kinds(Self.legacyDocs(), columns: ["id"])
-            #expect(kinds == [.binary])
-            #expect(BsonDocumentFlattener.typeName(for: .binary, representation: .unspecified) == "BLOB")
+            #expect(kinds == [.binary(subtype: 3)])
+            #expect(
+                BsonDocumentFlattener.typeName(for: .binary(subtype: 3), representation: .unspecified)
+                    == "BLOB(3)"
+            )
+            #expect(
+                BsonDocumentFlattener.typeName(for: .binary(subtype: 0), representation: .unspecified)
+                    == "BLOB"
+            )
         }
 
         @Test("A configured legacy UUID column reports the representation in its type name")
@@ -285,7 +292,7 @@ struct BsonDocumentFlattenerTests {
             docs.append(["id": MongoDBBinaryValue(data: Data(BsonUuidFixture.javaBytes), subtype: 0x03)])
 
             let kinds = FlattenFixture.kinds(docs, columns: ["id"], representation: .javaLegacy)
-            #expect(kinds == [.binary])
+            #expect(kinds == [.binary(subtype: 0)])
 
             let rows = FlattenFixture.rows(docs, columns: ["id"], representation: .javaLegacy)
             #expect(rows.allSatisfy { $0[0].asText == nil })

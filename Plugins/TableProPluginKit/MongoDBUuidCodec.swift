@@ -44,6 +44,19 @@ public enum MongoDBUuidCodec {
         "BinData(\(binary.subtype), \"\(binary.data.base64EncodedString())\")"
     }
 
+    public static func columnTypeName(forSubtype subtype: UInt8) -> String {
+        subtype == 0 ? binaryColumnTypeName : "\(binaryColumnTypeName)(\(subtype))"
+    }
+
+    public static func binarySubtype(fromColumnTypeName name: String) -> UInt8 {
+        guard name.hasPrefix(binaryColumnTypeName + "("), name.hasSuffix(")") else { return 0 }
+        let start = name.index(name.startIndex, offsetBy: binaryColumnTypeName.count + 1)
+        let digits = name[start ..< name.index(before: name.endIndex)]
+        return UInt8(digits) ?? 0
+    }
+
+    private static let binaryColumnTypeName = "BLOB"
+
     public static func isDecodableUuid(
         _ binary: MongoDBBinaryValue,
         representation: MongoDBUuidRepresentation

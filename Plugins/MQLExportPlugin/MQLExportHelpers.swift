@@ -24,6 +24,10 @@ enum MQLExportHelpers {
         return "db.\(escaped)"
     }
 
+    static func mqlBinaryValue(for data: Data, subtype: UInt8) -> String {
+        MongoDBUuidCodec.binaryText(for: MongoDBBinaryValue(data: data, subtype: subtype))
+    }
+
     static func mqlJsonValue(for value: String) -> String {
         if value == "true" || value == "false" {
             return value
@@ -37,8 +41,8 @@ enum MQLExportHelpers {
         if Double(value) != nil, value.contains(".") {
             return value
         }
-        if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(value) {
-            return binary
+        if let binary = MongoDBUuidCodec.parseWrapper(value) {
+            return MongoDBUuidCodec.binaryText(for: binary)
         }
         if (value.hasPrefix("{") && value.hasSuffix("}")) ||
             (value.hasPrefix("[") && value.hasSuffix("]")) {

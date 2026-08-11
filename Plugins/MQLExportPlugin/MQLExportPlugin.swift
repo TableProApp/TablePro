@@ -94,6 +94,7 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
 
             if includeData {
                 var columns: [String] = []
+                var columnTypeNames: [String] = []
                 var documentBatch: [String] = []
 
                 let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
@@ -103,6 +104,7 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                     switch element {
                     case .header(let header):
                         columns = header.columns
+                        columnTypeNames = header.columnTypeNames
                     case .rows(let rows):
                         for row in rows {
                             var fields: [String] = []
@@ -114,7 +116,11 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                                 case .null:
                                     continue
                                 case .bytes(let data):
-                                    jsonValue = "{\"$binary\": {\"base64\": \"\(data.base64EncodedString())\", \"subType\": \"00\"}}"
+                                    let typeName = colIndex < columnTypeNames.count ? columnTypeNames[colIndex] : ""
+                                    jsonValue = MQLExportHelpers.mqlBinaryValue(
+                                        for: data,
+                                        subtype: MongoDBUuidCodec.binarySubtype(fromColumnTypeName: typeName)
+                                    )
                                 case .text(let value):
                                     jsonValue = MQLExportHelpers.mqlJsonValue(for: value)
                                 }
