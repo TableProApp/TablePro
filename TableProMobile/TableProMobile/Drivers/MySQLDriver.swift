@@ -276,6 +276,9 @@ private actor MySQLActor {
         var reconnect: my_bool = 0
         mysql_options(handle, MYSQL_OPT_RECONNECT, &reconnect)
 
+        var allowLocalInfile: UInt32 = 0
+        mysql_options(handle, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
+
         var sslEnforce: my_bool = ssl.isEnabled ? 1 : 0
         mysql_options(handle, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
         var sslVerify: my_bool = ssl.verifiesCertificate ? 1 : 0

@@ -273,6 +273,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var protocol_tcp = UInt32(MYSQL_PROTOCOL_TCP.rawValue)
         mysql_options(mysql, MYSQL_OPT_PROTOCOL, &protocol_tcp)
 
+        var allowLocalInfile: UInt32 = 0
+        mysql_options(mysql, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
+
         var sslEnforce: my_bool = enforceSSL ? 1 : 0
         mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
 
@@ -395,6 +398,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         mysql_options(killConn, MYSQL_OPT_CONNECT_TIMEOUT, &killTimeout)
         mysql_options(killConn, MYSQL_OPT_READ_TIMEOUT, &killTimeout)
         mysql_options(killConn, MYSQL_OPT_WRITE_TIMEOUT, &killTimeout)
+
+        var killAllowLocalInfile: UInt32 = 0
+        mysql_options(killConn, MYSQL_OPT_LOCAL_INFILE, &killAllowLocalInfile)
 
         let killResult = host.withCString { hostPtr in
             user.withCString { userPtr in
