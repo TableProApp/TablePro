@@ -86,16 +86,19 @@ final class ConnectionStorage {
             return []
         }
 
-        switch ConnectionStoreIntegrity.verify(data, fileURL: fileURL) {
+        switch ConnectionStoreIntegrity.shared.verify(data, fileURL: fileURL) {
         case .trusted:
             storeIsTrusted = true
         case .unstamped:
             // An install that predates the tag. Adopt the file as it stands, which is the only
             // option without a prior baseline, and stamp it so later edits are detectable.
-            ConnectionStoreIntegrity.stamp(data, fileURL: fileURL)
+            ConnectionStoreIntegrity.shared.stamp(data, fileURL: fileURL)
             storeIsTrusted = true
         case .modified:
             Self.logger.warning("connections.json changed outside TablePro; password sources will not run")
+            storeIsTrusted = false
+        case .unavailable:
+            Self.logger.warning("No connection store integrity key; password sources will not run")
             storeIsTrusted = false
         }
 
@@ -143,8 +146,9 @@ final class ConnectionStorage {
         do {
             let data = try encoder.encode(storedConnections)
             try data.write(to: fileURL, options: .atomic)
-            ConnectionStoreIntegrity.stamp(data, fileURL: fileURL)
-            storeIsTrusted = true
+            // Trust follows the tag. If no tag could be written, later edits are undetectable,
+            // so the store is not treated as trusted.
+            storeIsTrusted = ConnectionStoreIntegrity.shared.stamp(data, fileURL: fileURL)
             cachedConnections = nil
             return true
         } catch {

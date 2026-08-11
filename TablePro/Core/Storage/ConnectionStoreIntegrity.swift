@@ -15,7 +15,12 @@ import Foundation
 import os
 import Security
 
-enum ConnectionStoreIntegrity {
+protocol IntegrityKeySource: Sendable {
+    /// The key this device signs its connection store with, or nil when no key can be obtained.
+    func key() -> SymmetricKey?
+}
+
+struct ConnectionStoreIntegrity: Sendable {
     enum Verdict: Equatable {
         /// The tag matches, so the file is the one TablePro last wrote.
         case trusted
@@ -23,40 +28,42 @@ enum ConnectionStoreIntegrity {
         case unstamped
         /// A tag exists and does not match. The file changed outside TablePro.
         case modified
+        /// No key, so nothing can be said either way. Treated as untrusted rather than assumed
+        /// good, for the same reason an unreadable certificate authority fails a connection.
+        case unavailable
     }
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionStoreIntegrity")
+    static let shared = ConnectionStoreIntegrity()
 
-    private static let keychainService = "com.TablePro"
-    private static let keychainAccount = "com.TablePro.connectionStoreIntegrityKey"
-    private static let keyByteCount = 32
+    private let keySource: any IntegrityKeySource
 
-    private static let lock = NSLock()
-    nonisolated(unsafe) private static var cachedKey: SymmetricKey?
+    init(keySource: any IntegrityKeySource = KeychainIntegrityKeySource()) {
+        self.keySource = keySource
+    }
 
     static func tagURL(for fileURL: URL) -> URL {
         fileURL.appendingPathExtension("hmac")
     }
 
-    static func verify(_ data: Data, fileURL: URL) -> Verdict {
-        guard let key = resolveKey() else { return .unstamped }
-        guard let storedTag = try? Data(contentsOf: tagURL(for: fileURL)), !storedTag.isEmpty else {
+    func verify(_ data: Data, fileURL: URL) -> Verdict {
+        guard let key = keySource.key() else { return .unavailable }
+        guard let storedTag = try? Data(contentsOf: Self.tagURL(for: fileURL)), !storedTag.isEmpty else {
             return .unstamped
         }
 
         let expected = Data(HMAC<SHA256>.authenticationCode(for: data, using: key))
-        return constantTimeEquals(expected, storedTag) ? .trusted : .modified
+        return Self.constantTimeEquals(expected, storedTag) ? .trusted : .modified
     }
 
     @discardableResult
-    static func stamp(_ data: Data, fileURL: URL) -> Bool {
-        guard let key = resolveKey() else { return false }
+    func stamp(_ data: Data, fileURL: URL) -> Bool {
+        guard let key = keySource.key() else { return false }
         let tag = Data(HMAC<SHA256>.authenticationCode(for: data, using: key))
         do {
-            try tag.write(to: tagURL(for: fileURL), options: .atomic)
+            try tag.write(to: Self.tagURL(for: fileURL), options: .atomic)
             return true
         } catch {
-            logger.error("Could not write the connection store tag: \(error.localizedDescription)")
+            Self.logger.error("Could not write the connection store tag: \(error.localizedDescription)")
             return false
         }
     }
@@ -70,32 +77,43 @@ enum ConnectionStoreIntegrity {
         return difference == 0
     }
 
-    // MARK: - Key material
+    fileprivate static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionStoreIntegrity")
+}
 
-    private static func resolveKey() -> SymmetricKey? {
-        lock.lock()
-        defer { lock.unlock() }
+/// Holds the key in the keychain under the app's own access control, device local so a tag
+/// written on one Mac is never compared against a file on another.
+struct KeychainIntegrityKeySource: IntegrityKeySource {
+    private static let service = "com.TablePro"
+    private static let account = "com.TablePro.connectionStoreIntegrityKey"
+    private static let byteCount = 32
 
-        if let cachedKey { return cachedKey }
-        if let existing = readKey() {
-            cachedKey = existing
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cached: SymmetricKey?
+
+    func key() -> SymmetricKey? {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+
+        if let cached = Self.cached { return cached }
+        if let existing = Self.read() {
+            Self.cached = existing
             return existing
         }
-        guard let created = createKey() else { return nil }
-        cachedKey = created
+        guard let created = Self.create() else { return nil }
+        Self.cached = created
         return created
     }
 
     private static func baseQuery() -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
             kSecUseDataProtectionKeychain as String: true,
         ]
     }
 
-    private static func readKey() -> SymmetricKey? {
+    private static func read() -> SymmetricKey? {
         var query = baseQuery()
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -103,16 +121,16 @@ enum ConnectionStoreIntegrity {
         var result: AnyObject?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let data = result as? Data,
-              data.count == keyByteCount else {
+              data.count == byteCount else {
             return nil
         }
         return SymmetricKey(data: data)
     }
 
-    private static func createKey() -> SymmetricKey? {
-        var bytes = [UInt8](repeating: 0, count: keyByteCount)
+    private static func create() -> SymmetricKey? {
+        var bytes = [UInt8](repeating: 0, count: byteCount)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
-            logger.error("Could not generate a connection store integrity key")
+            ConnectionStoreIntegrity.logger.error("Could not generate a connection store integrity key")
             return nil
         }
 
@@ -122,7 +140,9 @@ enum ConnectionStoreIntegrity {
 
         let status = SecItemAdd(addQuery as CFDictionary, nil)
         guard status == errSecSuccess else {
-            logger.error("Could not store the connection store integrity key (OSStatus \(status))")
+            ConnectionStoreIntegrity.logger.error(
+                "Could not store the connection store integrity key (OSStatus \(status))"
+            )
             return nil
         }
         return SymmetricKey(data: Data(bytes))
