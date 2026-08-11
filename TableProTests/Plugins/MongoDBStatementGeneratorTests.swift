@@ -646,8 +646,10 @@ struct MongoDBStatementGeneratorTests {
         }
     }
 
-    @Test("Single delete without _id falls back to all-field match")
-    func singleDeleteNoIdFallback() {
+    /// An all-field filter cannot express a binary value and drops every column it cannot
+    /// stringify, so it deletes the first partial match rather than the intended document.
+    @Test("A collection with no _id column produces no delete instead of an all-field match")
+    func singleDeleteWithoutIdColumnIsSkipped() {
         let gen = MongoDBStatementGenerator(
             collectionName: "users",
             columns: ["name", "email"]
@@ -667,11 +669,7 @@ struct MongoDBStatementGeneratorTests {
             insertedRowIndices: []
         )
 
-        #expect(results.count == 1)
-        let stmt = results[0].statement
-        #expect(stmt.contains("deleteOne"))
-        #expect(stmt.contains("\"email\": \"alice@example.com\""))
-        #expect(stmt.contains("\"name\": \"Alice\""))
+        #expect(results.isEmpty)
     }
 
     @Test("Delete not in deletedRowIndices is skipped")
@@ -900,6 +898,141 @@ struct MongoDBStatementGeneratorTests {
         #expect(results.count == 1)
         #expect(results[0].statement.contains("\"tags\": [1, 2, 3]"))
     }
+    // MARK: - Binary UUID round trip
+
+    private static let uuid = "8cd003eb-4a25-4324-9332-88fce2da0d1a"
+    private static let javaBase64 = "JEMlSusD0IwaDdri/Igykw=="
+    private static let standardBase64 = "jNAD60olQySTMoj84toNGg=="
+
+    @Test("Editing a legacy UUID field writes BSON binary, not a string")
+    func updateWritesLegacyUuidBinary() {
+        let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id", "ref"])
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (
+                    columnIndex: 1,
+                    columnName: "ref",
+                    oldValue: .null,
+                    newValue: .text("LegacyJavaUUID(\"\(Self.uuid)\")")
+                )
+            ],
+            originalRow: ["507f1f77bcf86cd799439011", .null]
+        )
+
+        let results = gen.generateStatements(
+            from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        )
+
+        #expect(results.count == 1)
+        let stmt = results[0].statement
+        #expect(stmt.contains("\"subType\": \"03\""))
+        #expect(stmt.contains(Self.javaBase64))
+        #expect(!stmt.contains("\"ref\": \"LegacyJavaUUID"))
+    }
+
+    @Test("Inserting a standard UUID writes BSON binary subtype 4")
+    func insertWritesStandardUuidBinary() {
+        let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id", "ref"])
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+
+        let results = gen.generateStatements(
+            from: [change],
+            insertedRowData: [0: [nil, .text("UUID(\"\(Self.uuid)\")")]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        #expect(results.count == 1)
+        #expect(results[0].statement.contains("\"subType\": \"04\""))
+        #expect(results[0].statement.contains(Self.standardBase64))
+    }
+
+    @Test("An _id that is a legacy UUID filters on binary, not on the wrapper text")
+    func updateFiltersOnBinaryId() {
+        let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id", "name"])
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                (columnIndex: 1, columnName: "name", oldValue: .text("a"), newValue: .text("b"))
+            ],
+            originalRow: [.text("LegacyJavaUUID(\"\(Self.uuid)\")"), .text("a")]
+        )
+
+        let results = gen.generateStatements(
+            from: [change], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        )
+
+        #expect(results.count == 1)
+        let stmt = results[0].statement
+        #expect(stmt.contains("updateOne({\"_id\": {\"$binary\""))
+        #expect(stmt.contains(Self.javaBase64))
+    }
+
+    @Test("Deleting a document with a legacy UUID _id filters on binary")
+    func deleteFiltersOnBinaryId() {
+        let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id", "name"])
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .delete,
+            cellChanges: [],
+            originalRow: [.text("LegacyJavaUUID(\"\(Self.uuid)\")"), .text("a")]
+        )
+
+        let results = gen.generateStatements(
+            from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
+        )
+
+        #expect(results.count == 1)
+        #expect(results[0].statement.contains("deleteOne({\"_id\": {\"$binary\""))
+    }
+
+    @Test("A bulk delete of UUID _ids uses binary values inside $in")
+    func bulkDeleteUsesBinaryIds() {
+        let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id"])
+        let changes = [
+            PluginRowChange(
+                rowIndex: 0, type: .delete, cellChanges: [],
+                originalRow: [.text("LegacyJavaUUID(\"\(Self.uuid)\")")]
+            ),
+            PluginRowChange(
+                rowIndex: 1, type: .delete, cellChanges: [],
+                originalRow: [.text("UUID(\"\(Self.uuid)\")")]
+            )
+        ]
+
+        let results = gen.generateStatements(
+            from: changes, insertedRowData: [:], deletedRowIndices: [0, 1], insertedRowIndices: []
+        )
+
+        #expect(results.count == 1)
+        let stmt = results[0].statement
+        #expect(stmt.contains("deleteMany"))
+        #expect(stmt.contains("\"subType\": \"03\""))
+        #expect(stmt.contains("\"subType\": \"04\""))
+    }
+
+    /// Matching on the remaining fields cannot express a binary value, so it would
+    /// delete the first partial match instead of the intended document.
+    @Test("A delete without a usable _id is skipped rather than matching on other fields")
+    func deleteWithoutIdIsSkipped() {
+        let gen = MongoDBStatementGenerator(collectionName: "docs", columns: ["_id", "name"])
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .delete,
+            cellChanges: [],
+            originalRow: [.bytes(Data([0x01, 0x02])), .text("Alice")]
+        )
+
+        let results = gen.generateStatements(
+            from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
+        )
+
+        #expect(results.isEmpty)
+    }
+
 }
 
 private func firstArgumentObject(in statement: String) -> [String: Any]? {

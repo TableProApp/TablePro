@@ -329,6 +329,8 @@ targets:
       - Plugins/JSONImportPlugin/JSONImportParsing.swift
       - Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
+      - Plugins/MQLExportPlugin/MQLExportHelpers.swift
+      - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
       - Plugins/MongoDBDriverPlugin/MongoDBAuthSourceResolver.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCreateDatabasePlan.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFindLimitPolicy.swift

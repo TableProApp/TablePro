@@ -167,13 +167,7 @@ struct MongoDBStatementGenerator {
                   let idValue = originalRow[idIndex].asText else {
                 return nil
             }
-            if isObjectIdString(idValue) {
-                idValues.append("{\"$oid\": \"\(idValue)\"}")
-            } else if Int64(idValue) != nil {
-                idValues.append(idValue)
-            } else {
-                idValues.append("\"\(escapeJsonString(idValue))\"")
-            }
+            idValues.append(idValueJson(idValue))
         }
 
         let inList = idValues.joined(separator: ", ")
@@ -184,29 +178,15 @@ struct MongoDBStatementGenerator {
     // MARK: - DELETE
 
     private func generateDelete(for change: PluginRowChange) -> (statement: String, parameters: [PluginCellValue])? {
-        guard let originalRow = change.originalRow else { return nil }
-
-        // Try to use _id first
-        if let idIndex = idColumnIndex,
-           idIndex < originalRow.count,
-           let idValue = originalRow[idIndex].asText {
-            let filterJson = buildIdFilter(idValue)
-            let shell = "\(collectionAccessor).deleteOne(\(filterJson))"
-            return (statement: shell, parameters: [])
+        guard let originalRow = change.originalRow,
+              let idIndex = idColumnIndex,
+              idIndex < originalRow.count,
+              let idValue = originalRow[idIndex].asText else {
+            Self.logger.warning("Skipping DELETE for collection '\(self.collectionName)' - no _id value")
+            return nil
         }
 
-        // Fallback: match all fields
-        var filter: [String: String] = [:]
-        for (index, column) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
-            if let value = originalRow[index].asText {
-                filter[column] = value
-            }
-        }
-
-        guard !filter.isEmpty else { return nil }
-
-        let filterJson = serializeDocument(filter)
+        let filterJson = buildIdFilter(idValue)
         let shell = "\(collectionAccessor).deleteOne(\(filterJson))"
         return (statement: shell, parameters: [])
     }
@@ -215,13 +195,20 @@ struct MongoDBStatementGenerator {
 
     /// Build a filter document for an _id value (Extended JSON for driver execution).
     private func buildIdFilter(_ idValue: String) -> String {
+        "{\"_id\": \(idValueJson(idValue))}"
+    }
+
+    private func idValueJson(_ idValue: String) -> String {
+        if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(idValue) {
+            return binary
+        }
         if isObjectIdString(idValue) {
-            return "{\"_id\": {\"$oid\": \"\(idValue)\"}}"
+            return "{\"$oid\": \"\(idValue)\"}"
         }
         if Int64(idValue) != nil {
-            return "{\"_id\": \(idValue)}"
+            return idValue
         }
-        return "{\"_id\": \"\(escapeJsonString(idValue))\"}"
+        return "\"\(escapeJsonString(idValue))\""
     }
 
     /// Check if a string looks like a MongoDB ObjectId (24 hex characters)
@@ -249,6 +236,9 @@ struct MongoDBStatementGenerator {
         }
         if MongoDBJsonNumber.isValid(value) {
             return value
+        }
+        if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(value) {
+            return binary
         }
         // JSON object or array
         if (value.hasPrefix("{") && value.hasSuffix("}")) ||

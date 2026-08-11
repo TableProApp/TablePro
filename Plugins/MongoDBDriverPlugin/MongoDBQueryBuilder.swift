@@ -115,12 +115,18 @@ struct MongoDBQueryBuilder {
 
         switch op {
         case "=":
+            if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(value) {
+                return "\"\(field)\": \(binary)"
+            }
             if let oid = objectIdJson(value) {
                 return "\"$or\": [{\"\(field)\": \(oid)}, {\"\(field)\": \(jsonValue(value))}]"
             }
             guard ignoresCase else { return "\"\(field)\": \(jsonValue(value))" }
             return "\"\(field)\": \(Self.regexBody(pattern: anchoredPattern(value), ignoresCase: true))"
         case "!=":
+            if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(value) {
+                return "\"\(field)\": {\"$ne\": \(binary)}"
+            }
             if let oid = objectIdJson(value) {
                 return "\"\(field)\": {\"$nin\": [\(oid), \(jsonValue(value))]}"
             }
@@ -198,6 +204,7 @@ struct MongoDBQueryBuilder {
         if value == "true" || value == "false" { return value }
         if value == "null" { return value }
         if MongoDBJsonNumber.isValid(value) { return value }
+        if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(value) { return binary }
         return "\"\(Self.escapeJsonString(value))\""
     }
 
@@ -230,7 +237,10 @@ struct MongoDBQueryBuilder {
             .map { String($0).trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
             .map { item in
-                "{\"\(field)\": \(Self.regexBody(pattern: anchoredPattern(item), ignoresCase: true))}"
+                if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(item) {
+                    return "{\"\(field)\": \(binary)}"
+                }
+                return "{\"\(field)\": \(Self.regexBody(pattern: anchoredPattern(item), ignoresCase: true))}"
             }
         let logicOp = negated ? "$nor" : "$or"
         return "\"\(logicOp)\": [\(clauses.joined(separator: ", "))]"

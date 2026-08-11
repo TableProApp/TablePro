@@ -33,7 +33,12 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     init(config: DriverConnectionConfig) {
         self.config = config
         self.currentDb = config.database
+        self.uuidRepresentation = MongoDBUuidRepresentation.resolve(
+            config.additionalFields["mongoUuidRepresentation"]
+        )
     }
+
+    private let uuidRepresentation: MongoDBUuidRepresentation
 
     private static let systemDatabases: Set<String> = ["admin", "local", "config"]
 
@@ -76,7 +81,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             useSrv: useSrv,
             authMechanism: authMechanism,
             replicaSet: replicaSet,
-            extraUriParams: extraParams
+            extraUriParams: extraParams,
+            uuidRepresentation: uuidRepresentation
         )
 
         try await conn.connect()
@@ -231,10 +237,14 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let columns = BsonDocumentFlattener.unionColumns(from: docs)
-        let types = BsonDocumentFlattener.columnTypes(for: columns, documents: docs)
+        let kinds = BsonDocumentFlattener.columnKinds(
+            for: columns, documents: docs, representation: uuidRepresentation
+        )
 
         return columns.enumerated().map { index, name in
-            let typeName = bsonTypeToString(types[index])
+            let typeName = BsonDocumentFlattener.typeName(
+                for: kinds[index], representation: uuidRepresentation
+            )
             return PluginColumnInfo(
                 name: name, dataType: typeName, isNullable: name != "_id", isPrimaryKey: name == "_id",
                 defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
@@ -977,9 +987,13 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let columns = BsonDocumentFlattener.unionColumns(from: documents)
-        let bsonTypes = BsonDocumentFlattener.columnTypes(for: columns, documents: documents)
-        let typeNames = bsonTypes.map { bsonTypeToString($0) }
-        let rows = BsonDocumentFlattener.flatten(documents: documents, columns: columns)
+        let kinds = BsonDocumentFlattener.columnKinds(
+            for: columns, documents: documents, representation: uuidRepresentation
+        )
+        let typeNames = kinds.map { BsonDocumentFlattener.typeName(for: $0, representation: uuidRepresentation) }
+        let rows = BsonDocumentFlattener.flatten(
+            documents: documents, columns: columns, kinds: kinds, representation: uuidRepresentation
+        )
 
         return PluginQueryResult(
             columns: columns, columnTypeNames: typeNames,
@@ -990,23 +1004,6 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     // MARK: - Helpers
-
-    private func bsonTypeToString(_ type: Int32) -> String {
-        switch type {
-        case 1: return "FLOAT"
-        case 2: return "VARCHAR"
-        case 3: return "JSON"
-        case 4: return "JSON"
-        case 5: return "BLOB"
-        case 7: return "VARCHAR"
-        case 8: return "BOOLEAN"
-        case 9: return "TIMESTAMP"
-        case 10: return "VARCHAR"
-        case 16: return "INTEGER"
-        case 18: return "BIGINT"
-        default: return "VARCHAR"
-        }
-    }
 
     private func escapeJsonString(_ value: String) -> String {
         var result = ""
@@ -1030,7 +1027,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func prettyJson(_ value: Any) -> String {
-        let sanitized = BsonDocumentFlattener.sanitizeForJson(value)
+        let sanitized = BsonDocumentFlattener.sanitizeForJson(value, representation: uuidRepresentation)
         guard JSONSerialization.isValidJSONObject(sanitized),
               let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys, .prettyPrinted]),
               let json = String(data: data, encoding: .utf8) else {

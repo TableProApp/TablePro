@@ -751,4 +751,77 @@ struct MongoDBQueryBuilderTests {
         let inner = doc?["name"] as? [String: Any]
         #expect(inner?["$regex"] as? String == "a\\.b")
     }
+
+    // MARK: - Binary UUID filters
+
+    private static let uuid = "8cd003eb-4a25-4324-9332-88fce2da0d1a"
+    private static let javaBase64 = "JEMlSusD0IwaDdri/Igykw=="
+
+    @Test("Equality on a UUID wrapper filters on BSON binary, not on the wrapper text")
+    func equalityUsesBinary() {
+        let doc = builder.buildFilterDocument(
+            from: [
+                PluginQueryFilter(
+                    column: "ref", op: "=", value: "LegacyJavaUUID(\"\(Self.uuid)\")"
+                )
+            ]
+        )
+        #expect(doc.contains("\"$binary\""))
+        #expect(doc.contains("\"subType\": \"03\""))
+        #expect(doc.contains(Self.javaBase64))
+    }
+
+    /// A binary field has no case, so a case-insensitive regex would match nothing.
+    @Test("A case-insensitive equality on a UUID wrapper still matches exactly")
+    func caseInsensitiveEqualityStaysExact() {
+        let doc = builder.buildFilterDocument(
+            from: [
+                PluginQueryFilter(
+                    column: "ref",
+                    op: "=",
+                    value: "LegacyJavaUUID(\"\(Self.uuid)\")",
+                    isCaseSensitive: false
+                )
+            ]
+        )
+        #expect(doc.contains("\"$binary\""))
+        #expect(!doc.contains("$regex"))
+    }
+
+    @Test("Inequality on a UUID wrapper uses $ne with binary")
+    func inequalityUsesBinary() {
+        let doc = builder.buildFilterDocument(
+            from: [
+                PluginQueryFilter(
+                    column: "ref", op: "!=", value: "UUID(\"\(Self.uuid)\")"
+                )
+            ]
+        )
+        #expect(doc.contains("\"$ne\""))
+        #expect(doc.contains("\"subType\": \"04\""))
+    }
+
+    @Test("IN over UUID wrappers uses binary values")
+    func inListUsesBinary() {
+        let doc = builder.buildFilterDocument(
+            from: [
+                PluginQueryFilter(
+                    column: "ref",
+                    op: "IN",
+                    value: "UUID(\"\(Self.uuid)\"), LegacyJavaUUID(\"\(Self.uuid)\")"
+                )
+            ]
+        )
+        #expect(doc.contains("\"$in\""))
+        #expect(doc.contains("\"subType\": \"04\""))
+    }
+
+    @Test("A plain string value is unaffected by UUID handling")
+    func plainStringUnaffected() {
+        let doc = builder.buildFilterDocument(
+            from: [PluginQueryFilter(column: "name", op: "=", value: "UUID-ish")]
+        )
+        #expect(!doc.contains("$binary"))
+    }
+
 }

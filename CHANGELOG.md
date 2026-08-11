@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - SSL settings on mobile for MySQL, PostgreSQL and Redis: a mode picker plus CA, client certificate and client key. Import a PEM file, paste one, or use a PKCS#12 file. (#2083)
+- Legacy UUID Encoding on a MongoDB connection, so binary UUIDs written by the Java, C# or Python drivers read as UUIDs instead of hex. Filters, edits and MQL exports write the same bytes back. (#2086)
 
 ### Changed
 
 - Mobile keeps remote connections open when you switch apps.
+- MongoDB shows a standard binary UUID as `UUID("...")` everywhere, including in exports.
 - Mobile no longer copies database passwords to iCloud Keychain unless you turn on Sync Passwords. Mac already worked this way.
 - An imported connection link now shows the startup SQL and driver options it carries, before you add it.
 
@@ -38,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- MongoDB no longer prints a binary field nested inside a document as a UUID when it is not one, or labels a UUID with the wrong byte order. (#2086)
+- Deleting a MongoDB document with a binary `_id` deletes that document. It used to match on the other fields and could remove the wrong one.
+- TablePro Mobile no longer gets killed by iOS when you leave the app with a DuckDB file open.
 - Mobile sends the client certificate and key on MySQL and PostgreSQL connections that use mutual TLS. (#2083)
 - Editing a connection on mobile no longer wipes its SSL settings and per-database options, which then synced the loss back to the Mac. (#2083)
 - A connection whose certificate is missing now says so, instead of connecting without it while still demanding server verification. (#2083)

@@ -230,6 +230,10 @@ struct ConnectionURLFormatter {
         if connection.mongoUseSrv {
             params.append("mongoUseSrv=true")
         }
+        if let uuidRepresentation = connection.additionalFields["mongoUuidRepresentation"],
+           !uuidRepresentation.isEmpty {
+            params.append("uuidRepresentation=\(percentEncodeQueryValue(uuidRepresentation))")
+        }
 
         return params.joined(separator: "&")
     }

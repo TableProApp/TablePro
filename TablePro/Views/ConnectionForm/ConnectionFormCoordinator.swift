@@ -825,6 +825,8 @@ final class ConnectionFormCoordinator {
                 writeFieldByRegistry("mongoAuthMechanism", value: value)
             case "replicaSet":
                 writeFieldByRegistry("mongoReplicaSet", value: value)
+            case "uuidRepresentation":
+                writeFieldByRegistry("mongoUuidRepresentation", value: value)
             default:
                 writeFieldByRegistry("mongoParam_\(key)", value: value)
             }

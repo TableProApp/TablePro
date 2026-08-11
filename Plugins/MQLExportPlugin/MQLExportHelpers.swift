@@ -37,6 +37,9 @@ enum MQLExportHelpers {
         if Double(value) != nil, value.contains(".") {
             return value
         }
+        if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(value) {
+            return binary
+        }
         if (value.hasPrefix("{") && value.hasSuffix("}")) ||
             (value.hasPrefix("[") && value.hasSuffix("]")) {
             if let data = value.data(using: .utf8),

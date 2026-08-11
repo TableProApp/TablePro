@@ -67,6 +67,7 @@ final class MongoDBConnection: @unchecked Sendable {
     private let authMechanism: String?
     private let replicaSet: String?
     private let extraUriParams: [String: String]
+    let uuidRepresentation: MongoDBUuidRepresentation
 
     private let controlQueue = DispatchQueue(label: "com.TablePro.mongodb.control", qos: .userInitiated)
 
@@ -131,7 +132,8 @@ final class MongoDBConnection: @unchecked Sendable {
         useSrv: Bool = false,
         authMechanism: String? = nil,
         replicaSet: String? = nil,
-        extraUriParams: [String: String] = [:]
+        extraUriParams: [String: String] = [:],
+        uuidRepresentation: MongoDBUuidRepresentation = .unspecified
     ) {
         self.host = host
         self.port = port
@@ -150,6 +152,7 @@ final class MongoDBConnection: @unchecked Sendable {
         self.authMechanism = authMechanism
         self.replicaSet = replicaSet
         self.extraUriParams = extraUriParams
+        self.uuidRepresentation = uuidRepresentation
         queue.setSpecific(key: Self.queueKey, value: ObjectIdentifier(self))
     }
 
@@ -963,7 +966,9 @@ extension MongoDBConnection {
                 }
                 if let b = dict["$binary"] as? [String: Any],
                    let base64 = b["base64"] as? String {
-                    return Data(base64Encoded: base64) ?? base64
+                    guard let data = Data(base64Encoded: base64) else { return base64 }
+                    let subtype = (b["subType"] as? String).flatMap { UInt8($0, radix: 16) } ?? 0
+                    return MongoDBBinaryValue(data: data, subtype: subtype)
                 }
                 if let ts = dict["$timestamp"] as? [String: Any],
                    let t = ts["t"], let i = ts["i"] {

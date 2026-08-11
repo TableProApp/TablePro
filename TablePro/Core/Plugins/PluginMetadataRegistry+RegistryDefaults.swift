@@ -94,6 +94,17 @@ extension PluginMetadataRegistry {
                                 .init(value: "2", label: "2"),
                                 .init(value: "3", label: "3")
                             ])
+                        ),
+                        ConnectionField(
+                            id: "mongoUuidRepresentation",
+                            label: String(localized: "Legacy UUID Encoding"),
+                            fieldType: .dropdown(options: [
+                                .init(value: "", label: String(localized: "Do Not Decode")),
+                                .init(value: "javaLegacy", label: String(localized: "Java")),
+                                .init(value: "csharpLegacy", label: String(localized: "C#")),
+                                .init(value: "pythonLegacy", label: String(localized: "Python"))
+                            ]),
+                            section: .advanced
                         )
                     ],
                     category: .document,
