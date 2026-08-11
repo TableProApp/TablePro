@@ -131,6 +131,20 @@ actor SSHTunnel {
         session = sess
     }
 
+    func hostKey() throws -> (keyData: Data, keyType: String) {
+        guard let session else {
+            throw SSHTunnelError.handshakeFailed("No active session")
+        }
+
+        var keyLength = 0
+        var keyType: Int32 = 0
+        guard let keyPtr = libssh2_session_hostkey(session, &keyLength, &keyType) else {
+            throw SSHTunnelError.hostKeyRejected("The server did not present a host key.")
+        }
+
+        return (Data(bytes: keyPtr, count: keyLength), HostKeyStore.keyTypeName(keyType))
+    }
+
     // MARK: - Authentication
 
     func authenticatePassword(username: String, password: String) throws {

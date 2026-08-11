@@ -40,6 +40,7 @@ struct TableProMobileApp: App {
                 }
             }
             .animation(.default, value: lockState.isLocked)
+            .hostKeyPrompt()
             .onOpenURL { url in
                 if url.isFileURL, url.pathExtension.lowercased() == "tablepro" {
                     appState.pendingImportURL = url
