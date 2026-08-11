@@ -54,4 +54,46 @@ struct MQLExportHelpersTests {
     func ordinaryValuesUnchanged(input: String, expected: String) {
         #expect(MQLExportHelpers.mqlJsonValue(for: input) == expected)
     }
+
+    @Test("An ObjectId column exports as an ObjectId constructor")
+    func objectIdExportsAsConstructor() {
+        let value = MQLExportHelpers.mqlTextValue(
+            for: "507f1f77bcf86cd799439011", columnTypeName: "ObjectId"
+        )
+        #expect(value == "ObjectId(\"507f1f77bcf86cd799439011\")")
+    }
+
+    @Test("A value that is not a valid ObjectId falls back to a quoted string")
+    func invalidObjectIdFallsBack() {
+        #expect(MQLExportHelpers.mqlTextValue(for: "nope", columnTypeName: "ObjectId") == "\"nope\"")
+    }
+
+    @Test("A timestamp column exports as an ISODate constructor")
+    func timestampExportsAsIsoDate() {
+        let value = MQLExportHelpers.mqlTextValue(
+            for: "2026-01-01T00:00:00Z", columnTypeName: "TIMESTAMP"
+        )
+        #expect(value == "ISODate(\"2026-01-01T00:00:00Z\")")
+
+        let fractional = MQLExportHelpers.mqlTextValue(
+            for: "2026-01-01T00:00:00.123Z", columnTypeName: "TIMESTAMP"
+        )
+        #expect(fractional == "ISODate(\"2026-01-01T00:00:00.123Z\")")
+    }
+
+    @Test("A non-date in a timestamp column falls back to a quoted string")
+    func invalidTimestampFallsBack() {
+        #expect(MQLExportHelpers.mqlTextValue(for: "later", columnTypeName: "TIMESTAMP") == "\"later\"")
+    }
+
+    @Test("An ordinary column is unaffected by the typed-scalar path")
+    func ordinaryColumnUnaffected() {
+        #expect(MQLExportHelpers.mqlTextValue(for: "Alice", columnTypeName: "VARCHAR") == "\"Alice\"")
+        #expect(MQLExportHelpers.mqlTextValue(for: "42", columnTypeName: "INTEGER") == "42")
+        #expect(
+            MQLExportHelpers.mqlTextValue(for: "507f1f77bcf86cd799439011", columnTypeName: "VARCHAR")
+                == "\"507f1f77bcf86cd799439011\""
+        )
+    }
+
 }

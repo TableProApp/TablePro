@@ -941,7 +941,7 @@ extension MongoDBConnection {
     static func unwrapExtendedJson(_ value: Any) -> Any {
         if let dict = value as? [String: Any] {
             if dict.count == 1 {
-                if let oid = dict["$oid"] as? String { return oid }
+                if let oid = dict["$oid"] as? String { return MongoDBObjectId(hex: oid) }
                 if let s = dict["$numberInt"] as? String, let n = Int32(s) { return n }
                 if let s = dict["$numberLong"] as? String, let n = Int64(s) { return n }
                 if let s = dict["$numberDouble"] as? String, let n = Double(s) { return n }

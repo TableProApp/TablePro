@@ -1,5 +1,19 @@
 import Foundation
 
+public struct MongoDBObjectId: Sendable, Hashable, CustomStringConvertible {
+    public let hex: String
+
+    public init(hex: String) {
+        self.hex = hex
+    }
+
+    public var description: String { hex }
+
+    public var isValid: Bool {
+        hex.count == 24 && hex.allSatisfy { $0.isHexDigit && $0.isASCII }
+    }
+}
+
 public struct MongoDBBinaryValue: Sendable, Hashable {
     public let data: Data
     public let subtype: UInt8

@@ -20,6 +20,7 @@ enum BsonValueKind: Hashable {
     case null
     case int32
     case int64
+    case objectId
     case uuid
     case legacyUuid
 
@@ -118,6 +119,7 @@ struct BsonDocumentFlattener {
         case .date: return "TIMESTAMP"
         case .int32: return "INTEGER"
         case .int64: return "BIGINT"
+        case .objectId: return "ObjectId"
         case .uuid:
             return MongoDBUuidCodec.wrapperTag(
                 forSubtype: MongoDBUuidCodec.standardUuidSubtype, representation: representation
@@ -144,6 +146,8 @@ struct BsonDocumentFlattener {
             return displayString(for: num)
         case let date as Date:
             return iso8601Formatter.string(from: date)
+        case let objectId as MongoDBObjectId:
+            return objectId.hex
         case let binary as MongoDBBinaryValue:
             return binaryString(for: binary, representation: representation)
         case let data as Data:
@@ -204,6 +208,8 @@ struct BsonDocumentFlattener {
             return dict.mapValues { sanitizeForJson($0, representation: representation) }
         case let array as [Any]:
             return array.map { sanitizeForJson($0, representation: representation) }
+        case let objectId as MongoDBObjectId:
+            return objectId.hex
         case let binary as MongoDBBinaryValue:
             return binaryString(for: binary, representation: representation)
         case let data as Data:
@@ -286,6 +292,8 @@ struct BsonDocumentFlattener {
             return objCType == "q" || objCType == "l" ? .int64 : .int32
         case is String:
             return .string
+        case is MongoDBObjectId:
+            return .objectId
         case is Date:
             return .date
         case let binary as MongoDBBinaryValue:
