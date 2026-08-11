@@ -85,7 +85,9 @@ The setting only changes how TablePro reads the bytes; it never rewrites what is
 
 **Explain**: Press `Cmd+Option+E` on an MQL statement. TablePro converts `find`, `aggregate`, `countDocuments`, update, delete, and `findOneAnd*` calls into `db.runCommand({"explain": ..., "verbosity": "executionStats"})`.
 
-**MQL Shell Queries**: Filters and pipelines are parsed as JSON and Extended JSON, not JavaScript. Quote every key, operators included: `{age: {$gte: 18}}` fails with a parse error. mongosh helpers like `ISODate("2025-01-01")` fail too; write `{"$date": "2025-01-01T00:00:00Z"}`. The editor has no comment syntax, so a `//` line becomes part of the statement.
+**MQL Shell Queries**: Filters and pipelines are parsed as JSON and Extended JSON, not JavaScript. Quote every key, operators included: `{age: {$gte: 18}}` fails with a parse error. The editor has no comment syntax, so a `//` line becomes part of the statement.
+
+Value constructors are translated for you, so a value copied out of the grid can be pasted straight into a filter: `ObjectId`, `ISODate`, `Date`, `NumberInt`, `NumberLong`, `NumberDecimal`, `Timestamp`, `BinData`, `HexData`, `MinKey`, `MaxKey`, `UUID`, and the legacy UUID names. `db.users.find({_id: ObjectId("507f1f77bcf86cd799439011")})` works. A constructor inside a string is left alone, and a method name is never mistaken for one. Anything else JavaScript, including `new Date()`, arithmetic and regex literals like `/abc/i`, is still not evaluated.
 
 Find with a filter:
 

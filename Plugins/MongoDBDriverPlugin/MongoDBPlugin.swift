@@ -141,7 +141,13 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             CompletionEntry(label: ".findOneAndReplace", insertText: ".findOneAndReplace"),
             CompletionEntry(label: ".findOneAndDelete", insertText: ".findOneAndDelete"),
             CompletionEntry(label: ".countDocuments", insertText: ".countDocuments"),
-            CompletionEntry(label: ".createIndex", insertText: ".createIndex")
+            CompletionEntry(label: ".createIndex", insertText: ".createIndex"),
+            CompletionEntry(label: "ObjectId", insertText: "ObjectId"),
+            CompletionEntry(label: "ISODate", insertText: "ISODate"),
+            CompletionEntry(label: "NumberLong", insertText: "NumberLong"),
+            CompletionEntry(label: "NumberDecimal", insertText: "NumberDecimal"),
+            CompletionEntry(label: "BinData", insertText: "BinData"),
+            CompletionEntry(label: "UUID", insertText: "UUID")
         ]
     }
 

@@ -77,7 +77,8 @@ public struct MongoShellParser {
 
     /// Parse a MongoDB Shell expression into a MongoOperation
     public static func parse(_ input: String) throws -> MongoOperation {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = try MongoShellValueTranslator.translate(input)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
         if trimmed.isEmpty {
             throw MongoShellParseError.invalidSyntax("Empty query")

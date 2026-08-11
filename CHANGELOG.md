@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSL settings on mobile for MySQL, PostgreSQL and Redis: a mode picker plus CA, client certificate and client key. Import a PEM file, paste one, or use a PKCS#12 file. (#2083)
 - Legacy UUID Encoding on a MongoDB connection, so binary UUIDs written by the Java, C# or Python drivers read as UUIDs instead of hex. Filters, edits and MQL exports write the same bytes back. (#2086)
 
+### Added
+
+- The MongoDB editor accepts mongosh value constructors in filters and pipelines, so a value copied from the grid pastes straight into a query. Covers `ObjectId`, `ISODate`, `Date`, the `Number*` family, `Timestamp`, `BinData`, `HexData`, `MinKey`, `MaxKey` and the UUID names. (#2086)
+
 ### Changed
 
 - Mobile keeps remote connections open when you switch apps.
@@ -40,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- MQL export keeps a binary value's BSON subtype and writes it as a `BinData(...)` constructor, so running the script inserts the same bytes back. It wrote Extended JSON that mongosh reads as a plain object, and stamped every value as subtype 0. (#2086)
 - MongoDB no longer prints a binary field nested inside a document as a UUID when it is not one, or labels a UUID with the wrong byte order. (#2086)
 - Deleting a MongoDB document with a binary `_id` deletes that document. It used to match on the other fields and could remove the wrong one.
 - TablePro Mobile no longer gets killed by iOS when you leave the app with a DuckDB file open.
