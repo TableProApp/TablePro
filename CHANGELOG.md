@@ -10,6 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Mobile keeps remote connections open when you switch apps.
+- Mobile no longer copies database passwords to iCloud Keychain unless you turn on Sync Passwords. Mac already worked this way.
+- An imported connection link now shows the startup SQL and driver options it carries, before you add it.
+
+### Security
+
+- Mobile now checks the SSH server's host key before sending any credential, and asks you the first time it sees a server. It never checked at all, so anyone intercepting the connection received the SSH password.
+- Mobile no longer drops a connection's TLS verification settings when you save an unrelated edit.
+- libssh2 is patched against CVE-2026-55199, where a malicious SSH server could pin a CPU core before authentication.
+- An import link can no longer make TablePro fetch an AWS credential and send it to the link author's server.
+- An import link can no longer preset the fields that decide where a connection looks for its password.
+- A changed SSH host key is now reported as changed even when the server offers a different key type. Presenting a new key type used to get the milder first-use prompt.
+- Trusting an unknown SSH host key now takes a click. Return picks Cancel.
+- MySQL and MariaDB connections refuse a server's request to read a local file.
+- A plugin's signature is rechecked immediately before it is loaded, and again before a staged update replaces the installed copy.
+- Connections pulled from a team library no longer carry startup SQL or credential-resolution options.
+- ClickHouse Verify CA now reads a PEM certificate authority file, and refuses to connect when the file cannot be read. It used to fall back to the public root store without saying so.
+- Copy Connection String marks the clipboard item so clipboard-history apps leave it out of their history.
+- The MCP server refuses a request whose browser Origin is not on its allow list, which closes a DNS-rebinding route to the local port.
+- The MCP connection listing no longer names connections you set to AI Never.
+- Release and test workflows pin their third-party actions to an exact commit.
 
 ### Fixed
 

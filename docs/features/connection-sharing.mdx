@@ -77,6 +77,19 @@ tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&use
 
 TablePro also opens `tablepro://connect/<uuid>` URLs that launch a saved connection. There is no menu item for this form; build the URL from the connection's UUID. See [URL Scheme](/external-api/url-scheme#open-a-connection).
 
+### What a link cannot set
+
+A link comes from outside, so TablePro drops the settings that decide where a connection finds or sends a credential. These are ignored on import, whether they arrive from a link or a `.tablepro` file:
+
+- Any `aws*` option, including IAM authentication, the region, the profile name, and the RDS endpoint used to sign a token
+- `usePgpass`
+- `preTunnelHost` and `preTunnelPort`
+- `preConnectScript`
+- `promptForPassword`
+- `sslClientKeyPassphrase`
+
+Startup SQL and the remaining driver options do carry across, and the confirmation sheet lists them in full before you add the connection. Read the startup SQL: it runs on every connect, with your credentials.
+
 ## Encrypted Export <sup>Starter</sup>
 
 Include passwords in the export, protected by a passphrase.
