@@ -70,6 +70,10 @@ actor PluginInstaller {
         guard let stagedURL = stagedUpdates[pluginId] else {
             throw PluginError.notFound
         }
+        guard let stagedBundle = Bundle(url: stagedURL) else {
+            throw PluginError.invalidBundle("Cannot create bundle from \(stagedURL.lastPathComponent)")
+        }
+        try PluginCodeSignatureVerifier.verify(bundle: stagedBundle)
         let bundleName = stagedURL.deletingPathExtension().lastPathComponent
         let destURL = userPluginsDir.appendingPathComponent("\(bundleName).tableplugin", isDirectory: true)
         let finalURL = try Self.atomicReplace(stagedBundleURL: stagedURL, destURL: destURL)

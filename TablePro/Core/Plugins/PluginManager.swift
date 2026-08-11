@@ -549,6 +549,10 @@ final class PluginManager {
 
         try validateBundleVersions(bundle)
 
+        if source != .builtIn {
+            try PluginCodeSignatureVerifier.verify(bundle: bundle)
+        }
+
         try PluginBundleLoader.load(bundle)
 
         return bundle
