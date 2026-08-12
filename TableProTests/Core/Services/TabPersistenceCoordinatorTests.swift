@@ -388,7 +388,8 @@ struct TabPersistenceCoordinatorTests {
         let tabs = makeTabs(count: 3)
         coordinator.saveNowSync(
             windowedTabs: [(tabs[0], 0), (tabs[1], 1), (tabs[2], 1)],
-            selectedTabId: tabs[1].id
+            selectedTabId: tabs[1].id,
+            browseStates: [:]
         )
 
         let result = await coordinator.restoreFromDisk()

@@ -88,6 +88,7 @@ extension MainContentView {
             applyRestoredGroup(
                 group.tabs,
                 selectedTabId: group.selectedTabId,
+                browseState: group.browseState,
                 loadTiming: group.loadTiming,
                 consumeDeferredWhenKey: true
             )
@@ -138,15 +139,19 @@ extension MainContentView {
         )
 
         if openWindowCount == 1 {
-            restoreAsOnlyWindow(plan, result: result)
+            restoreAsOnlyWindow(plan, result: result, windowIndex: windowIndex)
         } else {
-            claimOwnTabs(plan, result: result, window: window)
+            claimOwnTabs(plan, result: result, windowIndex: windowIndex, window: window)
         }
     }
 
     /// The connection has one window, so this window restores what it kept and opens a window for every
     /// other group. Nothing has focus yet, so the tab the user left selected is brought to the front.
-    private func restoreAsOnlyWindow(_ plan: WindowGroupAssignment.Plan, result: RestoreResult) {
+    private func restoreAsOnlyWindow(
+        _ plan: WindowGroupAssignment.Plan,
+        result: RestoreResult,
+        windowIndex: Int
+    ) {
         let frontGroup = RestoreWindowPlan.resolveFrontGroup(
             ownTabIds: plan.ownTabs.map(\.id),
             orphanedGroups: plan.orphanedGroups.map { ($0.windowGroupIndex, $0.tabs.map(\.id)) },
@@ -156,8 +161,7 @@ extension MainContentView {
         applyRestoredGroup(
             plan.ownTabs,
             selectedTabId: plan.ownSelectedTabId ?? plan.ownTabs.first?.id,
-            activeDatabase: result.lastActiveDatabase,
-            activeSchema: result.lastActiveSchema,
+            browseState: result.browseState(forWindowGroupIndex: windowIndex),
             loadTiming: frontGroup == .own ? .immediate : .deferred
         )
 
@@ -166,6 +170,7 @@ extension MainContentView {
             openRestoredTabWindow(
                 group.tabs,
                 selectedTabId: group.selectedTabId,
+                browseState: result.browseState(forWindowGroupIndex: group.windowGroupIndex),
                 activate: isFront,
                 loadTiming: isFront ? .immediate : .deferred
             )
@@ -179,12 +184,16 @@ extension MainContentView {
     /// tabs right now, so this window takes only what was its own and never raises itself: the user is
     /// already looking at one of these windows. Only the window the user can see loads its data now,
     /// which also keeps a reconnect from firing one query per window.
-    private func claimOwnTabs(_ plan: WindowGroupAssignment.Plan, result: RestoreResult, window: NSWindow) {
+    private func claimOwnTabs(
+        _ plan: WindowGroupAssignment.Plan,
+        result: RestoreResult,
+        windowIndex: Int,
+        window: NSWindow
+    ) {
         applyRestoredGroup(
             plan.ownTabs,
             selectedTabId: plan.ownSelectedTabId ?? plan.ownTabs.first?.id,
-            activeDatabase: result.lastActiveDatabase,
-            activeSchema: result.lastActiveSchema,
+            browseState: result.browseState(forWindowGroupIndex: windowIndex),
             loadTiming: window.isKeyWindow ? .immediate : .deferred
         )
 
@@ -192,17 +201,19 @@ extension MainContentView {
             openRestoredTabWindow(
                 group.tabs,
                 selectedTabId: group.selectedTabId,
+                browseState: result.browseState(forWindowGroupIndex: group.windowGroupIndex),
                 activate: false,
                 loadTiming: .deferred
             )
         }
     }
 
+    /// `browseState` has no default on purpose: a group's container is part of restoring it, and a
+    /// call site that omitted one would put its window back on the connection default instead.
     private func applyRestoredGroup(
         _ tabs: [QueryTab],
         selectedTabId: UUID?,
-        activeDatabase: String? = nil,
-        activeSchema: String? = nil,
+        browseState: WindowBrowseState,
         loadTiming: RestoreLoadTiming = .immediate,
         consumeDeferredWhenKey: Bool = false
     ) {
@@ -221,16 +232,18 @@ extension MainContentView {
 
         restoreConnectionContext(
             for: selected,
-            activeDatabase: activeDatabase,
-            activeSchema: activeSchema,
+            browseState: browseState,
             loadTiming: loadTiming,
             consumeDeferredWhenKey: consumeDeferredWhenKey
         )
     }
 
-    /// Restore the connection's database and schema, then load the selected tab, in a single
-    /// sequenced task so the database and schema switches never race each other. A deferred
-    /// tab records its id and loads only when its window becomes key from a user switch.
+    /// Seed this window's own browse cursor from its own saved group, then load the selected tab.
+    ///
+    /// Seeding is local to the window, never a connection-wide switch, because N restoring windows
+    /// would otherwise fire N switches at one driver and the last one to land would drag every
+    /// window onto its database. That is the bug per-window browse state exists to close, and
+    /// persistence was the last place still holding one container for the whole connection. (#2088)
     ///
     /// `consumeDeferredWhenKey` is true only for sibling windows opened by restoration, which
     /// may already be key because the user is showing them. The initial window is transiently
@@ -238,13 +251,14 @@ extension MainContentView {
     /// its deferred tab through `windowDidBecomeKey` when the user switches back to it.
     private func restoreConnectionContext(
         for selected: QueryTab,
-        activeDatabase: String?,
-        activeSchema: String?,
+        browseState: WindowBrowseState,
         loadTiming: RestoreLoadTiming,
         consumeDeferredWhenKey: Bool
     ) {
         let isTableTab = selected.tabType == .table
             && !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        coordinator.seedRestoredBrowseState(browseState)
 
         guard loadTiming == .immediate else {
             if isTableTab {
@@ -261,14 +275,19 @@ extension MainContentView {
             return
         }
 
-        let targetDatabase = activeDatabase.flatMap { $0.isEmpty ? nil : $0 }
+        guard requiresSharedBrowseCursor else {
+            if isTableTab {
+                coordinator.lazyLoadCurrentTabIfNeeded(trigger: .restore)
+            }
+            return
+        }
 
         Task {
-            if let targetDatabase, targetDatabase != session.resolvedDriverDatabase {
-                await coordinator.switchDatabase(to: targetDatabase)
+            if let database = browseState.database, database != session.resolvedDriverDatabase {
+                await coordinator.switchDatabase(to: database)
             }
-            if let activeSchema, !activeSchema.isEmpty, activeSchema != session.driverSchema {
-                await coordinator.switchSchema(to: activeSchema)
+            if let schema = browseState.schema, schema != session.driverSchema {
+                await coordinator.switchSchema(to: schema)
             }
             if isTableTab {
                 coordinator.lazyLoadCurrentTabIfNeeded(trigger: .restore)
@@ -276,22 +295,41 @@ extension MainContentView {
         }
     }
 
+    /// Whether every window of this connection has to share the driver's position.
+    ///
+    /// An engine that must reconnect to change database and cannot pool holds exactly one container
+    /// at a time, so a restore that only seeded each window's own cursor would leave all but one
+    /// window pointing at a database the connection is not on. Every other engine reaches a
+    /// container per operation through `withScopedDriver`, so seeding is enough and a
+    /// connection-wide switch per restored window is exactly what must not happen.
+    private var requiresSharedBrowseCursor: Bool {
+        PluginManager.shared.requiresReconnectForDatabaseSwitch(for: connection.type)
+            && !connection.type.supportsConnectionPooling
+    }
+
     /// Opens one window for a whole saved group. The payload describes the tab the window opens on so
     /// its native label reads right from creation; the group itself travels through the registry, which
     /// is what carries the state a payload cannot express.
+    ///
+    /// The payload's database and schema stay the lead tab's, because `WindowTitleResolver` reads them
+    /// for the window's first title and a group can be browsing one container while its front tab
+    /// reads another. They fall back to the group's cursor only when the tab names none, which is what
+    /// `SessionStateFactory` seeds the new window's cursor from before the registry group arrives.
     private func openRestoredTabWindow(
         _ tabs: [QueryTab],
         selectedTabId: UUID?,
+        browseState: WindowBrowseState,
         activate: Bool,
         loadTiming: RestoreLoadTiming
     ) {
         guard let leadTab = tabs.first(where: { $0.id == selectedTabId }) ?? tabs.first else { return }
+        let leadDatabaseName = leadTab.tableContext.databaseName
         let restorePayload = EditorTabPayload(
             connectionId: connection.id,
             tabType: leadTab.tabType,
             tableName: leadTab.tableContext.tableName,
-            databaseName: leadTab.tableContext.databaseName,
-            schemaName: leadTab.tableContext.schemaName,
+            databaseName: leadDatabaseName.isEmpty ? browseState.database : leadDatabaseName,
+            schemaName: leadTab.tableContext.schemaName ?? browseState.schema,
             isView: leadTab.tableContext.isView,
             skipAutoExecute: true,
             erDiagramSchemaKey: leadTab.display.erDiagramSchemaKey,
@@ -299,7 +337,12 @@ extension MainContentView {
             intent: .restoreOrDefault
         )
         RestorationGroupRegistry.register(
-            .init(tabs: tabs, selectedTabId: selectedTabId ?? leadTab.id, loadTiming: loadTiming),
+            .init(
+                tabs: tabs,
+                selectedTabId: selectedTabId ?? leadTab.id,
+                browseState: browseState,
+                loadTiming: loadTiming
+            ),
             for: restorePayload.id
         )
         WindowManager.shared.openTab(payload: restorePayload, activate: activate)

@@ -18,6 +18,13 @@ struct WindowBrowseState: Equatable {
     var database: String?
     var schema: String?
 
+    /// A cursor that names no container is not a cursor. It must never be persisted, and it must
+    /// never be applied over a window that a payload already seeded, or restoring a group that was
+    /// saved without a container would drag the window back to the connection default.
+    var isUnset: Bool {
+        database == nil && schema == nil
+    }
+
     /// A window that has not switched yet browses the connection's saved default, which is
     /// also where a fresh driver lands, so the two agree until the user moves one of them.
     static func seeded(database: String?, schema: String?) -> WindowBrowseState {

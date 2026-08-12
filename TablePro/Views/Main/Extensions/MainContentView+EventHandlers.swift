@@ -36,7 +36,8 @@ extension MainContentView {
         let aggregated = MainContentCoordinator.aggregatedTabs(for: coordinator.connectionId)
         coordinator.persistence.saveNow(
             windowedTabs: aggregated,
-            selectedTabId: newTabId
+            selectedTabId: newTabId,
+            browseStates: MainContentCoordinator.aggregatedBrowseStates(for: coordinator.connectionId)
         )
         MainContentView.lifecycleLogger.debug(
             "[switch] handleTabSelectionChange breakdown: tabChange=\(Int(t1.timeIntervalSince(t0) * 1_000))ms windowTitle=\(Int(t2.timeIntervalSince(t1) * 1_000))ms sidebarSync=\(Int(t3.timeIntervalSince(t2) * 1_000))ms persistSave=\(Int(Date().timeIntervalSince(t3) * 1_000))ms"

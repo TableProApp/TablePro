@@ -15,6 +15,10 @@ enum RestorationGroupRegistry {
     struct WindowGroup {
         let tabs: [QueryTab]
         let selectedTabId: UUID?
+        /// The container this group was browsing. It travels here rather than only on the payload
+        /// because the payload's database and schema also name the lead tab for the window title,
+        /// and a window can be browsing one container while its front tab reads another.
+        var browseState = WindowBrowseState()
         var loadTiming: RestoreLoadTiming = .immediate
     }
 

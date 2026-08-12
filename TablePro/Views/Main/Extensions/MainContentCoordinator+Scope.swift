@@ -57,6 +57,23 @@ extension MainContentCoordinator {
         services.schemaService.tables(for: browseScope)
     }
 
+    /// Puts this window back on the container it was saved browsing, without touching the driver.
+    ///
+    /// Restore cannot go through `switchDatabase`: N windows restoring would fire N
+    /// connection-wide switches at one driver and the last to land would drag every window onto its
+    /// database, which is the bug per-window browse state exists to close. The switch did carry one
+    /// thing this path still needs, though. A window's first schema load reads `browseScope` before
+    /// the saved state comes back off disk, so a cursor that moves afterwards points at a container
+    /// nobody has loaded, and the object list sits empty on the container the user actually left the
+    /// window on. Asking for that load is the whole reason this is not a bare `applyBrowseState`.
+    internal func seedRestoredBrowseState(_ state: WindowBrowseState) {
+        guard !state.isUnset else { return }
+        let previousScope = browseScope
+        applyBrowseState(state)
+        guard browseScope != previousScope else { return }
+        Task { await loadSchemaIfNeeded() }
+    }
+
     /// Creates the provider as well as retaining it, because the autocomplete sync that runs
     /// right after a database switch only fills a provider that already exists.
     internal func retainSchemaProvider(for scope: DatabaseScope) {

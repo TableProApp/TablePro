@@ -15,7 +15,11 @@ extension TabPersistenceCoordinator {
         let aggregatedTabs = MainContentCoordinator.aggregatedTabs(for: connectionId)
         guard !aggregatedTabs.isEmpty else { return }
         let selectedId = MainContentCoordinator.aggregatedSelectedTabId(for: connectionId)
-        saveNow(windowedTabs: aggregatedTabs, selectedTabId: selectedId)
+        saveNow(
+            windowedTabs: aggregatedTabs,
+            selectedTabId: selectedId,
+            browseStates: MainContentCoordinator.aggregatedBrowseStates(for: connectionId)
+        )
     }
 
     /// The disconnect path: synchronous like the close path, because the session is about to go
@@ -27,7 +31,11 @@ extension TabPersistenceCoordinator {
         let aggregatedTabs = MainContentCoordinator.aggregatedTabs(for: connectionId)
         guard !aggregatedTabs.isEmpty else { return }
         let selectedId = MainContentCoordinator.aggregatedSelectedTabId(for: connectionId)
-        saveNowSync(windowedTabs: aggregatedTabs, selectedTabId: selectedId)
+        saveNowSync(
+            windowedTabs: aggregatedTabs,
+            selectedTabId: selectedId,
+            browseStates: MainContentCoordinator.aggregatedBrowseStates(for: connectionId)
+        )
     }
 
     /// Synchronous variant for the window-close path, where the run loop may
@@ -45,7 +53,11 @@ extension TabPersistenceCoordinator {
             clearForUserClosedAllTabs()
         } else {
             let selectedId = MainContentCoordinator.aggregatedSelectedTabId(for: connectionId)
-            saveNowSync(windowedTabs: aggregatedTabs, selectedTabId: selectedId)
+            saveNowSync(
+                windowedTabs: aggregatedTabs,
+                selectedTabId: selectedId,
+                browseStates: MainContentCoordinator.aggregatedBrowseStates(for: connectionId)
+            )
         }
     }
 }

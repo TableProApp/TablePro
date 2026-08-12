@@ -338,14 +338,36 @@ final class MainContentCoordinator {
     /// happen to have a coordinator: a window whose session went away has no coordinator but still
     /// occupies a tab, and numbering around it would hand every later window the wrong tabs.
     static func aggregatedTabs(for connectionId: UUID) -> [(tab: QueryTab, windowGroupIndex: Int)] {
+        windowGroupedCoordinators(for: connectionId).flatMap { entry in
+            entry.coordinator.tabManager.tabs.map {
+                (
+                    tab: entry.coordinator.enrichedForPersistence($0),
+                    windowGroupIndex: entry.windowGroupIndex
+                )
+            }
+        }
+    }
+
+    /// Each window's own browse cursor, under the same group numbering `aggregatedTabs` stamps onto
+    /// tabs. The two have to come from one numbering: a restored window claims its tabs by group
+    /// index, so a cursor filed under a different index would hand it another window's container.
+    static func aggregatedBrowseStates(for connectionId: UUID) -> [Int: WindowBrowseState] {
+        Dictionary(
+            windowGroupedCoordinators(for: connectionId)
+                .map { ($0.windowGroupIndex, $0.coordinator.browseState) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    private static func windowGroupedCoordinators(
+        for connectionId: UUID
+    ) -> [(coordinator: MainContentCoordinator, windowGroupIndex: Int)] {
         let coordinators = activeCoordinators.values
             .filter { $0.connectionId == connectionId }
 
         guard let anyWindow = coordinators.compactMap({ $0.contentWindow }).first else {
-            return coordinators.enumerated().flatMap { groupIndex, coordinator in
-                coordinator.tabManager.tabs
-                    .map { (tab: coordinator.enrichedForPersistence($0), windowGroupIndex: groupIndex) }
-            }
+            return coordinators.enumerated()
+                .map { (coordinator: $0.element, windowGroupIndex: $0.offset) }
         }
 
         let groupOrder = Dictionary(uniqueKeysWithValues:
@@ -354,14 +376,8 @@ final class MainContentCoordinator {
                 .map { (ObjectIdentifier($0.element), $0.offset) }
         )
         return coordinators
-            .sorted { lhs, rhs in
-                lhs.tabGroupPosition(in: groupOrder) < rhs.tabGroupPosition(in: groupOrder)
-            }
-            .flatMap { coordinator in
-                let groupIndex = coordinator.tabGroupPosition(in: groupOrder)
-                return coordinator.tabManager.tabs
-                    .map { (tab: coordinator.enrichedForPersistence($0), windowGroupIndex: groupIndex) }
-            }
+            .map { (coordinator: $0, windowGroupIndex: $0.tabGroupPosition(in: groupOrder)) }
+            .sorted { $0.windowGroupIndex < $1.windowGroupIndex }
     }
 
     private func tabGroupPosition(in groupOrder: [ObjectIdentifier: Int]) -> Int {
@@ -567,7 +583,8 @@ final class MainContentCoordinator {
                 let selectedId = Self.aggregatedSelectedTabId(for: self.connectionId)
                 self.persistence.saveNowSync(
                     windowedTabs: allTabs,
-                    selectedTabId: selectedId
+                    selectedTabId: selectedId,
+                    browseStates: Self.aggregatedBrowseStates(for: self.connectionId)
                 )
             }
         }

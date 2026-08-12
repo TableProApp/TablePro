@@ -10,22 +10,40 @@
 import Foundation
 import os
 
+/// One window group's browse cursor, as it was saved.
+///
+/// A connection has one driver but any number of windows, each browsing whichever container the
+/// user left it on, so the cursor has to be persisted per group. `lastActiveDatabase` cannot
+/// express that: one container per connection meant relaunch put every window on whichever one was
+/// written last, which is half of the bug this field exists to close. (#2088)
+internal struct PersistedWindowBrowse: Codable, Equatable {
+    internal let windowGroupIndex: Int
+    internal let database: String?
+    internal let schema: String?
+}
+
 internal struct TabDiskState: Codable {
     let tabs: [PersistedTab]
     let selectedTabId: UUID?
     let lastActiveDatabase: String?
     let lastActiveSchema: String?
+    /// Absent from state written by a build that had one browse container per connection. Restore
+    /// falls back to `lastActiveDatabase` for every group then, which reproduces exactly what those
+    /// builds did, so an upgrading user loses nothing rather than landing on the connection default.
+    let windowBrowseStates: [PersistedWindowBrowse]?
 
     init(
         tabs: [PersistedTab],
         selectedTabId: UUID?,
         lastActiveDatabase: String? = nil,
-        lastActiveSchema: String? = nil
+        lastActiveSchema: String? = nil,
+        windowBrowseStates: [PersistedWindowBrowse]? = nil
     ) {
         self.tabs = tabs
         self.selectedTabId = selectedTabId
         self.lastActiveDatabase = lastActiveDatabase
         self.lastActiveSchema = lastActiveSchema
+        self.windowBrowseStates = windowBrowseStates
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -33,6 +51,7 @@ internal struct TabDiskState: Codable {
         case selectedTabId
         case lastActiveDatabase
         case lastActiveSchema
+        case windowBrowseStates
     }
 
     init(from decoder: Decoder) throws {
@@ -41,6 +60,9 @@ internal struct TabDiskState: Codable {
         selectedTabId = try container.decodeIfPresent(UUID.self, forKey: .selectedTabId)
         lastActiveDatabase = try container.decodeIfPresent(String.self, forKey: .lastActiveDatabase)
         lastActiveSchema = try container.decodeIfPresent(String.self, forKey: .lastActiveSchema)
+        windowBrowseStates = try container.decodeIfPresent(
+            [PersistedWindowBrowse].self, forKey: .windowBrowseStates
+        )
     }
 }
 
@@ -89,7 +111,8 @@ internal actor TabDiskActor {
         tabs: [PersistedTab],
         selectedTabId: UUID?,
         lastActiveDatabase: String? = nil,
-        lastActiveSchema: String? = nil
+        lastActiveSchema: String? = nil,
+        windowBrowseStates: [PersistedWindowBrowse]? = nil
     ) throws {
         let state = TabDiskState(
             tabs: TabQueryOverflowStore.externalize(
@@ -99,7 +122,8 @@ internal actor TabDiskActor {
             ),
             selectedTabId: selectedTabId,
             lastActiveDatabase: lastActiveDatabase,
-            lastActiveSchema: lastActiveSchema
+            lastActiveSchema: lastActiveSchema,
+            windowBrowseStates: windowBrowseStates
         )
         let data = try encoder.encode(state)
         let fileURL = tabStateFileURL(for: connectionId)
@@ -120,7 +144,8 @@ internal actor TabDiskActor {
                 tabs: TabQueryOverflowStore.inline(state.tabs, tabStateDirectory: tabStateDirectory),
                 selectedTabId: state.selectedTabId,
                 lastActiveDatabase: state.lastActiveDatabase,
-                lastActiveSchema: state.lastActiveSchema
+                lastActiveSchema: state.lastActiveSchema,
+                windowBrowseStates: state.windowBrowseStates
             )
         } catch {
             Self.logger.error("Failed to load tab state for \(connectionId): \(error.localizedDescription)")
@@ -163,7 +188,8 @@ internal actor TabDiskActor {
         tabs: [PersistedTab],
         selectedTabId: UUID?,
         lastActiveDatabase: String? = nil,
-        lastActiveSchema: String? = nil
+        lastActiveSchema: String? = nil,
+        windowBrowseStates: [PersistedWindowBrowse]? = nil
     ) {
         let directory = resolvedTabStateDirectory()
         let state = TabDiskState(
@@ -174,7 +200,8 @@ internal actor TabDiskActor {
             ),
             selectedTabId: selectedTabId,
             lastActiveDatabase: lastActiveDatabase,
-            lastActiveSchema: lastActiveSchema
+            lastActiveSchema: lastActiveSchema,
+            windowBrowseStates: windowBrowseStates
         )
         let encoder = JSONEncoder()
 
