@@ -564,7 +564,19 @@ extension MainContentCoordinator {
     func selectTab(in workspace: WorkspaceID, target: ContainerSwitchTarget?) {
         guard let match = tabManager.tabs.first(where: {
             WorkspaceAnchoring.containerName(of: $0, target: target) == workspace.container
-        }) else { return }
+        }) else {
+            let containers = tabManager.tabs.compactMap {
+                WorkspaceAnchoring.containerName(of: $0, target: target)
+            }
+            navigationLogger.debug(
+                """
+                selectTab no matching tab for container=\(workspace.container, privacy: .public) \
+                target=\(String(describing: target), privacy: .public) \
+                tabContainers=\(containers, privacy: .public)
+                """
+            )
+            return
+        }
         tabManager.selectedTabId = match.id
     }
 
