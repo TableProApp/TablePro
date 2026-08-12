@@ -90,14 +90,14 @@ extension MainContentCoordinator {
             }
             return target.schemaName == nil || session.browseSchema == target.schemaName
         }) {
-            coordinator.openTableTab(
+            let disposition = coordinator.openTableTab(
                 item.name,
                 schema: target.schemaName,
                 isView: item.kind == .view || item.isReadOnly,
                 activateGridFocus: true,
                 forceNewWindowTab: intent == .openInNewWindowTab
             )
-            if let tabId = coordinator.tabManager.selectedTabId {
+            if disposition == .currentCoordinator, let tabId = coordinator.tabManager.selectedTabId {
                 coordinator.selectTabAndFocusWindow(tabId)
             }
             return

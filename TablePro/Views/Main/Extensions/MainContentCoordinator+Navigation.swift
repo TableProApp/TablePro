@@ -12,9 +12,15 @@ import TableProPluginKit
 
 private let navigationLogger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator+Navigation")
 
+internal enum TableTabOpenDisposition: Equatable {
+    case currentCoordinator
+    case focusedElsewhere
+}
+
 extension MainContentCoordinator {
     // MARK: - Table Tab Opening
 
+    @discardableResult
     func openTableTab(
         _ table: TableInfo,
         schema: String? = nil,
@@ -22,7 +28,7 @@ extension MainContentCoordinator {
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false,
         forceNewWindowTab: Bool = false
-    ) {
+    ) -> TableTabOpenDisposition? {
         openTableTab(
             table.name,
             schema: schema ?? table.schema,
@@ -34,6 +40,7 @@ extension MainContentCoordinator {
         )
     }
 
+    @discardableResult
     func openTableTab(
         _ tableName: String,
         schema: String? = nil,
@@ -42,7 +49,7 @@ extension MainContentCoordinator {
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false,
         forceNewWindowTab: Bool = false
-    ) {
+    ) -> TableTabOpenDisposition? {
         let navigationModel = PluginMetadataRegistry.shared.snapshot(
             forTypeId: connection.type.pluginTypeId
         )?.navigationModel ?? .standard
@@ -50,7 +57,7 @@ extension MainContentCoordinator {
         let currentDatabase: String
         if navigationModel == .inPlace {
             guard tableName.hasPrefix("db"), Int(String(tableName.dropFirst(2))) != nil else {
-                return
+                return nil
             }
             currentDatabase = String(tableName.dropFirst(2))
         } else {
@@ -61,7 +68,7 @@ extension MainContentCoordinator {
         let createAsPreview = !forceNonPreview && !forceNewWindowTab
             && AppSettingsManager.shared.tabs.enablePreviewTabs
 
-        if !forceNewWindowTab, activateIfAlreadyOpen(
+        if !forceNewWindowTab, let disposition = activateIfAlreadyOpen(
             tableName: tableName,
             databaseName: currentDatabase,
             schemaName: resolvedSchema,
@@ -72,7 +79,7 @@ extension MainContentCoordinator {
             navigationLogger.debug(
                 "[tableload] activateExistingTab table=\(tableName, privacy: .public)"
             )
-            return
+            return disposition
         }
 
         if activateGridFocus {
@@ -94,17 +101,18 @@ extension MainContentCoordinator {
                         schemaName: resolvedSchema,
                         isView: isView
                     )
+                    return .currentCoordinator
                 } catch {
                     navigationLogger.error("openTableTab addTableTab failed: \(error.localizedDescription, privacy: .public)")
                 }
             } else {
                 pendingGridFocusOnOpen = false
             }
-            return
+            return nil
         }
 
         if tabManager.tabs.isEmpty {
-            addFirstTableTab(
+            let didOpen = addFirstTableTab(
                 tableName: tableName,
                 currentDatabase: currentDatabase,
                 resolvedSchema: resolvedSchema,
@@ -112,7 +120,7 @@ extension MainContentCoordinator {
                 createAsPreview: createAsPreview,
                 isInPlace: navigationModel == .inPlace
             )
-            return
+            return didOpen ? .currentCoordinator : nil
         }
 
         // In-place navigation: replace current tab content rather than
@@ -145,14 +153,15 @@ extension MainContentCoordinator {
                         selectRedisDatabaseAndQuery(dbIndex)
                     }
                 }
+                return replaced ? .currentCoordinator : nil
             } catch {
                 navigationLogger.error("openTableTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+                return nil
             }
-            return
         }
 
         if isActiveTabReusable, !forceNewWindowTab {
-            reuseActiveTab(
+            let didOpen = reuseActiveTab(
                 for: tableName,
                 currentDatabase: currentDatabase,
                 resolvedSchema: resolvedSchema,
@@ -160,7 +169,7 @@ extension MainContentCoordinator {
                 showStructure: showStructure,
                 createAsPreview: createAsPreview
             )
-            return
+            return didOpen ? .currentCoordinator : nil
         }
 
         promotePreviewTab()
@@ -179,6 +188,7 @@ extension MainContentCoordinator {
             isPreview: createAsPreview
         )
         WindowManager.shared.openTab(payload: payload)
+        return .focusedElsewhere
     }
 
     func activateIfAlreadyOpen(
@@ -188,7 +198,7 @@ extension MainContentCoordinator {
         showStructure: Bool,
         activateGridFocus: Bool,
         includeSiblings: Bool
-    ) -> Bool {
+    ) -> TableTabOpenDisposition? {
         func matches(_ tab: QueryTab) -> Bool {
             tab.tabType == .table
                 && tab.tableContext.tableName == tableName
@@ -204,10 +214,10 @@ extension MainContentCoordinator {
             if activateGridFocus {
                 requestGridFocus()
             }
-            return true
+            return .currentCoordinator
         }
 
-        guard includeSiblings else { return false }
+        guard includeSiblings else { return nil }
 
         for sibling in MainContentCoordinator.allActiveCoordinators()
             where sibling !== self && sibling.connectionId == connectionId {
@@ -215,9 +225,9 @@ extension MainContentCoordinator {
             sibling.pendingGridFocusOnOpen = activateGridFocus
             applyStructureMode(showStructure, toTab: match.id, in: sibling.tabManager)
             sibling.selectTabAndFocusWindow(match.id)
-            return true
+            return .focusedElsewhere
         }
-        return false
+        return nil
     }
 
     private func applyStructureMode(_ showStructure: Bool, toTab tabId: UUID, in tabManager: QueryTabManager) {
@@ -232,7 +242,7 @@ extension MainContentCoordinator {
         isView: Bool,
         createAsPreview: Bool,
         isInPlace: Bool
-    ) {
+    ) -> Bool {
         do {
             if createAsPreview {
                 try tabManager.addPreviewTableTab(
@@ -253,7 +263,7 @@ extension MainContentCoordinator {
             }
         } catch {
             navigationLogger.error("openTableTab tab creation failed: \(error.localizedDescription, privacy: .public)")
-            return
+            return false
         }
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
             let token = TableLoadTracer.shared.begin(tabId: tab.id, table: tableName, origin: .sidebar)
@@ -274,6 +284,7 @@ extension MainContentCoordinator {
         } else {
             lazyLoadCurrentTabIfNeeded()
         }
+        return true
     }
 
     private func reuseActiveTab(
@@ -283,7 +294,7 @@ extension MainContentCoordinator {
         isView: Bool,
         showStructure: Bool,
         createAsPreview: Bool
-    ) {
+    ) -> Bool {
         let previousTableName = tabManager.selectedTab?.tableContext.tableName
         if let previousTableName {
             saveLastFilters(for: previousTableName)
@@ -316,7 +327,7 @@ extension MainContentCoordinator {
         } catch {
             navigationLogger.error("openTableTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
             if let token { TableLoadTracer.shared.finish(token: token, outcome: "replaceFailed") }
-            return
+            return false
         }
         if let token { TableLoadTracer.shared.stage(.replaceTabContent, token: token) }
         clearFilterState()
@@ -335,6 +346,7 @@ extension MainContentCoordinator {
             cancelTableLoad(for: tabId)
         }
         lazyLoadCurrentTabIfNeeded()
+        return true
     }
 
     // MARK: - Preview Tabs
