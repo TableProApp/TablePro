@@ -81,7 +81,7 @@ extension MainContentCoordinator {
 
         // During database switch, update the existing tab in-place instead of
         // opening a new native window tab.
-        if case .loading = SchemaService.shared.state(for: connectionId) {
+        if case .loading = SchemaService.shared.state(for: browseScope) {
             navigationLogger.debug(
                 "[tableload] deferredToSchemaLoad table=\(tableName, privacy: .public) hasTabs=\(!self.tabManager.tabs.isEmpty)"
             )
@@ -432,7 +432,7 @@ extension MainContentCoordinator {
                 )
             )
 
-            await SchemaService.shared.prepareForReload(connectionId: connectionId)
+            await SchemaService.shared.prepareForReload(scope: browseScope)
 
             await refreshTables(currentDatabaseOnly: true)
             return true

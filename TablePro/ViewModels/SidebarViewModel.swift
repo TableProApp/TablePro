@@ -355,7 +355,7 @@ final class SidebarViewModel {
     @ObservationIgnored private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
 
     private var schemaGeneration: Int {
-        SchemaService.shared.generationToken(for: connectionId)
+        SchemaService.shared.generationToken(forConnection: connectionId)
     }
 
     func tables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {

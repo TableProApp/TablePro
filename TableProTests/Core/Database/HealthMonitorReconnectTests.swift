@@ -32,20 +32,21 @@ struct HealthMonitorReconnectTests {
     }
 
     @Test("a background reconnect keeps the loaded schema instead of clearing it")
-    func reconnectKeepsTheLoadedSchema() async {
+    func reconnectKeepsTheLoadedSchema() async throws {
         let connection = makeConnectedSession()
         let driver = MockDatabaseDriver()
         driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let scope = try #require(DatabaseManager.shared.driverScope(for: connection.id))
         await SchemaService.shared.load(
-            connectionId: connection.id,
+            scope: scope,
             driver: driver,
             connection: connection
         )
-        #expect(SchemaService.shared.state(for: connection.id) == .loaded(driver.tablesToReturn))
+        #expect(SchemaService.shared.state(for: scope) == .loaded(driver.tablesToReturn))
 
         _ = await DatabaseManager.shared.performHealthMonitorReconnect(connectionId: connection.id)
 
-        #expect(SchemaService.shared.state(for: connection.id) == .loaded(driver.tablesToReturn))
+        #expect(SchemaService.shared.state(for: scope) == .loaded(driver.tablesToReturn))
         await cleanUp(connection.id)
     }
 

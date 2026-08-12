@@ -1124,7 +1124,7 @@ final class MainContentCommandActions {
             if let driver = DatabaseManager.shared.driver(for: coordinator.connection.id) {
                 coordinator.toolbarState.databaseVersion = driver.serverVersion
             }
-            if case .loading = SchemaService.shared.state(for: coordinator.connection.id) {
+            if case .loading = SchemaService.shared.state(for: coordinator.browseScope) {
                 coordinator.initRedisKeyTreeIfNeeded()
                 return
             }

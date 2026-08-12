@@ -609,7 +609,7 @@ struct ExportDialog: View {
             let grouping = PluginManager.shared.databaseGroupingStrategy(for: dbType)
             switch grouping {
             case .bySchema, .hierarchicalSchema:
-                let schemas = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                let schemas = try await DatabaseManager.shared.withDriverScopedMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
                     try await driver.fetchSchemas()
                 }
                 let defaultSchema = PluginManager.shared.defaultSchemaName(for: dbType)
@@ -649,7 +649,7 @@ struct ExportDialog: View {
                 )
                 if let dbItem { items.append(dbItem) }
             case .byDatabase:
-                let databases = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                let databases = try await DatabaseManager.shared.withDriverScopedMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
                     try await driver.fetchDatabases()
                 }
                 let tablesByDatabase = try await fetchTablesGroupedByDatabase()
@@ -708,7 +708,7 @@ struct ExportDialog: View {
         name: String,
         priorRows: [String: ExportRowSnapshot] = [:]
     ) async throws -> ExportDatabaseItem? {
-        let tables = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        let tables = try await DatabaseManager.shared.withDriverScopedMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
             try await driver.fetchTables()
         }
         let tableItems = tables.map { table in
@@ -726,7 +726,7 @@ struct ExportDialog: View {
     }
 
     private func fetchTablesForSchema(_ schema: String) async throws -> [TableInfo] {
-        try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        try await DatabaseManager.shared.withDriverScopedMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
             try await driver.fetchTables(schema: schema)
         }
     }
@@ -736,7 +736,7 @@ struct ExportDialog: View {
     /// database the user can list but not open becomes an empty group instead of an error
     /// that fails the whole dialog.
     private func fetchTablesGroupedByDatabase() async throws -> [String: [TableInfo]] {
-        try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        try await DatabaseManager.shared.withDriverScopedMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
             let query = """
                 SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
                 FROM information_schema.TABLES

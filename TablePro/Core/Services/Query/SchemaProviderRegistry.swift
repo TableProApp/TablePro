@@ -2,7 +2,7 @@
 //  SchemaProviderRegistry.swift
 //  TablePro
 //
-//  Manages shared SQLSchemaProvider instances across connections.
+//  Manages shared SQLSchemaProvider instances across browse scopes.
 //  Ref-counted with grace period removal to avoid redundant schema loads.
 //
 
@@ -16,9 +16,9 @@ final class SchemaProviderRegistry {
 
     static let shared = SchemaProviderRegistry()
 
-    private var providers: [UUID: SQLSchemaProvider] = [:]
-    private var refCounts: [UUID: Int] = [:]
-    private var removalTasks: [UUID: Task<Void, Never>] = [:]
+    private var providers: [DatabaseScope: SQLSchemaProvider] = [:]
+    private var refCounts: [DatabaseScope: Int] = [:]
+    private var removalTasks: [DatabaseScope: Task<Void, Never>] = [:]
     private var cancellables: Set<AnyCancellable> = []
 
     #if DEBUG
@@ -40,26 +40,29 @@ final class SchemaProviderRegistry {
             .store(in: &cancellables)
     }
 
+    /// Column metadata can change under any container of the connection, and dropping a
+    /// cached column list only costs a refetch, so this is deliberately connection-wide.
     func invalidateColumnCache(for connectionId: UUID) {
-        guard let provider = providers[connectionId] else { return }
-        Task { await provider.clearColumnCache() }
-    }
-
-    func provider(for connectionId: UUID) -> SQLSchemaProvider? {
-        providers[connectionId]
-    }
-
-    func getOrCreate(for connectionId: UUID) -> SQLSchemaProvider {
-        if let removalTask = removalTasks[connectionId] {
-            removalTask.cancel()
-            removalTasks.removeValue(forKey: connectionId)
+        for (scope, provider) in providers where scope.connectionId == connectionId {
+            Task { await provider.clearColumnCache() }
         }
-        if let existing = providers[connectionId] {
+    }
+
+    func provider(for scope: DatabaseScope) -> SQLSchemaProvider? {
+        providers[scope]
+    }
+
+    func getOrCreate(for scope: DatabaseScope) -> SQLSchemaProvider {
+        if let removalTask = removalTasks[scope] {
+            removalTask.cancel()
+            removalTasks.removeValue(forKey: scope)
+        }
+        if let existing = providers[scope] {
             return existing
         }
         let source = SQLSchemaProvider.ColumnMetadataSource(
             fetchColumns: { table, schema in
-                try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+                try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
                     if let schema {
                         return try await driver.fetchColumns(table: table, schema: schema)
                     }
@@ -67,60 +70,76 @@ final class SchemaProviderRegistry {
                 }
             },
             fetchAllColumns: {
-                try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
+                try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
                     try await driver.fetchAllColumns()
                 }
             },
             fetchSchemaTables: { schema in
-                try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+                try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
                     try await driver.fetchTables(schema: schema)
                 }
             }
         )
         let provider = SQLSchemaProvider(metadataSource: source)
-        providers[connectionId] = provider
+        providers[scope] = provider
         return provider
     }
 
-    func retain(for connectionId: UUID) {
-        removalTasks[connectionId]?.cancel()
-        removalTasks.removeValue(forKey: connectionId)
-        refCounts[connectionId, default: 0] += 1
+    func retain(for scope: DatabaseScope) {
+        removalTasks[scope]?.cancel()
+        removalTasks.removeValue(forKey: scope)
+        refCounts[scope, default: 0] += 1
     }
 
-    func release(for connectionId: UUID) {
-        guard var count = refCounts[connectionId] else { return }
+    func release(for scope: DatabaseScope) {
+        guard var count = refCounts[scope] else { return }
         count -= 1
         if count <= 0 {
-            refCounts.removeValue(forKey: connectionId)
-            removalTasks[connectionId] = Task { [weak self] in
+            refCounts.removeValue(forKey: scope)
+            removalTasks[scope] = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard let self, !Task.isCancelled else { return }
-                self.providers.removeValue(forKey: connectionId)
-                self.removalTasks.removeValue(forKey: connectionId)
+                self.providers.removeValue(forKey: scope)
+                self.removalTasks.removeValue(forKey: scope)
             }
         } else {
-            refCounts[connectionId] = count
+            refCounts[scope] = count
         }
     }
 
-    func clear(for connectionId: UUID) {
-        providers.removeValue(forKey: connectionId)
-        refCounts.removeValue(forKey: connectionId)
-        removalTasks[connectionId]?.cancel()
-        removalTasks.removeValue(forKey: connectionId)
+    func clear(for scope: DatabaseScope) {
+        providers.removeValue(forKey: scope)
+        refCounts.removeValue(forKey: scope)
+        removalTasks[scope]?.cancel()
+        removalTasks.removeValue(forKey: scope)
+    }
+
+    /// Disconnect teardown. The driver every provider of this connection fetches through is
+    /// gone, so all of them go, not just the one the last window happened to browse.
+    func clear(connectionId: UUID) {
+        for scope in providers.keys.filter({ $0.connectionId == connectionId }) {
+            clear(for: scope)
+        }
+        for scope in refCounts.keys.filter({ $0.connectionId == connectionId }) {
+            clear(for: scope)
+        }
+        for scope in removalTasks.keys.filter({ $0.connectionId == connectionId }) {
+            clear(for: scope)
+        }
     }
 
     func purgeUnused() {
-        let orphanedIds = providers.keys.filter { connectionId in
-            let count = refCounts[connectionId] ?? 0
-            let hasPendingRemoval = removalTasks[connectionId] != nil
+        let orphanedScopes = providers.keys.filter { scope in
+            let count = refCounts[scope] ?? 0
+            let hasPendingRemoval = removalTasks[scope] != nil
             return count <= 0 && !hasPendingRemoval
         }
-        for connectionId in orphanedIds {
-            Self.logger.info("Purging orphaned schema provider for connection \(connectionId)")
-            providers.removeValue(forKey: connectionId)
-            refCounts.removeValue(forKey: connectionId)
+        for scope in orphanedScopes {
+            Self.logger.info(
+                "Purging orphaned schema provider connId=\(scope.connectionId, privacy: .public) container=\(scope.qualifiedDescription, privacy: .public)"
+            )
+            providers.removeValue(forKey: scope)
+            refCounts.removeValue(forKey: scope)
         }
     }
 }

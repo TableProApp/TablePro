@@ -103,24 +103,25 @@ private final class RefreshMockDriver: DatabaseDriver, @unchecked Sendable {
 @MainActor
 struct SchemaServiceRefreshTests {
     private func loadedService(
-        connectionId: UUID,
+        scope: DatabaseScope,
         driver: RefreshMockDriver,
         connection: DatabaseConnection
     ) async -> SchemaService {
         let service = SchemaService()
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders")]
-        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+        await service.load(scope: scope, driver: driver, connection: connection)
         return service
     }
 
     @Test("reload keeps the loaded tables visible while the refresh is in flight")
     func reloadKeepsTablesVisibleDuringRefresh() async {
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RefreshMockDriver(connection: connection)
-        let service = await loadedService(connectionId: connectionId, driver: driver, connection: connection)
+        let service = await loadedService(scope: scope, driver: driver, connection: connection)
 
-        #expect(service.tables(for: connectionId).map(\.name) == ["orders"])
+        #expect(service.tables(for: scope).map(\.name) == ["orders"])
 
         let suspended = AsyncStream<Void>.makeStream()
         driver.onFetchTablesSuspended = { suspended.continuation.yield() }
@@ -131,28 +132,29 @@ struct SchemaServiceRefreshTests {
         ]
 
         let reload = Task {
-            await service.reload(connectionId: connectionId, driver: driver, connection: connection)
+            await service.reload(scope: scope, driver: driver, connection: connection)
         }
 
         var iterator = suspended.stream.makeAsyncIterator()
         await iterator.next()
 
-        #expect(service.tables(for: connectionId).map(\.name) == ["orders"])
-        #expect(service.isRefreshing(connectionId: connectionId))
-        if case .loading = service.state(for: connectionId) {
+        #expect(service.tables(for: scope).map(\.name) == ["orders"])
+        #expect(service.isRefreshing(scope: scope))
+        if case .loading = service.state(for: scope) {
             Issue.record("A refresh must not drop the connection back to .loading while it holds content")
         }
 
         driver.resumeFetchTables()
         await reload.value
 
-        #expect(service.tables(for: connectionId).map(\.name) == ["orders", "invoices"])
-        #expect(!service.isRefreshing(connectionId: connectionId))
+        #expect(service.tables(for: scope).map(\.name) == ["orders", "invoices"])
+        #expect(!service.isRefreshing(scope: scope))
     }
 
     @Test("a cold load still reports loading so the sidebar can show its spinner")
     func coldLoadReportsLoading() async {
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RefreshMockDriver(connection: connection)
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders")]
@@ -163,97 +165,102 @@ struct SchemaServiceRefreshTests {
         driver.pausesFetchTables = true
 
         let load = Task {
-            await service.load(connectionId: connectionId, driver: driver, connection: connection)
+            await service.load(scope: scope, driver: driver, connection: connection)
         }
 
         var iterator = suspended.stream.makeAsyncIterator()
         await iterator.next()
 
-        guard case .loading = service.state(for: connectionId) else {
+        guard case .loading = service.state(for: scope) else {
             Issue.record("A load with no cached content must report .loading")
             driver.resumeFetchTables()
             await load.value
             return
         }
-        #expect(service.tables(for: connectionId).isEmpty)
+        #expect(service.tables(for: scope).isEmpty)
 
         driver.resumeFetchTables()
         await load.value
 
-        #expect(service.tables(for: connectionId).map(\.name) == ["orders"])
+        #expect(service.tables(for: scope).map(\.name) == ["orders"])
     }
 
     @Test("a failed refresh keeps the tables that were already loaded")
     func failedRefreshKeepsLoadedTables() async {
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RefreshMockDriver(connection: connection)
-        let service = await loadedService(connectionId: connectionId, driver: driver, connection: connection)
+        let service = await loadedService(scope: scope, driver: driver, connection: connection)
 
         driver.tablesError = DatabaseError.notConnected
-        await service.reload(connectionId: connectionId, driver: driver, connection: connection)
+        await service.reload(scope: scope, driver: driver, connection: connection)
 
-        #expect(service.tables(for: connectionId).map(\.name) == ["orders"])
-        if case .failed = service.state(for: connectionId) {
+        #expect(service.tables(for: scope).map(\.name) == ["orders"])
+        if case .failed = service.state(for: scope) {
             Issue.record("A failed refresh must not replace loaded tables with an error state")
         }
-        #expect(!service.isRefreshing(connectionId: connectionId))
+        #expect(!service.isRefreshing(scope: scope))
     }
 
     @Test("a failed cold load surfaces the failure")
     func failedColdLoadSurfacesFailure() async {
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RefreshMockDriver(connection: connection)
         driver.tablesError = DatabaseError.notConnected
 
         let service = SchemaService()
-        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+        await service.load(scope: scope, driver: driver, connection: connection)
 
-        guard case .failed = service.state(for: connectionId) else {
+        guard case .failed = service.state(for: scope) else {
             Issue.record("A cold load with no cached content must surface the failure")
             return
         }
-        #expect(!service.isRefreshing(connectionId: connectionId))
+        #expect(!service.isRefreshing(scope: scope))
     }
 
     @Test("prepareForReload keeps cached content where invalidate clears it")
     func prepareForReloadKeepsCachedContent() async {
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RefreshMockDriver(connection: connection)
-        let service = await loadedService(connectionId: connectionId, driver: driver, connection: connection)
+        let service = await loadedService(scope: scope, driver: driver, connection: connection)
 
-        await service.prepareForReload(connectionId: connectionId)
-        #expect(service.tables(for: connectionId).map(\.name) == ["orders"])
-        #expect(service.hasLoadedContent(for: connectionId))
+        await service.prepareForReload(scope: scope)
+        #expect(service.tables(for: scope).map(\.name) == ["orders"])
+        #expect(service.hasLoadedContent(for: scope))
 
         await service.invalidate(connectionId: connectionId)
-        #expect(service.tables(for: connectionId).isEmpty)
-        #expect(!service.hasLoadedContent(for: connectionId))
-        #expect(!service.isRefreshing(connectionId: connectionId))
+        #expect(service.tables(for: scope).isEmpty)
+        #expect(!service.hasLoadedContent(for: scope))
+        #expect(!service.isRefreshing(scope: scope))
     }
 
     @Test("reloading one schema keeps its previous tables visible until fresh ones arrive")
     func perSchemaReloadKeepsPreviousTables() async {
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RefreshMockDriver(connection: connection)
         driver.schemaTablesToReturn = ["sales": [TableInfo(name: "orders", type: .table, rowCount: 0, schema: "sales")]]
 
         let service = SchemaService()
-        await service.loadSchemaTables(connectionId: connectionId, schema: "sales", driver: driver)
-        #expect(service.tables(for: connectionId, schema: "sales").map(\.name) == ["orders"])
+        await service.loadSchemaTables(scope: scope, schema: "sales", driver: driver)
+        #expect(service.tables(for: scope, schema: "sales").map(\.name) == ["orders"])
 
         driver.schemaTablesError = DatabaseError.notConnected
-        await service.reloadSchemaTables(connectionId: connectionId, schema: "sales", driver: driver)
+        await service.reloadSchemaTables(scope: scope, schema: "sales", driver: driver)
 
-        #expect(service.tables(for: connectionId, schema: "sales").map(\.name) == ["orders"])
+        #expect(service.tables(for: scope, schema: "sales").map(\.name) == ["orders"])
     }
 
     @Test("refreshLoadedSchemaTables refetches only the schemas already expanded")
     func refreshLoadedSchemaTablesRefetchesExpandedSchemas() async {
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RefreshMockDriver(connection: connection)
         driver.schemaTablesToReturn = [
@@ -262,15 +269,15 @@ struct SchemaServiceRefreshTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaTables(connectionId: connectionId, schema: "sales", driver: driver)
+        await service.loadSchemaTables(scope: scope, schema: "sales", driver: driver)
 
         driver.schemaTablesToReturn["sales"] = [
             TableInfo(name: "orders", type: .table, rowCount: 0, schema: "sales"),
             TableInfo(name: "refunds", type: .table, rowCount: 0, schema: "sales")
         ]
-        await service.refreshLoadedSchemaTables(connectionId: connectionId, driver: driver)
+        await service.refreshLoadedSchemaTables(scope: scope, driver: driver)
 
-        #expect(service.tables(for: connectionId, schema: "sales").map(\.name) == ["orders", "refunds"])
-        #expect(service.tables(for: connectionId, schema: "hr").isEmpty)
+        #expect(service.tables(for: scope, schema: "sales").map(\.name) == ["orders", "refunds"])
+        #expect(service.tables(for: scope, schema: "hr").isEmpty)
     }
 }

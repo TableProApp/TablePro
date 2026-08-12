@@ -14,8 +14,14 @@ struct SchemaPickerControl: View {
         databaseManager.session(for: connectionId)?.driverSchema
     }
 
+    /// The window's own container, so a picker in one window lists the schemas of the
+    /// database that window is browsing.
+    private var browseScope: DatabaseScope {
+        coordinator?.browseScope ?? DatabaseScope(connectionId: connectionId, database: "", schema: nil)
+    }
+
     private var allSchemas: [String] {
-        schemaService.schemas(for: connectionId)
+        schemaService.schemas(for: browseScope)
     }
 
     private var systemSchemas: Set<String> {
@@ -74,7 +80,7 @@ struct SchemaPickerControl: View {
 
                 Divider()
                 Button(String(localized: "Refresh")) {
-                    Task { await schemaService.refresh(connectionId: connectionId) }
+                    Task { await coordinator?.refreshTables() }
                 }
             } label: {
                 Text(currentSchema ?? String(format: String(localized: "Select %@"), entityName.lowercased()))

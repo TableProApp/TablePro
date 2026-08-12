@@ -17,6 +17,8 @@ import Testing
 @Suite("Data refresh scoping", .serialized)
 @MainActor
 struct DataRefreshScopeTests {
+    /// The window browses `driverDatabase` and the tab sits on `tabDatabase`. The cursor is
+    /// seeded explicitly because a window owns its own, and never reads the driver's position.
     private static func makeCoordinator(
         connection: DatabaseConnection,
         driverDatabase: String,
@@ -31,7 +33,8 @@ struct DataRefreshScopeTests {
             connection: connection,
             tabManager: tabManager,
             changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
+            toolbarState: ConnectionToolbarState(),
+            browseState: WindowBrowseState.seeded(database: driverDatabase, schema: nil)
         )
 
         if let tabDatabase {

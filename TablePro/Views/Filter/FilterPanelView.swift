@@ -330,7 +330,7 @@ struct FilterPanelView: View {
             rawSQLCompletionProvider = nil
             return
         }
-        let schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: coordinator.connection.id)
+        let schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: coordinator.browseScope)
         rawSQLCompletionProvider = RawSQLFilterCompletionProvider(
             schemaProvider: schemaProvider,
             databaseType: databaseType,

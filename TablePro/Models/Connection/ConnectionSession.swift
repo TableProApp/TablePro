@@ -36,9 +36,17 @@ struct ConnectionSession: Identifiable {
     var driverSchema: String?
     var driverDatabase: String?
 
+    /// Where the shared driver is pinned, as a scope. Correct for connection-wide work
+    /// (health checks, reconnect, MCP), never for what a window is showing.
+    var driverScope: DatabaseScope {
+        DatabaseScope(connectionId: id, database: resolvedDriverDatabase, schema: driverSchema)
+    }
+
+    /// The objects loaded for the driver's own container. A window reads
+    /// `MainContentCoordinator.browseTables` instead, because its cursor is its own.
     @MainActor
     var tables: [TableInfo] {
-        SchemaService.shared.tables(for: id)
+        SchemaService.shared.tables(for: driverScope)
     }
 
     /// In-memory password for prompt-for-password connections. Never persisted to disk.

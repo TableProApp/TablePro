@@ -41,8 +41,9 @@ final class AIChatViewModel {
     @ObservationIgnored var streamFlushInterval: Duration = .milliseconds(50)
 
     var tables: [TableInfo] {
-        guard let id = connection?.id else { return [] }
-        return services.schemaService.tables(for: id)
+        guard let id = connection?.id,
+              let scope = services.databaseManager.driverScope(for: id) else { return [] }
+        return services.schemaService.tables(for: scope)
     }
 
     var columnsByTable: [String: [ColumnInfo]] = [:]

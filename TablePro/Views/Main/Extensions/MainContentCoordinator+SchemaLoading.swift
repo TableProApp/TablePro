@@ -39,10 +39,11 @@ extension MainContentCoordinator {
 
     func loadSchema() async {
         let connection = connection
+        let scope = browseScope
         do {
-            try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
+            try await services.databaseManager.withMetadataDriver(scope: scope) { [services] driver in
                 await services.schemaService.load(
-                    connectionId: connectionId,
+                    scope: scope,
                     driver: driver,
                     connection: connection
                 )
@@ -60,7 +61,7 @@ extension MainContentCoordinator {
             connectionId: connectionId,
             databaseType: connection.type
         )
-        await services.schemaRefreshService.syncAutocompleteProvider(connectionId: connectionId)
+        await services.schemaRefreshService.syncAutocompleteProvider(scope: scope)
         pruneStaleSidebarState()
     }
 

@@ -111,11 +111,10 @@ extension MainContentCoordinator {
     // MARK: - Sidebar Sync
 
     /// Update the window-scoped sidebar selection so the active table tab
-    /// is highlighted. Reads tables fresh from the DatabaseManager because the
+    /// is highlighted. Reads the objects of this window's browse scope fresh, because the
     /// schema load is async and may complete after focus changes.
     func syncSidebarToSelectedTab() {
-        let liveTables = DatabaseManager.shared
-            .session(for: connectionId)?.tables ?? []
+        let liveTables = browseTables
         let target: Set<TableInfo>
         if let currentTableName = tabManager.selectedTab?.tableContext.tableName,
            let match = liveTables.first(where: { $0.name == currentTableName }) {

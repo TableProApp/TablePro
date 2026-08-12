@@ -146,7 +146,7 @@ internal final class QuickSwitcherViewModel {
             )
             : []
         do {
-            let databases = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+            let databases = try await services.databaseManager.withDriverScopedMetadataDriver(connectionId: connectionId) { driver in
                 try await driver.fetchDatabases()
             }
             let databaseSubtitle = switchTarget == .database
@@ -173,7 +173,7 @@ internal final class QuickSwitcherViewModel {
 
         if services.pluginManager.supportsSchemaSwitching(for: databaseType) {
             do {
-                let schemas = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+                let schemas = try await services.databaseManager.withDriverScopedMetadataDriver(connectionId: connectionId) { driver in
                     try await driver.fetchSchemas()
                 }
                 let schemaSubtitle = switchTarget == .schema

@@ -223,20 +223,20 @@ struct CoordinatorConnectionIsolationTests {
 
     @Test("Schema state is per-connection in SchemaService")
     func schemaStateIsPerConnection() async {
-        let id1 = UUID()
-        let id2 = UUID()
+        let first = DatabaseScope(connectionId: UUID(), database: "db_a", schema: nil)
+        let second = DatabaseScope(connectionId: UUID(), database: "db_b", schema: nil)
 
-        await SchemaService.shared.invalidate(connectionId: id1)
-        await SchemaService.shared.invalidate(connectionId: id2)
+        await SchemaService.shared.invalidate(connectionId: first.connectionId)
+        await SchemaService.shared.invalidate(connectionId: second.connectionId)
         defer {
             Task {
-                await SchemaService.shared.invalidate(connectionId: id1)
-                await SchemaService.shared.invalidate(connectionId: id2)
+                await SchemaService.shared.invalidate(connectionId: first.connectionId)
+                await SchemaService.shared.invalidate(connectionId: second.connectionId)
             }
         }
 
-        #expect(SchemaService.shared.state(for: id1) == .idle)
-        #expect(SchemaService.shared.state(for: id2) == .idle)
+        #expect(SchemaService.shared.state(for: first) == .idle)
+        #expect(SchemaService.shared.state(for: second) == .idle)
     }
 
     @Test("openTableTab uses coordinator's connection database for the added tab")

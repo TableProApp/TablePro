@@ -15,13 +15,12 @@ import TableProPluginKit
 import Testing
 
 /// Captures every scope the loader hands to the metadata layer. A recorded scope that
-/// is not the loader's own is the bug.
+/// is not the loader's own is the bug. The provider cannot resolve a container of its own,
+/// which is what keeps the loader from ever asking for one.
 @MainActor
 private final class RecordingMetadataProvider: ScopedMetadataProviding {
     private(set) var requestedScopes: [DatabaseScope] = []
     private(set) var requestedWorkloads: [MetadataConnectionPool.Workload] = []
-    private(set) var browseScopeCallCount = 0
-    var browseScopeToReturn: DatabaseScope?
 
     let driver: MockDatabaseDriver
 
@@ -37,11 +36,6 @@ private final class RecordingMetadataProvider: ScopedMetadataProviding {
         requestedScopes.append(scope)
         requestedWorkloads.append(workload)
         return try await body(driver)
-    }
-
-    func driverScope(for connectionId: UUID) -> DatabaseScope? {
-        browseScopeCallCount += 1
-        return browseScopeToReturn
     }
 }
 
@@ -78,7 +72,6 @@ struct TableStructureLoaderScopeTests {
 
         let browseScope = try #require(DatabaseManager.shared.driverScope(for: connection.id))
         let provider = RecordingMetadataProvider()
-        provider.browseScopeToReturn = browseScope
 
         let tabScope = DatabaseScope(connectionId: connection.id, database: "A", schema: nil)
         let loader = TableStructureLoader(scope: tabScope, tableName: "t", provider: provider)
@@ -90,7 +83,6 @@ struct TableStructureLoaderScopeTests {
         #expect(provider.requestedScopes.allSatisfy { $0.database == "A" })
         #expect(provider.requestedScopes.allSatisfy { $0.schema == nil })
         #expect(provider.requestedScopes.allSatisfy { $0 != browseScope })
-        #expect(provider.browseScopeCallCount == 0)
         #expect(provider.requestedWorkloads.allSatisfy { $0 == .interactive })
     }
 
@@ -107,7 +99,6 @@ struct TableStructureLoaderScopeTests {
         #expect(browseScope.schema == "dbo")
 
         let provider = RecordingMetadataProvider()
-        provider.browseScopeToReturn = browseScope
 
         let tabScope = DatabaseScope(connectionId: connection.id, database: "orders", schema: "sales")
         let loader = TableStructureLoader(scope: tabScope, tableName: "t", provider: provider)
@@ -141,7 +132,6 @@ struct TableStructureLoaderScopeTests {
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let provider = RecordingMetadataProvider()
-        provider.browseScopeToReturn = DatabaseManager.shared.driverScope(for: connection.id)
         let serverScoped = DatabaseScope(connectionId: connection.id, database: "", schema: nil)
         let loader = TableStructureLoader(scope: serverScoped, tableName: "t", provider: provider)
 
@@ -149,6 +139,5 @@ struct TableStructureLoaderScopeTests {
 
         #expect(serverScoped.isServerScoped)
         #expect(provider.requestedScopes == [serverScoped])
-        #expect(provider.browseScopeCallCount == 0)
     }
 }

@@ -2,10 +2,10 @@
 //  SchemaRefreshServiceTests.swift
 //  TableProTests
 //
-//  Tests that a connection's schema refresh runs once no matter how many
-//  windows request it (#1946), and that it reads the browse scope rather than
-//  any open tab's scope (#2026): the sidebar object list is the one thing that
-//  genuinely follows the user's database selection.
+//  Tests that a schema refresh runs once no matter how many windows request the same
+//  container (#1946), that it runs on the scope it is handed rather than on any open tab's
+//  scope (#2026), and that two windows browsing different containers of one connection each
+//  fill their own cache instead of joining one load (#2088).
 //
 
 import Foundation
@@ -18,8 +18,6 @@ private final class FakeScopedMetadataProvider: ScopedMetadataProviding {
     let driver: MockDatabaseDriver
     var acquisitionCount = 0
     var errorToThrow: Error?
-    var driverDatabase: String? = "testdb"
-    var driverSchema: String?
     private(set) var requestedScopes: [DatabaseScope] = []
     private(set) var requestedWorkloads: [MetadataConnectionPool.Workload] = []
 
@@ -40,11 +38,6 @@ private final class FakeScopedMetadataProvider: ScopedMetadataProviding {
         }
         return try await body(driver)
     }
-
-    func driverScope(for connectionId: UUID) -> DatabaseScope? {
-        guard let driverDatabase else { return nil }
-        return DatabaseScope(connectionId: connectionId, database: driverDatabase, schema: driverSchema)
-    }
 }
 
 @Suite("SchemaRefreshService")
@@ -63,7 +56,15 @@ struct SchemaRefreshServiceTests {
         )
     }
 
-    @Test("concurrent refreshes for one connection run a single schema load")
+    private func browseScope(
+        _ connection: DatabaseConnection,
+        database: String = "testdb",
+        schema: String? = nil
+    ) -> DatabaseScope {
+        DatabaseScope(connectionId: connection.id, database: database, schema: schema)
+    }
+
+    @Test("concurrent refreshes for one scope run a single schema load")
     func concurrentRefreshesRunOneLoad() async {
         let driver = MockDatabaseDriver()
         driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
@@ -71,72 +72,87 @@ struct SchemaRefreshServiceTests {
         let schemaService = SchemaService()
         let service = makeService(schemaService: schemaService, provider: provider)
         let connection = TestFixtures.makeConnection()
+        let scope = browseScope(connection)
 
-        async let first: Void = service.refresh(connection: connection)
-        async let second: Void = service.refresh(connection: connection)
-        async let third: Void = service.refresh(connection: connection)
+        async let first: Void = service.refresh(connection: connection, scope: scope)
+        async let second: Void = service.refresh(connection: connection, scope: scope)
+        async let third: Void = service.refresh(connection: connection, scope: scope)
         _ = await (first, second, third)
 
         #expect(driver.fetchTablesCallCount == 1)
         #expect(provider.acquisitionCount == 1)
-        #expect(schemaService.state(for: connection.id) == .loaded(driver.tablesToReturn))
+        #expect(schemaService.state(for: scope) == .loaded(driver.tablesToReturn))
     }
 
-    @Test("the sidebar refresh asks for the browse scope, not a tab's scope")
-    func refreshAsksForTheBrowseScope() async throws {
+    @Test("the refresh runs on the scope it is handed, never on a resolved one")
+    func refreshUsesTheScopeItIsHanded() async throws {
         let driver = MockDatabaseDriver()
         let provider = FakeScopedMetadataProvider(driver: driver)
-        provider.driverDatabase = "inventory"
-        provider.driverSchema = "dbo"
         let schemaService = SchemaService()
         let service = makeService(schemaService: schemaService, provider: provider)
         let connection = TestFixtures.makeConnection(database: "saved_default")
+        let scope = browseScope(connection, database: "inventory", schema: "dbo")
 
-        await service.refresh(connection: connection)
+        await service.refresh(connection: connection, scope: scope)
 
-        #expect(provider.requestedScopes.count == 1)
-        let scope = try #require(provider.requestedScopes.first)
-        #expect(scope.connectionId == connection.id)
-        #expect(scope.database == "inventory")
-        #expect(scope.schema == "dbo")
+        #expect(provider.requestedScopes == [scope])
         #expect(provider.requestedWorkloads == [.bulk])
+        #expect(schemaService.state(for: scope) == .loaded(driver.tablesToReturn))
     }
 
     @Test("an empty browse database is server scoped, so the refresh still runs")
     func refreshWithAnEmptyDatabaseIsServerScoped() async throws {
         let driver = MockDatabaseDriver()
         let provider = FakeScopedMetadataProvider(driver: driver)
-        provider.driverDatabase = ""
         let schemaService = SchemaService()
         let service = makeService(schemaService: schemaService, provider: provider)
         let connection = TestFixtures.makeConnection()
+        let scope = browseScope(connection, database: "")
 
-        await service.refresh(connection: connection)
+        await service.refresh(connection: connection, scope: scope)
 
-        let scope = try #require(provider.requestedScopes.first)
-        #expect(scope.isServerScoped)
+        let requested = try #require(provider.requestedScopes.first)
+        #expect(requested.isServerScoped)
         #expect(driver.fetchTablesCallCount == 1)
-        #expect(schemaService.state(for: connection.id) == .loaded(driver.tablesToReturn))
+        #expect(schemaService.state(for: scope) == .loaded(driver.tablesToReturn))
     }
 
-    @Test("a connection with no browse scope fails the refresh instead of guessing")
-    func refreshWithoutABrowseScopeFails() async {
+    @Test("two windows on different databases of one connection each load their own scope")
+    func windowsOnDifferentDatabasesDoNotJoin() async {
         let driver = MockDatabaseDriver()
         let provider = FakeScopedMetadataProvider(driver: driver)
-        provider.driverDatabase = nil
         let schemaService = SchemaService()
         let service = makeService(schemaService: schemaService, provider: provider)
         let connection = TestFixtures.makeConnection()
+        let shop = browseScope(connection, database: "shop")
+        let inventory = browseScope(connection, database: "inventory")
 
-        await service.refresh(connection: connection)
+        async let first: Void = service.refresh(connection: connection, scope: shop)
+        async let second: Void = service.refresh(connection: connection, scope: inventory)
+        _ = await (first, second)
 
-        #expect(provider.requestedScopes.isEmpty)
-        #expect(driver.fetchTablesCallCount == 0)
-        var isFailed = false
-        if case .failed = schemaService.state(for: connection.id) {
-            isFailed = true
-        }
-        #expect(isFailed)
+        #expect(provider.acquisitionCount == 2)
+        #expect(Set(provider.requestedScopes) == [shop, inventory])
+        #expect(schemaService.hasLoadedContent(for: shop))
+        #expect(schemaService.hasLoadedContent(for: inventory))
+    }
+
+    @Test("two windows on different schemas of one database each load their own scope")
+    func windowsOnDifferentSchemasDoNotJoin() async {
+        let driver = MockDatabaseDriver()
+        let provider = FakeScopedMetadataProvider(driver: driver)
+        let schemaService = SchemaService()
+        let service = makeService(schemaService: schemaService, provider: provider)
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let sales = browseScope(connection, schema: "sales")
+        let hr = browseScope(connection, schema: "hr")
+
+        async let first: Void = service.refresh(connection: connection, scope: sales)
+        async let second: Void = service.refresh(connection: connection, scope: hr)
+        _ = await (first, second)
+
+        #expect(provider.acquisitionCount == 2)
+        #expect(Set(provider.requestedScopes) == [sales, hr])
     }
 
     @Test("a refresh pushes the loaded tables into the autocomplete provider")
@@ -149,36 +165,37 @@ struct SchemaRefreshServiceTests {
         let provider = FakeScopedMetadataProvider(driver: driver)
         let registry = SchemaProviderRegistry()
         let connection = TestFixtures.makeConnection()
-        let schemaProvider = registry.getOrCreate(for: connection.id)
+        let scope = browseScope(connection)
+        let schemaProvider = registry.getOrCreate(for: scope)
         let service = makeService(
             schemaService: SchemaService(),
             provider: provider,
             providerRegistry: registry
         )
 
-        await service.refresh(connection: connection)
+        await service.refresh(connection: connection, scope: scope)
 
         let names = await schemaProvider.getTables().map(\.name)
         #expect(names.sorted() == ["customers", "orders"])
     }
 
-    @Test("no browse scope leaves the autocomplete provider untouched instead of clearing it")
-    func autocompleteSyncWithoutABrowseScopeKeepsTheCachedTables() async {
+    @Test("syncing a scope with no loaded schema keeps the cached tables instead of clearing them")
+    func autocompleteSyncForAnUnloadedScopeKeepsTheCachedTables() async {
         let driver = MockDatabaseDriver()
         driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
         let provider = FakeScopedMetadataProvider(driver: driver)
         let registry = SchemaProviderRegistry()
         let connection = TestFixtures.makeConnection()
-        let schemaProvider = registry.getOrCreate(for: connection.id)
+        let scope = browseScope(connection)
+        let schemaProvider = registry.getOrCreate(for: scope)
         let service = makeService(
             schemaService: SchemaService(),
             provider: provider,
             providerRegistry: registry
         )
-        await service.refresh(connection: connection)
+        await service.refresh(connection: connection, scope: scope)
 
-        provider.driverDatabase = nil
-        await service.syncAutocompleteProvider(connectionId: connection.id)
+        await service.syncAutocompleteProvider(scope: browseScope(connection, database: "never_loaded"))
 
         let names = await schemaProvider.getTables().map(\.name)
         #expect(names == ["orders"])
@@ -191,9 +208,10 @@ struct SchemaRefreshServiceTests {
         let schemaService = SchemaService()
         let service = makeService(schemaService: schemaService, provider: provider)
         let connection = TestFixtures.makeConnection()
+        let scope = browseScope(connection)
 
-        await service.refresh(connection: connection)
-        await service.refresh(connection: connection)
+        await service.refresh(connection: connection, scope: scope)
+        await service.refresh(connection: connection, scope: scope)
 
         #expect(driver.fetchTablesCallCount == 2)
     }
@@ -205,9 +223,10 @@ struct SchemaRefreshServiceTests {
         let schemaService = SchemaService()
         let service = makeService(schemaService: schemaService, provider: provider)
         let connection = TestFixtures.makeConnection()
+        let scope = browseScope(connection)
 
-        async let scoped: Void = service.refresh(connection: connection, database: "shop")
-        async let unscoped: Void = service.refresh(connection: connection, database: nil)
+        async let scoped: Void = service.refresh(connection: connection, scope: scope, database: "shop")
+        async let unscoped: Void = service.refresh(connection: connection, scope: scope, database: nil)
         _ = await (scoped, unscoped)
 
         #expect(provider.acquisitionCount == 2)
@@ -221,11 +240,12 @@ struct SchemaRefreshServiceTests {
         let schemaService = SchemaService()
         let service = makeService(schemaService: schemaService, provider: provider)
         let connection = TestFixtures.makeConnection()
+        let scope = browseScope(connection)
 
-        await service.refresh(connection: connection)
+        await service.refresh(connection: connection, scope: scope)
 
         var isFailed = false
-        if case .failed = schemaService.state(for: connection.id) {
+        if case .failed = schemaService.state(for: scope) {
             isFailed = true
         }
         #expect(isFailed)

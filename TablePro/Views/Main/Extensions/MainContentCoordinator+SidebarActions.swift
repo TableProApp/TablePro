@@ -118,7 +118,7 @@ extension MainContentCoordinator {
     func editViewDefinition(_ viewName: String) {
         Task {
             do {
-                let definition = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: self.connection.id) { driver in
+                let definition = try await DatabaseManager.shared.withMetadataDriver(scope: self.browseScope) { driver in
                     try await driver.fetchViewDefinition(view: viewName)
                 }
 

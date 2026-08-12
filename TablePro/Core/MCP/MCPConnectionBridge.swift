@@ -249,9 +249,8 @@ public actor MCPConnectionBridge {
     func listTables(scope: DatabaseScope, includeRowCounts: Bool) async throws -> JsonValue {
         try await ensureConnected(scope.connectionId)
 
-        let cachedTables = await MainActor.run { () -> [TableInfo] in
-            guard DatabaseManager.shared.driverScope(for: scope.connectionId) == scope else { return [] }
-            return SchemaService.shared.tables(for: scope.connectionId)
+        let cachedTables = await MainActor.run {
+            SchemaService.shared.tables(for: scope)
         }
 
         let tables: [TableInfo]
@@ -387,16 +386,20 @@ public actor MCPConnectionBridge {
     func fetchSchemaResource(connectionId: UUID) async throws -> JsonValue {
         try await ensureConnected(connectionId)
 
+        guard let scope = await MainActor.run(body: { DatabaseManager.shared.driverScope(for: connectionId) }) else {
+            throw DatabaseError.notConnected
+        }
+
         let cachedTables = await MainActor.run {
-            SchemaService.shared.tables(for: connectionId)
+            SchemaService.shared.tables(for: scope)
         }
 
         let tables: [TableInfo]
         if !cachedTables.isEmpty {
             tables = cachedTables
         } else {
-            tables = try await DatabaseManager.shared.withBrowseMetadataDriver(
-                connectionId: connectionId,
+            tables = try await DatabaseManager.shared.withMetadataDriver(
+                scope: scope,
                 workload: .bulk
             ) { driver in
                 try await driver.fetchTables()
@@ -405,8 +408,8 @@ public actor MCPConnectionBridge {
 
         let limitedTables = Array(tables.prefix(100))
 
-        let tableSchemas: [JsonValue] = try await DatabaseManager.shared.withBrowseMetadataDriver(
-            connectionId: connectionId,
+        let tableSchemas: [JsonValue] = try await DatabaseManager.shared.withMetadataDriver(
+            scope: scope,
             workload: .bulk
         ) { driver in
             var schemas: [JsonValue] = []

@@ -98,16 +98,17 @@ struct SchemaServiceHierarchicalTests {
     func perSchemaStorage() async {
         let service = SchemaService()
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let driver = HierarchicalMockDriver()
         driver.tablesBySchema = [
             "analytics": [bigQueryTable("events", schema: "analytics"), bigQueryTable("sessions", schema: "analytics")],
             "marketing": [bigQueryTable("campaigns", schema: "marketing")]
         ]
 
-        await service.loadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaTables(scope: scope, schema: "analytics", driver: driver)
 
-        #expect(service.tables(for: connectionId, schema: "analytics").map(\.name) == ["events", "sessions"])
-        #expect(service.tables(for: connectionId, schema: "marketing").isEmpty)
+        #expect(service.tables(for: scope, schema: "analytics").map(\.name) == ["events", "sessions"])
+        #expect(service.tables(for: scope, schema: "marketing").isEmpty)
         #expect(driver.fetchTablesCallCount["analytics"] == 1)
         #expect(driver.fetchTablesCallCount["marketing"] == nil)
     }
@@ -116,11 +117,12 @@ struct SchemaServiceHierarchicalTests {
     func loadIsIdempotent() async {
         let service = SchemaService()
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let driver = HierarchicalMockDriver()
         driver.tablesBySchema = ["analytics": [bigQueryTable("events", schema: "analytics")]]
 
-        await service.loadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
-        await service.loadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaTables(scope: scope, schema: "analytics", driver: driver)
+        await service.loadSchemaTables(scope: scope, schema: "analytics", driver: driver)
 
         #expect(driver.fetchTablesCallCount["analytics"] == 1)
     }
@@ -129,35 +131,37 @@ struct SchemaServiceHierarchicalTests {
     func reloadRefetches() async {
         let service = SchemaService()
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let driver = HierarchicalMockDriver()
         driver.tablesBySchema = ["analytics": [bigQueryTable("events", schema: "analytics")]]
 
-        await service.loadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.loadSchemaTables(scope: scope, schema: "analytics", driver: driver)
         driver.tablesBySchema["analytics"] = [
             bigQueryTable("events", schema: "analytics"),
             bigQueryTable("clicks", schema: "analytics")
         ]
-        await service.reloadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
+        await service.reloadSchemaTables(scope: scope, schema: "analytics", driver: driver)
 
         #expect(driver.fetchTablesCallCount["analytics"] == 2)
-        #expect(service.tables(for: connectionId, schema: "analytics").map(\.name) == ["events", "clicks"])
+        #expect(service.tables(for: scope, schema: "analytics").map(\.name) == ["events", "clicks"])
     }
 
     @Test("hierarchical load fills the schema list and leaves the flat table list empty")
     func hierarchicalLoadPopulatesSchemasOnly() async {
         let service = SchemaService()
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .bigQuery)
         let driver = HierarchicalMockDriver(connection: connection)
         driver.schemasToReturn = ["analytics", "marketing", "staging"]
         driver.tablesBySchema = ["analytics": [bigQueryTable("events", schema: "analytics")]]
 
-        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+        await service.load(scope: scope, driver: driver, connection: connection)
 
-        #expect(service.schemas(for: connectionId) == ["analytics", "marketing", "staging"])
-        #expect(service.tables(for: connectionId).isEmpty)
+        #expect(service.schemas(for: scope) == ["analytics", "marketing", "staging"])
+        #expect(service.tables(for: scope).isEmpty)
         #expect(driver.fetchTablesCallCount.isEmpty)
-        if case .loaded = service.state(for: connectionId) {} else {
+        if case .loaded = service.state(for: scope) {} else {
             Issue.record("expected loaded state for hierarchical connection")
         }
     }
@@ -166,14 +170,15 @@ struct SchemaServiceHierarchicalTests {
     func invalidateClearsPerSchema() async {
         let service = SchemaService()
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let driver = HierarchicalMockDriver()
         driver.tablesBySchema = ["analytics": [bigQueryTable("events", schema: "analytics")]]
 
-        await service.loadSchemaTables(connectionId: connectionId, schema: "analytics", driver: driver)
-        #expect(!service.tables(for: connectionId, schema: "analytics").isEmpty)
+        await service.loadSchemaTables(scope: scope, schema: "analytics", driver: driver)
+        #expect(!service.tables(for: scope, schema: "analytics").isEmpty)
 
         await service.invalidate(connectionId: connectionId)
 
-        #expect(service.tables(for: connectionId, schema: "analytics").isEmpty)
+        #expect(service.tables(for: scope, schema: "analytics").isEmpty)
     }
 }

@@ -39,7 +39,7 @@ struct MainContentView: View {
     var rightPanelState: RightPanelState
 
     private var tables: [TableInfo] {
-        schemaService.tables(for: connection.id)
+        schemaService.tables(for: coordinator.browseScope)
     }
 
     // MARK: - State Objects

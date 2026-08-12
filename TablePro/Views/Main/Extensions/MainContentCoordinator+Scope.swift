@@ -49,4 +49,36 @@ extension MainContentCoordinator {
             schema: browseSchemaName
         )
     }
+
+    /// The objects this window's sidebar is showing. Reading the connection's session tables
+    /// instead hands back whatever container the shared driver sits on, which is another
+    /// window's selection as often as it is this one's.
+    var browseTables: [TableInfo] {
+        services.schemaService.tables(for: browseScope)
+    }
+
+    /// Creates the provider as well as retaining it, because the autocomplete sync that runs
+    /// right after a database switch only fills a provider that already exists.
+    internal func retainSchemaProvider(for scope: DatabaseScope) {
+        guard retainedSchemaProviderScope != scope else { return }
+        if let previous = retainedSchemaProviderScope {
+            services.schemaProviderRegistry.release(for: previous)
+        }
+        _ = services.schemaProviderRegistry.getOrCreate(for: scope)
+        services.schemaProviderRegistry.retain(for: scope)
+        retainedSchemaProviderScope = scope
+    }
+
+    /// Follows the browse cursor, so a window that moved to another database stops holding the
+    /// scope it left alive. A window that never retained one must not start here.
+    internal func moveRetainedSchemaProvider() {
+        guard retainedSchemaProviderScope != nil else { return }
+        retainSchemaProvider(for: browseScope)
+    }
+
+    internal func releaseRetainedSchemaProvider() {
+        guard let scope = retainedSchemaProviderScope else { return }
+        retainedSchemaProviderScope = nil
+        services.schemaProviderRegistry.release(for: scope)
+    }
 }

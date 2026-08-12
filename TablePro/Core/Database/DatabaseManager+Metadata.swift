@@ -15,8 +15,6 @@ protocol ScopedMetadataProviding: AnyObject {
         workload: MetadataConnectionPool.Workload,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T
-
-    func driverScope(for connectionId: UUID) -> DatabaseScope?
 }
 
 extension ScopedMetadataProviding {
@@ -25,19 +23,6 @@ extension ScopedMetadataProviding {
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         try await withMetadataDriver(scope: scope, workload: .interactive, body)
-    }
-
-    /// For reads that belong to the sidebar rather than to a tab: the object list, the
-    /// database and quick switchers, autocomplete, and the AI schema context.
-    func withBrowseMetadataDriver<T: Sendable>(
-        connectionId: UUID,
-        workload: MetadataConnectionPool.Workload = .interactive,
-        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
-    ) async throws -> T {
-        guard let scope = driverScope(for: connectionId) else {
-            throw DatabaseError.notConnected
-        }
-        return try await withMetadataDriver(scope: scope, workload: workload, body)
     }
 }
 
@@ -56,5 +41,22 @@ extension DatabaseManager {
             cancellation: .untracked,
             body
         )
+    }
+
+    /// For reads that belong to the connection rather than to any one window: the database
+    /// and quick switchers, export, MCP, the AI schema context.
+    ///
+    /// A window-facing read must pass its own `browseScope` instead. Browsing is per window,
+    /// so resolving the container here is how one window's read lands on another window's
+    /// database.
+    func withDriverScopedMetadataDriver<T: Sendable>(
+        connectionId: UUID,
+        workload: MetadataConnectionPool.Workload = .interactive,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        guard let scope = driverScope(for: connectionId) else {
+            throw DatabaseError.notConnected
+        }
+        return try await withMetadataDriver(scope: scope, workload: workload, body)
     }
 }

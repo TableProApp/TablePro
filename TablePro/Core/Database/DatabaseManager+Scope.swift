@@ -10,12 +10,7 @@ extension DatabaseManager {
     /// that has no window to ask. Never the scope a window browses, and never the scope of an
     /// operation an existing tab owns.
     func driverScope(for connectionId: UUID) -> DatabaseScope? {
-        guard let session = activeSessions[connectionId] else { return nil }
-        return DatabaseScope(
-            connectionId: connectionId,
-            database: session.resolvedDriverDatabase,
-            schema: session.driverSchema
-        )
+        activeSessions[connectionId]?.driverScope
     }
 
     /// Freezes a tab's identity once, at creation, the way `resolvedSchemaName` does one

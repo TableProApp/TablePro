@@ -8,15 +8,16 @@ import Foundation
 import os
 import TableProPluginKit
 
-/// Owns the connection-scoped schema refresh so every window of a connection shares
-/// one load instead of running its own. Requests for the same connection and database
-/// scope join the in-flight refresh.
+/// Owns the schema refresh so every window browsing the same container shares one load
+/// instead of running its own. Requests for the same scope join the in-flight refresh;
+/// windows on different databases or schemas of one connection do not, because they are
+/// filling different caches.
 @MainActor
 final class SchemaRefreshService {
     static let shared = SchemaRefreshService()
 
     private struct RefreshKey: Hashable {
-        let connectionId: UUID
+        let scope: DatabaseScope
         let database: String?
     }
 
@@ -54,15 +55,15 @@ final class SchemaRefreshService {
             }
     }
 
-    func refresh(connection: DatabaseConnection, database: String? = nil) async {
-        let key = RefreshKey(connectionId: connection.id, database: database)
+    func refresh(connection: DatabaseConnection, scope: DatabaseScope, database: String? = nil) async {
+        let key = RefreshKey(scope: scope, database: database)
         if let existing = inFlight[key] {
             await existing.value
             return
         }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.performRefresh(connection: connection, database: database)
+            await self.performRefresh(connection: connection, scope: scope, database: database)
         }
         inFlight[key] = task
         await task.value
@@ -72,65 +73,63 @@ final class SchemaRefreshService {
     /// Push the loaded table list into the autocomplete provider.
     ///
     /// The provider caches the driver it is handed and fetches columns from it later, so it
-    /// must get one scoped to the browsed database rather than the shared session driver,
-    /// which a tab's execution moves without writing session state.
-    func syncAutocompleteProvider(connectionId: UUID) async {
-        guard case .loaded = schemaService.state(for: connectionId) else {
+    /// must get one scoped to the container the window is browsing rather than the shared
+    /// session driver, which a tab's execution moves without writing session state.
+    func syncAutocompleteProvider(scope: DatabaseScope) async {
+        guard case .loaded = schemaService.state(for: scope) else {
             Self.logger.debug(
-                "[schema] autocomplete sync skipped, schema not loaded connId=\(connectionId, privacy: .public)"
+                "[schema] autocomplete sync skipped, schema not loaded connId=\(scope.connectionId, privacy: .public) container=\(scope.qualifiedDescription, privacy: .public)"
             )
             return
         }
-        guard let provider = providerRegistry.provider(for: connectionId) else {
+        guard let provider = providerRegistry.provider(for: scope) else {
             Self.logger.debug(
-                "[schema] autocomplete sync skipped, no provider connId=\(connectionId, privacy: .public)"
+                "[schema] autocomplete sync skipped, no provider connId=\(scope.connectionId, privacy: .public) container=\(scope.qualifiedDescription, privacy: .public)"
             )
             return
         }
-        guard let driverDatabase = metadataDriverProvider.driverScope(for: connectionId)?.database else {
-            Self.logger.debug(
-                "[schema] autocomplete sync skipped, no browse scope connId=\(connectionId, privacy: .public)"
-            )
-            return
-        }
-        let tables = schemaService.allLoadedTables(for: connectionId)
-        let schemas = schemaService.schemas(for: connectionId)
+        let tables = schemaService.allLoadedTables(for: scope)
+        let schemas = schemaService.schemas(for: scope)
+        let database = scope.database
         do {
-            try await metadataDriverProvider.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-                await provider.resetForDatabase(driverDatabase, tables: tables, driver: driver)
-                await provider.setNamespaces(schemas: schemas, databases: [driverDatabase])
+            try await metadataDriverProvider.withMetadataDriver(scope: scope) { driver in
+                await provider.resetForDatabase(database, tables: tables, driver: driver)
+                await provider.setNamespaces(schemas: schemas, databases: [database])
             }
         } catch {
             Self.logger.warning(
-                "[schema] autocomplete sync failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] autocomplete sync failed connId=\(scope.connectionId, privacy: .public) container=\(scope.qualifiedDescription, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
         }
     }
 
+    /// The driver's schema moved, which is a connection-wide fact with no window attached,
+    /// so this refreshes the driver's own container. A window that browses another schema
+    /// refreshes its own scope through its coordinator.
     private func refreshForSchemaSwitch(connectionId: UUID) async {
-        guard let connection = databaseManager?.session(for: connectionId)?.connection else { return }
-        await refresh(connection: connection)
+        guard let databaseManager,
+              let connection = databaseManager.session(for: connectionId)?.connection,
+              let scope = databaseManager.driverScope(for: connectionId) else { return }
+        await refresh(connection: connection, scope: scope)
     }
 
-    private func performRefresh(connection: DatabaseConnection, database: String?) async {
-        let connectionId = connection.id
-
+    private func performRefresh(connection: DatabaseConnection, scope: DatabaseScope, database: String?) async {
         if pluginManager.databaseGroupingStrategy(for: connection.type) == .hierarchicalSchema {
-            await schemaService.prepareForReload(connectionId: connectionId)
+            await schemaService.prepareForReload(scope: scope)
         }
 
         do {
-            try await metadataDriverProvider.withBrowseMetadataDriver(
-                connectionId: connectionId,
+            try await metadataDriverProvider.withMetadataDriver(
+                scope: scope,
                 workload: .bulk
             ) { [schemaService] driver in
                 await schemaService.reload(
-                    connectionId: connectionId,
+                    scope: scope,
                     driver: driver,
                     connection: connection
                 )
                 await schemaService.refreshLoadedSchemaTables(
-                    connectionId: connectionId,
+                    scope: scope,
                     driver: driver
                 )
             }
@@ -138,12 +137,12 @@ final class SchemaRefreshService {
             return
         } catch {
             Self.logger.warning(
-                "[schema] refresh failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] refresh failed connId=\(scope.connectionId, privacy: .public) container=\(scope.qualifiedDescription, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
-            schemaService.markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
+            schemaService.markLoadFailed(scope: scope, message: error.localizedDescription)
         }
 
-        await treeMetadataService.refreshLoadedTables(connectionId: connectionId, database: database)
-        await syncAutocompleteProvider(connectionId: connectionId)
+        await treeMetadataService.refreshLoadedTables(connectionId: scope.connectionId, database: database)
+        await syncAutocompleteProvider(scope: scope)
     }
 }

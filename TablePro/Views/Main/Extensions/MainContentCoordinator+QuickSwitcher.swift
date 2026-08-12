@@ -20,7 +20,7 @@ extension MainContentCoordinator {
                 .compactMap(\.tableContext.tableName)
         )
         let panelView = QuickSwitcherPanelView(
-            schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connectionId),
+            schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: browseScope),
             connectionId: connectionId,
             databaseType: connection.type,
             openTableNames: openTableNames,

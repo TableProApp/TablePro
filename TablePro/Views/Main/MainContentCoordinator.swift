@@ -93,7 +93,13 @@ final class MainContentCoordinator {
         browseState = state
         toolbarState.currentDatabase = browseDatabaseName
         toolbarState.currentSchema = browseSchemaName
+        moveRetainedSchemaProvider()
     }
+
+    /// The autocomplete provider this window holds a reference on, remembered rather than
+    /// recomputed: release has to name the scope retain took, and the browse cursor moves.
+    @ObservationIgnored var retainedSchemaProviderScope: DatabaseScope?
+
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
     func setSafeModeLevel(_ level: SafeModeLevel) {
         toolbarState.safeModeLevel = level
@@ -532,7 +538,7 @@ final class MainContentCoordinator {
         )
         self.persistence = TabPersistenceCoordinator(connectionId: connection.id)
 
-        _ = services.schemaProviderRegistry.getOrCreate(for: connection.id)
+        _ = services.schemaProviderRegistry.getOrCreate(for: browseScope)
         ConnectionDataCache.shared(for: connection.id).ensureLoaded()
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
@@ -613,14 +619,8 @@ final class MainContentCoordinator {
 
     func markActivated() {
         let start = Date()
-        let wasAlreadyActive = _didActivate.withLock { current -> Bool in
-            let prior = current
-            current = true
-            return prior
-        }
-        if !wasAlreadyActive {
-            services.schemaProviderRegistry.retain(for: connection.id)
-        }
+        _didActivate.withLock { $0 = true }
+        retainSchemaProvider(for: browseScope)
         registerForPersistence()
         SessionRecoveryTracker.sync()
         startPeriodicSave()
@@ -643,7 +643,7 @@ final class MainContentCoordinator {
         let watcher = DatabaseFileWatcher()
         watcher.watch(filePath: filePath, connectionId: connectionId) { [weak self] in
             guard let self else { return }
-            if case .loading = services.schemaService.state(for: self.connectionId) { return }
+            if case .loading = services.schemaService.state(for: self.browseScope) { return }
             Task { await self.refreshTables() }
         }
         fileWatcher = watcher
@@ -676,20 +676,23 @@ final class MainContentCoordinator {
         schemaColumns.removeAll()
         await services.schemaRefreshService.refresh(
             connection: connection,
+            scope: browseScope,
             database: currentDatabaseOnly ? browseDatabaseName : nil
         )
         pruneStaleSidebarState()
     }
 
     func refreshProcedures() async {
-        try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
-            await services.schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
+        let scope = browseScope
+        try? await services.databaseManager.withMetadataDriver(scope: scope) { [services] driver in
+            await services.schemaService.reloadProcedures(scope: scope, driver: driver)
         }
     }
 
     func refreshFunctions() async {
-        try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
-            await services.schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
+        let scope = browseScope
+        try? await services.databaseManager.withMetadataDriver(scope: scope) { [services] driver in
+            await services.schemaService.reloadFunctions(scope: scope, driver: driver)
         }
     }
 
@@ -733,8 +736,8 @@ final class MainContentCoordinator {
     /// Drop sidebar state for tables that no longer exist. The selection lives in this
     /// window's sidebar, so it is pruned per window.
     internal func pruneStaleSidebarState() {
-        guard case .loaded = services.schemaService.state(for: connectionId) else { return }
-        let tables = services.schemaService.allLoadedTables(for: connectionId)
+        guard case .loaded = services.schemaService.state(for: browseScope) else { return }
+        let tables = services.schemaService.allLoadedTables(for: browseScope)
         guard let vm = sidebarViewModel else { return }
         let validNames = Set(tables.map(\.name))
         let staleSelections = vm.selectedTables.filter { !validNames.contains($0.name) }
@@ -808,7 +811,7 @@ final class MainContentCoordinator {
 
         tableMetadata = nil
 
-        services.schemaProviderRegistry.release(for: connection.id)
+        releaseRetainedSchemaProvider()
         services.schemaProviderRegistry.purgeUnused()
         Self.lifecycleLogger.info(
             "[close] MainContentCoordinator.teardown done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
@@ -840,9 +843,9 @@ final class MainContentCoordinator {
             logger.warning("teardown() was not called before deallocation for connection \(connectionId)")
         }
 
-        if !alreadyHandled {
+        if !alreadyHandled, let retainedScope = retainedSchemaProviderScope {
             Task { @MainActor in
-                services.schemaProviderRegistry.release(for: connectionId)
+                services.schemaProviderRegistry.release(for: retainedScope)
                 services.schemaProviderRegistry.purgeUnused()
             }
         }

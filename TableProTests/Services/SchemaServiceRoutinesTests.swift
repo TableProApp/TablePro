@@ -271,6 +271,7 @@ struct SchemaServiceRoutinesTests {
     func loadCachesRoutines() async {
         let service = SchemaService()
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RoutineMockDriver(connection: connection)
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
@@ -281,11 +282,11 @@ struct SchemaServiceRoutinesTests {
             RoutineInfo(name: "user_count", schema: "public", kind: .function, signature: "int")
         ]
 
-        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+        await service.load(scope: scope, driver: driver, connection: connection)
 
-        #expect(service.tables(for: connectionId).map(\.name) == ["users"])
-        #expect(service.procedures(for: connectionId).map(\.name) == ["add_user"])
-        #expect(service.functions(for: connectionId).map(\.name) == ["user_count"])
+        #expect(service.tables(for: scope).map(\.name) == ["users"])
+        #expect(service.procedures(for: scope).map(\.name) == ["add_user"])
+        #expect(service.functions(for: scope).map(\.name) == ["user_count"])
         #expect(driver.tablesCallCount == 1)
         #expect(driver.proceduresCallCount == 1)
         #expect(driver.functionsCallCount == 1)
@@ -295,6 +296,7 @@ struct SchemaServiceRoutinesTests {
     func routinesConcatenation() async {
         let service = SchemaService()
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RoutineMockDriver(connection: connection)
         driver.proceduresToReturn = [
@@ -304,9 +306,9 @@ struct SchemaServiceRoutinesTests {
             RoutineInfo(name: "f1", schema: nil, kind: .function, signature: nil)
         ]
 
-        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+        await service.load(scope: scope, driver: driver, connection: connection)
 
-        let combined = service.routines(for: connectionId)
+        let combined = service.routines(for: scope)
         #expect(combined.map(\.name) == ["p1", "f1"])
         #expect(combined.map(\.kind) == [.procedure, .function])
     }
@@ -315,15 +317,16 @@ struct SchemaServiceRoutinesTests {
     func failingRoutinesDoNotBlockTables() async {
         let service = SchemaService()
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = FailingRoutineDriver(connection: connection)
 
-        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+        await service.load(scope: scope, driver: driver, connection: connection)
 
-        #expect(service.tables(for: connectionId).map(\.name) == ["users"])
-        #expect(service.procedures(for: connectionId).isEmpty)
-        #expect(service.functions(for: connectionId).isEmpty)
-        if case .loaded = service.state(for: connectionId) {
+        #expect(service.tables(for: scope).map(\.name) == ["users"])
+        #expect(service.procedures(for: scope).isEmpty)
+        #expect(service.functions(for: scope).isEmpty)
+        if case .loaded = service.state(for: scope) {
             // success: state is loaded even though routines failed
         } else {
             Issue.record("expected loaded state when only routine fetches fail")
@@ -334,6 +337,7 @@ struct SchemaServiceRoutinesTests {
     func invalidateClearsAll() async {
         let service = SchemaService()
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RoutineMockDriver(connection: connection)
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "t")]
@@ -341,20 +345,21 @@ struct SchemaServiceRoutinesTests {
             RoutineInfo(name: "p", schema: nil, kind: .procedure, signature: nil)
         ]
 
-        await service.load(connectionId: connectionId, driver: driver, connection: connection)
-        #expect(!service.procedures(for: connectionId).isEmpty)
+        await service.load(scope: scope, driver: driver, connection: connection)
+        #expect(!service.procedures(for: scope).isEmpty)
 
         await service.invalidate(connectionId: connectionId)
 
-        #expect(service.tables(for: connectionId).isEmpty)
-        #expect(service.procedures(for: connectionId).isEmpty)
-        #expect(service.functions(for: connectionId).isEmpty)
+        #expect(service.tables(for: scope).isEmpty)
+        #expect(service.procedures(for: scope).isEmpty)
+        #expect(service.functions(for: scope).isEmpty)
     }
 
     @Test("table state becomes loaded before auxiliary metadata finishes")
     func tableStateLoadsBeforeAuxiliaryMetadata() async {
         let service = SchemaService()
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = BlockingAuxiliaryDriver(connection: connection)
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
@@ -367,29 +372,29 @@ struct SchemaServiceRoutinesTests {
         driver.schemasToReturn = ["public"]
 
         let loadTask = Task {
-            await service.load(connectionId: connectionId, driver: driver, connection: connection)
+            await service.load(scope: scope, driver: driver, connection: connection)
         }
 
         await driver.tablesGate.open()
-        await waitForLoadedState(service, connectionId: connectionId)
+        await waitForLoadedState(service, scope: scope)
 
-        #expect(service.tables(for: connectionId).map(\.name) == ["users"])
-        #expect(service.procedures(for: connectionId).isEmpty)
-        #expect(service.functions(for: connectionId).isEmpty)
-        #expect(service.schemas(for: connectionId).isEmpty)
+        #expect(service.tables(for: scope).map(\.name) == ["users"])
+        #expect(service.procedures(for: scope).isEmpty)
+        #expect(service.functions(for: scope).isEmpty)
+        #expect(service.schemas(for: scope).isEmpty)
 
         await driver.routinesGate.open()
         await driver.schemasGate.open()
         await loadTask.value
 
-        #expect(service.procedures(for: connectionId).map(\.name) == ["add_user"])
-        #expect(service.functions(for: connectionId).map(\.name) == ["user_count"])
-        #expect(service.schemas(for: connectionId) == ["public"])
+        #expect(service.procedures(for: scope).map(\.name) == ["add_user"])
+        #expect(service.functions(for: scope).map(\.name) == ["user_count"])
+        #expect(service.schemas(for: scope) == ["public"])
     }
 
-    private func waitForLoadedState(_ service: SchemaService, connectionId: UUID) async {
+    private func waitForLoadedState(_ service: SchemaService, scope: DatabaseScope) async {
         while true {
-            if case .loaded = service.state(for: connectionId) {
+            if case .loaded = service.state(for: scope) {
                 return
             }
             await Task.yield()
@@ -400,12 +405,13 @@ struct SchemaServiceRoutinesTests {
     func reloadProceduresOnly() async {
         let service = SchemaService()
         let connectionId = UUID()
+        let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RoutineMockDriver(connection: connection)
         driver.proceduresToReturn = [
             RoutineInfo(name: "p1", schema: nil, kind: .procedure, signature: nil)
         ]
-        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+        await service.load(scope: scope, driver: driver, connection: connection)
         let firstProcCount = driver.proceduresCallCount
         let firstFuncCount = driver.functionsCallCount
 
@@ -413,10 +419,10 @@ struct SchemaServiceRoutinesTests {
             RoutineInfo(name: "p1", schema: nil, kind: .procedure, signature: nil),
             RoutineInfo(name: "p2", schema: nil, kind: .procedure, signature: nil)
         ]
-        await service.reloadProcedures(connectionId: connectionId, driver: driver)
+        await service.reloadProcedures(scope: scope, driver: driver)
 
         #expect(driver.proceduresCallCount == firstProcCount + 1)
         #expect(driver.functionsCallCount == firstFuncCount)
-        #expect(service.procedures(for: connectionId).map(\.name) == ["p1", "p2"])
+        #expect(service.procedures(for: scope).map(\.name) == ["p1", "p2"])
     }
 }

@@ -27,12 +27,17 @@ struct SidebarTreeView: View {
         return viewModel.filteredRecentTables(infos).map(RecentTableRow.init)
     }
 
+    /// The container this tree lists, owned by the window rather than by the connection.
+    private var browseScope: DatabaseScope {
+        coordinator?.browseScope ?? DatabaseScope(connectionId: connectionId, database: "", schema: nil)
+    }
+
     private var systemSchemas: Set<String> {
         Set(PluginManager.shared.systemSchemaNames(for: viewModel.databaseType))
     }
 
     private var schemas: [String] {
-        schemaService.schemas(for: connectionId).filter { !systemSchemas.contains($0) }
+        schemaService.schemas(for: browseScope).filter { !systemSchemas.contains($0) }
     }
 
     private var searchText: String {
@@ -91,7 +96,7 @@ struct SidebarTreeView: View {
 
     @ViewBuilder
     private func datasetContent(for schema: String) -> some View {
-        switch schemaService.schemaState(for: connectionId, schema: schema) {
+        switch schemaService.schemaState(for: browseScope, schema: schema) {
         case .idle, .loading:
             HStack(spacing: 6) {
                 ProgressView()
@@ -233,7 +238,7 @@ struct SidebarTreeView: View {
     }
 
     private func tablesToShow(for schema: String) -> [TableInfo] {
-        let tables = schemaService.tables(for: connectionId, schema: schema)
+        let tables = schemaService.tables(for: browseScope, schema: schema)
         guard !searchText.isEmpty, !SidebarNameFilter.matches(query: searchText, candidate: schema) else {
             return tables
         }
@@ -242,7 +247,7 @@ struct SidebarTreeView: View {
 
     private func schemaIsVisibleDuringSearch(_ schema: String) -> Bool {
         if SidebarNameFilter.matches(query: searchText, candidate: schema) { return true }
-        switch schemaService.schemaState(for: connectionId, schema: schema) {
+        switch schemaService.schemaState(for: browseScope, schema: schema) {
         case .loaded:
             return !tablesToShow(for: schema).isEmpty
         case .idle, .loading, .failed:
@@ -253,7 +258,7 @@ struct SidebarTreeView: View {
     private func loadTables(for schema: String) {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
         Task {
-            await schemaService.loadSchemaTables(connectionId: connectionId, schema: schema, driver: driver)
+            await schemaService.loadSchemaTables(scope: browseScope, schema: schema, driver: driver)
         }
     }
 
@@ -265,7 +270,7 @@ struct SidebarTreeView: View {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
             for schema in schemasSnapshot {
-                if case .loaded = schemaService.schemaState(for: connectionId, schema: schema) {
+                if case .loaded = schemaService.schemaState(for: browseScope, schema: schema) {
                     continue
                 }
                 loadTables(for: schema)
@@ -276,7 +281,7 @@ struct SidebarTreeView: View {
     private func reloadTables(for schema: String) {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
         Task {
-            await schemaService.reloadSchemaTables(connectionId: connectionId, schema: schema, driver: driver)
+            await schemaService.reloadSchemaTables(scope: browseScope, schema: schema, driver: driver)
         }
     }
 }

@@ -25,12 +25,18 @@ struct SidebarView: View {
     var connectionId: UUID
     private weak var coordinator: MainContentCoordinator?
 
+    /// The container this sidebar lists. It comes from the window's coordinator, never from
+    /// the connection: two windows of one connection browse independently.
+    private var browseScope: DatabaseScope {
+        coordinator?.browseScope ?? DatabaseScope(connectionId: connectionId, database: "", schema: nil)
+    }
+
     private var tables: [TableInfo] {
-        schemaService.tables(for: connectionId)
+        schemaService.tables(for: browseScope)
     }
 
     private var routines: [RoutineInfo] {
-        schemaService.routines(for: connectionId)
+        schemaService.routines(for: browseScope)
     }
 
     private var pluginCapabilities: PluginCapabilities {
@@ -170,7 +176,7 @@ struct SidebarView: View {
                 if usesDatabaseTree {
                     databaseFilterButton
                 }
-                DelayedProgressIndicator(isActive: schemaService.isRefreshing(connectionId: connectionId))
+                DelayedProgressIndicator(isActive: schemaService.isRefreshing(scope: browseScope))
                     .accessibilityLabel(String(localized: "Refreshing"))
                 Spacer()
                 if supportsSchemaFooter {
@@ -253,7 +259,7 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var hierarchicalContent: some View {
-        switch schemaService.state(for: connectionId) {
+        switch schemaService.state(for: browseScope) {
         case .idle, .loading:
             loadingState
         case .failed(let message):
@@ -275,7 +281,7 @@ struct SidebarView: View {
     @ViewBuilder
     private var flatContent: some View {
         switch SidebarObjectListPresentation.resolve(
-            state: schemaService.state(for: connectionId),
+            state: schemaService.state(for: browseScope),
             hasActiveFilter: !viewModel.filterQuery.isEmpty,
             hasAnyMatch: hasAnyMatch,
             hasRoutines: !routines.isEmpty
@@ -308,7 +314,7 @@ struct SidebarView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button("Retry") {
-                Task { await schemaService.refresh(connectionId: connectionId) }
+                Task { await coordinator?.refreshTables() }
             }
             .controlSize(.small)
         }
