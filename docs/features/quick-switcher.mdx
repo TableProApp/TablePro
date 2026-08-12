@@ -1,6 +1,6 @@
 ---
 title: Quick Switcher
-description: Search and jump to any table, view, database, schema, saved query, or recent query
+description: Search objects and queries in one connection or across every open connection
 ---
 
 Press `Cmd+Shift+O` (or **Query** > **Quick Switcher**) in a connection window to open a floating search panel. Type a few characters and press `Return` to jump to any table, view, system table, database, schema, saved query, or recent query. Matching is fuzzy: `usr` finds `users` and `user_settings`, and matched characters are shown in bold.
@@ -18,16 +18,22 @@ Press `Cmd+Shift+O` (or **Query** > **Quick Switcher**) in a connection window t
 | Move selection | `Up` / `Down`, or `Ctrl+J`/`Ctrl+N` and `Ctrl+K`/`Ctrl+P` |
 | Open selected item | `Return` (double-click also works) |
 | Open in a new window tab | `Option+Return` |
-| Switch scope | `Cmd+1` to `Cmd+4` |
+| Switch scope | `Cmd+1` to `Cmd+5` |
 | Dismiss | `Escape`, `Cmd+Shift+O` again, or click outside |
 
 The opening shortcut is rebindable in **Settings > Keyboard**; see [Keyboard Shortcuts](/features/keyboard-shortcuts).
 
 ## Scopes
 
-Four scopes limit what the search covers: **All** (`Cmd+1`), **Tables** (`Cmd+2`, includes views and system tables), **Databases** (`Cmd+3`, includes schemas), and **Queries** (`Cmd+4`, saved queries and recent queries). Round buttons beside the field set the scope; they show while the field is empty and nothing is listed. Once the list fills, the active scope moves to a badge in the bar. Click the badge to return to All. With an empty search in a scope other than All, everything in that scope is listed under section headers. The database list follows the sidebar's database filter.
+Five scopes limit what the search covers: **All** (`Cmd+1`), **Tables** (`Cmd+2`, includes views and system tables), **Databases** (`Cmd+3`, includes schemas), **Queries** (`Cmd+4`, saved queries and recent queries), and **Connections** (`Cmd+5`). Round buttons beside the field set the scope; they show while the field is empty and nothing is listed. Once the list fills, the active scope moves to a badge in the bar. Click the badge to return to All. With an empty search in a scope other than All, everything in that scope is listed under section headers. The database list follows the sidebar's database filter.
 
 Saved queries come from your [favorites](/features/favorites) and also match on their keyword. Recent queries are the last 50 entries from [query history](/features/query-history) for the connection.
+
+## Search Across Connections
+
+The **Connections** scope searches tables, views, and system tables in every connected window. Results are grouped by connection and show the connection, database, and schema in their path. Search matches both the object name and that path, so typing a connection name limits the results to that connection.
+
+TablePro loads this catalog only when you open the Connections scope. It searches the database or schema each connection is currently browsing. Opening a result in another connection brings that connection's window forward and opens the table there.
 
 ## Ranking
 
@@ -54,3 +60,5 @@ What opening does depends on the item: tables and views open a table tab, databa
 | Open Structure | Tables, views, system tables |
 | Copy Name | All items |
 | Copy Query | Saved and recent queries |
+
+Open Structure is available only for objects in the current connection.

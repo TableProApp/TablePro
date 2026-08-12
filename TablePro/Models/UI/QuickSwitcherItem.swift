@@ -25,12 +25,35 @@ internal enum QuickSwitcherCommitIntent: Sendable {
     case openStructure
 }
 
+internal struct QuickSwitcherObjectTarget: Hashable, Sendable {
+    let connectionId: UUID
+    let connectionName: String
+    let databaseName: String?
+    let schemaName: String?
+    let databaseDisplayName: String?
+
+    init(
+        connectionId: UUID,
+        connectionName: String,
+        databaseName: String?,
+        schemaName: String?,
+        databaseDisplayName: String? = nil
+    ) {
+        self.connectionId = connectionId
+        self.connectionName = connectionName
+        self.databaseName = databaseName
+        self.schemaName = schemaName
+        self.databaseDisplayName = databaseDisplayName
+    }
+}
+
 /// A search scope limiting which kinds of objects the quick switcher shows
 internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
     case all
     case tables
     case containers
     case queries
+    case connections
 
     var id: String { rawValue }
 
@@ -40,6 +63,7 @@ internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
         case .tables: return [.table, .view, .systemTable]
         case .containers: return [.database, .schema]
         case .queries: return [.savedQuery, .queryHistory]
+        case .connections: return [.table, .view, .systemTable]
         }
     }
 
@@ -49,6 +73,7 @@ internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
         case .tables: return String(localized: "Tables")
         case .containers: return String(localized: "Databases")
         case .queries: return String(localized: "Queries")
+        case .connections: return String(localized: "Connections")
         }
     }
 
@@ -58,6 +83,7 @@ internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
         case .tables: return "tablecells"
         case .containers: return "cylinder"
         case .queries: return "doc.text"
+        case .connections: return "rectangle.3.group"
         }
     }
 }
@@ -72,6 +98,7 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     var payload: String?
     var isOpenInTab: Bool = false
     var isReadOnly: Bool = false
+    var objectTarget: QuickSwitcherObjectTarget?
 
     static func tableItemId(name: String, isView: Bool) -> String {
         "table_\(name)_\(isView ? "VIEW" : "TABLE")"

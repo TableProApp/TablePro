@@ -63,6 +63,213 @@ struct QuickSwitcherViewModelTests {
         #expect(!kinds.contains(String(localized: "Databases")))
     }
 
+    @Test("Connections scope lists objects from every connection")
+    func connectionsScopeUsesCrossConnectionItems() {
+        let localConnectionId = UUID()
+        let remoteConnectionId = UUID()
+        let local = QuickSwitcherItem(id: "local", name: "users", kind: .table, subtitle: "")
+        let remoteTarget = QuickSwitcherObjectTarget(
+            connectionId: remoteConnectionId,
+            connectionName: "Analytics",
+            databaseName: "warehouse",
+            schemaName: "public"
+        )
+        let remote = QuickSwitcherItem(
+            id: "remote",
+            name: "events",
+            kind: .table,
+            subtitle: "Analytics / warehouse / public",
+            objectTarget: remoteTarget
+        )
+        let vm = makeViewModel(items: [local], connectionId: localConnectionId)
+        vm.crossConnectionItems = [remote]
+        vm.scope = .connections
+
+        #expect(vm.flatItems.map(\.id) == ["remote"])
+        #expect(vm.groups.first?.header == "Analytics")
+    }
+
+    @Test("Connections scope matches a connection name")
+    func connectionsScopeMatchesConnectionName() async throws {
+        let target = QuickSwitcherObjectTarget(
+            connectionId: UUID(),
+            connectionName: "Analytics",
+            databaseName: "warehouse",
+            schemaName: nil
+        )
+        let remote = QuickSwitcherItem(
+            id: "remote",
+            name: "events",
+            kind: .table,
+            subtitle: "Analytics / warehouse",
+            objectTarget: target
+        )
+        let vm = makeViewModel(items: [])
+        vm.crossConnectionItems = [remote]
+        vm.scope = .connections
+        vm.searchText = "analytics"
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        #expect(vm.flatItems.first?.id == "remote")
+        #expect(vm.flatItems.first?.objectTarget == target)
+    }
+
+    @Test("Changing the query selects the best match")
+    func changingQuerySelectsBestMatch() async throws {
+        let target = QuickSwitcherObjectTarget(
+            connectionId: UUID(),
+            connectionName: "Chinook",
+            databaseName: "sample.sqlite",
+            schemaName: nil
+        )
+        let items = QuickSwitcherViewModel.makeCrossConnectionItems(
+            tables: [
+                TableInfo(name: "Album", type: .table, rowCount: nil),
+                TableInfo(name: "Track", type: .table, rowCount: nil)
+            ],
+            target: target
+        )
+        let vm = makeViewModel(items: [])
+        vm.crossConnectionItems = items
+        vm.scope = .connections
+        vm.selectedItemId = items[0].id
+
+        vm.searchText = "track"
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        #expect(vm.flatItems.first?.name == "Track")
+        #expect(vm.selectedItem()?.name == "Track")
+    }
+
+    @Test("Cross-connection catalog keeps object location")
+    func crossConnectionCatalogKeepsLocation() {
+        let connectionId = UUID()
+        let target = QuickSwitcherObjectTarget(
+            connectionId: connectionId,
+            connectionName: "Primary",
+            databaseName: "app",
+            schemaName: "fallback"
+        )
+        let tables = [
+            TableInfo(name: "users", type: .table, rowCount: nil, schema: "public"),
+            TableInfo(name: "active_users", type: .view, rowCount: nil)
+        ]
+
+        let items = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
+
+        #expect(items.count == 2)
+        #expect(items[0].id.contains(connectionId.uuidString))
+        #expect(items[0].objectTarget?.schemaName == "public")
+        #expect(items[1].objectTarget?.schemaName == "fallback")
+        #expect(items[1].kind == .view)
+        #expect(items.allSatisfy { $0.subtitle.contains("Primary / app") })
+    }
+
+    @Test("File database paths are abbreviated in search results")
+    func fileDatabasePathsAreAbbreviated() {
+        let databasePath = NSHomeDirectory() + "/Databases/private.sqlite"
+        let displayName = QuickSwitcherViewModel.databaseDisplayName(databasePath, pathFieldRole: .filePath)
+        let target = QuickSwitcherObjectTarget(
+            connectionId: UUID(),
+            connectionName: "Local",
+            databaseName: databasePath,
+            schemaName: nil,
+            databaseDisplayName: displayName
+        )
+
+        let item = QuickSwitcherViewModel.makeCrossConnectionItems(
+            tables: [TableInfo(name: "users", type: .table, rowCount: nil)],
+            target: target
+        )[0]
+
+        #expect(displayName == "~/Databases/private.sqlite")
+        #expect(!item.subtitle.contains(NSHomeDirectory()))
+        #expect(item.objectTarget?.databaseName == databasePath)
+    }
+
+    @Test("Identical object names in different schemas keep unique identities")
+    func duplicateNamesAcrossSchemasStayUnique() {
+        let target = QuickSwitcherObjectTarget(
+            connectionId: UUID(),
+            connectionName: "Primary",
+            databaseName: "app",
+            schemaName: nil
+        )
+        let tables = [
+            TableInfo(name: "events", type: .table, rowCount: nil, schema: "public"),
+            TableInfo(name: "events", type: .table, rowCount: nil, schema: "audit")
+        ]
+
+        let items = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
+
+        #expect(Set(items.map(\.id)).count == 2)
+        #expect(Set(items.compactMap(\.objectTarget?.schemaName)) == Set(["public", "audit"]))
+    }
+
+    @Test("Connections scope caps a hostile catalog")
+    func connectionsScopeCapsLargeCatalog() {
+        let target = QuickSwitcherObjectTarget(
+            connectionId: UUID(),
+            connectionName: "Primary",
+            databaseName: "app",
+            schemaName: nil
+        )
+        let tables = (0..<300).map { index in
+            TableInfo(name: "table_\(index)", type: .table, rowCount: nil)
+        }
+        let vm = makeViewModel(items: [])
+        vm.crossConnectionItems = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
+        vm.scope = .connections
+
+        #expect(vm.flatItems.count == 200)
+    }
+
+    @Test("Query-like input stays plain text")
+    func queryLikeInputStaysPlainText() async throws {
+        let vm = makeViewModel(items: [
+            QuickSwitcherItem(id: "users", name: "users", kind: .table, subtitle: "Primary / app")
+        ])
+
+        vm.searchText = "users'; DROP TABLE audit; --"
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        #expect(vm.flatItems.isEmpty)
+        #expect(vm.allItems.map(\.name) == ["users"])
+    }
+
+    @Test("Structure action stays in the current connection")
+    func structureActionStaysInCurrentConnection() {
+        let connectionId = UUID()
+        let vm = makeViewModel(items: [], connectionId: connectionId)
+        let currentTarget = QuickSwitcherObjectTarget(
+            connectionId: connectionId,
+            connectionName: "Primary",
+            databaseName: nil,
+            schemaName: nil
+        )
+        let remoteTarget = QuickSwitcherObjectTarget(
+            connectionId: UUID(),
+            connectionName: "Analytics",
+            databaseName: nil,
+            schemaName: nil
+        )
+
+        #expect(vm.canOpenStructure(QuickSwitcherItem(
+            id: "current",
+            name: "users",
+            kind: .table,
+            subtitle: "",
+            objectTarget: currentTarget
+        )))
+        #expect(!vm.canOpenStructure(QuickSwitcherItem(
+            id: "remote",
+            name: "events",
+            kind: .table,
+            subtitle: "",
+            objectTarget: remoteTarget
+        )))
+    }
+
     @Test("Filtered search returns one headerless group of best matches")
     func filteredGroupHasNoHeader() async throws {
         let vm = makeViewModel(items: sampleItems())

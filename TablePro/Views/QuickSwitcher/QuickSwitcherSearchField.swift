@@ -27,6 +27,7 @@ internal struct QuickSwitcherSearchField: NSViewRepresentable {
         field.cell?.wraps = false
         field.delegate = context.coordinator
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setAccessibilityIdentifier("quick-switcher-search-field")
         return field
     }
 
@@ -62,13 +63,10 @@ internal struct QuickSwitcherSearchField: NSViewRepresentable {
             case #selector(NSResponder.moveDown(_:)):
                 parent.onMoveDown()
                 return true
-            case #selector(NSResponder.insertNewline(_:)):
+            case #selector(NSResponder.insertNewline(_:)),
+                 #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)),
+                 #selector(NSResponder.insertLineBreak(_:)):
                 parent.onSubmit()
-                return true
-            case #selector(NSResponder.cancelOperation(_:)):
-                guard !control.stringValue.isEmpty else { return false }
-                control.stringValue = ""
-                parent.text = ""
                 return true
             default:
                 return false

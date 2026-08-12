@@ -31,10 +31,17 @@ extension MainContentCoordinator {
     }
 
     func handleQuickSwitcherSelection(_ item: QuickSwitcherItem, intent: QuickSwitcherCommitIntent = .open) {
+        if let target = item.objectTarget, target.connectionId != connectionId {
+            openQuickSwitcherObject(item, target: target, intent: intent)
+            return
+        }
+
+        let schemaName = item.objectTarget?.schemaName
         switch item.kind {
         case .table, .systemTable:
             openTableTab(
                 item.name,
+                schema: schemaName,
                 showStructure: intent == .openStructure,
                 isView: item.isReadOnly,
                 activateGridFocus: true,
@@ -44,6 +51,7 @@ extension MainContentCoordinator {
         case .view:
             openTableTab(
                 item.name,
+                schema: schemaName,
                 showStructure: intent == .openStructure,
                 isView: true,
                 activateGridFocus: true,
@@ -65,6 +73,53 @@ extension MainContentCoordinator {
 
         case .queryHistory:
             loadQueryIntoEditor(item.payload ?? item.name)
+        }
+    }
+
+    private func openQuickSwitcherObject(
+        _ item: QuickSwitcherItem,
+        target: QuickSwitcherObjectTarget,
+        intent: QuickSwitcherCommitIntent
+    ) {
+        if let coordinator = Self.allActiveCoordinators().first(where: { coordinator in
+            guard coordinator.connectionId == target.connectionId else { return false }
+            guard let session = coordinator.services.databaseManager.session(for: target.connectionId),
+                  session.isConnected else { return false }
+            if let databaseName = target.databaseName, coordinator.browseDatabaseName != databaseName {
+                return false
+            }
+            return target.schemaName == nil || session.browseSchema == target.schemaName
+        }) {
+            coordinator.openTableTab(
+                item.name,
+                schema: target.schemaName,
+                isView: item.kind == .view || item.isReadOnly,
+                activateGridFocus: true,
+                forceNewWindowTab: intent == .openInNewWindowTab
+            )
+            if let tabId = coordinator.tabManager.selectedTabId {
+                coordinator.selectTabAndFocusWindow(tabId)
+            }
+            return
+        }
+
+        Task { [weak self] in
+            do {
+                try await TabRouter.shared.route(.openTable(
+                    connectionId: target.connectionId,
+                    database: target.databaseName,
+                    schema: target.schemaName,
+                    table: item.name,
+                    isView: item.kind == .view || item.isReadOnly
+                ))
+            } catch {
+                guard let self else { return }
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Could Not Open Table"),
+                    message: error.localizedDescription,
+                    window: contentWindow
+                )
+            }
         }
     }
 }

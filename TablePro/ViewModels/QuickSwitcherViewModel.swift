@@ -6,6 +6,7 @@
 import Foundation
 import Observation
 import os
+import TableProPluginKit
 
 private enum QuickSwitcherRanking {
     static let maxResults = 200
@@ -35,16 +36,23 @@ internal final class QuickSwitcherViewModel {
     @ObservationIgnored internal var allItems: [QuickSwitcherItem] = [] {
         didSet { scheduleFilter(debounced: false) }
     }
+    @ObservationIgnored internal var crossConnectionItems: [QuickSwitcherItem] = [] {
+        didSet { scheduleFilter(debounced: false) }
+    }
     @ObservationIgnored private var filterTask: Task<Void, Never>?
     @ObservationIgnored private var activeLoadId = UUID()
+    @ObservationIgnored private var activeCrossConnectionLoadId = UUID()
+    @ObservationIgnored private var loadedCrossConnectionVersion: Int?
 
     private(set) var groups: [Group] = []
     private(set) var isLoading = true
+    private(set) var isLoadingCrossConnections = false
     var selectedItemId: String?
 
     var searchText = "" {
         didSet {
             guard oldValue != searchText else { return }
+            selectedItemId = nil
             scheduleFilter(debounced: true)
         }
     }
@@ -52,6 +60,7 @@ internal final class QuickSwitcherViewModel {
     var scope: QuickSwitcherScope = .all {
         didSet {
             guard oldValue != scope else { return }
+            selectedItemId = nil
             scheduleFilter(debounced: false)
         }
     }
@@ -97,36 +106,12 @@ internal final class QuickSwitcherViewModel {
 
         let tables = await schemaProvider.getTables()
         for table in tables {
-            let kind: QuickSwitcherItemKind
-            let subtitle: String
-            switch table.type {
-            case .table:
-                kind = .table
-                subtitle = ""
-            case .view:
-                kind = .view
-                subtitle = String(localized: "View")
-            case .materializedView:
-                kind = .view
-                subtitle = String(localized: "Materialized View")
-            case .foreignTable:
-                kind = .table
-                subtitle = String(localized: "Foreign Table")
-            case .systemTable:
-                kind = .systemTable
-                subtitle = String(localized: "System")
-            case .partitionedTable:
-                kind = .table
-                subtitle = String(localized: "Partitioned Table")
-            case .externalTable:
-                kind = .table
-                subtitle = String(localized: "External Table")
-            }
+            let presentation = Self.tablePresentation(for: table.type)
             items.append(QuickSwitcherItem(
                 id: "table_\(table.name)_\(table.type.rawValue)",
                 name: table.name,
-                kind: kind,
-                subtitle: subtitle,
+                kind: presentation.kind,
+                subtitle: presentation.subtitle,
                 isOpenInTab: openTableNames.contains(table.name),
                 isReadOnly: !table.type.allowsRowEditing
             ))
@@ -223,6 +208,93 @@ internal final class QuickSwitcherViewModel {
         allItems = items
     }
 
+    func loadCrossConnectionItems() async {
+        let version = services.databaseManager.connectionStatusVersion
+        guard loadedCrossConnectionVersion != version else { return }
+
+        let loadId = UUID()
+        activeCrossConnectionLoadId = loadId
+        isLoadingCrossConnections = true
+        defer {
+            if activeCrossConnectionLoadId == loadId {
+                isLoadingCrossConnections = false
+            }
+        }
+
+        let sessions = services.databaseManager.activeSessions.values
+            .filter { $0.isConnected && $0.driver != nil }
+            .sorted { lhs, rhs in
+                lhs.connection.name.localizedStandardCompare(rhs.connection.name) == .orderedAscending
+            }
+        var items: [QuickSwitcherItem] = []
+
+        for session in sessions {
+            guard !Task.isCancelled else { return }
+            guard let driver = session.driver else { continue }
+
+            var tables = services.schemaService.allLoadedTables(for: session.id)
+            if tables.isEmpty {
+                let provider = services.schemaProviderRegistry.getOrCreate(for: session.id)
+                if await !provider.isSchemaLoaded() {
+                    await provider.loadSchema(using: driver, connection: session.connection)
+                }
+                tables = await provider.getTables()
+            }
+
+            guard let currentSession = services.databaseManager.session(for: session.id),
+                  currentSession.isConnected,
+                  currentSession.resolvedBrowseDatabase == session.resolvedBrowseDatabase,
+                  currentSession.browseSchema == session.browseSchema else { continue }
+
+            let databaseName = session.resolvedBrowseDatabase.isEmpty ? nil : session.resolvedBrowseDatabase
+            let schemaName = session.browseSchema?.isEmpty == false ? session.browseSchema : nil
+            let target = QuickSwitcherObjectTarget(
+                connectionId: session.id,
+                connectionName: session.connection.name,
+                databaseName: databaseName,
+                schemaName: schemaName,
+                databaseDisplayName: Self.databaseDisplayName(
+                    databaseName,
+                    pathFieldRole: session.connection.type.pathFieldRole
+                )
+            )
+            items.append(contentsOf: Self.makeCrossConnectionItems(tables: tables, target: target))
+        }
+
+        guard activeCrossConnectionLoadId == loadId, !Task.isCancelled else { return }
+        loadedCrossConnectionVersion = version
+        crossConnectionItems = items
+    }
+
+    nonisolated static func makeCrossConnectionItems(
+        tables: [TableInfo],
+        target: QuickSwitcherObjectTarget
+    ) -> [QuickSwitcherItem] {
+        tables.map { table in
+            let presentation = tablePresentation(for: table.type)
+            let resolvedTarget = QuickSwitcherObjectTarget(
+                connectionId: target.connectionId,
+                connectionName: target.connectionName,
+                databaseName: target.databaseName,
+                schemaName: table.schema ?? target.schemaName,
+                databaseDisplayName: target.databaseDisplayName
+            )
+            return QuickSwitcherItem(
+                id: "connection_\(target.connectionId.uuidString)_\(table.id)",
+                name: table.name,
+                kind: presentation.kind,
+                subtitle: objectPath(for: resolvedTarget),
+                isReadOnly: !table.type.allowsRowEditing,
+                objectTarget: resolvedTarget
+            )
+        }
+    }
+
+    func canOpenStructure(_ item: QuickSwitcherItem) -> Bool {
+        guard let target = item.objectTarget else { return true }
+        return target.connectionId == connectionId
+    }
+
     func selectedItem() -> QuickSwitcherItem? {
         guard let id = selectedItemId else { return nil }
         return flatItems.first { $0.id == id }
@@ -278,6 +350,9 @@ internal final class QuickSwitcherViewModel {
     }
 
     private func scopedItems() -> [QuickSwitcherItem] {
+        if scope == .connections {
+            return crossConnectionItems
+        }
         guard let includedKinds = scope.includedKinds else { return allItems }
         return allItems.filter { includedKinds.contains($0.kind) }
     }
@@ -297,6 +372,10 @@ internal final class QuickSwitcherViewModel {
             result.append(Group(id: "recent", header: String(localized: "Recent"), items: recent))
         }
 
+        if scope == .connections {
+            return result + buildConnectionGroups(items: scoped, excluding: recentIdSet)
+        }
+
         guard scope != .all else { return result }
 
         for kind in QuickSwitcherItemKind.displayOrder {
@@ -311,6 +390,41 @@ internal final class QuickSwitcherViewModel {
             ))
         }
         return result
+    }
+
+    private func buildConnectionGroups(
+        items: [QuickSwitcherItem],
+        excluding excludedIds: Set<String>
+    ) -> [Group] {
+        let excludedCount = items.lazy.filter { excludedIds.contains($0.id) }.count
+        let availableCount = max(0, QuickSwitcherRanking.maxResults - excludedCount)
+        let sortedItems = items
+            .filter { !excludedIds.contains($0.id) }
+            .sorted { lhs, rhs in
+                let lhsConnection = lhs.objectTarget?.connectionName ?? ""
+                let rhsConnection = rhs.objectTarget?.connectionName ?? ""
+                let connectionOrder = lhsConnection.localizedStandardCompare(rhsConnection)
+                if connectionOrder != .orderedSame { return connectionOrder == .orderedAscending }
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+            .prefix(availableCount)
+
+        var order: [UUID] = []
+        var grouped: [UUID: [QuickSwitcherItem]] = [:]
+        var names: [UUID: String] = [:]
+        for item in sortedItems {
+            guard let target = item.objectTarget else { continue }
+            if grouped[target.connectionId] == nil {
+                order.append(target.connectionId)
+                names[target.connectionId] = target.connectionName
+            }
+            grouped[target.connectionId, default: []].append(item)
+        }
+
+        return order.compactMap { connectionId in
+            guard let items = grouped[connectionId], let name = names[connectionId] else { return nil }
+            return Group(id: "connection-\(connectionId.uuidString)", header: name, items: items)
+        }
     }
 
     nonisolated private static func filteredGroups(
@@ -364,6 +478,50 @@ internal final class QuickSwitcherViewModel {
         case (nil, nil):
             return nil
         }
+    }
+
+    nonisolated private static func tablePresentation(
+        for type: TableInfo.TableType
+    ) -> (kind: QuickSwitcherItemKind, subtitle: String) {
+        switch type {
+        case .table:
+            return (.table, "")
+        case .view:
+            return (.view, String(localized: "View"))
+        case .materializedView:
+            return (.view, String(localized: "Materialized View"))
+        case .foreignTable:
+            return (.table, String(localized: "Foreign Table"))
+        case .systemTable:
+            return (.systemTable, String(localized: "System"))
+        case .partitionedTable:
+            return (.table, String(localized: "Partitioned Table"))
+        case .externalTable:
+            return (.table, String(localized: "External Table"))
+        }
+    }
+
+    nonisolated private static func objectPath(for target: QuickSwitcherObjectTarget) -> String {
+        var components = [target.connectionName]
+        if let databaseDisplayName = target.databaseDisplayName ?? target.databaseName,
+           !databaseDisplayName.isEmpty {
+            components.append(databaseDisplayName)
+        }
+        if let schemaName = target.schemaName,
+           !schemaName.isEmpty,
+           schemaName != target.databaseName {
+            components.append(schemaName)
+        }
+        return components.joined(separator: " / ")
+    }
+
+    nonisolated static func databaseDisplayName(
+        _ databaseName: String?,
+        pathFieldRole: PathFieldRole
+    ) -> String? {
+        guard let databaseName, !databaseName.isEmpty else { return nil }
+        guard pathFieldRole == .filePath else { return databaseName }
+        return (databaseName as NSString).abbreviatingWithTildeInPath
     }
 }
 
