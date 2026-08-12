@@ -18,6 +18,8 @@ internal struct EditorTabStrip: View {
     internal let onClose: (UUID) -> Void
     internal let onNewTab: () -> Void
 
+    @State private var hoveredTabId: UUID?
+
     internal var body: some View {
         HStack(spacing: Metrics.barSpacing) {
             GeometryReader { proxy in
@@ -27,7 +29,9 @@ internal struct EditorTabStrip: View {
                             EditorTabStripItem(
                                 tab: tab,
                                 isSelected: isSelected(tab),
+                                isHovered: hoveredTabId == tab.id,
                                 showsLeadingSeparator: showsSeparator(before: index),
+                                onHover: { hoveredTabId = $0 ? tab.id : (hoveredTabId == tab.id ? nil : hoveredTabId) },
                                 onSelect: { tabManager.selectedTabId = tab.id },
                                 onClose: { onClose(tab.id) }
                             )
@@ -67,13 +71,18 @@ internal struct EditorTabStrip: View {
         tabManager.selectedTab?.id == tab.id
     }
 
-    /// The system bar rules a line between two plain tabs only. A separator touching the raised
-    /// card reads as a seam in the card, which is the tell that a bar was drawn by hand.
+    /// The system rules a line only between two neighbours that are both plain and both
+    /// untouched. A separator against the raised card reads as a seam in the card, and one
+    /// against a hovered tab fights its fill. Two tabs therefore never show one, because one
+    /// of them is always selected.
     private func showsSeparator(before index: Int) -> Bool {
         guard index > 0 else { return false }
         let tabs = tabManager.tabs
         guard tabs.indices.contains(index), tabs.indices.contains(index - 1) else { return false }
-        return !isSelected(tabs[index]) && !isSelected(tabs[index - 1])
+        let leading = tabs[index - 1]
+        let trailing = tabs[index]
+        guard !isSelected(leading), !isSelected(trailing) else { return false }
+        return hoveredTabId != leading.id && hoveredTabId != trailing.id
     }
 
     /// Tabs share the bar equally, the way the system bar lays them out, and stop shrinking at a
@@ -88,7 +97,7 @@ internal struct EditorTabStrip: View {
         internal static let barInset: CGFloat = 8
         internal static let barSpacing: CGFloat = 4
         internal static let cornerRadius: CGFloat = 9
-        internal static let minimumTabWidth: CGFloat = 110
+        internal static let minimumTabWidth: CGFloat = 120
         internal static var totalHeight: CGFloat { barHeight + barInset * 2 }
     }
 }
@@ -96,17 +105,19 @@ internal struct EditorTabStrip: View {
 private struct EditorTabStripItem: View {
     let tab: QueryTab
     let isSelected: Bool
+    let isHovered: Bool
     let showsLeadingSeparator: Bool
+    let onHover: (Bool) -> Void
     let onSelect: () -> Void
     let onClose: () -> Void
-
-    @State private var isHovering = false
 
     var body: some View {
         ZStack {
             if showsLeadingSeparator {
                 HStack {
-                    Divider().frame(height: Self.separatorHeight)
+                    Rectangle()
+                        .fill(Color(nsColor: .separatorColor))
+                        .frame(width: 1, height: Self.separatorHeight)
                     Spacer()
                 }
             }
@@ -130,7 +141,7 @@ private struct EditorTabStripItem: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
+        .onHover(perform: onHover)
         .onTapGesture(perform: onSelect)
         .help(Text(tab.title))
         .accessibilityElement(children: .combine)
@@ -139,19 +150,26 @@ private struct EditorTabStripItem: View {
         .accessibilityAction(named: Text("Close Tab"), onClose)
     }
 
+    /// The tab is a capsule, so its radius follows its own height rather than a fixed number.
+    /// An unselected tab is not inert: hovering fills it a shade deeper than the track, which
+    /// is what tells the pointer it landed on something.
     @ViewBuilder
     private var selectionBackground: some View {
         if isSelected {
-            RoundedRectangle(cornerRadius: Self.cardCornerRadius, style: .continuous)
+            Capsule(style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor))
                 .shadow(color: .black.opacity(0.16), radius: 1.5, y: 0.5)
+                .padding(Self.cardInset)
+        } else if isHovered {
+            Capsule(style: .continuous)
+                .fill(Color(nsColor: .separatorColor).opacity(Self.hoverFillOpacity))
                 .padding(Self.cardInset)
         }
     }
 
     @ViewBuilder
     private var closeButton: some View {
-        if isHovering {
+        if isHovered {
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .semibold))
@@ -165,10 +183,10 @@ private struct EditorTabStripItem: View {
         }
     }
 
-    private static let cardCornerRadius: CGFloat = 7
     private static let cardInset: CGFloat = 2
     private static let closeButtonSize: CGFloat = 16
     private static let closeButtonInset: CGFloat = 5
-    private static let separatorHeight: CGFloat = 14
+    private static let hoverFillOpacity: CGFloat = 0.5
+    private static let separatorHeight: CGFloat = 18
     private static let titleInset: CGFloat = 24
 }
