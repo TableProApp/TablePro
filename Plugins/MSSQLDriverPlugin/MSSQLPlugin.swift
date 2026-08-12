@@ -186,6 +186,7 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     )
 
     static let supportsDropDatabase = true
+    static let supportsDropSchema = true
     static let supportsTriggers = true
     static let supportsTriggerEditing = true
 

@@ -416,6 +416,10 @@ extension PluginManager {
             .schema.schemaEntityName ?? "Schema"
     }
 
+    func schemaEntityNamePlural(for databaseType: DatabaseType) -> String {
+        schemaEntityName(for: databaseType) + "s"
+    }
+
     func supportsCascadeDrop(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .capabilities.supportsCascadeDrop ?? false
@@ -489,6 +493,11 @@ extension PluginManager {
     func supportsDropDatabase(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .capabilities.supportsDropDatabase ?? false
+    }
+
+    func supportsDropSchema(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsDropSchema ?? false
     }
 
     func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {

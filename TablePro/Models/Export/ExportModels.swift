@@ -8,9 +8,42 @@ import TableProPluginKit
 
 // MARK: - Export Mode
 
+/// What the export dialog starts with selected: named tables inside the current
+/// container, or every table of whole databases or schemas.
+enum ExportPreselection: Equatable {
+    case tables(Set<String>)
+    case containers([DatabaseContainerRef])
+
+    func selects(table: String, inContainer container: String, isCurrentContainer: Bool) -> Bool {
+        switch self {
+        case .tables(let names):
+            return isCurrentContainer && names.contains(table)
+        case .containers(let refs):
+            return refs.contains { $0.name == container }
+        }
+    }
+
+    var singleTableName: String? {
+        guard case .tables(let names) = self, names.count == 1 else { return nil }
+        return names.first
+    }
+
+    var containerNames: [String] {
+        guard case .containers(let refs) = self else { return [] }
+        return refs.map(\.name)
+    }
+
+    /// The export dialog lists the schemas of the connected database only, so a schema
+    /// belonging to another database has nothing to preselect there.
+    static func canPreselect(containers: [DatabaseContainerRef], activeDatabase: String?) -> Bool {
+        guard !containers.isEmpty else { return false }
+        return containers.allSatisfy { $0.kind == .database || $0.database == activeDatabase }
+    }
+}
+
 /// Defines the export mode: either exporting database tables or in-memory query results.
 enum ExportMode {
-    case tables(connection: DatabaseConnection, preselectedTables: Set<String>)
+    case tables(connection: DatabaseConnection, preselection: ExportPreselection)
     case queryResults(connection: DatabaseConnection, tableRows: TableRows, suggestedFileName: String)
     case streamingQuery(connection: DatabaseConnection, query: String, suggestedFileName: String)
 }

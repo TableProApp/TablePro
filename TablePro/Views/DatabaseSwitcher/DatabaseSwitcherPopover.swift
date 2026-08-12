@@ -19,14 +19,18 @@ struct DatabaseSwitcherPopoverHost: View {
                 currentDatabase: activeContainer,
                 databaseType: connection.type,
                 connectionId: connection.id,
+                isReadOnly: coordinator.safeModeLevel.blocksAllWrites,
                 onSelect: { [weak coordinator] container in
                     Task { await coordinator?.switchContainer(to: container) }
                 },
                 onRequestCreate: { [weak coordinator] in
                     coordinator?.activeSheet = .createDatabase
                 },
-                onRequestDrop: { [weak coordinator] name in
-                    coordinator?.databaseToDrop = name
+                onRequestDrop: { [weak coordinator] containers in
+                    coordinator?.requestContainerDrop(containers)
+                },
+                onRequestExport: { [weak coordinator] containers in
+                    coordinator?.openExportDialog(containers: containers)
                 }
             )
         } else {
@@ -39,9 +43,11 @@ struct DatabaseSwitcherPopover: View {
     let currentDatabase: String?
     let databaseType: DatabaseType
     let connectionId: UUID
+    let isReadOnly: Bool
     let onSelect: (String) -> Void
     let onRequestCreate: () -> Void
-    let onRequestDrop: (String) -> Void
+    let onRequestDrop: ([DatabaseContainerRef]) -> Void
+    let onRequestExport: ([DatabaseContainerRef]) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: DatabaseSwitcherViewModel
@@ -67,16 +73,20 @@ struct DatabaseSwitcherPopover: View {
         currentDatabase: String?,
         databaseType: DatabaseType,
         connectionId: UUID,
+        isReadOnly: Bool,
         onSelect: @escaping (String) -> Void,
         onRequestCreate: @escaping () -> Void,
-        onRequestDrop: @escaping (String) -> Void
+        onRequestDrop: @escaping ([DatabaseContainerRef]) -> Void,
+        onRequestExport: @escaping ([DatabaseContainerRef]) -> Void
     ) {
         self.currentDatabase = currentDatabase
         self.databaseType = databaseType
         self.connectionId = connectionId
+        self.isReadOnly = isReadOnly
         self.onSelect = onSelect
         self.onRequestCreate = onRequestCreate
         self.onRequestDrop = onRequestDrop
+        self.onRequestExport = onRequestExport
         self._viewModel = State(
             wrappedValue: DatabaseSwitcherViewModel(
                 connectionId: connectionId,
@@ -143,7 +153,7 @@ struct DatabaseSwitcherPopover: View {
 
     private var list: some View {
         ScrollViewReader { proxy in
-            List(selection: $viewModel.selectedDatabase) {
+            List(selection: $viewModel.selectedDatabases) {
                 ForEach(viewModel.filteredDatabases) { db in
                     row(for: db)
                 }
@@ -158,7 +168,7 @@ struct DatabaseSwitcherPopover: View {
                 viewModel.selectedDatabase = name
                 commitSelection()
             }
-            .onChange(of: viewModel.selectedDatabase) { _, newValue in
+            .onChange(of: viewModel.primarySelection) { _, newValue in
                 guard let item = newValue else { return }
                 withAnimation(.easeInOut(duration: 0.15)) {
                     proxy.scrollTo(item)
@@ -198,18 +208,57 @@ struct DatabaseSwitcherPopover: View {
 
     @ViewBuilder
     private func contextMenuItems(for selection: Set<String>) -> some View {
-        if supportsDropDatabase,
-           let name = selection.first,
-           let database = viewModel.filteredDatabases.first(where: { $0.name == name }),
-           !database.isSystemDatabase,
-           database.name != currentDatabase {
-            Button(role: .destructive) {
+        let targets = containerRefs(for: selection)
+        let droppable = ContainerDropEligibility.droppable(targets, context: dropEligibilityContext)
+
+        if !targets.isEmpty {
+            Button(targets.count == 1
+                ? String(localized: "Copy Name")
+                : String(format: String(localized: "Copy %lld Names"), targets.count)
+            ) {
+                ClipboardService.shared.writeText(targets.map(\.name).joined(separator: ","))
+            }
+
+            Button(String(localized: "Export…")) {
                 dismiss()
-                onRequestDrop(database.name)
-            } label: {
-                Label(String(format: String(localized: "Drop %@…"), containerName), systemImage: "trash")
+                onRequestExport(targets)
             }
         }
+
+        if !droppable.isEmpty {
+            Divider()
+
+            Button(role: .destructive) {
+                dismiss()
+                onRequestDrop(droppable)
+            } label: {
+                Label(dropMenuTitle(for: droppable), systemImage: "trash")
+            }
+        }
+    }
+
+    private func containerRefs(for selection: Set<String>) -> [DatabaseContainerRef] {
+        viewModel.filteredDatabases
+            .filter { selection.contains($0.name) }
+            .map { .database($0.name, isSystem: $0.isSystemDatabase) }
+    }
+
+    private func dropMenuTitle(for targets: [DatabaseContainerRef]) -> String {
+        DatabaseDropRequest(
+            targets: targets,
+            entityName: containerName,
+            entityNamePlural: containerNamePlural
+        ).menuTitle
+    }
+
+    private var dropEligibilityContext: ContainerDropEligibility.Context {
+        ContainerDropEligibility.Context(
+            activeDatabase: currentDatabase,
+            activeSchema: nil,
+            supportsDropDatabase: supportsDropDatabase,
+            supportsDropSchema: false,
+            isReadOnly: isReadOnly
+        )
     }
 
     private var loadingView: some View {
@@ -302,7 +351,7 @@ struct DatabaseSwitcherPopover: View {
     }
 
     private func commitSelection() {
-        guard let name = viewModel.selectedDatabase else { return }
+        guard let name = viewModel.primarySelection else { return }
         if name == currentDatabase {
             dismiss()
             return

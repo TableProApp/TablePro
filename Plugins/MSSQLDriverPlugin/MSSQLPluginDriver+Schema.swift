@@ -569,6 +569,11 @@ extension MSSQLPluginDriver {
         _ = try await execute(query: "DROP DATABASE \(quotedName)")
     }
 
+    func dropSchema(name: String) async throws {
+        let quotedName = "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
+        _ = try await execute(query: "DROP SCHEMA \(quotedName)")
+    }
+
     // MARK: - All Tables Metadata
 
     func allTablesMetadataSQL(schema: String?) -> String? {

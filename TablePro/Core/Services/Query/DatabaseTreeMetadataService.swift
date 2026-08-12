@@ -98,21 +98,25 @@ final class DatabaseTreeMetadataService {
         case .idle, .failed: break
         }
         databaseList[connectionId] = .loading
-        let systemNames = Set(PluginManager.shared.systemDatabaseNames(for: databaseType))
         do {
-            let list = try await databaseDedup.execute(key: connectionId) { [self] in
-                try await withDriver(connectionId: connectionId, database: nil) { driver in
-                    try await driver.fetchDatabases().sorted().map {
-                        DatabaseMetadata.minimal(name: $0, isSystem: systemNames.contains($0))
-                    }
-                }
-            }
+            let list = try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType)
             databaseList[connectionId] = .loaded(list)
         } catch is CancellationError {
             if case .loading = databaseList[connectionId] { databaseList[connectionId] = .idle }
         } catch {
             databaseList[connectionId] = .failed(error.localizedDescription)
             Self.logger.warning("databases load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func fetchDatabaseList(connectionId: UUID, databaseType: DatabaseType) async throws -> [DatabaseMetadata] {
+        let systemNames = Set(PluginManager.shared.systemDatabaseNames(for: databaseType))
+        return try await databaseDedup.execute(key: connectionId) { [self] in
+            try await withDriver(connectionId: connectionId, database: nil) { driver in
+                try await driver.fetchDatabases().sorted().map {
+                    DatabaseMetadata.minimal(name: $0, isSystem: systemNames.contains($0))
+                }
+            }
         }
     }
 
@@ -125,17 +129,21 @@ final class DatabaseTreeMetadataService {
         }
         schemaList[key] = .loading
         do {
-            let list = try await schemaDedup.execute(key: key) { [self] in
-                try await withDriver(connectionId: connectionId, database: database) { driver in
-                    try await driver.fetchSchemas()
-                }
-            }
+            let list = try await fetchSchemaList(connectionId: connectionId, database: database, key: key)
             schemaList[key] = .loaded(list)
         } catch is CancellationError {
             if case .loading = schemaList[key] { schemaList[key] = .idle }
         } catch {
             schemaList[key] = .failed(error.localizedDescription)
             Self.logger.warning("schemas load failed db=\(database, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func fetchSchemaList(connectionId: UUID, database: String, key: DatabaseKey) async throws -> [String] {
+        try await schemaDedup.execute(key: key) { [self] in
+            try await withDriver(connectionId: connectionId, database: database) { driver in
+                try await driver.fetchSchemas()
+            }
         }
     }
 
@@ -226,17 +234,47 @@ final class DatabaseTreeMetadataService {
 
     // MARK: - Refresh
 
+    /// Fetches first and commits over the old list, so a refresh never empties the tree
+    /// and a failed refresh keeps the databases already on screen.
     func refreshDatabases(connectionId: UUID, databaseType: DatabaseType) async {
         await databaseDedup.cancel(key: connectionId)
-        databaseList.removeValue(forKey: connectionId)
-        await loadDatabases(connectionId: connectionId, databaseType: databaseType)
+        guard case .loaded = databaseListState(for: connectionId) else {
+            databaseList.removeValue(forKey: connectionId)
+            await loadDatabases(connectionId: connectionId, databaseType: databaseType)
+            return
+        }
+        guard isConnected(connectionId) else { return }
+        do {
+            databaseList[connectionId] = .loaded(
+                try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType)
+            )
+        } catch is CancellationError {
+        } catch {
+            Self.logger.warning(
+                "databases refresh failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 
     func refreshSchemas(connectionId: UUID, database: String) async {
         let key = DatabaseKey(connectionId: connectionId, database: database)
         await schemaDedup.cancel(key: key)
-        schemaList.removeValue(forKey: key)
-        await loadSchemas(connectionId: connectionId, database: database)
+        guard case .loaded = schemaList[key] ?? .idle else {
+            schemaList.removeValue(forKey: key)
+            await loadSchemas(connectionId: connectionId, database: database)
+            return
+        }
+        guard isConnected(connectionId) else { return }
+        do {
+            schemaList[key] = .loaded(
+                try await fetchSchemaList(connectionId: connectionId, database: database, key: key)
+            )
+        } catch is CancellationError {
+        } catch {
+            Self.logger.warning(
+                "schemas refresh failed db=\(database, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 
     func refreshObjects(connectionId: UUID, database: String, schema: String?) async {

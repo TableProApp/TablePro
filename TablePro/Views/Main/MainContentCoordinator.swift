@@ -182,9 +182,9 @@ final class MainContentCoordinator {
     var isDatabaseSwitcherShown = false
     var isConnectionSwitcherShown = false
     var sessionContexts: [PluginSessionContext] = []
-    var databaseToDrop: String?
+    var containerDropRequest: DatabaseDropRequest?
     var importFileURL: URL?
-    var exportPreselectedTableNames: Set<String>?
+    var exportPreselection: ExportPreselection?
     var pendingLoadTrigger: TableLoadTrigger?
     @ObservationIgnored var deferredRestoreLoadTabId: UUID?
 

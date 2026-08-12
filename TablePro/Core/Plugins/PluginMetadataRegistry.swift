@@ -48,6 +48,7 @@ struct PluginMetadataSnapshot: Sendable {
         let requiresReconnectForDatabaseSwitch: Bool
         let supportsDropDatabase: Bool
         // `var` with defaults so existing call sites compile without passing these fields
+        var supportsDropSchema: Bool = false
         var supportsAddColumn: Bool = true
         var supportsModifyColumn: Bool = true
         var supportsDropColumn: Bool = true
@@ -642,6 +643,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
@@ -695,6 +697,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -749,6 +752,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     supportsAddColumn: false,
                     supportsModifyColumn: false,
                     supportsDropColumn: false,
@@ -805,6 +809,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
@@ -1105,6 +1110,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsQueryProgress: driverType.supportsQueryProgress,
                 requiresReconnectForDatabaseSwitch: driverType.requiresReconnectForDatabaseSwitch,
                 supportsDropDatabase: driverType.supportsDropDatabase,
+                supportsDropSchema: driverType.supportsDropSchema,
                 supportsAddColumn: driverType.supportsAddColumn,
                 supportsModifyColumn: driverType.supportsModifyColumn,
                 supportsDropColumn: driverType.supportsDropColumn,

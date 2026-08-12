@@ -464,6 +464,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         try await pluginDriver.dropDatabase(name: name)
     }
 
+    func dropSchema(name: String) async throws {
+        try await pluginDriver.dropSchema(name: name)
+    }
+
     func fetchSessionContexts() async throws -> [PluginSessionContext]? {
         try await pluginDriver.fetchSessionContexts()
     }

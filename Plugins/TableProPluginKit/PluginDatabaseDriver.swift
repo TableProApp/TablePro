@@ -122,6 +122,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec?
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws
     func dropDatabase(name: String) async throws
+    func dropSchema(name: String) async throws
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult
 
     // Session contexts (optional, switchable session dimensions such as a warehouse or role)
@@ -326,6 +327,11 @@ public extension PluginDatabaseDriver {
     func dropDatabase(name: String) async throws {
         throw NSError(domain: "PluginDatabaseDriver", code: -1,
                       userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
+    }
+
+    func dropSchema(name: String) async throws {
+        throw NSError(domain: "PluginDatabaseDriver", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "Drop schema is not supported by this driver"])
     }
 
     func switchDatabase(to database: String) async throws {

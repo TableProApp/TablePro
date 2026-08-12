@@ -170,6 +170,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func dropDatabase(name: String) async throws
 
+    func dropSchema(name: String) async throws
+
     func fetchSessionContexts() async throws -> [PluginSessionContext]?
 
     func switchSessionContext(id: String, to value: String) async throws
@@ -299,6 +301,11 @@ extension DatabaseDriver {
     func dropDatabase(name: String) async throws {
         throw NSError(domain: "DatabaseDriver", code: -1,
                       userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
+    }
+
+    func dropSchema(name: String) async throws {
+        throw NSError(domain: "DatabaseDriver", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "Drop schema is not supported by this driver"])
     }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }

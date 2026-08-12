@@ -136,3 +136,56 @@ struct DatabaseTreeMetadataServiceRefreshTests {
         #expect(tables.isEmpty)
     }
 }
+
+/// A refresh must never empty the list it is refreshing: the tree renders `.loading`
+/// with no content as a spinner, so clearing first blanks the sidebar mid-refresh.
+@Suite("DatabaseTreeMetadataService refreshDatabases")
+@MainActor
+struct DatabaseTreeMetadataServiceRefreshDatabasesTests {
+    @Test("A refresh commits the new list over the old one")
+    func refreshCommitsNewList() async {
+        let connection = TestFixtures.makeConnection(type: .pglite)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.databasesToReturn = ["sales", "analytics"]
+
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        let service = DatabaseTreeMetadataService.shared
+
+        await service.loadDatabases(connectionId: connection.id, databaseType: connection.type)
+        #expect(service.databases(for: connection.id).map(\.name) == ["analytics", "sales"])
+
+        driver.databasesToReturn = ["sales"]
+        await service.refreshDatabases(connectionId: connection.id, databaseType: connection.type)
+
+        #expect(service.databases(for: connection.id).map(\.name) == ["sales"])
+
+        await service.handleDisconnect(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
+    @Test("A failed refresh keeps the databases already on screen")
+    func failedRefreshKeepsPreviousList() async {
+        let connection = TestFixtures.makeConnection(type: .pglite)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.databasesToReturn = ["sales", "analytics"]
+
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        let service = DatabaseTreeMetadataService.shared
+
+        await service.loadDatabases(connectionId: connection.id, databaseType: connection.type)
+        driver.fetchDatabasesError = DatabaseError.notConnected
+        await service.refreshDatabases(connectionId: connection.id, databaseType: connection.type)
+
+        #expect(service.databases(for: connection.id).map(\.name) == ["analytics", "sales"])
+        if case .loaded = service.databaseListState(for: connection.id) {} else {
+            Issue.record("A failed refresh must leave the list loaded, not failed or loading")
+        }
+
+        await service.handleDisconnect(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+}
