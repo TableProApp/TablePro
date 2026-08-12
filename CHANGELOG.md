@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Right-clicking a table that is not part of the current selection now acts on that table. It used to act on the selected tables instead, including for Delete.
+- Database icons and the current-database checkmark stay visible on a selected row in the database switcher. They were drawn in the accent colour, which vanished against the accent-coloured selection.
 - The sidebar drops a database from the tree as soon as you drop it on the server, instead of listing it until you reconnect.
 - Refreshing the database list keeps the current list on screen while it reloads, and keeps it if the reload fails.
 - MQL export writes a MongoDB `_id` as `ObjectId("...")` and a date as `ISODate("...")`, so running the script inserts the same types back instead of strings. A value nested inside a subdocument is still exported as a string.

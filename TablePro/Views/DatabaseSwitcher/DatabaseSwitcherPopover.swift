@@ -182,13 +182,13 @@ struct DatabaseSwitcherPopover: View {
         return HStack(spacing: 8) {
             Image(systemName: "checkmark")
                 .font(.body.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .selectionAwareTint(Color.accentColor)
                 .opacity(isCurrent ? 1 : 0)
                 .frame(width: 14)
 
             Image(systemName: database.icon)
                 .font(.body)
-                .foregroundStyle(database.isSystemDatabase ? Color.secondary : Color.accentColor)
+                .selectionAwareTint(database.isSystemDatabase ? Color.secondary : Color.accentColor)
                 .frame(width: 16)
 
             Text(database.name)
