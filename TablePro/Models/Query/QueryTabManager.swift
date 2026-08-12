@@ -42,6 +42,28 @@ final class QueryTabManager {
         self.tabSessionRegistry = tabSessionRegistry
     }
 
+    /// Closing a tab used to mean closing its window, because a tab was a window. Selection
+    /// lands on the tab that took its place so the pane never blanks while others are open.
+    func closeTab(id: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let wasSelected = selectedTab?.id == id
+        tabs.remove(at: index)
+        guard wasSelected else { return }
+        selectedTabId = tabs.indices.contains(index) ? tabs[index].id : tabs.last?.id
+    }
+
+    func selectTab(at index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        selectedTabId = tabs[index].id
+    }
+
+    func selectTab(offsetBy offset: Int) {
+        guard !tabs.isEmpty else { return }
+        let current = selectedTab.flatMap { tab in tabs.firstIndex { $0.id == tab.id } } ?? 0
+        let count = tabs.count
+        selectedTabId = tabs[((current + offset) % count + count) % count].id
+    }
+
     func bindTabSessionRegistry(_ registry: TabSessionRegistry) {
         tabSessionRegistry = registry
         for tab in tabs where registry.session(for: tab.id) == nil {

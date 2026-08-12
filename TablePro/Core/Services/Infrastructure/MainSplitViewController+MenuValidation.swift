@@ -84,6 +84,16 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(saveDocumentAs(_:)):
             return context.isConnected
 
+        /// AppKit validated New Tab and Close Tab for free while they were its own selectors.
+        /// `NSWindow.validateUserInterfaceItem` only speaks to the native ones, so these are
+        /// ours to enable and disable now.
+        case #selector(newEditorTab(_:)):
+            return context.isConnected
+        case #selector(closeEditorTab(_:)):
+            return context.isConnected
+        case #selector(selectNextEditorTab(_:)), #selector(selectPreviousEditorTab(_:)):
+            return context.isConnected
+
         case #selector(closeOtherTabs(_:)):
             return context.canCloseOtherTabs
         case #selector(closeTabsForOtherContainers(_:)):

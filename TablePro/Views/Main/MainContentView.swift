@@ -344,7 +344,7 @@ struct MainContentView: View {
     }
 
     private var bodyContentCore: some View {
-        mainContentView
+        editorTabStripAndContent
             // Phase 3: SwiftUI `.toolbar { ... }` removed — NSToolbar is now
             // installed directly on NSWindow by TabWindowController (see
             // `MainWindowToolbar`). Reuses every existing SwiftUI subview
@@ -415,6 +415,21 @@ struct MainContentView: View {
     }
 
     // MARK: - Main Content
+
+    /// The strip is hidden while a connection holds a single tab, so a window that behaves the
+    /// way it always did gains no chrome. It appears the moment a second tab exists.
+    private var editorTabStripAndContent: some View {
+        VStack(spacing: 0) {
+            if tabManager.tabs.count > 1 {
+                EditorTabStrip(
+                    tabManager: tabManager,
+                    onClose: { coordinator.commandActions?.closeTab(id: $0) },
+                    onNewTab: { coordinator.commandActions?.newTab() }
+                )
+            }
+            mainContentView
+        }
+    }
 
     @ViewBuilder
     private var mainContentView: some View {

@@ -364,7 +364,7 @@ final class MainContentCommandActions {
 
     /// Scoped to the whole window, not the selected tab: closing a window closes every tab in it,
     /// so a tab the user is not looking at must still get its prompt.
-    private var hasUnsavedWorkInWindow: Bool {
+    internal var hasUnsavedWorkInWindow: Bool {
         coordinator?.hasAnyUnsavedWork() ?? false
     }
 
@@ -398,25 +398,32 @@ final class MainContentCommandActions {
 
     // MARK: - Tab Operations (Group A — Called Directly)
 
+    /// A new tab joins the connection's own tab list. It used to open another window whenever
+    /// the list was not empty, which is why two tables meant two windows.
     func newTab(initialQuery: String? = nil) {
-        if let coordinator, coordinator.tabManager.tabs.isEmpty {
-            coordinator.tabManager.addTab(
-                initialQuery: initialQuery,
-                databaseName: coordinator.browseDatabaseName,
-                claimFocus: true
-            )
-            return
-        }
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
+        guard let coordinator else { return }
+        coordinator.tabManager.addTab(
             initialQuery: initialQuery,
-            intent: .newEmptyTab
+            databaseName: coordinator.browseDatabaseName,
+            claimFocus: true
         )
-        WindowManager.shared.openTab(payload: payload)
     }
 
+    func closeTab(id: UUID) {
+        guard let coordinator else { return }
+        coordinator.tabManager.closeTab(id: id)
+        if coordinator.tabManager.tabs.isEmpty {
+            Task { await closeWindowAwaiting() }
+        }
+    }
+
+    /// Closing the last tab closes the window, which is what Cmd+W does everywhere on macOS.
     func closeTab() {
-        Task { await closeWindowAwaiting() }
+        guard let coordinator, let selected = coordinator.tabManager.selectedTab else {
+            Task { await closeWindowAwaiting() }
+            return
+        }
+        closeTab(id: selected.id)
     }
 
     /// The single close primitive. `asBatchSurvivor` is `nil` for a lone close gesture, which lets
@@ -690,25 +697,14 @@ final class MainContentCommandActions {
 
     // MARK: - Tab Navigation (Group A — Called Directly)
 
-    /// Selects the Nth native window tab. Wrapping the `selectedWindow`
-    /// assignment in `NSAnimationContext.runAnimationGroup` with `duration = 0`
-    /// suppresses AppKit's tab-transition animation, so rapid Cmd+Number
-    /// presses don't queue up CAAnimations that drain visibly after the user
-    /// releases the keys.
-    ///
-    /// Per-switch AppKit overhead (window-focus change, NSHostingView layout,
-    /// Window Server roundtrip) is platform-inherent to one-NSWindow-per-tab
-    /// and is intentionally not coalesced. See `docs/architecture/tab-subsystem-rewrite.md` D2.
+    /// Selects the Nth editor tab of the connection on screen. It used to index the window's
+    /// native tab group, which named windows rather than tabs.
     func selectTab(number: Int) {
-        guard let keyWindow = NSApp.keyWindow,
-              let tabGroup = keyWindow.tabGroup else { return }
-        let windows = tabGroup.windows
-        guard windows.indices.contains(number - 1) else { return }
-        let target = windows[number - 1]
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0
-            tabGroup.selectedWindow = target
-        }
+        coordinator?.tabManager.selectTab(at: number - 1)
+    }
+
+    func selectTab(offsetBy offset: Int) {
+        coordinator?.tabManager.selectTab(offsetBy: offset)
     }
 
     // MARK: - Filter Operations (Group A — Called Directly)

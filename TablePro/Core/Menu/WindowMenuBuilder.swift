@@ -27,13 +27,13 @@ enum WindowMenuBuilder {
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Show Previous Tab"),
-                action: #selector(NSWindow.selectPreviousTab(_:)),
+                action: #selector(MainSplitViewController.selectPreviousEditorTab(_:)),
                 shortcut: .showPreviousTab,
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
                 String(localized: "Show Next Tab"),
-                action: #selector(NSWindow.selectNextTab(_:)),
+                action: #selector(MainSplitViewController.selectNextEditorTab(_:)),
                 shortcut: .showNextTab,
                 keyboard: keyboard
             ),
