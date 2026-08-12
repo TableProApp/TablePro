@@ -66,7 +66,7 @@ struct QuickSwitcherPanelView: View {
                 openTableNames: openTableNames
             )
         }
-        .task(id: viewModel.scope) {
+        .task(id: viewModel.crossConnectionLoadVersion) {
             guard viewModel.scope == .connections else { return }
             await viewModel.loadCrossConnectionItems()
         }

@@ -39,12 +39,17 @@ extension MainContentCoordinator {
 
     func loadSchema() async {
         let connection = connection
+        guard let scope = services.databaseManager.browseScope(for: connectionId) else {
+            armPostConnectSchemaLoad()
+            return
+        }
         do {
-            try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
+            try await services.databaseManager.withMetadataDriver(scope: scope) { [services, connectionId] driver in
                 await services.schemaService.load(
                     connectionId: connectionId,
                     driver: driver,
-                    connection: connection
+                    connection: connection,
+                    scope: scope
                 )
             }
         } catch {

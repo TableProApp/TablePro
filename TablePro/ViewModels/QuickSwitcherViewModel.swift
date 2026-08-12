@@ -19,6 +19,24 @@ private enum QuickSwitcherRanking {
 @MainActor
 @Observable
 internal final class QuickSwitcherViewModel {
+    struct CrossConnectionCatalogVersion: Hashable {
+        struct Entry: Hashable {
+            let connectionId: UUID
+            let browseScope: DatabaseScope
+            let loadedScope: DatabaseScope?
+            let schemaGeneration: Int
+            let isRefreshing: Bool
+        }
+
+        let connectionStatusVersion: Int
+        let entries: [Entry]
+    }
+
+    struct CrossConnectionLoadVersion: Hashable {
+        let scope: QuickSwitcherScope
+        let catalog: CrossConnectionCatalogVersion
+    }
+
     struct Group: Identifiable, Sendable {
         let id: String
         let header: String?
@@ -42,7 +60,7 @@ internal final class QuickSwitcherViewModel {
     @ObservationIgnored private var filterTask: Task<Void, Never>?
     @ObservationIgnored private var activeLoadId = UUID()
     @ObservationIgnored private var activeCrossConnectionLoadId = UUID()
-    @ObservationIgnored private var loadedCrossConnectionVersion: Int?
+    @ObservationIgnored private var loadedCrossConnectionVersion: CrossConnectionCatalogVersion?
 
     private(set) var groups: [Group] = []
     private(set) var isLoading = true
@@ -67,6 +85,10 @@ internal final class QuickSwitcherViewModel {
 
     var flatItems: [QuickSwitcherItem] {
         groups.flatMap(\.items)
+    }
+
+    var crossConnectionLoadVersion: CrossConnectionLoadVersion {
+        CrossConnectionLoadVersion(scope: scope, catalog: crossConnectionCatalogVersion)
     }
 
     func listHeight(rowHeight: CGFloat, headerHeight: CGFloat, maxVisibleRows: Int) -> CGFloat {
@@ -209,7 +231,7 @@ internal final class QuickSwitcherViewModel {
     }
 
     func loadCrossConnectionItems() async {
-        let version = services.databaseManager.connectionStatusVersion
+        let version = crossConnectionCatalogVersion
         guard loadedCrossConnectionVersion != version else { return }
 
         let loadId = UUID()
@@ -221,33 +243,55 @@ internal final class QuickSwitcherViewModel {
             }
         }
 
+        let connectionIds = services.databaseManager.activeSessions.values
+            .filter { $0.isConnected && $0.driver != nil }
+            .sorted { lhs, rhs in
+                lhs.connection.name.localizedStandardCompare(rhs.connection.name) == .orderedAscending
+            }
+            .map(\.id)
+
+        for connectionId in connectionIds {
+            await services.schemaRefreshService.waitForRefresh(connectionId: connectionId)
+            await services.schemaService.waitForRefresh(connectionId: connectionId)
+            guard !Task.isCancelled,
+                  let session = services.databaseManager.session(for: connectionId),
+                  session.isConnected,
+                  session.driver != nil,
+                  let scope = services.databaseManager.browseScope(for: connectionId) else { continue }
+
+            if services.schemaService.loadedScope(for: connectionId) != scope {
+                await services.schemaRefreshService.refresh(
+                    connection: session.connection,
+                    database: scope.database
+                )
+                await services.schemaRefreshService.waitForRefresh(connectionId: connectionId)
+                await services.schemaService.waitForRefresh(connectionId: connectionId)
+            }
+        }
+
+        guard !Task.isCancelled else { return }
+
+        let stableVersion = crossConnectionCatalogVersion
         let sessions = services.databaseManager.activeSessions.values
             .filter { $0.isConnected && $0.driver != nil }
             .sorted { lhs, rhs in
                 lhs.connection.name.localizedStandardCompare(rhs.connection.name) == .orderedAscending
             }
         var items: [QuickSwitcherItem] = []
+        var loadedEveryScope = true
 
         for session in sessions {
-            guard !Task.isCancelled else { return }
-            guard let driver = session.driver else { continue }
-
-            var tables = services.schemaService.allLoadedTables(for: session.id)
-            if tables.isEmpty {
-                let provider = services.schemaProviderRegistry.getOrCreate(for: session.id)
-                if await !provider.isSchemaLoaded() {
-                    await provider.loadSchema(using: driver, connection: session.connection)
-                }
-                tables = await provider.getTables()
+            guard let scope = services.databaseManager.browseScope(for: session.id),
+                  services.schemaService.loadedScope(for: session.id) == scope,
+                  !services.schemaService.isRefreshing(connectionId: session.id) else {
+                loadedEveryScope = false
+                continue
             }
 
-            guard let currentSession = services.databaseManager.session(for: session.id),
-                  currentSession.isConnected,
-                  currentSession.resolvedBrowseDatabase == session.resolvedBrowseDatabase,
-                  currentSession.browseSchema == session.browseSchema else { continue }
+            let tables = services.schemaService.allLoadedTables(for: session.id)
 
-            let databaseName = session.resolvedBrowseDatabase.isEmpty ? nil : session.resolvedBrowseDatabase
-            let schemaName = session.browseSchema?.isEmpty == false ? session.browseSchema : nil
+            let databaseName = scope.database.isEmpty ? nil : scope.database
+            let schemaName = scope.schema
             let target = QuickSwitcherObjectTarget(
                 connectionId: session.id,
                 connectionName: session.connection.name,
@@ -261,9 +305,31 @@ internal final class QuickSwitcherViewModel {
             items.append(contentsOf: Self.makeCrossConnectionItems(tables: tables, target: target))
         }
 
-        guard activeCrossConnectionLoadId == loadId, !Task.isCancelled else { return }
-        loadedCrossConnectionVersion = version
+        guard activeCrossConnectionLoadId == loadId,
+              !Task.isCancelled,
+              crossConnectionCatalogVersion == stableVersion else { return }
+        loadedCrossConnectionVersion = loadedEveryScope ? stableVersion : nil
         crossConnectionItems = items
+    }
+
+    private var crossConnectionCatalogVersion: CrossConnectionCatalogVersion {
+        let entries = services.databaseManager.activeSessions.values
+            .filter { $0.isConnected && $0.driver != nil }
+            .compactMap { session -> CrossConnectionCatalogVersion.Entry? in
+                guard let scope = services.databaseManager.browseScope(for: session.id) else { return nil }
+                return CrossConnectionCatalogVersion.Entry(
+                    connectionId: session.id,
+                    browseScope: scope,
+                    loadedScope: services.schemaService.loadedScope(for: session.id),
+                    schemaGeneration: services.schemaService.generationToken(for: session.id),
+                    isRefreshing: services.schemaService.isRefreshing(connectionId: session.id)
+                )
+            }
+            .sorted { $0.connectionId.uuidString < $1.connectionId.uuidString }
+        return CrossConnectionCatalogVersion(
+            connectionStatusVersion: services.databaseManager.connectionStatusVersion,
+            entries: entries
+        )
     }
 
     nonisolated static func makeCrossConnectionItems(

@@ -69,6 +69,15 @@ final class SchemaRefreshService {
         inFlight.removeValue(forKey: key)
     }
 
+    func waitForRefresh(connectionId: UUID) async {
+        let tasks = inFlight.compactMap { key, task in
+            key.connectionId == connectionId ? task : nil
+        }
+        for task in tasks {
+            await task.value
+        }
+    }
+
     /// Push the loaded table list into the autocomplete provider.
     ///
     /// The provider caches the driver it is handed and fetches columns from it later, so it
@@ -120,14 +129,18 @@ final class SchemaRefreshService {
         }
 
         do {
-            try await metadataDriverProvider.withBrowseMetadataDriver(
-                connectionId: connectionId,
+            guard let scope = metadataDriverProvider.browseScope(for: connectionId) else {
+                throw DatabaseError.notConnected
+            }
+            try await metadataDriverProvider.withMetadataDriver(
+                scope: scope,
                 workload: .bulk
             ) { [schemaService] driver in
                 await schemaService.reload(
                     connectionId: connectionId,
                     driver: driver,
-                    connection: connection
+                    connection: connection,
+                    scope: scope
                 )
                 await schemaService.refreshLoadedSchemaTables(
                     connectionId: connectionId,

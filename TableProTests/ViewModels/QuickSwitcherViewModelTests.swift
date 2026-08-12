@@ -20,12 +20,50 @@ struct QuickSwitcherViewModelTests {
     private func makeViewModel(
         items: [QuickSwitcherItem],
         connectionId: UUID = UUID(),
-        defaults: UserDefaults? = nil
+        defaults: UserDefaults? = nil,
+        services: AppServices? = nil
     ) -> QuickSwitcherViewModel {
         let suite = defaults ?? makeDefaults()
-        let vm = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
+        let vm = QuickSwitcherViewModel(connectionId: connectionId, services: services ?? .live, defaults: suite)
         vm.allItems = items
         return vm
+    }
+
+    private func makeServices(
+        databaseManager: DatabaseManager,
+        schemaService: SchemaService,
+        schemaRefreshService: SchemaRefreshService
+    ) -> AppServices {
+        let live = AppServices.live
+        return AppServices(
+            appEvents: live.appEvents,
+            appSettings: live.appSettings,
+            appSettingsStorage: live.appSettingsStorage,
+            connectionStorage: live.connectionStorage,
+            databaseManager: databaseManager,
+            pluginManager: live.pluginManager,
+            schemaService: schemaService,
+            schemaRefreshService: schemaRefreshService,
+            schemaProviderRegistry: SchemaProviderRegistry(),
+            sqlFavoriteManager: live.sqlFavoriteManager,
+            favoriteTablesStorage: live.favoriteTablesStorage,
+            aiChatStorage: live.aiChatStorage,
+            aiKeyStorage: live.aiKeyStorage,
+            groupStorage: live.groupStorage,
+            tagStorage: live.tagStorage,
+            sshProfileStorage: live.sshProfileStorage,
+            licenseManager: live.licenseManager,
+            syncMetadataStorage: live.syncMetadataStorage,
+            favoritesExpansionState: live.favoritesExpansionState,
+            linkedFolderWatcher: live.linkedFolderWatcher,
+            queryHistoryManager: live.queryHistoryManager,
+            dateFormattingService: live.dateFormattingService,
+            copilotService: live.copilotService,
+            mcpServerManager: live.mcpServerManager,
+            syncTracker: live.syncTracker,
+            themeEngine: live.themeEngine,
+            welcomeRouter: live.welcomeRouter
+        )
     }
 
     private func sampleItems() -> [QuickSwitcherItem] {
@@ -87,6 +125,51 @@ struct QuickSwitcherViewModelTests {
 
         #expect(vm.flatItems.map(\.id) == ["remote"])
         #expect(vm.groups.first?.header == "Analytics")
+    }
+
+    @Test("Connections scope replaces tables from a previous browse scope")
+    func connectionsScopeReplacesStaleScopeTables() async throws {
+        let connection = TestFixtures.makeConnection(database: "primary", type: .pglite)
+        let driver = MockDatabaseDriver(connection: connection)
+        let databaseManager = DatabaseManager()
+        let schemaService = SchemaService()
+        let schemaRefreshService = SchemaRefreshService(
+            schemaService: schemaService,
+            providerRegistry: SchemaProviderRegistry(),
+            metadataDriverProvider: databaseManager,
+            databaseManager: databaseManager
+        )
+        let services = makeServices(
+            databaseManager: databaseManager,
+            schemaService: schemaService,
+            schemaRefreshService: schemaRefreshService
+        )
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        session.browseDatabase = "primary"
+        databaseManager.injectSession(session, for: connection.id)
+        defer { databaseManager.removeSession(for: connection.id) }
+
+        let firstScope = try #require(databaseManager.browseScope(for: connection.id))
+        driver.tablesToReturn = [TableInfo(name: "legacy_orders", type: .table, rowCount: nil)]
+        await schemaService.load(
+            connectionId: connection.id,
+            driver: driver,
+            connection: connection,
+            scope: firstScope
+        )
+
+        session.browseDatabase = "analytics"
+        databaseManager.injectSession(session, for: connection.id)
+        driver.tablesToReturn = [TableInfo(name: "events", type: .table, rowCount: nil)]
+
+        let vm = makeViewModel(items: [], connectionId: connection.id, services: services)
+        vm.scope = .connections
+        await vm.loadCrossConnectionItems()
+
+        #expect(vm.flatItems.map(\.name) == ["events"])
+        #expect(vm.flatItems.first?.objectTarget?.databaseName == "analytics")
+        #expect(!vm.flatItems.contains { $0.name == "legacy_orders" })
     }
 
     @Test("Connections scope matches a connection name")

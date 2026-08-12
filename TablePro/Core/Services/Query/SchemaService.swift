@@ -19,6 +19,7 @@ final class SchemaService {
     private(set) var perSchemaStates: [UUID: [String: SchemaState]] = [:]
     private(set) var generations: [UUID: Int] = [:]
     private(set) var refreshingConnections: Set<UUID> = []
+    private(set) var loadedScopes: [UUID: DatabaseScope] = [:]
 
     func generationToken(for connectionId: UUID) -> Int {
         generations[connectionId] ?? 0
@@ -39,6 +40,7 @@ final class SchemaService {
         let schema: String
     }
     @ObservationIgnored private var loadGenerations: [UUID: Int] = [:]
+    @ObservationIgnored private var refreshWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
     @ObservationIgnored private var nextLoadGeneration = 0
     @ObservationIgnored private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
 
@@ -48,6 +50,22 @@ final class SchemaService {
 
     func isRefreshing(connectionId: UUID) -> Bool {
         refreshingConnections.contains(connectionId)
+    }
+
+    func loadedScope(for connectionId: UUID) -> DatabaseScope? {
+        loadedScopes[connectionId]
+    }
+
+    func waitForRefresh(connectionId: UUID) async {
+        while refreshingConnections.contains(connectionId) {
+            await withCheckedContinuation { continuation in
+                if refreshingConnections.contains(connectionId) {
+                    refreshWaiters[connectionId, default: []].append(continuation)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
     }
 
     func hasLoadedContent(for connectionId: UUID) -> Bool {
@@ -158,17 +176,27 @@ final class SchemaService {
         bumpGeneration(connectionId)
     }
 
-    func load(connectionId: UUID, driver: DatabaseDriver, connection: DatabaseConnection) async {
+    func load(
+        connectionId: UUID,
+        driver: DatabaseDriver,
+        connection: DatabaseConnection,
+        scope: DatabaseScope? = nil
+    ) async {
         switch state(for: connectionId) {
-        case .loaded:
+        case .loaded where scope == nil || loadedScopes[connectionId] == scope:
             return
-        case .idle, .loading, .failed:
-            await runLoad(connectionId: connectionId, driver: driver, connection: connection)
+        case .idle, .loading, .failed, .loaded:
+            await runLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)
         }
     }
 
-    func reload(connectionId: UUID, driver: DatabaseDriver, connection: DatabaseConnection) async {
-        await runLoad(connectionId: connectionId, driver: driver, connection: connection)
+    func reload(
+        connectionId: UUID,
+        driver: DatabaseDriver,
+        connection: DatabaseConnection,
+        scope: DatabaseScope? = nil
+    ) async {
+        await runLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)
     }
 
     func reloadProcedures(connectionId: UUID, driver: DatabaseDriver) async {
@@ -231,6 +259,8 @@ final class SchemaService {
         schemasInOrder.removeValue(forKey: connectionId)
         perSchemaStates.removeValue(forKey: connectionId)
         generations.removeValue(forKey: connectionId)
+        loadedScopes.removeValue(forKey: connectionId)
+        resumeRefreshWaiters(connectionId)
     }
 
     func refresh(connectionId: UUID) async {
@@ -243,7 +273,12 @@ final class SchemaService {
             return
         }
         await prepareForReload(connectionId: connectionId)
-        await reload(connectionId: connectionId, driver: driver, connection: session.connection)
+        await reload(
+            connectionId: connectionId,
+            driver: driver,
+            connection: session.connection,
+            scope: DatabaseManager.shared.browseScope(for: connectionId)
+        )
     }
 
     func markLoadFailed(connectionId: UUID, message: String) {
@@ -255,7 +290,8 @@ final class SchemaService {
     private func runLoad(
         connectionId: UUID,
         driver: DatabaseDriver,
-        connection: DatabaseConnection
+        connection: DatabaseConnection,
+        scope: DatabaseScope?
     ) async {
         let generation = beginLoadGeneration(for: connectionId)
         beginRefresh(connectionId)
@@ -272,7 +308,12 @@ final class SchemaService {
 
         let grouping = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
         if grouping == .hierarchicalSchema {
-            await runHierarchicalLoad(connectionId: connectionId, driver: driver, generation: generation)
+            await runHierarchicalLoad(
+                connectionId: connectionId,
+                driver: driver,
+                generation: generation,
+                scope: scope
+            )
             return
         }
 
@@ -324,6 +365,9 @@ final class SchemaService {
                 }
                 schemasInOrder[connectionId] = loadedSchemas
             }
+            if let scope {
+                loadedScopes[connectionId] = scope
+            }
             bumpGeneration(connectionId)
         } catch is CancellationError {
             return
@@ -341,7 +385,12 @@ final class SchemaService {
         }
     }
 
-    private func runHierarchicalLoad(connectionId: UUID, driver: DatabaseDriver, generation: Int) async {
+    private func runHierarchicalLoad(
+        connectionId: UUID,
+        driver: DatabaseDriver,
+        generation: Int,
+        scope: DatabaseScope?
+    ) async {
         async let proceduresTask: [RoutineInfo] = Self.fetchRoutinesSafely(
             connectionId: connectionId,
             kind: .procedure,
@@ -383,6 +432,9 @@ final class SchemaService {
         procedures[connectionId] = loadedProcedures
         functions[connectionId] = loadedFunctions
         states[connectionId] = .loaded([])
+        if let scope {
+            loadedScopes[connectionId] = scope
+        }
         bumpGeneration(connectionId)
     }
 
@@ -393,6 +445,14 @@ final class SchemaService {
     private func endRefresh(_ connectionId: UUID, generation: Int) {
         guard loadGenerations[connectionId] == generation else { return }
         refreshingConnections.remove(connectionId)
+        resumeRefreshWaiters(connectionId)
+    }
+
+    private func resumeRefreshWaiters(_ connectionId: UUID) {
+        let waiters = refreshWaiters.removeValue(forKey: connectionId) ?? []
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 
     private func beginLoadGeneration(for connectionId: UUID) -> Int {
