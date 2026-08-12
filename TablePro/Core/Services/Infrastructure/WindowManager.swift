@@ -126,12 +126,10 @@ internal final class WindowManager {
 
     internal func connectionIdsRetainingRestoreIntent() -> [UUID] {
         var seen = Set<UUID>()
-        return controllers.values.compactMap { controller -> UUID? in
-            guard let splitVC = controller.window?.contentViewController as? MainSplitViewController,
-                  splitVC.retainsRestoreIntent else { return nil }
-            let connectionId = controller.payload.connectionId
-            return seen.insert(connectionId).inserted ? connectionId : nil
-        }
+        return controllers.values
+            .compactMap { $0.window?.contentViewController as? MainSplitViewController }
+            .flatMap(\.connectionIdsRetainingRestoreIntent)
+            .filter { seen.insert($0).inserted }
     }
 
     internal func closeWindow(for connectionId: UUID) {

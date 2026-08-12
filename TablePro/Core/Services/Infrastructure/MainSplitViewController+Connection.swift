@@ -57,11 +57,11 @@ internal extension MainSplitViewController {
     }
 
     func cancelConnectionAttempt() {
-        attemptToken = nil
-        transition(to: .unavailable(.cancelled))
-        guard let connectionId = payload?.connectionId else { return }
-        DatabaseManager.shared.invalidateConnectionAttempt(connectionId)
-        Task { await DatabaseManager.shared.cancelEnsureConnected(connectionId) }
+        guard let workspace = workspaces.selected else { return }
+        workspace.attemptToken = nil
+        transition(to: .unavailable(.cancelled), for: workspace.connectionId)
+        DatabaseManager.shared.invalidateConnectionAttempt(workspace.connectionId)
+        Task { await DatabaseManager.shared.cancelEnsureConnected(workspace.connectionId) }
     }
 
     func openConnectionList() {
@@ -79,13 +79,17 @@ internal extension MainSplitViewController {
     }
 
     private func connect(_ connection: DatabaseConnection, cancellingPrevious: Bool) {
+        guard let workspace = workspaces.workspace(for: connection.id) else { return }
         let token = UUID()
-        attemptToken = token
-        transition(to: ConnectionWindowPhaseMachine.onAttemptStarted(phase: phase))
+        workspace.attemptToken = token
+        transition(
+            to: ConnectionWindowPhaseMachine.onAttemptStarted(phase: workspace.phase),
+            for: connection.id
+        )
 
         Task { [weak self] in
             guard await PreConnectScriptPrompt.confirmIfNeeded(for: connection) else {
-                self?.finishAttempt(token, outcome: .cancelled)
+                self?.finishAttempt(token, for: connection.id, outcome: .cancelled)
                 return
             }
             if cancellingPrevious {
@@ -93,19 +97,27 @@ internal extension MainSplitViewController {
             }
             do {
                 try await DatabaseManager.shared.ensureConnected(connection)
-                self?.finishAttempt(token, outcome: nil)
+                self?.finishAttempt(token, for: connection.id, outcome: nil)
             } catch {
                 Self.connectionLogger.error(
                     "Connect failed for \(connection.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
                 )
-                self?.finishAttempt(token, outcome: ConnectionFailureClassifier.outcome(for: error))
+                self?.finishAttempt(
+                    token,
+                    for: connection.id,
+                    outcome: ConnectionFailureClassifier.outcome(for: error)
+                )
             }
         }
     }
 
-    private func finishAttempt(_ token: UUID, outcome: ConnectionAttemptOutcome?) {
-        let isCurrentAttempt = attemptToken == token
-        if isCurrentAttempt { attemptToken = nil }
+    /// A connect that outlives the workspace it was started for has nothing to report to. The
+    /// registry entry going away is the generation check: writing a phase back here would
+    /// resurrect a connection the user already closed.
+    private func finishAttempt(_ token: UUID, for connectionId: UUID, outcome: ConnectionAttemptOutcome?) {
+        guard let workspace = workspaces.workspace(for: connectionId) else { return }
+        let isCurrentAttempt = workspace.attemptToken == token
+        if isCurrentAttempt { workspace.attemptToken = nil }
 
         guard let outcome else {
             refreshFromActiveSessions()
@@ -114,10 +126,11 @@ internal extension MainSplitViewController {
 
         transition(
             to: ConnectionWindowPhaseMachine.onAttemptFinished(
-                phase: phase,
+                phase: workspace.phase,
                 isCurrentAttempt: isCurrentAttempt,
                 outcome: outcome
-            )
+            ),
+            for: connectionId
         )
     }
 }
