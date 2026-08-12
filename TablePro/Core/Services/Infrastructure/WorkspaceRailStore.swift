@@ -47,6 +47,7 @@ internal enum WorkspaceRailStore {
             storedConnections: Self.storedConnections(for: Array(sessionless)),
             containerTarget: { PluginManager.shared.containerSwitchTarget(for: $0) },
             tabs: { MainContentCoordinator.allTabs(for: $0) },
+            browsedContainers: { Self.browsedContainers(for: $0) },
             storedOrder: WorkspaceRailOrderStore.shared.order
         )
     }
@@ -62,6 +63,7 @@ internal enum WorkspaceRailStore {
         storedConnections: [UUID: DatabaseConnection],
         containerTarget: (DatabaseType) -> ContainerSwitchTarget?,
         tabs: (UUID) -> [QueryTab],
+        browsedContainers: (UUID) -> Set<String>,
         storedOrder: [WorkspaceID]
     ) -> [WorkspaceRailEntry] {
         var connections: [UUID: DatabaseConnection] = [:]
@@ -82,7 +84,13 @@ internal enum WorkspaceRailStore {
             let target = containerTarget(resolved.connection.type)
             targets[connectionId] = target
 
-            for container in containers(for: resolved, tabs: tabs(connectionId), target: target) {
+            let browsed = browsedContainers(connectionId)
+            for container in containers(
+                for: resolved,
+                tabs: tabs(connectionId),
+                browsed: browsed,
+                target: target
+            ) {
                 workspaces.insert(WorkspaceID(connectionId: connectionId, container: container))
             }
         }
@@ -105,13 +113,36 @@ internal enum WorkspaceRailStore {
         }
     }
 
-    /// The workspace a connection's window is showing right now, or nil while it has no
-    /// session to browse with.
-    internal static func browsedWorkspace(for connectionId: UUID) -> WorkspaceID? {
-        guard let session = DatabaseManager.shared.session(for: connectionId) else { return nil }
-        let target = PluginManager.shared.containerSwitchTarget(for: session.connection.type)
-        let container = WorkspaceAnchoring.browsedContainer(of: session, target: target) ?? ""
-        return WorkspaceID(connectionId: connectionId, container: container)
+    /// The workspace one window is showing right now.
+    ///
+    /// Scoped to a window, not a connection: a connection reaches many containers and can have
+    /// a window open on several of them at once, so asking "which workspace is this connection
+    /// showing" has no single answer. Answering it from the shared session made every window's
+    /// rail highlight whichever container another window had most recently switched to. (#2088)
+    internal static func browsedWorkspace(ofWindow coordinator: MainContentCoordinator) -> WorkspaceID {
+        let target = PluginManager.shared.containerSwitchTarget(for: coordinator.connection.type)
+        let container = WorkspaceAnchoring.named(
+            database: coordinator.browseDatabaseName,
+            schema: coordinator.browseSchemaName,
+            target: target
+        ) ?? ""
+        return WorkspaceID(connectionId: coordinator.connectionId, container: container)
+    }
+
+    /// Every container the connection's open windows are browsing. The rail lists a row per
+    /// container, and a window that has browsed somewhere with no tabs open yet still earns one.
+    internal static func browsedContainers(for connectionId: UUID) -> Set<String> {
+        Set(
+            MainContentCoordinator.allActiveCoordinators()
+                .filter { $0.connectionId == connectionId }
+                .compactMap { coordinator in
+                    WorkspaceAnchoring.named(
+                        database: coordinator.browseDatabaseName,
+                        schema: coordinator.browseSchemaName,
+                        target: PluginManager.shared.containerSwitchTarget(for: coordinator.connection.type)
+                    )
+                }
+        )
     }
 
     /// The row the rail keeps selected. A window whose session has gone still belongs to
@@ -183,16 +214,17 @@ internal enum WorkspaceRailStore {
     private static func containers(
         for resolved: ResolvedConnection,
         tabs: [QueryTab],
+        browsed: Set<String>,
         target: ContainerSwitchTarget?
     ) -> Set<String> {
         var containers = WorkspaceAnchoring.containers(in: tabs, target: target)
+        containers.formUnion(browsed)
 
-        let browsed = resolved.session.flatMap {
-            WorkspaceAnchoring.browsedContainer(of: $0, target: target)
-        } ?? WorkspaceAnchoring.defaultContainer(of: resolved.connection, target: target)
-
-        if let browsed {
-            containers.insert(browsed)
+        /// Only when no window has a cursor yet, which is a connection whose window exists but
+        /// has no coordinator registered. A window that is browsing always speaks for itself.
+        if browsed.isEmpty,
+           let fallback = WorkspaceAnchoring.defaultContainer(of: resolved.connection, target: target) {
+            containers.insert(fallback)
         }
         if containers.isEmpty {
             containers.insert("")

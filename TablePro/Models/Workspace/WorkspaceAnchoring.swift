@@ -85,7 +85,7 @@ internal enum WorkspaceAnchoring {
 
     /// An engine that switches neither database nor schema has one container, and naming it
     /// after a tab's database would split it into rows the rail has no way to activate.
-    private static func named(database: String, schema: String?, target: ContainerSwitchTarget?) -> String? {
+    internal static func named(database: String, schema: String?, target: ContainerSwitchTarget?) -> String? {
         let name: String
         switch target {
         case .schema:

@@ -178,9 +178,15 @@ internal final class WorkspaceRailViewController: NSViewController {
 
     /// The browsed container moves, so the selected row is resolved on every reload rather
     /// than fixed at init the way the window's connection is.
+    ///
+    /// Resolved from this rail's OWN window. Every window of a connection has its own rail and
+    /// its own cursor, so a rail that asked the connection would highlight another window's
+    /// container. Nil until the window and its coordinator exist, which `WorkspaceRailStore.changes`
+    /// re-fires past.
     private var activeWorkspace: WorkspaceID? {
-        guard let connectionId else { return nil }
-        return WorkspaceRailStore.browsedWorkspace(for: connectionId)
+        guard let window = view.window,
+              let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return nil }
+        return WorkspaceRailStore.browsedWorkspace(ofWindow: coordinator)
     }
 
     private func applySelection() {
@@ -280,7 +286,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
-        moveBrowseCursor(of: window, to: workspace, target: target)
+        moveBrowseCursor(of: window, to: workspace)
 
         guard WorkspaceRailStore.shouldRestoreSelection(
             after: workspace,
@@ -289,16 +295,9 @@ internal final class WorkspaceRailViewController: NSViewController {
         applySelection()
     }
 
-    private func moveBrowseCursor(of window: NSWindow, to workspace: WorkspaceID, target: ContainerSwitchTarget?) {
+    private func moveBrowseCursor(of window: NSWindow, to workspace: WorkspaceID) {
         guard !workspace.container.isEmpty else {
             Self.logger.debug("moveBrowseCursor skipped: unnamed container")
-            return
-        }
-        let current = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
-        guard current != workspace else {
-            Self.logger.debug(
-                "moveBrowseCursor skipped: already at \(Self.describe(workspace), privacy: .public)"
-            )
             return
         }
         guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else {
@@ -310,23 +309,32 @@ internal final class WorkspaceRailViewController: NSViewController {
             )
             return
         }
+        /// The cursor of the window being moved, not of the connection. Comparing against the
+        /// connection meant a window already showing the target container was skipped because
+        /// some other window had moved there first.
+        let current = WorkspaceRailStore.browsedWorkspace(ofWindow: coordinator)
+        guard current != workspace else {
+            Self.logger.debug(
+                "moveBrowseCursor skipped: already at \(Self.describe(workspace), privacy: .public)"
+            )
+            return
+        }
         Self.logger.info(
             """
-            moveBrowseCursor from=\(current.map(Self.describe) ?? "none", privacy: .public) \
+            moveBrowseCursor from=\(Self.describe(current), privacy: .public) \
             to=\(Self.describe(workspace), privacy: .public)
             """
         )
         Task { @MainActor in
             await coordinator.switchContainer(to: workspace.container)
-            let landed = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
+            let landed = WorkspaceRailStore.browsedWorkspace(ofWindow: coordinator)
             if landed == workspace {
                 Self.logger.info("moveBrowseCursor landed \(Self.describe(workspace), privacy: .public)")
-                coordinator.selectTab(in: workspace, target: target)
             } else {
                 Self.logger.error(
                     """
                     moveBrowseCursor did not land wanted=\(Self.describe(workspace), privacy: .public) \
-                    got=\(landed.map(Self.describe) ?? "none", privacy: .public)
+                    got=\(Self.describe(landed), privacy: .public)
                     """
                 )
             }

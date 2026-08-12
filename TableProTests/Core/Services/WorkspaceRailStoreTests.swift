@@ -31,12 +31,16 @@ struct WorkspaceRailStoreTests {
         return tab
     }
 
+    /// `browsedContainers` stands in for the open windows' own cursors. Passing nil means "derive
+    /// it from the session", which is what the app did before a window owned its own cursor and
+    /// what these older cases were written against.
     private func resolve(
         openConnectionIds: Set<UUID>,
         sessions: [UUID: ConnectionSession],
         storedConnections: [UUID: DatabaseConnection] = [:],
         target: ContainerSwitchTarget? = .database,
         tabs: [UUID: [QueryTab]] = [:],
+        browsedContainers: [UUID: Set<String>]? = nil,
         storedOrder: [WorkspaceID] = []
     ) -> [WorkspaceRailEntry] {
         WorkspaceRailStore.resolveEntries(
@@ -45,6 +49,15 @@ struct WorkspaceRailStoreTests {
             storedConnections: storedConnections,
             containerTarget: { _ in target },
             tabs: { tabs[$0] ?? [] },
+            browsedContainers: { connectionId in
+                if let browsedContainers {
+                    return browsedContainers[connectionId] ?? []
+                }
+                guard let session = sessions[connectionId],
+                      let container = WorkspaceAnchoring.browsedContainer(of: session, target: target)
+                else { return [] }
+                return [container]
+            },
             storedOrder: storedOrder
         )
     }
@@ -122,6 +135,39 @@ struct WorkspaceRailStoreTests {
         )
         #expect(entries.allSatisfy { $0.connection.id == connection.id })
         #expect(entries.count == 2)
+    }
+
+    @Test("Two windows browsing different containers each earn a row, with no tabs open")
+    func everyWindowsCursorEarnsARow() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: makeSession(connection, driverDatabase: "app")],
+            browsedContainers: [connection.id: ["shop", "analytics"]]
+        )
+        #expect(Set(entries.map(\.container)) == ["shop", "analytics"])
+    }
+
+    @Test("A window's cursor earns a row even when the shared driver sits elsewhere")
+    func windowCursorOutranksDriverPosition() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: makeSession(connection, driverDatabase: "logs")],
+            browsedContainers: [connection.id: ["shop"]]
+        )
+        #expect(entries.map(\.container) == ["shop"])
+    }
+
+    @Test("A connection whose windows have no cursor yet falls back to its saved default")
+    func fallsBackToSavedDefaultBeforeAnyWindowBrowses() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: makeSession(connection)],
+            browsedContainers: [connection.id: []]
+        )
+        #expect(entries.map(\.container) == ["app"])
     }
 
     @Test("A schema-switching engine keys its workspaces on the schema, not the database")
