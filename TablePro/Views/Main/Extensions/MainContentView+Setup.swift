@@ -348,9 +348,7 @@ extension MainContentView {
         )
         let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
 
-        let resolvedId = WindowManager.tabbingIdentifier(for: connection.id)
-        window.tabbingIdentifier = resolvedId
-        window.tabbingMode = .preferred
+        window.tabbingIdentifier = WindowManager.mainTabbingIdentifier
         coordinator.windowId = windowId
 
         WindowLifecycleMonitor.shared.register(
@@ -372,7 +370,7 @@ extension MainContentView {
             splitVC.installToolbar(coordinator: coordinator)
         }
         MainContentView.lifecycleLogger.info(
-            "[open] configureWindow done windowId=\(windowId, privacy: .public) tabbingId=\(resolvedId, privacy: .public) isPreview=\(isPreview) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
+            "[open] configureWindow done windowId=\(windowId, privacy: .public) isPreview=\(isPreview) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
     }
 

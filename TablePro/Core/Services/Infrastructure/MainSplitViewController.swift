@@ -233,6 +233,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         /// The saved layout is restored before any phase-driven collapse, so the user's widths
         /// are already in the live layout. Uncollapsing then returns the pane to the size
         /// `NSSplitViewItem` remembers, rather than depending on a second restore.
+        workspaces.onSelectionChange = { [weak self] _ in
+            self?.applySelectedWorkspace()
+        }
+
         restoreUserPaneLayout()
         rebuildPanes()
         applyPaneChrome()
@@ -418,6 +422,19 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         if workspaces.selectedConnectionId == workspace.connectionId {
             navigationSidebar.objectBrowser.updateSidebarState(nil)
         }
+    }
+
+    /// Switching workspace repaints the window in place. The rail used to raise a different
+    /// window instead, which is what made several connections mean several windows.
+    internal func applySelectedWorkspace() {
+        if let coordinator = workspaces.selected?.sessionState?.coordinator {
+            coordinator.inspectorProxy = self
+            coordinator.splitViewController = self
+            installToolbar(coordinator: coordinator)
+        }
+        rebuildPanes()
+        applyPaneChrome()
+        applyWindowTitle()
     }
 
     private func applyPhase() {

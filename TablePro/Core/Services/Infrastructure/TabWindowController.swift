@@ -39,10 +39,6 @@ private final class EditorWindow: NSWindow {
 internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    /// Deliberately one shared slot for every connection. The rail switches workspaces, so
-    /// every connection's window must occupy the same frame: a rail click then reads as the
-    /// window changing content rather than a different window being raised. Offsetting them
-    /// per connection, or cascading, breaks that illusion.
     internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
 
     internal let payload: EditorTabPayload
@@ -70,8 +66,10 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.isRestorable = false
         window.toolbarStyle = .unified
         window.titleVisibility = .visible
-        window.tabbingMode = .preferred
-        window.tabbingIdentifier = WindowManager.tabbingIdentifier(for: payload.connectionId)
+        /// Apple asks an app that drives tabbing itself to read the user's preference before
+        /// showing a window rather than forcing tabs, which hard-coding `.preferred` did.
+        window.tabbingMode = NSWindow.userTabbingPreference == .always ? .preferred : .automatic
+        window.tabbingIdentifier = WindowManager.mainTabbingIdentifier
         window.collectionBehavior.insert([.fullScreenPrimary, .managed])
 
         let splitVC = MainSplitViewController(
@@ -88,9 +86,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        if let sibling = NSApp.windows.first(where: { WindowManager.isMainWindow($0) && $0.isVisible }) {
-            window.setFrame(sibling.frame, display: false)
-        } else if !window.setFrameUsingName(Self.frameAutosaveName) {
+        if !window.setFrameUsingName(Self.frameAutosaveName) {
             let visibleSize = (window.screen ?? NSScreen.main)?.visibleFrame.size
                 ?? NSSize(width: 1_440, height: 900)
             window.setContentSize(NSSize(

@@ -250,6 +250,21 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// saved. Moving between two containers of the same connection stays in one window and
     /// only moves that window's browse cursor.
     private func activate(_ workspace: WorkspaceID) {
+        /// One window hosts every connection, so switching is a selection change in that
+        /// window's own registry. Raising a different window is what made the rail read as a
+        /// window switcher rather than a workspace switcher.
+        if let host = view.window?.contentViewController as? MainSplitViewController,
+           host.workspaces.contains(workspace.connectionId) {
+            host.workspaces.select(workspace.connectionId)
+            moveBrowseCursor(of: host.view.window ?? NSApp.keyWindow ?? NSApp.windows[0], to: workspace)
+            guard WorkspaceRailStore.shouldRestoreSelection(
+                after: workspace,
+                railConnectionId: connectionId
+            ) else { return }
+            applySelection()
+            return
+        }
+
         let target = entries.first { $0.workspace == workspace }?.containerTarget
         let showing = MainContentCoordinator.window(showing: workspace, target: target)
         guard let window = showing

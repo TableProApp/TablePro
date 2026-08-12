@@ -41,6 +41,10 @@ enum WindowMenuBuilder {
                 String(localized: "Move Tab to New Window"),
                 action: #selector(NSWindow.moveTabToNewWindow(_:))
             ),
+            MenuItemFactory.item(
+                String(localized: "Merge All Windows"),
+                action: #selector(NSWindow.mergeAllWindows(_:))
+            ),
             MenuItemFactory.separator
         ]
 
