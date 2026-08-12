@@ -76,8 +76,23 @@ final class MainContentCoordinator {
     let connection: DatabaseConnection
     var connectionId: UUID { connection.id }
     var sqlDialect: SqlDialect { SqlDialect.from(databaseTypeId: connection.type.rawValue) }
+    /// This window's own browse cursor. Never read another window's, and never fall back to
+    /// the connection's driver position: that is what made every window agree with whichever
+    /// one switched last.
+    private(set) var browseState = WindowBrowseState()
     var browseDatabaseName: String {
-        services.databaseManager.driverDatabaseName(for: connection)
+        browseState.database ?? connection.database
+    }
+
+    var browseSchemaName: String? {
+        browseState.schema
+    }
+
+    func applyBrowseState(_ state: WindowBrowseState) {
+        guard browseState != state else { return }
+        browseState = state
+        toolbarState.currentDatabase = browseDatabaseName
+        toolbarState.currentSchema = browseSchemaName
     }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
     func setSafeModeLevel(_ level: SafeModeLevel) {
@@ -494,11 +509,13 @@ final class MainContentCoordinator {
         toolbarState: ConnectionToolbarState,
         tabSessionRegistry: TabSessionRegistry? = nil,
         queryExecutor: QueryExecutor? = nil,
+        browseState: WindowBrowseState = WindowBrowseState(),
         services: AppServices = .live
     ) {
         let initStart = Date()
         self.services = services
         self.connection = connection
+        self.browseState = browseState
         self.windowSidebarState = WindowSidebarState(connectionId: connection.id)
         self.tabManager = tabManager
         self.changeManager = changeManager
@@ -836,6 +853,7 @@ final class MainContentCoordinator {
     /// Synchronous toolbar setup — no I/O, safe to call inline
     func initializeToolbar() {
         toolbarState.update(from: connection)
+        toolbarState.seedBrowseChip(for: connection, browseState: browseState)
 
         if let session = services.databaseManager.session(for: connectionId) {
             toolbarState.connectionState = mapSessionStatus(session.status)

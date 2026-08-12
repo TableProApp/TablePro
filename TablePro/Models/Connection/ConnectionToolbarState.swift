@@ -247,33 +247,34 @@ final class ConnectionToolbarState {
         syncFromSession(for: connection)
     }
 
-    /// Resolve `currentDatabase` and `currentSchema` from the active session, falling
-    /// back to the connection's configured database for `currentDatabase`. The chip
-    /// updates automatically via the `chipText` computed property.
+    /// Resolve the connection-wide part of the toolbar from the active session.
+    ///
+    /// `currentDatabase` and `currentSchema` are deliberately NOT resolved here. The chip names
+    /// the container its own window is browsing, which is per-window state owned by that
+    /// window's `MainContentCoordinator.browseState`; the coordinator writes both through
+    /// `applyBrowseState`. Reading them from the shared session made every window's chip repaint
+    /// with whichever database another window had just switched to, because a switch fires
+    /// `connectionStatusChanged` and every window answers it by calling this method. (#2088)
+    ///
+    /// A file-based connection is the one exception: its container is the file itself, so it can
+    /// never differ between windows, and the chip is set once at setup.
     func syncFromSession(for connection: DatabaseConnection) {
-        let resolvedDatabase: String
-        if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
-            resolvedDatabase = (connection.database as NSString).lastPathComponent
-        } else if let session = DatabaseManager.shared.session(for: connection.id),
-                  let database = session.driverDatabase {
-            resolvedDatabase = database
-        } else {
-            resolvedDatabase = connection.database
-        }
-        if currentDatabase != resolvedDatabase {
-            currentDatabase = resolvedDatabase
-        }
-
-        let resolvedSchema = DatabaseManager.shared.session(for: connection.id)?.driverSchema
-        if currentSchema != resolvedSchema {
-            currentSchema = resolvedSchema
-        }
-
         let resolvedSafeMode = DatabaseManager.shared.session(for: connection.id)?.safeModeLevel
             ?? connection.safeModeLevel
         if safeModeLevel != resolvedSafeMode {
             safeModeLevel = resolvedSafeMode
         }
+    }
+
+    /// The chip's starting value, before the window has switched anything. Called once from
+    /// `initializeToolbar()`, never from a connection-wide notification.
+    func seedBrowseChip(for connection: DatabaseConnection, browseState: WindowBrowseState) {
+        if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
+            currentDatabase = (connection.database as NSString).lastPathComponent
+        } else {
+            currentDatabase = browseState.database ?? connection.database
+        }
+        currentSchema = browseState.schema
     }
 
     /// Update connection state from ConnectionStatus

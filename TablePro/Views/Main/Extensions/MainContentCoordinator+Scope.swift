@@ -36,9 +36,17 @@ extension MainContentCoordinator {
         return scope(for: tab)
     }
 
-    /// Where the sidebar is pointing. Correct for the object list and for seeding a new
-    /// tab, never for an operation an open tab owns.
-    var browseScope: DatabaseScope? {
-        services.databaseManager.driverScope(for: connectionId)
+    /// Where THIS window's sidebar is pointing. Correct for the object list and for seeding a
+    /// new tab, never for an operation an open tab owns.
+    ///
+    /// Non-optional, unlike the connection's driver scope: a window always knows the container
+    /// it is showing, even before a session exists, because it falls back to the connection's
+    /// saved default rather than to nothing.
+    var browseScope: DatabaseScope {
+        DatabaseScope(
+            connectionId: connectionId,
+            database: browseDatabaseName,
+            schema: browseSchemaName
+        )
     }
 }

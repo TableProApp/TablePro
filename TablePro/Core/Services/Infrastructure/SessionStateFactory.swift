@@ -87,7 +87,15 @@ enum SessionStateFactory {
             toolbarSt.currentDatabase = String(dbIndex)
         }
 
-        let browseDatabaseName = DatabaseManager.shared.driverDatabaseName(for: connection)
+        /// A new window browses the container it was opened for, and only falls back to the
+        /// driver's position when the payload names none. Seeding it from the driver
+        /// unconditionally is what made a window open on whichever database another window had
+        /// most recently switched to.
+        let browseState = WindowBrowseState.seeded(
+            database: payload?.databaseName ?? DatabaseManager.shared.driverDatabaseName(for: connection),
+            schema: payload?.schemaName ?? DatabaseManager.shared.session(for: connectionId)?.driverSchema
+        )
+        let browseDatabaseName = browseState.database ?? connection.database
 
         if let payload {
             switch payload.intent {
@@ -183,7 +191,8 @@ enum SessionStateFactory {
             changeManager: changeMgr,
             toolbarState: toolbarSt,
             tabSessionRegistry: tabSessionRegistry,
-            queryExecutor: queryExecutor
+            queryExecutor: queryExecutor,
+            browseState: browseState
         )
 
         // Eagerly publish to the active-coordinator registry so concurrent

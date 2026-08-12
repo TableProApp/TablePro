@@ -415,21 +415,29 @@ extension MainContentCoordinator {
 
     // MARK: - Database Switching
 
-    /// Moves the browse cursor: what the sidebar lists and which database a new tab
-    /// opens in. It never retargets an open tab, and an open tab never calls it.
-    /// `persist` records the database as the connection's saved default.
+    /// Moves THIS window's browse cursor: what its sidebar lists and which database a tab
+    /// opened from it lands in. It never retargets an open tab, an open tab never calls it,
+    /// and it never moves another window's cursor. `persist` records the database as the
+    /// connection's saved default.
     @discardableResult
     func switchDatabase(to database: String, persist: Bool = true) async -> Bool {
+        let previous = browseState
         do {
             try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: persist)
-            toolbarState.currentDatabase = database
-            toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.driverSchema
+            guard !isTearingDown else { return false }
+            applyBrowseState(
+                WindowBrowseState.seeded(
+                    database: database,
+                    schema: DatabaseManager.shared.session(for: connectionId)?.driverSchema
+                )
+            )
 
             await SchemaService.shared.prepareForReload(connectionId: connectionId)
 
             await refreshTables(currentDatabaseOnly: true)
             return true
         } catch {
+            applyBrowseState(previous)
             navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
                 title: String(
@@ -477,13 +485,14 @@ extension MainContentCoordinator {
             return
         }
 
-        let previousSchema = toolbarState.currentSchema
-        toolbarState.currentSchema = schema
+        let previous = browseState
+        applyBrowseState(WindowBrowseState(database: browseState.database, schema: schema))
 
         do {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
+            guard !isTearingDown else { return }
         } catch {
-            toolbarState.currentSchema = previousSchema
+            applyBrowseState(previous)
 
             navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
