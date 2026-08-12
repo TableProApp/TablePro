@@ -503,23 +503,80 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Drop a database. Called from the database switcher's confirmation dialog.
-    func dropDatabase(name: String) async {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            navigationLogger.warning("dropDatabase(name: \(name, privacy: .public)) ignored: no active driver")
-            return
+    func requestContainerDrop(_ targets: [DatabaseContainerRef]) {
+        guard !targets.isEmpty else { return }
+        let isSchema = targets.contains { $0.kind == .schema }
+        containerDropRequest = DatabaseDropRequest(
+            targets: targets,
+            entityName: isSchema
+                ? PluginManager.shared.schemaEntityName(for: connection.type)
+                : PluginManager.shared.containerEntityName(for: connection.type),
+            entityNamePlural: isSchema
+                ? PluginManager.shared.schemaEntityNamePlural(for: connection.type)
+                : PluginManager.shared.containerEntityNamePlural(for: connection.type),
+            dropsDependentObjects: isSchema
+        )
+    }
+
+    /// Drop every container in the request, reporting the ones that failed.
+    /// A failure on one target never stops the rest: the user asked for all of them.
+    func dropContainers(_ request: DatabaseDropRequest) async {
+        var failures: [(name: String, message: String)] = []
+
+        for target in request.targets {
+            do {
+                try await dropContainer(target)
+            } catch {
+                navigationLogger.error(
+                    "Failed to drop \(target.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+                failures.append((target.name, error.localizedDescription))
+            }
         }
 
-        do {
-            try await driver.dropDatabase(name: name)
-        } catch {
-            navigationLogger.error("Failed to drop database: \(error.localizedDescription, privacy: .public)")
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Drop Failed"),
-                message: error.localizedDescription,
-                window: contentWindow
+        await DatabaseTreeMetadataService.shared.refreshDatabases(
+            connectionId: connectionId,
+            databaseType: connection.type
+        )
+        for database in Set(request.targets.filter { $0.kind == .schema }.map(\.database)) {
+            await DatabaseTreeMetadataService.shared.refreshSchemas(
+                connectionId: connectionId,
+                database: database
             )
         }
+
+        guard !failures.isEmpty else { return }
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Drop Failed"),
+            message: dropFailureMessage(failures),
+            window: contentWindow
+        )
+    }
+
+    private func dropContainer(_ target: DatabaseContainerRef) async throws {
+        switch target.kind {
+        case .database:
+            guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+                throw DatabaseError.notConnected
+            }
+            try await driver.dropDatabase(name: target.name)
+        case .schema:
+            guard let scope = DatabaseManager.shared.resolvedScope(
+                database: target.database, schema: nil, for: connectionId
+            ) else {
+                throw DatabaseError.notConnected
+            }
+            let name = target.name
+            try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                try await driver.dropSchema(name: name)
+            }
+        }
+    }
+
+    private func dropFailureMessage(_ failures: [(name: String, message: String)]) -> String {
+        failures
+            .map { String(format: String(localized: "%1$@: %2$@"), $0.name, $0.message) }
+            .joined(separator: "\n")
     }
 
     // MARK: - Redis Database Selection

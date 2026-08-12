@@ -103,50 +103,35 @@ struct MainContentView: View {
                 sheetContent(for: sheet)
             }
             .confirmationDialog(
-                dropConfirmationTitle,
+                coordinator.containerDropRequest?.title ?? "",
                 isPresented: dropConfirmationBinding,
                 titleVisibility: .visible,
-                presenting: coordinator.databaseToDrop
-            ) { name in
-                Button(String(format: String(localized: "Drop %@"), containerEntityName), role: .destructive) {
-                    Task { await dropDatabase(name: name) }
+                presenting: coordinator.containerDropRequest
+            ) { request in
+                Button(request.confirmButtonTitle, role: .destructive) {
+                    Task { await dropContainers(request) }
                 }
                 Button(String(localized: "Cancel"), role: .cancel) {
-                    coordinator.databaseToDrop = nil
+                    coordinator.containerDropRequest = nil
                 }
-            } message: { _ in
-                Text(String(localized: "All tables and data will be permanently deleted."))
+            } message: { request in
+                Text(request.message)
             }
             .modifier(FocusedCommandActionsModifier(actions: commandActions))
     }
 
     private var dropConfirmationBinding: Binding<Bool> {
         Binding(
-            get: { coordinator.databaseToDrop != nil },
+            get: { coordinator.containerDropRequest != nil },
             set: { newValue in
-                if !newValue { coordinator.databaseToDrop = nil }
+                if !newValue { coordinator.containerDropRequest = nil }
             }
         )
     }
 
-    private var dropConfirmationTitle: String {
-        if let name = coordinator.databaseToDrop {
-            return String(
-                format: String(localized: "Drop %1$@ “%2$@”?"),
-                containerEntityName.lowercased(),
-                name
-            )
-        }
-        return ""
-    }
-
-    private var containerEntityName: String {
-        PluginManager.shared.containerEntityName(for: coordinator.connection.type)
-    }
-
-    private func dropDatabase(name: String) async {
-        await coordinator.dropDatabase(name: name)
-        coordinator.databaseToDrop = nil
+    private func dropContainers(_ request: DatabaseDropRequest) async {
+        await coordinator.dropContainers(request)
+        coordinator.containerDropRequest = nil
     }
 
     // MARK: - Sheet Content
@@ -171,7 +156,7 @@ struct MainContentView: View {
             set: {
                 if !$0 {
                     coordinator.activeSheet = nil
-                    coordinator.exportPreselectedTableNames = nil
+                    coordinator.exportPreselection = nil
                 }
             }
         )
@@ -196,8 +181,8 @@ struct MainContentView: View {
                 isPresented: dismissBinding,
                 mode: .tables(
                     connection: exportConnection,
-                    preselectedTables: coordinator.exportPreselectedTableNames
-                        ?? Set(coordinator.windowSidebarState.selectedTables.map(\.name))
+                    preselection: coordinator.exportPreselection
+                        ?? .tables(Set(coordinator.windowSidebarState.selectedTables.map(\.name)))
                 ),
                 sidebarTables: tables
             )

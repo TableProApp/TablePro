@@ -81,8 +81,31 @@ Click **New Database...** at the bottom of the switcher. The form fields come fr
 
 ### Drop Database
 
-Right-click a database in the switcher and choose **Drop Database...**. The item is hidden for system databases and for the database you are currently connected to; switch to another one first. A confirmation dialog shows the database name in its title with a red **Drop Database** button.
+Right-click a database in the switcher or in the sidebar tree and choose **Drop Database...**. The item is hidden for system databases and for the database you are currently connected to; switch to another one first. A confirmation dialog shows the database name in its title with a red **Drop Database** button.
 
 <Warning>
 Dropping a database permanently deletes all its tables and data. The server rejects the drop if your account lacks the required privilege.
+</Warning>
+
+### Work on Several Databases at Once
+
+Select more than one database in the sidebar tree or in the switcher: Shift-click for a range, Cmd-click to add or remove one. The right-click menu then acts on the whole selection and says how many it covers, for example **Drop 3 Databases...**.
+
+| Action | What it does |
+|--------|--------------|
+| Refresh | Reloads the object list for every selected database. |
+| Copy Names | Copies the selected names to the clipboard, comma-separated. |
+| Export... | Opens the export dialog with every table of the selected databases already ticked. |
+| Drop | Drops all of them after one confirmation that lists every name. |
+
+The menu follows the row you right-click: if it is part of the selection, the action covers the selection; if it is not, the action covers just that row. **Use as Active Database** stays single-target and is disabled while more than one row is selected.
+
+Databases the server will not let you drop are left out of the Drop item: system databases and the one you are connected to. If a drop fails partway, TablePro finishes the rest and then reports which ones failed and why.
+
+### Drop Schema
+
+On engines that group tables by schema, the same menu appears on a schema row. PostgreSQL, SQL Server and SurrealDB support it. PostgreSQL drops the schema with `CASCADE`, so objects that depend on it go too. SQL Server has no cascade, so it refuses to drop a schema that still holds objects; drop those first.
+
+<Warning>
+Dropping a schema permanently deletes everything in it. On PostgreSQL it also drops objects in other schemas that depend on it.
 </Warning>

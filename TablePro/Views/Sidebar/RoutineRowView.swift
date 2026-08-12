@@ -40,7 +40,7 @@ struct RoutineRowView: View {
                 .truncationMode(.tail)
         } icon: {
             Image(systemName: RoutineRowLogic.iconName(for: routine.kind))
-                .sidebarTint(Color.accentColor)
+                .selectionAwareTint(Color.accentColor)
                 .frame(width: 16)
         }
         .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)

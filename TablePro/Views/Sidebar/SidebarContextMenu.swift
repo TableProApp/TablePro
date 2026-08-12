@@ -72,10 +72,9 @@ struct SidebarContextMenu: View {
     }
 
     private var effectiveTableNames: [String] {
-        if selectedTables.isEmpty, let table = clickedTable {
-            return [table.name]
-        }
-        return selectedTables.map(\.name).sorted()
+        SidebarMenuTarget.resolve(clicked: clickedTable, selection: Array(selectedTables))
+            .map(\.name)
+            .sorted()
     }
 
     @MainActor

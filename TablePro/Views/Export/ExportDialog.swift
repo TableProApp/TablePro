@@ -61,11 +61,11 @@ struct ExportDialog: View {
         return 0
     }
 
-    private var preselectedTables: Set<String> {
-        if case .tables(_, let tables) = mode {
-            return tables
+    private var preselection: ExportPreselection {
+        if case .tables(_, let preselection) = mode {
+            return preselection
         }
-        return []
+        return .tables([])
     }
 
     // MARK: - Body
@@ -565,7 +565,11 @@ struct ExportDialog: View {
                 name: table.name,
                 databaseName: "",
                 type: table.type,
-                isSelected: preselectedTables.contains(table.name)
+                isSelected: preselection.selects(
+                    table: table.name,
+                    inContainer: dbName,
+                    isCurrentContainer: true
+                )
             )
         }
         let item = ExportDatabaseItem(
@@ -619,7 +623,11 @@ struct ExportDialog: View {
                     let tableItems = tables.map { table in
                         let priorRow = priorRows["\(schema).\(table.name)"]
                         let selected = priorRow?.isSelected
-                            ?? (isDefaultSchema && preselectedTables.contains(table.name))
+                            ?? preselection.selects(
+                                table: table.name,
+                                inContainer: schema,
+                                isCurrentContainer: isDefaultSchema
+                            )
                         return ExportTableItem(
                             name: table.name,
                             databaseName: schema,
@@ -632,7 +640,7 @@ struct ExportDialog: View {
                         items.append(ExportDatabaseItem(
                             name: schema,
                             tables: tableItems,
-                            isExpanded: isDefaultSchema
+                            isExpanded: isDefaultSchema || preselection.containerNames.contains(schema)
                         ))
                     }
                 }
@@ -659,7 +667,11 @@ struct ExportDialog: View {
                     let tableItems = tables.map { table in
                         let priorRow = priorRows["\(dbName).\(table.name)"]
                         let selected = priorRow?.isSelected
-                            ?? (isCurrentDB && preselectedTables.contains(table.name))
+                            ?? preselection.selects(
+                                table: table.name,
+                                inContainer: dbName,
+                                isCurrentContainer: isCurrentDB
+                            )
                         return ExportTableItem(
                             name: table.name,
                             databaseName: dbName,
@@ -672,7 +684,7 @@ struct ExportDialog: View {
                         items.append(ExportDatabaseItem(
                             name: dbName,
                             tables: tableItems,
-                            isExpanded: isCurrentDB
+                            isExpanded: isCurrentDB || preselection.containerNames.contains(dbName)
                         ))
                     }
                 }
@@ -689,8 +701,10 @@ struct ExportDialog: View {
             )
             isLoading = false
 
-            if preselectedTables.count == 1, let first = preselectedTables.first {
-                config.fileName = first
+            if let singleTable = preselection.singleTableName {
+                config.fileName = singleTable
+            } else if preselection.containerNames.count == 1, let container = preselection.containerNames.first {
+                config.fileName = container
             } else if !connection.database.isEmpty {
                 config.fileName = connection.database
             }
@@ -717,7 +731,11 @@ struct ExportDialog: View {
                 name: table.name,
                 databaseName: "",
                 type: table.type,
-                isSelected: priorRow?.isSelected ?? preselectedTables.contains(table.name),
+                isSelected: priorRow?.isSelected ?? preselection.selects(
+                    table: table.name,
+                    inContainer: name,
+                    isCurrentContainer: true
+                ),
                 optionValues: priorRow?.optionValues ?? []
             )
         }
@@ -936,6 +954,6 @@ struct ExportDialog: View {
 
     return ExportDialog(
         isPresented: .constant(true),
-        mode: .tables(connection: connection, preselectedTables: ["users"])
+        mode: .tables(connection: connection, preselection: .tables(["users"]))
     )
 }

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Select several databases or schemas in the sidebar tree and act on them at once: drop, refresh, copy names, or export. Shift-click and Cmd-click extend the selection.
+- The database switcher takes a multiple selection too, with the same actions on the right-click menu.
+- Drop Schema for PostgreSQL, SQL Server and SurrealDB.
 - SSL settings on mobile for MySQL, PostgreSQL and Redis: a mode picker plus CA, client certificate and client key. Import a PEM file, paste one, or use a PKCS#12 file. (#2083)
 - Legacy UUID Encoding on a MongoDB connection, so binary UUIDs written by the Java, C# or Python drivers read as UUIDs instead of hex. Filters, edits and MQL exports write the same bytes back. (#2086)
 
@@ -45,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Each window on the same connection now browses its own database or schema. The sidebar, the workspace rail and the autocomplete in one window no longer follow whichever database another window switched to, and a new tab opens in the database the window you opened it from is showing. (#2088)
+- Right-clicking a table that is not part of the current selection now acts on that table. It used to act on the selected tables instead, including for Delete.
+- Database icons and the current-database checkmark stay visible on a selected row in the database switcher. They were drawn in the accent colour, which vanished against the accent-coloured selection.
+- The sidebar drops a database from the tree as soon as you drop it on the server, instead of listing it until you reconnect.
+- Refreshing the database list keeps the current list on screen while it reloads, and keeps it if the reload fails.
 - MQL export writes a MongoDB `_id` as `ObjectId("...")` and a date as `ISODate("...")`, so running the script inserts the same types back instead of strings. A value nested inside a subdocument is still exported as a string.
 - MQL export keeps a binary value's BSON subtype and writes it as a `BinData(...)` constructor, so running the script inserts the same bytes back. It wrote Extended JSON that mongosh reads as a plain object, and stamped every value as subtype 0. (#2086)
 - MongoDB no longer prints a binary field nested inside a document as a UUID when it is not one, or labels a UUID with the wrong byte order. (#2086)

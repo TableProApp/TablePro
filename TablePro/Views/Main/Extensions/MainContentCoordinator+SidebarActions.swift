@@ -147,7 +147,13 @@ extension MainContentCoordinator {
     // MARK: - Export/Import
 
     func openExportDialog(preselectedTableNames: Set<String>? = nil) {
-        exportPreselectedTableNames = preselectedTableNames
+        exportPreselection = preselectedTableNames.map { .tables($0) }
+        activeSheet = .exportDialog
+    }
+
+    func openExportDialog(containers: [DatabaseContainerRef]) {
+        guard !containers.isEmpty else { return }
+        exportPreselection = .containers(containers)
         activeSheet = .exportDialog
     }
 
