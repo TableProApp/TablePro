@@ -6,14 +6,15 @@
 import Foundation
 
 extension DatabaseManager {
-    /// The scope a new tab inherits and the sidebar lists. Never the scope of an
+    /// Where the connection's shared driver is pinned, as a scope. For connection-scoped work
+    /// that has no window to ask. Never the scope a window browses, and never the scope of an
     /// operation an existing tab owns.
-    func browseScope(for connectionId: UUID) -> DatabaseScope? {
+    func driverScope(for connectionId: UUID) -> DatabaseScope? {
         guard let session = activeSessions[connectionId] else { return nil }
         return DatabaseScope(
             connectionId: connectionId,
-            database: session.resolvedBrowseDatabase,
-            schema: session.browseSchema
+            database: session.resolvedDriverDatabase,
+            schema: session.driverSchema
         )
     }
 
@@ -29,7 +30,7 @@ extension DatabaseManager {
         guard let session = activeSessions[connectionId] else { return nil }
         return DatabaseScope(
             connectionId: connectionId,
-            database: session.resolvedBrowseDatabase,
+            database: session.resolvedDriverDatabase,
             schema: resolvedSchema
         )
     }

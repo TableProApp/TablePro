@@ -440,7 +440,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     private func loadExternalSchemaNames(database: String) {
         guard let session = DatabaseManager.shared.session(for: connectionId),
-              DatabaseManager.shared.browseDatabaseName(for: session.connection) == database,
+              DatabaseManager.shared.driverDatabaseName(for: session.connection) == database,
               let driver = DatabaseManager.shared.driver(for: connectionId)
         else { return }
         let connectionId = connectionId
@@ -527,7 +527,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     /// moves the session schema without touching the toolbar, so comparing against
     /// the toolbar skips the switch exactly when the session needs it.
     private var sessionSchema: String? {
-        DatabaseManager.shared.session(for: connectionId)?.browseSchema
+        DatabaseManager.shared.session(for: connectionId)?.driverSchema
     }
 
     private func setActiveDatabase(_ database: String) {

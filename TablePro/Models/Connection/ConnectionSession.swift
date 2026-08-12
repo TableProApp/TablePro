@@ -26,12 +26,15 @@ struct ConnectionSession: Identifiable {
     var pendingTruncates: Set<String> = []
     var pendingDeletes: Set<String> = []
     var tableOperationOptions: [String: TableOperationOptions] = [:]
-    /// Where the user is browsing: what the sidebar lists and where a new tab opens.
-    /// It is not where an open tab queries. A tab carries its own database and schema,
-    /// and resolving an operation through these instead is how a tab ends up running
-    /// against another database.
-    var browseSchema: String?
-    var browseDatabase: String?
+    /// Where the connection's one shared driver is currently pinned, and what a reconnect
+    /// restores it to. There is exactly one of these because there is exactly one driver.
+    ///
+    /// It is neither where the user is browsing nor where an open tab queries. Browsing is
+    /// per window, so it lives on that window's `MainContentCoordinator.browseState`; a tab
+    /// carries its own `DatabaseScope`. Resolving either of those through these fields is how
+    /// one window's switch drags every other window onto its database.
+    var driverSchema: String?
+    var driverDatabase: String?
 
     @MainActor
     var tables: [TableInfo] {
@@ -41,8 +44,8 @@ struct ConnectionSession: Identifiable {
     /// In-memory password for prompt-for-password connections. Never persisted to disk.
     var cachedPassword: String?
 
-    var resolvedBrowseDatabase: String {
-        browseDatabase ?? connection.database
+    var resolvedDriverDatabase: String {
+        driverDatabase ?? connection.database
     }
 
     // Metadata
@@ -86,8 +89,8 @@ struct ConnectionSession: Identifiable {
     /// database/schema desired state that `clearCachedData()` preserves for reconnect.
     mutating func clearAllState() {
         clearCachedData()
-        browseDatabase = nil
-        browseSchema = nil
+        driverDatabase = nil
+        driverSchema = nil
     }
 
     /// Compares fields used by ContentView's body to avoid unnecessary SwiftUI re-renders.
@@ -101,7 +104,7 @@ struct ConnectionSession: Identifiable {
             && pendingTruncates == other.pendingTruncates
             && pendingDeletes == other.pendingDeletes
             && tableOperationOptions == other.tableOperationOptions
-            && browseSchema == other.browseSchema
-            && browseDatabase == other.browseDatabase
+            && driverSchema == other.driverSchema
+            && driverDatabase == other.driverDatabase
     }
 }

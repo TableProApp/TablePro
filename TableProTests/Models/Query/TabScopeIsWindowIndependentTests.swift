@@ -46,13 +46,13 @@ struct TabScopeIsWindowIndependentTests {
         let tab = Self.makeTab(database: "orders", schema: nil)
 
         var browsingOrders = ConnectionSession(connection: connection)
-        browsingOrders.browseDatabase = "orders"
+        browsingOrders.driverDatabase = "orders"
         DatabaseManager.shared.injectSession(browsingOrders, for: connection.id)
         let windowOnOrders = Self.makeCoordinator(connection: connection, tab: tab)
         let scopeFromOrders = try #require(windowOnOrders.scope(for: tab))
 
         var browsingInventory = ConnectionSession(connection: connection)
-        browsingInventory.browseDatabase = "inventory"
+        browsingInventory.driverDatabase = "inventory"
         DatabaseManager.shared.injectSession(browsingInventory, for: connection.id)
         let windowOnInventory = Self.makeCoordinator(connection: connection, tab: tab)
         let scopeFromInventory = try #require(windowOnInventory.scope(for: tab))
@@ -69,8 +69,8 @@ struct TabScopeIsWindowIndependentTests {
         let tab = Self.makeTab(database: "orders", schema: "sales")
 
         var session = ConnectionSession(connection: connection)
-        session.browseDatabase = "inventory"
-        session.browseSchema = "dbo"
+        session.driverDatabase = "inventory"
+        session.driverSchema = "dbo"
         DatabaseManager.shared.injectSession(session, for: connection.id)
 
         let coordinator = Self.makeCoordinator(connection: connection, tab: tab)
@@ -88,7 +88,7 @@ struct TabScopeIsWindowIndependentTests {
         let tab = Self.makeTab(database: "", schema: nil)
 
         var session = ConnectionSession(connection: connection)
-        session.browseDatabase = "inventory"
+        session.driverDatabase = "inventory"
         DatabaseManager.shared.injectSession(session, for: connection.id)
 
         let coordinator = Self.makeCoordinator(connection: connection, tab: tab)

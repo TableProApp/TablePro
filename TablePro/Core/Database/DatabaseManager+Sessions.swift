@@ -132,7 +132,7 @@ extension DatabaseManager {
             )
 
             if let schemaDriver = driver as? SchemaSwitchable {
-                activeSessions[connection.id]?.browseSchema = schemaDriver.currentSchema
+                activeSessions[connection.id]?.driverSchema = schemaDriver.currentSchema
             }
 
             await executePostConnectActions(
@@ -236,7 +236,7 @@ extension DatabaseManager {
                    let savedDb = appSettingsStorage.loadLastDatabase(for: connection.id) {
                     do {
                         try await adapter.switchDatabase(to: savedDb)
-                        activeSessions[connection.id]?.browseDatabase = savedDb
+                        activeSessions[connection.id]?.driverDatabase = savedDb
                     } catch {
                         Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .public)' for \(connection.id): \(error.localizedDescription, privacy: .public)")
                     }
@@ -255,12 +255,12 @@ extension DatabaseManager {
                 if initialDb != 0 {
                     do {
                         try await (driver as? PluginDriverAdapter)?.switchDatabase(to: String(initialDb))
-                        activeSessions[connection.id]?.browseDatabase = String(initialDb)
+                        activeSessions[connection.id]?.driverDatabase = String(initialDb)
                     } catch {
                         Self.logger.error("Failed to switch to database \(initialDb): \(error.localizedDescription)")
                     }
                 } else {
-                    activeSessions[connection.id]?.browseDatabase = "0"
+                    activeSessions[connection.id]?.driverDatabase = "0"
                 }
             case .selectSchemaFromLastSession:
                 if let schemaDriver = driver as? SchemaSwitchable,
@@ -268,7 +268,7 @@ extension DatabaseManager {
                    savedSchema != schemaDriver.currentSchema {
                     do {
                         try await schemaDriver.switchSchema(to: savedSchema)
-                        activeSessions[connection.id]?.browseSchema = savedSchema
+                        activeSessions[connection.id]?.driverSchema = savedSchema
                     } catch {
                         Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .public)': \(error.localizedDescription, privacy: .public)")
                     }
@@ -291,8 +291,8 @@ extension DatabaseManager {
         if pm?.capabilities.requiresReconnectForDatabaseSwitch == true {
             updateSession(connectionId) { session in
                 session.connection.database = database
-                session.browseDatabase = database
-                session.browseSchema = nil
+                session.driverDatabase = database
+                session.driverSchema = nil
                 session.status = .connecting
             }
             appSettingsStorage.saveLastSchema(nil, for: connectionId)
@@ -307,9 +307,9 @@ extension DatabaseManager {
                 }
             }
             updateSession(connectionId) { session in
-                session.browseDatabase = database
+                session.driverDatabase = database
                 if grouping == .bySchema {
-                    session.browseSchema = adapter.currentSchema
+                    session.driverSchema = adapter.currentSchema
                 }
             }
         }
@@ -321,7 +321,7 @@ extension DatabaseManager {
             """
             switchDatabase landed conn=\(connectionId, privacy: .public) \
             database=\(database, privacy: .public) \
-            browse=\(self.session(for: connectionId)?.resolvedBrowseDatabase ?? "none", privacy: .public)
+            browse=\(self.session(for: connectionId)?.resolvedDriverDatabase ?? "none", privacy: .public)
             """
         )
         AppEvents.shared.browseContainerChanged.send(connectionId)
@@ -352,7 +352,7 @@ extension DatabaseManager {
             try await schemaDriver.switchSchema(to: schema)
         }
         updateSession(connectionId) { session in
-            session.browseSchema = schema
+            session.driverSchema = schema
         }
         appSettingsStorage.saveLastSchema(schema, for: connectionId)
         AppEvents.shared.currentSchemaChanged.send(connectionId)

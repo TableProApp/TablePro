@@ -11,8 +11,8 @@ struct DatabaseSwitcherPopoverHost: View {
             let session = DatabaseManager.shared.session(for: connection.id)
             let switchTarget = PluginManager.shared.containerSwitchTarget(for: connection.type) ?? .database
             let activeContainer: String? = switch switchTarget {
-            case .database: session?.browseDatabase ?? connection.database
-            case .schema: coordinator.toolbarState.currentSchema ?? session?.browseSchema
+            case .database: session?.driverDatabase ?? connection.database
+            case .schema: coordinator.toolbarState.currentSchema ?? session?.driverSchema
             }
 
             DatabaseSwitcherPopover(

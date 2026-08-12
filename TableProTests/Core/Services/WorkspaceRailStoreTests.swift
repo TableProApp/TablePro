@@ -7,13 +7,13 @@ import Testing
 struct WorkspaceRailStoreTests {
     private func makeSession(
         _ connection: DatabaseConnection,
-        browseDatabase: String? = nil,
-        browseSchema: String? = nil,
+        driverDatabase: String? = nil,
+        driverSchema: String? = nil,
         status: ConnectionStatus = .connected
     ) -> ConnectionSession {
         var session = ConnectionSession(connection: connection)
-        session.browseDatabase = browseDatabase
-        session.browseSchema = browseSchema
+        session.driverDatabase = driverDatabase
+        session.driverSchema = driverSchema
         session.status = status
         return session
     }
@@ -64,7 +64,7 @@ struct WorkspaceRailStoreTests {
         let connection = TestFixtures.makeConnection(database: "saved_default")
         let entries = resolve(
             openConnectionIds: [connection.id],
-            sessions: [connection.id: makeSession(connection, browseDatabase: "inventory")]
+            sessions: [connection.id: makeSession(connection, driverDatabase: "inventory")]
         )
         let entry = try #require(entries.first)
         #expect(entry.container == "inventory")
@@ -95,7 +95,7 @@ struct WorkspaceRailStoreTests {
         let connection = TestFixtures.makeConnection(database: "app")
         let entries = resolve(
             openConnectionIds: [connection.id],
-            sessions: [connection.id: makeSession(connection, browseDatabase: "logs")],
+            sessions: [connection.id: makeSession(connection, driverDatabase: "logs")],
             tabs: [connection.id: [tableTab(database: "app")]]
         )
         #expect(Set(entries.map(\.container)) == ["app", "logs"])
@@ -106,7 +106,7 @@ struct WorkspaceRailStoreTests {
         let connection = TestFixtures.makeConnection(database: "app")
         let entries = resolve(
             openConnectionIds: [connection.id],
-            sessions: [connection.id: makeSession(connection, browseDatabase: "logs")],
+            sessions: [connection.id: makeSession(connection, driverDatabase: "logs")],
             tabs: [connection.id: [scratchTab(database: "app")]]
         )
         #expect(entries.map(\.container) == ["logs"])
@@ -117,7 +117,7 @@ struct WorkspaceRailStoreTests {
         let connection = TestFixtures.makeConnection(database: "app")
         let entries = resolve(
             openConnectionIds: [connection.id],
-            sessions: [connection.id: makeSession(connection, browseDatabase: "logs")],
+            sessions: [connection.id: makeSession(connection, driverDatabase: "logs")],
             tabs: [connection.id: [tableTab(database: "app")]]
         )
         #expect(entries.allSatisfy { $0.connection.id == connection.id })
@@ -129,7 +129,7 @@ struct WorkspaceRailStoreTests {
         let connection = TestFixtures.makeConnection(database: "warehouse")
         let entries = resolve(
             openConnectionIds: [connection.id],
-            sessions: [connection.id: makeSession(connection, browseDatabase: "warehouse", browseSchema: "public")],
+            sessions: [connection.id: makeSession(connection, driverDatabase: "warehouse", driverSchema: "public")],
             target: .schema,
             tabs: [connection.id: [tableTab(database: "warehouse", schema: "reporting")]]
         )

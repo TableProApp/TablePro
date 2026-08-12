@@ -19,11 +19,11 @@ import Testing
 struct DataRefreshScopeTests {
     private static func makeCoordinator(
         connection: DatabaseConnection,
-        browseDatabase: String,
+        driverDatabase: String,
         tabDatabase: String? = nil
     ) -> (MainContentCoordinator, QueryTabManager) {
         var session = ConnectionSession(connection: connection)
-        session.browseDatabase = browseDatabase
+        session.driverDatabase = driverDatabase
         DatabaseManager.shared.injectSession(session, for: connection.id)
 
         let tabManager = QueryTabManager()
@@ -50,7 +50,7 @@ struct DataRefreshScopeTests {
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         let (coordinator, _) = Self.makeCoordinator(
             connection: connection,
-            browseDatabase: "inventory",
+            driverDatabase: "inventory",
             tabDatabase: "inventory"
         )
 
@@ -67,7 +67,7 @@ struct DataRefreshScopeTests {
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         let (coordinator, _) = Self.makeCoordinator(
             connection: connection,
-            browseDatabase: "inventory",
+            driverDatabase: "inventory",
             tabDatabase: "orders"
         )
 
@@ -84,7 +84,7 @@ struct DataRefreshScopeTests {
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         let (coordinator, _) = Self.makeCoordinator(
             connection: connection,
-            browseDatabase: "inventory",
+            driverDatabase: "inventory",
             tabDatabase: "orders"
         )
 
@@ -106,7 +106,7 @@ struct DataRefreshScopeTests {
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         let (coordinator, _) = Self.makeCoordinator(
             connection: connection,
-            browseDatabase: "inventory",
+            driverDatabase: "inventory",
             tabDatabase: "orders"
         )
 
@@ -124,7 +124,7 @@ struct DataRefreshScopeTests {
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         let (coordinator, _) = Self.makeCoordinator(
             connection: connection,
-            browseDatabase: "orders",
+            driverDatabase: "orders",
             tabDatabase: "orders"
         )
 

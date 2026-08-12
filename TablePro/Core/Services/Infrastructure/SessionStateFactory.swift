@@ -87,7 +87,7 @@ enum SessionStateFactory {
             toolbarSt.currentDatabase = String(dbIndex)
         }
 
-        let browseDatabaseName = DatabaseManager.shared.browseDatabaseName(for: connection)
+        let browseDatabaseName = DatabaseManager.shared.driverDatabaseName(for: connection)
 
         if let payload {
             switch payload.intent {

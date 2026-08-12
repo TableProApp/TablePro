@@ -135,7 +135,7 @@ internal final class QuickSwitcherViewModel {
         let switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType)
         let databaseFilter = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
         let activeDatabase = services.databaseManager.session(for: connectionId)
-            .map { services.databaseManager.browseDatabaseName(for: $0.connection) }
+            .map { services.databaseManager.driverDatabaseName(for: $0.connection) }
         let visibleDatabaseNames = switchTarget == .database
             ? Set(
                 DatabaseTreeVisibility.visible(

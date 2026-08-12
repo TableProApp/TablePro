@@ -38,7 +38,7 @@ extension DatabaseManager {
         let databaseType = session.connection.type
         guard pluginManager.supportsDatabaseSwitching(for: databaseType),
               pluginManager.requiresReconnectForDatabaseSwitch(for: databaseType),
-              scope.database != session.resolvedBrowseDatabase
+              scope.database != session.resolvedDriverDatabase
         else {
             return .sessionDriver
         }
@@ -195,7 +195,7 @@ extension DatabaseManager {
         let databaseType = session.connection.type
         if !scope.isServerScoped, pluginManager.supportsDatabaseSwitching(for: databaseType) {
             if pluginManager.requiresReconnectForDatabaseSwitch(for: databaseType) {
-                guard scope.database == session.resolvedBrowseDatabase else {
+                guard scope.database == session.resolvedDriverDatabase else {
                     throw DatabaseError.queryFailed(
                         String(
                             format: String(

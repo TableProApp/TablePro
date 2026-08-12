@@ -16,7 +16,7 @@ protocol ScopedMetadataProviding: AnyObject {
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T
 
-    func browseScope(for connectionId: UUID) -> DatabaseScope?
+    func driverScope(for connectionId: UUID) -> DatabaseScope?
 }
 
 extension ScopedMetadataProviding {
@@ -34,7 +34,7 @@ extension ScopedMetadataProviding {
         workload: MetadataConnectionPool.Workload = .interactive,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        guard let scope = browseScope(for: connectionId) else {
+        guard let scope = driverScope(for: connectionId) else {
             throw DatabaseError.notConnected
         }
         return try await withMetadataDriver(scope: scope, workload: workload, body)

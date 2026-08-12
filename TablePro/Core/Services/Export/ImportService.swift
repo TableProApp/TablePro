@@ -136,7 +136,7 @@ final class ImportService {
             QueryHistoryManager.shared.recordQuery(
                 query: "-- Import from \(url.lastPathComponent) (\(progress.processedStatements) statements before failure)",
                 connectionId: connection.id,
-                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                databaseName: DatabaseManager.shared.driverDatabaseName(for: connection),
                 executionTime: 0,
                 rowCount: progress.processedStatements,
                 wasSuccessful: false,
@@ -154,7 +154,7 @@ final class ImportService {
         QueryHistoryManager.shared.recordQuery(
             query: "-- Import from \(url.lastPathComponent) (\(result.executedStatements) statements)",
             connectionId: connection.id,
-            databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+            databaseName: DatabaseManager.shared.driverDatabaseName(for: connection),
             executionTime: result.executionTime,
             rowCount: result.executedStatements,
             wasSuccessful: true,

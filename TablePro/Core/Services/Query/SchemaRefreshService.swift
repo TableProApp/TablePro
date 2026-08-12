@@ -87,7 +87,7 @@ final class SchemaRefreshService {
             )
             return
         }
-        guard let browseDatabase = metadataDriverProvider.browseScope(for: connectionId)?.database else {
+        guard let driverDatabase = metadataDriverProvider.driverScope(for: connectionId)?.database else {
             Self.logger.debug(
                 "[schema] autocomplete sync skipped, no browse scope connId=\(connectionId, privacy: .public)"
             )
@@ -97,8 +97,8 @@ final class SchemaRefreshService {
         let schemas = schemaService.schemas(for: connectionId)
         do {
             try await metadataDriverProvider.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-                await provider.resetForDatabase(browseDatabase, tables: tables, driver: driver)
-                await provider.setNamespaces(schemas: schemas, databases: [browseDatabase])
+                await provider.resetForDatabase(driverDatabase, tables: tables, driver: driver)
+                await provider.setNamespaces(schemas: schemas, databases: [driverDatabase])
             }
         } catch {
             Self.logger.warning(

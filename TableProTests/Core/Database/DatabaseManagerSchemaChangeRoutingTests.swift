@@ -89,21 +89,21 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         return .addColumn(column)
     }
 
-    /// `savedDatabase` is the connection's persisted default, `browseDatabase` is where the
+    /// `savedDatabase` is the connection's persisted default, `driverDatabase` is where the
     /// sidebar currently points. The tab's scope is passed separately at every call site so
     /// all three can be distinguished.
     private static func makeSession(
         type: DatabaseType = .mysql,
         savedDatabase: String = "testdb",
-        browseDatabase: String? = nil,
-        browseSchema: String? = nil
+        driverDatabase: String? = nil,
+        driverSchema: String? = nil
     ) -> (DatabaseConnection, SchemaRoutingDriver) {
         let connection = TestFixtures.makeConnection(database: savedDatabase, type: type)
-        let pluginDriver = SchemaRoutingDriver(currentSchema: browseSchema)
+        let pluginDriver = SchemaRoutingDriver(currentSchema: driverSchema)
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
         var session = ConnectionSession(connection: connection, driver: adapter)
-        session.browseDatabase = browseDatabase ?? savedDatabase
-        session.browseSchema = browseSchema
+        session.driverDatabase = driverDatabase ?? savedDatabase
+        session.driverSchema = driverSchema
         DatabaseManager.shared.injectSession(session, for: connection.id)
         return (connection, pluginDriver)
     }
@@ -144,7 +144,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
     func schemaChangeRunsOnTheTabsDatabaseWithoutMovingTheBrowseCursor() async throws {
         let (connection, driver) = Self.makeSession(
             savedDatabase: "analytics",
-            browseDatabase: "inventory"
+            driverDatabase: "inventory"
         )
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -161,7 +161,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         #expect(driver.executedQueries.count == 1)
 
         let session = DatabaseManager.shared.session(for: connection.id)
-        #expect(session?.browseDatabase == "inventory")
+        #expect(session?.driverDatabase == "inventory")
         #expect(session?.connection.database == "analytics")
     }
 
@@ -187,7 +187,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
     func failedDatabasePinAbortsSave() async throws {
         let (connection, driver) = Self.makeSession(
             savedDatabase: "orders",
-            browseDatabase: "inventory"
+            driverDatabase: "inventory"
         )
         driver.switchDatabaseError = DatabaseError.queryFailed("unknown database")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
@@ -230,8 +230,8 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         let (connection, driver) = Self.makeSession(
             type: .mssql,
             savedDatabase: "orders",
-            browseDatabase: "inventory",
-            browseSchema: "sales"
+            driverDatabase: "inventory",
+            driverSchema: "sales"
         )
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -253,7 +253,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
     func schemaChangeBroadcastsTheEditedScope() async throws {
         let (connection, _) = Self.makeSession(
             savedDatabase: "analytics",
-            browseDatabase: "inventory"
+            driverDatabase: "inventory"
         )
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 

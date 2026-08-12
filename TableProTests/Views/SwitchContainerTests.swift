@@ -37,6 +37,6 @@ struct SwitchContainerTests {
         #expect(driver.switchSchemaCallCount == 1)
         #expect(driver.currentSchema == "HR")
         #expect(coordinator.toolbarState.currentSchema == "HR")
-        #expect(DatabaseManager.shared.session(for: connection.id)?.browseSchema == "HR")
+        #expect(DatabaseManager.shared.session(for: connection.id)?.driverSchema == "HR")
     }
 }

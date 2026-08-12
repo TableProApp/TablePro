@@ -18,8 +18,8 @@ private final class FakeScopedMetadataProvider: ScopedMetadataProviding {
     let driver: MockDatabaseDriver
     var acquisitionCount = 0
     var errorToThrow: Error?
-    var browseDatabase: String? = "testdb"
-    var browseSchema: String?
+    var driverDatabase: String? = "testdb"
+    var driverSchema: String?
     private(set) var requestedScopes: [DatabaseScope] = []
     private(set) var requestedWorkloads: [MetadataConnectionPool.Workload] = []
 
@@ -41,9 +41,9 @@ private final class FakeScopedMetadataProvider: ScopedMetadataProviding {
         return try await body(driver)
     }
 
-    func browseScope(for connectionId: UUID) -> DatabaseScope? {
-        guard let browseDatabase else { return nil }
-        return DatabaseScope(connectionId: connectionId, database: browseDatabase, schema: browseSchema)
+    func driverScope(for connectionId: UUID) -> DatabaseScope? {
+        guard let driverDatabase else { return nil }
+        return DatabaseScope(connectionId: connectionId, database: driverDatabase, schema: driverSchema)
     }
 }
 
@@ -86,8 +86,8 @@ struct SchemaRefreshServiceTests {
     func refreshAsksForTheBrowseScope() async throws {
         let driver = MockDatabaseDriver()
         let provider = FakeScopedMetadataProvider(driver: driver)
-        provider.browseDatabase = "inventory"
-        provider.browseSchema = "dbo"
+        provider.driverDatabase = "inventory"
+        provider.driverSchema = "dbo"
         let schemaService = SchemaService()
         let service = makeService(schemaService: schemaService, provider: provider)
         let connection = TestFixtures.makeConnection(database: "saved_default")
@@ -106,7 +106,7 @@ struct SchemaRefreshServiceTests {
     func refreshWithAnEmptyDatabaseIsServerScoped() async throws {
         let driver = MockDatabaseDriver()
         let provider = FakeScopedMetadataProvider(driver: driver)
-        provider.browseDatabase = ""
+        provider.driverDatabase = ""
         let schemaService = SchemaService()
         let service = makeService(schemaService: schemaService, provider: provider)
         let connection = TestFixtures.makeConnection()
@@ -123,7 +123,7 @@ struct SchemaRefreshServiceTests {
     func refreshWithoutABrowseScopeFails() async {
         let driver = MockDatabaseDriver()
         let provider = FakeScopedMetadataProvider(driver: driver)
-        provider.browseDatabase = nil
+        provider.driverDatabase = nil
         let schemaService = SchemaService()
         let service = makeService(schemaService: schemaService, provider: provider)
         let connection = TestFixtures.makeConnection()
@@ -177,7 +177,7 @@ struct SchemaRefreshServiceTests {
         )
         await service.refresh(connection: connection)
 
-        provider.browseDatabase = nil
+        provider.driverDatabase = nil
         await service.syncAutocompleteProvider(connectionId: connection.id)
 
         let names = await schemaProvider.getTables().map(\.name)

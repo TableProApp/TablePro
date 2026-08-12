@@ -115,12 +115,15 @@ final class DatabaseManager {
         activeSessions[connectionId]
     }
 
-    /// Where this connection is being browsed. Use it to seed a new tab and to drive
-    /// the sidebar. Reading `connection.database` (the saved default) is wrong after Cmd+K.
-    /// It is never the target of an operation an existing tab owns: resolve that through
-    /// the tab's own `DatabaseScope`.
-    func browseDatabaseName(for connection: DatabaseConnection) -> String {
-        activeSessions[connection.id]?.resolvedBrowseDatabase ?? connection.database
+    /// Where this connection's shared driver is pinned. Use it for work that belongs to the
+    /// connection rather than to a window: reconnect, health checks, and MCP, which has no
+    /// window to ask.
+    ///
+    /// It seeds neither a new tab nor the sidebar. Both of those are per window and read that
+    /// window's `MainContentCoordinator.browseDatabaseName`. It is never the target of an
+    /// operation an existing tab owns either: resolve that through the tab's own `DatabaseScope`.
+    func driverDatabaseName(for connection: DatabaseConnection) -> String {
+        activeSessions[connection.id]?.resolvedDriverDatabase ?? connection.database
     }
 
     /// Authoritative schema for a table identity when the caller has no explicit
@@ -130,7 +133,7 @@ final class DatabaseManager {
     /// object names treat it as "no schema" and emit an unqualified name.
     func resolvedSchemaName(_ schemaName: String?, for connectionId: UUID) -> String? {
         if let schemaName, !schemaName.isEmpty { return schemaName }
-        guard let sessionSchema = activeSessions[connectionId]?.browseSchema, !sessionSchema.isEmpty else {
+        guard let sessionSchema = activeSessions[connectionId]?.driverSchema, !sessionSchema.isEmpty else {
             return nil
         }
         return sessionSchema

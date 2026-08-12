@@ -155,7 +155,7 @@ struct MainContentView: View {
     /// so export/import dialogs see the database the user actually switched to.
     private var connectionWithCurrentDatabase: DatabaseConnection {
         var conn = connection
-        if let currentDB = DatabaseManager.shared.session(for: connection.id)?.browseDatabase {
+        if let currentDB = DatabaseManager.shared.session(for: connection.id)?.driverDatabase {
             conn.database = currentDB
         }
         return conn
@@ -260,14 +260,14 @@ struct MainContentView: View {
             BackupDatabaseFlow(
                 isPresented: dismissBinding,
                 connection: connectionWithCurrentDatabase,
-                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.browseDatabase
+                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.driverDatabase
                     ?? connection.database
             )
         case .restoreDatabase(let fileURL):
             RestoreDatabaseFlow(
                 isPresented: dismissBinding,
                 connection: connectionWithCurrentDatabase,
-                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.browseDatabase
+                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.driverDatabase
                     ?? connection.database,
                 sourceURL: fileURL
             )

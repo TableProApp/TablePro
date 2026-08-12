@@ -15,7 +15,7 @@ extension MainContentCoordinator {
     /// `databaseDidConnect` can also fire before this is armed, so arming is idempotent and
     /// loads immediately when the session is already there.
     internal func armPostConnectSchemaLoad() {
-        guard services.databaseManager.browseScope(for: connectionId) == nil else {
+        guard services.databaseManager.driverScope(for: connectionId) == nil else {
             postConnectCancellable = nil
             loadSchemaForNewSession()
             return

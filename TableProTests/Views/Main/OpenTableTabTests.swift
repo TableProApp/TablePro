@@ -136,7 +136,7 @@ struct OpenTableTabTests {
     func bareTableNameResolvesActiveSchema() {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         var session = ConnectionSession(connection: connection)
-        session.browseSchema = "sales"
+        session.driverSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -160,7 +160,7 @@ struct OpenTableTabTests {
     func explicitSchemaWinsOverActiveSchema() {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         var session = ConnectionSession(connection: connection)
-        session.browseSchema = "sales"
+        session.driverSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 

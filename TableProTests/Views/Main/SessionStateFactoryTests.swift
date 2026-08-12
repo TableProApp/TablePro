@@ -120,7 +120,7 @@ struct SessionStateFactoryTests {
     func tablePayloadWithoutSchema_resolvesActiveSchema() {
         let conn = TestFixtures.makeConnection(type: .postgresql)
         var session = ConnectionSession(connection: conn)
-        session.browseSchema = "sales"
+        session.driverSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: conn.id)
         defer { DatabaseManager.shared.removeSession(for: conn.id) }
 
@@ -135,7 +135,7 @@ struct SessionStateFactoryTests {
     func tablePayloadWithExplicitSchema_keepsIt() {
         let conn = TestFixtures.makeConnection(type: .postgresql)
         var session = ConnectionSession(connection: conn)
-        session.browseSchema = "sales"
+        session.driverSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: conn.id)
         defer { DatabaseManager.shared.removeSession(for: conn.id) }
 

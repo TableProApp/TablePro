@@ -39,7 +39,7 @@ private final class RecordingMetadataProvider: ScopedMetadataProviding {
         return try await body(driver)
     }
 
-    func browseScope(for connectionId: UUID) -> DatabaseScope? {
+    func driverScope(for connectionId: UUID) -> DatabaseScope? {
         browseScopeCallCount += 1
         return browseScopeToReturn
     }
@@ -48,16 +48,16 @@ private final class RecordingMetadataProvider: ScopedMetadataProviding {
 @Suite("TableStructureLoader scope binding", .serialized)
 @MainActor
 struct TableStructureLoaderScopeTests {
-    /// Moves the sidebar to `browseDatabase` so any ambient fallback is visibly wrong.
+    /// Moves the sidebar to `driverDatabase` so any ambient fallback is visibly wrong.
     private static func makeBrowsingSession(
-        browseDatabase: String,
-        browseSchema: String? = nil,
+        driverDatabase: String,
+        driverSchema: String? = nil,
         type: DatabaseType = .mysql
     ) -> DatabaseConnection {
         let connection = TestFixtures.makeConnection(database: "saved_default", type: type)
         var session = ConnectionSession(connection: connection)
-        session.browseDatabase = browseDatabase
-        session.browseSchema = browseSchema
+        session.driverDatabase = driverDatabase
+        session.driverSchema = driverSchema
         DatabaseManager.shared.injectSession(session, for: connection.id)
         return connection
     }
@@ -73,10 +73,10 @@ struct TableStructureLoaderScopeTests {
 
     @Test("Every structure read runs on the tab's database, never on the browsed one")
     func everyReadUsesTheTabsDatabase() async throws {
-        let connection = Self.makeBrowsingSession(browseDatabase: "B")
+        let connection = Self.makeBrowsingSession(driverDatabase: "B")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        let browseScope = try #require(DatabaseManager.shared.browseScope(for: connection.id))
+        let browseScope = try #require(DatabaseManager.shared.driverScope(for: connection.id))
         let provider = RecordingMetadataProvider()
         provider.browseScopeToReturn = browseScope
 
@@ -97,13 +97,13 @@ struct TableStructureLoaderScopeTests {
     @Test("The tab's schema is carried too, not the schema the sidebar is on")
     func everyReadUsesTheTabsSchema() async throws {
         let connection = Self.makeBrowsingSession(
-            browseDatabase: "reporting",
-            browseSchema: "dbo",
+            driverDatabase: "reporting",
+            driverSchema: "dbo",
             type: .mssql
         )
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        let browseScope = try #require(DatabaseManager.shared.browseScope(for: connection.id))
+        let browseScope = try #require(DatabaseManager.shared.driverScope(for: connection.id))
         #expect(browseScope.schema == "dbo")
 
         let provider = RecordingMetadataProvider()
@@ -122,7 +122,7 @@ struct TableStructureLoaderScopeTests {
 
     @Test("The loader reads the table it was built for on every call")
     func everyReadTargetsTheLoadersTable() async throws {
-        let connection = Self.makeBrowsingSession(browseDatabase: "B")
+        let connection = Self.makeBrowsingSession(driverDatabase: "B")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let provider = RecordingMetadataProvider()
@@ -137,11 +137,11 @@ struct TableStructureLoaderScopeTests {
 
     @Test("A server-scoped loader passes its own scope through, never the browsed one")
     func serverScopedLoaderNeverFallsBackToTheBrowsedDatabase() async throws {
-        let connection = Self.makeBrowsingSession(browseDatabase: "B")
+        let connection = Self.makeBrowsingSession(driverDatabase: "B")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let provider = RecordingMetadataProvider()
-        provider.browseScopeToReturn = DatabaseManager.shared.browseScope(for: connection.id)
+        provider.browseScopeToReturn = DatabaseManager.shared.driverScope(for: connection.id)
         let serverScoped = DatabaseScope(connectionId: connection.id, database: "", schema: nil)
         let loader = TableStructureLoader(scope: serverScoped, tableName: "t", provider: provider)
 

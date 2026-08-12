@@ -36,7 +36,7 @@ struct DatabaseManagerSessionTests {
     func resolvedSchemaNameKeepsExplicitSchema() {
         let connection = TestFixtures.makeConnection()
         var session = ConnectionSession(connection: connection)
-        session.browseSchema = "sales"
+        session.driverSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -47,7 +47,7 @@ struct DatabaseManagerSessionTests {
     func resolvedSchemaNameFallsBackToSessionSchema() {
         let connection = TestFixtures.makeConnection()
         var session = ConnectionSession(connection: connection)
-        session.browseSchema = "sales"
+        session.driverSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -72,7 +72,7 @@ struct DatabaseManagerSessionTests {
     func resolvedSchemaNameTreatsBlankExplicitSchemaAsAbsent() {
         let connection = TestFixtures.makeConnection()
         var session = ConnectionSession(connection: connection)
-        session.browseSchema = "custom"
+        session.driverSchema = "custom"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -83,7 +83,7 @@ struct DatabaseManagerSessionTests {
     func resolvedSchemaNameRejectsBlankSessionSchema() {
         let connection = TestFixtures.makeConnection()
         var session = ConnectionSession(connection: connection)
-        session.browseSchema = ""
+        session.driverSchema = ""
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -149,7 +149,7 @@ struct DatabaseManagerDatabaseSwitchTests {
         let pluginDriver = DatabaseSwitchingDriver(currentSchema: "sales")
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
         var session = ConnectionSession(connection: connection, driver: adapter)
-        session.browseSchema = "sales"
+        session.driverSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -157,8 +157,8 @@ struct DatabaseManagerDatabaseSwitchTests {
 
         let updated = DatabaseManager.shared.session(for: connection.id)
         #expect(pluginDriver.switchedDatabases == ["other_db"])
-        #expect(updated?.browseDatabase == "other_db")
-        #expect(updated?.browseSchema == "dbo")
+        #expect(updated?.driverDatabase == "other_db")
+        #expect(updated?.driverSchema == "dbo")
         #expect(pluginDriver.currentSchema == "dbo")
     }
 
@@ -168,12 +168,12 @@ struct DatabaseManagerDatabaseSwitchTests {
         let pluginDriver = DatabaseSwitchingDriver(currentSchema: "custom")
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
         var session = ConnectionSession(connection: connection, driver: adapter)
-        session.browseSchema = "custom"
+        session.driverSchema = "custom"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         try await DatabaseManager.shared.switchDatabase(to: "other_db", for: connection.id, persist: false)
 
-        #expect(DatabaseManager.shared.session(for: connection.id)?.browseSchema == adapter.currentSchema)
+        #expect(DatabaseManager.shared.session(for: connection.id)?.driverSchema == adapter.currentSchema)
     }
 }

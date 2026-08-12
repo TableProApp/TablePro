@@ -97,7 +97,7 @@ struct FKNavigationTests {
     func nilReferencedSchemaResolvesActiveSchema() throws {
         let connection = TestFixtures.makeConnection(database: "db_a", type: .postgresql)
         var session = ConnectionSession(connection: connection)
-        session.browseSchema = "sales"
+        session.driverSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 

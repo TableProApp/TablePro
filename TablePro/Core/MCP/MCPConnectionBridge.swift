@@ -28,7 +28,7 @@ public actor MCPConnectionBridge {
                 "type": .string(conn.type.rawValue),
                 "host": .string(conn.host),
                 "port": .int(conn.port),
-                "database": .string(session?.resolvedBrowseDatabase ?? conn.database),
+                "database": .string(session?.resolvedDriverDatabase ?? conn.database),
                 "username": .string(conn.username),
                 "is_connected": .bool(isConnected),
                 "ai_policy": .string(policy.rawValue),
@@ -48,8 +48,8 @@ public actor MCPConnectionBridge {
 
         if let existing = existingSession, existing.driver != nil {
             let serverVersion = existing.driver?.serverVersion
-            let currentDatabase = existing.resolvedBrowseDatabase
-            let currentSchema = existing.browseSchema
+            let currentDatabase = existing.resolvedDriverDatabase
+            let currentSchema = existing.driverSchema
 
             var result: [String: JsonValue] = [
                 "status": "connected",
@@ -70,8 +70,8 @@ public actor MCPConnectionBridge {
             let session = DatabaseManager.shared.activeSessions[connectionId]
             return (
                 session?.driver?.serverVersion,
-                session?.resolvedBrowseDatabase,
-                session?.browseSchema
+                session?.resolvedDriverDatabase,
+                session?.driverSchema
             )
         }
 
@@ -105,7 +105,7 @@ public actor MCPConnectionBridge {
             guard let session = DatabaseManager.shared.activeSessions[connectionId] else {
                 return nil
             }
-            return (session.status, session.resolvedBrowseDatabase, session.browseSchema)
+            return (session.status, session.resolvedDriverDatabase, session.driverSchema)
         }
 
         guard let core else {
@@ -250,7 +250,7 @@ public actor MCPConnectionBridge {
         try await ensureConnected(scope.connectionId)
 
         let cachedTables = await MainActor.run { () -> [TableInfo] in
-            guard DatabaseManager.shared.browseScope(for: scope.connectionId) == scope else { return [] }
+            guard DatabaseManager.shared.driverScope(for: scope.connectionId) == scope else { return [] }
             return SchemaService.shared.tables(for: scope.connectionId)
         }
 

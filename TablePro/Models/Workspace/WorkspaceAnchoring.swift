@@ -71,7 +71,7 @@ internal enum WorkspaceAnchoring {
     /// The container the connection is browsing right now. It always earns a row, even
     /// with no tabs holding it, because it is where the next tab will open.
     internal static func browsedContainer(of session: ConnectionSession, target: ContainerSwitchTarget?) -> String? {
-        named(database: session.resolvedBrowseDatabase, schema: session.browseSchema, target: target)
+        named(database: session.resolvedDriverDatabase, schema: session.driverSchema, target: target)
     }
 
     /// The container a connection names before it has a session to browse with. A schema

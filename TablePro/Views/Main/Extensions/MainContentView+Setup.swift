@@ -264,10 +264,10 @@ extension MainContentView {
         let targetDatabase = activeDatabase.flatMap { $0.isEmpty ? nil : $0 }
 
         Task {
-            if let targetDatabase, targetDatabase != session.resolvedBrowseDatabase {
+            if let targetDatabase, targetDatabase != session.resolvedDriverDatabase {
                 await coordinator.switchDatabase(to: targetDatabase)
             }
-            if let activeSchema, !activeSchema.isEmpty, activeSchema != session.browseSchema {
+            if let activeSchema, !activeSchema.isEmpty, activeSchema != session.driverSchema {
                 await coordinator.switchSchema(to: activeSchema)
             }
             if isTableTab {

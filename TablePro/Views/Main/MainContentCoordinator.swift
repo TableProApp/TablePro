@@ -77,7 +77,7 @@ final class MainContentCoordinator {
     var connectionId: UUID { connection.id }
     var sqlDialect: SqlDialect { SqlDialect.from(databaseTypeId: connection.type.rawValue) }
     var browseDatabaseName: String {
-        services.databaseManager.browseDatabaseName(for: connection)
+        services.databaseManager.driverDatabaseName(for: connection)
     }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
     func setSafeModeLevel(_ level: SafeModeLevel) {
@@ -563,7 +563,7 @@ final class MainContentCoordinator {
             .sink { [weak self] changedConnectionId in
                 guard let self, changedConnectionId == self.connectionId else { return }
                 Task { @MainActor in
-                    if let schema = self.services.databaseManager.session(for: self.connectionId)?.browseSchema {
+                    if let schema = self.services.databaseManager.session(for: self.connectionId)?.driverSchema {
                         self.toolbarState.currentSchema = schema
                     }
                     await self.refreshTables()

@@ -66,21 +66,21 @@ struct DatabaseScopeTests {
 @MainActor
 struct DatabaseManagerScopeResolutionTests {
     private static func makeSession(
-        browseDatabase: String?,
-        browseSchema: String? = nil,
+        driverDatabase: String?,
+        driverSchema: String? = nil,
         savedDatabase: String = "saved_default"
     ) -> DatabaseConnection {
         let connection = TestFixtures.makeConnection(database: savedDatabase)
         var session = ConnectionSession(connection: connection)
-        session.browseDatabase = browseDatabase
-        session.browseSchema = browseSchema
+        session.driverDatabase = driverDatabase
+        session.driverSchema = driverSchema
         DatabaseManager.shared.injectSession(session, for: connection.id)
         return connection
     }
 
     @Test("An explicit database passes through untouched while the sidebar browses elsewhere")
     func explicitDatabaseIsNotRewritten() throws {
-        let connection = Self.makeSession(browseDatabase: "inventory")
+        let connection = Self.makeSession(driverDatabase: "inventory")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let scope = try #require(
@@ -93,7 +93,7 @@ struct DatabaseManagerScopeResolutionTests {
 
     @Test("Only a blank database falls back to the browse cursor")
     func blankDatabaseFallsBackToBrowseCursor() throws {
-        let connection = Self.makeSession(browseDatabase: "inventory")
+        let connection = Self.makeSession(driverDatabase: "inventory")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let blank = try #require(
@@ -109,7 +109,7 @@ struct DatabaseManagerScopeResolutionTests {
 
     @Test("A blank browse cursor falls back to the connection's saved default database")
     func blankBrowseCursorUsesSavedDefault() throws {
-        let connection = Self.makeSession(browseDatabase: nil, savedDatabase: "saved_default")
+        let connection = Self.makeSession(driverDatabase: nil, savedDatabase: "saved_default")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let scope = try #require(
@@ -121,7 +121,7 @@ struct DatabaseManagerScopeResolutionTests {
 
     @Test("A resolved scope keeps its database after the browse cursor moves")
     func resolvedScopeSurvivesABrowseCursorMove() throws {
-        let connection = Self.makeSession(browseDatabase: "alpha")
+        let connection = Self.makeSession(driverDatabase: "alpha")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let scope = try #require(
@@ -130,16 +130,16 @@ struct DatabaseManagerScopeResolutionTests {
         #expect(scope.database == "alpha")
 
         var moved = try #require(DatabaseManager.shared.session(for: connection.id))
-        moved.browseDatabase = "beta"
+        moved.driverDatabase = "beta"
         DatabaseManager.shared.injectSession(moved, for: connection.id)
 
         #expect(scope.database == "alpha")
-        #expect(DatabaseManager.shared.browseScope(for: connection.id)?.database == "beta")
+        #expect(DatabaseManager.shared.driverScope(for: connection.id)?.database == "beta")
     }
 
     @Test("An explicit schema passes through and a blank one resolves to the browse schema")
     func schemaResolution() throws {
-        let connection = Self.makeSession(browseDatabase: "orders", browseSchema: "dbo")
+        let connection = Self.makeSession(driverDatabase: "orders", driverSchema: "dbo")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let explicit = try #require(
@@ -157,7 +157,7 @@ struct DatabaseManagerScopeResolutionTests {
     func noSessionYieldsNoScope() {
         let connectionId = UUID()
 
-        #expect(DatabaseManager.shared.browseScope(for: connectionId) == nil)
+        #expect(DatabaseManager.shared.driverScope(for: connectionId) == nil)
         #expect(DatabaseManager.shared.resolvedScope(database: nil, schema: nil, for: connectionId) == nil)
         #expect(
             DatabaseManager.shared.resolvedScope(database: "orders", schema: nil, for: connectionId)?.database

@@ -13,7 +13,7 @@ extension MainContentCoordinator {
     ///    (unsaved queries, filters, etc.) is preserved.
     func showERDiagram() {
         let dbName = browseDatabaseName
-        let schemaName = DatabaseManager.shared.session(for: connectionId)?.browseSchema
+        let schemaName = DatabaseManager.shared.session(for: connectionId)?.driverSchema
         let schemaKey = "\(dbName).\(schemaName ?? "default")"
 
         if let existing = Self.coordinator(forConnection: connectionId, tabMatching: {

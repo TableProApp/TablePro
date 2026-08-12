@@ -11,7 +11,7 @@ struct SchemaPickerControl: View {
     @State private var showSystemSchemas = false
 
     private var currentSchema: String? {
-        databaseManager.session(for: connectionId)?.browseSchema
+        databaseManager.session(for: connectionId)?.driverSchema
     }
 
     private var allSchemas: [String] {

@@ -423,7 +423,7 @@ extension MainContentCoordinator {
         do {
             try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: persist)
             toolbarState.currentDatabase = database
-            toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.browseSchema
+            toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.driverSchema
 
             await SchemaService.shared.prepareForReload(connectionId: connectionId)
 
@@ -539,7 +539,7 @@ extension MainContentCoordinator {
             }
             guard !Task.isCancelled else { return }
             DatabaseManager.shared.updateSession(connId) { session in
-                session.browseDatabase = database
+                session.driverDatabase = database
             }
             toolbarState.currentDatabase = database
             executeTableTabQueryDirectly()

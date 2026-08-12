@@ -310,7 +310,7 @@ final class ERDiagramViewModel {
             let payload = EditorTabPayload(
                 connectionId: connectionId,
                 tabType: .query,
-                databaseName: scope?.database ?? services.databaseManager.browseDatabaseName(for: driver.connection),
+                databaseName: scope?.database ?? services.databaseManager.driverDatabaseName(for: driver.connection),
                 initialQuery: sql,
                 skipAutoExecute: true,
                 tabTitle: String(localized: "Schema SQL")

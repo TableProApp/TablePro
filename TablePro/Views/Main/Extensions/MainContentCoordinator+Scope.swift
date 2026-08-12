@@ -39,6 +39,6 @@ extension MainContentCoordinator {
     /// Where the sidebar is pointing. Correct for the object list and for seeding a new
     /// tab, never for an operation an open tab owns.
     var browseScope: DatabaseScope? {
-        services.databaseManager.browseScope(for: connectionId)
+        services.databaseManager.driverScope(for: connectionId)
     }
 }

@@ -142,7 +142,7 @@ extension AIChatViewModel {
         guard let connection else { return nil }
         return PromptContext(
             databaseType: connection.type,
-            databaseName: services.databaseManager.browseDatabaseName(for: connection),
+            databaseName: services.databaseManager.driverDatabaseName(for: connection),
             tables: tables,
             columnsByTable: columnsByTable,
             foreignKeys: foreignKeysByTable,

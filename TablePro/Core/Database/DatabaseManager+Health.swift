@@ -114,7 +114,7 @@ extension DatabaseManager {
                 session.effectiveConnection = result.effectiveConnection
                 session.status = .connected
                 if let schemaDriver = result.driver as? SchemaSwitchable {
-                    session.browseSchema = schemaDriver.currentSchema
+                    session.driverSchema = schemaDriver.currentSchema
                 }
                 if let cachedPassword = result.cachedPassword,
                    !session.connection.usesAWSIAM
@@ -174,8 +174,8 @@ extension DatabaseManager {
         )
         await restoreSchemaAndDatabase(
             on: driver,
-            savedSchema: session.browseSchema,
-            savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.browseDatabase
+            savedSchema: session.driverSchema,
+            savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : session.driverDatabase
         )
 
         return ReconnectResult(
@@ -294,8 +294,8 @@ extension DatabaseManager {
             )
             await restoreSchemaAndDatabase(
                 on: driver,
-                savedSchema: activeSessions[sessionId]?.browseSchema,
-                savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.browseDatabase
+                savedSchema: activeSessions[sessionId]?.driverSchema,
+                savedDatabase: databaseSwitchRequiresReconnect(session.connection) ? nil : activeSessions[sessionId]?.driverDatabase
             )
 
             updateSession(sessionId) { session in
@@ -303,7 +303,7 @@ extension DatabaseManager {
                 session.status = .connected
                 session.effectiveConnection = effectiveConnection
                 if let schemaDriver = driver as? SchemaSwitchable {
-                    session.browseSchema = schemaDriver.currentSchema
+                    session.driverSchema = schemaDriver.currentSchema
                 }
                 if let cachedPassword = connectResult.cachedPassword,
                    !session.connection.usesAWSIAM

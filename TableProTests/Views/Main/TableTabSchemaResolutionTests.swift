@@ -33,7 +33,7 @@ struct TableTabSchemaResolutionTests {
     func stampsSchemaAndRebuildsQuery() throws {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         var session = ConnectionSession(connection: connection)
-        session.browseSchema = "sales"
+        session.driverSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -61,7 +61,7 @@ struct TableTabSchemaResolutionTests {
     func leavesResolvedSchemaUntouched() throws {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         var session = ConnectionSession(connection: connection)
-        session.browseSchema = "sales"
+        session.driverSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -109,7 +109,7 @@ struct TableTabSchemaResolutionTests {
     func noOpForQueryTab() throws {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         var session = ConnectionSession(connection: connection)
-        session.browseSchema = "sales"
+        session.driverSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -139,7 +139,7 @@ struct TableTabListingSchemaTests {
         let connection = TestFixtures.makeConnection(database: "AppDb", type: .mssql)
         let driver = MockDatabaseDriver(connection: connection)
         var session = ConnectionSession(connection: connection, driver: driver)
-        session.browseSchema = sessionSchema
+        session.driverSchema = sessionSchema
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 

@@ -101,7 +101,7 @@ extension DatabaseManager {
             )
         }
 
-        let databaseName = activeSessions[connectionId]?.resolvedBrowseDatabase ?? ""
+        let databaseName = activeSessions[connectionId]?.resolvedDriverDatabase ?? ""
         // Query history is stored unencrypted on disk. A CREATE USER / ALTER USER statement embeds
         // the plaintext password, so it is never recorded.
         for statement in statements where !statement.carriesCredentials {
