@@ -198,25 +198,37 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
             splitVC.invalidateToolbar()
         }
 
-        MainContentCoordinator.coordinator(forWindow: window)?.handleWindowWillClose()
+        /// Every connection the window hosts closes with it, so each one saves and tears down.
+        /// Resolving a single coordinator from the window persisted whichever one happened to
+        /// answer and lost the rest since their last periodic save.
+        if let splitVC = window.contentViewController as? MainSplitViewController {
+            for workspace in splitVC.workspaces.workspaces {
+                workspace.sessionState?.coordinator.handleWindowWillClose()
+            }
+        }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) handleWindowWillClose ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         activity?.invalidate()
         activity = nil
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
+    /// Every connection the window hosts, not just the one it was opened for: a connect still
+    /// dialing in a background workspace has to be called off too, or it completes into a window
+    /// that no longer exists.
     private func cancelPendingConnectionIfNeeded() {
-        let connectionId = payload.connectionId
-        let session = DatabaseManager.shared.activeSessions[connectionId]
-        guard session?.driver == nil else { return }
-        DatabaseManager.shared.invalidateConnectionAttempt(connectionId)
-        SessionRecoveryTracker.sync()
-        Task {
-            await DatabaseManager.shared.cancelEnsureConnected(connectionId)
-            guard !WindowManager.shared.hasOpenWindow(for: connectionId) else { return }
-            guard DatabaseManager.shared.activeSessions[connectionId]?.driver != nil else { return }
-            await DatabaseManager.shared.disconnectSession(connectionId)
+        guard let splitVC = window?.contentViewController as? MainSplitViewController else { return }
+        for connectionId in splitVC.workspaces.connectionIds {
+            let session = DatabaseManager.shared.activeSessions[connectionId]
+            guard session?.driver == nil else { continue }
+            DatabaseManager.shared.invalidateConnectionAttempt(connectionId)
+            Task {
+                await DatabaseManager.shared.cancelEnsureConnected(connectionId)
+                guard !WindowManager.shared.hasOpenWindow(for: connectionId) else { return }
+                guard DatabaseManager.shared.activeSessions[connectionId]?.driver != nil else { return }
+                await DatabaseManager.shared.disconnectSession(connectionId)
+            }
         }
+        SessionRecoveryTracker.sync()
     }
 
     // MARK: - NSUserActivity
