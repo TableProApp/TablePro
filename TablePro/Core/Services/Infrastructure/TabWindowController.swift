@@ -18,20 +18,20 @@ private final class EditorWindow: NSWindow {
         }
     }
 
-    override func newWindowForTab(_ sender: Any?) {
-        guard let coordinator = MainContentCoordinator.coordinator(forWindow: self),
-              let actions = coordinator.commandActions else { return }
-        actions.newTab()
+
+    func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        FileDropDestination.acceptedURLs(from: sender.draggingPasteboard).isEmpty ? [] : .copy
     }
 
-    /// `NSWindow` implements `newWindowForTab:`, so the responder chain stops here and
-    /// never reaches the split view controller's validation. Without this the item
-    /// stays enabled on a window that is connecting, failed, or disconnected.
-    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        guard menuItem.action == #selector(newWindowForTab(_:)) else {
-            return super.validateMenuItem(menuItem)
-        }
-        return MainContentCoordinator.coordinator(forWindow: self)?.commandActions?.isConnected == true
+    func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        draggingEntered(sender)
+    }
+
+    func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        let urls = FileDropDestination.acceptedURLs(from: sender.draggingPasteboard)
+        guard !urls.isEmpty else { return false }
+        FileDropDestination.open(urls)
+        return true
     }
 }
 
@@ -78,6 +78,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
             autoConnect: autoConnect
         )
         window.contentViewController = splitVC
+        FileDropDestination.register(on: window)
         window.title = splitVC.windowTitle
         window.subtitle = splitVC.windowSubtitle
 
@@ -150,6 +151,15 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) userActivity ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         coordinator.handleWindowDidBecomeKey()
         Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+    }
+
+    /// `NSWindow.undoManager` resolves through here, so every undo domain that registers on the
+    /// window (the data grid's change manager, and the query editor's text view) lands in the
+    /// selected connection's own history. One window hosts every connection now, so sharing the
+    /// window's manager let Cmd+Z in one connection roll back an edit made in another.
+    internal func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
+        guard let host = window.contentViewController as? MainSplitViewController else { return nil }
+        return host.workspaces.selected?.undoManager
     }
 
     internal func windowDidResignKey(_ notification: Notification) {
