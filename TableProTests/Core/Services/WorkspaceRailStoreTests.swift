@@ -231,6 +231,55 @@ struct WorkspaceRailStoreTests {
     }
 }
 
+@Suite("Workspace rail reload plan")
+@MainActor
+struct WorkspaceRailReloadPlanTests {
+    private func makeEntry(
+        connection: DatabaseConnection,
+        container: String,
+        status: ConnectionStatus = .connected
+    ) -> WorkspaceRailEntry {
+        WorkspaceRailEntry(
+            workspace: WorkspaceID(connectionId: connection.id, container: container),
+            connection: connection,
+            status: status
+        )
+    }
+
+    @Test("An event that resolves to the same entries rebuilds nothing")
+    func identicalEntriesAreUnchanged() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = [makeEntry(connection: connection, container: "app")]
+        #expect(WorkspaceRailStore.reloadPlan(from: entries, to: entries) == .unchanged)
+    }
+
+    @Test("A row whose entry changed in place keeps its cell and is reconfigured")
+    func changedEntryOnSameRowRefreshes() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let current = [makeEntry(connection: connection, container: "app", status: .connected)]
+        let resolved = [makeEntry(connection: connection, container: "app", status: .disconnected)]
+        #expect(WorkspaceRailStore.reloadPlan(from: current, to: resolved) == .refreshRows)
+    }
+
+    @Test("A workspace appearing rebuilds the rows")
+    func addedWorkspaceRebuilds() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let current = [makeEntry(connection: connection, container: "app")]
+        let resolved = current + [makeEntry(connection: connection, container: "logs")]
+        #expect(WorkspaceRailStore.reloadPlan(from: current, to: resolved) == .rebuild)
+    }
+
+    @Test("A reorder rebuilds the rows")
+    func reorderedWorkspacesRebuild() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let current = [
+            makeEntry(connection: connection, container: "app"),
+            makeEntry(connection: connection, container: "logs"),
+        ]
+        #expect(WorkspaceRailStore.reloadPlan(from: current, to: current.reversed()) == .rebuild)
+    }
+}
+
 @Suite("Workspace rail cell text")
 @MainActor
 struct WorkspaceRailCellTextTests {

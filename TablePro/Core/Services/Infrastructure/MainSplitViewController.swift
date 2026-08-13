@@ -183,6 +183,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         navigationSidebar.railController.onEntryCountChange = { [weak self] count in
             self?.applyRailVisibility(workspaceCount: count)
         }
+        /// The rail's first reload ran while its view loaded, before this callback existed, so
+        /// its count never reached the window. Waiting for `viewWillAppear` to catch up painted
+        /// a new tab window's first frames with the rail at width 0 and slid it in on
+        /// appearance, which read as the rail vanishing for half a second on every table
+        /// switch. Applied here, with no window yet, the width lands unanimated before the
+        /// first frame.
+        applyRailVisibility(workspaceCount: WorkspaceRailStore.entries.count)
 
         /// The saved layout is restored before any phase-driven collapse, so the user's widths
         /// are already in the live layout. Uncollapsing then returns the pane to the size

@@ -30,6 +30,12 @@ internal struct WorkspaceRailEntry: Identifiable, Equatable {
     internal var container: String { workspace.container }
 }
 
+internal enum WorkspaceRailReloadPlan: Equatable {
+    case unchanged
+    case refreshRows
+    case rebuild
+}
+
 @MainActor
 internal enum WorkspaceRailStore {
     /// Derived live from the open windows, their sessions and their tabs rather than
@@ -140,6 +146,20 @@ internal enum WorkspaceRailStore {
     internal static func shouldRestoreSelection(after target: WorkspaceID, railConnectionId: UUID?) -> Bool {
         guard let railConnectionId else { return false }
         return target.connectionId != railConnectionId
+    }
+
+    /// How much of the table an event actually requires. Most events the rail listens to,
+    /// a table switch above all, resolve to the same entries it already shows; rebuilding
+    /// the rows for those recreates every cell and blinks the selection. Rows are torn down
+    /// only when the set of workspaces itself changed; a row whose entry changed in place
+    /// keeps its cell and is reconfigured.
+    internal static func reloadPlan(
+        from current: [WorkspaceRailEntry],
+        to resolved: [WorkspaceRailEntry]
+    ) -> WorkspaceRailReloadPlan {
+        guard resolved != current else { return .unchanged }
+        guard resolved.map(\.id) == current.map(\.id) else { return .rebuild }
+        return .refreshRows
     }
 
     internal static var changes: AnyPublisher<Void, Never> {

@@ -141,18 +141,38 @@ internal final class WorkspaceRailViewController: NSViewController {
 
     // MARK: - Data
 
+    /// Selection still re-resolves on an unchanged list: a browse-cursor move keeps the
+    /// entries identical and changes only which row is the window's own.
     private func reload() {
-        entries = WorkspaceRailStore.entries
+        let resolved = WorkspaceRailStore.entries
+        let plan = WorkspaceRailStore.reloadPlan(from: entries, to: resolved)
+        entries = resolved
         Self.logger.debug(
             """
             reload rail=\(self.railName, privacy: .public) \
+            plan=\(String(describing: plan), privacy: .public) \
             entries=\(self.entries.count, privacy: .public) \
             [\(self.entries.map(\.workspace).map(Self.describe).joined(separator: " "), privacy: .public)]
             """
         )
-        tableView.reloadData()
+        switch plan {
+        case .unchanged:
+            break
+        case .refreshRows:
+            reconfigureRows()
+        case .rebuild:
+            tableView.reloadData()
+        }
         applySelection()
         onEntryCountChange?(entries.count)
+    }
+
+    private func reconfigureRows() {
+        for row in entries.indices {
+            guard let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false)
+                as? WorkspaceRailCellView else { continue }
+            cell.configure(entry: entries[row], layout: layout)
+        }
     }
 
     private static func describe(_ workspace: WorkspaceID) -> String {
