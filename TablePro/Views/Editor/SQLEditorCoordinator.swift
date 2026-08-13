@@ -297,23 +297,17 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     func performFormatSQL() {
         guard let textView = controller?.textView else { return }
-        let dialect = databaseType ?? .mysql
-        let formatter = SQLFormatterService()
+        let formatter = QueryFormatterFactory.make(for: databaseType)
         let scope = FormatScopeResolver.resolve(
             fullText: textView.string,
             selectedRange: textView.selectedRange()
         )
 
         do {
-            let result = try formatter.format(
-                scope.sql,
-                dialect: dialect,
-                cursorOffset: scope.cursorOffset,
-                options: .default
-            )
+            let result = try formatter.format(scope.sql, cursorOffset: scope.cursorOffset)
             let replacement = scope.isSelection
-                ? FormatScopeResolver.reapplyBoundaryWhitespace(from: scope.sql, to: result.formattedSQL)
-                : result.formattedSQL
+                ? FormatScopeResolver.reapplyBoundaryWhitespace(from: scope.sql, to: result.text)
+                : result.text
             textView.replaceCharacters(in: scope.range, with: replacement)
             let replacementLength = (replacement as NSString).length
             let caretLocation: Int
