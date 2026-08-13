@@ -1,3 +1,34 @@
+# STATUS (updated 2026-08-13)
+
+Branch `single-window-connections`, PR #2097.
+
+**Done and pushed** (all four P0 data-loss bugs are closed):
+
+- B1 restore returns one ordered tab list; window-group split deleted
+- B2 `windowGroupIndex` removed from the model, save path and restore result
+- B3 write gate: no save until a restore has read the disk; gate opens even on an empty read
+- B4 window close saves and tears down every hosted workspace
+- B7 per-connection undo via `TabWindowController.windowWillReturnUndoManager`
+- B9 sample failure closes one connection, B10 Cmd+W dismisses a failed pane, B11 vim `:q` closes a tab
+- B12 `coordinator(forWindow:)` returns the selected workspace's coordinator
+- B13 `reconnectWorkspace(_:)` reconnects the connection named, not the selected one
+- B5 detail pane carries `.id(connection.id)`
+- B14 toolbar is rebuilt on a workspace switch (the `ToolbarContext` refinement below is still the better shape)
+- Deleted: `WindowGroupAssignment`, `RestoreWindowPlan`, `WindowTabGroupOrder` and their four suites
+- CLAUDE.md invariants corrected for the workspace model
+
+**Not done**
+
+- `WorkspaceLocator` (steps 3-4) and the deletion of `WindowLifecycleMonitor` (step 13, 12+ consumers across 6 files)
+- B6 change-manager identity, B8 unsaved-work prompt across workspaces, B18 key-window broadcasts, B19 host selection, B20 row eviction
+- Steps 8, 11, 12, 15: visibility over key-window, rail reads its host, Reopen Closed Tab adopts directly, MCP wire contract
+- `ToolbarContext` observable box, replacing the toolbar rebuild
+- **UI automation asserting two connections share one window.** This is the largest remaining gap: every test on this branch is a unit test, and two shipped bugs (a second table not opening, closed tabs returning after reconnect) were found by hand, not by the suite.
+
+**Note for whoever continues:** another session has been editing `MainSplitViewController`, `MainWindowToolbar*`, `EditorTabStrip` and `MainContentCommandActions+BulkClose` in the same working tree. Check `git status` before assuming an uncommitted change is yours.
+
+---
+
 # THE SINGLE-WINDOW REFACTOR: ORDERED EXECUTION PLAN
 
 ## 1. THE ONE SENTENCE
