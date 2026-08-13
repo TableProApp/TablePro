@@ -117,10 +117,13 @@ final class MainContentCommandActions {
         notificationTasks.append(task)
     }
 
-    /// Returns true if this instance's window is the current key window.
-    private func isKeyWindow() -> Bool {
-        guard let window = self.window else { return false }
-        return window.isKeyWindow
+    /// The window being key is no longer enough: every connection it hosts shares that window, so
+    /// a broadcast gated on it alone ran once per connection and opened a file in all of them.
+    /// Only the connection on screen answers.
+    private func isVisibleInKeyWindow() -> Bool {
+        guard let window = self.window, window.isKeyWindow else { return false }
+        guard let host = window.contentViewController as? MainSplitViewController else { return true }
+        return host.workspaces.selected?.sessionState?.coordinator === coordinator
     }
 
     /// Like `observe(_:handler:)` but only runs the handler when this instance's window is key.
@@ -129,7 +132,7 @@ final class MainContentCommandActions {
         handler: @escaping @MainActor (Notification) -> Void
     ) {
         observe(name) { [weak self] notification in
-            guard self?.isKeyWindow() == true else { return }
+            guard self?.isVisibleInKeyWindow() == true else { return }
             handler(notification)
         }
     }
@@ -142,7 +145,7 @@ final class MainContentCommandActions {
         publisher
             .receive(on: RunLoop.main)
             .sink { [weak self] payload in
-                guard self?.isKeyWindow() == true else { return }
+                guard self?.isVisibleInKeyWindow() == true else { return }
                 handler(payload)
             }
             .store(in: &eventCancellables)
