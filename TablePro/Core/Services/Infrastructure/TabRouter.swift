@@ -100,8 +100,9 @@ internal final class TabRouter {
             NSApp.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
             guard DatabaseManager.shared.activeSessions[id]?.driver == nil else { return }
-            if let splitVC = existing.contentViewController as? MainSplitViewController {
-                splitVC.retryConnection()
+            if let splitVC = existing.contentViewController as? MainSplitViewController,
+               splitVC.workspaces.contains(id) {
+                splitVC.reconnectWorkspace(id)
             } else {
                 try await runPreConnectScriptIfNeeded(connection)
                 try await DatabaseManager.shared.ensureConnected(connection)

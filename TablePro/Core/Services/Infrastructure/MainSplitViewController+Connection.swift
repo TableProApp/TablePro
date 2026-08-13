@@ -34,6 +34,16 @@ internal extension MainSplitViewController {
         connect(connection, cancellingPrevious: true)
     }
 
+    /// Reconnects the connection named, not whichever one the window happens to be showing.
+    /// Clicking a disconnected connection used to redial the selected one instead, tearing down
+    /// the session the user was working in.
+    internal func reconnectWorkspace(_ connectionId: UUID) {
+        guard let workspace = workspaces.workspace(for: connectionId),
+              let connection = workspace.connection else { return }
+        workspaces.select(connectionId)
+        connect(connection, cancellingPrevious: true)
+    }
+
     /// The window stays open and repaints itself from its own phase once the session entry goes
     /// away, so this only has to end the session. Every other window on the connection hears the
     /// same status change and reaches the same phase on its own.
