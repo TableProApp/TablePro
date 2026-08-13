@@ -106,6 +106,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     private var toolbarOwner: MainWindowToolbar?
 
+    /// The coordinator currently treated as this window's active one, so a workspace switch can
+    /// hand over key-window state the same way AppKit would between windows.
+    private weak var lastActiveCoordinator: MainContentCoordinator?
+
     // MARK: - Observers
 
     private var connectionStatusCancellable: AnyCancellable?
@@ -433,6 +437,17 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     /// Switching workspace repaints the window in place. The rail used to raise a different
     /// window instead, which is what made several connections mean several windows.
     internal func applySelectedWorkspace() {
+        /// Switching workspace is this window's key-window change as far as a coordinator is
+        /// concerned. Only the selected one receives the real `windowDidBecomeKey`, so without
+        /// this the outgoing connection keeps `isKeyWindow` true and never schedules the eviction
+        /// that frees its row buffers.
+        let incoming = workspaces.selected?.sessionState?.coordinator
+        if lastActiveCoordinator !== incoming {
+            lastActiveCoordinator?.handleWindowDidResignKey()
+            incoming?.handleWindowDidBecomeKey()
+            lastActiveCoordinator = incoming
+        }
+
         if let coordinator = workspaces.selected?.sessionState?.coordinator {
             coordinator.inspectorProxy = self
             coordinator.splitViewController = self
