@@ -23,7 +23,7 @@ internal final class WindowManager {
     /// One window hosts every connection, so an open reuses the window that already exists and
     /// only adds a workspace to it. A second window is created solely when there is none.
     internal func openTab(payload: EditorTabPayload, activate: Bool = true, autoConnect: Bool = false) {
-        if let host = frontmostHost() {
+        if let host = host(for: payload.connectionId) {
             /// A connection the window already hosts still has to honour the payload, because a
             /// payload names a tab to open, not just a connection to show. Adopting the
             /// workspace alone would silently drop the table the caller asked for.
@@ -45,16 +45,24 @@ internal final class WindowManager {
         openInNewWindow(payload: payload, activate: activate, autoConnect: autoConnect)
     }
 
-    /// The window the user is looking at, falling back to any main window so a background open
-    /// still lands somewhere rather than spawning a second one.
+    /// A host is any visible window whose content controller can hold workspaces. Selecting by the
+    /// `main-` identifier prefix also matched the inspector window, whose controller is a different
+    /// type, so the cast failed and an inspector in front made every open create a second window.
     private func frontmostHost() -> MainSplitViewController? {
-        if let key = NSApp.keyWindow, Self.isMainWindow(key), key.isVisible,
+        if let key = NSApp.keyWindow, key.isVisible,
            let host = key.contentViewController as? MainSplitViewController {
             return host
         }
         return NSApp.windows
-            .first { Self.isMainWindow($0) && $0.isVisible }?
-            .contentViewController as? MainSplitViewController
+            .filter(\.isVisible)
+            .compactMap { $0.contentViewController as? MainSplitViewController }
+            .first
+    }
+
+    /// The window already hosting this connection wins, so opening a table for it never lands in
+    /// a different window that merely happened to be in front.
+    private func host(for connectionId: UUID) -> MainSplitViewController? {
+        hosts().first { $0.workspaces.contains(connectionId) } ?? frontmostHost()
     }
 
     private func openInNewWindow(payload: EditorTabPayload, activate: Bool, autoConnect: Bool) {
