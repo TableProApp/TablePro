@@ -25,7 +25,7 @@ internal enum QuickSwitcherCommitIntent: Sendable {
     case openStructure
 }
 
-internal struct QuickSwitcherObjectTarget: Hashable, Sendable {
+internal struct QuickSwitcherTarget: Hashable, Sendable {
     let connectionId: UUID
     let connectionName: String
     let databaseName: String?
@@ -60,6 +60,8 @@ internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
     /// Whether the scope draws from the catalog of every connected window rather than
     /// from the objects of the connection that opened the panel.
     var usesCrossConnectionCatalog: Bool { self == .connections }
+
+    var usesCrossConnectionQueries: Bool { self == .queries }
 
     var includedKinds: Set<QuickSwitcherItemKind>? {
         switch self {
@@ -102,7 +104,7 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     var payload: String?
     var isOpenInTab: Bool = false
     var isReadOnly: Bool = false
-    var objectTarget: QuickSwitcherObjectTarget?
+    var target: QuickSwitcherTarget?
 
     static func tableItemId(name: String, isView: Bool) -> String {
         "table_\(name)_\(isView ? "VIEW" : "TABLE")"

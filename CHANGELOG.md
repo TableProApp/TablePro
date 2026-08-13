@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The database switcher takes a multiple selection too, with the same actions on the right-click menu.
 - Drop Schema for PostgreSQL, SQL Server and SurrealDB.
 - Quick Switcher can search tables and views across every open connection.
+- Quick Switcher can search saved queries and recent queries across every open connection.
 - SSL settings on mobile for MySQL, PostgreSQL and Redis: a mode picker plus CA, client certificate and client key. Import a PEM file, paste one, or use a PKCS#12 file. (#2083)
 - Legacy UUID Encoding on a MongoDB connection, so binary UUIDs written by the Java, C# or Python drivers read as UUIDs instead of hex. Filters, edits and MQL exports write the same bytes back. (#2086)
 

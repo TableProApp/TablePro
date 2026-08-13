@@ -32,7 +32,9 @@ struct QuickSwitcherViewModelTests {
     private func makeServices(
         databaseManager: DatabaseManager,
         schemaService: SchemaService,
-        schemaRefreshService: SchemaRefreshService
+        schemaRefreshService: SchemaRefreshService,
+        sqlFavoriteManager: SQLFavoriteManager? = nil,
+        queryHistoryManager: QueryHistoryManager? = nil
     ) -> AppServices {
         let live = AppServices.live
         return AppServices(
@@ -45,7 +47,7 @@ struct QuickSwitcherViewModelTests {
             schemaService: schemaService,
             schemaRefreshService: schemaRefreshService,
             schemaProviderRegistry: SchemaProviderRegistry(),
-            sqlFavoriteManager: live.sqlFavoriteManager,
+            sqlFavoriteManager: sqlFavoriteManager ?? live.sqlFavoriteManager,
             favoriteTablesStorage: live.favoriteTablesStorage,
             aiChatStorage: live.aiChatStorage,
             aiKeyStorage: live.aiKeyStorage,
@@ -56,7 +58,7 @@ struct QuickSwitcherViewModelTests {
             syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
-            queryHistoryManager: live.queryHistoryManager,
+            queryHistoryManager: queryHistoryManager ?? live.queryHistoryManager,
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
@@ -109,7 +111,7 @@ struct QuickSwitcherViewModelTests {
         let localConnectionId = UUID()
         let remoteConnectionId = UUID()
         let local = QuickSwitcherItem(id: "local", name: "users", kind: .table, subtitle: "")
-        let remoteTarget = QuickSwitcherObjectTarget(
+        let remoteTarget = QuickSwitcherTarget(
             connectionId: remoteConnectionId,
             connectionName: "Analytics",
             databaseName: "warehouse",
@@ -120,7 +122,7 @@ struct QuickSwitcherViewModelTests {
             name: "events",
             kind: .table,
             subtitle: "Analytics / warehouse / public",
-            objectTarget: remoteTarget
+            target: remoteTarget
         )
         let vm = makeViewModel(items: [local], connectionId: localConnectionId)
         vm.crossConnectionItems = [remote]
@@ -129,6 +131,173 @@ struct QuickSwitcherViewModelTests {
 
         #expect(vm.flatItems.map(\.id) == ["remote"])
         #expect(vm.groups.first?.header == "Analytics")
+    }
+
+    @Test("Queries scope loads saved and recent queries from connected sessions")
+    func queriesScopeLoadsConnectedSessions() async throws {
+        let localConnection = TestFixtures.makeConnection(name: "Primary", database: "app")
+        let remoteConnection = TestFixtures.makeConnection(name: "Analytics", database: "warehouse")
+        let inactiveConnection = TestFixtures.makeConnection(name: "Offline", database: "archive")
+        let databaseManager = DatabaseManager()
+        let schemaService = SchemaService()
+        let schemaRefreshService = SchemaRefreshService(
+            schemaService: schemaService,
+            providerRegistry: SchemaProviderRegistry(),
+            metadataDriverProvider: databaseManager,
+            databaseManager: databaseManager
+        )
+        let favoriteStorage = SQLFavoriteStorage(
+            databaseURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("quick-switcher-favorites-\(UUID().uuidString).db"),
+            removeDatabaseOnDeinit: true
+        )
+        let historyStorage = QueryHistoryStorage(
+            databaseURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("quick-switcher-history-\(UUID().uuidString).db"),
+            removeDatabaseOnDeinit: true
+        )
+        let favoriteManager = SQLFavoriteManager(storage: favoriteStorage)
+        let historyManager = QueryHistoryManager(storage: historyStorage)
+        let services = makeServices(
+            databaseManager: databaseManager,
+            schemaService: schemaService,
+            schemaRefreshService: schemaRefreshService,
+            sqlFavoriteManager: favoriteManager,
+            queryHistoryManager: historyManager
+        )
+
+        for connection in [localConnection, remoteConnection] {
+            var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+            session.status = .connected
+            session.browseDatabase = connection.database
+            databaseManager.injectSession(session, for: connection.id)
+        }
+        defer {
+            databaseManager.removeSession(for: localConnection.id)
+            databaseManager.removeSession(for: remoteConnection.id)
+        }
+
+        let globalFavorite = SQLFavorite(name: "Global health", query: "SELECT 1")
+        let remoteFavorite = SQLFavorite(
+            name: "Daily revenue",
+            query: "SELECT SUM(total) FROM orders",
+            keyword: "revenue",
+            connectionId: remoteConnection.id
+        )
+        let inactiveFavorite = SQLFavorite(
+            name: "Archived users",
+            query: "SELECT * FROM users",
+            connectionId: inactiveConnection.id
+        )
+        #expect(await favoriteStorage.addFavorite(globalFavorite))
+        #expect(await favoriteStorage.addFavorite(remoteFavorite))
+        #expect(await favoriteStorage.addFavorite(inactiveFavorite))
+
+        let remoteHistory = QueryHistoryEntry(
+            query: "SELECT * FROM events",
+            connectionId: remoteConnection.id,
+            databaseName: "reporting",
+            executionTime: 0.025,
+            rowCount: 12,
+            wasSuccessful: true
+        )
+        let inactiveHistory = QueryHistoryEntry(
+            query: "DELETE FROM audit_log",
+            connectionId: inactiveConnection.id,
+            databaseName: "archive",
+            executionTime: 1,
+            rowCount: 1,
+            wasSuccessful: true
+        )
+        #expect(await historyStorage.addHistory(remoteHistory))
+        #expect(await historyStorage.addHistory(inactiveHistory))
+
+        let vm = makeViewModel(
+            items: [QuickSwitcherItem(id: "stale", name: "stale", kind: .queryHistory, subtitle: "")],
+            connectionId: localConnection.id,
+            services: services
+        )
+        vm.scope = .queries
+        await vm.loadCrossConnectionQueryItems()
+        await vm.flushPendingFilter()
+
+        #expect(Set(vm.flatItems.map(\.id)) == Set([
+            "favorite_\(globalFavorite.id.uuidString)",
+            "favorite_\(remoteFavorite.id.uuidString)",
+            "history_\(remoteHistory.id.uuidString)"
+        ]))
+        #expect(vm.flatItems.contains { $0.id == "stale" } == false)
+        let globalItem = vm.flatItems.first { $0.id.contains(globalFavorite.id.uuidString) }
+        #expect(globalItem?.target?.connectionId == localConnection.id)
+        let historyItem = try #require(vm.flatItems.first { $0.id.contains(remoteHistory.id.uuidString) })
+        #expect(historyItem.target?.connectionId == remoteConnection.id)
+        #expect(historyItem.target?.databaseName == "reporting")
+        #expect(historyItem.subtitle.contains("Analytics / reporting"))
+        #expect(historyItem.subtitle.contains("25 ms"))
+
+        vm.searchText = "analytics"
+        await vm.flushPendingFilter()
+        #expect(Set(vm.flatItems.map(\.id)) == Set([
+            "favorite_\(remoteFavorite.id.uuidString)",
+            "history_\(remoteHistory.id.uuidString)"
+        ]))
+    }
+
+    @Test("Invalidating cross-connection queries reloads storage changes")
+    func invalidatingCrossConnectionQueriesReloadsChanges() async {
+        let connection = TestFixtures.makeConnection(name: "Primary", database: "app")
+        let databaseManager = DatabaseManager()
+        let schemaService = SchemaService()
+        let schemaRefreshService = SchemaRefreshService(
+            schemaService: schemaService,
+            providerRegistry: SchemaProviderRegistry(),
+            metadataDriverProvider: databaseManager,
+            databaseManager: databaseManager
+        )
+        let favoriteStorage = SQLFavoriteStorage(
+            databaseURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("quick-switcher-refresh-\(UUID().uuidString).db"),
+            removeDatabaseOnDeinit: true
+        )
+        let services = makeServices(
+            databaseManager: databaseManager,
+            schemaService: schemaService,
+            schemaRefreshService: schemaRefreshService,
+            sqlFavoriteManager: SQLFavoriteManager(storage: favoriteStorage)
+        )
+        var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+        session.status = .connected
+        databaseManager.injectSession(session, for: connection.id)
+        defer { databaseManager.removeSession(for: connection.id) }
+
+        let vm = makeViewModel(items: [], connectionId: connection.id, services: services)
+        vm.scope = .queries
+        await vm.loadCrossConnectionQueryItems()
+        #expect(vm.crossConnectionQueryItems.isEmpty)
+
+        let favorite = SQLFavorite(name: "Late arrival", query: "SELECT 2", connectionId: connection.id)
+        #expect(await favoriteStorage.addFavorite(favorite))
+        vm.invalidateCrossConnectionQueryItems()
+        await vm.loadCrossConnectionQueryItems()
+
+        #expect(vm.crossConnectionQueryItems.map(\.id) == ["favorite_\(favorite.id.uuidString)"])
+    }
+
+    @Test("Queries scope caps an oversized local catalog")
+    func queriesScopeCapsLargeCatalog() async {
+        let vm = makeViewModel(items: [])
+        vm.crossConnectionQueryItems = (0..<300).map { index in
+            QuickSwitcherItem(
+                id: "favorite_\(index)",
+                name: "Query \(index)",
+                kind: .savedQuery,
+                subtitle: "Primary / app"
+            )
+        }
+        vm.scope = .queries
+        await vm.flushPendingFilter()
+
+        #expect(vm.flatItems.count == 200)
     }
 
     @Test("Connections scope replaces tables from a previous browse scope")
@@ -173,7 +342,7 @@ struct QuickSwitcherViewModelTests {
         await vm.flushPendingFilter()
 
         #expect(vm.flatItems.map(\.name) == ["events"])
-        #expect(vm.flatItems.first?.objectTarget?.databaseName == "analytics")
+        #expect(vm.flatItems.first?.target?.databaseName == "analytics")
         #expect(!vm.flatItems.contains { $0.name == "legacy_orders" })
     }
 
@@ -233,7 +402,7 @@ struct QuickSwitcherViewModelTests {
 
     @Test("Connections scope matches a connection name")
     func connectionsScopeMatchesConnectionName() async throws {
-        let target = QuickSwitcherObjectTarget(
+        let target = QuickSwitcherTarget(
             connectionId: UUID(),
             connectionName: "Analytics",
             databaseName: "warehouse",
@@ -244,7 +413,7 @@ struct QuickSwitcherViewModelTests {
             name: "events",
             kind: .table,
             subtitle: "Analytics / warehouse",
-            objectTarget: target
+            target: target
         )
         let vm = makeViewModel(items: [])
         vm.crossConnectionItems = [remote]
@@ -253,12 +422,12 @@ struct QuickSwitcherViewModelTests {
         try await Task.sleep(nanoseconds: 200_000_000)
 
         #expect(vm.flatItems.first?.id == "remote")
-        #expect(vm.flatItems.first?.objectTarget == target)
+        #expect(vm.flatItems.first?.target == target)
     }
 
     @Test("Changing the query selects the best match")
     func changingQuerySelectsBestMatch() async throws {
-        let target = QuickSwitcherObjectTarget(
+        let target = QuickSwitcherTarget(
             connectionId: UUID(),
             connectionName: "Chinook",
             databaseName: "sample.sqlite",
@@ -286,7 +455,7 @@ struct QuickSwitcherViewModelTests {
     @Test("Cross-connection catalog keeps object location")
     func crossConnectionCatalogKeepsLocation() {
         let connectionId = UUID()
-        let target = QuickSwitcherObjectTarget(
+        let target = QuickSwitcherTarget(
             connectionId: connectionId,
             connectionName: "Primary",
             databaseName: "app",
@@ -301,8 +470,8 @@ struct QuickSwitcherViewModelTests {
 
         #expect(items.count == 2)
         #expect(items[0].id.contains(connectionId.uuidString))
-        #expect(items[0].objectTarget?.schemaName == "public")
-        #expect(items[1].objectTarget?.schemaName == "fallback")
+        #expect(items[0].target?.schemaName == "public")
+        #expect(items[1].target?.schemaName == "fallback")
         #expect(items[1].kind == .view)
         #expect(items.allSatisfy { $0.subtitle.contains("Primary / app") })
     }
@@ -311,7 +480,7 @@ struct QuickSwitcherViewModelTests {
     func fileDatabasePathsAreAbbreviated() {
         let databasePath = NSHomeDirectory() + "/Databases/private.sqlite"
         let displayName = QuickSwitcherViewModel.databaseDisplayName(databasePath, pathFieldRole: .filePath)
-        let target = QuickSwitcherObjectTarget(
+        let target = QuickSwitcherTarget(
             connectionId: UUID(),
             connectionName: "Local",
             databaseName: databasePath,
@@ -326,12 +495,12 @@ struct QuickSwitcherViewModelTests {
 
         #expect(displayName == "~/Databases/private.sqlite")
         #expect(!item.subtitle.contains(NSHomeDirectory()))
-        #expect(item.objectTarget?.databaseName == databasePath)
+        #expect(item.target?.databaseName == databasePath)
     }
 
     @Test("Identical object names in different schemas keep unique identities")
     func duplicateNamesAcrossSchemasStayUnique() {
-        let target = QuickSwitcherObjectTarget(
+        let target = QuickSwitcherTarget(
             connectionId: UUID(),
             connectionName: "Primary",
             databaseName: "app",
@@ -345,12 +514,12 @@ struct QuickSwitcherViewModelTests {
         let items = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
 
         #expect(Set(items.map(\.id)).count == 2)
-        #expect(Set(items.compactMap(\.objectTarget?.schemaName)) == Set(["public", "audit"]))
+        #expect(Set(items.compactMap(\.target?.schemaName)) == Set(["public", "audit"]))
     }
 
     @Test("Connections scope caps a hostile catalog")
     func connectionsScopeCapsLargeCatalog() async {
-        let target = QuickSwitcherObjectTarget(
+        let target = QuickSwitcherTarget(
             connectionId: UUID(),
             connectionName: "Primary",
             databaseName: "app",
@@ -384,13 +553,13 @@ struct QuickSwitcherViewModelTests {
     func structureActionStaysInCurrentConnection() {
         let connectionId = UUID()
         let vm = makeViewModel(items: [], connectionId: connectionId)
-        let currentTarget = QuickSwitcherObjectTarget(
+        let currentTarget = QuickSwitcherTarget(
             connectionId: connectionId,
             connectionName: "Primary",
             databaseName: nil,
             schemaName: nil
         )
-        let remoteTarget = QuickSwitcherObjectTarget(
+        let remoteTarget = QuickSwitcherTarget(
             connectionId: UUID(),
             connectionName: "Analytics",
             databaseName: nil,
@@ -402,14 +571,14 @@ struct QuickSwitcherViewModelTests {
             name: "users",
             kind: .table,
             subtitle: "",
-            objectTarget: currentTarget
+            target: currentTarget
         )))
         #expect(!vm.canOpenStructure(QuickSwitcherItem(
             id: "remote",
             name: "events",
             kind: .table,
             subtitle: "",
-            objectTarget: remoteTarget
+            target: remoteTarget
         )))
     }
 
@@ -579,6 +748,7 @@ struct QuickSwitcherViewModelTests {
             payload: "SELECT SUM(total) FROM orders GROUP BY month;"
         ))
         let vm = makeViewModel(items: items)
+        vm.crossConnectionQueryItems = items
         vm.scope = .queries
         await vm.flushPendingFilter()
         let headers = vm.groups.compactMap(\.header)

@@ -32,6 +32,12 @@ internal final class QuickSwitcherViewModel {
         let entries: [Entry]
     }
 
+    struct CrossConnectionQueryVersion: Hashable {
+        let connectionStatusVersion: Int
+        let connectedConnectionIds: [UUID]
+        let contentRevision: Int
+    }
+
     struct Group: Identifiable, Sendable {
         let id: String
         let header: String?
@@ -52,14 +58,21 @@ internal final class QuickSwitcherViewModel {
     @ObservationIgnored internal var crossConnectionItems: [QuickSwitcherItem] = [] {
         didSet { scheduleFilter(debounced: false) }
     }
+    @ObservationIgnored internal var crossConnectionQueryItems: [QuickSwitcherItem] = [] {
+        didSet { scheduleFilter(debounced: false) }
+    }
     @ObservationIgnored private var filterTask: Task<Void, Never>?
     @ObservationIgnored private var activeLoadId = UUID()
     @ObservationIgnored private var activeCrossConnectionLoadId = UUID()
+    @ObservationIgnored private var activeCrossConnectionQueryLoadId = UUID()
     @ObservationIgnored private var loadedCrossConnectionVersion: CrossConnectionCatalogVersion?
+    @ObservationIgnored private var loadedCrossConnectionQueryVersion: CrossConnectionQueryVersion?
 
     private(set) var groups: [Group] = []
     private(set) var isLoading = true
     private(set) var isLoadingCrossConnections = false
+    private(set) var isLoadingCrossConnectionQueries = false
+    private(set) var crossConnectionQueryContentRevision = 0
     var selectedItemId: String?
 
     var searchText = "" {
@@ -81,7 +94,10 @@ internal final class QuickSwitcherViewModel {
     }
 
     var isLoadingResults: Bool {
-        scope.usesCrossConnectionCatalog && isLoadingCrossConnections
+        if scope.usesCrossConnectionCatalog {
+            return isLoadingCrossConnections
+        }
+        return scope.usesCrossConnectionQueries && isLoadingCrossConnectionQueries
     }
 
     /// Nil outside the cross-connection scope, so a panel showing one connection's objects
@@ -89,6 +105,11 @@ internal final class QuickSwitcherViewModel {
     var crossConnectionLoadVersion: CrossConnectionCatalogVersion? {
         guard scope.usesCrossConnectionCatalog else { return nil }
         return crossConnectionCatalogVersion
+    }
+
+    var crossConnectionQueryLoadVersion: CrossConnectionQueryVersion? {
+        guard scope.usesCrossConnectionQueries else { return nil }
+        return crossConnectionQueryVersion
     }
 
     func listHeight(rowHeight: CGFloat, headerHeight: CGFloat, maxVisibleRows: Int) -> CGFloat {
@@ -264,12 +285,75 @@ internal final class QuickSwitcherViewModel {
         crossConnectionItems = crossConnectionItems(for: sessions, loaded: loadedConnectionIds)
     }
 
+    func invalidateCrossConnectionQueryItems() {
+        crossConnectionQueryContentRevision &+= 1
+    }
+
+    func loadCrossConnectionQueryItems() async {
+        guard scope.usesCrossConnectionQueries else { return }
+
+        let version = crossConnectionQueryVersion
+        guard loadedCrossConnectionQueryVersion != version else { return }
+
+        let loadId = UUID()
+        activeCrossConnectionQueryLoadId = loadId
+        isLoadingCrossConnectionQueries = true
+        defer {
+            if activeCrossConnectionQueryLoadId == loadId {
+                isLoadingCrossConnectionQueries = false
+            }
+        }
+
+        let sessions = connectedSessions()
+        let connectedIds = Set(sessions.map(\.id))
+        async let favorites = services.sqlFavoriteManager.fetchFavorites()
+        async let historyEntries = services.queryHistoryManager.fetchHistory(
+            limit: QuickSwitcherRanking.maxResults,
+            allowedConnectionIds: connectedIds
+        )
+        let (loadedFavorites, loadedHistoryEntries) = await (favorites, historyEntries)
+
+        guard activeCrossConnectionQueryLoadId == loadId,
+              !Task.isCancelled,
+              version == crossConnectionQueryVersion else { return }
+
+        let targets = Dictionary(uniqueKeysWithValues: sessions.map { session in
+            (session.id, queryTarget(for: session))
+        })
+        let pathFieldRoles = Dictionary(uniqueKeysWithValues: sessions.map { session in
+            (session.id, session.connection.type.pathFieldRole)
+        })
+        loadedCrossConnectionQueryVersion = version
+        crossConnectionQueryItems = Self.makeCrossConnectionQueryItems(
+            favorites: loadedFavorites,
+            historyEntries: loadedHistoryEntries,
+            targets: targets,
+            pathFieldRoles: pathFieldRoles,
+            currentConnectionId: connectionId
+        )
+    }
+
     private func connectedSessions() -> [ConnectionSession] {
         services.databaseManager.activeSessions.values
             .filter { $0.isConnected && $0.driver != nil }
             .sorted { lhs, rhs in
                 lhs.connection.name.localizedStandardCompare(rhs.connection.name) == .orderedAscending
             }
+    }
+
+    private func queryTarget(for session: ConnectionSession) -> QuickSwitcherTarget {
+        let scope = services.databaseManager.browseScope(for: session.id)
+        let databaseName = scope.flatMap { $0.database.isEmpty ? nil : $0.database }
+        return QuickSwitcherTarget(
+            connectionId: session.id,
+            connectionName: session.connection.name,
+            databaseName: databaseName,
+            schemaName: scope?.schema,
+            databaseDisplayName: Self.databaseDisplayName(
+                databaseName,
+                pathFieldRole: session.connection.type.pathFieldRole
+            )
+        )
     }
 
     private func crossConnectionItems(
@@ -281,7 +365,7 @@ internal final class QuickSwitcherViewModel {
             .flatMap { session -> [QuickSwitcherItem] in
                 guard let scope = services.databaseManager.browseScope(for: session.id) else { return [] }
                 let databaseName = scope.database.isEmpty ? nil : scope.database
-                let target = QuickSwitcherObjectTarget(
+                let target = QuickSwitcherTarget(
                     connectionId: session.id,
                     connectionName: session.connection.name,
                     databaseName: databaseName,
@@ -320,11 +404,11 @@ internal final class QuickSwitcherViewModel {
 
     nonisolated static func makeCrossConnectionItems(
         tables: [TableInfo],
-        target: QuickSwitcherObjectTarget
+        target: QuickSwitcherTarget
     ) -> [QuickSwitcherItem] {
         tables.map { table in
             let presentation = tablePresentation(for: table.type)
-            let resolvedTarget = QuickSwitcherObjectTarget(
+            let resolvedTarget = QuickSwitcherTarget(
                 connectionId: target.connectionId,
                 connectionName: target.connectionName,
                 databaseName: target.databaseName,
@@ -335,15 +419,66 @@ internal final class QuickSwitcherViewModel {
                 id: "connection_\(target.connectionId.uuidString)_\(table.id)",
                 name: table.name,
                 kind: presentation.kind,
-                subtitle: objectPath(for: resolvedTarget),
+                subtitle: connectionPath(for: resolvedTarget),
                 isReadOnly: !table.type.allowsRowEditing,
-                objectTarget: resolvedTarget
+                target: resolvedTarget
             )
         }
     }
 
+    nonisolated static func makeCrossConnectionQueryItems(
+        favorites: [SQLFavorite],
+        historyEntries: [QueryHistoryEntry],
+        targets: [UUID: QuickSwitcherTarget],
+        pathFieldRoles: [UUID: PathFieldRole],
+        currentConnectionId: UUID
+    ) -> [QuickSwitcherItem] {
+        let favoriteItems = favorites.compactMap { favorite -> QuickSwitcherItem? in
+            let targetConnectionId = favorite.connectionId ?? currentConnectionId
+            guard let target = targets[targetConnectionId] else { return nil }
+            let subtitle = [favorite.keyword, connectionPath(for: target)]
+                .compactMap { value in value.flatMap { $0.isEmpty ? nil : $0 } }
+                .joined(separator: " · ")
+            return QuickSwitcherItem(
+                id: "favorite_\(favorite.id.uuidString)",
+                name: favorite.name,
+                kind: .savedQuery,
+                subtitle: subtitle,
+                payload: favorite.query,
+                target: target
+            )
+        }
+
+        let historyItems = historyEntries.compactMap { entry -> QuickSwitcherItem? in
+            guard let baseTarget = targets[entry.connectionId] else { return nil }
+            let databaseName = entry.databaseName.isEmpty ? nil : entry.databaseName
+            let target = QuickSwitcherTarget(
+                connectionId: baseTarget.connectionId,
+                connectionName: baseTarget.connectionName,
+                databaseName: databaseName,
+                schemaName: nil,
+                databaseDisplayName: databaseDisplayName(
+                    databaseName,
+                    pathFieldRole: pathFieldRoles[entry.connectionId] ?? .database
+                )
+            )
+            return QuickSwitcherItem(
+                id: "history_\(entry.id.uuidString)",
+                name: entry.queryPreview,
+                kind: .queryHistory,
+                subtitle: [connectionPath(for: target), entry.formattedExecutionTime]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · "),
+                payload: entry.query,
+                target: target
+            )
+        }
+
+        return favoriteItems + historyItems
+    }
+
     func canOpenStructure(_ item: QuickSwitcherItem) -> Bool {
-        guard let target = item.objectTarget else { return true }
+        guard let target = item.target else { return true }
         return target.connectionId == connectionId
     }
 
@@ -412,7 +547,14 @@ internal final class QuickSwitcherViewModel {
     }
 
     private func scopedItems() -> [QuickSwitcherItem] {
-        let source = scope.usesCrossConnectionCatalog ? crossConnectionItems : allItems
+        let source: [QuickSwitcherItem]
+        if scope.usesCrossConnectionCatalog {
+            source = crossConnectionItems
+        } else if scope.usesCrossConnectionQueries {
+            source = crossConnectionQueryItems
+        } else {
+            source = allItems
+        }
         guard let includedKinds = scope.includedKinds else { return source }
         return source.filter { includedKinds.contains($0.kind) }
     }
@@ -440,16 +582,20 @@ internal final class QuickSwitcherViewModel {
 
         guard scope != .all else { return result }
 
+        var remainingCount = max(0, QuickSwitcherRanking.maxResults - recent.count)
         for kind in QuickSwitcherItemKind.displayOrder {
+            guard remainingCount > 0 else { break }
             let kindItems = items
                 .filter { $0.kind == kind && !recentIdSet.contains($0.id) }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             guard !kindItems.isEmpty else { continue }
+            let visibleItems = Array(kindItems.prefix(remainingCount))
             result.append(Group(
                 id: "kind-\(kind.rawValue)",
                 header: kind.sectionTitle,
-                items: Array(kindItems.prefix(QuickSwitcherRanking.maxResults))
+                items: visibleItems
             ))
+            remainingCount -= visibleItems.count
         }
         return result
     }
@@ -463,8 +609,8 @@ internal final class QuickSwitcherViewModel {
         let sortedItems = items
             .filter { !excludedIds.contains($0.id) }
             .sorted { lhs, rhs in
-                let lhsConnection = lhs.objectTarget?.connectionName ?? ""
-                let rhsConnection = rhs.objectTarget?.connectionName ?? ""
+                let lhsConnection = lhs.target?.connectionName ?? ""
+                let rhsConnection = rhs.target?.connectionName ?? ""
                 let connectionOrder = lhsConnection.localizedStandardCompare(rhsConnection)
                 if connectionOrder != .orderedSame { return connectionOrder == .orderedAscending }
                 return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
@@ -475,7 +621,7 @@ internal final class QuickSwitcherViewModel {
         var grouped: [UUID: [QuickSwitcherItem]] = [:]
         var names: [UUID: String] = [:]
         for item in sortedItems {
-            guard let target = item.objectTarget else { continue }
+            guard let target = item.target else { continue }
             if grouped[target.connectionId] == nil {
                 order.append(target.connectionId)
                 names[target.connectionId] = target.connectionName
@@ -563,7 +709,7 @@ internal final class QuickSwitcherViewModel {
         }
     }
 
-    nonisolated private static func objectPath(for target: QuickSwitcherObjectTarget) -> String {
+    nonisolated private static func connectionPath(for target: QuickSwitcherTarget) -> String {
         var components = [target.connectionName]
         if let databaseDisplayName = target.databaseDisplayName ?? target.databaseName,
            !databaseDisplayName.isEmpty {
@@ -575,6 +721,14 @@ internal final class QuickSwitcherViewModel {
             components.append(schemaName)
         }
         return components.joined(separator: " / ")
+    }
+
+    private var crossConnectionQueryVersion: CrossConnectionQueryVersion {
+        CrossConnectionQueryVersion(
+            connectionStatusVersion: services.databaseManager.connectionStatusVersion,
+            connectedConnectionIds: connectedSessions().map(\.id).sorted { $0.uuidString < $1.uuidString },
+            contentRevision: crossConnectionQueryContentRevision
+        )
     }
 
     nonisolated static func databaseDisplayName(

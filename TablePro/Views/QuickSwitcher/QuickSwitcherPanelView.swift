@@ -69,6 +69,15 @@ struct QuickSwitcherPanelView: View {
         .task(id: viewModel.crossConnectionLoadVersion) {
             await viewModel.loadCrossConnectionItems()
         }
+        .task(id: viewModel.crossConnectionQueryLoadVersion) {
+            await viewModel.loadCrossConnectionQueryItems()
+        }
+        .onReceive(AppEvents.shared.queryHistoryDidUpdate) { _ in
+            viewModel.invalidateCrossConnectionQueryItems()
+        }
+        .onReceive(AppEvents.shared.sqlFavoritesDidUpdate) { _ in
+            viewModel.invalidateCrossConnectionQueryItems()
+        }
     }
 }
 
@@ -345,7 +354,7 @@ struct QuickSwitcherPanelContent: View {
     /// the commit is about to open and nothing else on the row carries that.
     private func showsSubtitle(for item: QuickSwitcherItem, isSelected: Bool) -> Bool {
         guard !item.subtitle.isEmpty else { return false }
-        return !isSelected || item.objectTarget != nil
+        return !isSelected || item.target != nil
     }
 
     private func keycap(_ label: String, isEmphasized: Bool) -> some View {
@@ -399,11 +408,14 @@ struct QuickSwitcherPanelContent: View {
             viewModel.selectedItemId = item.id
             onCommit(item, .open)
         }
-        if item.kind == .table || item.kind == .view || item.kind == .systemTable {
+        if item.kind == .table || item.kind == .view || item.kind == .systemTable
+            || item.kind == .savedQuery || item.kind == .queryHistory {
             Button(String(localized: "Open in New Tab")) {
                 viewModel.selectedItemId = item.id
                 onCommit(item, .openInNewWindowTab)
             }
+        }
+        if item.kind == .table || item.kind == .view || item.kind == .systemTable {
             if viewModel.canOpenStructure(item) {
                 Button(String(localized: "Open Structure")) {
                     viewModel.selectedItemId = item.id

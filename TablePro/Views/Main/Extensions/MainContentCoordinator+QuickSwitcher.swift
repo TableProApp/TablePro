@@ -31,12 +31,18 @@ extension MainContentCoordinator {
     }
 
     func handleQuickSwitcherSelection(_ item: QuickSwitcherItem, intent: QuickSwitcherCommitIntent = .open) {
-        if let target = item.objectTarget, target.connectionId != connectionId {
+        if let target = item.target,
+           item.kind == .savedQuery || item.kind == .queryHistory {
+            openQuickSwitcherQuery(item, target: target, intent: intent)
+            return
+        }
+
+        if let target = item.target, target.connectionId != connectionId {
             openQuickSwitcherObject(item, target: target, intent: intent)
             return
         }
 
-        let schemaName = item.objectTarget?.schemaName
+        let schemaName = item.target?.schemaName
         switch item.kind {
         case .table, .systemTable:
             openTableTab(
@@ -69,16 +75,22 @@ extension MainContentCoordinator {
             }
 
         case .savedQuery:
-            loadQueryIntoEditor(item.payload ?? item.name)
+            loadQueryIntoEditor(
+                item.payload ?? item.name,
+                forceNewWindowTab: intent == .openInNewWindowTab
+            )
 
         case .queryHistory:
-            loadQueryIntoEditor(item.payload ?? item.name)
+            loadQueryIntoEditor(
+                item.payload ?? item.name,
+                forceNewWindowTab: intent == .openInNewWindowTab
+            )
         }
     }
 
     private func openQuickSwitcherObject(
         _ item: QuickSwitcherItem,
-        target: QuickSwitcherObjectTarget,
+        target: QuickSwitcherTarget,
         intent: QuickSwitcherCommitIntent
     ) {
         if let coordinator = Self.coordinator(browsing: target) {
@@ -122,11 +134,50 @@ extension MainContentCoordinator {
         }
     }
 
+    private func openQuickSwitcherQuery(
+        _ item: QuickSwitcherItem,
+        target: QuickSwitcherTarget,
+        intent: QuickSwitcherCommitIntent
+    ) {
+        guard let session = services.databaseManager.session(for: target.connectionId),
+              session.isConnected,
+              session.driver != nil else {
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Could Not Open Query"),
+                message: String(localized: "The target connection is no longer open."),
+                window: contentWindow
+            )
+            return
+        }
+
+        let query = item.payload ?? item.name
+        if let coordinator = Self.coordinator(browsing: target) {
+            let disposition = coordinator.loadQueryIntoEditor(
+                query,
+                databaseName: target.databaseName,
+                forceNewWindowTab: intent == .openInNewWindowTab
+            )
+            if disposition == .currentCoordinator,
+               let tabId = coordinator.tabManager.selectedTabId {
+                coordinator.selectTabAndFocusWindow(tabId)
+            }
+            return
+        }
+
+        let payload = EditorTabPayload(
+            connectionId: target.connectionId,
+            tabType: .query,
+            databaseName: target.databaseName,
+            initialQuery: query
+        )
+        openTabInNewWindow(payload)
+    }
+
     /// A window already on the target database can open any of its schemas directly, because
     /// `openTableTab` carries the schema per tab. Matching on the browsed schema too would send
     /// most results down the router instead, which reconnects the connection and retargets that
     /// window's sidebar as a side effect of opening one table.
-    private static func coordinator(browsing target: QuickSwitcherObjectTarget) -> MainContentCoordinator? {
+    private static func coordinator(browsing target: QuickSwitcherTarget) -> MainContentCoordinator? {
         allActiveCoordinators().first { coordinator in
             guard coordinator.connectionId == target.connectionId,
                   let session = coordinator.services.databaseManager.session(for: target.connectionId),

@@ -24338,6 +24338,34 @@
         }
       }
     },
+    "Could Not Open Query" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorgu Açılamadı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể mở truy vấn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开查询"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法開啟查詢"
+          }
+        }
+      }
+    },
     "Could Not Open Sample" : {
       "localizations" : {
         "tr" : {
@@ -90790,6 +90818,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "設定檔「%@」的 SSO 工作階段已過期。要透過瀏覽器登入嗎？"
+          }
+        }
+      }
+    },
+    "The target connection is no longer open." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hedef bağlantı artık açık değil."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối đích không còn mở."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目标连接已不再打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目標連線已不再開啟。"
           }
         }
       }

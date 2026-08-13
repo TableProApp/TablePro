@@ -28,13 +28,21 @@ The opening shortcut is rebindable in **Settings > Keyboard**; see [Keyboard Sho
 
 Five scopes limit what the search covers: **All** (`Cmd+1`), **Tables** (`Cmd+2`, includes views and system tables), **Databases** (`Cmd+3`, includes schemas), **Queries** (`Cmd+4`, saved queries and recent queries), and **Connections** (`Cmd+5`). Round buttons beside the field set the scope; they show while the field is empty and nothing is listed. Once the list fills, the active scope moves to a badge in the bar. Click the badge to return to All. With an empty search in a scope other than All, everything in that scope is listed under section headers. The database list follows the sidebar's database filter.
 
-Saved queries come from your [favorites](/features/favorites) and also match on their keyword. Recent queries are the last 50 entries from [query history](/features/query-history) for the connection.
+Saved queries come from your [favorites](/features/favorites) and also match on their keyword. In the **All** scope, recent queries are the last 50 entries from [query history](/features/query-history) for the current connection.
 
 ## Search Across Connections
+
+### Objects
 
 The **Connections** scope searches tables, views, and system tables in every connected window. With an empty search the list is grouped under each connection's name. Once you type, results are ranked across all connections in one list, and every row shows the connection, database, and schema it belongs to. Search matches both the object name and that path, so typing a connection name limits the results to that connection.
 
 TablePro loads this catalog only when you open the Connections scope. It searches the database or schema each connection is currently browsing. Opening a result in another connection brings that connection's window forward and opens the table there.
+
+### Queries
+
+The **Queries** scope searches saved queries and the 200 most recent query-history entries from every connected window. Each row shows its connection and database. Recent queries also show their execution time. Global saved queries open in the connection where you opened Quick Switcher.
+
+Opening a query brings its connection forward and loads the SQL without running it. Query-history entries keep their recorded database context. If no open window uses that database, TablePro opens a new native window tab instead of loading the SQL into a tab for another database. `Option+Return` always opens a new native window tab.
 
 ## Ranking
 
@@ -57,7 +65,7 @@ What opening does depends on the item: tables and views open a table tab, databa
 | Action | Applies to |
 |--------|------------|
 | Open | All items |
-| Open in New Tab | Tables, views, system tables |
+| Open in New Tab | Tables, views, system tables, saved queries, recent queries |
 | Open Structure | Tables, views, system tables |
 | Copy Name | All items |
 | Copy Query | Saved and recent queries |

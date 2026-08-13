@@ -55,6 +55,43 @@ final class QuickSwitcherCrossConnectionUITests: XCTestCase {
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
     }
 
+    func testQueriesScopeSearchesHistoryAndOpensANewWindowTab() throws {
+        let app = launchWithSampleDatabase()
+        XCTAssertTrue(editorTextView(in: app).waitForExistence(timeout: 15))
+
+        app.typeKey("t", modifierFlags: .command)
+        let queryEditor = editorTextView(in: app)
+        XCTAssertTrue(queryEditor.waitForExistence(timeout: 10))
+        let query = "SELECT 42 AS cross_connection_probe;"
+        queryEditor.click()
+        app.typeText(query)
+        app.typeKey(.return, modifierFlags: .command)
+        XCTAssertTrue(app.windows.firstMatch.tables.firstMatch.waitForExistence(timeout: 15))
+        queryEditor.click()
+        queryEditor.typeKey("a", modifierFlags: .command)
+        queryEditor.typeText("SELECT 0;")
+
+        app.typeKey("o", modifierFlags: [.command, .shift])
+        let searchField = app.textFields["quick-switcher-search-field"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 10))
+        app.typeKey("4", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["Queries"].waitForExistence(timeout: 5))
+
+        searchField.typeText("cross_connection_probe")
+        let historyResult = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "cross_connection_probe")
+        ).firstMatch
+        XCTAssertTrue(historyResult.waitForExistence(timeout: 10))
+
+        searchField.typeKey(.return, modifierFlags: .option)
+        XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
+        let openedEditor = app.textViews.matching(identifier: "sql-editor-textview")
+            .matching(NSPredicate(format: "value == %@", query))
+            .firstMatch
+        XCTAssertTrue(openedEditor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editorTextView(in: app).value as? String, query)
+    }
+
     private func launchWithSampleDatabase() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"

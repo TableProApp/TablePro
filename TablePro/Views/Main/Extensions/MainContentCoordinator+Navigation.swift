@@ -12,7 +12,7 @@ import TableProPluginKit
 
 private let navigationLogger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator+Navigation")
 
-internal enum TableTabOpenDisposition: Equatable {
+internal enum WindowTabOpenDisposition: Equatable {
     case currentCoordinator
     case focusedElsewhere
 }
@@ -28,7 +28,7 @@ extension MainContentCoordinator {
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false,
         forceNewWindowTab: Bool = false
-    ) -> TableTabOpenDisposition? {
+    ) -> WindowTabOpenDisposition? {
         openTableTab(
             table.name,
             schema: schema ?? table.schema,
@@ -49,7 +49,7 @@ extension MainContentCoordinator {
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false,
         forceNewWindowTab: Bool = false
-    ) -> TableTabOpenDisposition? {
+    ) -> WindowTabOpenDisposition? {
         let navigationModel = PluginMetadataRegistry.shared.snapshot(
             forTypeId: connection.type.pluginTypeId
         )?.navigationModel ?? .standard
@@ -198,7 +198,7 @@ extension MainContentCoordinator {
         showStructure: Bool,
         activateGridFocus: Bool,
         includeSiblings: Bool
-    ) -> TableTabOpenDisposition? {
+    ) -> WindowTabOpenDisposition? {
         func matches(_ tab: QueryTab) -> Bool {
             tab.tabType == .table
                 && tab.tableContext.tableName == tableName
