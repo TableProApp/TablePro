@@ -29,7 +29,7 @@ final class SchemaService {
         generations[connectionId, default: 0] &+= 1
     }
 
-    @ObservationIgnored private let loadDedup = OnceTask<UUID, [TableInfo]>()
+    @ObservationIgnored private let loadDedup = OnceTask<LoadKey, [TableInfo]>()
     @ObservationIgnored private let procedureDedup = OnceTask<UUID, [RoutineInfo]>()
     @ObservationIgnored private let functionDedup = OnceTask<UUID, [RoutineInfo]>()
     @ObservationIgnored private let schemasDedup = OnceTask<UUID, [String]>()
@@ -39,8 +39,21 @@ final class SchemaService {
         let connectionId: UUID
         let schema: String
     }
+
+    /// Two windows browsing the same scope share one fetch; two windows browsing different
+    /// scopes must not, or the second stamps the first's tables with its own scope.
+    struct LoadKey: Hashable, Sendable {
+        let connectionId: UUID
+        let scope: DatabaseScope?
+    }
+
+    private struct RefreshWaiter {
+        let id: UUID
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
     @ObservationIgnored private var loadGenerations: [UUID: Int] = [:]
-    @ObservationIgnored private var refreshWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+    @ObservationIgnored private var refreshWaiters: [UUID: [RefreshWaiter]] = [:]
     @ObservationIgnored private var nextLoadGeneration = 0
     @ObservationIgnored private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
 
@@ -57,12 +70,20 @@ final class SchemaService {
     }
 
     func waitForRefresh(connectionId: UUID) async {
-        while refreshingConnections.contains(connectionId) {
-            await withCheckedContinuation { continuation in
-                if refreshingConnections.contains(connectionId) {
-                    refreshWaiters[connectionId, default: []].append(continuation)
-                } else {
-                    continuation.resume()
+        while refreshingConnections.contains(connectionId), !Task.isCancelled {
+            let waiterId = UUID()
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { continuation in
+                    guard refreshingConnections.contains(connectionId), !Task.isCancelled else {
+                        continuation.resume()
+                        return
+                    }
+                    refreshWaiters[connectionId, default: []]
+                        .append(RefreshWaiter(id: waiterId, continuation: continuation))
+                }
+            } onCancel: {
+                Task { @MainActor [weak self] in
+                    self?.resumeRefreshWaiter(connectionId, id: waiterId)
                 }
             }
         }
@@ -238,15 +259,11 @@ final class SchemaService {
     }
 
     private func cancelInFlightLoads(connectionId: UUID) async {
-        await loadDedup.cancel(key: connectionId)
+        await loadDedup.cancel { $0.connectionId == connectionId }
         await procedureDedup.cancel(key: connectionId)
         await functionDedup.cancel(key: connectionId)
         await schemasDedup.cancel(key: connectionId)
-        if let schemas = perSchemaStates[connectionId]?.keys {
-            for schema in schemas {
-                await perSchemaDedup.cancel(key: SchemaKey(connectionId: connectionId, schema: schema))
-            }
-        }
+        await perSchemaDedup.cancel { $0.connectionId == connectionId }
     }
 
     func invalidate(connectionId: UUID) async {
@@ -317,7 +334,9 @@ final class SchemaService {
             return
         }
 
-        async let tablesTask: [TableInfo] = loadDedup.execute(key: connectionId) {
+        async let tablesTask: [TableInfo] = loadDedup.execute(
+            key: LoadKey(connectionId: connectionId, scope: scope)
+        ) {
             try await driver.fetchTables()
         }
         async let proceduresTask: [RoutineInfo] = Self.fetchRoutinesSafely(
@@ -451,8 +470,16 @@ final class SchemaService {
     private func resumeRefreshWaiters(_ connectionId: UUID) {
         let waiters = refreshWaiters.removeValue(forKey: connectionId) ?? []
         for waiter in waiters {
-            waiter.resume()
+            waiter.continuation.resume()
         }
+    }
+
+    private func resumeRefreshWaiter(_ connectionId: UUID, id: UUID) {
+        guard var waiters = refreshWaiters[connectionId],
+              let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        let waiter = waiters.remove(at: index)
+        refreshWaiters[connectionId] = waiters.isEmpty ? nil : waiters
+        waiter.continuation.resume()
     }
 
     private func beginLoadGeneration(for connectionId: UUID) -> Int {

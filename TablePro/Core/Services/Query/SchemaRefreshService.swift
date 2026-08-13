@@ -78,6 +78,68 @@ final class SchemaRefreshService {
         }
     }
 
+    /// Brings every listed connection's catalog up to the scope that connection is browsing.
+    /// Connections are independent, so they load concurrently rather than one after another.
+    /// Returns the connections whose catalog ended up matching their browse scope.
+    func loadBrowseCatalogs(connectionIds: [UUID]) async -> Set<UUID> {
+        await withTaskGroup(of: (UUID, Bool).self) { group in
+            for connectionId in connectionIds {
+                group.addTask { @MainActor in
+                    (connectionId, await self.loadBrowseCatalog(connectionId: connectionId))
+                }
+            }
+            var loaded: Set<UUID> = []
+            for await (connectionId, didLoad) in group where didLoad {
+                loaded.insert(connectionId)
+            }
+            return loaded
+        }
+    }
+
+    private func loadBrowseCatalog(connectionId: UUID) async -> Bool {
+        await waitForRefresh(connectionId: connectionId)
+        await schemaService.waitForRefresh(connectionId: connectionId)
+        guard !Task.isCancelled,
+              let session = databaseManager?.session(for: connectionId),
+              session.isConnected,
+              session.driver != nil,
+              let scope = metadataDriverProvider.browseScope(for: connectionId) else { return false }
+
+        if schemaService.loadedScope(for: connectionId) != scope {
+            await refresh(connection: session.connection)
+            await waitForRefresh(connectionId: connectionId)
+            await schemaService.waitForRefresh(connectionId: connectionId)
+        }
+
+        guard !Task.isCancelled, schemaService.loadedScope(for: connectionId) == scope else { return false }
+        guard pluginManager.databaseGroupingStrategy(for: session.connection.type) == .hierarchicalSchema else {
+            return true
+        }
+        return await loadBrowsedSchemaTables(connectionId: connectionId, scope: scope)
+    }
+
+    /// A hierarchicalSchema plugin loads objects one schema at a time, so a loaded scope on its
+    /// own means the schema list arrived, not that any schema holds objects. Without this, a
+    /// connection whose browsed schema was never expanded reports a full catalog of nothing.
+    private func loadBrowsedSchemaTables(connectionId: UUID, scope: DatabaseScope) async -> Bool {
+        guard let schema = scope.schema else { return false }
+        if schemaService.hasLoadedContent(for: connectionId, schema: schema) { return true }
+        do {
+            try await metadataDriverProvider.withMetadataDriver(
+                scope: scope,
+                workload: .bulk
+            ) { [schemaService] driver in
+                await schemaService.loadSchemaTables(connectionId: connectionId, schema: schema, driver: driver)
+            }
+        } catch {
+            Self.logger.warning(
+                "[schema] browsed schema load failed connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+            return false
+        }
+        return schemaService.hasLoadedContent(for: connectionId, schema: schema)
+    }
+
     /// Push the loaded table list into the autocomplete provider.
     ///
     /// The provider caches the driver it is handed and fetches columns from it later, so it

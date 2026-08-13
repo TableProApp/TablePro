@@ -150,6 +150,54 @@ struct SchemaServiceRefreshTests {
         #expect(!service.isRefreshing(connectionId: connectionId))
     }
 
+    @Test("A load for a new scope does not adopt the in-flight load for the old scope")
+    func loadsForDifferentScopesDoNotJoin() async {
+        let connectionId = UUID()
+        let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
+        let driver = RefreshMockDriver(connection: connection)
+        let service = SchemaService()
+        let primary = DatabaseScope(connectionId: connectionId, database: "primary", schema: "public")
+        let analytics = DatabaseScope(connectionId: connectionId, database: "analytics", schema: "reporting")
+
+        let suspended = AsyncStream<Void>.makeStream()
+        driver.onFetchTablesSuspended = { suspended.continuation.yield() }
+        driver.pausesFetchTables = true
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "legacy_orders")]
+
+        let first = Task {
+            await service.reload(
+                connectionId: connectionId,
+                driver: driver,
+                connection: connection,
+                scope: primary
+            )
+        }
+        var iterator = suspended.stream.makeAsyncIterator()
+        await iterator.next()
+
+        driver.pausesFetchTables = false
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "events")]
+        let second = Task {
+            await service.reload(
+                connectionId: connectionId,
+                driver: driver,
+                connection: connection,
+                scope: analytics
+            )
+        }
+        await Task.yield()
+        driver.resumeFetchTables()
+        await first.value
+        await second.value
+
+        #expect(driver.tablesCallCount == 2, "Each browse scope must run its own fetch")
+        #expect(service.loadedScope(for: connectionId) == analytics)
+        #expect(
+            service.tables(for: connectionId).map(\.name) == ["events"],
+            "The new scope must not be stamped onto the previous scope's tables"
+        )
+    }
+
     @Test("refresh waiters receive tables for the requested scope")
     func refreshWaitersReceiveRequestedScope() async {
         let connectionId = UUID()
