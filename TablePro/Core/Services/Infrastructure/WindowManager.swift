@@ -60,9 +60,21 @@ internal final class WindowManager {
     }
 
     /// The window already hosting this connection wins, so opening a table for it never lands in
-    /// a different window that merely happened to be in front.
+    /// a different window that merely happened to be in front. The choice itself is
+    /// `WindowHostSelection`, which is pure and tested.
     private func host(for connectionId: UUID) -> MainSplitViewController? {
-        hosts().first { $0.workspaces.contains(connectionId) } ?? frontmostHost()
+        let candidates = hosts()
+        guard !candidates.isEmpty else { return nil }
+        let frontmost = frontmostHost()
+        let frontmostIndex = frontmost.flatMap { front in
+            candidates.firstIndex { $0 === front }
+        }
+        guard let index = WindowHostSelection.hostIndex(
+            forConnection: connectionId,
+            hostedConnections: candidates.map(\.workspaces.connectionIds),
+            frontmostIndex: frontmostIndex
+        ) else { return nil }
+        return candidates.indices.contains(index) ? candidates[index] : nil
     }
 
     private func openInNewWindow(payload: EditorTabPayload, activate: Bool, autoConnect: Bool) {
