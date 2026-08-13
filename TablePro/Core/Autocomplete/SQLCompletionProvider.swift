@@ -240,6 +240,7 @@ final class SQLCompletionProvider {
                 }
             }
             items += SQLKeywords.operatorItems()
+            items += dialectOperatorItems()
             items += filterKeywords([
                 "AND", "OR", "NOT", "IS", "NULL", "TRUE", "FALSE"
             ])
@@ -258,6 +259,7 @@ final class SQLCompletionProvider {
             // HP-8: Columns, operators, logical keywords + clause transitions
             items += await columnItems(for: context.tableReferences)
             items += SQLKeywords.operatorItems()
+            items += dialectOperatorItems()
             items += filterKeywords([
                 "AND", "OR", "NOT", "IN", "LIKE", "ILIKE", "BETWEEN", "IS",
                 "NULL", "NOT NULL", "TRUE", "FALSE", "EXISTS", "NOT EXISTS",
@@ -334,6 +336,7 @@ final class SQLCompletionProvider {
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["WHEN", "THEN", "ELSE", "END", "AND", "OR", "IS", "NULL", "TRUE", "FALSE"])
             items += SQLKeywords.operatorItems()
+            items += dialectOperatorItems()
             items += functionItems()
 
         case .inList:
@@ -429,6 +432,9 @@ final class SQLCompletionProvider {
             items = filterKeywords(["SELECT", "AS"])
             items += await schemaProvider?.tableCompletionItems() ?? []
 
+        case .castTarget:
+            items = castTargetCompletionItems()
+
         case .unknown:
             items = statementStartCompletionItems()
             items += await schemaProvider?.tableCompletionItems() ?? []
@@ -452,6 +458,33 @@ final class SQLCompletionProvider {
             .filter { $0.key.lowercased().hasPrefix(lowerPrefix) }
             .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
             .map { SQLCompletionItem.favorite(keyword: $0.key, name: $0.value.name, query: $0.value.query) }
+    }
+
+    /// Operators the connected dialect declares, with their documented meaning.
+    private func dialectOperatorItems() -> [SQLCompletionItem] {
+        guard let descriptor = cachedDialect else { return [] }
+        return descriptor.operators.map { operatorDescriptor in
+            SQLCompletionItem(
+                label: operatorDescriptor.symbol,
+                kind: .operator,
+                insertText: operatorDescriptor.symbol,
+                detail: operatorDescriptor.appliesToTypes.isEmpty
+                    ? nil
+                    : operatorDescriptor.appliesToTypes.joined(separator: ", "),
+                documentation: operatorDescriptor.summary
+            )
+        }
+    }
+
+    /// Type names offered directly after a `::` cast operator, in the spelling users write.
+    private func castTargetCompletionItems() -> [SQLCompletionItem] {
+        guard let descriptor = cachedDialect, !descriptor.dataTypes.isEmpty else { return [] }
+        return descriptor.dataTypes.sorted().map { typeName in
+            let lowercased = typeName.lowercased()
+            var item = SQLCompletionItem(label: lowercased, kind: .keyword, insertText: lowercased)
+            item.sortPriority = 300
+            return item
+        }
     }
 
     /// SQL data type keywords (database-aware), with a slight priority boost

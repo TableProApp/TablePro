@@ -15,10 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quick Switcher can search tables and views across every open connection.
 - SSL settings on mobile for MySQL, PostgreSQL and Redis: a mode picker plus CA, client certificate and client key. Import a PEM file, paste one, or use a PKCS#12 file. (#2083)
 - Legacy UUID Encoding on a MongoDB connection, so binary UUIDs written by the Java, C# or Python drivers read as UUIDs instead of hex. Filters, edits and MQL exports write the same bytes back. (#2086)
+- Autocomplete for MongoDB queries. Typing `db.` lists collections, `db.users.` lists the driver methods, and inside a query you get field names plus the operators that are valid in that spot: query operators in a filter, update operators in an update, stage names in a pipeline, and expression operators inside a stage. (#2095)
+- PostgreSQL autocomplete now knows the operators, including `::`, the JSON ones (`->`, `->>`, `#>`, `@>`, `?`, `?|`, `?&`), array and range containment, regex matching and full-text search. Each one shows what it does and which types it works on. Typing `::` offers the type names. (#2095)
+- PostgreSQL autocomplete covers about 400 built-in functions and the multi-word syntax people actually type, such as `ON CONFLICT DO UPDATE SET`, `GENERATED ALWAYS AS IDENTITY` and window frame clauses. (#2095)
 
 ### Added
 
 - The MongoDB editor accepts mongosh value constructors in filters and pipelines, so a value copied from the grid pastes straight into a query. Covers `ObjectId`, `ISODate`, `Date`, the `Number*` family, `Timestamp`, `BinData`, `HexData`, `MinKey`, `MaxKey` and the UUID names. (#2086)
+
+### Fixed
+
+- A chained method on a MongoDB aggregation no longer goes missing. `db.orders.aggregate([...]).limit(10)` used to drop the limit and return everything the pipeline matched. Chaining a method that a query does not support now reports an error instead of ignoring it. (#2095)
 
 ### Changed
 

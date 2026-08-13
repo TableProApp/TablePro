@@ -48,6 +48,7 @@ enum SQLClauseType {
     case dropObject       // After DROP TABLE/INDEX/VIEW
     case createIndex      // After CREATE INDEX
     case createView       // After CREATE VIEW
+    case castTarget       // After a PostgreSQL :: cast operator
     case unknown          // Unknown or start of query
 }
 
@@ -352,11 +353,13 @@ final class SQLContextAnalyzer {
             currentFunction: currentFunction
         )
 
+        let isCastTarget = endsWithCastOperator(nsBeforeCursor, before: prefixStart)
+
         return SQLContext(
-            clauseType: resolution.clause,
+            clauseType: isCastTarget ? .castTarget : resolution.clause,
             prefix: prefix,
             prefixRange: (statementOffset + prefixStart)..<safePosition,
-            dotPrefix: dotPrefix,
+            dotPrefix: isCastTarget ? nil : dotPrefix,
             tableReferences: tableReferences,
             isInsideString: false,
             isInsideComment: false,
@@ -676,6 +679,13 @@ final class SQLContextAnalyzer {
         }
 
         return false
+    }
+
+    /// True when the token being typed directly follows a PostgreSQL `::` cast operator.
+    private func endsWithCastOperator(_ text: NSString, before prefixStart: Int) -> Bool {
+        guard prefixStart >= 2, prefixStart <= text.length else { return false }
+        let colon = UInt16(UnicodeScalar(":").value)
+        return text.character(at: prefixStart - 1) == colon && text.character(at: prefixStart - 2) == colon
     }
 
     /// Extract the current word prefix and any dot prefix (table.column).

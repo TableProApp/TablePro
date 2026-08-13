@@ -1,5 +1,5 @@
 //
-//  SQLCompletionAdapterLifecycleTests.swift
+//  QueryCompletionAdapterLifecycleTests.swift
 //  TableProTests
 //
 //  Guards the invariants behind the autocomplete delegate-lifetime fix (#1731):
@@ -15,8 +15,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("SQL Completion Adapter Lifecycle")
-struct SQLCompletionAdapterLifecycleTests {
+@Suite("Query Completion Adapter Lifecycle")
+struct QueryCompletionAdapterLifecycleTests {
     @Test("engine returns keyword completions with no schema provider")
     func keywordsAvailableWithoutSchema() async {
         let engine = CompletionEngine(schemaProvider: nil, databaseType: .postgresql)
@@ -34,7 +34,7 @@ struct SQLCompletionAdapterLifecycleTests {
     @MainActor
     @Test("configure across nil and non-nil schema keeps the adapter functional")
     func configureAcrossSchemaTransitionsKeepsAdapterUsable() {
-        let adapter = SQLCompletionAdapter(schemaProvider: nil, databaseType: nil)
+        let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: nil)
         #expect(!adapter.completionTriggerCharacters().isEmpty)
 
         adapter.configure(schemaProvider: nil, databaseType: .postgresql)

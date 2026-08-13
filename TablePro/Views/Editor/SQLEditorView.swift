@@ -33,7 +33,7 @@ struct SQLEditorView: View {
     var onSaveAsFavorite: ((String) -> Void)?
 
     @State private var editorState = SourceEditorState()
-    @State private var completionAdapter = SQLCompletionAdapter(schemaProvider: nil, databaseType: nil)
+    @State private var completionAdapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: nil)
     @State private var coordinator = SQLEditorCoordinator()
     @State private var editorConfiguration = makeConfiguration()
     @State private var favoritesCancellables: Set<AnyCancellable> = []
