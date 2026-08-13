@@ -19,7 +19,8 @@ Press `Cmd+Shift+O` (or **Query** > **Quick Switcher**) in a connection window t
 | Open selected item | `Return` (double-click also works) |
 | Open in a new window tab | `Option+Return` |
 | Switch scope | `Cmd+1` to `Cmd+5` |
-| Dismiss | `Escape`, `Cmd+Shift+O` again, or click outside |
+| Clear the search text | `Escape` |
+| Dismiss | `Escape` on an empty field, `Cmd+Shift+O` again, or click outside |
 
 The opening shortcut is rebindable in **Settings > Keyboard**; see [Keyboard Shortcuts](/features/keyboard-shortcuts).
 
@@ -31,7 +32,7 @@ Saved queries come from your [favorites](/features/favorites) and also match on 
 
 ## Search Across Connections
 
-The **Connections** scope searches tables, views, and system tables in every connected window. Results are grouped by connection and show the connection, database, and schema in their path. Search matches both the object name and that path, so typing a connection name limits the results to that connection.
+The **Connections** scope searches tables, views, and system tables in every connected window. With an empty search the list is grouped under each connection's name. Once you type, results are ranked across all connections in one list, and every row shows the connection, database, and schema it belongs to. Search matches both the object name and that path, so typing a connection name limits the results to that connection.
 
 TablePro loads this catalog only when you open the Connections scope. It searches the database or schema each connection is currently browsing. Opening a result in another connection brings that connection's window forward and opens the table there.
 

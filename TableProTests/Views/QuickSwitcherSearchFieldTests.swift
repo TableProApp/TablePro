@@ -32,9 +32,34 @@ struct QuickSwitcherSearchFieldTests {
         #expect(submitCount == selectors.count)
     }
 
-    @Test("Escape passes through to the panel")
-    func escapePassesThrough() {
+    @Test("Escape clears a typed query instead of dismissing")
+    func escapeClearsTypedQuery() {
         var text = "invoice"
+        let field = QuickSwitcherSearchField(
+            text: Binding(get: { text }, set: { text = $0 }),
+            placeholder: "",
+            onMoveUp: {},
+            onMoveDown: {},
+            onSubmit: {}
+        )
+        let coordinator = field.makeCoordinator()
+        let control = NSTextField()
+        control.stringValue = "invoice"
+
+        let handled = coordinator.control(
+            control,
+            textView: NSTextView(),
+            doCommandBy: #selector(NSResponder.cancelOperation(_:))
+        )
+
+        #expect(handled, "The field owns the cancel while it has a query to cancel")
+        #expect(text.isEmpty)
+        #expect(control.stringValue.isEmpty)
+    }
+
+    @Test("Escape on an empty field passes through to the panel")
+    func escapePassesThroughWhenEmpty() {
+        var text = ""
         let field = QuickSwitcherSearchField(
             text: Binding(get: { text }, set: { text = $0 }),
             placeholder: "",
@@ -50,7 +75,7 @@ struct QuickSwitcherSearchFieldTests {
             doCommandBy: #selector(NSResponder.cancelOperation(_:))
         )
 
-        #expect(!handled)
-        #expect(text == "invoice")
+        #expect(!handled, "With nothing to cancel the panel must get the cancel and close")
+        #expect(text.isEmpty)
     }
 }

@@ -49,6 +49,9 @@ final class QuickSwitcherCrossConnectionUITests: XCTestCase {
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
         searchField.typeText("dismiss-me")
         searchField.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5), "The first Escape clears the query, it does not dismiss")
+        XCTAssertEqual(searchField.value as? String, "")
+        searchField.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
     }
 

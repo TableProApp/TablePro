@@ -68,6 +68,11 @@ internal struct QuickSwitcherSearchField: NSViewRepresentable {
                  #selector(NSResponder.insertLineBreak(_:)):
                 parent.onSubmit()
                 return true
+            case #selector(NSResponder.cancelOperation(_:)):
+                guard !control.stringValue.isEmpty else { return false }
+                control.stringValue = ""
+                parent.text = ""
+                return true
             default:
                 return false
             }
