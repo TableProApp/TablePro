@@ -85,6 +85,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     private var navigationSidebar: NavigationSidebarViewController!
     private var detailHosting: NSHostingController<AnyView>!
+    private var tabStripHosting: NSHostingController<AnyView>?
+    private var tabStripAccessory: NSTitlebarAccessoryViewController?
     private var inspectorHosting: NSHostingController<AnyView>!
 
     private var chromeState: ChromeState = .unapplied
@@ -536,6 +538,61 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
         detailHosting.rootView = AnyView(buildDetailView())
         inspectorHosting.rootView = AnyView(buildInspectorView())
+        refreshTabStripAccessory()
+    }
+
+    /// The tab strip belongs in the titlebar, where every document app puts its tabs, not stacked
+    /// inside the content area. The accessory is per-window while the strip is per-workspace, so
+    /// switching workspace has to repoint it rather than build a second one.
+    private func installTabStripAccessoryIfNeeded() {
+        guard tabStripAccessory == nil, let window = view.window else { return }
+        let hosting = NSHostingController<AnyView>(rootView: AnyView(Color.clear))
+        hosting.sizingOptions = []
+        hosting.view.frame = NSRect(
+            x: 0,
+            y: 0,
+            width: window.frame.width,
+            height: EditorTabStripLayout.totalHeight
+        )
+
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.addChild(hosting)
+        accessory.view = hosting.view
+        accessory.layoutAttribute = .bottom
+        /// Defaults to true, and means "use the standard system sizing over the view's frame",
+        /// which is the opposite of what a fixed-height strip wants.
+        accessory.automaticallyAdjustsSize = false
+        accessory.fullScreenMinHeight = 0
+        accessory.isHidden = true
+        window.addTitlebarAccessoryViewController(accessory)
+
+        tabStripHosting = hosting
+        tabStripAccessory = accessory
+        refreshTabStripAccessory()
+    }
+
+    private func refreshTabStripAccessory() {
+        installTabStripAccessoryIfNeeded()
+        guard let accessory = tabStripAccessory, let hosting = tabStripHosting else { return }
+        guard currentPane == .content, let sessionState, sessionState.tabManager.tabs.count > 1 else {
+            accessory.isHidden = true
+            hosting.rootView = AnyView(Color.clear)
+            recomputeWindowMinSize()
+            return
+        }
+        hosting.rootView = AnyView(buildTabStripView(sessionState: sessionState))
+        accessory.isHidden = false
+        recomputeWindowMinSize()
+    }
+
+    private func buildTabStripView(sessionState: SessionStateFactory.SessionState) -> some View {
+        EditorTabStrip(
+            tabManager: sessionState.tabManager,
+            onClose: { [weak self] id in self?.commandActions?.closeTab(id: id) },
+            onCloseOthers: { [weak self] id in self?.commandActions?.closeOtherTabs(anchoredOn: id) },
+            onCloseAll: { [weak self] in self?.commandActions?.closeAllTabs() },
+            onNewTab: { [weak self] in self?.commandActions?.newTab() }
+        )
     }
 
     /// The command surface every menu action forwards into. Menu items reach this
@@ -900,7 +957,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             sidebarMinimum: sidebarSplitItem?.minimumThickness ?? Self.sidebarMinThickness,
             dividerThickness: splitView.dividerThickness
         )
-        let newMinSize = NSSize(width: resolvedWidth, height: Self.baseWindowMinHeight)
+        let accessoryHeight = (tabStripAccessory?.isHidden ?? true) ? 0 : EditorTabStripLayout.totalHeight
+        let newMinSize = NSSize(
+            width: resolvedWidth,
+            height: Self.baseWindowMinHeight + accessoryHeight
+        )
 
         guard window.minSize != newMinSize else { return }
         window.minSize = newMinSize

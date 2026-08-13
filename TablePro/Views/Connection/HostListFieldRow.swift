@@ -55,20 +55,14 @@ struct HostListFieldRow: View {
                 VStack(spacing: 0) {
                     Divider()
                     HStack(spacing: 0) {
-                        Button { addEntry() } label: {
-                            Image(systemName: "plus")
-                                .frame(width: 24, height: 20)
-                        }
-                        .buttonStyle(.borderless)
-
-                        Divider().frame(height: 14)
-
-                        Button { removeSelected() } label: {
-                            Image(systemName: "minus")
-                                .frame(width: 24, height: 20)
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(selectedId.isEmpty || entries.count <= 1)
+                        AddRemoveControlGroup(
+                            addLabel: String(localized: "Add Host"),
+                            removeLabel: String(localized: "Remove Host"),
+                            canRemove: !selectedId.isEmpty && entries.count > 1,
+                            onAdd: { addEntry() },
+                            onRemove: { removeSelected() }
+                        )
+                        .controlSize(.small)
 
                         Spacer()
                     }
@@ -87,7 +81,9 @@ struct HostListFieldRow: View {
     private var listHeight: CGFloat {
         let rowHeight: CGFloat = 24
         let rows = CGFloat(max(entries.count, 1))
-        let buttonBarHeight: CGFloat = 28
+        /// The control group brings its own intrinsic height, which is taller than the two
+        /// hand-sized 20pt buttons this row used to draw.
+        let buttonBarHeight: CGFloat = 32
         return min(rows * rowHeight + buttonBarHeight + 8, 140)
     }
 

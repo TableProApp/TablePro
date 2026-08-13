@@ -157,10 +157,9 @@ struct ConnectionExportOptionsSheet: View {
     }
 
     private var footer: some View {
-        HStack {
+        DialogFooter {
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            Spacer()
             Button("Export...") { performExport() }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)

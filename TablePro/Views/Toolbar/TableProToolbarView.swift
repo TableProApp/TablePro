@@ -98,7 +98,7 @@ struct ToolbarPrincipalContent: View {
     private func tagBadge(_ tag: ConnectionTag) -> some View {
         Text(tag.name.uppercased())
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.legibleForeground(on: tag.color.color))
             .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)

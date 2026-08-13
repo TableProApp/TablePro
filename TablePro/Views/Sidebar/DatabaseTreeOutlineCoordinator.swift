@@ -652,6 +652,15 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         (item as? DatabaseTreeNode)?.tableRef != nil
     }
 
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        typeSelectStringFor tableColumn: NSTableColumn?,
+        item: Any
+    ) -> String? {
+        guard let node = item as? DatabaseTreeNode else { return nil }
+        return DatabaseTreeTypeSelect.matchString(for: node.kind)
+    }
+
     func outlineViewItemWillExpand(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode else { return }
         triggerLoad(for: node)
@@ -680,12 +689,8 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
 
     private var isKeyboardDrivenSelection: Bool {
         guard let outlineView, outlineView.window?.firstResponder === outlineView else { return false }
-        switch NSApp.currentEvent?.type {
-        case .keyDown, .keyUp:
-            return true
-        default:
-            return false
-        }
+        guard let event = NSApp.currentEvent else { return false }
+        return DatabaseTreeTypeSelect.isArrowNavigation(type: event.type, keyCode: event.keyCode)
     }
 
     private func scheduleSingleClickOpen(_ ref: DatabaseTreeTableRef) {

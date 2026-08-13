@@ -165,6 +165,10 @@ final class DataGridCellView: NSView {
         }
     }
 
+    override func accessibilityValue() -> Any? {
+        rawValue ?? String(localized: "NULL")
+    }
+
     override func accessibilityLabel() -> String? {
         let value = rawValue ?? String(localized: "NULL")
         return String(

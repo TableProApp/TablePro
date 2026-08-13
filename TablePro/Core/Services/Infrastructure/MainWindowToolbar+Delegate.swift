@@ -37,7 +37,7 @@ extension MainWindowToolbar {
         case Self.principal:
             let item = hostingItem(
                 id: itemIdentifier,
-                label: "",
+                label: String(localized: "Status"),
                 symbol: nil,
                 action: nil,
                 keyEquivalent: "",
@@ -50,46 +50,43 @@ extension MainWindowToolbar {
                 )
             )
             item.visibilityPriority = .high
+            item.toolTip = String(localized: "Connection status")
             return item
         case Self.quickSwitcher:
-            return hostingItem(
+            return menuOnlyItem(
                 id: itemIdentifier,
                 label: String(localized: "Quick Switcher"),
                 symbol: "magnifyingglass",
                 action: #selector(performOpenQuickSwitcher(_:)),
                 keyEquivalent: "o",
-                modifiers: [.command, .shift],
-                content: QuickSwitcherToolbarButton(coordinator: coordinator)
+                modifiers: [.command, .shift]
             )
         case Self.newTab:
-            return hostingItem(
+            return menuOnlyItem(
                 id: itemIdentifier,
                 label: String(localized: "New Tab"),
                 symbol: "plus.rectangle",
                 action: #selector(performNewTab(_:)),
                 keyEquivalent: "t",
-                modifiers: .command,
-                content: NewTabToolbarButton(coordinator: coordinator)
+                modifiers: .command
             )
         case Self.previewSQL:
-            return hostingItem(
+            return menuOnlyItem(
                 id: itemIdentifier,
                 label: String(localized: "Preview"),
                 symbol: "eye",
                 action: #selector(performPreviewSQL(_:)),
                 keyEquivalent: "p",
-                modifiers: [.command, .shift],
-                content: PreviewSQLToolbarButton(coordinator: coordinator)
+                modifiers: [.command, .shift]
             )
         case Self.results:
-            return hostingItem(
+            return menuOnlyItem(
                 id: itemIdentifier,
                 label: String(localized: "Results"),
                 symbol: "rectangle.bottomhalf.inset.filled",
                 action: #selector(performToggleResults(_:)),
                 keyEquivalent: "r",
-                modifiers: [.command, .option],
-                content: ResultsToolbarButton(coordinator: coordinator)
+                modifiers: [.command, .option]
             )
         case Self.inspector:
             let item = NSToolbarItem(itemIdentifier: Self.inspector)
@@ -97,44 +94,34 @@ extension MainWindowToolbar {
             item.paletteLabel = String(localized: "Inspector")
             return item
         case Self.dashboard:
-            return hostingItem(
+            return menuOnlyItem(
                 id: itemIdentifier,
                 label: String(localized: "Dashboard"),
                 symbol: "gauge.with.dots.needle.33percent",
                 action: #selector(performShowDashboard(_:)),
                 keyEquivalent: "",
-                modifiers: [],
-                content: DashboardToolbarButton(coordinator: coordinator)
+                modifiers: []
             )
         case Self.history:
-            return hostingItem(
+            return menuOnlyItem(
                 id: itemIdentifier,
                 label: String(localized: "History"),
                 symbol: "clock",
                 action: #selector(performToggleHistory(_:)),
                 keyEquivalent: "y",
-                modifiers: .command,
-                content: HistoryToolbarButton(coordinator: coordinator)
+                modifiers: .command
             )
         case Self.refreshSaveGroup:
-            return makeGroup(
+            return makeNativeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Refresh & Save"),
-                subitems: [subitemRefresh(), subitemSaveChanges()],
-                content: HStack(spacing: 4) {
-                    RefreshToolbarButton(coordinator: coordinator)
-                    SaveChangesToolbarButton(coordinator: coordinator)
-                }
+                subitems: [subitemRefresh(), subitemSaveChanges()]
             )
         case Self.exportImportGroup:
-            return makeGroup(
+            return makeNativeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Export & Import"),
-                subitems: [subitemExport(), subitemImport()],
-                content: HStack(spacing: 4) {
-                    ExportToolbarButton(coordinator: coordinator)
-                    ImportToolbarButton(coordinator: coordinator)
-                }
+                subitems: [subitemExport(), subitemImport()]
             )
         default:
             return nil

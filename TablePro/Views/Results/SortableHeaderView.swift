@@ -100,14 +100,54 @@ final class SortableHeaderView: NSTableHeaderView {
         return commentsByColumn[column.identifier]
     }
 
+    private var emphasisObservers: [NSObjectProtocol] = []
+
     override init(frame frameRect: NSRect) {
         naturalHeight = frameRect.height > 0 ? frameRect.height : Self.fallbackHeight
         super.init(frame: frameRect)
     }
 
+    deinit {
+        emphasisObservers.forEach(NotificationCenter.default.removeObserver)
+    }
+
     required init?(coder: NSCoder) {
         naturalHeight = Self.fallbackHeight
         super.init(coder: coder)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        emphasisObservers.forEach(NotificationCenter.default.removeObserver)
+        emphasisObservers.removeAll()
+        guard let window else {
+            applyEmphasis(false)
+            return
+        }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            let observer = NotificationCenter.default.addObserver(
+                forName: name,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.applyEmphasis(window.isKeyWindow) }
+            }
+            emphasisObservers.append(observer)
+        }
+        applyEmphasis(window.isKeyWindow)
+    }
+
+    private func applyEmphasis(_ isEmphasized: Bool) {
+        guard let tableView else { return }
+        var changed = false
+        for column in tableView.tableColumns {
+            guard let cell = column.headerCell as? SortableHeaderCell,
+                  cell.isEmphasized != isEmphasized else { continue }
+            cell.isEmphasized = isEmphasized
+            changed = true
+        }
+        guard changed else { return }
+        needsDisplay = true
     }
 
     private func applyHeaderHeight() {

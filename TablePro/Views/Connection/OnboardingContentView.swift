@@ -65,7 +65,7 @@ struct OnboardingContentView: View {
 
     private func goToPage(_ page: Int) {
         navigatingForward = page > currentPage
-        withAnimation(.easeInOut(duration: 0.35)) {
+        withMotion(.easeInOut(duration: 0.35)) {
             currentPage = page
         }
     }

@@ -151,7 +151,9 @@ extension MainWindowToolbar {
         item.target = self
         item.action = action
         item.autovalidates = true
+        item.isBordered = true
         item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        item.toolTip = label
 
         let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: keyEquivalent)
         menuItem.keyEquivalentModifierMask = modifiers
@@ -160,6 +162,21 @@ extension MainWindowToolbar {
         item.menuFormRepresentation = menuItem
 
         return item
+    }
+
+    /// A group with real subitems and no `view` is drawn by AppKit itself, so it answers display
+    /// mode changes and collapses into the overflow menu. A hosted view can do neither.
+    func makeNativeGroup(
+        id: NSToolbarItem.Identifier,
+        label: String,
+        subitems: [NSToolbarItem]
+    ) -> NSToolbarItemGroup {
+        let group = NSToolbarItemGroup(itemIdentifier: id)
+        group.label = label
+        group.paletteLabel = label
+        group.controlRepresentation = .automatic
+        group.subitems = subitems
+        return group
     }
 
     func makeGroup<Content: View>(

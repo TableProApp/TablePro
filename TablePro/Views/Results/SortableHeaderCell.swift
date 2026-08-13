@@ -10,6 +10,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
     var sortDirection: SortDirection?
     var sortPriority: Int?
     var isColumnSelected: Bool = false
+    var isEmphasized: Bool = true
     var isValueFiltered: Bool = false
     var isFunnelVisible: Bool = false
     var supportsValueFilter: Bool = true
@@ -54,17 +55,20 @@ final class SortableHeaderCell: NSTableHeaderCell {
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
         if isColumnSelected {
-            NSColor.selectedContentBackgroundColor.setFill()
+            let fill: NSColor = isEmphasized
+                ? .selectedContentBackgroundColor
+                : .unemphasizedSelectedContentBackgroundColor
+            fill.setFill()
             cellFrame.fill()
         }
 
-        let foreground = foregroundColor(emphasized: isColumnSelected)
+        let foreground = foregroundColor(emphasized: isColumnSelected && isEmphasized)
         drawTitle(
             in: titleRect(forBounds: cellFrame),
             font: titleFont(isSorted: sortDirection != nil),
             color: foreground,
             comment: visibleComment(in: controlView),
-            commentColor: commentColor(emphasized: isColumnSelected)
+            commentColor: commentColor(emphasized: isColumnSelected && isEmphasized)
         )
 
         var trailingCursorX = cellFrame.maxX - Self.indicatorPadding

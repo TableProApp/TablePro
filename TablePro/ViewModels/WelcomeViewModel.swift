@@ -570,7 +570,7 @@ final class WelcomeViewModel {
               let connection = connections.first(where: { $0.id == id }),
               let groupId = connection.groupId,
               expandedGroupIds.contains(groupId) else { return }
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withMotion(.easeInOut(duration: 0.2)) {
             expandedGroupIds.remove(groupId)
         }
     }
@@ -580,7 +580,7 @@ final class WelcomeViewModel {
               let connection = connections.first(where: { $0.id == id }),
               let groupId = connection.groupId,
               !expandedGroupIds.contains(groupId) else { return }
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withMotion(.easeInOut(duration: 0.2)) {
             expandedGroupIds.insert(groupId)
         }
     }

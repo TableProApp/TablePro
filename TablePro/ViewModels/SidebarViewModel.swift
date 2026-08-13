@@ -309,6 +309,11 @@ final class SidebarViewModel {
         }
     }
 
+    func cancelPendingOperation() {
+        pendingOperationType = nil
+        pendingOperationTables = []
+    }
+
     func confirmOperation(options: TableOperationOptions) {
         guard let operationType = pendingOperationType else { return }
 

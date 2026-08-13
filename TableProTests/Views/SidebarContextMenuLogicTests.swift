@@ -6,13 +6,12 @@
 //
 
 import SwiftUI
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("SidebarContextMenuLogicTests")
 struct SidebarContextMenuLogicTests {
-
     // MARK: - hasSelection
 
     @Test("hasSelection false when empty selection and no clicked table")
@@ -236,5 +235,53 @@ struct SidebarContextMenuLogicTests {
     @Test("External table drop label names the object kind")
     func externalTableDeleteLabel() {
         #expect(SidebarContextMenuLogic.deleteLabel(for: .externalTable) == "Drop External Table")
+    }
+
+    // MARK: - contextTargets
+
+    @Test("Clicking outside the selection targets only the clicked row")
+    func contextTargetsClickOutsideSelection() {
+        let selected = TestFixtures.makeTableInfo(name: "users")
+        let clicked = TestFixtures.makeTableInfo(name: "orders")
+        let targets = SidebarContextMenuLogic.contextTargets(
+            clickedTable: clicked,
+            selectedTables: [selected]
+        )
+        #expect(targets == ["orders"])
+    }
+
+    @Test("Clicking inside the selection targets the whole selection")
+    func contextTargetsClickInsideSelection() {
+        let users = TestFixtures.makeTableInfo(name: "users")
+        let orders = TestFixtures.makeTableInfo(name: "orders")
+        let targets = SidebarContextMenuLogic.contextTargets(
+            clickedTable: users,
+            selectedTables: [users, orders]
+        )
+        #expect(targets == ["orders", "users"])
+    }
+
+    @Test("Clicking with no selection targets the clicked row")
+    func contextTargetsNoSelection() {
+        let clicked = TestFixtures.makeTableInfo(name: "users")
+        #expect(SidebarContextMenuLogic.contextTargets(clickedTable: clicked, selectedTables: []) == ["users"])
+    }
+
+    @Test("No clicked row falls back to the selection")
+    func contextTargetsNoClickedRow() {
+        let users = TestFixtures.makeTableInfo(name: "users")
+        let orders = TestFixtures.makeTableInfo(name: "orders")
+        let targets = SidebarContextMenuLogic.contextTargets(
+            clickedTable: nil,
+            selectedTables: [users, orders]
+        )
+        #expect(targets == ["orders", "users"])
+    }
+
+    @Test("A clicked row of a different kind is not treated as selected")
+    func contextTargetsMatchesOnIdentity() {
+        let table = TestFixtures.makeTableInfo(name: "users", type: .table)
+        let view = TestFixtures.makeTableInfo(name: "users", type: .view)
+        #expect(SidebarContextMenuLogic.contextTargets(clickedTable: view, selectedTables: [table]) == ["users"])
     }
 }

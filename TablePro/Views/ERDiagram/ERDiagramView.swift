@@ -279,17 +279,29 @@ struct ERDiagramView: View {
         panel.title = String(localized: "Export ER Diagram")
         panel.message = String(localized: "Choose a location to save the diagram as PNG.")
 
-        guard let window = NSApp.keyWindow else { return }
+        guard let window = AlertHelper.resolveContentWindow(nil) else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
             guard let tiffData = image.tiffRepresentation,
                   let bitmap = NSBitmapImageRep(data: tiffData),
                   let pngData = bitmap.representation(using: .png, properties: [:])
-            else { return }
+            else {
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Could not export the diagram"),
+                    message: String(localized: "The diagram could not be converted to a PNG image."),
+                    window: window
+                )
+                return
+            }
             do {
                 try pngData.write(to: url)
             } catch {
                 Self.logger.error("Failed to write PNG: \(error.localizedDescription)")
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Could not export the diagram"),
+                    message: error.localizedDescription,
+                    window: window
+                )
             }
         }
     }

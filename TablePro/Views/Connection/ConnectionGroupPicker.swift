@@ -20,49 +20,31 @@ struct ConnectionGroupPicker: View {
         return allGroups.first { $0.id == id }
     }
 
+    /// A pop up button carries the selected value, the checkmark and the menu role for free.
+    /// Hand-drawn checkmarks reported nothing to VoiceOver, and the indentation was a run of
+    /// spaces glued onto the name, which reads out loud and collapses in right-to-left.
     var body: some View {
-        Menu {
-            Button {
-                selectedGroupId = nil
-            } label: {
-                HStack {
-                    Text("None")
-                    if selectedGroupId == nil {
-                        Spacer()
-                        Image(systemName: "checkmark")
-                    }
-                }
+        HStack(spacing: 6) {
+            Picker(String(localized: "Group"), selection: $selectedGroupId) {
+                Text("None").tag(UUID?.none)
+                Divider()
+                hierarchicalGroupItems()
             }
-
-            Divider()
-
-            hierarchicalGroupItems()
-
-            Divider()
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+            .accessibilityLabel(Text("Group"))
 
             Button {
                 showingCreateSheet = true
             } label: {
                 Label("Create New Group...", systemImage: "plus.circle")
+                    .labelStyle(.iconOnly)
             }
-        } label: {
-            HStack(spacing: 6) {
-                if let group = selectedGroup {
-                    if !group.color.isDefault {
-                        Circle()
-                            .fill(group.color.color)
-                            .frame(width: 8, height: 8)
-                    }
-                    Text(group.name)
-                        .foregroundStyle(.primary)
-                } else {
-                    Text("None")
-                        .foregroundStyle(.secondary)
-                }
-            }
+            .buttonStyle(.borderless)
+            .help(Text("Create New Group..."))
+            .accessibilityLabel(Text("Create New Group..."))
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
         .task { allGroups = groupStorage.loadGroups() }
         .sheet(isPresented: $showingCreateSheet) {
             CreateGroupSheet { groupName, groupColor, parentId in
@@ -78,22 +60,19 @@ struct ConnectionGroupPicker: View {
     private func hierarchicalGroupItems() -> some View {
         let flatGroups = flattenGroupsForMenu(groups: allGroups)
         ForEach(flatGroups, id: \.group.id) { entry in
-            Button {
-                selectedGroupId = entry.group.id
-            } label: {
-                HStack {
-                    if !entry.group.color.isDefault {
-                        Image(nsImage: colorDot(entry.group.color.color))
-                    }
-                    Text(String(repeating: "  ", count: entry.depth) + entry.group.name)
-                    if selectedGroupId == entry.group.id {
-                        Spacer()
-                        Image(systemName: "checkmark")
-                    }
+            Label {
+                Text(entry.group.name)
+            } icon: {
+                if !entry.group.color.isDefault {
+                    Image(nsImage: colorDot(entry.group.color.color))
                 }
             }
+            .padding(.leading, CGFloat(entry.depth) * Self.depthIndent)
+            .tag(UUID?.some(entry.group.id))
         }
     }
+
+    private static let depthIndent: CGFloat = 12
 
     private func colorDot(_ color: Color) -> NSImage {
         let size = NSSize(width: 10, height: 10)

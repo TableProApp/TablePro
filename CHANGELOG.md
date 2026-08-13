@@ -46,8 +46,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The MCP connection listing no longer names connections you set to AI Never.
 - Release and test workflows pin their third-party actions to an exact commit.
 
+### Added
+
+- Typing a name in the database tree jumps to the matching object.
+- Editor tabs have a right-click menu for closing tabs.
+- The Settings window can be resized.
+- Dropping a SQL file on a connection window opens it.
+- Redis key rows have a right-click menu for copying a key or namespace prefix.
+
 ### Fixed
 
+- The drop and truncate confirmation is now a standard system alert with Cancel as the default button, so pressing Return no longer drops a table.
+- Right-clicking a table in the sidebar acts on the row under the pointer instead of the previous selection.
+- The external link prompt now defaults to Cancel, and deleting a column or row from the inspector no longer runs on Return or without asking.
+- Theme, schema, and diagram exports report write failures instead of failing silently, and picking a folder that is already linked says so.
+- Selected sidebar rows, quick switcher results, and the database switcher use the system foreground colour, so labels stay readable under any accent colour and with Increase Contrast on.
+- Tag badges, the Pro badge, the Vim mode indicator, and the date cell picker pick a readable label colour instead of always using white.
+- Cell range selection and the selected column header dim when the window loses focus, matching the rest of the system.
+- Tab moves focus out of the data grid when no cell is active, and cell to cell tabbing skips hidden columns.
+- The shortcut recorder captures combinations the menu bar already uses, such as Command W, instead of running the menu command.
+- Reduce Motion suppresses the remaining animations, and Reduce Transparency now makes the Pro feature overlay fully opaque.
+- Editor tabs, quick switcher results, mention suggestions, and the Settings pickers report themselves properly to VoiceOver.
+- Moving the pointer no longer changes the highlighted mention suggestion.
+- Dialog buttons are grouped at the trailing edge in six sheets instead of splitting Cancel to the left.
+- The titlebar breaks at the inspector divider, so the inspector toggle sits over the inspector pane.
+- Removed two Window menu items that could never run.
+- Main window toolbar buttons are real toolbar items, so icon only mode, display mode customization, and the overflow menu all work.
+- The editor tab strip sits in the window titlebar instead of inside the content area.
+- Find in the Welcome window runs from the Edit menu and can be rebound in Settings.
+- The export dialog no longer asks for a file name twice, and the save panel validates it.
+- Import and export results use standard alerts that size to their content.
+- The integration pairing prompt is modal, can be closed from its title bar, and sizes to its content.
+- Installing a missing database plugin shows download progress instead of nothing.
+- A dark theme can no longer be assigned to the light appearance slot.
+- Connection tags can be removed from the chip itself and are readable by VoiceOver.
+- The connection group selector is a standard pop up button.
+- The host list add and remove buttons match the rest of the app and have accessible names.
+- VoiceOver follows the data grid cell cursor and reports the selected cell range.
+- The filter suggestion list uses the system selection colours and announces when suggestions appear.
+- Split view diffs mark added, removed, and changed lines for VoiceOver and for Differentiate Without Colour.
+- The query plan diagram redraws after a second EXPLAIN instead of showing the previous run.
+- The chat composer placeholder truncates instead of overflowing and is reported to VoiceOver.
+- Colour swatches show press, hover, and keyboard focus, and the selection ring follows the accent colour.
+- The split column alert grows to fit longer labels in other languages.
 - MQL export writes a MongoDB `_id` as `ObjectId("...")` and a date as `ISODate("...")`, so running the script inserts the same types back instead of strings. A value nested inside a subdocument is still exported as a string.
 - MQL export keeps a binary value's BSON subtype and writes it as a `BinData(...)` constructor, so running the script inserts the same bytes back. It wrote Extended JSON that mongosh reads as a plain object, and stamped every value as subtype 0. (#2086)
 - MongoDB no longer prints a binary field nested inside a document as a UUID when it is not one, or labels a UUID with the wrong byte order. (#2086)

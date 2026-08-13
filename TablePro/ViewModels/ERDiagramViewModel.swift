@@ -501,7 +501,7 @@ final class ERDiagramViewModel {
             x: (center.x - canvasOffset.x) / magnification,
             y: (center.y - canvasOffset.y) / magnification
         )
-        withAnimation(.easeOut(duration: 0.2)) {
+        withMotion(.easeOut(duration: 0.2)) {
             canvasOffset = CGPoint(
                 x: center.x - canvasPoint.x * clamped,
                 y: center.y - canvasPoint.y * clamped
@@ -518,7 +518,7 @@ final class ERDiagramViewModel {
         let scaleY = (viewportSize.height - padding * 2) / diagramSize.height
         let fitScale = max(0.25, min(1.0, min(scaleX, scaleY)))
 
-        withAnimation(.easeOut(duration: 0.3)) {
+        withMotion(.easeOut(duration: 0.3)) {
             magnification = fitScale
             canvasOffset = CGPoint(
                 x: (viewportSize.width - diagramSize.width * fitScale) / 2,

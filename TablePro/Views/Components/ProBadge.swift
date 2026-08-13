@@ -9,7 +9,7 @@ struct ProBadge: View {
     var body: some View {
         Text("PRO")
             .font(.caption2.weight(.bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.legibleForeground(on: .orange))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(.orange, in: Capsule())

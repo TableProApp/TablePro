@@ -48,22 +48,30 @@ enum InspectorDeleteConfirmation {
         present(messageText: rowDeleteTitle(count: rowsCells.count), window: window, proceed: proceed)
     }
 
+    static func makeAlert(messageText: String) -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = messageText
+        alert.alertStyle = .warning
+        AlertHelper.addConfirmAndCancel(
+            to: alert,
+            confirmButton: String(localized: "Delete"),
+            cancelButton: String(localized: "Cancel")
+        )
+        return alert
+    }
+
     private static func present(
         messageText: String,
         window: NSWindow?,
         proceed: @escaping @MainActor () -> Void
     ) {
-        guard let window else {
+        let alert = makeAlert(messageText: messageText)
+        guard let parent = AlertHelper.resolveWindow(window) else {
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
             proceed()
             return
         }
-        let alert = NSAlert()
-        alert.messageText = messageText
-        alert.alertStyle = .warning
-        let deleteButton = alert.addButton(withTitle: String(localized: "Delete"))
-        deleteButton.hasDestructiveAction = true
-        alert.addButton(withTitle: String(localized: "Cancel"))
-        alert.beginSheetModal(for: window) { response in
+        alert.beginSheetModal(for: parent) { response in
             guard response == .alertFirstButtonReturn else { return }
             proceed()
         }

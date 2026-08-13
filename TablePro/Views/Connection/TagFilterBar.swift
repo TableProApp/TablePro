@@ -34,19 +34,15 @@ struct TagFilterBar: View {
             Text(tagFilter.mode == .any ? String(localized: "Match Any") : String(localized: "Match All"))
                 .font(.caption)
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
     }
 
+    /// `ButtonToggleStyle` reports the on and off value itself, and brings hover, press and the
+    /// keyboard focus ring that a plain button with a hand-drawn capsule never had.
     private func tagPill(_ tag: ConnectionTag) -> some View {
-        let selected = tagFilter.selectedIds.contains(tag.id)
-        return Button {
-            if selected {
-                tagFilter.selectedIds.remove(tag.id)
-            } else {
-                tagFilter.selectedIds.insert(tag.id)
-            }
-        } label: {
+        Toggle(isOn: binding(for: tag)) {
             HStack(spacing: 4) {
                 Circle()
                     .fill(tag.color.color)
@@ -54,17 +50,23 @@ struct TagFilterBar: View {
                 Text(tag.name)
                     .font(.caption)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
         }
-        .buttonStyle(.plain)
-        .background(selected ? tag.color.color.opacity(0.18) : Color.clear, in: Capsule())
-        .overlay(
-            Capsule().strokeBorder(
-                selected ? tag.color.color : Color.secondary.opacity(0.3),
-                lineWidth: 1
-            )
+        .toggleStyle(.button)
+        .controlSize(.small)
+        .tint(tag.color.color)
+        .help(Text(tag.name))
+    }
+
+    private func binding(for tag: ConnectionTag) -> Binding<Bool> {
+        Binding(
+            get: { tagFilter.selectedIds.contains(tag.id) },
+            set: { isOn in
+                if isOn {
+                    tagFilter.selectedIds.insert(tag.id)
+                } else {
+                    tagFilter.selectedIds.remove(tag.id)
+                }
+            }
         )
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
