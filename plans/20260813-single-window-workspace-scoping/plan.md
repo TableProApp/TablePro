@@ -2,20 +2,31 @@
 
 Branch `single-window-connections`, PR #2097.
 
-**Done and pushed** (all four P0 data-loss bugs are closed):
+**Done and pushed** (all four P0 data-loss bugs are closed, 15 bugs total):
 
 - B1 restore returns one ordered tab list; window-group split deleted
 - B2 `windowGroupIndex` removed from the model, save path and restore result
-- B3 write gate: no save until a restore has read the disk; gate opens even on an empty read
+- B3 write gate: no save until a restore has read the disk; the gate opens even on an empty read
 - B4 window close saves and tears down every hosted workspace
+- B5 detail pane carries `.id(connection.id)`
 - B7 per-connection undo via `TabWindowController.windowWillReturnUndoManager`
+- B8 the unsaved-work prompt covers every connection the window closes; tab close still asks only about its own
 - B9 sample failure closes one connection, B10 Cmd+W dismisses a failed pane, B11 vim `:q` closes a tab
 - B12 `coordinator(forWindow:)` returns the selected workspace's coordinator
 - B13 `reconnectWorkspace(_:)` reconnects the connection named, not the selected one
-- B5 detail pane carries `.id(connection.id)`
 - B14 toolbar is rebuilt on a workspace switch (the `ToolbarContext` refinement below is still the better shape)
+- B18 broadcast commands run only in the connection on screen
+- B19 host selection prefers the window already hosting the connection, via the pure, tested `WindowHostSelection`
+- B20 a workspace switch hands over key-window state, so a background connection's row buffers are evicted
+- The workspace rail repaints on an in-place switch (`applySelectedWorkspace` publishes `connectionWindowsChanged`)
 - Deleted: `WindowGroupAssignment`, `RestoreWindowPlan`, `WindowTabGroupOrder` and their four suites
 - CLAUDE.md invariants corrected for the workspace model
+
+**Watch for this shape.** Four of the bugs above were introduced by an earlier fix in this same
+refactor, B20 by B12 most directly: narrowing `coordinator(forWindow:)` to the selected workspace
+also stopped background workspaces from ever receiving `windowDidResignKey`. Changing what "window"
+means moves consequences into places no test was watching. Trace the callers of anything you
+re-scope, and do not trust a green suite here.
 
 **Not done**
 
