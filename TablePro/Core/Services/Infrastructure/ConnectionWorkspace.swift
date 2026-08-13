@@ -48,8 +48,39 @@ internal final class ConnectionWorkspace {
         self.undoManager = UndoManager()
     }
 
+    /// Payloads that arrived before this workspace had a session to open them in. A connect can
+    /// take seconds, and a table asked for in the meantime has to survive the wait rather than
+    /// be dropped.
+    private var pendingPayloads: [EditorTabPayload] = []
+
     internal var connection: DatabaseConnection? {
         payloadConnection ?? session?.connection
+    }
+
+    /// Opens what the payload names. Held until the session exists if the connection is still
+    /// being established.
+    internal func open(_ payload: EditorTabPayload) {
+        guard let sessionState, let connection else {
+            pendingPayloads.append(payload)
+            return
+        }
+        EditorTabOpener.apply(
+            payload,
+            to: sessionState.tabManager,
+            connection: connection,
+            toolbarState: sessionState.toolbarState
+        )
+    }
+
+    /// Runs once a session has been adopted. The payload the workspace was created with is
+    /// already applied by `SessionStateFactory`, so only the ones that arrived after it are here.
+    internal func drainPendingPayloads() {
+        guard !pendingPayloads.isEmpty else { return }
+        let queued = pendingPayloads
+        pendingPayloads.removeAll()
+        for payload in queued {
+            open(payload)
+        }
     }
 
     internal var retainsRestoreIntent: Bool {

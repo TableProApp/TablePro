@@ -24,8 +24,15 @@ internal final class WindowManager {
     /// only adds a workspace to it. A second window is created solely when there is none.
     internal func openTab(payload: EditorTabPayload, activate: Bool = true, autoConnect: Bool = false) {
         if let host = frontmostHost() {
-            host.adoptWorkspace(payload: payload, autoConnect: autoConnect)
-            host.workspaces.select(payload.connectionId)
+            /// A connection the window already hosts still has to honour the payload, because a
+            /// payload names a tab to open, not just a connection to show. Adopting the
+            /// workspace alone would silently drop the table the caller asked for.
+            if let existing = host.workspaces.workspace(for: payload.connectionId) {
+                host.workspaces.select(payload.connectionId)
+                existing.open(payload)
+            } else {
+                host.adoptWorkspace(payload: payload, autoConnect: autoConnect)
+            }
             if activate {
                 host.view.window?.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)

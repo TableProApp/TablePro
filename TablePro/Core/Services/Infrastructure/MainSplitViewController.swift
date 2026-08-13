@@ -405,6 +405,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 installToolbar(coordinator: state.coordinator)
             }
         }
+        workspace.drainPendingPayloads()
     }
 
     /// Only called once the session entry is gone. A session that still exists without a driver
