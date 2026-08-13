@@ -66,22 +66,14 @@ extension MainContentCommandActions {
     /// Tabs live in one window now, so a batch close is a list edit rather than a walk over
     /// sibling windows. Closing every tab is still a window close, which already owns the save
     /// prompt and the recovery capture, so that case is handed straight to it.
+    /// Closing every tab leaves the connection on its empty state rather than closing the window,
+    /// because the window is no longer this connection's window: it hosts all of them.
     private func runBatchClose(kind: BatchCloseKind) async {
         guard let coordinator else { return }
         let victims = tabsToClose(kind: kind)
         guard !victims.isEmpty else { return }
-
-        if victims.count == coordinator.tabManager.tabs.count {
-            await closeWindowAwaiting()
-            return
-        }
-
         guard await confirmDiscardingUnsavedWork() else { return }
-
-        for tab in victims {
-            RecentlyClosedTabStore.shared.push(tab: tab, connection: coordinator.connection)
-            coordinator.tabManager.closeTab(id: tab.id)
-        }
+        coordinator.closeTabsByUser(ids: victims.map(\.id))
     }
 
     /// A partial close leaves the window open, so it cannot lean on the window's own prompt.

@@ -413,11 +413,7 @@ final class MainContentCommandActions {
     /// in right after connecting. The window hosts every open connection now, so closing it here
     /// would take the other connections' tabs and their unsaved edits with it.
     func closeTab(id: UUID) {
-        guard let coordinator else { return }
-        if let closing = coordinator.tabManager.tabs.first(where: { $0.id == id }) {
-            RecentlyClosedTabStore.shared.push(tab: closing, connection: coordinator.connection)
-        }
-        coordinator.tabManager.closeTab(id: id)
+        coordinator?.closeTabsByUser(ids: [id])
     }
 
     /// Cmd+W closes the tab in front. Pressed again with no tabs left it closes the connection,

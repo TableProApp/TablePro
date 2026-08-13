@@ -56,7 +56,7 @@ internal struct EditorTabStrip: View {
                 /// a tab that is scrolled out of sight, so the selection pulls itself into view.
                 .onChange(of: tabManager.selectedTabId) { _, newValue in
                     guard let newValue else { return }
-                    withAnimation(.easeOut(duration: 0.15)) {
+                    withMotion(.easeOut(duration: 0.15)) {
                         scroller.scrollTo(newValue, anchor: .center)
                     }
                 }
@@ -65,7 +65,7 @@ internal struct EditorTabStrip: View {
             .padding(EditorTabStripLayout.trackPadding)
             .background(
                 Capsule(style: .continuous)
-                    .fill(Color(nsColor: .quaternaryLabelColor))
+                    .fill(Color(nsColor: .quaternarySystemFill))
             )
         }
         .frame(height: EditorTabStripLayout.trackHeight)
@@ -170,7 +170,7 @@ private struct EditorTabStripItem: View {
             Color.clear.selectedTabSurface(isLightAppearance: colorScheme == .light, isWindowActive: isWindowActive)
         } else if isHovered, isWindowActive {
             Capsule(style: .continuous)
-                .fill(Color(nsColor: .separatorColor).opacity(Self.hoverFillOpacity))
+                .fill(Color(nsColor: .quaternarySystemFill))
         }
     }
 
@@ -184,8 +184,6 @@ private struct EditorTabStripItem: View {
             Color.clear
         }
     }
-
-    private static let hoverFillOpacity: CGFloat = 0.5
 }
 
 private struct EditorTabStripCloseButton: View {
@@ -217,13 +215,13 @@ private struct EditorTabStripCloseButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(
-                Circle().fill(Color.primary.opacity(fillOpacity(isPressed: configuration.isPressed)))
+                Circle().fill(fill(isPressed: configuration.isPressed))
             )
     }
 
-    private func fillOpacity(isPressed: Bool) -> Double {
-        if isPressed { return 0.20 }
-        return isHovering ? 0.10 : 0
+    private func fill(isPressed: Bool) -> Color {
+        if isPressed { return Color(nsColor: .tertiarySystemFill) }
+        return isHovering ? Color(nsColor: .quaternarySystemFill) : .clear
     }
 }
 
