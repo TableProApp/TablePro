@@ -333,12 +333,17 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     /// one, and `NSToolbar` asks it once, so a toolbar created early is permanently empty: a
     /// later coordinator cannot refill it, and validation only speaks to items that already
     /// exist. A window with no session shows a plain titlebar instead.
+    /// `NSToolbar` asks its delegate for an item once and keeps what it returns, and every item
+    /// view captures the coordinator it was built with. Reassigning the owner's coordinator
+    /// therefore repoints nothing: the toolbar goes on naming, and acting on, the connection it
+    /// was built for. Switching connection rebuilds it instead.
     func installToolbar(coordinator: MainContentCoordinator) {
         guard let window = view.window else { return }
+        if let owner = toolbarOwner, owner.coordinator !== coordinator {
+            invalidateToolbar()
+        }
         if toolbarOwner == nil {
             toolbarOwner = MainWindowToolbar(coordinator: coordinator)
-        } else {
-            toolbarOwner?.coordinator = coordinator
         }
         if let owner = toolbarOwner, window.toolbar !== owner.managedToolbar {
             window.toolbar = owner.managedToolbar
@@ -612,6 +617,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 toolbarState: sessionState.toolbarState,
                 coordinator: sessionState.coordinator
             )
+            /// The detail pane is a different view per connection, not one view whose inputs
+            /// changed. Without an identity its `@State` (whether tabs have been restored, the
+            /// cached change manager, the window id) survives a workspace switch, so the second
+            /// connection either never restores or overwrites its live tabs with a disk snapshot.
+            .id(currentSession.connection.id)
             .transaction { $0.animation = nil }
         } else {
             Color.clear
