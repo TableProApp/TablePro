@@ -574,6 +574,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private func refreshTabStripAccessory() {
         installTabStripAccessoryIfNeeded()
         guard let accessory = tabStripAccessory, let hosting = tabStripHosting else { return }
+        defer { observeTabStripSource() }
         guard currentPane == .content, let sessionState, sessionState.tabManager.tabs.count > 1 else {
             accessory.isHidden = true
             hosting.rootView = AnyView(Color.clear)
@@ -583,6 +584,21 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         hosting.rootView = AnyView(buildTabStripView(sessionState: sessionState))
         accessory.isHidden = false
         recomputeWindowMinSize()
+    }
+
+    /// The strip lived in SwiftUI before, where the tab count was observed for free. An AppKit
+    /// accessory observes nothing, so opening a second tab left it hidden: `rebuildPanes` is the
+    /// only caller of the refresh and a tab list change never reaches it. `withObservationTracking`
+    /// fires once, so each pass re-arms the next.
+    private func observeTabStripSource() {
+        guard let manager = workspaces.selected?.sessionState?.tabManager else { return }
+        withObservationTracking {
+            _ = manager.tabs.count
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.refreshTabStripAccessory()
+            }
+        }
     }
 
     private func buildTabStripView(sessionState: SessionStateFactory.SessionState) -> some View {
