@@ -71,8 +71,11 @@ extension MainContentCoordinator {
             "[close] coordinator.handleWindowWillClose connId=\(self.connectionId, privacy: .public) tabs=\(self.tabManager.tabs.count)"
         )
 
+        /// Never clears: a window closing says nothing about whether the user wants these tabs
+        /// kept, and every connection in the window reaches here. Discarding saved state is
+        /// `closeTabsByUser`'s job alone.
         if !MainContentCoordinator.isAppTerminating, !isTearingDown {
-            persistence.saveOrClearAggregatedSync()
+            persistence.saveAggregatedSync()
         }
 
         evictionTask?.cancel()
