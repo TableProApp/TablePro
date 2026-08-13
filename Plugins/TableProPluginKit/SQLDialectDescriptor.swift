@@ -16,6 +16,52 @@ public enum AutoLimitStyle: String, Sendable {
     case none        // Don't auto-limit (non-SQL)
 }
 
+public struct SQLOperatorDescriptor: Sendable, Hashable {
+    public enum Placement: String, Sendable {
+        case infix
+        case prefix
+        case postfix
+    }
+
+    public enum Category: String, Sendable {
+        case cast
+        case comparison
+        case predicate
+        case logical
+        case math
+        case bitwise
+        case string
+        case pattern
+        case json
+        case array
+        case range
+        case fullText
+        case network
+        case geometric
+        case vector
+    }
+
+    public let symbol: String
+    public let summary: String
+    public let category: Category
+    public let placement: Placement
+    public let appliesToTypes: [String]
+
+    public init(
+        symbol: String,
+        summary: String,
+        category: Category,
+        placement: Placement = .infix,
+        appliesToTypes: [String] = []
+    ) {
+        self.symbol = symbol
+        self.summary = summary
+        self.category = category
+        self.placement = placement
+        self.appliesToTypes = appliesToTypes
+    }
+}
+
 public struct SQLDialectDescriptor: Sendable {
     public let identifierQuote: String
     public let keywords: Set<String>
@@ -37,6 +83,9 @@ public struct SQLDialectDescriptor: Sendable {
     // Case-insensitive matching
     public let caseSensitivityStyle: CaseSensitivityStyle
     public let caseFoldFunction: String
+
+    // Authoring
+    public let operators: [SQLOperatorDescriptor]
 
     public enum CaseSensitivityStyle: String, Sendable {
         case ilikeOperator    // PostgreSQL, CockroachDB, PGlite, DuckDB, Snowflake
@@ -106,6 +155,7 @@ public struct SQLDialectDescriptor: Sendable {
         )
     }
 
+    @_disfavoredOverload
     public init(
         identifierQuote: String,
         keywords: Set<String>,
@@ -122,6 +172,42 @@ public struct SQLDialectDescriptor: Sendable {
         caseSensitivityStyle: CaseSensitivityStyle = .unsupported,
         caseFoldFunction: String = SQLDialectDescriptor.defaultCaseFoldFunction
     ) {
+        self.init(
+            identifierQuote: identifierQuote,
+            keywords: keywords,
+            functions: functions,
+            dataTypes: dataTypes,
+            tableOptions: tableOptions,
+            regexSyntax: regexSyntax,
+            booleanLiteralStyle: booleanLiteralStyle,
+            likeEscapeStyle: likeEscapeStyle,
+            paginationStyle: paginationStyle,
+            offsetFetchOrderBy: offsetFetchOrderBy,
+            requiresBackslashEscaping: requiresBackslashEscaping,
+            autoLimitStyle: autoLimitStyle,
+            caseSensitivityStyle: caseSensitivityStyle,
+            caseFoldFunction: caseFoldFunction,
+            operators: []
+        )
+    }
+
+    public init(
+        identifierQuote: String,
+        keywords: Set<String>,
+        functions: Set<String>,
+        dataTypes: Set<String>,
+        tableOptions: [String] = [],
+        regexSyntax: RegexSyntax = .unsupported,
+        booleanLiteralStyle: BooleanLiteralStyle = .numeric,
+        likeEscapeStyle: LikeEscapeStyle = .explicit,
+        paginationStyle: PaginationStyle = .limit,
+        offsetFetchOrderBy: String = "ORDER BY (SELECT NULL)",
+        requiresBackslashEscaping: Bool = false,
+        autoLimitStyle: AutoLimitStyle = .limit,
+        caseSensitivityStyle: CaseSensitivityStyle = .unsupported,
+        caseFoldFunction: String = SQLDialectDescriptor.defaultCaseFoldFunction,
+        operators: [SQLOperatorDescriptor] = []
+    ) {
         self.identifierQuote = identifierQuote
         self.keywords = keywords
         self.functions = functions
@@ -136,6 +222,7 @@ public struct SQLDialectDescriptor: Sendable {
         self.autoLimitStyle = autoLimitStyle
         self.caseSensitivityStyle = caseSensitivityStyle
         self.caseFoldFunction = caseFoldFunction
+        self.operators = operators
     }
 
     public static let defaultCaseFoldFunction = "LOWER"
@@ -158,7 +245,8 @@ public struct SQLDialectDescriptor: Sendable {
             requiresBackslashEscaping: requiresBackslashEscaping,
             autoLimitStyle: autoLimitStyle,
             caseSensitivityStyle: style,
-            caseFoldFunction: caseFoldFunction
+            caseFoldFunction: caseFoldFunction,
+            operators: operators
         )
     }
 }
