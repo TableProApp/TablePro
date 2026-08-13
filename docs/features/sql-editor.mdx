@@ -10,6 +10,22 @@ Write and run SQL with tree-sitter syntax highlighting, schema-aware autocomplet
   <img className="hidden dark:block" src="/images/sql-editor-dark.png" alt="SQL Editor" />
 </Frame>
 
+## Inline Diagnostics
+
+The editor underlines a structural mistake in red while you type, and clears it as soon as you fix it. It reports only what more typing cannot fix:
+
+| Reported | Not reported |
+|----------|--------------|
+| A closing bracket with no opener | A bracket you have not closed yet |
+| A bracket that closes the wrong kind | A string you are still typing |
+| An unterminated block comment | An incomplete statement |
+
+A half-written statement is never flagged, which is the usual complaint about editors that check as you type. Brackets inside a string literal or a comment are ignored.
+
+On MongoDB connections the query parser runs too, so an unknown collection method or a query that does not start with `db.` is underlined with the reason. The method name itself is underlined where the parser names one.
+
+Checking runs 500ms after you stop typing, and is skipped on very large documents.
+
 ## Writing Queries
 
 Separate statements with semicolons. Place the cursor in any statement and press `Cmd+Enter` to run just that one.

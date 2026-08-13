@@ -409,6 +409,29 @@ actor SQLSchemaProvider {
         return paths
     }
 
+    /// Values a column is restricted to, when the database declares them (a PostgreSQL enum type,
+    /// a MongoDB `$jsonSchema` enum). Returns nothing for an ordinary column.
+    /// Reads only what the column cache already holds. Completion runs on every keystroke, so it
+    /// must never trigger a schema fetch; the eager column preload is what fills this cache.
+    func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] {
+        let name = column.lowercased()
+        let candidates = references.isEmpty
+            ? tables.map { (table: $0.name, schema: String?.none) }
+            : references.map { (table: $0.tableName, schema: $0.schema) }
+
+        for candidate in candidates {
+            let key = [candidate.schema?.lowercased(), candidate.table.lowercased()]
+                .compactMap(\.self)
+                .joined(separator: ".")
+            guard let columns = columnCache[key] else { continue }
+            if let match = columns.first(where: { $0.name.lowercased() == name }),
+               let values = match.allowedValues, !values.isEmpty {
+                return values
+            }
+        }
+        return []
+    }
+
     /// Get completion items for all columns of tables in scope
     func allColumnsInScope(for references: [TableReference]) async -> [SQLCompletionItem] {
         // swiftlint:disable:next large_tuple

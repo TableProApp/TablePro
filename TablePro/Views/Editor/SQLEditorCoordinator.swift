@@ -26,6 +26,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     private static let languageServiceLengthLimit = EditorHighlighting.maxHighlightableCharacters
 
     @ObservationIgnored weak var controller: TextViewController?
+    @ObservationIgnored private lazy var diagnosticsController = QueryDiagnosticsController(
+        databaseType: databaseType
+    )
     /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)
     @ObservationIgnored var schemaProvider: SQLSchemaProvider?
     /// Connection-level AI policy for inline suggestions
@@ -144,6 +147,8 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
         installAIContextMenu(controller: controller)
         installInlineSuggestionManager(controller: controller)
+        diagnosticsController.configure(databaseType: databaseType)
+        diagnosticsController.scheduleRefresh(for: controller)
         installVimModeIfEnabled(controller: controller)
         installEditorSettingsObserver(controller: controller)
 
@@ -196,6 +201,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
 
         uppercaseKeywordIfNeeded(textView: textView, range: range, string: string)
+
+        if !isLargeDocument {
+            diagnosticsController.scheduleRefresh(for: controller)
+        }
     }
 
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {

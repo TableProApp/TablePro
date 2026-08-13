@@ -223,6 +223,7 @@ final class SQLCompletionProvider {
             }
 
         case .on:
+            items += await allowedValueItems(for: context)
             // HP-3: ON clause — prioritize columns from joined tables
             items += await columnItems(for: context.tableReferences)
             for ref in context.tableReferences {
@@ -257,6 +258,7 @@ final class SQLCompletionProvider {
 
         case .where_, .and, .having:
             // HP-8: Columns, operators, logical keywords + clause transitions
+            items += await allowedValueItems(for: context)
             items += await columnItems(for: context.tableReferences)
             items += SQLKeywords.operatorItems()
             items += dialectOperatorItems()
@@ -458,6 +460,25 @@ final class SQLCompletionProvider {
             .filter { $0.key.lowercased().hasPrefix(lowerPrefix) }
             .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
             .map { SQLCompletionItem.favorite(keyword: $0.key, name: $0.value.name, query: $0.value.query) }
+    }
+
+    /// Values a compared column is restricted to, offered as quoted literals ahead of everything
+    /// else. Nothing is offered for an ordinary column.
+    private func allowedValueItems(for context: SQLContext) async -> [SQLCompletionItem] {
+        guard let column = context.comparisonColumn, let schemaProvider else { return [] }
+
+        let values = await schemaProvider.allowedValues(forColumn: column, in: context.tableReferences)
+        return values.map { value in
+            var item = SQLCompletionItem(
+                label: "'\(value)'",
+                kind: .keyword,
+                insertText: "'\(value)'",
+                detail: column,
+                filterText: value.lowercased()
+            )
+            item.sortPriority = 10
+            return item
+        }
     }
 
     /// Operators the connected dialect declares, with their documented meaning.

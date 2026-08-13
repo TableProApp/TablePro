@@ -153,6 +153,18 @@ The sample is cached per collection and cleared when you switch database or refr
 
 Completion is suppressed inside comments, and braces or brackets inside a string literal do not count as opening a document.
 
+### Enum Values
+
+Comparing against a column whose type declares a fixed set of values suggests those values, quoted and ready to accept. On PostgreSQL that covers enum types:
+
+```sql
+WHERE status = |          -- 'pending', 'active', 'archived'
+WHERE status IN (|        -- same list
+WHERE mood <> 'ha|        -- 'happy'
+```
+
+The values come from the column cache the editor already holds, so nothing extra is queried while you type. A column with no declared value set suggests nothing.
+
 ### Favorite Keywords
 
 Favorites you've assigned a keyword to (DB-stored or linked-file `@keyword` frontmatter) appear in the popup as a top-priority match. Type the keyword, accept the suggestion, and the favorite's full SQL replaces the keyword inline. A `;;` in the favorite's SQL sets where the cursor lands after expansion. See [Favorites](/features/favorites#cursor-placement) for how to assign keywords and place the marker.
