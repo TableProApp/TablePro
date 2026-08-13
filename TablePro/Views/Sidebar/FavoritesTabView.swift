@@ -293,7 +293,7 @@ internal struct FavoritesTabView: View {
             Text(table.name)
         } icon: {
             Image(systemName: TableRowLogic.iconName(for: table.type))
-                .sidebarTint(Color.accentColor)
+                .selectionAwareTint(Color.accentColor)
         }
         .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
         .tag(FavoriteSelection.table(database: activeDatabase, schema: table.schema, name: table.name))

@@ -215,6 +215,61 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .map { PluginTableInfo(name: $0, type: "table", rowCount: nil) }
     }
 
+    private func executeWrite(
+        kind: MongoWriteKind,
+        collection: String,
+        filter: String,
+        document: String,
+        options: MongoWriteOptions,
+        conn: MongoDBConnection,
+        db: String,
+        startTime: Date
+    ) async throws -> PluginQueryResult {
+        var fields: [String] = []
+        if options.upsert { fields.append("\"upsert\": true") }
+        if let arrayFilters = options.arrayFilters { fields.append("\"arrayFilters\": \(arrayFilters)") }
+        if let hint = options.hint { fields.append("\"hint\": \(hint)") }
+        let extras = fields.isEmpty ? "" : ", " + fields.joined(separator: ", ")
+
+        if kind == .findOneAndUpdate {
+            let command = """
+                {"findAndModify": "\(escapeJsonString(collection))", "query": \(filter), \
+                "update": \(document), "new": true\(extras)}
+                """
+            let docs = try await conn.runCommand(command, database: db)
+            return buildPluginResult(from: docs.isEmpty ? [] : [docs[0]], startTime: startTime)
+        }
+
+        let command = """
+            {"update": "\(escapeJsonString(collection))", \
+            "updates": [{"q": \(filter), "u": \(document), "multi": \(kind == .updateMany)\(extras)}]}
+            """
+        let result = try await conn.runCommand(command, database: db)
+        let modified = (result.first?["nModified"] as? Int64)
+            ?? (result.first?["nModified"] as? Int).map(Int64.init) ?? 0
+        let upserted = (result.first?["upserted"] as? [Any])?.count ?? 0
+        let affected = Int(modified) + upserted
+
+        return PluginQueryResult(
+            columns: ["modifiedCount", "upsertedCount"], columnTypeNames: ["Int64", "Int64"],
+            rows: [[.text(String(modified)), .text(String(upserted))]], rowsAffected: affected,
+            executionTime: Date().timeIntervalSince(startTime)
+        )
+    }
+
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
+        guard let conn = mongoConnection else {
+            throw MongoDBPluginError.notConnected
+        }
+
+        let docs = try await conn.find(
+            database: currentDb, collection: table,
+            filter: "{}", sort: nil, projection: nil, skip: 0, limit: max(1, limit)
+        ).docs
+
+        return BsonDocumentFlattener.fieldPaths(from: docs, representation: uuidRepresentation)
+    }
+
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected
@@ -637,6 +692,14 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let cmd = "\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(update)"
             return "db.runCommand({\"explain\": {\(cmd)}, \"verbosity\": \"executionStats\"})"
 
+        case .write(let kind, let collection, let filter, let document, _):
+            let multi = kind == .updateMany
+            if kind == .findOneAndUpdate {
+                let cmd = "\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(document)"
+                return "db.runCommand({\"explain\": {\(cmd)}, \"verbosity\": \"executionStats\"})"
+            }
+            return "db.runCommand({\"explain\": {\"update\": \"\(escapeJsonString(collection))\", \"updates\": [{\"q\": \(filter), \"u\": \(document), \"multi\": \(multi)}]}, \"verbosity\": \"executionStats\"})"
+
         case .findOneAndReplace(let collection, let filter, let replacement):
             let cmd = "\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(replacement)"
             return "db.runCommand({\"explain\": {\(cmd)}, \"verbosity\": \"executionStats\"})"
@@ -922,6 +985,12 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let cmd = "{\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(update), \"new\": true}"
             let docs = try await conn.runCommand(cmd, database: db)
             return buildPluginResult(from: docs.isEmpty ? [] : [docs[0]], startTime: startTime)
+
+        case .write(let kind, let collection, let filter, let document, let options):
+            return try await executeWrite(
+                kind: kind, collection: collection, filter: filter, document: document,
+                options: options, conn: conn, db: db, startTime: startTime
+            )
 
         case .findOneAndReplace(let collection, let filter, let replacement):
             let cmd = "{\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(replacement), \"new\": true}"

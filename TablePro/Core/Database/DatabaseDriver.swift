@@ -86,6 +86,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation falls back to per-table fetchColumns.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]]
 
+    /// Dotted field paths a document store exposes for a collection, for query authoring.
+    /// Default implementation returns nothing, which is correct for every SQL driver.
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath]
+
     /// Fetch indexes for a specific table
     func fetchIndexes(table: String) async throws -> [IndexInfo]
 
@@ -169,6 +173,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     func createDatabase(_ request: CreateDatabaseRequest) async throws
 
     func dropDatabase(name: String) async throws
+
+    func dropSchema(name: String) async throws
 
     func fetchSessionContexts() async throws -> [PluginSessionContext]?
 
@@ -301,6 +307,11 @@ extension DatabaseDriver {
                       userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
     }
 
+    func dropSchema(name: String) async throws {
+        throw NSError(domain: "DatabaseDriver", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "Drop schema is not supported by this driver"])
+    }
+
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
 
     func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }
@@ -378,6 +389,10 @@ extension DatabaseDriver {
             }
         }
         return result
+    }
+
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
+        []
     }
 
     /// Default fetchAllColumns: falls back to per-table fetchColumns (N+1).

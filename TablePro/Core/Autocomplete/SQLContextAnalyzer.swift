@@ -48,6 +48,7 @@ enum SQLClauseType {
     case dropObject       // After DROP TABLE/INDEX/VIEW
     case createIndex      // After CREATE INDEX
     case createView       // After CREATE VIEW
+    case castTarget       // After a PostgreSQL :: cast operator
     case unknown          // Unknown or start of query
 }
 
@@ -92,6 +93,7 @@ struct SQLContext {
     let currentFunction: String?    // If inside function args, the function name
     let isAfterComma: Bool          // True if immediately after a comma
     let expectsObjectName: Bool     // Cursor is in the table-operand slot of FROM/JOIN/INTO
+    let comparisonColumn: String?   // Column being compared against, when the cursor is on the value side
 
     init(
         clauseType: SQLClauseType,
@@ -105,7 +107,8 @@ struct SQLContext {
         nestingLevel: Int = 0,
         currentFunction: String? = nil,
         isAfterComma: Bool = false,
-        expectsObjectName: Bool = false
+        expectsObjectName: Bool = false,
+        comparisonColumn: String? = nil
     ) {
         self.clauseType = clauseType
         self.prefix = prefix
@@ -119,6 +122,7 @@ struct SQLContext {
         self.currentFunction = currentFunction
         self.isAfterComma = isAfterComma
         self.expectsObjectName = expectsObjectName
+        self.comparisonColumn = comparisonColumn
     }
 
     func replacingTableReferences(_ references: [TableReference]) -> SQLContext {
@@ -134,7 +138,8 @@ struct SQLContext {
             nestingLevel: nestingLevel,
             currentFunction: currentFunction,
             isAfterComma: isAfterComma,
-            expectsObjectName: expectsObjectName
+            expectsObjectName: expectsObjectName,
+            comparisonColumn: comparisonColumn
         )
     }
 }
@@ -352,11 +357,14 @@ final class SQLContextAnalyzer {
             currentFunction: currentFunction
         )
 
+        let isCastTarget = endsWithCastOperator(nsBeforeCursor, before: prefixStart)
+        let comparisonColumn = comparisonTarget(in: nsBeforeCursor, before: prefixStart)
+
         return SQLContext(
-            clauseType: resolution.clause,
+            clauseType: isCastTarget ? .castTarget : resolution.clause,
             prefix: prefix,
             prefixRange: (statementOffset + prefixStart)..<safePosition,
-            dotPrefix: dotPrefix,
+            dotPrefix: isCastTarget ? nil : dotPrefix,
             tableReferences: tableReferences,
             isInsideString: false,
             isInsideComment: false,
@@ -364,7 +372,8 @@ final class SQLContextAnalyzer {
             nestingLevel: nestingLevel,
             currentFunction: currentFunction,
             isAfterComma: isAfterComma,
-            expectsObjectName: resolution.expectsObjectName
+            expectsObjectName: resolution.expectsObjectName,
+            comparisonColumn: comparisonColumn
         )
     }
 
@@ -676,6 +685,65 @@ final class SQLContextAnalyzer {
         }
 
         return false
+    }
+
+    /// The column a value is being compared against, when the cursor sits on the value side of a
+    /// comparison. Drives value completion for columns with a known set of allowed values.
+    private func comparisonTarget(in text: NSString, before prefixStart: Int) -> String? {
+        var index = skippingWhitespaceBackwards(in: text, from: min(prefixStart, text.length))
+        guard let operatorStart = comparisonOperatorStart(in: text, endingAt: index) else { return nil }
+
+        index = skippingWhitespaceBackwards(in: text, from: operatorStart)
+        let identifierEnd = index
+        while index > 0, SQLTokenBoundary.isIdentifierChar(text.character(at: index - 1)) {
+            index -= 1
+        }
+        guard index < identifierEnd else { return nil }
+
+        let identifier = text.substring(with: NSRange(location: index, length: identifierEnd - index))
+        guard !Self.comparisonStopWords.contains(identifier.uppercased()) else { return nil }
+        return identifier
+    }
+
+    private func skippingWhitespaceBackwards(in text: NSString, from start: Int) -> Int {
+        var index = start
+        while index > 0 {
+            let character = text.character(at: index - 1)
+            guard character == Self.space || character == Self.tab
+                || character == Self.newline || character == Self.cr else { break }
+            index -= 1
+        }
+        return index
+    }
+
+    private func comparisonOperatorStart(in text: NSString, endingAt end: Int) -> Int? {
+        for symbol in Self.comparisonOperators {
+            let length = (symbol as NSString).length
+            guard end >= length else { continue }
+            let range = NSRange(location: end - length, length: length)
+            guard text.substring(with: range).caseInsensitiveCompare(symbol) == .orderedSame else { continue }
+
+            let start = end - length
+            let isWordOperator = symbol.first?.isLetter == true
+            if isWordOperator, start > 0, SQLTokenBoundary.isIdentifierChar(text.character(at: start - 1)) {
+                continue
+            }
+            return start
+        }
+        return nil
+    }
+
+    private static let comparisonOperators: [String] = ["<>", "!=", "<=", ">=", "=", "<", ">", "IN", "LIKE", "ILIKE"]
+
+    private static let comparisonStopWords: Set<String> = [
+        "AND", "OR", "NOT", "WHERE", "ON", "HAVING", "SELECT", "SET", "WHEN", "THEN", "ELSE", "BY"
+    ]
+
+    /// True when the token being typed directly follows a PostgreSQL `::` cast operator.
+    private func endsWithCastOperator(_ text: NSString, before prefixStart: Int) -> Bool {
+        guard prefixStart >= 2, prefixStart <= text.length else { return false }
+        let colon = UInt16(UnicodeScalar(":").value)
+        return text.character(at: prefixStart - 1) == colon && text.character(at: prefixStart - 2) == colon
     }
 
     /// Extract the current word prefix and any dot prefix (table.column).

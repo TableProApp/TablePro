@@ -115,6 +115,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])]
@@ -122,6 +123,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec?
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws
     func dropDatabase(name: String) async throws
+    func dropSchema(name: String) async throws
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult
 
     // Session contexts (optional, switchable session dimensions such as a warehouse or role)
@@ -285,6 +287,12 @@ public extension PluginDatabaseDriver {
         return result
     }
 
+    /// Default: no nested field paths. Document stores override this to sample documents and
+    /// report the dotted paths their nested structure exposes, which a flat column list cannot.
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
+        []
+    }
+
     /// Default: fetches foreign keys per-table sequentially (N+1 round-trips).
     /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.KEY_COLUMN_USAGE).
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
@@ -326,6 +334,11 @@ public extension PluginDatabaseDriver {
     func dropDatabase(name: String) async throws {
         throw NSError(domain: "PluginDatabaseDriver", code: -1,
                       userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
+    }
+
+    func dropSchema(name: String) async throws {
+        throw NSError(domain: "PluginDatabaseDriver", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "Drop schema is not supported by this driver"])
     }
 
     func switchDatabase(to database: String) async throws {

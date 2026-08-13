@@ -12,9 +12,15 @@ import TableProPluginKit
 
 private let navigationLogger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator+Navigation")
 
+internal enum WindowTabOpenDisposition: Equatable {
+    case currentCoordinator
+    case focusedElsewhere
+}
+
 extension MainContentCoordinator {
     // MARK: - Table Tab Opening
 
+    @discardableResult
     func openTableTab(
         _ table: TableInfo,
         schema: String? = nil,
@@ -22,7 +28,7 @@ extension MainContentCoordinator {
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false,
         forceNewWindowTab: Bool = false
-    ) {
+    ) -> WindowTabOpenDisposition? {
         openTableTab(
             table.name,
             schema: schema ?? table.schema,
@@ -34,6 +40,7 @@ extension MainContentCoordinator {
         )
     }
 
+    @discardableResult
     func openTableTab(
         _ tableName: String,
         schema: String? = nil,
@@ -42,7 +49,7 @@ extension MainContentCoordinator {
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false,
         forceNewWindowTab: Bool = false
-    ) {
+    ) -> WindowTabOpenDisposition? {
         let navigationModel = PluginMetadataRegistry.shared.snapshot(
             forTypeId: connection.type.pluginTypeId
         )?.navigationModel ?? .standard
@@ -50,7 +57,7 @@ extension MainContentCoordinator {
         let currentDatabase: String
         if navigationModel == .inPlace {
             guard tableName.hasPrefix("db"), Int(String(tableName.dropFirst(2))) != nil else {
-                return
+                return nil
             }
             currentDatabase = String(tableName.dropFirst(2))
         } else {
@@ -61,7 +68,7 @@ extension MainContentCoordinator {
         let createAsPreview = !forceNonPreview && !forceNewWindowTab
             && AppSettingsManager.shared.tabs.enablePreviewTabs
 
-        if !forceNewWindowTab, activateIfAlreadyOpen(
+        if !forceNewWindowTab, let disposition = activateIfAlreadyOpen(
             tableName: tableName,
             databaseName: currentDatabase,
             schemaName: resolvedSchema,
@@ -72,7 +79,7 @@ extension MainContentCoordinator {
             navigationLogger.debug(
                 "[tableload] activateExistingTab table=\(tableName, privacy: .public)"
             )
-            return
+            return disposition
         }
 
         if activateGridFocus {
@@ -94,17 +101,18 @@ extension MainContentCoordinator {
                         schemaName: resolvedSchema,
                         isView: isView
                     )
+                    return .currentCoordinator
                 } catch {
                     navigationLogger.error("openTableTab addTableTab failed: \(error.localizedDescription, privacy: .public)")
                 }
             } else {
                 pendingGridFocusOnOpen = false
             }
-            return
+            return nil
         }
 
         if tabManager.tabs.isEmpty {
-            addFirstTableTab(
+            let didOpen = addFirstTableTab(
                 tableName: tableName,
                 currentDatabase: currentDatabase,
                 resolvedSchema: resolvedSchema,
@@ -112,7 +120,7 @@ extension MainContentCoordinator {
                 createAsPreview: createAsPreview,
                 isInPlace: navigationModel == .inPlace
             )
-            return
+            return didOpen ? .currentCoordinator : nil
         }
 
         // In-place navigation: replace current tab content rather than
@@ -145,14 +153,15 @@ extension MainContentCoordinator {
                         selectRedisDatabaseAndQuery(dbIndex)
                     }
                 }
+                return replaced ? .currentCoordinator : nil
             } catch {
                 navigationLogger.error("openTableTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+                return nil
             }
-            return
         }
 
         if isActiveTabReusable, !forceNewWindowTab {
-            reuseActiveTab(
+            let didOpen = reuseActiveTab(
                 for: tableName,
                 currentDatabase: currentDatabase,
                 resolvedSchema: resolvedSchema,
@@ -160,7 +169,7 @@ extension MainContentCoordinator {
                 showStructure: showStructure,
                 createAsPreview: createAsPreview
             )
-            return
+            return didOpen ? .currentCoordinator : nil
         }
 
         promotePreviewTab()
@@ -179,6 +188,7 @@ extension MainContentCoordinator {
             isPreview: createAsPreview
         )
         WindowManager.shared.openTab(payload: payload)
+        return .focusedElsewhere
     }
 
     func activateIfAlreadyOpen(
@@ -188,7 +198,7 @@ extension MainContentCoordinator {
         showStructure: Bool,
         activateGridFocus: Bool,
         includeSiblings: Bool
-    ) -> Bool {
+    ) -> WindowTabOpenDisposition? {
         func matches(_ tab: QueryTab) -> Bool {
             tab.tabType == .table
                 && tab.tableContext.tableName == tableName
@@ -204,10 +214,10 @@ extension MainContentCoordinator {
             if activateGridFocus {
                 requestGridFocus()
             }
-            return true
+            return .currentCoordinator
         }
 
-        guard includeSiblings else { return false }
+        guard includeSiblings else { return nil }
 
         for sibling in MainContentCoordinator.allActiveCoordinators()
             where sibling !== self && sibling.connectionId == connectionId {
@@ -215,9 +225,9 @@ extension MainContentCoordinator {
             sibling.pendingGridFocusOnOpen = activateGridFocus
             applyStructureMode(showStructure, toTab: match.id, in: sibling.tabManager)
             sibling.selectTabAndFocusWindow(match.id)
-            return true
+            return .focusedElsewhere
         }
-        return false
+        return nil
     }
 
     private func applyStructureMode(_ showStructure: Bool, toTab tabId: UUID, in tabManager: QueryTabManager) {
@@ -232,7 +242,7 @@ extension MainContentCoordinator {
         isView: Bool,
         createAsPreview: Bool,
         isInPlace: Bool
-    ) {
+    ) -> Bool {
         do {
             if createAsPreview {
                 try tabManager.addPreviewTableTab(
@@ -253,7 +263,7 @@ extension MainContentCoordinator {
             }
         } catch {
             navigationLogger.error("openTableTab tab creation failed: \(error.localizedDescription, privacy: .public)")
-            return
+            return false
         }
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
             let token = TableLoadTracer.shared.begin(tabId: tab.id, table: tableName, origin: .sidebar)
@@ -274,6 +284,7 @@ extension MainContentCoordinator {
         } else {
             lazyLoadCurrentTabIfNeeded()
         }
+        return true
     }
 
     private func reuseActiveTab(
@@ -283,7 +294,7 @@ extension MainContentCoordinator {
         isView: Bool,
         showStructure: Bool,
         createAsPreview: Bool
-    ) {
+    ) -> Bool {
         let previousTableName = tabManager.selectedTab?.tableContext.tableName
         if let previousTableName {
             saveLastFilters(for: previousTableName)
@@ -316,7 +327,7 @@ extension MainContentCoordinator {
         } catch {
             navigationLogger.error("openTableTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
             if let token { TableLoadTracer.shared.finish(token: token, outcome: "replaceFailed") }
-            return
+            return false
         }
         if let token { TableLoadTracer.shared.stage(.replaceTabContent, token: token) }
         clearFilterState()
@@ -335,6 +346,7 @@ extension MainContentCoordinator {
             cancelTableLoad(for: tabId)
         }
         lazyLoadCurrentTabIfNeeded()
+        return true
     }
 
     // MARK: - Preview Tabs
@@ -494,23 +506,80 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Drop a database. Called from the database switcher's confirmation dialog.
-    func dropDatabase(name: String) async {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            navigationLogger.warning("dropDatabase(name: \(name, privacy: .public)) ignored: no active driver")
-            return
+    func requestContainerDrop(_ targets: [DatabaseContainerRef]) {
+        guard !targets.isEmpty else { return }
+        let isSchema = targets.contains { $0.kind == .schema }
+        containerDropRequest = DatabaseDropRequest(
+            targets: targets,
+            entityName: isSchema
+                ? PluginManager.shared.schemaEntityName(for: connection.type)
+                : PluginManager.shared.containerEntityName(for: connection.type),
+            entityNamePlural: isSchema
+                ? PluginManager.shared.schemaEntityNamePlural(for: connection.type)
+                : PluginManager.shared.containerEntityNamePlural(for: connection.type),
+            dropsDependentObjects: isSchema
+        )
+    }
+
+    /// Drop every container in the request, reporting the ones that failed.
+    /// A failure on one target never stops the rest: the user asked for all of them.
+    func dropContainers(_ request: DatabaseDropRequest) async {
+        var failures: [(name: String, message: String)] = []
+
+        for target in request.targets {
+            do {
+                try await dropContainer(target)
+            } catch {
+                navigationLogger.error(
+                    "Failed to drop \(target.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+                failures.append((target.name, error.localizedDescription))
+            }
         }
 
-        do {
-            try await driver.dropDatabase(name: name)
-        } catch {
-            navigationLogger.error("Failed to drop database: \(error.localizedDescription, privacy: .public)")
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Drop Failed"),
-                message: error.localizedDescription,
-                window: contentWindow
+        await DatabaseTreeMetadataService.shared.refreshDatabases(
+            connectionId: connectionId,
+            databaseType: connection.type
+        )
+        for database in Set(request.targets.filter { $0.kind == .schema }.map(\.database)) {
+            await DatabaseTreeMetadataService.shared.refreshSchemas(
+                connectionId: connectionId,
+                database: database
             )
         }
+
+        guard !failures.isEmpty else { return }
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Drop Failed"),
+            message: dropFailureMessage(failures),
+            window: contentWindow
+        )
+    }
+
+    private func dropContainer(_ target: DatabaseContainerRef) async throws {
+        switch target.kind {
+        case .database:
+            guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+                throw DatabaseError.notConnected
+            }
+            try await driver.dropDatabase(name: target.name)
+        case .schema:
+            guard let scope = DatabaseManager.shared.resolvedScope(
+                database: target.database, schema: nil, for: connectionId
+            ) else {
+                throw DatabaseError.notConnected
+            }
+            let name = target.name
+            try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                try await driver.dropSchema(name: name)
+            }
+        }
+    }
+
+    private func dropFailureMessage(_ failures: [(name: String, message: String)]) -> String {
+        failures
+            .map { String(format: String(localized: "%1$@: %2$@"), $0.name, $0.message) }
+            .joined(separator: "\n")
     }
 
     // MARK: - Redis Database Selection

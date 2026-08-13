@@ -29,6 +29,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var nodeCache: [String: DatabaseTreeNode] = [:]
     private var childrenCache: [String: [DatabaseTreeNode]] = [:]
     private var lastSelection: Set<DatabaseTreeTableRef> = []
+    private var lastSelectedNodeIds: [String] = []
     private var pendingSingleClickWork: DispatchWorkItem?
     private var isApplyingExpansion = false
     private var isSyncingSelection = false
@@ -483,16 +484,25 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     // MARK: - Selection / open
 
     private func selectedRefs() -> [DatabaseTreeTableRef] {
+        selectedNodes().compactMap(\.tableRef)
+    }
+
+    private func selectedContainerRefs() -> [DatabaseContainerRef] {
+        let systemSchemaNames = systemSchemas
+        return selectedNodes().compactMap { $0.containerRef(systemSchemas: systemSchemaNames) }
+    }
+
+    private func selectedNodes() -> [DatabaseTreeNode] {
         guard let outlineView else { return [] }
         return outlineView.selectedRowIndexes.compactMap {
-            (outlineView.item(atRow: $0) as? DatabaseTreeNode)?.tableRef
+            outlineView.item(atRow: $0) as? DatabaseTreeNode
         }
     }
 
     private func syncSelectionToModel() {
         guard let outlineView else { return }
-        let rows = lastSelection.compactMap { ref -> Int? in
-            guard let node = nodeCache[DatabaseTreeNode.tableId(ref)] else { return nil }
+        let rows = lastSelectedNodeIds.compactMap { nodeId -> Int? in
+            guard let node = nodeCache[nodeId] else { return nil }
             let row = outlineView.row(forItem: node)
             return row >= 0 ? row : nil
         }
@@ -558,6 +568,15 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         Task { await service.refreshObjects(connectionId: connectionId, database: database, schema: schema) }
     }
 
+    private func refreshContainers(_ targets: [DatabaseContainerRef]) {
+        for target in targets {
+            switch target.kind {
+            case .database: refreshDatabase(target.database)
+            case .schema: refreshObjects(database: target.database, schema: target.schema)
+            }
+        }
+    }
+
     private func rowContext() -> DatabaseTreeRowContext {
         DatabaseTreeRowContext(
             databaseType: databaseType,
@@ -581,11 +600,13 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             coordinator: mainCoordinator,
             isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false,
             selectedTables: { [weak self] in Set((self?.selectedRefs() ?? []).map(\.table)) },
+            selectedContainers: { [weak self] in self?.selectedContainerRefs() ?? [] },
             activate: { [weak self] ref in await self?.activate(ref) },
             setActiveDatabase: { [weak self] in self?.setActiveDatabase($0) },
             setActiveSchema: { [weak self] database, schema in self?.setActiveSchema(database: database, schema: schema) },
-            refreshDatabase: { [weak self] in self?.refreshDatabase($0) },
-            refreshObjects: { [weak self] database, schema in self?.refreshObjects(database: database, schema: schema) },
+            refreshContainers: { [weak self] in self?.refreshContainers($0) },
+            exportContainers: { [weak self] in self?.mainCoordinator?.openExportDialog(containers: $0) },
+            dropContainers: { [weak self] in self?.mainCoordinator?.requestContainerDrop($0) },
             showRoutineDDL: { [weak self] routine in self?.mainCoordinator?.showRoutineDDL(routine) },
             batchToggleTruncate: { [weak self] in self?.viewModel?.batchToggleTruncate(tableNames: $0) },
             batchToggleDelete: { [weak self] in self?.viewModel?.batchToggleDelete(tableNames: $0) },
@@ -649,7 +670,8 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        (item as? DatabaseTreeNode)?.tableRef != nil
+        guard let node = item as? DatabaseTreeNode else { return false }
+        return node.tableRef != nil || node.isContainer
     }
 
     func outlineView(
@@ -674,7 +696,9 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !isSyncingSelection, !isReloading else { return }
-        let refs = Set(selectedRefs())
+        let nodes = selectedNodes()
+        lastSelectedNodeIds = nodes.map(\.id)
+        let refs = Set(nodes.compactMap(\.tableRef))
         if let added = SelectionDelta.singleAddition(old: lastSelection, new: refs) {
             if isKeyboardDrivenSelection {
                 pendingSingleClickWork?.cancel()

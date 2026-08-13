@@ -354,7 +354,7 @@ struct OpenTableTabTests {
             includeSiblings: true
         )
 
-        #expect(activated == false)
+        #expect(activated == nil)
         #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
     }
 
@@ -383,7 +383,7 @@ struct OpenTableTabTests {
             includeSiblings: true
         )
 
-        #expect(activated == true)
+        #expect(activated == .currentCoordinator)
         #expect(tabManager.selectedTab?.tableContext.tableName == "users")
         #expect(tabManager.selectedTab?.display.resultsViewMode == .structure)
     }

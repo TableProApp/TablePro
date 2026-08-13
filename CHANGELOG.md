@@ -9,12 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Select several databases or schemas in the sidebar tree and act on them at once: drop, refresh, copy names, or export. Shift-click and Cmd-click extend the selection.
+- The database switcher takes a multiple selection too, with the same actions on the right-click menu.
+- Drop Schema for PostgreSQL, SQL Server and SurrealDB.
+- Quick Switcher can search tables and views across every open connection.
+- Quick Switcher can search saved queries and recent queries across every open connection.
 - SSL settings on mobile for MySQL, PostgreSQL and Redis: a mode picker plus CA, client certificate and client key. Import a PEM file, paste one, or use a PKCS#12 file. (#2083)
+- The editor underlines a structural mistake as you type: a closing bracket with no opener, or an unterminated comment. On MongoDB it also reports what the query parser rejects, such as an unknown collection method. A half-written statement is never flagged. (#2095)
+- PostgreSQL enum values are suggested when you compare against an enum column, so `WHERE status = ` offers the labels the type declares. (#2095)
 - Legacy UUID Encoding on a MongoDB connection, so binary UUIDs written by the Java, C# or Python drivers read as UUIDs instead of hex. Filters, edits and MQL exports write the same bytes back. (#2086)
+- Autocomplete for MongoDB queries. Typing `db.` lists collections, `db.users.` lists the driver methods, and inside a query you get field names plus the operators that are valid in that spot: query operators in a filter, update operators in an update, stage names in a pipeline, and expression operators inside a stage. (#2095)
+- PostgreSQL autocomplete now knows the operators, including `::`, the JSON ones (`->`, `->>`, `#>`, `@>`, `?`, `?|`, `?&`), array and range containment, regex matching and full-text search. Each one shows what it does and which types it works on. Typing `::` offers the type names. (#2095)
+- PostgreSQL autocomplete covers about 400 built-in functions and the multi-word syntax people actually type, such as `ON CONFLICT DO UPDATE SET`, `GENERATED ALWAYS AS IDENTITY` and window frame clauses. (#2095)
+- MongoDB field suggestions include nested paths. A document with `address: { city }` now suggests `address.city`, not just `address`. (#2095)
+- MongoDB updates accept an options argument, so `db.users.updateOne({...}, {...}, {upsert: true})` upserts instead of ignoring the option. `arrayFilters` and `hint` are passed through too. (#2095)
+- Format Query follows the editor language. On a MongoDB tab it lays out filters and pipelines by nesting depth instead of running the SQL formatter over them. (#2095)
 
 ### Added
 
 - The MongoDB editor accepts mongosh value constructors in filters and pipelines, so a value copied from the grid pastes straight into a query. Covers `ObjectId`, `ISODate`, `Date`, the `Number*` family, `Timestamp`, `BinData`, `HexData`, `MinKey`, `MaxKey` and the UUID names. (#2086)
+
+### Fixed
+
+- A chained method on a MongoDB aggregation no longer goes missing. `db.orders.aggregate([...]).limit(10)` used to drop the limit and return everything the pipeline matched. Chaining a method that a query does not support now reports an error instead of ignoring it. (#2095)
 
 ### Changed
 
@@ -57,7 +74,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The drop and truncate confirmation is now a standard system alert with Cancel as the default button, so pressing Return no longer drops a table.
-- Right-clicking a table in the sidebar acts on the row under the pointer instead of the previous selection.
 - The external link prompt now defaults to Cancel, and deleting a column or row from the inspector no longer runs on Return or without asking.
 - Theme, schema, and diagram exports report write failures instead of failing silently, and picking a folder that is already linked says so.
 - Selected sidebar rows, quick switcher results, and the database switcher use the system foreground colour, so labels stay readable under any accent colour and with Increase Contrast on.
@@ -89,6 +105,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The chat composer placeholder truncates instead of overflowing and is reported to VoiceOver.
 - Colour swatches show press, hover, and keyboard focus, and the selection ring follows the accent colour.
 - The split column alert grows to fit longer labels in other languages.
+- Option+Return in the Quick Switcher opens the selected table in a new window tab. The shortcut was documented but never fired.
+- Right-clicking a table that is not part of the current selection now acts on that table. It used to act on the selected tables instead, including for Delete.
+- Database icons and the current-database checkmark stay visible on a selected row in the database switcher. They were drawn in the accent colour, which vanished against the accent-coloured selection.
+- The sidebar drops a database from the tree as soon as you drop it on the server, instead of listing it until you reconnect.
+- Refreshing the database list keeps the current list on screen while it reloads, and keeps it if the reload fails.
 - MQL export writes a MongoDB `_id` as `ObjectId("...")` and a date as `ISODate("...")`, so running the script inserts the same types back instead of strings. A value nested inside a subdocument is still exported as a string.
 - MQL export keeps a binary value's BSON subtype and writes it as a `BinData(...)` constructor, so running the script inserts the same bytes back. It wrote Extended JSON that mongosh reads as a plain object, and stamped every value as subtype 0. (#2086)
 - MongoDB no longer prints a binary field nested inside a document as a UUID when it is not one, or labels a UUID with the wrong byte order. (#2086)

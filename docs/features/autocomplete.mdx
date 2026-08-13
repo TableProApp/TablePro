@@ -106,6 +106,65 @@ WHERE date_column > |  -- NOW(), CURRENT_DATE, etc.
 
 Functions from the connection's SQL dialect (e.g. `CONVERT_TIMEZONE` on Snowflake, `SAFE_CAST` on BigQuery) appear alongside the common SQL functions.
 
+### Operators
+
+Operators the connection's dialect declares appear in WHERE, ON, HAVING, and AND contexts, each with what it does and the types it works on.
+
+On PostgreSQL that covers the JSON operators, array and range containment, regex matching, full-text search, and the network operators:
+
+```sql
+WHERE data -|            -- ->  (field as json), ->>  (field as text)
+WHERE payload @|         -- @>  contains, @?  JSON path returns any item
+WHERE tags &|            -- &&  arrays overlap
+WHERE email ~|           -- ~   POSIX regex, ~* case insensitive
+```
+
+The list distinguishes operators that only work on `jsonb` from the ones `json` accepts too, so `@>` is not offered as if it worked on a `json` column.
+
+### Casts
+
+Typing `::` offers the dialect's type names, in the spelling you write rather than the internal catalog name:
+
+```sql
+SELECT id::|             -- integer, bigint, text, timestamptz, jsonb, uuid, ...
+SELECT payload::js|      -- json, jsonb, jsonpath
+```
+
+### MongoDB
+
+MongoDB connections use MQL instead of SQL, and the popup follows the shape of the query rather than SQL clauses. What you get depends on exactly where the cursor is:
+
+```js
+db.|                                  // collections, plus getCollectionNames(), createCollection(), ...
+db.users.|                            // find(), aggregate(), updateOne(), insertMany(), ...
+db.users.find({ |                     // field names, then $eq, $gt, $in, $exists, $regex, ...
+db.users.find({}, { |                 // field names, then $slice, $elemMatch, $meta
+db.users.updateOne({}, { |            // $set, $unset, $inc, $push, $addToSet, ...
+db.users.updateOne({}, [{ |           // the six stages an update pipeline allows
+db.orders.aggregate([{ |              // $match, $group, $lookup, $unwind, $facet, ...
+db.orders.aggregate([{ $group: { |    // $sum, $avg, $first, $push, and the expression operators
+```
+
+The operator sets are kept apart on purpose. Offering `$match` inside a filter document, or `$gte` where a pipeline stage belongs, is worse than offering nothing. `$set` and `$unset` mean different things as an update operator and as a pipeline stage, and the popup describes whichever one applies at the cursor.
+
+Field names come from a sample of the collection's documents and include nested paths, so a document with `address: { city, zip }` suggests `address`, `address.city` and `address.zip`. Objects inside an array contribute paths too. Shallower fields sort first. Nothing in the query is executed to build the list.
+
+The sample is cached per collection and cleared when you switch database or refresh the connection.
+
+Completion is suppressed inside comments, and braces or brackets inside a string literal do not count as opening a document.
+
+### Enum Values
+
+Comparing against a column whose type declares a fixed set of values suggests those values, quoted and ready to accept. On PostgreSQL that covers enum types:
+
+```sql
+WHERE status = |          -- 'pending', 'active', 'archived'
+WHERE status IN (|        -- same list
+WHERE mood <> 'ha|        -- 'happy'
+```
+
+The values come from the column cache the editor already holds, so nothing extra is queried while you type. A column with no declared value set suggests nothing.
+
 ### Favorite Keywords
 
 Favorites you've assigned a keyword to (DB-stored or linked-file `@keyword` frontmatter) appear in the popup as a top-priority match. Type the keyword, accept the suggestion, and the favorite's full SQL replaces the keyword inline. A `;;` in the favorite's SQL sets where the cursor lands after expansion. See [Favorites](/features/favorites#cursor-placement) for how to assign keywords and place the marker.

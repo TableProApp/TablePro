@@ -82,9 +82,15 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func fetchFavorites(
         connectionId: UUID? = nil,
         folderId: UUID? = nil,
-        searchText: String? = nil
+        searchText: String? = nil,
+        allowedConnectionIds: Set<UUID>? = nil
     ) async -> [SQLFavorite] {
-        await storage.fetchFavorites(connectionId: connectionId, folderId: folderId, searchText: searchText)
+        await storage.fetchFavorites(
+            connectionId: connectionId,
+            folderId: folderId,
+            searchText: searchText,
+            allowedConnectionIds: allowedConnectionIds
+        )
     }
 
     // MARK: - Folders

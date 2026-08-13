@@ -29,17 +29,23 @@ actor SQLSchemaProvider {
         let fetchColumns: @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo]
         let fetchAllColumns: @Sendable () async throws -> [String: [ColumnInfo]]
         let fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])?
+        let sampleFieldPaths: (@Sendable (_ table: String, _ limit: Int) async throws -> [PluginFieldPath])?
 
         init(
             fetchColumns: @escaping @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo],
             fetchAllColumns: @escaping @Sendable () async throws -> [String: [ColumnInfo]],
-            fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])? = nil
+            fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])? = nil,
+            sampleFieldPaths: (@Sendable (_ table: String, _ limit: Int) async throws -> [PluginFieldPath])? = nil
         ) {
             self.fetchColumns = fetchColumns
             self.fetchAllColumns = fetchAllColumns
             self.fetchSchemaTables = fetchSchemaTables
+            self.sampleFieldPaths = sampleFieldPaths
         }
     }
+
+    private var fieldPathCache: [String: [PluginFieldPath]] = [:]
+    private var fieldPathTasks: [String: Task<[PluginFieldPath], Never>] = [:]
 
     private var knownSchemas: [String] = []
     private var knownDatabases: [String] = []
@@ -175,6 +181,8 @@ actor SQLSchemaProvider {
         self.tables = newTables
         self.columnCache.removeAll()
         self.columnAccessOrder.removeAll()
+        self.fieldPathCache.removeAll()
+        self.fieldPathTasks.removeAll()
         self.cachedDriver = driver
         self.isLoading = false
         self.lastLoadError = nil
@@ -186,6 +194,8 @@ actor SQLSchemaProvider {
         eagerColumnTask = nil
         columnCache.removeAll()
         columnAccessOrder.removeAll()
+        fieldPathCache.removeAll()
+        fieldPathTasks.removeAll()
         if cachedDriver != nil {
             startEagerColumnLoad()
         }
@@ -381,6 +391,45 @@ actor SQLSchemaProvider {
                 )
             }
         }
+    }
+
+    /// Dotted field paths for a document-store collection, cached per collection.
+    /// Concurrent callers await the same sample instead of firing duplicate queries.
+    func fieldPaths(for tableName: String, sampleSize: Int = 50) async -> [PluginFieldPath] {
+        let key = tableName.lowercased()
+        if let cached = fieldPathCache[key] { return cached }
+        if let inFlight = fieldPathTasks[key] { return await inFlight.value }
+        guard let sample = metadataSource?.sampleFieldPaths else { return [] }
+
+        let task = Task { (try? await sample(tableName, sampleSize)) ?? [] }
+        fieldPathTasks[key] = task
+        let paths = await task.value
+        fieldPathTasks[key] = nil
+        if !paths.isEmpty { fieldPathCache[key] = paths }
+        return paths
+    }
+
+    /// Values a column is restricted to, when the database declares them (a PostgreSQL enum type,
+    /// a MongoDB `$jsonSchema` enum). Returns nothing for an ordinary column.
+    /// Reads only what the column cache already holds. Completion runs on every keystroke, so it
+    /// must never trigger a schema fetch; the eager column preload is what fills this cache.
+    func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] {
+        let name = column.lowercased()
+        let candidates = references.isEmpty
+            ? tables.map { (table: $0.name, schema: String?.none) }
+            : references.map { (table: $0.tableName, schema: $0.schema) }
+
+        for candidate in candidates {
+            let key = [candidate.schema?.lowercased(), candidate.table.lowercased()]
+                .compactMap(\.self)
+                .joined(separator: ".")
+            guard let columns = columnCache[key] else { continue }
+            if let match = columns.first(where: { $0.name.lowercased() == name }),
+               let values = match.allowedValues, !values.isEmpty {
+                return values
+            }
+        }
+        return []
     }
 
     /// Get completion items for all columns of tables in scope

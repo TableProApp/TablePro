@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// The type of database object represented by a quick switcher item
 internal enum QuickSwitcherItemKind: String, Hashable, Sendable {
@@ -25,14 +26,46 @@ internal enum QuickSwitcherCommitIntent: Sendable {
     case openStructure
 }
 
+internal struct QuickSwitcherTarget: Hashable, Sendable {
+    let connectionId: UUID
+    let connectionName: String
+    let databaseName: String?
+    let schemaName: String?
+    let databaseDisplayName: String?
+    let pathFieldRole: PathFieldRole
+
+    init(
+        connectionId: UUID,
+        connectionName: String,
+        databaseName: String?,
+        schemaName: String?,
+        databaseDisplayName: String? = nil,
+        pathFieldRole: PathFieldRole = .database
+    ) {
+        self.connectionId = connectionId
+        self.connectionName = connectionName
+        self.databaseName = databaseName
+        self.schemaName = schemaName
+        self.databaseDisplayName = databaseDisplayName
+        self.pathFieldRole = pathFieldRole
+    }
+}
+
 /// A search scope limiting which kinds of objects the quick switcher shows
 internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
     case all
     case tables
     case containers
     case queries
+    case connections
 
     var id: String { rawValue }
+
+    /// Whether the scope draws from the catalog of every connected window rather than
+    /// from the objects of the connection that opened the panel.
+    var usesCrossConnectionCatalog: Bool { self == .connections }
+
+    var usesCrossConnectionQueries: Bool { self == .queries }
 
     var includedKinds: Set<QuickSwitcherItemKind>? {
         switch self {
@@ -40,6 +73,7 @@ internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
         case .tables: return [.table, .view, .systemTable]
         case .containers: return [.database, .schema]
         case .queries: return [.savedQuery, .queryHistory]
+        case .connections: return [.table, .view, .systemTable]
         }
     }
 
@@ -49,6 +83,7 @@ internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
         case .tables: return String(localized: "Tables")
         case .containers: return String(localized: "Databases")
         case .queries: return String(localized: "Queries")
+        case .connections: return String(localized: "Connections")
         }
     }
 
@@ -58,6 +93,7 @@ internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
         case .tables: return "tablecells"
         case .containers: return "cylinder"
         case .queries: return "doc.text"
+        case .connections: return "rectangle.3.group"
         }
     }
 }
@@ -68,10 +104,15 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     let name: String
     let kind: QuickSwitcherItemKind
     let subtitle: String
+    /// Ranked at full weight, unlike the subtitle that carries it for display. A saved query's
+    /// subtitle also names its connection and database, and those must not score as strongly as
+    /// the keyword the author assigned.
+    var keyword: String?
     var matchedIndices: [Int] = []
     var payload: String?
     var isOpenInTab: Bool = false
     var isReadOnly: Bool = false
+    var target: QuickSwitcherTarget?
 
     static func tableItemId(name: String, isView: Bool) -> String {
         "table_\(name)_\(isView ? "VIEW" : "TABLE")"

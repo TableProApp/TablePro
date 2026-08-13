@@ -108,7 +108,7 @@ struct TableRow: View {
             } icon: {
                 if showsObjectIcon {
                     Image(systemName: TableRowLogic.iconName(for: table.type))
-                        .sidebarTint(Color.accentColor)
+                        .selectionAwareTint(Color.accentColor)
                         .frame(width: 16)
                         .overlay(alignment: .bottomTrailing) {
                             pendingStateBadge

@@ -49,6 +49,24 @@ final class DatabaseTreeNode {
         return nil
     }
 
+    var isContainer: Bool {
+        switch kind {
+        case .database, .schema: return true
+        case .recentSection, .recentTable, .table, .routine, .status: return false
+        }
+    }
+
+    func containerRef(systemSchemas: Set<String>) -> DatabaseContainerRef? {
+        switch kind {
+        case .database(let metadata):
+            return .database(metadata.name, isSystem: metadata.isSystemDatabase)
+        case .schema(let database, let schema):
+            return .schema(database: database, schema: schema, isSystem: systemSchemas.contains(schema))
+        case .recentSection, .recentTable, .table, .routine, .status:
+            return nil
+        }
+    }
+
     static let recentSectionId = "recent-section"
     static func databaseId(_ database: String) -> String { "db\u{1}\(database)" }
     static func schemaId(database: String, schema: String) -> String { "schema\u{1}\(database)\u{1}\(schema)" }

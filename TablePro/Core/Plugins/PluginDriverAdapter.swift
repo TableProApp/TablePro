@@ -464,6 +464,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         try await pluginDriver.dropDatabase(name: name)
     }
 
+    func dropSchema(name: String) async throws {
+        try await pluginDriver.dropSchema(name: name)
+    }
+
     func fetchSessionContexts() async throws -> [PluginSessionContext]? {
         try await pluginDriver.fetchSessionContexts()
     }
@@ -473,6 +477,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     }
 
     // MARK: - Batch Operations
+
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
+        try await pluginDriver.sampleFieldPaths(table: table, schema: pluginDriver.currentSchema, limit: limit)
+    }
 
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         let pluginResult = try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)

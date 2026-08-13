@@ -33,6 +33,7 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     supportsOpportunisticTLS: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

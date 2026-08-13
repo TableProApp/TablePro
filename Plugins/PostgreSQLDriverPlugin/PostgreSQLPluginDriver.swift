@@ -981,6 +981,10 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         _ = try await execute(query: "DROP DATABASE \(quoteIdentifier(name))")
     }
 
+    func dropSchema(name: String) async throws {
+        _ = try await execute(query: "DROP SCHEMA \(quoteIdentifier(name)) CASCADE")
+    }
+
     private struct Template1Defaults {
         let collate: String
         let ctype: String

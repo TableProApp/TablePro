@@ -75,6 +75,11 @@ final class SchemaProviderRegistry {
                 try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connectionId) { driver in
                     try await driver.fetchTables(schema: schema)
                 }
+            },
+            sampleFieldPaths: { table, limit in
+                try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+                    try await driver.sampleFieldPaths(table: table, limit: limit)
+                }
             }
         )
         let provider = SQLSchemaProvider(metadataSource: source)

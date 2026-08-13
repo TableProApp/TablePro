@@ -123,6 +123,20 @@ db.users.countDocuments({"role": "admin"})
 
 **Collection references**: Write `db.users`, `db["users"]`, or `db.getCollection("users")`. The bracket and `getCollection` forms take the name exactly as written, so use them for names that contain dots or spaces, start with a digit, or match a database method such as `stats` or `version`. Single quotes and backticks work in place of double quotes. `db.getSiblingDB(...)` is not supported: a query always runs against the database the connection is using.
 
+**Chained methods**: `.sort()`, `.limit()` and `.skip()` chain onto `find` and onto `aggregate`. On an aggregation they become `$sort`, `$skip` and `$limit` stages appended to the pipeline, in that order, which is what the cursor methods mean. Chaining onto a call that returns no cursor, such as `insertOne`, is an error, and so is a method the parser does not recognise. Nothing is dropped silently.
+
+**Write options**: `updateOne`, `updateMany`, `replaceOne` and `findOneAndUpdate` take a third options document. `upsert`, `arrayFilters` and `hint` are passed to the server. The option used to be dropped without a word, so an upsert quietly did nothing.
+
+```javascript
+db.users.updateOne({_id: 1}, {"$set": {"active": true}}, {"upsert": true})
+```
+
+The result reports `modifiedCount` and `upsertedCount`.
+
+**Formatting**: `Cmd+Shift+F` lays out filters and pipelines by nesting depth. Short documents stay on one line; anything nested or long is expanded. It used to run the SQL formatter over MQL.
+
+**Autocomplete**: The editor suggests collections, methods, field names including nested paths such as `address.city`, and the `$` operators that are valid at the cursor. See [Autocomplete](/features/autocomplete#mongodb).
+
 **Supported methods**: collection-level `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`, `deleteOne`/`deleteMany`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete`, `createIndex`, `dropIndex`, `drop`; database-level `getCollectionNames`/`listCollections`, `createCollection`, `dropDatabase`, `version`, `stats`. Anything else goes through `db.runCommand({...})` or `db.adminCommand({...})`. Unlisted shell methods (for example `distinct` or `getUsers`) return an unsupported-method error.
 
 ## Troubleshooting

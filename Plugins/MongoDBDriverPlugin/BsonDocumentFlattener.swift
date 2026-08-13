@@ -259,6 +259,59 @@ struct BsonDocumentFlattener {
         return value > 0 ? "Infinity" : "-Infinity"
     }
 
+    // MARK: - Nested Field Paths
+
+    /// Dotted paths across the sampled documents, including paths inside nested objects and
+    /// inside the objects an array holds. This is deliberately separate from `unionColumns`,
+    /// which stays flat because the grid renders a nested object as one JSON column.
+    static func fieldPaths(
+        from documents: [[String: Any]],
+        representation: MongoDBUuidRepresentation,
+        maxDepth: Int = 4
+    ) -> [PluginFieldPath] {
+        var kinds: [String: [BsonValueKind: Int]] = [:]
+        var depths: [String: Int] = [:]
+        var order: [String] = []
+
+        func visit(_ document: [String: Any], prefix: String, depth: Int) {
+            guard depth <= maxDepth else { return }
+
+            for key in document.keys.sorted() {
+                guard let value = document[key], !(value is NSNull) else { continue }
+                let path = prefix.isEmpty ? key : "\(prefix).\(key)"
+
+                if depths[path] == nil {
+                    depths[path] = depth
+                    order.append(path)
+                }
+                kinds[path, default: [:]][valueKind(for: value, representation: representation), default: 0] += 1
+
+                if let nested = value as? [String: Any] {
+                    visit(nested, prefix: path, depth: depth + 1)
+                } else if let array = value as? [Any] {
+                    for element in array.prefix(20) {
+                        guard let nested = element as? [String: Any] else { continue }
+                        visit(nested, prefix: path, depth: depth + 1)
+                    }
+                }
+            }
+        }
+
+        for document in documents {
+            visit(document, prefix: "", depth: 1)
+        }
+
+        return order.compactMap { path in
+            guard let winner = kinds[path]?.max(by: { $0.value < $1.value })?.key,
+                  let depth = depths[path] else { return nil }
+            return PluginFieldPath(
+                path: path,
+                typeName: typeName(for: winner, representation: representation),
+                depth: depth
+            )
+        }
+    }
+
     // MARK: - Type Inference
 
     private static func inferValueKind(

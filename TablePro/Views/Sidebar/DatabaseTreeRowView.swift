@@ -10,11 +10,13 @@ struct DatabaseTreeRowActions {
     let coordinator: MainContentCoordinator?
     let isReadOnly: Bool
     let selectedTables: () -> Set<TableInfo>
+    let selectedContainers: () -> [DatabaseContainerRef]
     let activate: (DatabaseTreeTableRef) async -> Void
     let setActiveDatabase: (String) -> Void
     let setActiveSchema: (_ database: String, _ schema: String) -> Void
-    let refreshDatabase: (String) -> Void
-    let refreshObjects: (_ database: String, _ schema: String?) -> Void
+    let refreshContainers: ([DatabaseContainerRef]) -> Void
+    let exportContainers: ([DatabaseContainerRef]) -> Void
+    let dropContainers: ([DatabaseContainerRef]) -> Void
     let showRoutineDDL: (RoutineInfo) -> Void
     let batchToggleTruncate: ([String]) -> Void
     let batchToggleDelete: ([String]) -> Void
@@ -188,21 +190,11 @@ struct DatabaseTreeRowView: View {
                 actions.clearRecents()
             }
         case .database(let metadata):
-            Button(String(format: String(localized: "Use as Active %@"), containerEntityName)) {
-                actions.setActiveDatabase(metadata.name)
-            }
-            .disabled(metadata.name == context.activeDatabase)
-            Button(String(localized: "Refresh")) {
-                actions.refreshDatabase(metadata.name)
-            }
+            containerMenuItems(for: .database(metadata.name, isSystem: metadata.isSystemDatabase))
         case .schema(let database, let schema):
-            Button(String(format: String(localized: "Use as Active %@"), schemaEntityName)) {
-                actions.setActiveSchema(database, schema)
-            }
-            .disabled(database == context.activeDatabase && schema == context.activeSchema)
-            Button(String(localized: "Refresh")) {
-                actions.refreshObjects(database, schema)
-            }
+            containerMenuItems(
+                for: .schema(database: database, schema: schema, isSystem: context.systemSchemas.contains(schema))
+            )
         case .table(let ref):
             SidebarContextMenu(
                 clickedTable: ref.table,
@@ -218,6 +210,100 @@ struct DatabaseTreeRowView: View {
         case .status:
             EmptyView()
         }
+    }
+
+    @ViewBuilder
+    private func containerMenuItems(for clicked: DatabaseContainerRef) -> some View {
+        let targets = SidebarMenuTarget.resolveContainers(clicked: clicked, selection: actions.selectedContainers())
+        let droppable = ContainerDropEligibility.droppable(targets, context: dropEligibilityContext)
+
+        Button(useAsActiveTitle(for: clicked)) {
+            useAsActive(clicked)
+        }
+        .disabled(targets.count > 1 || isActive(clicked))
+
+        Button(String(localized: "Refresh")) {
+            actions.refreshContainers(targets)
+        }
+
+        Button(copyNamesTitle(count: targets.count)) {
+            ClipboardService.shared.writeText(targets.map(\.name).joined(separator: ","))
+        }
+
+        if ExportPreselection.canPreselect(containers: targets, activeDatabase: context.activeDatabase) {
+            Button(String(localized: "Export…")) {
+                actions.exportContainers(targets)
+            }
+        }
+
+        if !droppable.isEmpty {
+            Divider()
+
+            Button(dropRequest(for: droppable).menuTitle, role: .destructive) {
+                actions.dropContainers(droppable)
+            }
+        }
+    }
+
+    private func useAsActiveTitle(for container: DatabaseContainerRef) -> String {
+        String(
+            format: String(localized: "Use as Active %@"),
+            container.kind == .schema ? schemaEntityName : containerEntityName
+        )
+    }
+
+    private func useAsActive(_ container: DatabaseContainerRef) {
+        switch container.kind {
+        case .database:
+            actions.setActiveDatabase(container.database)
+        case .schema:
+            guard let schema = container.schema else { return }
+            actions.setActiveSchema(container.database, schema)
+        }
+    }
+
+    private func isActive(_ container: DatabaseContainerRef) -> Bool {
+        switch container.kind {
+        case .database:
+            return container.database == context.activeDatabase
+        case .schema:
+            return container.database == context.activeDatabase && container.schema == context.activeSchema
+        }
+    }
+
+    private func copyNamesTitle(count: Int) -> String {
+        count == 1
+            ? String(localized: "Copy Name")
+            : String(format: String(localized: "Copy %lld Names"), count)
+    }
+
+    private func dropRequest(for targets: [DatabaseContainerRef]) -> DatabaseDropRequest {
+        DatabaseDropRequest(
+            targets: targets,
+            entityName: entityName(for: targets),
+            entityNamePlural: entityNamePlural(for: targets),
+            dropsDependentObjects: targets.contains { $0.kind == .schema }
+        )
+    }
+
+    private func entityName(for targets: [DatabaseContainerRef]) -> String {
+        targets.contains { $0.kind == .schema } ? schemaEntityName : containerEntityName
+    }
+
+    private func entityNamePlural(for targets: [DatabaseContainerRef]) -> String {
+        targets.contains { $0.kind == .schema }
+            ? PluginManager.shared.schemaEntityNamePlural(for: context.databaseType)
+            : PluginManager.shared.containerEntityNamePlural(for: context.databaseType)
+    }
+
+    private var dropEligibilityContext: ContainerDropEligibility.Context {
+        ContainerDropEligibility.Context(
+            activeDatabase: context.activeDatabase,
+            activeSchema: context.activeSchema,
+            supportsDropDatabase: PluginManager.shared.supportsDropDatabase(for: context.databaseType),
+            supportsDropSchema: PluginManager.shared.supportsDropSchema(for: context.databaseType),
+            isReadOnly: actions.isReadOnly
+        )
     }
 
     private func foreground(isActive: Bool, isSystem: Bool) -> AnyShapeStyle {

@@ -80,7 +80,9 @@ struct SidebarContextMenu: View {
     }
 
     private var effectiveTableNames: [String] {
-        SidebarContextMenuLogic.contextTargets(clickedTable: clickedTable, selectedTables: selectedTables)
+        SidebarMenuTarget.resolve(clicked: clickedTable, selection: Array(selectedTables))
+            .map(\.name)
+            .sorted()
     }
 
     @MainActor

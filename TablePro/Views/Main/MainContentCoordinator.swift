@@ -182,9 +182,9 @@ final class MainContentCoordinator {
     var isDatabaseSwitcherShown = false
     var isConnectionSwitcherShown = false
     var sessionContexts: [PluginSessionContext] = []
-    var databaseToDrop: String?
+    var containerDropRequest: DatabaseDropRequest?
     var importFileURL: URL?
-    var exportPreselectedTableNames: Set<String>?
+    var exportPreselection: ExportPreselection?
     var pendingLoadTrigger: TableLoadTrigger?
     @ObservationIgnored var deferredRestoreLoadTabId: UUID?
 
@@ -967,23 +967,38 @@ final class MainContentCoordinator {
 
     // MARK: - Editor Query Loading
 
-    func loadQueryIntoEditor(_ query: String) {
-        if let (tab, tabIndex) = tabManager.selectedTabAndIndex,
-           tab.tabType == .query {
+    @discardableResult
+    func loadQueryIntoEditor(
+        _ query: String,
+        databaseName: String? = nil,
+        forceNewWindowTab: Bool = false
+    ) -> WindowTabOpenDisposition {
+        let targetDatabaseName = databaseName ?? browseDatabaseName
+        if !forceNewWindowTab,
+           let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+           tab.tabType == .query,
+           databaseName == nil
+           || tab.tableContext.resolvedDatabaseName(browsing: browseDatabaseName) == targetDatabaseName {
             tabManager.mutate(at: tabIndex) {
                 $0.content.query = query
                 $0.hasUserInteraction = true
             }
-        } else if tabManager.tabs.isEmpty {
-            tabManager.addTab(initialQuery: query, databaseName: browseDatabaseName)
-        } else {
-            let payload = EditorTabPayload(
-                connectionId: connection.id,
-                tabType: .query,
-                initialQuery: query
-            )
-            WindowManager.shared.openTab(payload: payload)
+            return .currentCoordinator
         }
+
+        if !forceNewWindowTab, tabManager.tabs.isEmpty {
+            tabManager.addTab(initialQuery: query, databaseName: targetDatabaseName)
+            return .currentCoordinator
+        }
+
+        let payload = EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .query,
+            databaseName: targetDatabaseName,
+            initialQuery: query
+        )
+        openTabInNewWindow(payload)
+        return .focusedElsewhere
     }
 
     var aiInsertReusesSelectedQueryTab: Bool {

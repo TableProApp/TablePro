@@ -146,7 +146,7 @@ struct DatabaseSwitcherSheet: View {
         return HStack(spacing: 8) {
             Image(systemName: "checkmark")
                 .font(.body.weight(.semibold))
-                .sidebarTint(.accentColor)
+                .selectionAwareTint(Color.accentColor)
                 .opacity(isCurrent ? 1 : 0)
                 .frame(width: 14)
                 .accessibilityLabel(Text("Current database"))
@@ -154,7 +154,7 @@ struct DatabaseSwitcherSheet: View {
 
             Image(systemName: database.icon)
                 .font(.body)
-                .sidebarTint(database.isSystemDatabase ? .secondary : .accentColor)
+                .selectionAwareTint(database.isSystemDatabase ? Color.secondary : Color.accentColor)
                 .frame(width: 16)
                 .accessibilityHidden(true)
 

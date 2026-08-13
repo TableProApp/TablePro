@@ -191,6 +191,7 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     supportsRenameColumn: true,
                     defaultSSLMode: .preferred
                 ),

@@ -16,7 +16,14 @@ final class DatabaseSwitcherViewModel {
     var searchText = "" {
         didSet { selectedDatabase = filteredDatabases.first?.name }
     }
-    var selectedDatabase: String?
+    var selectedDatabases: Set<String> = []
+
+    /// The keyboard path (arrows, Return) drives one row at a time, so it reads and
+    /// writes the selection as a single value while the mouse can extend it.
+    var selectedDatabase: String? {
+        get { selectedDatabases.count == 1 ? selectedDatabases.first : nil }
+        set { selectedDatabases = newValue.map { [$0] } ?? [] }
+    }
     var isLoading = false
     var errorMessage: String?
     var showPreview = false
@@ -123,17 +130,19 @@ final class DatabaseSwitcherViewModel {
         try await driver.createDatabase(request)
     }
 
-    func dropDatabase(name: String) async throws {
-        guard let driver = services.databaseManager.driver(for: connectionId) else {
-            throw DatabaseError.notConnected
-        }
-        try await driver.dropDatabase(name: name)
+    /// The selected row the keyboard acts from, in the order the list shows them.
+    var primarySelection: String? {
+        filteredDatabases.first { selectedDatabases.contains($0.name) }?.name
+    }
+
+    var selectedMetadata: [DatabaseMetadata] {
+        filteredDatabases.filter { selectedDatabases.contains($0.name) }
     }
 
     func moveUp() {
         let items = filteredDatabases
         guard !items.isEmpty else { return }
-        guard let current = selectedDatabase,
+        guard let current = primarySelection,
               let index = items.firstIndex(where: { $0.name == current }),
               index > 0
         else { return }
@@ -143,12 +152,12 @@ final class DatabaseSwitcherViewModel {
     func moveDown() {
         let items = filteredDatabases
         guard !items.isEmpty else { return }
-        if let current = selectedDatabase,
+        if let current = primarySelection,
            let index = items.firstIndex(where: { $0.name == current }),
            index < items.count - 1
         {
             selectedDatabase = items[index + 1].name
-        } else if selectedDatabase == nil {
+        } else if primarySelection == nil {
             selectedDatabase = items.first?.name
         }
     }

@@ -26,6 +26,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     private static let languageServiceLengthLimit = EditorHighlighting.maxHighlightableCharacters
 
     @ObservationIgnored weak var controller: TextViewController?
+    @ObservationIgnored private lazy var diagnosticsController = QueryDiagnosticsController(
+        databaseType: databaseType
+    )
     /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)
     @ObservationIgnored var schemaProvider: SQLSchemaProvider?
     /// Connection-level AI policy for inline suggestions
@@ -144,6 +147,8 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
         installAIContextMenu(controller: controller)
         installInlineSuggestionManager(controller: controller)
+        diagnosticsController.configure(databaseType: databaseType)
+        diagnosticsController.scheduleRefresh(for: controller)
         installVimModeIfEnabled(controller: controller)
         installEditorSettingsObserver(controller: controller)
 
@@ -196,6 +201,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
 
         uppercaseKeywordIfNeeded(textView: textView, range: range, string: string)
+
+        if !isLargeDocument {
+            diagnosticsController.scheduleRefresh(for: controller)
+        }
     }
 
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
@@ -297,23 +306,17 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     func performFormatSQL() {
         guard let textView = controller?.textView else { return }
-        let dialect = databaseType ?? .mysql
-        let formatter = SQLFormatterService()
+        let formatter = QueryFormatterFactory.make(for: databaseType)
         let scope = FormatScopeResolver.resolve(
             fullText: textView.string,
             selectedRange: textView.selectedRange()
         )
 
         do {
-            let result = try formatter.format(
-                scope.sql,
-                dialect: dialect,
-                cursorOffset: scope.cursorOffset,
-                options: .default
-            )
+            let result = try formatter.format(scope.sql, cursorOffset: scope.cursorOffset)
             let replacement = scope.isSelection
-                ? FormatScopeResolver.reapplyBoundaryWhitespace(from: scope.sql, to: result.formattedSQL)
-                : result.formattedSQL
+                ? FormatScopeResolver.reapplyBoundaryWhitespace(from: scope.sql, to: result.text)
+                : result.text
             textView.replaceCharacters(in: scope.range, with: replacement)
             let replacementLength = (replacement as NSString).length
             let caretLocation: Int
