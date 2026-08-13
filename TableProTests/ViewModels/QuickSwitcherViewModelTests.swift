@@ -919,4 +919,112 @@ struct QuickSwitcherViewModelTests {
         let vm = QuickSwitcherViewModel(connectionId: UUID(), services: .live, defaults: makeDefaults())
         #expect(vm.isLoading)
     }
+
+    @Test("A large first section does not delete the sections after it")
+    func largeSectionKeepsLaterSections() async {
+        var items: [QuickSwitcherItem] = []
+        for index in 0..<250 {
+            items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
+        }
+        for index in 0..<40 {
+            items.append(QuickSwitcherItem(id: "v\(index)", name: "view_\(index)", kind: .view, subtitle: "View"))
+        }
+        let vm = makeViewModel(items: items)
+        vm.scope = .tables
+        await vm.flushPendingFilter()
+
+        let headers = vm.groups.compactMap(\.header)
+        #expect(headers.contains(String(localized: "Tables")))
+        #expect(headers.contains(String(localized: "Views")))
+        #expect(vm.groups.first { $0.header == String(localized: "Views") }?.items.count == 40)
+    }
+
+    @Test("A busy connection does not crowd another out of the history list")
+    func historyInterleavesAcrossConnections() {
+        let busy = UUID()
+        let quiet = UUID()
+        let now = Date()
+        let busyEntries = (0..<200).map { index in
+            QueryHistoryEntry(
+                query: "SELECT \(index)",
+                connectionId: busy,
+                databaseName: "app",
+                executedAt: now.addingTimeInterval(-Double(index)),
+                executionTime: 0.01,
+                rowCount: 1,
+                wasSuccessful: true
+            )
+        }
+        let quietEntries = [
+            QueryHistoryEntry(
+                query: "SELECT yesterday",
+                connectionId: quiet,
+                databaseName: "warehouse",
+                executedAt: now.addingTimeInterval(-86_400),
+                executionTime: 0.01,
+                rowCount: 1,
+                wasSuccessful: true
+            )
+        ]
+
+        let merged = QuickSwitcherViewModel.interleaveByConnection(
+            [busyEntries, quietEntries],
+            limit: 200
+        )
+
+        #expect(merged.count == 200)
+        #expect(merged.contains { $0.connectionId == quiet })
+    }
+
+    @Test("A keyword outranks a connection name in a saved query subtitle")
+    func keywordOutranksConnectionPath() async {
+        let keyworded = QuickSwitcherItem(
+            id: "favorite_keyworded",
+            name: "Daily totals",
+            kind: .savedQuery,
+            subtitle: "prod · Analytics / warehouse",
+            keyword: "prod",
+            payload: "SELECT 1"
+        )
+        let pathOnly = QuickSwitcherItem(
+            id: "favorite_path",
+            name: "Customer churn",
+            kind: .savedQuery,
+            subtitle: "Production / app",
+            payload: "SELECT 2"
+        )
+        let vm = makeViewModel(items: [pathOnly, keyworded])
+        vm.searchText = "prod"
+        await vm.flushPendingFilter()
+
+        #expect(vm.flatItems.first?.id == "favorite_keyworded")
+    }
+
+    @Test("Selecting another connection's result records it against that connection")
+    func frecencyRecordsAgainstOwningConnection() {
+        let suite = makeDefaults()
+        let localConnectionId = UUID()
+        let remoteConnectionId = UUID()
+        let vm = makeViewModel(items: [], connectionId: localConnectionId, defaults: suite)
+        let remote = QuickSwitcherItem(
+            id: "history_remote",
+            name: "SELECT * FROM events",
+            kind: .queryHistory,
+            subtitle: "Analytics / warehouse",
+            payload: "SELECT * FROM events",
+            target: QuickSwitcherTarget(
+                connectionId: remoteConnectionId,
+                connectionName: "Analytics",
+                databaseName: "warehouse",
+                schemaName: nil
+            )
+        )
+
+        vm.recordSelection(remote)
+
+        let localStore = QuickSwitcherFrecencyStore(connectionId: localConnectionId, defaults: suite)
+        let remoteStore = QuickSwitcherFrecencyStore(connectionId: remoteConnectionId, defaults: suite)
+        #expect(localStore.recentItemIds(limit: 10).isEmpty)
+        #expect(remoteStore.recentItemIds(limit: 10) == ["history_remote"])
+    }
 }

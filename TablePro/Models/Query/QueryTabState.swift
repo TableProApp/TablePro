@@ -373,6 +373,12 @@ struct TabTableContext: Equatable {
     var isView: Bool = false
 
     var primaryKeyColumn: String? { primaryKeyColumns.first }
+
+    /// A tab opened without an explicit database carries an empty name and follows the window's
+    /// browse cursor, so comparing the stored value against a real database name never matches.
+    func resolvedDatabaseName(browsing browseDatabaseName: String) -> String {
+        databaseName.isEmpty ? browseDatabaseName : databaseName
+    }
 }
 
 struct TabQueryContent: Equatable {

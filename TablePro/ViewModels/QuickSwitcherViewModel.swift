@@ -32,8 +32,11 @@ internal final class QuickSwitcherViewModel {
         let entries: [Entry]
     }
 
+    /// Deliberately not keyed on `connectionStatusVersion`: that counter bumps on every write to
+    /// `activeSessions`, including activity timestamps, so keying on it re-read every favorite and
+    /// history row while the panel sat open. The connected set and the content revision are what
+    /// this list actually depends on.
     struct CrossConnectionQueryVersion: Hashable {
-        let connectionStatusVersion: Int
         let connectedConnectionIds: [UUID]
         let contentRevision: Int
     }
@@ -50,6 +53,7 @@ internal final class QuickSwitcherViewModel {
 
     @ObservationIgnored private let services: AppServices
     @ObservationIgnored private let connectionId: UUID
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let frecencyStore: QuickSwitcherFrecencyStore
 
     @ObservationIgnored internal var allItems: [QuickSwitcherItem] = [] {
@@ -122,6 +126,7 @@ internal final class QuickSwitcherViewModel {
     init(connectionId: UUID, services: AppServices, defaults: UserDefaults = .standard) {
         self.connectionId = connectionId
         self.services = services
+        self.defaults = defaults
         self.frecencyStore = QuickSwitcherFrecencyStore(connectionId: connectionId, defaults: defaults)
     }
 
@@ -227,6 +232,7 @@ internal final class QuickSwitcherViewModel {
                 name: favorite.name,
                 kind: .savedQuery,
                 subtitle: favorite.keyword ?? "",
+                keyword: favorite.keyword,
                 payload: favorite.query
             ))
         }
@@ -304,33 +310,79 @@ internal final class QuickSwitcherViewModel {
             }
         }
 
-        let sessions = connectedSessions()
-        let connectedIds = Set(sessions.map(\.id))
-        async let favorites = services.sqlFavoriteManager.fetchFavorites()
-        async let historyEntries = services.queryHistoryManager.fetchHistory(
-            limit: QuickSwitcherRanking.maxResults,
-            allowedConnectionIds: connectedIds
+        let targets = queryTargets()
+        async let favorites = services.sqlFavoriteManager.fetchFavorites(
+            allowedConnectionIds: Set(targets.keys)
         )
+        async let historyEntries = recentHistory(forConnections: Array(targets.keys))
         let (loadedFavorites, loadedHistoryEntries) = await (favorites, historyEntries)
 
         guard activeCrossConnectionQueryLoadId == loadId,
               !Task.isCancelled,
               version == crossConnectionQueryVersion else { return }
 
-        let targets = Dictionary(uniqueKeysWithValues: sessions.map { session in
-            (session.id, queryTarget(for: session))
-        })
-        let pathFieldRoles = Dictionary(uniqueKeysWithValues: sessions.map { session in
-            (session.id, session.connection.type.pathFieldRole)
-        })
         loadedCrossConnectionQueryVersion = version
         crossConnectionQueryItems = Self.makeCrossConnectionQueryItems(
             favorites: loadedFavorites,
             historyEntries: loadedHistoryEntries,
             targets: targets,
-            pathFieldRoles: pathFieldRoles,
             currentConnectionId: connectionId
         )
+    }
+
+    /// The panel's own connection stays listed while its session is reconnecting. Saved queries and
+    /// history are stored locally, so a session that dropped is no reason to hide the queries the
+    /// panel was opened next to, and the All scope keeps showing them either way.
+    private func queryTargets() -> [UUID: QuickSwitcherTarget] {
+        var targets = Dictionary(
+            connectedSessions().map { ($0.id, queryTarget(for: $0)) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        if targets[connectionId] == nil,
+           let session = services.databaseManager.session(for: connectionId) {
+            targets[connectionId] = queryTarget(for: session)
+        }
+        return targets
+    }
+
+    /// One busy connection must not crowd every other one out of the list. A single query capped at
+    /// `maxResults` and ordered by recency returns nothing but the connection that ran the most
+    /// statements today, so each connection is read separately and the union is interleaved.
+    private func recentHistory(forConnections connectionIds: [UUID]) async -> [QueryHistoryEntry] {
+        let manager = services.queryHistoryManager
+        let limit = QuickSwitcherRanking.maxResults
+        let perConnection = await withTaskGroup(of: [QueryHistoryEntry].self) { group in
+            for id in connectionIds {
+                group.addTask {
+                    await manager.fetchHistory(limit: limit, connectionId: id)
+                }
+            }
+            var collected: [[QueryHistoryEntry]] = []
+            for await entries in group {
+                collected.append(entries)
+            }
+            return collected
+        }
+        return Self.interleaveByConnection(perConnection, limit: limit)
+    }
+
+    nonisolated static func interleaveByConnection(
+        _ perConnection: [[QueryHistoryEntry]],
+        limit: Int
+    ) -> [QueryHistoryEntry] {
+        var queues = perConnection.filter { !$0.isEmpty }
+        var merged: [QueryHistoryEntry] = []
+        var queueIndex = 0
+        while merged.count < limit, !queues.isEmpty {
+            if queueIndex >= queues.count { queueIndex = 0 }
+            merged.append(queues[queueIndex].removeFirst())
+            if queues[queueIndex].isEmpty {
+                queues.remove(at: queueIndex)
+            } else {
+                queueIndex += 1
+            }
+        }
+        return merged.sorted { $0.executedAt > $1.executedAt }
     }
 
     private func connectedSessions() -> [ConnectionSession] {
@@ -344,6 +396,7 @@ internal final class QuickSwitcherViewModel {
     private func queryTarget(for session: ConnectionSession) -> QuickSwitcherTarget {
         let scope = services.databaseManager.browseScope(for: session.id)
         let databaseName = scope.flatMap { $0.database.isEmpty ? nil : $0.database }
+        let pathFieldRole = session.connection.type.pathFieldRole
         return QuickSwitcherTarget(
             connectionId: session.id,
             connectionName: session.connection.name,
@@ -351,8 +404,9 @@ internal final class QuickSwitcherViewModel {
             schemaName: scope?.schema,
             databaseDisplayName: Self.databaseDisplayName(
                 databaseName,
-                pathFieldRole: session.connection.type.pathFieldRole
-            )
+                pathFieldRole: pathFieldRole
+            ),
+            pathFieldRole: pathFieldRole
         )
     }
 
@@ -365,6 +419,7 @@ internal final class QuickSwitcherViewModel {
             .flatMap { session -> [QuickSwitcherItem] in
                 guard let scope = services.databaseManager.browseScope(for: session.id) else { return [] }
                 let databaseName = scope.database.isEmpty ? nil : scope.database
+                let pathFieldRole = session.connection.type.pathFieldRole
                 let target = QuickSwitcherTarget(
                     connectionId: session.id,
                     connectionName: session.connection.name,
@@ -372,8 +427,9 @@ internal final class QuickSwitcherViewModel {
                     schemaName: scope.schema,
                     databaseDisplayName: Self.databaseDisplayName(
                         databaseName,
-                        pathFieldRole: session.connection.type.pathFieldRole
-                    )
+                        pathFieldRole: pathFieldRole
+                    ),
+                    pathFieldRole: pathFieldRole
                 )
                 return Self.makeCrossConnectionItems(
                     tables: services.schemaService.allLoadedTables(for: session.id),
@@ -413,7 +469,8 @@ internal final class QuickSwitcherViewModel {
                 connectionName: target.connectionName,
                 databaseName: target.databaseName,
                 schemaName: table.schema ?? target.schemaName,
-                databaseDisplayName: target.databaseDisplayName
+                databaseDisplayName: target.databaseDisplayName,
+                pathFieldRole: target.pathFieldRole
             )
             return QuickSwitcherItem(
                 id: "connection_\(target.connectionId.uuidString)_\(table.id)",
@@ -430,7 +487,6 @@ internal final class QuickSwitcherViewModel {
         favorites: [SQLFavorite],
         historyEntries: [QueryHistoryEntry],
         targets: [UUID: QuickSwitcherTarget],
-        pathFieldRoles: [UUID: PathFieldRole],
         currentConnectionId: UUID
     ) -> [QuickSwitcherItem] {
         let favoriteItems = favorites.compactMap { favorite -> QuickSwitcherItem? in
@@ -444,6 +500,7 @@ internal final class QuickSwitcherViewModel {
                 name: favorite.name,
                 kind: .savedQuery,
                 subtitle: subtitle,
+                keyword: favorite.keyword,
                 payload: favorite.query,
                 target: target
             )
@@ -459,7 +516,7 @@ internal final class QuickSwitcherViewModel {
                 schemaName: nil,
                 databaseDisplayName: databaseDisplayName(
                     databaseName,
-                    pathFieldRole: pathFieldRoles[entry.connectionId] ?? .database
+                    pathFieldRole: baseTarget.pathFieldRole
                 )
             )
             return QuickSwitcherItem(
@@ -474,7 +531,7 @@ internal final class QuickSwitcherViewModel {
             )
         }
 
-        return favoriteItems + historyItems
+        return Array((favoriteItems + historyItems).prefix(QuickSwitcherRanking.maxResults))
     }
 
     func canOpenStructure(_ item: QuickSwitcherItem) -> Bool {
@@ -502,7 +559,15 @@ internal final class QuickSwitcherViewModel {
     }
 
     func recordSelection(_ item: QuickSwitcherItem, at date: Date = Date()) {
-        frecencyStore.recordAccess(itemId: item.id, at: date)
+        frecencyStore(for: item).recordAccess(itemId: item.id, at: date)
+    }
+
+    /// A result from another connection is recorded against that connection. The store is keyed per
+    /// connection and the Recent section resolves its ids against the scope on screen, so recording
+    /// a foreign id here holds one of ten slots with something this connection can never show.
+    private func frecencyStore(for item: QuickSwitcherItem) -> QuickSwitcherFrecencyStore {
+        guard let target = item.target, target.connectionId != connectionId else { return frecencyStore }
+        return QuickSwitcherFrecencyStore(connectionId: target.connectionId, defaults: defaults)
     }
 
     /// Grouping sorts the whole scoped catalog, which across every open connection runs to
@@ -582,20 +647,16 @@ internal final class QuickSwitcherViewModel {
 
         guard scope != .all else { return result }
 
-        var remainingCount = max(0, QuickSwitcherRanking.maxResults - recent.count)
         for kind in QuickSwitcherItemKind.displayOrder {
-            guard remainingCount > 0 else { break }
             let kindItems = items
                 .filter { $0.kind == kind && !recentIdSet.contains($0.id) }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             guard !kindItems.isEmpty else { continue }
-            let visibleItems = Array(kindItems.prefix(remainingCount))
             result.append(Group(
                 id: "kind-\(kind.rawValue)",
                 header: kind.sectionTitle,
-                items: visibleItems
+                items: Array(kindItems.prefix(QuickSwitcherRanking.maxResults))
             ))
-            remainingCount -= visibleItems.count
         }
         return result
     }
@@ -668,13 +729,16 @@ internal final class QuickSwitcherViewModel {
         query: String
     ) -> (score: Double, matchedIndices: [Int])? {
         let nameMatch = FuzzyMatcher.match(query: query, candidate: item.name)
-        let subtitleWeight = item.kind == .savedQuery
-            ? QuickSwitcherRanking.keywordMatchWeight
-            : QuickSwitcherRanking.subtitleMatchPenalty
-        var subtitleScore: Double?
-        if !item.subtitle.isEmpty, let subtitleMatch = FuzzyMatcher.match(query: query, candidate: item.subtitle) {
-            subtitleScore = Double(subtitleMatch.score) * subtitleWeight
+        var secondaryScores: [Double] = []
+        if let keyword = item.keyword,
+           !keyword.isEmpty,
+           let keywordMatch = FuzzyMatcher.match(query: query, candidate: keyword) {
+            secondaryScores.append(Double(keywordMatch.score) * QuickSwitcherRanking.keywordMatchWeight)
         }
+        if !item.subtitle.isEmpty, let subtitleMatch = FuzzyMatcher.match(query: query, candidate: item.subtitle) {
+            secondaryScores.append(Double(subtitleMatch.score) * QuickSwitcherRanking.subtitleMatchPenalty)
+        }
+        let subtitleScore = secondaryScores.max()
 
         switch (nameMatch, subtitleScore) {
         case let (match?, score?) where score > Double(match.score):
@@ -725,8 +789,7 @@ internal final class QuickSwitcherViewModel {
 
     private var crossConnectionQueryVersion: CrossConnectionQueryVersion {
         CrossConnectionQueryVersion(
-            connectionStatusVersion: services.databaseManager.connectionStatusVersion,
-            connectedConnectionIds: connectedSessions().map(\.id).sorted { $0.uuidString < $1.uuidString },
+            connectedConnectionIds: queryTargets().keys.sorted { $0.uuidString < $1.uuidString },
             contentRevision: crossConnectionQueryContentRevision
         )
     }

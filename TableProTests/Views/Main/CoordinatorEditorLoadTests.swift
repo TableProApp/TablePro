@@ -152,6 +152,24 @@ struct CoordinatorEditorLoadTests {
         #expect(openedPayload?.initialQuery == "SELECT 2")
     }
 
+    @Test("loadQueryIntoEditor reuses a tab opened without an explicit database")
+    @MainActor
+    func loadQueryReusesTabWithInheritedDatabase() {
+        let (coordinator, tabManager) = makeCoordinator()
+        defer { coordinator.teardown() }
+        var openedPayload: EditorTabPayload?
+        coordinator.openTabInNewWindow = { openedPayload = $0 }
+
+        tabManager.addTab(initialQuery: "SELECT 1")
+        #expect(tabManager.tabs[0].tableContext.databaseName.isEmpty)
+
+        let disposition = coordinator.loadQueryIntoEditor("SELECT 2", databaseName: "testdb")
+
+        #expect(disposition == .currentCoordinator)
+        #expect(tabManager.tabs[0].content.query == "SELECT 2")
+        #expect(openedPayload == nil)
+    }
+
     // MARK: - insertQueryFromAI
 
     @Test("insertQueryFromAI sets query directly when tab is empty")

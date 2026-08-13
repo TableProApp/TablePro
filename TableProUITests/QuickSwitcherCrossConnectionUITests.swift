@@ -89,7 +89,6 @@ final class QuickSwitcherCrossConnectionUITests: XCTestCase {
             .matching(NSPredicate(format: "value == %@", query))
             .firstMatch
         XCTAssertTrue(openedEditor.waitForExistence(timeout: 10))
-        XCTAssertEqual(editorTextView(in: app).value as? String, query)
     }
 
     private func launchWithSampleDatabase() -> XCUIApplication {

@@ -541,15 +541,25 @@ internal actor SQLFavoriteStorage {
     func fetchFavorites(
         connectionId: UUID? = nil,
         folderId: UUID? = nil,
-        searchText: String? = nil
+        searchText: String? = nil,
+        allowedConnectionIds: Set<UUID>? = nil
     ) -> [SQLFavorite] {
+        if let allowedConnectionIds, allowedConnectionIds.isEmpty {
+            return []
+        }
+
         let connectionIdString = connectionId?.uuidString
         let folderIdString = folderId?.uuidString
+        let allowedList = allowedConnectionIds.map { Array($0) }
+        let allowedPlaceholders = allowedList.map {
+            Array(repeating: "?", count: $0.count).joined(separator: ", ")
+        }
 
         var sql: String
         var bindIndex: Int32 = 1
         var hasConnectionFilter = false
         var hasFolderFilter = false
+        var hasAllowedFilter = false
 
         let isJoined: Bool
         if let searchText = searchText, !searchText.isEmpty {
@@ -564,6 +574,11 @@ internal actor SQLFavoriteStorage {
             if connectionIdString != nil {
                 sql += " AND (f.connection_id IS NULL OR f.connection_id = ?)"
                 hasConnectionFilter = true
+            }
+
+            if let allowedPlaceholders {
+                sql += " AND (f.connection_id IS NULL OR f.connection_id IN (\(allowedPlaceholders)))"
+                hasAllowedFilter = true
             }
 
             if folderIdString != nil {
@@ -582,6 +597,11 @@ internal actor SQLFavoriteStorage {
             if connectionIdString != nil {
                 whereClauses.append("(connection_id IS NULL OR connection_id = ?)")
                 hasConnectionFilter = true
+            }
+
+            if let allowedPlaceholders {
+                whereClauses.append("(connection_id IS NULL OR connection_id IN (\(allowedPlaceholders)))")
+                hasAllowedFilter = true
             }
 
             if folderIdString != nil {
@@ -614,6 +634,13 @@ internal actor SQLFavoriteStorage {
         if let connId = connectionIdString, hasConnectionFilter {
             sqlite3_bind_text(statement, bindIndex, connId, -1, SQLITE_TRANSIENT)
             bindIndex += 1
+        }
+
+        if let allowedList, hasAllowedFilter {
+            for allowedId in allowedList {
+                sqlite3_bind_text(statement, bindIndex, allowedId.uuidString, -1, SQLITE_TRANSIENT)
+                bindIndex += 1
+            }
         }
 
         if let foldId = folderIdString, hasFolderFilter {

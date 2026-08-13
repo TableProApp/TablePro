@@ -40,21 +40,22 @@ TablePro loads this catalog only when you open the Connections scope. It searche
 
 ### Queries
 
-The **Queries** scope searches saved queries and the 200 most recent query-history entries from every connected window. Each row shows its connection and database. Recent queries also show their execution time. Global saved queries open in the connection where you opened Quick Switcher.
+The **Queries** scope searches saved queries and up to 200 recent query-history entries drawn from every connected window. Each connection contributes its own most recent entries, so a connection you ran hundreds of queries on today cannot push another one off the list. Each row shows its connection and database. Recent queries also show their execution time. Global saved queries open in the connection where you opened Quick Switcher. The connection the panel was opened from stays listed even while it is reconnecting.
 
 <Frame caption="Query history results from two open connections">
   <img src="/images/quick-switcher-cross-connection-queries.png" alt="Quick Switcher showing query history from Chinook and Analytics connections" />
 </Frame>
 
-Opening a query brings its connection forward and loads the SQL without running it. Query-history entries keep their recorded database context. If no open window uses that database, TablePro opens a new native window tab instead of loading the SQL into a tab for another database. `Option+Return` always opens a new native window tab.
+Opening a query brings its connection forward and loads the SQL without running it. The window you opened Quick Switcher from is used whenever it is on the right connection and database, so a query never replaces the editor in a window you were not looking at. Query-history entries keep their recorded database context. If no open window uses that database, TablePro opens a new native window tab instead of loading the SQL into a tab for another database. `Option+Return` always opens a new native window tab.
 
 ## Ranking
 
 With an empty search, the panel shows a **Recent** section: the last 10 items you opened through the switcher on this connection. With a query, each result's fuzzy match score is weighted by:
 
 - **Object kind**: tables rank above views, databases, schemas, and saved queries; query history ranks last.
-- **Frecency**: each item's last 10 opens through the switcher, weighted by how recent they are, tracked per connection.
+- **Frecency**: each item's last 10 opens through the switcher, weighted by how recent they are, tracked per connection. Opening another connection's result counts towards that connection.
 - **Open tab boost**: tables already open in a tab rank higher.
+- **Where the match landed**: a match on the name ranks highest, then a saved query's keyword, then the connection and database path shown beside it.
 
 The list shows at most 200 results.
 

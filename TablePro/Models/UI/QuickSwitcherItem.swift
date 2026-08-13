@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// The type of database object represented by a quick switcher item
 internal enum QuickSwitcherItemKind: String, Hashable, Sendable {
@@ -31,19 +32,22 @@ internal struct QuickSwitcherTarget: Hashable, Sendable {
     let databaseName: String?
     let schemaName: String?
     let databaseDisplayName: String?
+    let pathFieldRole: PathFieldRole
 
     init(
         connectionId: UUID,
         connectionName: String,
         databaseName: String?,
         schemaName: String?,
-        databaseDisplayName: String? = nil
+        databaseDisplayName: String? = nil,
+        pathFieldRole: PathFieldRole = .database
     ) {
         self.connectionId = connectionId
         self.connectionName = connectionName
         self.databaseName = databaseName
         self.schemaName = schemaName
         self.databaseDisplayName = databaseDisplayName
+        self.pathFieldRole = pathFieldRole
     }
 }
 
@@ -100,6 +104,10 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     let name: String
     let kind: QuickSwitcherItemKind
     let subtitle: String
+    /// Ranked at full weight, unlike the subtitle that carries it for display. A saved query's
+    /// subtitle also names its connection and database, and those must not score as strongly as
+    /// the keyword the author assigned.
+    var keyword: String?
     var matchedIndices: [Int] = []
     var payload: String?
     var isOpenInTab: Bool = false

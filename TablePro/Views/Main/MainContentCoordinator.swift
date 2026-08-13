@@ -1007,7 +1007,8 @@ final class MainContentCoordinator {
         if !forceNewWindowTab,
            let (tab, tabIndex) = tabManager.selectedTabAndIndex,
            tab.tabType == .query,
-           databaseName == nil || tab.tableContext.databaseName == targetDatabaseName {
+           databaseName == nil
+           || tab.tableContext.resolvedDatabaseName(browsing: browseDatabaseName) == targetDatabaseName {
             tabManager.mutate(at: tabIndex) {
                 $0.content.query = query
                 $0.hasUserInteraction = true

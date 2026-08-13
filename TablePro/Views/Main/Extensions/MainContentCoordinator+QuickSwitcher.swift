@@ -93,7 +93,7 @@ extension MainContentCoordinator {
         target: QuickSwitcherTarget,
         intent: QuickSwitcherCommitIntent
     ) {
-        if let coordinator = Self.coordinator(browsing: target) {
+        if let coordinator = coordinator(browsing: target) {
             let disposition = coordinator.openTableTab(
                 item.name,
                 schema: target.schemaName,
@@ -151,7 +151,7 @@ extension MainContentCoordinator {
         }
 
         let query = item.payload ?? item.name
-        if let coordinator = Self.coordinator(browsing: target) {
+        if let coordinator = coordinator(browsing: target) {
             let disposition = coordinator.loadQueryIntoEditor(
                 query,
                 databaseName: target.databaseName,
@@ -177,13 +177,24 @@ extension MainContentCoordinator {
     /// `openTableTab` carries the schema per tab. Matching on the browsed schema too would send
     /// most results down the router instead, which reconnects the connection and retargets that
     /// window's sidebar as a side effect of opening one table.
-    private static func coordinator(browsing target: QuickSwitcherTarget) -> MainContentCoordinator? {
-        allActiveCoordinators().first { coordinator in
-            guard coordinator.connectionId == target.connectionId,
-                  let session = coordinator.services.databaseManager.session(for: target.connectionId),
-                  session.isConnected else { return false }
-            guard let databaseName = target.databaseName else { return true }
-            return coordinator.browseDatabaseName == databaseName
-        }
+    private func canHost(_ target: QuickSwitcherTarget) -> Bool {
+        guard connectionId == target.connectionId,
+              let session = services.databaseManager.session(for: target.connectionId),
+              session.isConnected else { return false }
+        guard let databaseName = target.databaseName else { return true }
+        return browseDatabaseName == databaseName
+    }
+
+    /// Adapter over `QuickSwitcherHostResolver`, which owns the choice itself.
+    private func coordinator(browsing target: QuickSwitcherTarget) -> MainContentCoordinator? {
+        let candidates = Self.allActiveCoordinators().filter { $0.canHost(target) }
+        guard !candidates.isEmpty else { return nil }
+        let lastFocused = WindowLifecycleMonitor.shared.mostRecentWindow(for: target.connectionId)
+        let hostId = QuickSwitcherHostResolver.host(
+            preferred: canHost(target) ? instanceId : nil,
+            candidates: candidates.map(\.instanceId),
+            mostRecentlyFocused: candidates.first { $0.contentWindow === lastFocused }?.instanceId
+        )
+        return candidates.first { $0.instanceId == hostId }
     }
 }
