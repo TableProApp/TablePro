@@ -32,6 +32,37 @@ public enum MongoOperation {
     case listCollections
     case listDatabases
     case ping
+    case write(
+        kind: MongoWriteKind,
+        collection: String,
+        filter: String,
+        document: String,
+        options: MongoWriteOptions
+    )
+}
+
+/// Which write a `.write` operation performs. Only produced when the shell call carries an
+/// options argument; the plain two-argument forms keep their original operation cases.
+public enum MongoWriteKind: String, Sendable {
+    case updateOne
+    case updateMany
+    case replaceOne
+    case findOneAndUpdate
+}
+
+/// The third argument of an update, replace or findOneAndUpdate call.
+public struct MongoWriteOptions: Sendable {
+    public var upsert: Bool
+    public var arrayFilters: String?
+    public var hint: String?
+    public var raw: String
+
+    public init(upsert: Bool = false, arrayFilters: String? = nil, hint: String? = nil, raw: String = "{}") {
+        self.upsert = upsert
+        self.arrayFilters = arrayFilters
+        self.hint = hint
+        self.raw = raw
+    }
 }
 
 /// Options for a find operation parsed from chained methods
@@ -297,16 +328,16 @@ public struct MongoShellParser {
             operation = .insertMany(collection: collection, documents: arg)
 
         case "updateOne":
-            let (filter, update) = try parseTwoArgs(arg, method: "updateOne")
-            operation = .updateOne(collection: collection, filter: filter, update: update)
+            operation = makeWrite(.updateOne, collection: collection,
+                                  args: try parseWriteArgs(arg, method: "updateOne"))
 
         case "updateMany":
-            let (filter, update) = try parseTwoArgs(arg, method: "updateMany")
-            operation = .updateMany(collection: collection, filter: filter, update: update)
+            operation = makeWrite(.updateMany, collection: collection,
+                                  args: try parseWriteArgs(arg, method: "updateMany"))
 
         case "replaceOne":
-            let (filter, replacement) = try parseTwoArgs(arg, method: "replaceOne")
-            operation = .replaceOne(collection: collection, filter: filter, replacement: replacement)
+            operation = makeWrite(.replaceOne, collection: collection,
+                                  args: try parseWriteArgs(arg, method: "replaceOne"))
 
         case "deleteOne":
             let filter = arg.isEmpty ? "{}" : arg
@@ -324,8 +355,8 @@ public struct MongoShellParser {
             operation = .dropIndex(collection: collection, indexName: arg)
 
         case "findOneAndUpdate":
-            let (filter, update) = try parseTwoArgs(arg, method: "findOneAndUpdate")
-            operation = .findOneAndUpdate(collection: collection, filter: filter, update: update)
+            operation = makeWrite(.findOneAndUpdate, collection: collection,
+                                  args: try parseWriteArgs(arg, method: "findOneAndUpdate"))
 
         case "findOneAndReplace":
             let (filter, replacement) = try parseTwoArgs(arg, method: "findOneAndReplace")
@@ -585,6 +616,78 @@ public struct MongoShellParser {
             throw MongoShellParseError.missingArgument("\(method) requires 2 arguments")
         }
         return (parts[0], parts[1])
+    }
+
+    /// Parse a write call's arguments, keeping the optional third options document.
+    private static func parseWriteArgs(
+        _ args: String,
+        method: String
+    ) throws -> (filter: String, document: String, options: MongoWriteOptions?) {
+        let parts = try splitTopLevelArgs(args)
+        guard parts.count >= 2 else {
+            throw MongoShellParseError.missingArgument("\(method) requires 2 arguments")
+        }
+        guard parts.count > 2 else {
+            return (parts[0], parts[1], nil)
+        }
+        return (parts[0], parts[1], try parseWriteOptions(parts[2], method: method))
+    }
+
+    private static func parseWriteOptions(_ raw: String, method: String) throws -> MongoWriteOptions {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"), trimmed.hasSuffix("}") else {
+            throw MongoShellParseError.invalidSyntax("\(method) options must be a document")
+        }
+
+        var options = MongoWriteOptions(raw: trimmed)
+        let inner = String(trimmed.dropFirst().dropLast())
+
+        for entry in try splitTopLevelArgs(inner) {
+            let pair = entry.split(separator: ":", maxSplits: 1).map {
+                $0.trimmingCharacters(in: CharacterSet(charactersIn: " \t\n\"'`"))
+            }
+            guard pair.count == 2 else { continue }
+
+            switch pair[0] {
+            case "upsert":
+                options.upsert = pair[1] == "true"
+            case "arrayFilters":
+                options.arrayFilters = pair[1]
+            case "hint":
+                options.hint = pair[1]
+            default:
+                continue
+            }
+        }
+
+        return options
+    }
+
+    private static func makeWrite(
+        _ kind: MongoWriteKind,
+        collection: String,
+        args: (filter: String, document: String, options: MongoWriteOptions?)
+    ) -> MongoOperation {
+        guard let options = args.options else {
+            switch kind {
+            case .updateOne:
+                return .updateOne(collection: collection, filter: args.filter, update: args.document)
+            case .updateMany:
+                return .updateMany(collection: collection, filter: args.filter, update: args.document)
+            case .replaceOne:
+                return .replaceOne(collection: collection, filter: args.filter, replacement: args.document)
+            case .findOneAndUpdate:
+                return .findOneAndUpdate(collection: collection, filter: args.filter, update: args.document)
+            }
+        }
+
+        return .write(
+            kind: kind,
+            collection: collection,
+            filter: args.filter,
+            document: args.document,
+            options: options
+        )
     }
 
     /// Parse two arguments where the second is optional

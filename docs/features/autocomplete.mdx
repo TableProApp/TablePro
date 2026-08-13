@@ -147,7 +147,9 @@ db.orders.aggregate([{ $group: { |    // $sum, $avg, $first, $push, and the expr
 
 The operator sets are kept apart on purpose. Offering `$match` inside a filter document, or `$gte` where a pipeline stage belongs, is worse than offering nothing. `$set` and `$unset` mean different things as an update operator and as a pipeline stage, and the popup describes whichever one applies at the cursor.
 
-Field names come from the same sampled document schema the sidebar and Structure tab use. Nothing in the query is executed to build the list.
+Field names come from a sample of the collection's documents and include nested paths, so a document with `address: { city, zip }` suggests `address`, `address.city` and `address.zip`. Objects inside an array contribute paths too. Shallower fields sort first. Nothing in the query is executed to build the list.
+
+The sample is cached per collection and cleared when you switch database or refresh the connection.
 
 Completion is suppressed inside comments, and braces or brackets inside a string literal do not count as opening a document.
 

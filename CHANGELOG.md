@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Autocomplete for MongoDB queries. Typing `db.` lists collections, `db.users.` lists the driver methods, and inside a query you get field names plus the operators that are valid in that spot: query operators in a filter, update operators in an update, stage names in a pipeline, and expression operators inside a stage. (#2095)
 - PostgreSQL autocomplete now knows the operators, including `::`, the JSON ones (`->`, `->>`, `#>`, `@>`, `?`, `?|`, `?&`), array and range containment, regex matching and full-text search. Each one shows what it does and which types it works on. Typing `::` offers the type names. (#2095)
 - PostgreSQL autocomplete covers about 400 built-in functions and the multi-word syntax people actually type, such as `ON CONFLICT DO UPDATE SET`, `GENERATED ALWAYS AS IDENTITY` and window frame clauses. (#2095)
+- MongoDB field suggestions include nested paths. A document with `address: { city }` now suggests `address.city`, not just `address`. (#2095)
+- MongoDB updates accept an options argument, so `db.users.updateOne({...}, {...}, {upsert: true})` upserts instead of ignoring the option. `arrayFilters` and `hint` are passed through too. (#2095)
+- Format Query follows the editor language. On a MongoDB tab it lays out filters and pipelines by nesting depth instead of running the SQL formatter over them. (#2095)
 
 ### Added
 
