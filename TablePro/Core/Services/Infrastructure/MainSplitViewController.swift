@@ -441,6 +441,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         rebuildPanes()
         applyPaneChrome()
         applyWindowTitle()
+
+        /// The rail redraws from `WorkspaceRailStore.changes`, which listens to session and tab
+        /// events. Switching workspace in place fires none of them, so without this the rail kept
+        /// highlighting the connection the user just switched away from.
+        AppEvents.shared.connectionWindowsChanged.send()
     }
 
     private func applyPhase() {
