@@ -367,7 +367,21 @@ final class MainContentCommandActions {
 
     /// Scoped to the whole window, not the selected tab: closing a window closes every tab in it,
     /// so a tab the user is not looking at must still get its prompt.
+    /// Every connection the window hosts, because closing the window closes all of them. Asking
+    /// only about the one on screen let a background connection's unsaved edits go without a
+    /// prompt, which is silent data loss rather than a missing confirmation.
     internal var hasUnsavedWorkInWindow: Bool {
+        guard let host = window?.contentViewController as? MainSplitViewController else {
+            return coordinator?.hasAnyUnsavedWork() ?? false
+        }
+        return host.workspaces.workspaces.contains { workspace in
+            workspace.sessionState?.coordinator.hasAnyUnsavedWork() == true
+        }
+    }
+
+    /// This connection only. Closing its tabs says nothing about what another connection in the
+    /// same window has pending, so prompting about that would ask the wrong question.
+    internal var hasUnsavedWorkInConnection: Bool {
         coordinator?.hasAnyUnsavedWork() ?? false
     }
 

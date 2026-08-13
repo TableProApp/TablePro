@@ -9,7 +9,9 @@ import Foundation
 extension MainContentCommandActions {
     enum BatchCloseKind: Equatable {
         case all
-        case others
+        /// Anchored explicitly, because a contextual menu acts on the tab under the pointer and
+        /// that is not always the selected one.
+        case others(anchor: UUID)
         case otherDatabases
         case container(String)
     }
@@ -24,7 +26,12 @@ extension MainContentCommandActions {
     }
 
     func closeOtherTabs() {
-        Task { await runBatchClose(kind: .others) }
+        guard let anchor = coordinator?.tabManager.selectedTab?.id else { return }
+        closeOtherTabs(anchoredOn: anchor)
+    }
+
+    func closeOtherTabs(anchoredOn anchor: UUID) {
+        Task { await runBatchClose(kind: .others(anchor: anchor)) }
     }
 
     func closeTabsForOtherDatabases() {
@@ -36,7 +43,8 @@ extension MainContentCommandActions {
     }
 
     var canCloseOtherTabs: Bool {
-        !tabsToClose(kind: .others).isEmpty
+        guard let anchor = coordinator?.tabManager.selectedTab?.id else { return false }
+        return !tabsToClose(kind: .others(anchor: anchor)).isEmpty
     }
 
     var canCloseTabsForOtherDatabases: Bool {
@@ -80,7 +88,7 @@ extension MainContentCommandActions {
     /// Unsaved work is tracked for the connection rather than per tab, so the question is asked
     /// once for the batch.
     func confirmDiscardingUnsavedWork() async -> Bool {
-        guard hasUnsavedWorkInWindow else { return true }
+        guard hasUnsavedWorkInConnection else { return true }
 
         switch await AlertHelper.confirmSaveChanges(
             message: String(localized: "Your changes will be lost if you don't save them."),
@@ -104,9 +112,8 @@ extension MainContentCommandActions {
         switch kind {
         case .all:
             return tabs
-        case .others:
-            guard let selectedId = coordinator.tabManager.selectedTab?.id else { return [] }
-            return tabs.filter { $0.id != selectedId }
+        case .others(let anchor):
+            return tabs.filter { $0.id != anchor }
         case .otherDatabases:
             let current = browsedContainerName
             return tabs.filter { WorkspaceAnchoring.containerName(of: $0, target: target) != current }
