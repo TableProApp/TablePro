@@ -29,17 +29,23 @@ actor SQLSchemaProvider {
         let fetchColumns: @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo]
         let fetchAllColumns: @Sendable () async throws -> [String: [ColumnInfo]]
         let fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])?
+        let sampleFieldPaths: (@Sendable (_ table: String, _ limit: Int) async throws -> [PluginFieldPath])?
 
         init(
             fetchColumns: @escaping @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo],
             fetchAllColumns: @escaping @Sendable () async throws -> [String: [ColumnInfo]],
-            fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])? = nil
+            fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])? = nil,
+            sampleFieldPaths: (@Sendable (_ table: String, _ limit: Int) async throws -> [PluginFieldPath])? = nil
         ) {
             self.fetchColumns = fetchColumns
             self.fetchAllColumns = fetchAllColumns
             self.fetchSchemaTables = fetchSchemaTables
+            self.sampleFieldPaths = sampleFieldPaths
         }
     }
+
+    private var fieldPathCache: [String: [PluginFieldPath]] = [:]
+    private var fieldPathTasks: [String: Task<[PluginFieldPath], Never>] = [:]
 
     private var knownSchemas: [String] = []
     private var knownDatabases: [String] = []
@@ -175,6 +181,8 @@ actor SQLSchemaProvider {
         self.tables = newTables
         self.columnCache.removeAll()
         self.columnAccessOrder.removeAll()
+        self.fieldPathCache.removeAll()
+        self.fieldPathTasks.removeAll()
         self.cachedDriver = driver
         self.isLoading = false
         self.lastLoadError = nil
@@ -186,6 +194,8 @@ actor SQLSchemaProvider {
         eagerColumnTask = nil
         columnCache.removeAll()
         columnAccessOrder.removeAll()
+        fieldPathCache.removeAll()
+        fieldPathTasks.removeAll()
         if cachedDriver != nil {
             startEagerColumnLoad()
         }
@@ -381,6 +391,22 @@ actor SQLSchemaProvider {
                 )
             }
         }
+    }
+
+    /// Dotted field paths for a document-store collection, cached per collection.
+    /// Concurrent callers await the same sample instead of firing duplicate queries.
+    func fieldPaths(for tableName: String, sampleSize: Int = 50) async -> [PluginFieldPath] {
+        let key = tableName.lowercased()
+        if let cached = fieldPathCache[key] { return cached }
+        if let inFlight = fieldPathTasks[key] { return await inFlight.value }
+        guard let sample = metadataSource?.sampleFieldPaths else { return [] }
+
+        let task = Task { (try? await sample(tableName, sampleSize)) ?? [] }
+        fieldPathTasks[key] = task
+        let paths = await task.value
+        fieldPathTasks[key] = nil
+        if !paths.isEmpty { fieldPathCache[key] = paths }
+        return paths
     }
 
     /// Get completion items for all columns of tables in scope

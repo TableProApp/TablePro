@@ -115,6 +115,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])]
@@ -284,6 +285,12 @@ public extension PluginDatabaseDriver {
             result[table.name] = try await fetchColumns(table: table.name, schema: schema)
         }
         return result
+    }
+
+    /// Default: no nested field paths. Document stores override this to sample documents and
+    /// report the dotted paths their nested structure exposes, which a flat column list cannot.
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
+        []
     }
 
     /// Default: fetches foreign keys per-table sequentially (N+1 round-trips).

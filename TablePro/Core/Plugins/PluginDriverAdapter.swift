@@ -478,6 +478,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     // MARK: - Batch Operations
 
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
+        try await pluginDriver.sampleFieldPaths(table: table, schema: pluginDriver.currentSchema, limit: limit)
+    }
+
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         let pluginResult = try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)
         var result: [String: [ColumnInfo]] = [:]

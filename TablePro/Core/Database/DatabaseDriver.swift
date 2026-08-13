@@ -86,6 +86,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation falls back to per-table fetchColumns.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]]
 
+    /// Dotted field paths a document store exposes for a collection, for query authoring.
+    /// Default implementation returns nothing, which is correct for every SQL driver.
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath]
+
     /// Fetch indexes for a specific table
     func fetchIndexes(table: String) async throws -> [IndexInfo]
 
@@ -385,6 +389,10 @@ extension DatabaseDriver {
             }
         }
         return result
+    }
+
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
+        []
     }
 
     /// Default fetchAllColumns: falls back to per-table fetchColumns (N+1).

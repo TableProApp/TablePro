@@ -139,7 +139,22 @@ final class MongoCompletionService: QueryCompletionService {
 
     private func fieldItems(for collection: String?) async -> [SQLCompletionItem] {
         guard let schemaProvider, let collection else { return [] }
-        return await schemaProvider.columnCompletionItems(for: collection)
+
+        let paths = await schemaProvider.fieldPaths(for: collection)
+        guard !paths.isEmpty else {
+            return await schemaProvider.columnCompletionItems(for: collection)
+        }
+
+        return paths.map { path in
+            var item = SQLCompletionItem(
+                label: path.path,
+                kind: .column,
+                insertText: path.path,
+                detail: path.typeName
+            )
+            item.sortPriority = SQLCompletionKind.column.basePriority + path.depth
+            return item
+        }
     }
 
     private func fieldPathItems(for collection: String?) async -> [SQLCompletionItem] {
