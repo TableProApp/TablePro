@@ -87,7 +87,7 @@ extension MainContentCommandActions {
     /// A partial close leaves the window open, so it cannot lean on the window's own prompt.
     /// Unsaved work is tracked for the connection rather than per tab, so the question is asked
     /// once for the batch.
-    private func confirmDiscardingUnsavedWork() async -> Bool {
+    func confirmDiscardingUnsavedWork() async -> Bool {
         guard hasUnsavedWorkInWindow else { return true }
 
         switch await AlertHelper.confirmSaveChanges(

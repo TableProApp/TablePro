@@ -409,21 +409,32 @@ final class MainContentCommandActions {
         )
     }
 
+    /// Closing the last tab leaves the connection open on its empty state, the same state it is
+    /// in right after connecting. The window hosts every open connection now, so closing it here
+    /// would take the other connections' tabs and their unsaved edits with it.
     func closeTab(id: UUID) {
         guard let coordinator else { return }
-        coordinator.tabManager.closeTab(id: id)
-        if coordinator.tabManager.tabs.isEmpty {
-            Task { await closeWindowAwaiting() }
+        if let closing = coordinator.tabManager.tabs.first(where: { $0.id == id }) {
+            RecentlyClosedTabStore.shared.push(tab: closing, connection: coordinator.connection)
         }
+        coordinator.tabManager.closeTab(id: id)
     }
 
-    /// Closing the last tab closes the window, which is what Cmd+W does everywhere on macOS.
+    /// Cmd+W closes the tab in front. Pressed again with no tabs left it closes the connection,
+    /// and the window itself only once that was the last connection open in it.
     func closeTab() {
-        guard let coordinator, let selected = coordinator.tabManager.selectedTab else {
+        guard let coordinator else {
             Task { await closeWindowAwaiting() }
             return
         }
-        closeTab(id: selected.id)
+        if let selected = coordinator.tabManager.selectedTab {
+            closeTab(id: selected.id)
+            return
+        }
+        Task {
+            guard await confirmDiscardingUnsavedWork() else { return }
+            WindowManager.shared.closeWindow(for: connectionId)
+        }
     }
 
     /// The single close primitive. `asBatchSurvivor` is `nil` for a lone close gesture, which lets

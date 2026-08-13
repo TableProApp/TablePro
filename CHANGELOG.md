@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Every open connection now lives in one window. Picking a connection in the workspace rail switches that window to it instead of raising a second window.
 - Opening a table or query on a connection you already have open adds a tab to that window instead of opening another window. A tab strip appears once a connection holds more than one tab.
+- Closing the last tab leaves the connection open on its empty state. Close Tab again closes the connection, and the window once that was the last one open.
 - Window tabs follow your "Prefer tabs when opening documents" setting instead of always forcing tabs, and the Window menu gained Merge All Windows.
 - Mobile keeps remote connections open when you switch apps.
 - MongoDB shows a standard binary UUID as `UUID("...")` everywhere, including in exports.
