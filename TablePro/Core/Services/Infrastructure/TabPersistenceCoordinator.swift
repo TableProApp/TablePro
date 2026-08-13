@@ -13,10 +13,6 @@ internal struct RestoreResult {
     let source: RestoreSource
     var lastActiveDatabase: String?
     var lastActiveSchema: String?
-    /// Which window each tab belongs to, by tab id. Kept beside the tabs rather than on `QueryTab`,
-    /// because it describes where a tab was rather than anything about the tab, and it is read once
-    /// while a window works out which tabs are its own.
-    var windowGroupIndexByTabId: [UUID: Int] = [:]
 
     enum RestoreSource {
         case disk
@@ -185,7 +181,6 @@ internal final class TabPersistenceCoordinator {
             source: .disk,
             lastActiveDatabase: state.lastActiveDatabase,
             lastActiveSchema: state.lastActiveSchema,
-            windowGroupIndexByTabId: WindowGroupAssignment.normalizedGroupIndices(for: state.tabs)
         )
     }
 }
