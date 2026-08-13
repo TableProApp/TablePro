@@ -32,6 +32,22 @@ final class AlertHelper {
         window ?? NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible }
     }
 
+    /// A sheet the user is meant to read against their work must land on a document window.
+    /// `resolveWindow`'s last resort accepts any visible window, which includes floating panels
+    /// such as the Quick Switcher, so a file error can end up attached to a panel that closes
+    /// the moment it loses focus.
+    static func resolveContentWindow(_ window: NSWindow?) -> NSWindow? {
+        if let window { return window }
+        if let candidate = [NSApp.keyWindow, NSApp.mainWindow].compactMap({ $0 }).first(where: isContentWindow) {
+            return candidate
+        }
+        return NSApp.windows.first { $0.isVisible && isContentWindow($0) }
+    }
+
+    static func isContentWindow(_ window: NSWindow) -> Bool {
+        !(window is NSPanel) && window.styleMask.contains(.titled)
+    }
+
     // MARK: - Destructive Confirmations
 
     static func confirmDestructive(
@@ -100,45 +116,49 @@ final class AlertHelper {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
+    /// Pairing is a security decision, so the attached case uses a critical sheet: it must not
+    /// queue behind whatever sheet the window is already showing. The detached case runs the modal
+    /// loop directly rather than inside a continuation-installing closure, which would block the
+    /// main actor while the continuation is still being installed.
     static func runPairingApproval(request: PairingRequest) async throws -> PairingApproval {
-        try await withCheckedThrowingContinuation { continuation in
-            var deliver: ((Result<PairingApproval, Error>) -> Void)?
-            let codeExpiresAt = Date.now.addingTimeInterval(PairingExchangeStore.exchangeWindow)
-            let host = NSHostingController(
-                rootView: PairingApprovalSheet(
-                    request: request,
-                    codeExpiresAt: codeExpiresAt,
-                    onComplete: { result in deliver?(result) }
-                )
+        let codeExpiresAt = Date.now.addingTimeInterval(PairingExchangeStore.exchangeWindow)
+        let gate = PairingApprovalGate()
+        let host = NSHostingController(
+            rootView: PairingApprovalSheet(
+                request: request,
+                codeExpiresAt: codeExpiresAt,
+                onComplete: { result in gate.deliver(result) }
             )
-            host.view.frame = NSRect(x: 0, y: 0, width: 520, height: 560)
+        )
+        host.sizingOptions = []
+        let fitted = host.sizeThatFits(in: NSSize(width: 520, height: CGFloat.greatestFiniteMagnitude))
+        host.view.frame = NSRect(origin: .zero, size: fitted)
 
-            let parent = resolveWindow(nil)
-            let sheetWindow = NSWindow(contentViewController: host)
-            sheetWindow.styleMask = [.titled]
-            sheetWindow.title = String(localized: "Approve Integration")
-            sheetWindow.isReleasedWhenClosed = false
+        let sheetWindow = NSWindow(contentViewController: host)
+        sheetWindow.styleMask = [.titled, .closable]
+        sheetWindow.title = String(localized: "Approve Integration")
+        sheetWindow.isReleasedWhenClosed = false
 
-            var resolved = false
-            deliver = { result in
-                guard !resolved else { return }
-                resolved = true
-                if let parent {
-                    parent.endSheet(sheetWindow)
-                } else {
-                    sheetWindow.close()
-                }
-                continuation.resume(with: result)
+        guard let parent = resolveContentWindow(nil) else {
+            let delegate = PairingApprovalWindowDelegate(gate: gate)
+            sheetWindow.delegate = delegate
+            gate.onResolve = { [weak sheetWindow] in
+                NSApp.stopModal()
+                sheetWindow?.close()
             }
-
-            if let parent {
-                parent.beginSheet(sheetWindow, completionHandler: nil)
-            } else {
-                NSApp.activate(ignoringOtherApps: true)
-                sheetWindow.center()
-                sheetWindow.makeKeyAndOrderFront(nil)
-            }
+            NSApp.activate(ignoringOtherApps: true)
+            sheetWindow.center()
+            defer { withExtendedLifetime(delegate) {} }
+            NSApp.runModal(for: sheetWindow)
+            return try gate.result()
         }
+
+        gate.onResolve = { [weak sheetWindow] in
+            guard let sheetWindow else { return }
+            parent.endSheet(sheetWindow)
+        }
+        parent.beginCriticalSheet(sheetWindow, completionHandler: nil)
+        return try await gate.value()
     }
 
     // MARK: - Save Changes Confirmation

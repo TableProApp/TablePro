@@ -61,6 +61,21 @@ internal struct RedisKeyTreeView: View {
                 }
             }
             .buttonStyle(.plain)
+            .contextMenu {
+                Button(String(localized: "Copy Namespace Prefix")) {
+                    ClipboardService.shared.writeText(fullPrefix)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                Text(
+                    String(
+                        format: String(localized: "%1$@, %2$lld keys"),
+                        name,
+                        Int64(keyCount)
+                    )
+                )
+            )
         case .key(let name, let fullKey, let keyType):
             Button {
                 onSelectKey?(fullKey, keyType)
@@ -76,6 +91,16 @@ internal struct RedisKeyTreeView: View {
                 }
             }
             .buttonStyle(.plain)
+            .contextMenu {
+                Button(String(localized: "Copy Key")) {
+                    ClipboardService.shared.writeText(fullKey)
+                }
+                Button(String(localized: "Open in New Tab")) {
+                    onSelectKey?(fullKey, keyType)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text(String(format: String(localized: "%1$@, %2$@"), name, keyType)))
         }
     }
 

@@ -171,7 +171,8 @@ struct QuickSwitcherPanelContent: View {
     private var inputFields: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 19, weight: .medium))
+                .font(.title2)
+            .imageScale(.large)
                 .foregroundStyle(.secondary)
 
             QuickSwitcherSearchField(
@@ -244,7 +245,7 @@ struct QuickSwitcherPanelContent: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 24)
@@ -260,8 +261,8 @@ struct QuickSwitcherPanelContent: View {
             iconView(for: item, isEmphasized: isEmphasized)
 
             Text(highlightedName(for: item))
-                .font(.system(size: 15))
-                .foregroundStyle(isEmphasized ? Color.white : Color.primary)
+                .font(.title3)
+                .foregroundStyle(isEmphasized ? Color.emphasizedSelectionLabel : Color.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
@@ -283,27 +284,35 @@ struct QuickSwitcherPanelContent: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture {
+        .onTapGesture(count: 2) {
             isNavigating = true
             viewModel.selectedItemId = item.id
-            if NSApp.currentEvent?.clickCount == 2 {
-                onCommit(item, .open)
-            }
+            onCommit(item, .open)
         }
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                isNavigating = true
+                viewModel.selectedItemId = item.id
+            }
+        )
         .contextMenu { contextMenuActions(for: item) }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(item.name))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { onCommit(item, .open) }
         .id(item.id)
     }
 
     private func iconView(for item: QuickSwitcherItem, isEmphasized: Bool) -> some View {
         Image(systemName: item.iconName)
             .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(isEmphasized ? Color.white : Color.secondary)
+            .foregroundStyle(isEmphasized ? Color.emphasizedSelectionLabel : Color.secondary)
             .frame(width: PanelMetrics.iconContainerSize, height: PanelMetrics.iconContainerSize)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(
                         isEmphasized
-                            ? Color.white.opacity(0.2)
+                            ? Color.emphasizedSelectionLabel.opacity(0.2)
                             : Color(nsColor: .quaternarySystemFill)
                     )
             )
@@ -311,11 +320,11 @@ struct QuickSwitcherPanelContent: View {
 
     @ViewBuilder
     private func trailingAccessories(for item: QuickSwitcherItem, isSelected: Bool, isEmphasized: Bool) -> some View {
-        let secondaryColor = isEmphasized ? Color.white.opacity(0.85) : Color.secondary
+        let secondaryColor = isEmphasized ? Color.emphasizedSelectionLabel.opacity(0.85) : Color.secondary
 
         if item.isOpenInTab, !isSelected {
             Text(String(localized: "Open"))
-                .font(.system(size: 10, weight: .medium))
+                .font(.caption2.weight(.medium))
                 .foregroundStyle(secondaryColor)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
@@ -324,12 +333,12 @@ struct QuickSwitcherPanelContent: View {
 
         if isSelected {
             Text(commitHint(for: item))
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(secondaryColor)
             keycap("↩", isEmphasized: isEmphasized)
         } else if !item.subtitle.isEmpty {
             Text(item.subtitle)
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(secondaryColor)
                 .lineLimit(1)
         }
@@ -338,11 +347,11 @@ struct QuickSwitcherPanelContent: View {
     private func keycap(_ label: String, isEmphasized: Bool) -> some View {
         Text(label)
             .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(isEmphasized ? Color.white : Color.secondary)
+            .foregroundStyle(isEmphasized ? Color.emphasizedSelectionLabel : Color.secondary)
             .frame(width: 24, height: 18)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(isEmphasized ? Color.white.opacity(0.25) : Color(nsColor: .quaternarySystemFill))
+                    .fill(isEmphasized ? Color.emphasizedSelectionLabel.opacity(0.25) : Color(nsColor: .quaternarySystemFill))
             )
     }
 
@@ -359,7 +368,7 @@ struct QuickSwitcherPanelContent: View {
 
     private var noResultsRow: some View {
         Text(String(format: String(localized: "No results for \"%@\""), viewModel.searchText))
-            .font(.system(size: 15))
+            .font(.title3)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 24)

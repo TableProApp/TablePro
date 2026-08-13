@@ -139,7 +139,7 @@ private struct CalendarMonthView: View {
                     .frame(width: cellSize, height: cellSize)
                     .background {
                         if isSelected {
-                            Circle().fill(Color.accentColor)
+                            Circle().fill(Color(nsColor: .selectedContentBackgroundColor))
                         } else if isToday {
                             Circle().strokeBorder(Color.accentColor, lineWidth: 1)
                         }
@@ -154,7 +154,7 @@ private struct CalendarMonthView: View {
     }
 
     private func dayColor(isSelected: Bool, isToday: Bool) -> Color {
-        if isSelected { return .white }
+        if isSelected { return .emphasizedSelectionLabel }
         if isToday { return .accentColor }
         return .primary
     }

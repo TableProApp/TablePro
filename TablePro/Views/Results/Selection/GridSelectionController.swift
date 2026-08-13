@@ -64,6 +64,9 @@ final class GridSelectionController {
                 .priority: NSAccessibilityPriorityLevel.medium.rawValue
             ]
         )
+        /// The announcement is a one-off sentence. This is the notification a table is supposed
+        /// to post so assistive technology can re-read the selection on its own terms.
+        NSAccessibility.post(element: tableView, notification: .selectedCellsChanged)
     }
 
     func clear() {

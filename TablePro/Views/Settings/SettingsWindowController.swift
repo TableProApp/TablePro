@@ -32,7 +32,7 @@ internal final class SettingsWindowController: NSWindowController {
         let window = NSWindow(contentViewController: panes)
         window.title = String(localized: "Settings")
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.settings)
-        window.styleMask = [.titled, .closable]
+        window.styleMask = [.titled, .closable, .resizable]
         window.toolbarStyle = .preference
         window.isRestorable = false
         window.setContentSize(SettingsPaneTabViewController.paneSize)
@@ -42,6 +42,14 @@ internal final class SettingsWindowController: NSWindowController {
         if !window.setFrameUsingName(WindowIdentifier.settings) {
             window.center()
         }
+        /// A frame saved before the window became resizable can be smaller than any pane can
+        /// draw, so a restored frame is grown back to the pane minimum.
+        window.setContentSize(
+            NSSize(
+                width: max(window.contentLayoutRect.width, SettingsPaneTabViewController.paneSize.width),
+                height: max(window.contentLayoutRect.height, SettingsPaneTabViewController.paneSize.height)
+            )
+        )
         self.init(window: window)
     }
 }
@@ -92,7 +100,12 @@ private final class SettingsPaneTabViewController: NSTabViewController {
 
     private func makeTabViewItem(for pane: SettingsPane) -> NSTabViewItem {
         let content = SettingsPaneContent(pane: pane)
-            .frame(width: Self.paneSize.width, height: Self.paneSize.height)
+            .frame(
+                minWidth: Self.paneSize.width,
+                maxWidth: .infinity,
+                minHeight: Self.paneSize.height,
+                maxHeight: .infinity
+            )
             .environment(UpdaterBridge.shared)
             .environment(\.appServices, .live)
         let hosting = NSHostingController(rootView: content)

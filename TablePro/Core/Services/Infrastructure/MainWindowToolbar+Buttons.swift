@@ -135,7 +135,7 @@ struct NewTabToolbarButton: View {
     var body: some View {
         let state = coordinator.toolbarState
         Button {
-            NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
+            NSApp.sendAction(#selector(MainSplitViewController.newEditorTab(_:)), to: nil, from: nil)
         } label: {
             Label("New Tab", systemImage: "plus.rectangle")
         }

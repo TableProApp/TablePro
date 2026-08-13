@@ -145,18 +145,15 @@ struct ExportDialog: View {
             .interactiveDismissDisabled()
             .onExitCommand { }
         }
-        .sheet(isPresented: $showSuccessDialog) {
-            ExportSuccessView(
-                onOpenFolder: {
+        .onChange(of: showSuccessDialog) { _, isShowing in
+            guard isShowing else { return }
+            TransferResultAlert.presentExportSuccess(window: NSApp.keyWindow) { choice in
+                showSuccessDialog = false
+                if choice == .openFolder {
                     openContainingFolder()
-                    showSuccessDialog = false
-                    isPresented = false
-                },
-                onClose: {
-                    showSuccessDialog = false
-                    isPresented = false
                 }
-            )
+                isPresented = false
+            }
         }
     }
 
@@ -357,33 +354,6 @@ struct ExportDialog: View {
             }
 
             Spacer(minLength: 0)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("File name")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                HStack(spacing: 4) {
-                    TextField("export", text: $config.fileName)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.body)
-
-                    Text(".\(fileExtension)")
-                        .foregroundStyle(.secondary)
-                        .font(.system(.body, design: .monospaced))
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-
-                if let validationError = fileNameValidationError {
-                    Text(validationError)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                }
-            }
-            .padding(16)
         }
     }
 
@@ -451,7 +421,7 @@ struct ExportDialog: View {
     }
 
     private var isExportDisabled: Bool {
-        if isExporting || !isFileNameValid || availableFormats.isEmpty {
+        if isExporting || availableFormats.isEmpty {
             return true
         }
         if case .streamingQuery = mode {
@@ -474,53 +444,6 @@ struct ExportDialog: View {
         case "mql": return String(localized: "MongoDB query language. Use to import into MongoDB.")
         default: return ""
         }
-    }
-
-    /// Windows reserved device names (case-insensitive)
-    private static let windowsReservedNames: Set<String> = [
-        "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
-    ]
-
-    /// Returns a validation error message if the filename is invalid, nil if valid
-    private var fileNameValidationError: String? {
-        let name = config.fileName.trimmingCharacters(in: .whitespaces)
-
-        if name.isEmpty {
-            return String(localized: "Filename cannot be empty")
-        }
-
-        // Invalid filesystem characters (covers macOS, Windows, and Linux)
-        let invalidChars = CharacterSet(charactersIn: "/\\:*?\"<>|")
-        if name.rangeOfCharacter(from: invalidChars) != nil {
-            return String(localized: "Filename contains invalid characters: / \\ : * ? \" < > |")
-        }
-
-        // Prevent path traversal attempts and special directory names
-        if name == "." || name == ".." ||
-            name.hasPrefix("../") || name.hasPrefix("..\\") ||
-            name.hasSuffix("/..") || name.hasSuffix("\\..") ||
-            name.contains("/../") || name.contains("\\..\\") {
-            return String(localized: "Filename cannot be '.' or '..' or contain path traversal")
-        }
-
-        let baseName = name.components(separatedBy: ".").first ?? name
-        if Self.windowsReservedNames.contains(baseName.uppercased()) {
-            return String(format: String(localized: "'%@' is a reserved Windows device name"), baseName)
-        }
-
-        // Check filename length (255 bytes is common limit on most filesystems)
-        if name.utf8.count > 255 {
-            return String(localized: "Filename is too long (max 255 bytes)")
-        }
-
-        return nil
-    }
-
-    /// Validates that the filename is not empty and contains no invalid filesystem characters
-    private var isFileNameValid: Bool {
-        fileNameValidationError == nil
     }
 
     private func resetOptionValues() {

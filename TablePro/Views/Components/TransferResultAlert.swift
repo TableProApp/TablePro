@@ -1,0 +1,142 @@
+//
+//  TransferResultAlert.swift
+//  TablePro
+//
+
+import AppKit
+import TableProPluginKit
+
+/// Import and export results were three bespoke views with fixed widths and hand-picked green,
+/// yellow and red badges. `NSAlert` supplies the icon from its style, sizes itself to its content,
+/// and is the only one of the two that can carry a real suppression checkbox.
+@MainActor
+internal enum TransferResultAlert {
+    internal static let exportSuppressionKey = "hideExportSuccessDialog"
+
+    internal enum ExportChoice {
+        case openFolder
+        case close
+    }
+
+    internal static func presentExportSuccess(
+        window: NSWindow?,
+        completion: @escaping @MainActor (ExportChoice) -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Export completed")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: String(localized: "Open in Finder"))
+        alert.addButton(withTitle: String(localized: "Done"))
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = String(localized: "Do not show this again")
+
+        let deliver: @MainActor (NSApplication.ModalResponse) -> Void = { response in
+            if alert.suppressionButton?.state == .on {
+                UserDefaults.standard.set(true, forKey: exportSuppressionKey)
+            }
+            completion(response == .alertFirstButtonReturn ? .openFolder : .close)
+        }
+
+        present(alert, in: window, deliver: deliver)
+    }
+
+    internal static func presentImportSuccess(
+        result: PluginImportResult?,
+        window: NSWindow?,
+        completion: @escaping @MainActor () -> Void
+    ) {
+        let alert = NSAlert()
+        let skipped = result?.skippedStatements ?? 0
+        alert.messageText = skipped > 0
+            ? String(localized: "Import completed with errors")
+            : String(localized: "Import completed")
+        alert.alertStyle = skipped > 0 ? .warning : .informational
+        alert.informativeText = importSummary(result)
+        alert.addButton(withTitle: String(localized: "Done"))
+
+        if let errors = result?.errors, !errors.isEmpty {
+            let lines = errors.map { failure in
+                String(
+                    format: String(localized: "Line %1$lld: %2$@"),
+                    Int64(failure.line),
+                    failure.errorMessage
+                )
+            }
+            alert.accessoryView = scrollingText(lines.joined(separator: "\n"))
+            alert.layout()
+        }
+
+        present(alert, in: window) { _ in completion() }
+    }
+
+    internal static func presentImportFailure(
+        error: (any Error)?,
+        window: NSWindow?,
+        completion: @escaping @MainActor () -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Import failed")
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: String(localized: "Done"))
+
+        if let pluginError = error as? PluginImportError,
+           case .statementFailed(let statement, let line, let underlyingError) = pluginError {
+            alert.informativeText = String(
+                format: String(localized: "Failed at line %lld. %@"),
+                Int64(line),
+                underlyingError.localizedDescription
+            )
+            alert.accessoryView = scrollingText(statement)
+            alert.layout()
+        } else {
+            alert.informativeText = error?.localizedDescription ?? String(localized: "Unknown error")
+        }
+
+        present(alert, in: window) { _ in completion() }
+    }
+
+    private static func importSummary(_ result: PluginImportResult?) -> String {
+        guard let result else { return "" }
+        let counts = result.skippedStatements > 0
+            ? String(
+                format: String(localized: "%1$lld statements executed, %2$lld failed"),
+                Int64(result.executedStatements),
+                Int64(result.skippedStatements)
+            )
+            : String(
+                format: String(localized: "%lld statements executed"),
+                Int64(result.executedStatements)
+            )
+        let seconds = String(
+            format: String(localized: "%@ seconds"),
+            String(format: "%.2f", result.executionTime)
+        )
+        return "\(counts)\n\(seconds)"
+    }
+
+    private static func scrollingText(_ text: String) -> NSView {
+        let textView = NSTextView()
+        textView.string = text
+        textView.isEditable = false
+        textView.drawsBackground = false
+        textView.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 380, height: 140))
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        scroll.documentView = textView
+        return scroll
+    }
+
+    private static func present(
+        _ alert: NSAlert,
+        in window: NSWindow?,
+        deliver: @escaping @MainActor (NSApplication.ModalResponse) -> Void
+    ) {
+        guard let parent = AlertHelper.resolveContentWindow(window) else {
+            deliver(alert.runModal())
+            return
+        }
+        alert.beginSheetModal(for: parent, completionHandler: deliver)
+    }
+}

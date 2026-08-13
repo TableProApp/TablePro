@@ -92,7 +92,7 @@ struct CloudSQLProxyPaneView: View {
                 .frame(minHeight: 96)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.secondary.opacity(0.3))
+                        .stroke(Color(nsColor: .separatorColor))
                 )
             Text("Stored in the macOS Keychain and written to a temporary file only while the proxy runs.")
                 .font(.caption)

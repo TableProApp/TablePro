@@ -18,9 +18,8 @@ struct MentionSuggestionListView: View {
                 )
                 .contentShape(Rectangle())
                 .onTapGesture { onSelect(index) }
-                .onHover { hovering in
-                    if hovering { state.selectedIndex = index }
-                }
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(index == state.selectedIndex ? [.isButton, .isSelected] : .isButton)
             }
         }
         .padding(.vertical, 4)

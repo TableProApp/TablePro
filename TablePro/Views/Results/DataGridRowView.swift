@@ -64,6 +64,7 @@ class DataGridRowView: NSTableRowView {
         didSet {
             guard isSelected != oldValue else { return }
             propagateEmphasisToCells()
+            needsDisplay = true
         }
     }
 
@@ -71,6 +72,7 @@ class DataGridRowView: NSTableRowView {
         didSet {
             guard isEmphasized != oldValue else { return }
             propagateEmphasisToCells()
+            needsDisplay = true
         }
     }
 
@@ -106,10 +108,11 @@ class DataGridRowView: NSTableRowView {
         let columns = selection.columns(in: rowIndex)
         guard !columns.isEmpty else { return }
 
-        let fillColor: NSColor = isSelected
-            ? NSColor.unemphasizedSelectedContentBackgroundColor
-            : NSColor.selectedContentBackgroundColor.withAlphaComponent(0.28)
-        fillColor.setFill()
+        let base: NSColor = isEmphasized
+            ? .selectedContentBackgroundColor
+            : .unemphasizedSelectedContentBackgroundColor
+        let alpha = isSelected ? Self.rowSelectedCellAlpha : Self.cellOnlySelectionAlpha
+        base.withAlphaComponent(alpha).setFill()
 
         for dataColumn in columns {
             guard let tableColumnIndex = coordinator.tableColumnIndex(for: dataColumn) else { continue }
@@ -119,6 +122,9 @@ class DataGridRowView: NSTableRowView {
             localRect.fill()
         }
     }
+
+    private static let rowSelectedCellAlpha: CGFloat = 0.55
+    private static let cellOnlySelectionAlpha: CGFloat = 0.28
 
     private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
         switch (lhs, rhs) {

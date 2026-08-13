@@ -637,12 +637,22 @@ internal struct FavoritesTabView: View {
         panel.allowsMultipleSelection = false
         panel.message = String(localized: "Choose a folder containing .sql files")
 
-        guard let window = NSApp.keyWindow else { return }
+        guard let window = AlertHelper.resolveContentWindow(nil) else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
             let path = PathPortability.contractHome(url.path)
             let existing = LinkedSQLFolderStorage.shared.loadFolders()
-            guard !existing.contains(where: { $0.path == path }) else { return }
+            guard !existing.contains(where: { $0.path == path }) else {
+                AlertHelper.showInfoSheet(
+                    title: String(localized: "This folder is already linked"),
+                    message: String(
+                        format: String(localized: "%@ is already in the favorites list."),
+                        url.lastPathComponent
+                    ),
+                    window: window
+                )
+                return
+            }
             LinkedSQLFolderStorage.shared.addFolder(LinkedSQLFolder(path: path))
             SQLFolderWatcher.shared.reload()
         }

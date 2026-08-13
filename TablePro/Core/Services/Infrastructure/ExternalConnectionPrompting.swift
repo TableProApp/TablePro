@@ -23,6 +23,18 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
         for connection: DatabaseConnection,
         offerAlwaysAllow: Bool
     ) async -> ExternalConnectionDecision {
+        let response = await present(Self.makeAlert(for: connection, offerAlwaysAllow: offerAlwaysAllow))
+        switch response {
+        case .alertFirstButtonReturn:
+            return .connect
+        case .alertThirdButtonReturn where offerAlwaysAllow:
+            return .alwaysAllow
+        default:
+            return .cancel
+        }
+    }
+
+    internal static func makeAlert(for connection: DatabaseConnection, offerAlwaysAllow: Bool) -> NSAlert {
         let alert = NSAlert()
         alert.messageText = String(localized: "Open External Database Connection?")
         alert.informativeText = String(
@@ -43,20 +55,11 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
             alert.addButton(withTitle: String(localized: "Always Allow"))
         }
         alert.buttons[0].keyEquivalent = ""
-        alert.buttons[1].keyEquivalent = "\u{1b}"
-
-        let response = await present(alert)
-        switch response {
-        case .alertFirstButtonReturn:
-            return .connect
-        case .alertThirdButtonReturn where offerAlwaysAllow:
-            return .alwaysAllow
-        default:
-            return .cancel
-        }
+        alert.buttons[1].keyEquivalent = "\r"
+        return alert
     }
 
-    private func details(for connection: DatabaseConnection) -> [String] {
+    private static func details(for connection: DatabaseConnection) -> [String] {
         var details: [String] = [
             String(format: String(localized: "Host: %@"), "\(connection.host):\(connection.port)")
         ]

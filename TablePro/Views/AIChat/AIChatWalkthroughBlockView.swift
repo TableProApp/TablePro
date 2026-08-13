@@ -197,20 +197,35 @@ struct AIChatWalkthroughBlockView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+
     private func splitRow(_ row: SplitRow, side: SqlWalkthroughAnchor.Side) -> some View {
+        let marker = SplitDiffMarker.resolve(kind: row.kind, side: side)
         let tint: Color? = switch (row.kind, side) {
         case (.removed, .before), (.changed, .before): .red.opacity(0.16)
         case (.added, .after), (.changed, .after): .green.opacity(0.16)
         default: nil
         }
         return HStack(alignment: .top, spacing: 6) {
+            if differentiateWithoutColor, let glyph = marker?.glyph {
+                Text(verbatim: glyph)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 10, alignment: .leading)
+            }
             Text(row.text ?? " ")
                 .font(.system(.body, design: .monospaced))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 1)
-        .background(splitRowBackground(base: tint, side: side, lineNumber: row.lineNumber))
+        .background(
+            differentiateWithoutColor
+                ? splitRowBackground(base: nil, side: side, lineNumber: row.lineNumber)
+                : splitRowBackground(base: tint, side: side, lineNumber: row.lineNumber)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(marker?.label ?? SplitDiffMarker.unchangedLabel): \(row.text ?? "")"))
     }
 
     private func sourceListing(_ presentation: SqlWalkthroughPresentation) -> some View {

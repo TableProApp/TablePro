@@ -80,7 +80,7 @@ struct DatabaseTreeRowView: View {
                 isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
                 isPendingDelete: context.pendingDeletes.contains(ref.table.name)
             )
-            .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .foregroundStyle(isEmphasized ? AnyShapeStyle(Color.emphasizedSelectionLabel) : AnyShapeStyle(.primary))
         case .database(let metadata):
             header(
                 text: metadata.name,
@@ -102,10 +102,10 @@ struct DatabaseTreeRowView: View {
                 isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
                 isPendingDelete: context.pendingDeletes.contains(ref.table.name)
             )
-            .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .foregroundStyle(isEmphasized ? AnyShapeStyle(Color.emphasizedSelectionLabel) : AnyShapeStyle(.primary))
         case .routine(let ref):
             RoutineRowView(routine: ref.routine)
-                .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                .foregroundStyle(isEmphasized ? AnyShapeStyle(Color.emphasizedSelectionLabel) : AnyShapeStyle(.primary))
         case .status(let status):
             statusRow(status)
         }
@@ -221,9 +221,12 @@ struct DatabaseTreeRowView: View {
     }
 
     private func foreground(isActive: Bool, isSystem: Bool) -> AnyShapeStyle {
-        if isEmphasized { return AnyShapeStyle(.white) }
-        if isActive { return AnyShapeStyle(.tint) }
-        if isSystem { return AnyShapeStyle(.secondary) }
-        return AnyShapeStyle(.primary)
+        SidebarRowForeground.style(
+            for: SidebarRowForeground.role(
+                isEmphasized: isEmphasized,
+                isActive: isActive,
+                isSystem: isSystem
+            )
+        )
     }
 }

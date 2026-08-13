@@ -10,7 +10,7 @@ private struct SidebarTint: ViewModifier {
     @Environment(\.backgroundProminence) private var backgroundProminence
 
     func body(content: Content) -> some View {
-        content.foregroundStyle(backgroundProminence == .increased ? Color.white : color)
+        content.foregroundStyle(backgroundProminence == .increased ? Color.emphasizedSelectionLabel : color)
     }
 }
 

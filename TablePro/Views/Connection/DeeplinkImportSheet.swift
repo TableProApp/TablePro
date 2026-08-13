@@ -86,10 +86,9 @@ struct DeeplinkImportSheet: View {
 
             Divider()
 
-            HStack {
+            DialogFooter {
                 Button(String(localized: "Cancel")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Spacer()
                 Button(isDuplicate ? String(localized: "Add as Copy") : String(localized: "Add Connection")) {
                     performImport()
                 }

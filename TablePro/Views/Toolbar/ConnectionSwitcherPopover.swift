@@ -152,7 +152,7 @@ struct ConnectionSwitcherPopover: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: selectedConnectionId) { _, newValue in
                 guard let id = newValue else { return }
-                withAnimation(.easeInOut(duration: 0.15)) {
+                withMotion(.easeInOut(duration: 0.15)) {
                     proxy.scrollTo(id)
                 }
             }

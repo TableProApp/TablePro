@@ -160,7 +160,7 @@ struct AIChatPanelView: View {
             if isUserScrolledUp {
                 Button {
                     pinnedToBottom = true
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withMotion(.easeOut(duration: 0.2)) {
                         bottomVisibleMessageID = lastMessageID
                     }
                 } label: {

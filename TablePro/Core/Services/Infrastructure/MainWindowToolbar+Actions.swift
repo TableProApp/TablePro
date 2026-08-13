@@ -28,7 +28,7 @@ extension MainWindowToolbar {
     }
 
     @objc func performNewTab(_ sender: Any?) {
-        NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
+        NSApp.sendAction(#selector(MainSplitViewController.newEditorTab(_:)), to: nil, from: nil)
     }
 
     @objc func performPreviewSQL(_ sender: Any?) {

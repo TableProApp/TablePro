@@ -22,7 +22,7 @@ struct WelcomeWindowView: View {
         ZStack {
             if vm.showOnboarding {
                 OnboardingContentView {
-                    withAnimation(.easeInOut(duration: 0.45)) {
+                    withMotion(.easeInOut(duration: 0.45)) {
                         vm.showOnboarding = false
                     }
                 }
@@ -229,17 +229,9 @@ struct WelcomeWindowView: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
         .contextMenu { newConnectionContextMenu }
-        .background(findShortcut)
-    }
-
-    private var findShortcut: some View {
-        Button {
+        .onReceive(NotificationCenter.default.publisher(for: .welcomeWindowFindRequested)) { _ in
             searchFocusTrigger += 1
-        } label: {
-            EmptyView()
         }
-        .keyboardShortcut("f", modifiers: .command)
-        .accessibilityHidden(true)
     }
 
     private var newConnectionHelp: String {

@@ -69,7 +69,7 @@ struct QueryPlanDiagramView: View {
             zoomControls
                 .padding(12)
         }
-        .onAppear {
+        .task(id: plan.rawText) {
             let nodes = layoutNodes(plan.rootNode, depth: 0, xOffset: 0, parentId: nil)
             positioned = nodes
             canvasSize = calculateCanvasSize(nodes)

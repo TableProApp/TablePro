@@ -129,21 +129,34 @@ struct SidebarView: View {
                 coordinator?.toolbarState.databaseVersion = driver.serverVersion
             }
         }
-        .sheet(isPresented: $viewModel.showOperationDialog) {
-            if let operationType = viewModel.pendingOperationType {
-                let dialogTables = viewModel.pendingOperationTables
-                if let firstTable = dialogTables.first {
-                    TableOperationDialog(
-                        isPresented: $viewModel.showOperationDialog,
-                        tableName: firstTable,
-                        tableCount: dialogTables.count,
-                        operationType: operationType,
-                        databaseType: viewModel.databaseType
-                    ) { options in
-                        viewModel.confirmOperation(options: options)
-                    }
-                }
+        .onChange(of: viewModel.showOperationDialog) { _, isPresented in
+            guard isPresented else { return }
+            presentOperationAlert()
+        }
+    }
+
+    private func presentOperationAlert() {
+        guard let operationType = viewModel.pendingOperationType,
+              let firstTable = viewModel.pendingOperationTables.first
+        else {
+            viewModel.showOperationDialog = false
+            return
+        }
+        let prompt = TableOperationPrompt(
+            operationType: operationType,
+            tableName: firstTable,
+            tableCount: viewModel.pendingOperationTables.count,
+            cascadeSupported: PluginManager.shared.supportsCascadeDrop(for: viewModel.databaseType),
+            foreignKeyDisableSupported: PluginManager.shared.supportsForeignKeyDisable(for: viewModel.databaseType)
+        )
+        let model = viewModel
+        TableOperationAlert.present(prompt: prompt, window: coordinator?.contentWindow) { options in
+            model.showOperationDialog = false
+            guard let options else {
+                model.cancelPendingOperation()
+                return
             }
+            model.confirmOperation(options: options)
         }
     }
 

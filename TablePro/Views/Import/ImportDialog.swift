@@ -115,20 +115,17 @@ struct ImportDialog: View {
                 .interactiveDismissDisabled()
             }
         }
-        .sheet(isPresented: $showSuccessDialog, onDismiss: {
-            isPresented = false
-            AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
-        }) {
-            ImportSuccessView(
-                result: importResult
-            ) {
+        .onChange(of: showSuccessDialog) { _, isShowing in
+            guard isShowing else { return }
+            TransferResultAlert.presentImportSuccess(result: importResult, window: NSApp.keyWindow) {
                 showSuccessDialog = false
+                isPresented = false
+                AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
             }
         }
-        .sheet(isPresented: $showErrorDialog) {
-            ImportErrorView(
-                error: importError
-            ) {
+        .onChange(of: showErrorDialog) { _, isShowing in
+            guard isShowing else { return }
+            TransferResultAlert.presentImportFailure(error: importError, window: NSApp.keyWindow) {
                 showErrorDialog = false
             }
         }
@@ -294,13 +291,11 @@ struct ImportDialog: View {
     }
 
     private var footerView: some View {
-        HStack {
+        DialogFooter {
             Button("Cancel") {
                 isPresented = false
             }
             .keyboardShortcut(.cancelAction)
-
-            Spacer()
 
             Button("Import") {
                 performImport()

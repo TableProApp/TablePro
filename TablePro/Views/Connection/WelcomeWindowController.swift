@@ -49,4 +49,23 @@ internal final class WelcomeWindowController: NSWindowController {
         window.applyAutosaveName(WindowIdentifier.welcome)
         self.init(window: window)
     }
+
+    /// The Welcome window used to bind Command F to a zero-size hidden button, so the Edit menu's
+    /// own Find item never validated and the shortcut could not be rebound in Settings. Answering
+    /// the standard selector puts it back on the responder chain where the menu can reach it.
+    @objc
+    internal func performFind(_ sender: Any?) {
+        NotificationCenter.default.post(name: .welcomeWindowFindRequested, object: window)
+    }
+}
+
+extension WelcomeWindowController: NSMenuItemValidation {
+    internal func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(performFind(_:)) else { return true }
+        return window?.isKeyWindow == true
+    }
+}
+
+internal extension Notification.Name {
+    static let welcomeWindowFindRequested = Notification.Name("com.TablePro.welcomeWindowFindRequested")
 }

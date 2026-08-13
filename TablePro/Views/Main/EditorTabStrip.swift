@@ -17,6 +17,8 @@ import SwiftUI
 internal struct EditorTabStrip: View {
     internal let tabManager: QueryTabManager
     internal let onClose: (UUID) -> Void
+    internal let onCloseOthers: (UUID) -> Void
+    internal let onCloseAll: () -> Void
     internal let onNewTab: () -> Void
 
     @State private var hoveredTabId: UUID?
@@ -33,6 +35,7 @@ internal struct EditorTabStrip: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Editor Tabs"))
+        .accessibilityAddTraits(.isTabBar)
     }
 
     private var track: some View {
@@ -83,6 +86,8 @@ internal struct EditorTabStrip: View {
                 selectedId: tabManager.selectedTab?.id,
                 hoveredId: hoveredTabId
             ),
+            position: index + 1,
+            count: tabManager.tabs.count,
             onHover: { hovering in
                 if hovering {
                     hoveredTabId = tab.id
@@ -91,7 +96,9 @@ internal struct EditorTabStrip: View {
                 }
             },
             onSelect: { tabManager.selectedTabId = tab.id },
-            onClose: { onClose(tab.id) }
+            onClose: { onClose(tab.id) },
+            onCloseOthers: { onCloseOthers(tab.id) },
+            onCloseAll: onCloseAll
         )
     }
 
@@ -106,52 +113,72 @@ private struct EditorTabStripItem: View {
     let isHovered: Bool
     let isWindowActive: Bool
     let showsLeadingSeparator: Bool
+    let position: Int
+    let count: Int
     let onHover: (Bool) -> Void
     let onSelect: () -> Void
     let onClose: () -> Void
+    let onCloseOthers: () -> Void
+    let onCloseAll: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ZStack {
-            if showsLeadingSeparator {
-                HStack {
-                    Rectangle()
-                        .fill(Color(nsColor: .separatorColor))
-                        .frame(width: 1, height: EditorTabStripLayout.separatorHeight)
-                    Spacer()
+        Button(action: onSelect) {
+            ZStack {
+                if showsLeadingSeparator {
+                    HStack {
+                        Rectangle()
+                            .fill(Color(nsColor: .separatorColor))
+                            .frame(width: 1, height: EditorTabStripLayout.separatorHeight)
+                        Spacer()
+                    }
                 }
-            }
 
-            background
+                background
 
-            /// The close button takes the leading end and an equal spacer holds the trailing
-            /// end, which is how the system keeps a title optically centred while still giving
-            /// the button a real place in the row.
-            HStack(spacing: 0) {
-                closeButton
-                    .frame(width: EditorTabStripLayout.accessoryWidth)
-                Text(tab.title)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .italic(tab.isPreview)
-                    .font(.system(size: EditorTabStripLayout.fontSize))
-                    .foregroundStyle(titleColor)
-                    .frame(maxWidth: .infinity)
-                Color.clear
-                    .frame(width: EditorTabStripLayout.accessoryWidth)
+                /// A spacer holds each end so the title stays optically centred. The close button
+                /// sits in the leading one as a sibling overlay rather than inside this label,
+                /// because a button nested in a button never receives the click.
+                HStack(spacing: 0) {
+                    Color.clear
+                        .frame(width: EditorTabStripLayout.accessoryWidth)
+                    Text(tab.title)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .italic(tab.isPreview)
+                        .font(.system(size: EditorTabStripLayout.fontSize))
+                        .foregroundStyle(titleColor)
+                        .frame(maxWidth: .infinity)
+                    Color.clear
+                        .frame(width: EditorTabStripLayout.accessoryWidth)
+                }
+                .padding(.horizontal, EditorTabStripLayout.accessoryInset)
             }
-            .padding(.horizontal, EditorTabStripLayout.accessoryInset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+        .overlay(alignment: .leading) {
+            closeButton
+                .padding(.leading, EditorTabStripLayout.accessoryInset)
+        }
         .onHover(perform: onHover)
-        .onTapGesture(perform: onSelect)
         .help(Text(tab.title))
+        .contextMenu {
+            Button(String(localized: "Close Tab"), action: onClose)
+            Button(String(localized: "Close Other Tabs"), action: onCloseOthers)
+            Button(String(localized: "Close All Tabs"), action: onCloseAll)
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(tab.title))
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityValue(Text(positionDescription))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityAction(named: Text("Close Tab"), onClose)
+    }
+
+    private var positionDescription: String {
+        String(format: String(localized: "%1$d of %2$d"), position, count)
     }
 
     private var titleColor: Color {

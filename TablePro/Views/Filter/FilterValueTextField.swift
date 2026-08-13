@@ -397,6 +397,7 @@ struct FilterValueTextField: NSViewRepresentable {
         private func showPopover(for textField: NSTextField, items: [SuggestionItem]) {
             suggestionState.items = items
             suggestionState.selectedIndex = 0
+            announceSuggestions(count: items.count, on: textField)
 
             let bounds = textField.bounds
             let state = suggestionState
@@ -417,6 +418,23 @@ struct FilterValueTextField: NSViewRepresentable {
                 }
             }
             suggestionPopover = popover
+        }
+
+        /// The completion list never takes focus, so nothing in it is ever the accessibility
+        /// focus. Without an announcement on the field there is no signal that it opened at all.
+        private func announceSuggestions(count: Int, on textField: NSTextField) {
+            guard count > 0 else { return }
+            NSAccessibility.post(
+                element: textField,
+                notification: .announcementRequested,
+                userInfo: [
+                    .announcement: String(
+                        format: String(localized: "%lld suggestions available"),
+                        Int64(count)
+                    ),
+                    .priority: NSAccessibilityPriorityLevel.medium.rawValue
+                ]
+            )
         }
 
         private func moveSelection(by delta: Int) {
@@ -532,9 +550,14 @@ struct FilterValueTextField: NSViewRepresentable {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
+                                .foregroundStyle(
+                                    state.selectedIndex == index
+                                        ? Color.emphasizedSelectionLabel
+                                        : Color.primary
+                                )
                                 .background(
                                     state.selectedIndex == index
-                                        ? Color.accentColor.opacity(0.18)
+                                        ? Color(nsColor: .selectedContentBackgroundColor)
                                         : Color.clear
                                 )
                                 .clipShape(RoundedRectangle(cornerRadius: 4))
@@ -552,7 +575,7 @@ struct FilterValueTextField: NSViewRepresentable {
                 }
                 .focusable(false)
                 .onChange(of: state.selectedIndex) { _, newIndex in
-                    withAnimation(.easeOut(duration: 0.1)) {
+                    withMotion(.easeOut(duration: 0.1)) {
                         proxy.scrollTo(newIndex, anchor: .center)
                     }
                 }
