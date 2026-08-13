@@ -25,8 +25,16 @@ extension MainSplitViewController {
         commandActions?.newTab()
     }
 
+    /// A connecting or failed pane has no command surface, so Cmd+W closes the connection
+    /// itself. Leaving it to `commandActions` made the shortcut inert on exactly the pane a
+    /// user most wants to dismiss.
     @objc func closeEditorTab(_ sender: Any?) {
-        commandActions?.closeTab()
+        guard let actions = commandActions else {
+            guard let connectionId = workspaces.selectedConnectionId else { return }
+            WindowManager.shared.closeWindow(for: connectionId)
+            return
+        }
+        actions.closeTab()
     }
 
     @objc func selectNextEditorTab(_ sender: Any?) {

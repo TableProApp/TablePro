@@ -12,6 +12,9 @@ struct MenuValidationContext: Equatable {
     /// Comes from the window's own `ConnectionWindowPhase`, never from the presence of a
     /// coordinator: the coordinator deliberately outlives a lost session so a reconnect keeps
     /// the user's tabs, which made every connection-scoped command stay lit while dialing.
+    /// True whenever the window is showing a connection, connected or not, so a pane that
+    /// failed to dial can still be dismissed.
+    var hasSelectedWorkspace = false
     var isConnected = false
     var isReadOnly = false
     var isTableTab = false
@@ -90,7 +93,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(newEditorTab(_:)):
             return context.isConnected
         case #selector(closeEditorTab(_:)):
-            return context.isConnected
+            return context.hasSelectedWorkspace
         case #selector(selectNextEditorTab(_:)), #selector(selectPreviousEditorTab(_:)):
             return context.isConnected
 
@@ -178,8 +181,11 @@ extension MainSplitViewController: NSMenuItemValidation {
     }
 
     var menuValidationContext: MenuValidationContext {
-        guard let actions = commandActions else { return MenuValidationContext() }
+        guard let actions = commandActions else {
+            return MenuValidationContext(hasSelectedWorkspace: workspaces.selectedConnectionId != nil)
+        }
         return MenuValidationContext(
+            hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
             isConnected: isConnected,
             isReadOnly: actions.isReadOnly,
             isTableTab: actions.isTableTab,
