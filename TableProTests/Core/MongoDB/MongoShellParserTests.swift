@@ -13,7 +13,6 @@ import Testing
 
 @Suite("MongoDB Shell Parser")
 struct MongoShellParserTests {
-
     // MARK: - Find Operations
 
     @Test("find with empty filter")

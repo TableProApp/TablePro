@@ -342,45 +342,116 @@ public struct MongoShellParser {
             throw MongoShellParseError.unsupportedMethod(methodName)
         }
 
-        // Parse chained methods (.sort(), .limit(), .skip(), .projection())
-        if !remainder.isEmpty, case .find(let coll, let filter, var opts) = operation {
-            opts = try parseChainedOptions(remainder, options: opts)
-            operation = .find(collection: coll, filter: filter, options: opts)
+        guard !remainder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return operation
         }
 
-        return operation
+        let calls = try parseChainedCalls(remainder)
+
+        switch operation {
+        case .find(let coll, let filter, let opts):
+            return .find(collection: coll, filter: filter, options: try applyCursorCalls(calls, to: opts))
+        case .aggregate(let coll, let pipeline):
+            return .aggregate(collection: coll, pipeline: try appendPipelineStages(for: calls, to: pipeline))
+        default:
+            throw MongoShellParseError.unsupportedMethod(
+                "\(methodName)() does not return a cursor, so .\(calls[0].method)() cannot be chained onto it"
+            )
+        }
     }
 
-    /// Parse chained find options: .sort({...}).limit(N).skip(N)
-    private static func parseChainedOptions(_ chain: String, options: MongoFindOptions) throws -> MongoFindOptions {
-        var opts = options
+    private struct ChainedCall {
+        let method: String
+        let argument: String
+    }
+
+    private static func parseChainedCalls(_ chain: String) throws -> [ChainedCall] {
+        var calls: [ChainedCall] = []
         var remaining = chain.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        while remaining.hasPrefix(".") {
+        while !remaining.isEmpty {
+            guard remaining.hasPrefix(".") else {
+                throw MongoShellParseError.invalidSyntax("Unexpected text after the method call: \(remaining)")
+            }
             remaining = String(remaining.dropFirst())
 
-            guard let parenIndex = remaining.firstIndex(of: "(") else { break }
+            guard let parenIndex = remaining.firstIndex(of: "(") else {
+                throw MongoShellParseError.invalidSyntax("Expected a chained method call with parentheses")
+            }
             let method = String(remaining[remaining.startIndex..<parenIndex])
 
             let argAndRest = try extractParenthesizedArgAndRemainder(from: remaining, startingAt: parenIndex)
-            let arg = argAndRest.arg
+            calls.append(ChainedCall(method: method, argument: argAndRest.arg))
             remaining = argAndRest.remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
 
-            switch method {
+        guard !calls.isEmpty else {
+            throw MongoShellParseError.invalidSyntax("Expected a chained method call")
+        }
+        return calls
+    }
+
+    private static func applyCursorCalls(
+        _ calls: [ChainedCall],
+        to options: MongoFindOptions
+    ) throws -> MongoFindOptions {
+        var opts = options
+
+        for call in calls {
+            switch call.method {
             case "sort":
-                opts.sort = arg
+                opts.sort = call.argument
             case "limit":
-                opts.limit = Int(arg.trimmingCharacters(in: .whitespaces))
+                opts.limit = try integerArgument(call)
             case "skip":
-                opts.skip = Int(arg.trimmingCharacters(in: .whitespaces))
+                opts.skip = try integerArgument(call)
             case "projection":
-                opts.projection = arg
+                opts.projection = call.argument
+            case "pretty", "toArray", "explain":
+                continue
             default:
-                break
+                throw MongoShellParseError.unsupportedMethod(".\(call.method)()")
             }
         }
 
         return opts
+    }
+
+    private static func appendPipelineStages(for calls: [ChainedCall], to pipeline: String) throws -> String {
+        var stages: [String] = []
+
+        for call in calls {
+            switch call.method {
+            case "sort":
+                stages.append("{\"$sort\":\(call.argument)}")
+            case "skip":
+                stages.append("{\"$skip\":\(try integerArgument(call))}")
+            case "limit":
+                stages.append("{\"$limit\":\(try integerArgument(call))}")
+            case "pretty", "toArray", "explain":
+                continue
+            default:
+                throw MongoShellParseError.unsupportedMethod(".\(call.method)()")
+            }
+        }
+
+        guard !stages.isEmpty else { return pipeline }
+
+        let trimmed = pipeline.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("["), trimmed.hasSuffix("]") else {
+            throw MongoShellParseError.invalidSyntax("aggregate() expects an array of pipeline stages")
+        }
+
+        let inner = String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        let joined = stages.joined(separator: ",")
+        return inner.isEmpty ? "[\(joined)]" : "[\(inner),\(joined)]"
+    }
+
+    private static func integerArgument(_ call: ChainedCall) throws -> Int {
+        guard let value = Int(call.argument.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw MongoShellParseError.invalidSyntax(".\(call.method)() expects a whole number")
+        }
+        return value
     }
 
     // MARK: - Argument Extraction Helpers
