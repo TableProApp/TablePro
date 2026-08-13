@@ -77,24 +77,27 @@ struct QuickSwitcherViewModelTests {
     }
 
     @Test("Empty search with the All scope shows only recents")
-    func emptySearchShowsOnlyRecents() {
+    func emptySearchShowsOnlyRecents() async {
         let suite = makeDefaults()
         let connectionId = UUID()
         let items = sampleItems()
         let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
+        await vm.flushPendingFilter()
         #expect(vm.groups.isEmpty)
 
         vm.recordSelection(items[0])
         let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
         vm2.allItems = items
+        await vm2.flushPendingFilter()
         #expect(vm2.groups.count == 1)
         #expect(vm2.groups.first?.header == String(localized: "Recent"))
     }
 
     @Test("A browse scope lists every kind it covers")
-    func browseScopeListsKinds() {
+    func browseScopeListsKinds() async {
         let vm = makeViewModel(items: sampleItems())
         vm.scope = .tables
+        await vm.flushPendingFilter()
         let kinds = vm.groups.compactMap { $0.header }
         #expect(kinds.contains(String(localized: "Tables")))
         #expect(kinds.contains(String(localized: "Views")))
@@ -102,7 +105,7 @@ struct QuickSwitcherViewModelTests {
     }
 
     @Test("Connections scope lists objects from every connection")
-    func connectionsScopeUsesCrossConnectionItems() {
+    func connectionsScopeUsesCrossConnectionItems() async {
         let localConnectionId = UUID()
         let remoteConnectionId = UUID()
         let local = QuickSwitcherItem(id: "local", name: "users", kind: .table, subtitle: "")
@@ -122,6 +125,7 @@ struct QuickSwitcherViewModelTests {
         let vm = makeViewModel(items: [local], connectionId: localConnectionId)
         vm.crossConnectionItems = [remote]
         vm.scope = .connections
+        await vm.flushPendingFilter()
 
         #expect(vm.flatItems.map(\.id) == ["remote"])
         #expect(vm.groups.first?.header == "Analytics")
@@ -166,10 +170,65 @@ struct QuickSwitcherViewModelTests {
         let vm = makeViewModel(items: [], connectionId: connection.id, services: services)
         vm.scope = .connections
         await vm.loadCrossConnectionItems()
+        await vm.flushPendingFilter()
 
         #expect(vm.flatItems.map(\.name) == ["events"])
         #expect(vm.flatItems.first?.objectTarget?.databaseName == "analytics")
         #expect(!vm.flatItems.contains { $0.name == "legacy_orders" })
+    }
+
+    @Test("A connection that cannot load its catalog is not refreshed again for the same state")
+    func failedConnectionSettlesInsteadOfReloading() async throws {
+        let connection = TestFixtures.makeConnection(database: "primary", type: .pglite)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.fetchTablesError = DatabaseError.connectionFailed("permission denied")
+        let databaseManager = DatabaseManager()
+        let schemaService = SchemaService()
+        let schemaRefreshService = SchemaRefreshService(
+            schemaService: schemaService,
+            providerRegistry: SchemaProviderRegistry(),
+            metadataDriverProvider: databaseManager,
+            databaseManager: databaseManager
+        )
+        let services = makeServices(
+            databaseManager: databaseManager,
+            schemaService: schemaService,
+            schemaRefreshService: schemaRefreshService
+        )
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        session.browseDatabase = "primary"
+        databaseManager.injectSession(session, for: connection.id)
+        defer { databaseManager.removeSession(for: connection.id) }
+
+        let vm = makeViewModel(items: [], connectionId: connection.id, services: services)
+        vm.scope = .connections
+
+        await vm.loadCrossConnectionItems()
+        let callsAfterFirstLoad = driver.fetchTablesCallCount
+        #expect(callsAfterFirstLoad > 0, "The first load must try the connection")
+
+        await vm.loadCrossConnectionItems()
+
+        #expect(
+            driver.fetchTablesCallCount == callsAfterFirstLoad,
+            "A connection that failed must not be refreshed again until something about it changes"
+        )
+        #expect(vm.flatItems.isEmpty)
+    }
+
+    @Test("A commit straight after typing uses the query that was typed")
+    func pendingFilterCommitsBeforeSelectionIsRead() async {
+        let vm = makeViewModel(items: sampleItems())
+        await vm.flushPendingFilter()
+
+        vm.searchText = "orders"
+        await vm.flushPendingFilter()
+
+        #expect(
+            vm.selectedItem()?.name == "orders",
+            "Return inside the refilter debounce must still commit the typed query"
+        )
     }
 
     @Test("Connections scope matches a connection name")
@@ -290,7 +349,7 @@ struct QuickSwitcherViewModelTests {
     }
 
     @Test("Connections scope caps a hostile catalog")
-    func connectionsScopeCapsLargeCatalog() {
+    func connectionsScopeCapsLargeCatalog() async {
         let target = QuickSwitcherObjectTarget(
             connectionId: UUID(),
             connectionName: "Primary",
@@ -303,6 +362,7 @@ struct QuickSwitcherViewModelTests {
         let vm = makeViewModel(items: [])
         vm.crossConnectionItems = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
         vm.scope = .connections
+        await vm.flushPendingFilter()
 
         #expect(vm.flatItems.count == 200)
     }
@@ -380,20 +440,22 @@ struct QuickSwitcherViewModelTests {
     }
 
     @Test("Browse scope caps at maxResults")
-    func filterCaps() {
+    func filterCaps() async {
         var items: [QuickSwitcherItem] = []
         for index in 0..<300 {
             items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
         }
         let vm = makeViewModel(items: items)
         vm.scope = .tables
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.count == 200)
     }
 
     @Test("moveSelection by 1 advances to next item")
-    func moveDownAdvances() {
+    func moveDownAdvances() async {
         let vm = makeViewModel(items: sampleItems())
         vm.scope = .tables
+        await vm.flushPendingFilter()
         let first = vm.flatItems.first?.id
         #expect(vm.selectedItemId == first)
         vm.moveSelection(by: 1)
@@ -401,9 +463,10 @@ struct QuickSwitcherViewModelTests {
     }
 
     @Test("moveSelection clamps at the bounds")
-    func moveSelectionClamps() {
+    func moveSelectionClamps() async {
         let vm = makeViewModel(items: sampleItems())
         vm.scope = .tables
+        await vm.flushPendingFilter()
         vm.selectedItemId = vm.flatItems.first?.id
         vm.moveSelection(by: -1)
         #expect(vm.selectedItemId == vm.flatItems.first?.id)
@@ -420,24 +483,26 @@ struct QuickSwitcherViewModelTests {
     }
 
     @Test("selectedItem returns the current selection")
-    func selectedItemReturnsCurrent() {
+    func selectedItemReturnsCurrent() async {
         let vm = makeViewModel(items: sampleItems())
         vm.scope = .tables
+        await vm.flushPendingFilter()
         let target = vm.flatItems[2]
         vm.selectedItemId = target.id
         #expect(vm.selectedItem()?.id == target.id)
     }
 
     @Test("selectedItem is nil when no selection")
-    func selectedItemNilWhenNone() {
+    func selectedItemNilWhenNone() async {
         let vm = makeViewModel(items: sampleItems())
         vm.scope = .tables
+        await vm.flushPendingFilter()
         vm.selectedItemId = nil
         #expect(vm.selectedItem() == nil)
     }
 
     @Test("recordSelection inserts MRU and Recent group appears next time")
-    func recordSelectionAddsRecent() {
+    func recordSelectionAddsRecent() async {
         let suite = makeDefaults()
         let connectionId = UUID()
         let items = sampleItems()
@@ -447,12 +512,13 @@ struct QuickSwitcherViewModelTests {
 
         let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
         vm2.allItems = items
+        await vm2.flushPendingFilter()
         let recentGroup = vm2.groups.first { $0.header == String(localized: "Recent") }
         #expect(recentGroup?.items.first?.id == chosen.id)
     }
 
     @Test("Recent group caps at 10 entries, newest first")
-    func recentGroupCapsAtLimit() {
+    func recentGroupCapsAtLimit() async {
         let suite = makeDefaults()
         let connectionId = UUID()
         var items: [QuickSwitcherItem] = []
@@ -466,6 +532,7 @@ struct QuickSwitcherViewModelTests {
 
         let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
         vm2.allItems = items
+        await vm2.flushPendingFilter()
         let recentGroup = vm2.groups.first { $0.header == String(localized: "Recent") }
         #expect(recentGroup?.items.count == 10)
         #expect(recentGroup?.items.first?.id == items.last?.id)
@@ -502,7 +569,7 @@ struct QuickSwitcherViewModelTests {
     }
 
     @Test("Saved queries get their own section in the queries browse scope")
-    func savedQueriesGetOwnSection() {
+    func savedQueriesGetOwnSection() async {
         var items = sampleItems()
         items.append(QuickSwitcherItem(
             id: "f1",
@@ -513,6 +580,7 @@ struct QuickSwitcherViewModelTests {
         ))
         let vm = makeViewModel(items: items)
         vm.scope = .queries
+        await vm.flushPendingFilter()
         let headers = vm.groups.compactMap(\.header)
         #expect(headers.contains(String(localized: "Saved Queries")))
     }
@@ -533,11 +601,13 @@ struct QuickSwitcherViewModelTests {
     }
 
     @Test("Scope limits the empty-query view to its kinds")
-    func scopeLimitsEmptyQueryView() {
+    func scopeLimitsEmptyQueryView() async {
         let vm = makeViewModel(items: sampleItems())
         vm.scope = .tables
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.allSatisfy { [.table, .view, .systemTable].contains($0.kind) })
         vm.scope = .queries
+        await vm.flushPendingFilter()
         #expect(vm.flatItems.allSatisfy { [.savedQuery, .queryHistory].contains($0.kind) })
     }
 
@@ -593,8 +663,9 @@ struct QuickSwitcherViewModelTests {
     }
 
     @Test("listHeight is zero when there are no items")
-    func listHeightZeroWhenEmpty() {
+    func listHeightZeroWhenEmpty() async {
         let vm = makeViewModel(items: [])
+        await vm.flushPendingFilter()
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 0)
     }
 
@@ -634,30 +705,33 @@ struct QuickSwitcherViewModelTests {
     }
 
     @Test("listHeight for a browse scope counts section headers")
-    func listHeightCountsSectionHeaders() {
+    func listHeightCountsSectionHeaders() async {
         let vm = makeViewModel(items: sampleItems())
         vm.scope = .tables
+        await vm.flushPendingFilter()
         #expect(vm.groups.filter { $0.header != nil }.count == 2)
         #expect(vm.flatItems.count == 3)
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 146)
     }
 
     @Test("A recorded selection adds a Recent header and row to the empty-query view")
-    func listHeightIncludesRecentHeader() {
+    func listHeightIncludesRecentHeader() async {
         let suite = makeDefaults()
         let connectionId = UUID()
         let items = sampleItems()
         let vm = makeViewModel(items: items, connectionId: connectionId, defaults: suite)
+        await vm.flushPendingFilter()
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 100) == 0)
         vm.recordSelection(items[0])
 
         let vm2 = QuickSwitcherViewModel(connectionId: connectionId, services: .live, defaults: suite)
         vm2.allItems = items
+        await vm2.flushPendingFilter()
         #expect(vm2.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 100) == 58)
     }
 
     @Test("listHeight clamps to the cap when sections and rows overflow")
-    func listHeightClampsWithHeaders() {
+    func listHeightClampsWithHeaders() async {
         var items: [QuickSwitcherItem] = []
         for index in 0..<30 {
             items.append(QuickSwitcherItem(id: "t\(index)", name: "table_\(index)", kind: .table, subtitle: ""))
@@ -665,6 +739,7 @@ struct QuickSwitcherViewModelTests {
         }
         let vm = makeViewModel(items: items)
         vm.scope = .tables
+        await vm.flushPendingFilter()
         #expect(vm.groups.filter { $0.header != nil }.count >= 2)
         #expect(vm.listHeight(rowHeight: 30, headerHeight: 28, maxVisibleRows: 9) == 270)
     }

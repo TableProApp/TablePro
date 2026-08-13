@@ -103,6 +103,10 @@ extension MainContentCoordinator {
 
     func selectTabAndFocusWindow(_ tabId: UUID) {
         tabManager.selectedTabId = tabId
+        focusWindow()
+    }
+
+    func focusWindow() {
         guard let windowId,
               let window = WindowLifecycleMonitor.shared.window(for: windowId) else { return }
         window.makeKeyAndOrderFront(nil)

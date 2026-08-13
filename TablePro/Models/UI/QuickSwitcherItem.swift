@@ -57,6 +57,10 @@ internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
+    /// Whether the scope draws from the catalog of every connected window rather than
+    /// from the objects of the connection that opened the panel.
+    var usesCrossConnectionCatalog: Bool { self == .connections }
+
     var includedKinds: Set<QuickSwitcherItemKind>? {
         switch self {
         case .all: return nil

@@ -67,7 +67,6 @@ struct QuickSwitcherPanelView: View {
             )
         }
         .task(id: viewModel.crossConnectionLoadVersion) {
-            guard viewModel.scope == .connections else { return }
             await viewModel.loadCrossConnectionItems()
         }
     }
@@ -100,7 +99,7 @@ struct QuickSwitcherPanelContent: View {
     }
 
     private var showsResultSurface: Bool {
-        !viewModel.flatItems.isEmpty || !trimmedQuery.isEmpty || viewModel.isLoadingCrossConnections
+        !viewModel.flatItems.isEmpty || !trimmedQuery.isEmpty || viewModel.isLoadingResults
     }
 
     private var trimmedQuery: String {
@@ -327,17 +326,26 @@ struct QuickSwitcherPanelContent: View {
                 .background(Capsule().fill(Color(nsColor: .quaternarySystemFill)))
         }
 
-        if isSelected {
-            Text(commitHint(for: item))
-                .font(.system(size: 12))
-                .foregroundStyle(secondaryColor)
-            keycap("↩", isEmphasized: isEmphasized)
-        } else if !item.subtitle.isEmpty {
+        if showsSubtitle(for: item, isSelected: isSelected) {
             Text(item.subtitle)
                 .font(.system(size: 12))
                 .foregroundStyle(secondaryColor)
                 .lineLimit(1)
         }
+
+        if isSelected {
+            Text(commitHint(for: item))
+                .font(.system(size: 12))
+                .foregroundStyle(secondaryColor)
+            keycap("↩", isEmphasized: isEmphasized)
+        }
+    }
+
+    /// A cross-connection result keeps its path while selected, because it names the connection
+    /// the commit is about to open and nothing else on the row carries that.
+    private func showsSubtitle(for item: QuickSwitcherItem, isSelected: Bool) -> Bool {
+        guard !item.subtitle.isEmpty else { return false }
+        return !isSelected || item.objectTarget != nil
     }
 
     private func keycap(_ label: String, isEmphasized: Bool) -> some View {
@@ -364,7 +372,7 @@ struct QuickSwitcherPanelContent: View {
 
     @ViewBuilder
     private var noResultsRow: some View {
-        if viewModel.isLoadingCrossConnections {
+        if viewModel.isLoadingResults {
             HStack(spacing: 10) {
                 ProgressView()
                     .controlSize(.small)
@@ -470,11 +478,14 @@ struct QuickSwitcherPanelContent: View {
     }
 
     private func openSelectedItem() {
-        guard let item = viewModel.selectedItem() else { return }
         let intent: QuickSwitcherCommitIntent = NSEvent.modifierFlags.contains(.option)
             ? .openInNewWindowTab
             : .open
-        onCommit(item, intent)
+        Task { @MainActor in
+            await viewModel.flushPendingFilter()
+            guard let item = viewModel.selectedItem() else { return }
+            onCommit(item, intent)
+        }
     }
 }
 
