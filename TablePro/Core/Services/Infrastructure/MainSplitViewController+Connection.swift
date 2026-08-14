@@ -43,15 +43,7 @@ internal extension MainSplitViewController {
 
     @objc func retryConnection() {
         guard let connectionId = workspaces.selectedConnectionId else { return }
-        retryConnection(for: connectionId)
-    }
-
-    /// Named by connection, because the pane asking for it belongs to a workspace and that
-    /// workspace's tree stays mounted while another connection is on screen.
-    internal func retryConnection(for connectionId: UUID) {
-        guard let workspace = workspaces.workspace(for: connectionId),
-              let connection = workspace.connection else { return }
-        connect(connection, cancellingPrevious: true)
+        reconnectWorkspace(connectionId)
     }
 
     /// Reconnects the connection named, not whichever one the window happens to be showing.
@@ -104,7 +96,7 @@ internal extension MainSplitViewController {
             guard let connection = workspaces.workspace(for: connectionId)?.connection else { return }
             WelcomeRouter.shared.routePluginInstall(connection)
         case .notConnected, .cancelled, .disconnected, .disconnectedByUser, .failed:
-            retryConnection(for: connectionId)
+            reconnectWorkspace(connectionId)
         }
     }
 
