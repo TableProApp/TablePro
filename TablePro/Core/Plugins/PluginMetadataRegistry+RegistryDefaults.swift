@@ -11,7 +11,8 @@ extension PluginMetadataRegistry {
     func registryPluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         let (
             clickhouseDialect, clickhouseColumnTypes, mssqlDialect, mssqlColumnTypes,
-            oracleDialect, oracleColumnTypes, duckdbDialect, duckdbColumnTypes,
+            oracleDialect, oracleColumnTypes, damengDialect, damengCompletions, damengColumnTypes,
+            duckdbDialect, duckdbColumnTypes,
             cassandraDialect, cassandraColumnTypes, mongoCompletions, mongoColumnTypes,
             etcdCompletions, redisCompletions, redisColumnTypes, d1Dialect, d1ColumnTypes
         ) = registryDefaultIngredients()
@@ -511,6 +512,60 @@ extension PluginMetadataRegistry {
                     ],
                     category: .relational,
                     tagline: String(localized: "Enterprise SQL with PL/SQL")
+                )
+            )),
+            ("Dameng", PluginMetadataSnapshot(
+                displayName: "Dameng DM8", iconName: "cylinder", defaultPort: 5_236,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
+                isDownloadable: true, primaryUrlScheme: "dm", parameterStyle: .questionMark,
+                navigationModel: .standard, explainVariants: [
+                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN")
+                ],
+                pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: ["dm"],
+                postConnectActions: [.selectSchemaFromLastSession],
+                brandColorHex: "#C60018",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .network, supportsDatabaseSwitching: false,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: true,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: false,
+                    supportsCascadeDrop: true,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false,
+                    supportsDropSchema: true,
+                    supportsRenameColumn: true,
+                    supportsOpportunisticTLS: false
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "",
+                    defaultGroupName: "main",
+                    tableEntityName: "Tables",
+                    containerEntityName: "Schema",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: [],
+                    systemSchemaNames: ["SYS", "SYSDBA", "SYSAUDITOR", "SYSSSO", "CTISYS"],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .hierarchicalSchema,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: damengDialect,
+                    statementCompletions: damengCompletions,
+                    columnTypesByCategory: damengColumnTypes
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [],
+                    category: .relational,
+                    tagline: String(localized: "Enterprise relational database for DM8 deployments")
                 )
             )),
             ("ClickHouse", PluginMetadataSnapshot(

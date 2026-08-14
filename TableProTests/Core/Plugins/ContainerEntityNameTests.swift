@@ -82,6 +82,14 @@ struct ContainerEntityNameTests {
         #expect(snapshot(forTypeId: "Oracle")?.schema.defaultSchemaName == "")
     }
 
+    @Test("Dameng switches hierarchical schemas")
+    func damengContainerIsSchema() {
+        #expect(PluginManager.shared.containerSwitchTarget(for: .dameng) == .schema)
+        #expect(PluginManager.shared.containerEntityName(for: .dameng) == "Schema")
+        #expect(PluginManager.shared.databaseGroupingStrategy(for: .dameng) == .hierarchicalSchema)
+        #expect(PluginManager.shared.supportsDatabaseTree(for: .dameng) == false)
+    }
+
     @Test("Engines supporting both prefer databases")
     func dualModeEnginesPreferDatabases() {
         #expect(PluginManager.shared.containerSwitchTarget(for: .postgresql) == .database)

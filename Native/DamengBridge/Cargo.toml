@@ -1,0 +1,19 @@
+[package]
+name = "tablepro-dameng-bridge"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+dameng = { path = "Vendor/dameng" }
+dameng-types = { path = "Vendor/dameng-types" }
+
+[profile.release]
+codegen-units = 1
+lto = false
+opt-level = "s"
+panic = "unwind"
+strip = "symbols"

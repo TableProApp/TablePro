@@ -148,6 +148,11 @@ jobs:
               DISPLAY_NAME="ClickHouse Driver"; SUMMARY="ClickHouse OLAP database driver via HTTP interface"
               DB_TYPE_IDS='["ClickHouse"]'; ICON="chart.bar.xaxis"; BUNDLE_NAME="ClickHouseDriver"
               CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/clickhouse" ;;
+            dameng)
+              TARGET="DamengDriver"; BUNDLE_ID="com.TablePro.DamengDriver"
+              DISPLAY_NAME="Dameng Driver"; SUMMARY="Dameng DM8 database driver via a native wire client"
+              DB_TYPE_IDS='["Dameng"]'; ICON="cylinder"; BUNDLE_NAME="DamengDriver"
+              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/dameng" ;;
             sqlite)
               TARGET="SQLiteDriver"; BUNDLE_ID="com.TablePro.SQLiteDriver"
               DISPLAY_NAME="SQLite Driver"; SUMMARY="SQLite embedded database driver"

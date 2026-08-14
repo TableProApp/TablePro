@@ -19,4 +19,5 @@ public extension ExplainPlanFormat {
     static let sqliteQueryPlan = ExplainPlanFormat(rawValue: "sqliteQueryPlan")
     static let cockroachText = ExplainPlanFormat(rawValue: "cockroachText")
     static let indentedText = ExplainPlanFormat(rawValue: "indentedText")
+    static let damengText = ExplainPlanFormat(rawValue: "damengText")
 }

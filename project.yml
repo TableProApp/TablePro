@@ -69,6 +69,7 @@ targetTemplates:
       - path: Plugins/${folder}
         excludes:
           - Info.plist
+          - README.md
     dependencies:
       - target: TableProPluginKit
         embed: false
@@ -317,6 +318,8 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHouseCredentials.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseGeneratedColumnClassification.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
+      - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
+      - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
       - Plugins/DuckDBDriverPlugin/DuckDBSchemaQueries.swift
       - Plugins/DuckDBDriverPlugin/DuckDBTypeRendering.swift
       - Plugins/DuckDBDriverPlugin/QuackConnectBuilder.swift
@@ -694,6 +697,75 @@ targets:
       folder: DynamoDBDriverPlugin
       principalClass: DynamoDBPlugin
 
+  DamengDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: DamengDriverPlugin
+      principalClass: DamengPlugin
+    preBuildScripts:
+      - name: Build Dameng native bridge
+        script: |
+          if [[ ! -f "$SRCROOT/Libs/libdameng_bridge.a" ]]; then
+            "$SRCROOT/scripts/build-dameng.sh" both
+          fi
+        basedOnDependencyAnalysis: false
+    settings:
+      base:
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Libs
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Libs/libdameng_bridge.a
+          - -framework
+          - Security
+          - -framework
+          - CoreFoundation
+          - -liconv
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
+
+  DamengDriverTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Plugins/DamengDriverPlugin
+        excludes:
+          - Info.plist
+          - README.md
+      - Plugins/DamengDriverPluginTests
+    dependencies:
+      - target: TableProPluginKit
+    preBuildScripts:
+      - name: Build Dameng native bridge
+        script: |
+          if [[ ! -f "$SRCROOT/Libs/libdameng_bridge.a" ]]; then
+            "$SRCROOT/scripts/build-dameng.sh" both
+          fi
+        basedOnDependencyAnalysis: false
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Libs
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Libs/libdameng_bridge.a
+          - -framework
+          - Security
+          - -framework
+          - CoreFoundation
+          - -liconv
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
+
   ElasticsearchDriverPlugin:
     templates: [DriverPlugin]
     templateAttributes:
@@ -834,6 +906,7 @@ aggregateTargets:
       - CassandraDriver
       - ClickHouseDriver
       - CloudflareD1DriverPlugin
+      - DamengDriver
       - DuckDBDriver
       - DynamoDBDriverPlugin
       - ElasticsearchDriverPlugin
@@ -859,6 +932,16 @@ aggregateTargets:
     scheme: {}
 
 schemes:
+  DamengDriverTests:
+    build:
+      targets:
+        DamengDriverTests: test
+      buildImplicitDependencies: true
+    test:
+      config: Debug
+      targets:
+        - name: DamengDriverTests
+
   TablePro:
     build:
       targets:

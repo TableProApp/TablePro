@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Dameng DM8 connections through a downloadable native-wire plugin, with schema browsing, table editing, metadata, DDL, transactions, Unicode and binary writes, and EXPLAIN support. (#1671, #2003, #2010)
+
 ### Fixed
 
 - Data-grid columns now reserve space for trailing editor and foreign-key actions instead of truncating otherwise fitting values.

@@ -23,6 +23,8 @@ enum ExplainPlanParserRegistry {
             return CockroachDBPlanParser()
         case .indentedText:
             return IndentedTextPlanParser()
+        case .damengText:
+            return DamengPlanParser()
         default:
             return nil
         }

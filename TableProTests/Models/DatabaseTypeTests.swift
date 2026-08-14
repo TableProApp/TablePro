@@ -57,6 +57,7 @@ struct DatabaseTypeTests {
         (DatabaseType.redshift, "Redshift"),
         (DatabaseType.mssql, "SQL Server"),
         (DatabaseType.oracle, "Oracle"),
+        (DatabaseType.dameng, "Dameng"),
         (DatabaseType.clickhouse, "ClickHouse"),
         (DatabaseType.duckdb, "DuckDB"),
         (DatabaseType.cassandra, "Cassandra"),

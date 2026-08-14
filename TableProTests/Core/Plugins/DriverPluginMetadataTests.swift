@@ -308,6 +308,7 @@ struct RegistryAutoLimitStyleTests {
     func sqlPluginsDeclareStyle() {
         #expect(defaults["SQL Server"]?.editor.sqlDialect?.autoLimitStyle == .top)
         #expect(defaults["Oracle"]?.editor.sqlDialect?.autoLimitStyle == .fetchFirst)
+        #expect(defaults["Dameng"]?.editor.sqlDialect?.autoLimitStyle == .fetchFirst)
         #expect(defaults["ClickHouse"]?.editor.sqlDialect?.autoLimitStyle == .limit)
         #expect(defaults["DuckDB"]?.editor.sqlDialect?.autoLimitStyle == .limit)
         #expect(defaults["Cassandra"]?.editor.sqlDialect?.autoLimitStyle == .limit)

@@ -3,7 +3,7 @@ title: Managing Connections
 description: Create, organize, and switch database connections, with health monitoring and startup commands.
 ---
 
-TablePro connects to 25 databases through its plugin system. This page covers creating and organizing connections. Driver-specific fields and quirks live on each database's own page.
+TablePro connects to 26 databases through its plugin system. This page covers creating and organizing connections. Driver-specific fields and quirks live on each database's own page.
 
 ## Supported Databases
 
@@ -17,6 +17,7 @@ TablePro connects to 25 databases through its plugin system. This page covers cr
 | [PGlite](/databases/pglite) | 5432 | No | No | No | No | No |
 | [Microsoft SQL Server](/databases/mssql) | 1433 | Yes | Yes | Yes | Yes | Yes |
 | [Oracle](/databases/oracle) | 1521 | Yes | Yes | Yes | No | Yes |
+| [Dameng DM8](/databases/dameng) | 5236 | Yes | No | Yes | No | Yes |
 | [ClickHouse](/databases/clickhouse) | 8123 | Yes | Yes | Yes | No | Yes |
 | [Teradata](/databases/teradata) | 1025 | Yes | Yes | Yes | No | Yes |
 | [Trino](/databases/trino) | 8080 | Yes | Yes | Yes | No | Yes |
@@ -80,7 +81,7 @@ Opening a database URL from a browser or terminal skips the form:
 open "postgresql://user:pass@host:5432/dbname"
 ```
 
-TablePro registers these URL schemes with macOS: `postgresql`, `postgres`, `mysql`, `mariadb`, `sqlite`, `mongodb`, `mongodb+srv`, `redis`, `rediss`, `redshift`, `cockroachdb`, `cockroach`, `mssql`, `sqlserver`, `oracle`, `clickhouse`, `ch`, `cassandra`, `cql`, `scylladb`, `scylla`, `duckdb`, `etcd`, `etcds`, `d1`, `libsql`, and `surrealdb`.
+TablePro registers these URL schemes with macOS: `postgresql`, `postgres`, `mysql`, `mariadb`, `sqlite`, `mongodb`, `mongodb+srv`, `redis`, `rediss`, `redshift`, `cockroachdb`, `cockroach`, `mssql`, `sqlserver`, `oracle`, `dm`, `clickhouse`, `ch`, `cassandra`, `cql`, `scylladb`, `scylla`, `duckdb`, `etcd`, `etcds`, `d1`, `libsql`, and `surrealdb`.
 
 What happens on open:
 

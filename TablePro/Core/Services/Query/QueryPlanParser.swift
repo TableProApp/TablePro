@@ -582,6 +582,93 @@ struct IndentedTextPlanParser: QueryPlanParser {
     }
 }
 
+// MARK: - Dameng Text Parser
+
+/// Parses DM8 plans whose hierarchy is encoded by spaces after a numeric line prefix.
+struct DamengPlanParser: QueryPlanParser {
+    private struct ParsedLine {
+        let indent: Int
+        let operation: String
+        let details: String?
+    }
+
+    func parse(rawText: String) -> QueryPlan? {
+        let lines = rawText.components(separatedBy: .newlines).compactMap(parseLine)
+        guard !lines.isEmpty else { return nil }
+
+        func buildNodes(from startIndex: Int, parentIndent: Int) -> (nodes: [QueryPlanNode], nextIndex: Int) {
+            var nodes: [QueryPlanNode] = []
+            var index = startIndex
+
+            while index < lines.count {
+                let line = lines[index]
+                if line.indent <= parentIndent && index > startIndex {
+                    break
+                }
+
+                let children: [QueryPlanNode]
+                let nextIndex: Int
+                if index + 1 < lines.count, lines[index + 1].indent > line.indent {
+                    let nested = buildNodes(from: index + 1, parentIndent: line.indent)
+                    children = nested.nodes
+                    nextIndex = nested.nextIndex
+                } else {
+                    children = []
+                    nextIndex = index + 1
+                }
+
+                nodes.append(QueryPlanNode(
+                    operation: line.operation,
+                    relation: nil,
+                    schema: nil,
+                    alias: nil,
+                    estimatedStartupCost: nil,
+                    estimatedTotalCost: nil,
+                    estimatedRows: nil,
+                    estimatedWidth: nil,
+                    actualStartupTime: nil,
+                    actualTotalTime: nil,
+                    actualRows: nil,
+                    actualLoops: nil,
+                    properties: line.details.map { ["Details": $0] } ?? [:],
+                    children: children
+                ))
+                index = nextIndex
+            }
+
+            return (nodes, index)
+        }
+
+        let result = buildNodes(from: 0, parentIndent: -1)
+        guard let root = QueryPlanTreeBuilder.root(from: result.nodes) else { return nil }
+
+        return QueryPlan(rootNode: root, planningTime: nil, executionTime: nil, rawText: rawText)
+    }
+
+    private func parseLine(_ line: String) -> ParsedLine? {
+        let content = line.drop(while: { $0 == " " || $0 == "\t" })
+        let numberEnd = content.prefix(while: { $0.isNumber }).endIndex
+        guard numberEnd != content.startIndex else { return nil }
+
+        let afterNumber = content[numberEnd...]
+        let indentation = afterNumber.prefix(while: { $0 == " " || $0 == "\t" })
+        let text = afterNumber.dropFirst(indentation.count).trimmingCharacters(in: .whitespaces)
+        guard text.first == "#" else { return nil }
+
+        let planText = text.dropFirst()
+        let parts = planText.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        let operation = parts[0].trimmingCharacters(in: .whitespaces)
+        guard !operation.isEmpty else { return nil }
+        let details = parts.count == 2 ? parts[1].trimmingCharacters(in: .whitespaces) : nil
+
+        return ParsedLine(
+            indent: indentation.reduce(into: 0) { $0 += $1 == "\t" ? 4 : 1 },
+            operation: operation,
+            details: details?.isEmpty == false ? details : nil
+        )
+    }
+}
+
 // MARK: - CockroachDB Parser
 
 /// Parses CockroachDB `EXPLAIN` and `EXPLAIN ANALYZE` text output. CockroachDB

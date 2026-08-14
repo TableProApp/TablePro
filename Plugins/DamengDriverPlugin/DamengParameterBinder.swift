@@ -1,0 +1,146 @@
+import Foundation
+import TableProPluginKit
+
+enum DamengParameterBindingError: Error, Equatable {
+    case embeddedNull
+    case insufficientParameters
+    case unusedParameters
+}
+enum DamengParameterBinder {
+    private enum State: Equatable {
+        case code
+        case singleQuote
+        case doubleQuote
+        case alternativeQuote(UInt8)
+        case lineComment
+        case blockComment(Int)
+    }
+
+    static func bind(query: String, parameters: [PluginCellValue]) throws -> String {
+        let input = Array(query.utf8)
+        var output: [UInt8] = []
+        output.reserveCapacity(input.count + parameters.count * 8)
+        var state = State.code
+        var parameterIndex = 0
+        var index = 0
+
+        while index < input.count {
+            let byte = input[index]
+            let next = index + 1 < input.count ? input[index + 1] : nil
+
+            switch state {
+            case .code:
+                if byte == 0x2D, next == 0x2D {
+                    output.append(contentsOf: [byte, 0x2D])
+                    state = .lineComment
+                    index += 2
+                } else if byte == 0x2F, next == 0x2A {
+                    output.append(contentsOf: [byte, 0x2A])
+                    state = .blockComment(1)
+                    index += 2
+                } else if byte == 0x27 {
+                    output.append(byte)
+                    state = .singleQuote
+                    index += 1
+                } else if byte == 0x22 {
+                    output.append(byte)
+                    state = .doubleQuote
+                    index += 1
+                } else if isAlternativeQuoteStart(input, at: index) {
+                    let opener = input[index + 2]
+                    output.append(contentsOf: input[index...index + 2])
+                    state = .alternativeQuote(alternativeQuoteCloser(opener))
+                    index += 3
+                } else if byte == 0x3F {
+                    guard parameterIndex < parameters.count else {
+                        throw DamengParameterBindingError.insufficientParameters
+                    }
+                    output.append(contentsOf: try literal(for: parameters[parameterIndex]).utf8)
+                    parameterIndex += 1
+                    index += 1
+                } else {
+                    output.append(byte)
+                    index += 1
+                }
+            case .singleQuote:
+                output.append(byte)
+                if byte == 0x27, next == 0x27 {
+                    output.append(0x27)
+                    index += 2
+                } else {
+                    if byte == 0x27 { state = .code }
+                    index += 1
+                }
+            case .doubleQuote:
+                output.append(byte)
+                if byte == 0x22, next == 0x22 {
+                    output.append(0x22)
+                    index += 2
+                } else {
+                    if byte == 0x22 { state = .code }
+                    index += 1
+                }
+            case .alternativeQuote(let closer):
+                output.append(byte)
+                if byte == closer, next == 0x27 {
+                    output.append(0x27)
+                    state = .code
+                    index += 2
+                } else {
+                    index += 1
+                }
+            case .lineComment:
+                output.append(byte)
+                if byte == 0x0A || byte == 0x0D { state = .code }
+                index += 1
+            case .blockComment(let depth):
+                if byte == 0x2F, next == 0x2A {
+                    output.append(contentsOf: [byte, 0x2A])
+                    state = .blockComment(depth + 1)
+                    index += 2
+                } else if byte == 0x2A, next == 0x2F {
+                    output.append(contentsOf: [byte, 0x2F])
+                    state = depth == 1 ? .code : .blockComment(depth - 1)
+                    index += 2
+                } else {
+                    output.append(byte)
+                    index += 1
+                }
+            }
+        }
+
+        guard parameterIndex == parameters.count else {
+            throw DamengParameterBindingError.unusedParameters
+        }
+        return String(decoding: output, as: UTF8.self)
+    }
+
+    private static func literal(for value: PluginCellValue) throws -> String {
+        switch value {
+        case .null:
+            return "NULL"
+        case .text(let text):
+            guard !text.contains("\0") else {
+                throw DamengParameterBindingError.embeddedNull
+            }
+            return "'\(text.replacingOccurrences(of: "'", with: "''"))'"
+        case .bytes(let data):
+            return "HEXTORAW('\(data.map { String(format: "%02X", $0) }.joined())')"
+        }
+    }
+
+    private static func isAlternativeQuoteStart(_ bytes: [UInt8], at index: Int) -> Bool {
+        guard index + 2 < bytes.count else { return false }
+        return (bytes[index] == 0x51 || bytes[index] == 0x71) && bytes[index + 1] == 0x27
+    }
+
+    private static func alternativeQuoteCloser(_ opener: UInt8) -> UInt8 {
+        switch opener {
+        case 0x5B: return 0x5D
+        case 0x28: return 0x29
+        case 0x7B: return 0x7D
+        case 0x3C: return 0x3E
+        default: return opener
+        }
+    }
+}

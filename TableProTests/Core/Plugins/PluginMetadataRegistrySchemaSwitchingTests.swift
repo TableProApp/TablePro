@@ -64,6 +64,33 @@ struct PluginMetadataRegistrySchemaSwitchingTests {
         #expect(snap.postConnectActions.contains(.selectSchemaFromLastSession))
     }
 
+    // MARK: - Dameng
+
+    @Test("Dameng supports schema switching without TLS")
+    func damengSupportsSchemaSwitching() {
+        guard let snap = snapshot(forTypeId: "Dameng") else {
+            Issue.record("Registry default for Dameng missing")
+            return
+        }
+        #expect(snap.capabilities.supportsSchemaSwitching == true)
+        #expect(snap.capabilities.supportsSSL == false)
+        #expect(snap.postConnectActions.contains(.selectSchemaFromLastSession))
+    }
+
+    @Test("Dameng publishes DM8 typing suggestions")
+    func damengPublishesTypingSuggestions() {
+        guard let snap = snapshot(forTypeId: "Dameng") else {
+            Issue.record("Registry default for Dameng missing")
+            return
+        }
+        let labels = Set(snap.editor.statementCompletions.map(\.label))
+        #expect(labels.isSuperset(of: ["SET SCHEMA", "CREATE SCHEMA", "EXPLAIN", "CONNECT BY"]))
+        #expect(snap.editor.sqlDialect?.functions.contains("NVL") == true)
+        #expect(snap.editor.sqlDialect?.dataTypes.contains("VARCHAR2") == true)
+        #expect(snap.editor.sqlDialect?.dataTypes.contains("XMLTYPE") == false)
+        #expect(snap.editor.sqlDialect?.functions.contains("DBMS_RANDOM.VALUE") == false)
+    }
+
     // MARK: - DuckDB
 
     @Test("DuckDB supports schema switching")
@@ -134,7 +161,9 @@ struct PluginMetadataRegistrySchemaSwitchingTests {
 
     @Test("Quick Switcher allowlist agrees with registry capability flag")
     func quickSwitcherAllowlistMatchesRegistry() {
-        let typesThatShouldSupportSchemas = ["PostgreSQL", "Redshift", "Oracle", "SQL Server", "DuckDB"]
+        let typesThatShouldSupportSchemas = [
+            "PostgreSQL", "Redshift", "Oracle", "Dameng", "SQL Server", "DuckDB",
+        ]
         for typeId in typesThatShouldSupportSchemas {
             guard let snap = snapshot(forTypeId: typeId) else {
                 Issue.record("Registry default for \(typeId) missing")

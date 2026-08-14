@@ -1,0 +1,764 @@
+// Safety contracts for the exported C ABI are documented in CDameng.h, next to
+// the declarations consumed by Swift.
+#![allow(clippy::missing_safety_doc)]
+
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::ptr;
+use std::slice;
+use std::str;
+use std::time::Instant;
+
+use dameng::Client;
+use dameng_types::encoding::{decode_from_server, ServerEncoding};
+use dameng_types::DmValue;
+
+const MAX_HOST_BYTES: usize = 1_024;
+const MAX_CREDENTIAL_BYTES: usize = 4_096;
+const MAX_SQL_BYTES: usize = 16 * 1_024 * 1_024;
+
+pub struct TpDmConnection {
+    client: Option<Client>,
+}
+
+pub struct TpDmError {
+    message: Vec<u8>,
+}
+
+pub struct TpDmResult {
+    columns: Vec<TpDmColumn>,
+    rows: Vec<Vec<TpDmCell>>,
+    rows_affected: u64,
+    execution_time_seconds: f64,
+    is_truncated: bool,
+}
+
+struct TpDmColumn {
+    name: Vec<u8>,
+    type_name: Vec<u8>,
+}
+
+enum TpDmCell {
+    Null,
+    Text(Vec<u8>),
+    Bytes(Vec<u8>),
+}
+
+fn set_error(error_out: *mut *mut TpDmError, message: impl Into<String>) {
+    if error_out.is_null() {
+        return;
+    }
+    let error = Box::new(TpDmError {
+        message: message.into().into_bytes(),
+    });
+    unsafe {
+        *error_out = Box::into_raw(error);
+    }
+}
+
+fn clear_error(error_out: *mut *mut TpDmError) {
+    if error_out.is_null() {
+        return;
+    }
+    unsafe {
+        *error_out = ptr::null_mut();
+    }
+}
+
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<String>() {
+        return message.clone();
+    }
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        return (*message).to_string();
+    }
+    "Dameng transport panicked".to_string()
+}
+
+unsafe fn required_string(
+    bytes: *const u8,
+    length: usize,
+    maximum: usize,
+    field: &str,
+) -> Result<String, String> {
+    if bytes.is_null() {
+        return Err(format!("{field} is missing"));
+    }
+    if length == 0 || length > maximum {
+        return Err(format!("{field} length is invalid"));
+    }
+    let value = slice::from_raw_parts(bytes, length);
+    str::from_utf8(value)
+        .map(str::to_owned)
+        .map_err(|_| format!("{field} is not valid UTF-8"))
+}
+
+unsafe fn password_string(bytes: *const u8, length: usize) -> Result<String, String> {
+    if length > MAX_CREDENTIAL_BYTES {
+        return Err("password length is invalid".to_string());
+    }
+    if length == 0 {
+        return Ok(String::new());
+    }
+    if bytes.is_null() {
+        return Err("password is missing".to_string());
+    }
+    let value = slice::from_raw_parts(bytes, length);
+    str::from_utf8(value)
+        .map(str::to_owned)
+        .map_err(|_| "password is not valid UTF-8".to_string())
+}
+
+unsafe fn optional_sql(bytes: *const u8, length: usize) -> Result<String, String> {
+    if bytes.is_null() || length == 0 || length > MAX_SQL_BYTES {
+        return Err("query length is invalid".to_string());
+    }
+    let value = slice::from_raw_parts(bytes, length);
+    str::from_utf8(value)
+        .map(str::to_owned)
+        .map_err(|_| "query is not valid UTF-8".to_string())
+}
+
+fn detect_server_encoding(client: &mut Client) -> Result<(), String> {
+    let result = client
+        .query("SELECT UNICODE()")
+        .map_err(|error| error.to_string())?;
+    let row = result
+        .rows
+        .first()
+        .ok_or_else(|| "DM8 did not return its Unicode mode".to_string())?;
+    let flag = row.get_i32(0).map_err(|error| error.to_string())?;
+    client.server_encoding = if flag == 1 {
+        ServerEncoding::Utf8
+    } else {
+        ServerEncoding::Gb18030
+    };
+    Ok(())
+}
+
+fn text_cell(value: impl ToString) -> TpDmCell {
+    TpDmCell::Text(value.to_string().into_bytes())
+}
+
+fn convert_lob(
+    client: &mut Client,
+    locator: dameng_types::LobLocator,
+) -> Result<TpDmCell, dameng::Error> {
+    let data = client.read_lob(&locator)?;
+    let cell = if locator.is_clob {
+        TpDmCell::Text(decode_from_server(client.server_encoding, &data).into_bytes())
+    } else {
+        TpDmCell::Bytes(data)
+    };
+    client.free_lob(&locator)?;
+    Ok(cell)
+}
+
+fn convert_cell(
+    client: &mut Client,
+    row: &dameng::Row,
+    columns: &[dameng::row::Column],
+    index: usize,
+) -> Result<TpDmCell, dameng::Error> {
+    let Some(value) = row.get(index, columns) else {
+        return Ok(TpDmCell::Null);
+    };
+    match value {
+        DmValue::Null => Ok(TpDmCell::Null),
+        DmValue::Boolean(value) => Ok(text_cell(if value { "1" } else { "0" })),
+        DmValue::TinyInt(value) => Ok(text_cell(value)),
+        DmValue::SmallInt(value) => Ok(text_cell(value)),
+        DmValue::Int(value) => Ok(text_cell(value)),
+        DmValue::BigInt(value) => Ok(text_cell(value)),
+        DmValue::Float(value) => Ok(text_cell(value)),
+        DmValue::Double(value) => Ok(text_cell(value)),
+        DmValue::Text(value) => Ok(TpDmCell::Text(value.into_bytes())),
+        DmValue::Bytea(value) => Ok(TpDmCell::Bytes(value)),
+        DmValue::Decimal(value) => Ok(text_cell(value)),
+        DmValue::Date(value) => Ok(text_cell(value)),
+        DmValue::Time(value) => Ok(text_cell(value)),
+        DmValue::Timestamp(value) => Ok(text_cell(value)),
+        DmValue::LobLocator(locator) => convert_lob(client, locator),
+    }
+}
+
+fn query_result(
+    client: &mut Client,
+    sql: &str,
+    row_cap: usize,
+) -> Result<TpDmResult, dameng::Error> {
+    let started = Instant::now();
+    let mut result = client.query(sql)?;
+    let fetch_limit = if row_cap > 0 {
+        row_cap.saturating_add(1)
+    } else {
+        usize::MAX
+    };
+    while result.rows.len() < usize::try_from(result.total_row_count).unwrap_or(usize::MAX)
+        && result.rows.len() < fetch_limit
+    {
+        let previous_count = result.rows.len();
+        client.fetch_more(&mut result, previous_count, 65_536)?;
+        if result.rows.len() == previous_count {
+            break;
+        }
+    }
+    let columns = result
+        .columns
+        .iter()
+        .map(|column| TpDmColumn {
+            name: column.name.as_bytes().to_vec(),
+            type_name: column.type_name.as_bytes().to_vec(),
+        })
+        .collect();
+    let is_truncated = row_cap > 0
+        && (result.rows.len() > row_cap
+            || result.total_row_count > u64::try_from(row_cap).unwrap_or(u64::MAX));
+    let row_count = if row_cap > 0 {
+        result.rows.len().min(row_cap)
+    } else {
+        result.rows.len()
+    };
+    let mut rows = Vec::with_capacity(row_count);
+    for row in result.rows.iter().take(row_count) {
+        let mut cells = Vec::with_capacity(result.columns.len());
+        for index in 0..result.columns.len() {
+            cells.push(convert_cell(client, row, &result.columns, index)?);
+        }
+        rows.push(cells);
+    }
+    Ok(TpDmResult {
+        columns,
+        rows,
+        rows_affected: result.total_row_count,
+        execution_time_seconds: started.elapsed().as_secs_f64(),
+        is_truncated,
+    })
+}
+
+fn execute_result(client: &mut Client, sql: &str) -> Result<TpDmResult, dameng::Error> {
+    let started = Instant::now();
+    let rows_affected = client.execute(sql)?;
+    Ok(TpDmResult {
+        columns: Vec::new(),
+        rows: Vec::new(),
+        rows_affected,
+        execution_time_seconds: started.elapsed().as_secs_f64(),
+        is_truncated: false,
+    })
+}
+
+fn connection_client(connection: &mut TpDmConnection) -> Result<Client, String> {
+    connection
+        .client
+        .take()
+        .ok_or_else(|| "Dameng connection is closed".to_string())
+}
+
+fn restore_client(connection: &mut TpDmConnection, client: Client) {
+    connection.client = Some(client);
+}
+
+fn is_recoverable(error: &dameng::Error) -> bool {
+    !matches!(
+        error,
+        dameng::Error::Protocol(_)
+            | dameng::Error::Io(_)
+            | dameng::Error::ConnectionFailed(_)
+            | dameng::Error::AuthFailed(_)
+            | dameng::Error::NotConnected
+            | dameng::Error::Timeout(_)
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_connect(
+    host: *const u8,
+    host_length: usize,
+    port: u16,
+    username: *const u8,
+    username_length: usize,
+    password: *const u8,
+    password_length: usize,
+    error_out: *mut *mut TpDmError,
+) -> *mut TpDmConnection {
+    clear_error(error_out);
+    let operation = catch_unwind(AssertUnwindSafe(|| -> Result<TpDmConnection, String> {
+        if port == 0 {
+            return Err("port must be greater than zero".to_string());
+        }
+        let host = required_string(host, host_length, MAX_HOST_BYTES, "host")?;
+        let username =
+            required_string(username, username_length, MAX_CREDENTIAL_BYTES, "username")?;
+        let password = password_string(password, password_length)?;
+        let mut client = Client::new(&host, port);
+        client
+            .connect(&username, &password)
+            .map_err(|error| error.to_string())?;
+        detect_server_encoding(&mut client)?;
+        Ok(TpDmConnection {
+            client: Some(client),
+        })
+    }));
+    match operation {
+        Ok(Ok(connection)) => Box::into_raw(Box::new(connection)),
+        Ok(Err(message)) => {
+            set_error(error_out, message);
+            ptr::null_mut()
+        }
+        Err(payload) => {
+            set_error(error_out, panic_message(payload));
+            ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_disconnect(connection: *mut TpDmConnection) {
+    if connection.is_null() {
+        return;
+    }
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        let mut connection = Box::from_raw(connection);
+        if let Some(mut client) = connection.client.take() {
+            let _ = client.close();
+        }
+    }));
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_execute(
+    connection: *mut TpDmConnection,
+    sql: *const u8,
+    sql_length: usize,
+    expects_rows: bool,
+    row_cap: usize,
+    error_out: *mut *mut TpDmError,
+) -> *mut TpDmResult {
+    clear_error(error_out);
+    if connection.is_null() {
+        set_error(error_out, "Dameng connection is missing");
+        return ptr::null_mut();
+    }
+    let sql = match optional_sql(sql, sql_length) {
+        Ok(sql) => sql,
+        Err(message) => {
+            set_error(error_out, message);
+            return ptr::null_mut();
+        }
+    };
+    let connection = &mut *connection;
+    let mut client = match connection_client(connection) {
+        Ok(client) => client,
+        Err(message) => {
+            set_error(error_out, message);
+            return ptr::null_mut();
+        }
+    };
+    let operation = catch_unwind(AssertUnwindSafe(|| {
+        if expects_rows {
+            query_result(&mut client, &sql, row_cap)
+        } else {
+            execute_result(&mut client, &sql)
+        }
+    }));
+    match operation {
+        Ok(Ok(result)) => {
+            restore_client(connection, client);
+            Box::into_raw(Box::new(result))
+        }
+        Ok(Err(error)) => {
+            if is_recoverable(&error) {
+                restore_client(connection, client);
+            } else {
+                let _ = client.close();
+            }
+            set_error(error_out, error.to_string());
+            ptr::null_mut()
+        }
+        Err(payload) => {
+            set_error(error_out, panic_message(payload));
+            ptr::null_mut()
+        }
+    }
+}
+
+unsafe fn transaction_operation(
+    connection: *mut TpDmConnection,
+    error_out: *mut *mut TpDmError,
+    operation: impl FnOnce(&mut Client) -> Result<(), dameng::Error>,
+) -> bool {
+    clear_error(error_out);
+    if connection.is_null() {
+        set_error(error_out, "Dameng connection is missing");
+        return false;
+    }
+    let connection = &mut *connection;
+    let mut client = match connection_client(connection) {
+        Ok(client) => client,
+        Err(message) => {
+            set_error(error_out, message);
+            return false;
+        }
+    };
+    let result = catch_unwind(AssertUnwindSafe(|| operation(&mut client)));
+    match result {
+        Ok(Ok(())) => {
+            restore_client(connection, client);
+            true
+        }
+        Ok(Err(error)) => {
+            if is_recoverable(&error) {
+                restore_client(connection, client);
+            } else {
+                let _ = client.close();
+            }
+            set_error(error_out, error.to_string());
+            false
+        }
+        Err(payload) => {
+            set_error(error_out, panic_message(payload));
+            false
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_begin(
+    connection: *mut TpDmConnection,
+    error_out: *mut *mut TpDmError,
+) -> bool {
+    transaction_operation(connection, error_out, Client::begin)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_commit(
+    connection: *mut TpDmConnection,
+    error_out: *mut *mut TpDmError,
+) -> bool {
+    transaction_operation(connection, error_out, Client::commit)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_rollback(
+    connection: *mut TpDmConnection,
+    error_out: *mut *mut TpDmError,
+) -> bool {
+    transaction_operation(connection, error_out, Client::rollback)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_ping(
+    connection: *mut TpDmConnection,
+    error_out: *mut *mut TpDmError,
+) -> bool {
+    transaction_operation(connection, error_out, |client| client.ready())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_result_free(result: *mut TpDmResult) {
+    if !result.is_null() {
+        drop(Box::from_raw(result));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_error_free(error: *mut TpDmError) {
+    if !error.is_null() {
+        drop(Box::from_raw(error));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_error_message(
+    error: *const TpDmError,
+    length_out: *mut usize,
+) -> *const u8 {
+    if error.is_null() {
+        return ptr::null();
+    }
+    let message = &(*error).message;
+    if !length_out.is_null() {
+        *length_out = message.len();
+    }
+    message.as_ptr()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_result_column_count(result: *const TpDmResult) -> usize {
+    result
+        .as_ref()
+        .map(|result| result.columns.len())
+        .unwrap_or(0)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_result_row_count(result: *const TpDmResult) -> usize {
+    result.as_ref().map(|result| result.rows.len()).unwrap_or(0)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_result_rows_affected(result: *const TpDmResult) -> u64 {
+    result
+        .as_ref()
+        .map(|result| result.rows_affected)
+        .unwrap_or(0)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_result_execution_time(result: *const TpDmResult) -> f64 {
+    result
+        .as_ref()
+        .map(|result| result.execution_time_seconds)
+        .unwrap_or(0.0)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_result_is_truncated(result: *const TpDmResult) -> bool {
+    result
+        .as_ref()
+        .map(|result| result.is_truncated)
+        .unwrap_or(false)
+}
+
+unsafe fn column_bytes(
+    result: *const TpDmResult,
+    column_index: usize,
+    length_out: *mut usize,
+    value: impl FnOnce(&TpDmColumn) -> &[u8],
+) -> *const u8 {
+    let Some(column) = result
+        .as_ref()
+        .and_then(|result| result.columns.get(column_index))
+    else {
+        return ptr::null();
+    };
+    let bytes = value(column);
+    if !length_out.is_null() {
+        *length_out = bytes.len();
+    }
+    bytes.as_ptr()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_result_column_name(
+    result: *const TpDmResult,
+    column_index: usize,
+    length_out: *mut usize,
+) -> *const u8 {
+    column_bytes(result, column_index, length_out, |column| &column.name)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_result_column_type(
+    result: *const TpDmResult,
+    column_index: usize,
+    length_out: *mut usize,
+) -> *const u8 {
+    column_bytes(result, column_index, length_out, |column| &column.type_name)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_result_cell_kind(
+    result: *const TpDmResult,
+    row_index: usize,
+    column_index: usize,
+) -> i32 {
+    let Some(cell) = result
+        .as_ref()
+        .and_then(|result| result.rows.get(row_index))
+        .and_then(|row| row.get(column_index))
+    else {
+        return -1;
+    };
+    match cell {
+        TpDmCell::Null => 0,
+        TpDmCell::Text(_) => 1,
+        TpDmCell::Bytes(_) => 2,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_result_cell_bytes(
+    result: *const TpDmResult,
+    row_index: usize,
+    column_index: usize,
+    length_out: *mut usize,
+) -> *const u8 {
+    let Some(cell) = result
+        .as_ref()
+        .and_then(|result| result.rows.get(row_index))
+        .and_then(|row| row.get(column_index))
+    else {
+        return ptr::null();
+    };
+    let bytes = match cell {
+        TpDmCell::Null => return ptr::null(),
+        TpDmCell::Text(bytes) | TpDmCell::Bytes(bytes) => bytes,
+    };
+    if !length_out.is_null() {
+        *length_out = bytes.len();
+    }
+    bytes.as_ptr()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::env;
+
+    use super::*;
+
+    unsafe fn error_text(error: *mut TpDmError) -> String {
+        let mut length = 0;
+        let bytes = tp_dm_error_message(error, &mut length);
+        let text = String::from_utf8_lossy(slice::from_raw_parts(bytes, length)).into_owned();
+        tp_dm_error_free(error);
+        text
+    }
+
+    unsafe fn execute(
+        connection: *mut TpDmConnection,
+        sql: &str,
+        expects_rows: bool,
+    ) -> *mut TpDmResult {
+        let mut error = ptr::null_mut();
+        let result = tp_dm_execute(
+            connection,
+            sql.as_ptr(),
+            sql.len(),
+            expects_rows,
+            0,
+            &mut error,
+        );
+        assert!(error.is_null(), "{}", error_text(error));
+        assert!(!result.is_null());
+        result
+    }
+
+    #[test]
+    fn rejects_zero_port_before_connecting() {
+        unsafe {
+            let mut error = ptr::null_mut();
+            let connection = tp_dm_connect(
+                b"localhost".as_ptr(),
+                9,
+                0,
+                b"user".as_ptr(),
+                4,
+                b"password".as_ptr(),
+                8,
+                &mut error,
+            );
+            assert!(connection.is_null());
+            assert_eq!(error_text(error), "port must be greater than zero");
+        }
+    }
+
+    #[test]
+    #[ignore = "requires DM8 in OrbStack"]
+    fn orbstack_connection_query_and_transaction() {
+        unsafe {
+            let host = env::var("DM_HOST").expect("DM_HOST is required");
+            let port = env::var("DM_PORT")
+                .expect("DM_PORT is required")
+                .parse()
+                .expect("DM_PORT must be a UInt16");
+            let username = env::var("DM_USER").expect("DM_USER is required");
+            let password = env::var("DM_PASS").expect("DM_PASS is required");
+            let mut error = ptr::null_mut();
+            let connection = tp_dm_connect(
+                host.as_ptr(),
+                host.len(),
+                port,
+                username.as_ptr(),
+                username.len(),
+                password.as_ptr(),
+                password.len(),
+                &mut error,
+            );
+            assert!(error.is_null(), "{}", error_text(error));
+            assert!(!connection.is_null());
+
+            let drop_result = execute(
+                connection,
+                "DROP TABLE IF EXISTS TABLEPRO_BRIDGE_TEST",
+                false,
+            );
+            tp_dm_result_free(drop_result);
+            let create_result = execute(
+                connection,
+                "CREATE TABLE TABLEPRO_BRIDGE_TEST (\
+                    ID INT PRIMARY KEY, \
+                    NAME VARCHAR(100), \
+                    STATUS VARCHAR(20), \
+                    TOTAL DECIMAL(12, 2), \
+                    CREATED_AT TIMESTAMP DEFAULT CURRENT_TIMESTAMP\
+                )",
+                false,
+            );
+            tp_dm_result_free(create_result);
+            let insert_result = execute(
+                connection,
+                "INSERT INTO TABLEPRO_BRIDGE_TEST (ID, NAME, STATUS, TOTAL) \
+                 VALUES (1, 'TablePro 达梦', 'READY', 42.50)",
+                false,
+            );
+            assert_eq!(tp_dm_result_rows_affected(insert_result), 1);
+            tp_dm_result_free(insert_result);
+
+            let select_result = execute(
+                connection,
+                "SELECT NAME FROM TABLEPRO_BRIDGE_TEST WHERE ID = 1",
+                true,
+            );
+            assert_eq!(tp_dm_result_row_count(select_result), 1);
+            let mut length = 0;
+            let bytes = tp_dm_result_cell_bytes(select_result, 0, 0, &mut length);
+            assert_eq!(
+                slice::from_raw_parts(bytes, length),
+                "TablePro 达梦".as_bytes()
+            );
+            tp_dm_result_free(select_result);
+
+            let browse_result = execute(
+                connection,
+                "SELECT ID, NAME, STATUS, TOTAL, CREATED_AT \
+                 FROM TABLEPRO_BRIDGE_TEST ORDER BY 1 \
+                 OFFSET 0 ROWS FETCH NEXT 1000 ROWS ONLY",
+                true,
+            );
+            assert_eq!(tp_dm_result_column_count(browse_result), 5);
+            assert_eq!(tp_dm_result_row_count(browse_result), 1);
+            tp_dm_result_free(browse_result);
+
+            let empty_result = execute(
+                connection,
+                "SELECT NAME FROM TABLEPRO_BRIDGE_TEST WHERE ID = -1",
+                true,
+            );
+            assert_eq!(tp_dm_result_column_count(empty_result), 1);
+            assert_eq!(tp_dm_result_row_count(empty_result), 0);
+            tp_dm_result_free(empty_result);
+
+            assert!(tp_dm_begin(connection, &mut error));
+            let transaction_insert = execute(
+                connection,
+                "INSERT INTO TABLEPRO_BRIDGE_TEST (ID, NAME) VALUES (2, 'rollback')",
+                false,
+            );
+            tp_dm_result_free(transaction_insert);
+            assert!(tp_dm_rollback(connection, &mut error));
+            let count_result = execute(
+                connection,
+                "SELECT COUNT(*) FROM TABLEPRO_BRIDGE_TEST",
+                true,
+            );
+            let bytes = tp_dm_result_cell_bytes(count_result, 0, 0, &mut length);
+            assert_eq!(slice::from_raw_parts(bytes, length), b"1");
+            tp_dm_result_free(count_result);
+
+            let cleanup_result = execute(connection, "DROP TABLE TABLEPRO_BRIDGE_TEST", false);
+            tp_dm_result_free(cleanup_result);
+            tp_dm_disconnect(connection);
+        }
+    }
+}
