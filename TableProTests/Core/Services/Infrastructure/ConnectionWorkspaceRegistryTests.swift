@@ -51,6 +51,56 @@ struct ConnectionWorkspaceRegistryTests {
         #expect(registry.selectedConnectionId == alpha)
     }
 
+    /// The reported sequence: open a second connection from a window that already has one, watch it
+    /// fail, retry it. A failed attempt is a phase, not a departure, so the window stays on the
+    /// connection throughout and can still be switched away from afterwards.
+    @Test("A failed connection stays selected through its retry and can still be switched away from")
+    func failedConnectionKeepsItsPlace() throws {
+        let alpha = try #require(Self.alpha)
+        let beta = try #require(Self.beta)
+        let registry = ConnectionWorkspaceRegistry()
+        registry.insert(makeWorkspace(alpha))
+        let second = registry.insert(makeWorkspace(beta))
+
+        second.phase = .unavailable(.failed(ConnectionFailureInfo(message: "refused")))
+        #expect(registry.selectedConnectionId == beta)
+
+        second.phase = .connecting
+        second.phase = .connected
+        #expect(registry.selectedConnectionId == beta)
+
+        registry.select(alpha)
+        #expect(registry.selectedConnectionId == alpha)
+        registry.select(beta)
+        #expect(registry.selectedConnectionId == beta)
+    }
+
+    /// The rail's entry list is rebuilt from this and its highlight from the selection, so a
+    /// membership change has to announce itself even when the selection lands where it already was.
+    @Test("Joining and leaving report membership separately from selection")
+    func membershipAndSelectionAreSeparateSignals() throws {
+        let alpha = try #require(Self.alpha)
+        let beta = try #require(Self.beta)
+        let registry = ConnectionWorkspaceRegistry()
+        var memberships = 0
+        var selections = 0
+        registry.onMembershipChange = { memberships += 1 }
+        registry.onSelectionChange = { _ in selections += 1 }
+
+        registry.insert(makeWorkspace(alpha))
+        registry.insert(makeWorkspace(beta))
+        #expect(memberships == 2)
+        #expect(selections == 2)
+
+        registry.select(alpha)
+        #expect(memberships == 2)
+        #expect(selections == 3)
+
+        registry.remove(beta)
+        #expect(memberships == 3)
+        #expect(selections == 3)
+    }
+
     @Test("Each workspace keeps its own phase and attempt token")
     func workspacesAreIsolated() throws {
         let alpha = try #require(Self.alpha)

@@ -17,6 +17,18 @@ private extension UserDefaults {
     }
 }
 
+/// The window a rail belongs to. A window hosts several connections and shows one at a time, so
+/// which row the rail highlights is a question only the window can answer, and the answer changes.
+/// The rail used to capture the connection its window was created for, which could name the right
+/// row exactly once: after the window switched to a second connection the rail kept highlighting
+/// the first, and clicking the row it was already standing on did nothing.
+@MainActor
+internal protocol WorkspaceRailHost: AnyObject {
+    var hostedConnectionIds: [UUID] { get }
+    var selectedConnectionId: UUID? { get }
+    func selectHostedConnection(_ connectionId: UUID)
+}
+
 @MainActor
 internal final class WorkspaceRailViewController: NSViewController {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WorkspaceRail")
@@ -24,8 +36,8 @@ internal final class WorkspaceRailViewController: NSViewController {
 
     internal var onLayoutChange: ((WorkspaceRailMetrics.Layout) -> Void)?
     internal var onEntryCountChange: ((Int) -> Void)?
+    internal weak var host: (any WorkspaceRailHost)?
 
-    private let connectionId: UUID?
     private let scrollView = NSScrollView()
     private let tableView = NSTableView()
 
@@ -42,14 +54,13 @@ internal final class WorkspaceRailViewController: NSViewController {
     private var sizeModeObservation: NSKeyValueObservation?
     private var contentTopConstraint: NSLayoutConstraint?
 
-    /// What the rail last put on screen as selected. A selection that differs from this came
-    /// from the user, whether by click, arrow key, type-select or VoiceOver, and is the one
-    /// signal the rail acts on. Recording the applied value rather than raising a re-entrancy
-    /// flag is what lets AppKit's own selection stand as the model.
+    /// What the rail last put on screen as selected, which after every `applySelection` is the
+    /// workspace the host is really showing. A commit for that same workspace has nothing to do,
+    /// and is the case the arrow keys hit constantly as they move the highlight across a row the
+    /// window is already on.
     private var appliedSelection: WorkspaceID?
 
-    internal init(connectionId: UUID?) {
-        self.connectionId = connectionId
+    internal init() {
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -162,7 +173,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// Which window's rail a line came from. Every rail lists every workspace, so without this
     /// a log of two connections switching back and forth cannot be attributed.
     private var railName: String {
-        guard let connectionId else { return "none" }
+        guard let connectionId = host?.selectedConnectionId else { return "none" }
         return String(connectionId.uuidString.prefix(8))
     }
 
@@ -176,17 +187,23 @@ internal final class WorkspaceRailViewController: NSViewController {
         onLayoutChange?(resolved)
     }
 
-    /// The browsed container moves, so the selected row is resolved on every reload rather
-    /// than fixed at init the way the window's connection is.
+    /// Both halves move: the window switches which connection it shows, and that connection
+    /// switches which container it browses. Neither can be captured at init.
     private var activeWorkspace: WorkspaceID? {
-        guard let connectionId else { return nil }
+        guard let connectionId = host?.selectedConnectionId else { return nil }
         return WorkspaceRailStore.browsedWorkspace(for: connectionId)
+    }
+
+    /// Called when the window changes which connection it is showing. The entry list is unchanged
+    /// by that, only which row is current, so this moves the highlight instead of reloading.
+    internal func refreshSelection() {
+        applySelection()
     }
 
     private func applySelection() {
         let browsed = activeWorkspace
         guard let row = WorkspaceRailStore.selectedRow(
-            connectionId: connectionId,
+            connectionId: host?.selectedConnectionId,
             browsed: browsed,
             in: entries.map(\.id)
         ) else {
@@ -249,18 +266,20 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// `ConnectionStorage` and would fail for a connection opened from a URL that was never
     /// saved. Moving between two containers of the same connection stays in one window and
     /// only moves that window's browse cursor.
+    ///
+    /// Both paths end at `applySelection`, which reads the host's own selection back. A workspace
+    /// this window hosts leaves the highlight on the row the user picked; one belonging to another
+    /// window leaves it where it was, because this window did not move. The rail needed a rule for
+    /// when to put its highlight back only while it was guessing at the answer.
     private func activate(_ workspace: WorkspaceID) {
         /// One window hosts every connection, so switching is a selection change in that
         /// window's own registry. Raising a different window is what made the rail read as a
         /// window switcher rather than a workspace switcher.
-        if let host = view.window?.contentViewController as? MainSplitViewController,
-           host.workspaces.contains(workspace.connectionId) {
-            host.workspaces.select(workspace.connectionId)
-            moveBrowseCursor(of: host.view.window ?? NSApp.keyWindow ?? NSApp.windows[0], to: workspace)
-            guard WorkspaceRailStore.shouldRestoreSelection(
-                after: workspace,
-                railConnectionId: connectionId
-            ) else { return }
+        if let host, host.hostedConnectionIds.contains(workspace.connectionId) {
+            host.selectHostedConnection(workspace.connectionId)
+            if let window = view.window {
+                moveBrowseCursor(of: window, to: workspace)
+            }
             applySelection()
             return
         }
@@ -296,11 +315,6 @@ internal final class WorkspaceRailViewController: NSViewController {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
         moveBrowseCursor(of: window, to: workspace)
-
-        guard WorkspaceRailStore.shouldRestoreSelection(
-            after: workspace,
-            railConnectionId: connectionId
-        ) else { return }
         applySelection()
     }
 

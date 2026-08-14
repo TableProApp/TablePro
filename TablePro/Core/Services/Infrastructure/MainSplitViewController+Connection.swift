@@ -7,6 +7,18 @@ import AppKit
 import Foundation
 import os
 
+/// The rail asks the window which connection it is showing rather than remembering one, so the
+/// window answers from the registry that already knows.
+extension MainSplitViewController: WorkspaceRailHost {
+    internal var hostedConnectionIds: [UUID] { workspaces.connectionIds }
+
+    internal var selectedConnectionId: UUID? { workspaces.selectedConnectionId }
+
+    internal func selectHostedConnection(_ connectionId: UUID) {
+        workspaces.select(connectionId)
+    }
+}
+
 internal extension MainSplitViewController {
     private static var connectionLogger: Logger {
         Logger(subsystem: "com.TablePro", category: "ConnectionWindow")

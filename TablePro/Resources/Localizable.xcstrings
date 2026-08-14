@@ -56506,6 +56506,7 @@
         }
       }
     },
+    "No matching opening bracket": {},
     "No matching rows": {
       "localizations": {
         "tr": {
@@ -68077,7 +68078,6 @@
         }
       }
     },
-    "Record Shortcut": {},
     "Recording shortcut": {
       "localizations": {
         "tr": {
@@ -93875,6 +93875,7 @@
         }
       }
     },
+    "Unterminated comment": {},
     "Untitled": {
       "localizations": {
         "tr": {

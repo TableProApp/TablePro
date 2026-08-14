@@ -202,9 +202,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         splitView.dividerStyle = .thin
         splitView.isVertical = true
 
-        navigationSidebar = NavigationSidebarViewController(
-            connectionId: payload?.connectionId ?? currentSession?.connection.id
-        )
+        navigationSidebar = NavigationSidebarViewController()
+        navigationSidebar.railController.host = self
         navigationSidebar.railController.onLayoutChange = { [weak self] _ in
             self?.navigationSidebar.applyRailWidth(animated: false)
             self?.recomputeWindowMinSize()
@@ -239,6 +238,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         /// `NSSplitViewItem` remembers, rather than depending on a second restore.
         workspaces.onSelectionChange = { [weak self] _ in
             self?.applySelectedWorkspace()
+        }
+
+        /// A connection joining or leaving the window changes what every rail in the app lists,
+        /// which is what this event is for. Which row is current is a separate question, answered
+        /// by the rail reading its host back, so a selection change must not come through here.
+        workspaces.onMembershipChange = {
+            AppEvents.shared.connectionWindowsChanged.send()
         }
 
         restoreUserPaneLayout()
@@ -457,10 +463,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         applyPaneChrome()
         applyWindowTitle()
 
-        /// The rail redraws from `WorkspaceRailStore.changes`, which listens to session and tab
-        /// events. Switching workspace in place fires none of them, so without this the rail kept
-        /// highlighting the connection the user just switched away from.
-        AppEvents.shared.connectionWindowsChanged.send()
+        /// Only this window's rail moved, and only its highlight. Broadcasting instead made every
+        /// rail in the app rebuild its whole entry list to answer a question none of them asked.
+        navigationSidebar?.railController.refreshSelection()
     }
 
     private func applyPhase() {

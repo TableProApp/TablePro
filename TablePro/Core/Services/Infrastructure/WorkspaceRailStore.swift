@@ -114,9 +114,9 @@ internal enum WorkspaceRailStore {
         return WorkspaceID(connectionId: connectionId, container: container)
     }
 
-    /// The row the rail keeps selected. A window whose session has gone still belongs to
-    /// its connection, so it falls back to that connection's first row rather than showing
-    /// nothing selected until it reconnects.
+    /// The row the rail keeps selected, given the connection its window is currently showing.
+    /// A connection whose session has gone is still the one the window is on, so it falls back to
+    /// that connection's first row rather than showing nothing selected until it reconnects.
     internal static func selectedRow(
         connectionId: UUID?,
         browsed: WorkspaceID?,
@@ -127,19 +127,6 @@ internal enum WorkspaceRailStore {
             return row
         }
         return workspaces.firstIndex { $0.connectionId == connectionId }
-    }
-
-    /// A rail always shows its own window's workspace. Dispatching to another connection hands
-    /// the user to a different window, so the rail that sent them there returns its selection to
-    /// where it belongs instead of standing on a row that describes somebody else.
-    ///
-    /// Nothing else restores it. `connectionWindowsChanged` reports a window becoming key only
-    /// the first time, so once every window has been focused once a rail left pointing at a
-    /// foreign row would stay there: the row it now needs to act on is the one it already thinks
-    /// is selected, and selecting it again is not a change, so the next click would do nothing.
-    internal static func shouldRestoreSelection(after target: WorkspaceID, railConnectionId: UUID?) -> Bool {
-        guard let railConnectionId else { return false }
-        return target.connectionId != railConnectionId
     }
 
     internal static var changes: AnyPublisher<Void, Never> {
