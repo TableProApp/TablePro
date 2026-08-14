@@ -54,6 +54,41 @@ struct QueryHistoryInsightSnapshot: Equatable {
     var isEmpty: Bool {
         mostRun.isEmpty && slowest.isEmpty && regressions.isEmpty
     }
+
+    func insights(in category: QueryHistoryInsightCategory) -> [QueryHistoryInsight] {
+        switch category {
+        case .mostRun:
+            return mostRun
+        case .slowest:
+            return slowest
+        case .regression:
+            return regressions
+        }
+    }
+
+    func insight(for selection: QueryHistoryInsightSelection) -> QueryHistoryInsight? {
+        insights(in: selection.category).first { $0.id == selection.insightId }
+    }
+}
+
+enum QueryHistoryInsightCategory: Hashable {
+    case mostRun
+    case slowest
+    case regression
+}
+
+struct QueryHistoryInsightSelection: Hashable {
+    let category: QueryHistoryInsightCategory
+    let insightId: QueryHistoryInsight.ID
+
+    init(category: QueryHistoryInsightCategory, insightId: QueryHistoryInsight.ID) {
+        self.category = category
+        self.insightId = insightId
+    }
+
+    init(category: QueryHistoryInsightCategory, insight: QueryHistoryInsight) {
+        self.init(category: category, insightId: insight.id)
+    }
 }
 
 enum QueryHistoryInsightPolicy {

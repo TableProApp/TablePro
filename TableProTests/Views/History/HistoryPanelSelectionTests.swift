@@ -39,34 +39,79 @@ struct HistoryPanelSelectionTests {
 
 @Suite("Query History Insights selection refresh")
 struct QueryHistoryInsightsSelectionTests {
-    @Test("Reload keeps the selected query and adopts its refreshed metrics")
-    func reloadKeepsStableSelection() throws {
+    @Test("A selection identifies a query without capturing its metrics")
+    func selectionIdentityIgnoresMetrics() {
+        let original = makeInsight(executionCount: 3, averageExecutionTime: 0.2)
+        let updated = makeInsight(executionCount: 4, averageExecutionTime: 0.3)
+
+        let selection = QueryHistoryInsightSelection(category: .mostRun, insight: original)
+        let afterReload = QueryHistoryInsightSelection(category: .mostRun, insight: updated)
+
+        #expect(selection == afterReload)
+        #expect(selection.hashValue == afterReload.hashValue)
+    }
+
+    @Test("The same query in two categories is two distinct selections")
+    func selectionIsScopedToItsCategory() {
+        let insight = makeInsight(executionCount: 3, averageExecutionTime: 0.2)
+
+        let mostRun = QueryHistoryInsightSelection(category: .mostRun, insight: insight)
+        let slowest = QueryHistoryInsightSelection(category: .slowest, insight: insight)
+
+        #expect(mostRun != slowest)
+    }
+
+    @Test("Resolving a selection reads the metrics of the newest snapshot")
+    func resolvingSelectionAdoptsRefreshedMetrics() throws {
         let original = makeInsight(executionCount: 3, averageExecutionTime: 0.2)
         let updated = makeInsight(executionCount: 4, averageExecutionTime: 0.3)
         let selection = QueryHistoryInsightSelection(category: .mostRun, insight: original)
         let snapshot = QueryHistoryInsightSnapshot(mostRun: [updated], slowest: [], regressions: [])
 
-        let refreshed = try #require(QueryHistoryInsightSelection.refreshed(selection, in: snapshot))
+        let resolved = try #require(snapshot.insight(for: selection))
 
-        #expect(refreshed == selection)
-        #expect(refreshed.insight.executionCount == 4)
-        #expect(refreshed.insight.averageExecutionTime == 0.3)
+        #expect(resolved.executionCount == 4)
+        #expect(resolved.averageExecutionTime == 0.3)
     }
 
-    @Test("Reload clears a selection missing from its original category")
-    func reloadClearsMissingSelection() {
+    @Test("A selection missing from its original category no longer resolves")
+    func selectionMissingFromCategoryDoesNotResolve() {
         let insight = makeInsight(executionCount: 3, averageExecutionTime: 0.2)
         let selection = QueryHistoryInsightSelection(category: .mostRun, insight: insight)
         let snapshot = QueryHistoryInsightSnapshot(mostRun: [], slowest: [insight], regressions: [])
 
-        #expect(QueryHistoryInsightSelection.refreshed(selection, in: snapshot) == nil)
+        #expect(snapshot.insight(for: selection) == nil)
     }
 
-    private func makeInsight(executionCount: Int, averageExecutionTime: TimeInterval) -> QueryHistoryInsight {
+    @Test("Each category resolves against its own list")
+    func categoriesResolveAgainstTheirOwnList() throws {
+        let frequent = makeInsight(executionCount: 9, averageExecutionTime: 0.1, query: "SELECT frequent")
+        let slow = makeInsight(executionCount: 2, averageExecutionTime: 4.5, query: "SELECT slow")
+        let regressed = makeInsight(executionCount: 6, averageExecutionTime: 1.0, query: "SELECT regressed")
+        let snapshot = QueryHistoryInsightSnapshot(
+            mostRun: [frequent],
+            slowest: [slow],
+            regressions: [regressed]
+        )
+
+        #expect(snapshot.insights(in: .mostRun) == [frequent])
+        #expect(snapshot.insights(in: .slowest) == [slow])
+        #expect(snapshot.insights(in: .regression) == [regressed])
+
+        let slowestSelection = QueryHistoryInsightSelection(category: .slowest, insight: slow)
+        let resolvedSlowest = try #require(snapshot.insight(for: slowestSelection))
+        #expect(resolvedSlowest.query == "SELECT slow")
+    }
+
+    private func makeInsight(
+        executionCount: Int,
+        averageExecutionTime: TimeInterval,
+        query: String = "SELECT 1"
+    ) -> QueryHistoryInsight {
         QueryHistoryInsight(
             connectionId: connectionId,
             databaseName: "analytics",
-            query: "SELECT 1",
+            query: query,
             executionCount: executionCount,
             successfulExecutionCount: executionCount,
             averageExecutionTime: averageExecutionTime,

@@ -12,74 +12,58 @@ struct QueryHistoryInsightsView: View {
         )
         .requiresPro(.queryHistoryInsights)
         .task(id: connectionId) {
-            await reload()
+            pendingReload?.cancel()
+            if loadedConnectionId != connectionId {
+                snapshot = .empty
+                selection = nil
+                hasLoaded = false
+                loadedConnectionId = connectionId
+            }
+            await load()
         }
         .onReceive(AppEvents.shared.queryHistoryDidUpdate) { updatedConnectionId in
             guard updatedConnectionId == nil || updatedConnectionId == connectionId else {
                 return
             }
-            Task { await reload() }
+            scheduleReload()
+        }
+        .onDisappear {
+            pendingReload?.cancel()
         }
         .accessibilityIdentifier("query-history-insights-view")
     }
 
+    private static let reloadCoalescingDelay = Duration.milliseconds(250)
+
     @State private var snapshot = QueryHistoryInsightSnapshot.empty
     @State private var selection: QueryHistoryInsightSelection?
     @State private var hasLoaded = false
-    @State private var loadGeneration = UUID()
     @State private var loadedConnectionId: UUID?
+    @State private var pendingReload: Task<Void, Never>?
     @FocusedValue(\.commandActions) private var actions
 
     @MainActor
-    private func reload() async {
-        let generation = UUID()
-        loadGeneration = generation
-        if loadedConnectionId != connectionId {
-            snapshot = .empty
-            selection = nil
-            hasLoaded = false
-            loadedConnectionId = connectionId
+    private func scheduleReload() {
+        pendingReload?.cancel()
+        pendingReload = Task { @MainActor in
+            try? await Task.sleep(for: Self.reloadCoalescingDelay)
+            guard !Task.isCancelled else { return }
+            await load()
         }
+    }
+
+    @MainActor
+    private func load() async {
         let loadedSnapshot = await QueryHistoryManager.shared.fetchInsights(connectionId: connectionId)
-        guard !Task.isCancelled, loadGeneration == generation else {
+        guard !Task.isCancelled, loadedConnectionId == connectionId else {
             return
         }
 
         snapshot = loadedSnapshot
         hasLoaded = true
-        if let selection {
-            self.selection = QueryHistoryInsightSelection.refreshed(selection, in: loadedSnapshot)
+        if let selection, loadedSnapshot.insight(for: selection) == nil {
+            self.selection = nil
         }
-    }
-}
-
-enum QueryHistoryInsightCategory: Hashable {
-    case mostRun
-    case slowest
-    case regression
-}
-
-struct QueryHistoryInsightSelection: Hashable {
-    let category: QueryHistoryInsightCategory
-    let insight: QueryHistoryInsight
-
-    static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.category == rhs.category && lhs.insight.id == rhs.insight.id
-    }
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(category)
-        hasher.combine(insight.id)
-    }
-
-    static func refreshed(_ selection: Self, in snapshot: QueryHistoryInsightSnapshot) -> Self? {
-        all(in: snapshot).first { $0 == selection }
-    }
-
-    private static func all(in snapshot: QueryHistoryInsightSnapshot) -> [Self] {
-        snapshot.mostRun.map { Self(category: .mostRun, insight: $0) }
-            + snapshot.slowest.map { Self(category: .slowest, insight: $0) }
-            + snapshot.regressions.map { Self(category: .regression, insight: $0) }
     }
 }
 
@@ -139,20 +123,20 @@ private struct QueryHistoryInsightsPanel: View {
 
     @ViewBuilder
     private var insightDetail: some View {
-        if let selection {
+        if let selection, let insight = snapshot.insight(for: selection) {
             VStack(spacing: 0) {
                 HighlightedSQLTextView(
-                    sql: selection.insight.query.hasSuffix(";")
-                        ? selection.insight.query
-                        : selection.insight.query + ";",
-                    databaseType: selection.insight.query.trimmingCharacters(in: .whitespaces)
+                    sql: insight.query.hasSuffix(";")
+                        ? insight.query
+                        : insight.query + ";",
+                    databaseType: insight.query.trimmingCharacters(in: .whitespaces)
                         .hasPrefix("db.") ? .mongodb : .mysql
                 )
                 .background(Color(nsColor: ThemeEngine.shared.colors.editor.background))
 
                 Divider()
 
-                QueryHistoryInsightMetadata(selection: selection)
+                QueryHistoryInsightMetadata(category: selection.category, insight: insight)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
 
@@ -160,14 +144,14 @@ private struct QueryHistoryInsightsPanel: View {
 
                 HStack {
                     Button(String(localized: "Copy Query")) {
-                        ClipboardService.shared.writeText(selection.insight.query)
+                        ClipboardService.shared.writeText(insight.query)
                     }
                     .controlSize(.small)
 
                     Spacer()
 
                     Button(String(localized: "Load in Editor")) {
-                        loadInEditor(selection.insight.query)
+                        loadInEditor(insight.query)
                     }
                     .controlSize(.small)
                     .keyboardShortcut(.defaultAction)
@@ -243,11 +227,12 @@ private struct QueryHistoryInsightRow: View {
 }
 
 private struct QueryHistoryInsightMetadata: View {
-    let selection: QueryHistoryInsightSelection
+    let category: QueryHistoryInsightCategory
+    let insight: QueryHistoryInsight
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(selection.insight.databaseName)
+            Text(insight.databaseName)
                 .font(.subheadline.weight(.medium))
 
             Text(primaryMetric)
@@ -261,44 +246,44 @@ private struct QueryHistoryInsightMetadata: View {
     }
 
     private var primaryMetric: String {
-        switch selection.category {
+        switch category {
         case .mostRun:
-            guard selection.insight.successfulExecutionCount > 0 else {
+            guard insight.successfulExecutionCount > 0 else {
                 return String(
                     format: String(localized: "%@, no successful runs"),
-                    QueryHistoryInsightFormatting.runCount(selection.insight.executionCount)
+                    QueryHistoryInsightFormatting.runCount(insight.executionCount)
                 )
             }
             return String(
                 format: String(localized: "%@, %@ average"),
-                QueryHistoryInsightFormatting.runCount(selection.insight.executionCount),
-                QueryHistoryInsightFormatting.duration(selection.insight.averageExecutionTime)
+                QueryHistoryInsightFormatting.runCount(insight.executionCount),
+                QueryHistoryInsightFormatting.duration(insight.averageExecutionTime)
             )
         case .slowest:
             return String(
                 format: String(localized: "%@ average, %@ maximum"),
-                QueryHistoryInsightFormatting.duration(selection.insight.averageExecutionTime),
-                QueryHistoryInsightFormatting.duration(selection.insight.maximumExecutionTime)
+                QueryHistoryInsightFormatting.duration(insight.averageExecutionTime),
+                QueryHistoryInsightFormatting.duration(insight.maximumExecutionTime)
             )
         case .regression:
             return String(
                 format: String(localized: "%@ recent, %@ previous"),
-                QueryHistoryInsightFormatting.duration(selection.insight.recentAverageExecutionTime),
-                QueryHistoryInsightFormatting.duration(selection.insight.previousAverageExecutionTime)
+                QueryHistoryInsightFormatting.duration(insight.recentAverageExecutionTime),
+                QueryHistoryInsightFormatting.duration(insight.previousAverageExecutionTime)
             )
         }
     }
 
     private var secondaryMetric: String {
-        switch selection.category {
+        switch category {
         case .mostRun, .slowest:
-            let executedAt = selection.insight.lastExecutedAt.formatted(date: .abbreviated, time: .shortened)
+            let executedAt = insight.lastExecutedAt.formatted(date: .abbreviated, time: .shortened)
             return String(format: String(localized: "Last run: %@"), executedAt)
         case .regression:
             return String(
                 format: String(localized: "%@ recent, %@ previous"),
-                QueryHistoryInsightFormatting.runCount(selection.insight.recentExecutionCount),
-                QueryHistoryInsightFormatting.runCount(selection.insight.previousExecutionCount)
+                QueryHistoryInsightFormatting.runCount(insight.recentExecutionCount),
+                QueryHistoryInsightFormatting.runCount(insight.previousExecutionCount)
             )
         }
     }
