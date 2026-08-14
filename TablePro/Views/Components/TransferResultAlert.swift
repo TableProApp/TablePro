@@ -123,16 +123,29 @@ internal enum TransferResultAlert {
         return "\(counts)\n\(seconds)"
     }
 
+    /// A text view laid inside a scroll view by hand has to be told it may grow and that its text
+    /// container tracks its width. Left at its default zero-sized container it lays out no text at
+    /// all, so the accessory reads as an empty box.
     private static func scrollingText(_ text: String) -> NSView {
-        let textView = NSTextView()
-        textView.string = text
-        textView.isEditable = false
-        textView.drawsBackground = false
-        textView.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 380, height: 140))
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
+
+        let textView = NSTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
+        textView.isEditable = false
+        textView.drawsBackground = false
+        textView.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        textView.autoresizingMask = [.width]
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: scroll.contentSize.width,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.string = text
+
         scroll.documentView = textView
         return scroll
     }
