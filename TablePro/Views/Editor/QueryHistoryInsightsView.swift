@@ -118,7 +118,16 @@ private struct QueryHistoryInsightsPanel: View {
         }
         .listStyle(.sidebar)
         .environment(\.defaultMinListRowHeight, 48)
+        .onCopyCommand {
+            copySelectedQuery()
+            return []
+        }
         .accessibilityIdentifier("query-history-insights-list")
+    }
+
+    private func copySelectedQuery() {
+        guard let selection, let insight = snapshot.insight(for: selection) else { return }
+        ClipboardService.shared.writeText(insight.query)
     }
 
     @ViewBuilder
@@ -167,6 +176,21 @@ private struct QueryHistoryInsightsPanel: View {
         }
     }
 
+    @ViewBuilder
+    private func rowMenu(for insight: QueryHistoryInsight) -> some View {
+        Button {
+            ClipboardService.shared.writeText(insight.query)
+        } label: {
+            Label(String(localized: "Copy Query"), systemImage: "doc.on.doc")
+        }
+
+        Button {
+            loadInEditor(insight.query)
+        } label: {
+            Label(String(localized: "Load in Editor"), systemImage: "square.and.pencil")
+        }
+    }
+
     private func insightSection(
         title: String,
         emptyMessage: String,
@@ -182,6 +206,7 @@ private struct QueryHistoryInsightsPanel: View {
                 ForEach(insights) { insight in
                     QueryHistoryInsightRow(category: category, insight: insight)
                         .tag(QueryHistoryInsightSelection(category: category, insight: insight))
+                        .contextMenu { rowMenu(for: insight) }
                 }
             }
         }
