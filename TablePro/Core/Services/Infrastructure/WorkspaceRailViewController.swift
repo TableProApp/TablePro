@@ -335,7 +335,11 @@ internal final class WorkspaceRailViewController: NSViewController {
             )
             return
         }
-        guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else {
+        /// Resolved by connection, never by window. `coordinator(forWindow:)` answers with the
+        /// window's selected workspace, so a row for any other connection moved the browse cursor
+        /// of the one on screen instead: it switched the visible connection to a database named
+        /// after a different one, or failed against a database that connection does not have.
+        guard let coordinator = MainContentCoordinator.coordinator(forConnection: workspace.connectionId) else {
             Self.logger.error(
                 """
                 moveBrowseCursor has no coordinator target=\(Self.describe(workspace), privacy: .public) \
@@ -388,11 +392,15 @@ internal final class WorkspaceRailViewController: NSViewController {
         return menu
     }
 
+    /// The connection the row names, not the one the window is showing. Resolving through the
+    /// window handed this to the selected connection's coordinator, so Close Workspace on a row for
+    /// another connection closed the visible connection's tabs in a container of the same name,
+    /// taking its unsaved editor work with them.
     @objc
     private func closeWorkspace(_ sender: NSMenuItem) {
-        guard let workspace = sender.representedObject as? WorkspaceID else { return }
-        guard let window = WindowLifecycleMonitor.shared.mostRecentWindow(for: workspace.connectionId),
-              let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }
+        guard let workspace = sender.representedObject as? WorkspaceID,
+              let coordinator = MainContentCoordinator.coordinator(forConnection: workspace.connectionId)
+        else { return }
         coordinator.commandActions?.closeWorkspace(container: workspace.container)
     }
 

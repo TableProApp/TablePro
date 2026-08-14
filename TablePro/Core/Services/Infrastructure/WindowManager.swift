@@ -200,18 +200,29 @@ internal final class WindowManager {
 
     /// Closing a connection removes its workspace. The window itself only closes once it has no
     /// connection left to show, because it is no longer the connection's window.
+    /// A miniaturized window still hosts its connections, so `isVisible` is not the test: closing a
+    /// connection while its window was minimized left the workspace in place with no way to reach it.
     internal func closeWindow(for connectionId: UUID) {
+        var closedAnywhere = false
         for controller in controllers.values {
-            guard let window = controller.window, window.isVisible else { continue }
+            guard let window = controller.window else { continue }
             guard let host = window.contentViewController as? MainSplitViewController else { continue }
             guard let removed = host.workspaces.remove(connectionId) else { continue }
             removed.teardown()
+            closedAnywhere = true
             if host.workspaces.isEmpty {
                 window.close()
             } else {
                 host.applySelectedWorkspace()
             }
         }
+        guard closedAnywhere else { return }
+
+        /// Closing a connection ends it. The window used to do that on its way out, which covered
+        /// this while a connection owned its window; a connection closed out of a window that stays
+        /// open reached nothing, and its driver, tunnel and health monitor ran on unreferenced.
+        WindowLifecycleMonitor.shared.unregisterWindows(for: connectionId)
+        Task { await DatabaseManager.shared.disconnectSession(connectionId) }
     }
 
     internal static func isMainWindow(_ window: NSWindow) -> Bool {

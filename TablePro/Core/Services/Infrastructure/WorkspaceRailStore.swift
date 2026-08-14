@@ -34,9 +34,16 @@ internal struct WorkspaceRailEntry: Identifiable, Equatable {
 internal enum WorkspaceRailStore {
     /// Derived live from the open windows, their sessions and their tabs rather than
     /// cached, so a refresh can never blank the list it is refreshing.
+    /// Membership comes from the windows' own workspace registries and nothing else. A connection is
+    /// in the rail exactly while some window hosts it, which is what a rail row means.
+    ///
+    /// `WindowLifecycleMonitor` used to be unioned in here. It tracks mounted content rather than
+    /// hosted connections, and the two stopped agreeing in both directions: it kept naming a
+    /// connection whose workspace had been closed, which is the row that would not go away, and it
+    /// answered nothing for connections that were open. It never held an id `WindowManager` lacked,
+    /// so the union only ever added wrong answers.
     internal static var entries: [WorkspaceRailEntry] {
-        let openIds = WindowLifecycleMonitor.shared.allConnectionIds()
-            .union(WindowManager.shared.allConnectionIds())
+        let openIds = WindowManager.shared.allConnectionIds()
         guard !openIds.isEmpty else { return [] }
 
         let sessions = DatabaseManager.shared.activeSessions

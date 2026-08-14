@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Closing a connection removes it from the workspace rail, ends its session, and closes its tunnel. It stayed listed as connected, could not be clicked, and its database connection stayed open.
+- Close Workspace on a rail row acts on the connection the row names. It acted on the connection on screen instead, closing its tabs and losing unsaved editor work.
+- Closing a window disconnects every connection it was showing, not just one of them.
 - Hiding a database in the sidebar's database filter takes effect straight away. The tree kept listing every database until some other change happened to rebuild it.
 - An alert opens on the window you were working in. It could attach itself to a floating panel such as the Quick Switcher, which takes the alert with it when it closes.
 - Holding an arrow key in the sidebar no longer opens a tab and runs a query for every object it passes. Arrowing through 20 tables fired 20 queries; it now opens only the object you stop on.

@@ -51,6 +51,14 @@ extension MainContentCoordinator {
             .flatMap { $0.tabManager.tabs }
     }
 
+    /// The coordinator for a named connection, wherever it is hosted and whether or not its window
+    /// is currently showing it. Anything acting on a connection the user named, rather than on the
+    /// one in front of them, has to resolve this way: `coordinator(forWindow:)` answers with the
+    /// window's *selected* workspace, so using it for a rail row acted on a different connection.
+    static func coordinator(forConnection connectionId: UUID) -> MainContentCoordinator? {
+        activeCoordinators.values.first { $0.connectionId == connectionId }
+    }
+
     static func coordinator(
         forConnection connectionId: UUID,
         tabMatching predicate: (QueryTab) -> Bool
