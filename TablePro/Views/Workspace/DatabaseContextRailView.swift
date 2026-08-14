@@ -4,15 +4,16 @@ import SwiftUI
 // DatabaseContextRailView.swift — vertical rail list and actions
 // Part of the Database Context Rail feature (Task 5 of the plan).
 
+@MainActor
 struct DatabaseContextRailView: View {
     @Bindable private var registry: WorkspaceContextRegistry
     private let activationCoordinator: WorkspaceContextActivationCoordinator
     private let closeCoordinator: WorkspaceContextCloseCoordinator
 
     init(
-        registry: WorkspaceContextRegistry = .shared,
-        activationCoordinator: WorkspaceContextActivationCoordinator = .shared,
-        closeCoordinator: WorkspaceContextCloseCoordinator = .shared
+        registry: WorkspaceContextRegistry,
+        activationCoordinator: WorkspaceContextActivationCoordinator,
+        closeCoordinator: WorkspaceContextCloseCoordinator
     ) {
         self.registry = registry
         self.activationCoordinator = activationCoordinator
@@ -46,6 +47,9 @@ struct DatabaseContextRailView: View {
             }
             .padding(8)
         }
-        .frame(width: 240)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("workspace-rail")
+        .accessibilityLabel(String(localized: "Open Workspaces"))
     }
 }

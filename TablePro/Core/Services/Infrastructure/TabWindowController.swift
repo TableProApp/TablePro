@@ -71,7 +71,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.toolbarStyle = .unified
         window.titleVisibility = .visible
         window.tabbingMode = .preferred
-        window.tabbingIdentifier = WindowManager.tabbingIdentifier(for: payload.connectionId)
+        window.tabbingIdentifier = WindowManager.tabbingIdentifier(payload: payload)
         window.collectionBehavior.insert([.fullScreenPrimary, .managed])
 
         let splitVC = MainSplitViewController(

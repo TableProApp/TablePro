@@ -147,11 +147,22 @@ internal final class WindowManager {
         return raw == "main" || raw.hasPrefix("main-")
     }
 
-    /// One native tab group per connection, so a window's tab bar only ever lists that
-    /// connection's tabs. A window hosts exactly one tab group, so a shared identifier would
-    /// flatten every connection into one bar.
+    /// Fallback when the connection record is not available yet. Prefer
+    /// `tabbingIdentifier(for: WorkspaceContextKey)` so tabs from different databases
+    /// or schemas never join the same native group.
     internal static func tabbingIdentifier(for connectionId: UUID) -> String {
         "com.TablePro.main.\(connectionId.uuidString)"
+    }
+
+    internal static func tabbingIdentifier(for key: WorkspaceContextKey) -> String {
+        key.tabbingIdentifier
+    }
+
+    internal static func tabbingIdentifier(payload: EditorTabPayload) -> String {
+        guard let connection = WorkspaceContextResolver.connection(for: payload.connectionId) else {
+            return tabbingIdentifier(for: payload.connectionId)
+        }
+        return tabbingIdentifier(for: WorkspaceContextResolver.resolve(payload: payload, connection: connection))
     }
 
     private func findSibling(tabbingIdentifier: String, excluding: NSWindow) -> NSWindow? {

@@ -155,10 +155,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         navigationSidebar = NavigationSidebarViewController(
             connectionId: payload?.connectionId ?? currentSession?.connection.id
         )
-        navigationSidebar.railController.onLayoutChange = { [weak self] _ in
-            self?.navigationSidebar.applyRailWidth(animated: false)
-            self?.recomputeWindowMinSize()
-        }
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: navigationSidebar)
         sidebarSplitItem.canCollapse = true
         sidebarSplitItem.minimumThickness = Self.sidebarMinThickness
@@ -180,9 +176,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         inspectorSplitItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
         addSplitViewItem(inspectorSplitItem)
 
-        navigationSidebar.railController.onEntryCountChange = { [weak self] count in
-            self?.applyRailVisibility(workspaceCount: count)
-        }
+        applyRailVisibility(workspaceCount: WorkspaceContextRegistry.shared.contexts.count)
 
         /// The saved layout is restored before any phase-driven collapse, so the user's widths
         /// are already in the live layout. Uncollapsing then returns the pane to the size
@@ -240,18 +234,21 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             .sink { [weak self] _ in
                 self?.handleConnectionStatusChange()
             }
-        railVisibilityCancellable = AppEvents.shared.workspaceRailVisibilityChanged
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.applyRailVisibility(workspaceCount: WorkspaceRailStore.entries.count)
-            }
+        railVisibilityCancellable = Publishers.Merge(
+            AppEvents.shared.workspaceRailVisibilityChanged,
+            AppEvents.shared.workspaceTabsChanged
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in
+            self?.applyRailVisibility(workspaceCount: WorkspaceContextRegistry.shared.contexts.count)
+        }
         connectionUpdatedCancellable = AppEvents.shared.connectionUpdated
             .receive(on: RunLoop.main)
             .sink { [weak self] changedId in
                 self?.handleConnectionRecordChange(changedId)
             }
         handleConnectionStatusChange()
-        applyRailVisibility(workspaceCount: WorkspaceRailStore.entries.count)
+        applyRailVisibility(workspaceCount: WorkspaceContextRegistry.shared.contexts.count)
     }
 
     private func removeObservers() {
@@ -619,7 +616,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     var canToggleWorkspaceRail: Bool {
-        WorkspaceRailStore.entries.count > 1
+        WorkspaceContextRegistry.shared.contexts.count > 1
     }
 
 
@@ -655,7 +652,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     func activateWorkspace(offsetBy offset: Int) {
-        navigationSidebar?.railController.activateWorkspace(offsetBy: offset)
+        navigationSidebar?.activateWorkspace(offsetBy: offset)
     }
 
     // MARK: - Sidebar

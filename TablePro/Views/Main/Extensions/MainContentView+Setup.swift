@@ -348,7 +348,16 @@ extension MainContentView {
         )
         let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
 
-        let resolvedId = WindowManager.tabbingIdentifier(for: connection.id)
+        let contextKey: WorkspaceContextKey
+        if let payload {
+            contextKey = WorkspaceContextResolver.resolve(payload: payload, connection: connection)
+        } else {
+            contextKey = WorkspaceContextResolver.resolve(
+                connection: connection,
+                session: DatabaseManager.shared.session(for: connection.id)
+            )
+        }
+        let resolvedId = WindowManager.tabbingIdentifier(for: contextKey)
         window.tabbingIdentifier = resolvedId
         window.tabbingMode = .preferred
         coordinator.windowId = windowId
@@ -357,6 +366,10 @@ extension MainContentView {
             window: window,
             connectionId: connection.id,
             windowId: windowId
+        )
+        WorkspaceContextRegistry.shared.register(
+            windowId: windowId,
+            descriptor: WorkspaceContextResolver.descriptor(connection: connection, key: contextKey)
         )
         viewWindow = window
         coordinator.contentWindow = window

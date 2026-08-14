@@ -53,4 +53,33 @@ struct WindowTabGroupingTests {
         #expect(id1 == id2)
     }
 
+    @Test("A context key is not the connection-only fallback")
+    func contextKeyDiffersFromConnectionOnlyFallback() {
+        let key = WorkspaceContextKey(
+            connectionId: UUID(),
+            databaseName: "app",
+            schemaName: "public"
+        )
+
+        #expect(WindowManager.tabbingIdentifier(for: key) == key.tabbingIdentifier)
+        #expect(WindowManager.tabbingIdentifier(for: key) != WindowManager.tabbingIdentifier(for: key.connectionId))
+    }
+
+    @Test("Different schemas of one connection produce different tab groups")
+    func schemasDoNotShareATabGroup() {
+        let connectionId = UUID()
+        let publicKey = WorkspaceContextKey(
+            connectionId: connectionId,
+            databaseName: "app",
+            schemaName: "public"
+        )
+        let auditKey = WorkspaceContextKey(
+            connectionId: connectionId,
+            databaseName: "app",
+            schemaName: "audit"
+        )
+
+        #expect(WindowManager.tabbingIdentifier(for: publicKey) != WindowManager.tabbingIdentifier(for: auditKey))
+    }
+
 }

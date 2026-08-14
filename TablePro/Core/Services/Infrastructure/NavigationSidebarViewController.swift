@@ -15,7 +15,7 @@ import SwiftUI
 /// sidebar it expects, and showing or hiding the rail becomes an ordinary layout change.
 @MainActor
 internal final class NavigationSidebarViewController: NSViewController {
-    internal let railController: WorkspaceRailViewController
+    internal let contextRailHosting: NSHostingController<DatabaseContextRailView>
     internal let objectBrowser: SidebarContainerViewController
 
     private let separator = NSBox()
@@ -24,8 +24,17 @@ internal final class NavigationSidebarViewController: NSViewController {
 
     internal private(set) var isRailVisible = false
 
-    internal init(connectionId: UUID?) {
-        self.railController = WorkspaceRailViewController(connectionId: connectionId)
+    internal static let contextRailWidth: CGFloat = 200
+
+    internal init(connectionId _: UUID?) {
+        self.contextRailHosting = NSHostingController(
+            rootView: DatabaseContextRailView(
+                registry: .shared,
+                activationCoordinator: .shared,
+                closeCoordinator: .shared
+            )
+        )
+        self.contextRailHosting.sizingOptions = []
         self.objectBrowser = SidebarContainerViewController(rootView: AnyView(Color.clear))
         super.init(nibName: nil, bundle: nil)
     }
@@ -38,10 +47,10 @@ internal final class NavigationSidebarViewController: NSViewController {
     override func loadView() {
         view = NSView()
 
-        addChild(railController)
+        addChild(contextRailHosting)
         addChild(objectBrowser)
 
-        let rail = railController.view
+        let rail = contextRailHosting.view
         let browser = objectBrowser.view
         separator.boxType = .separator
 
@@ -92,7 +101,7 @@ internal final class NavigationSidebarViewController: NSViewController {
     /// which one drives the geometry up to AppKit, so the declared duration is not reliably the
     /// one that runs.
     internal func applyRailWidth(animated: Bool, alongside: (() -> Void)? = nil) {
-        let width = isRailVisible ? railController.currentLayout.width : 0
+        let width = isRailVisible ? Self.contextRailWidth : 0
         let separatorWidth: CGFloat = isRailVisible ? 1 : 0
         guard railWidthConstraint.constant != width else {
             alongside?()
@@ -110,5 +119,16 @@ internal final class NavigationSidebarViewController: NSViewController {
             separatorWidthConstraint.animator().constant = separatorWidth
             alongside?()
         }
+    }
+
+    internal func activateWorkspace(offsetBy offset: Int) {
+        let registry = WorkspaceContextRegistry.shared
+        let keys = registry.contexts.map(\.key)
+        guard !keys.isEmpty else { return }
+        let current = registry.selectedKey
+        let index = current.flatMap { keys.firstIndex(of: $0) } ?? 0
+        let count = keys.count
+        let destination = ((index + offset) % count + count) % count
+        WorkspaceContextActivationCoordinator.shared.activate(keys[destination])
     }
 }

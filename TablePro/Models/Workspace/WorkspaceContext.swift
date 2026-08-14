@@ -70,3 +70,46 @@ internal struct WorkspaceContextDescriptor: Identifiable, Equatable {
             .joined(separator: " / ")
     }
 }
+
+@MainActor
+internal enum WorkspaceContextResolver {
+    internal static func resolve(
+        connection: DatabaseConnection,
+        databaseName: String? = nil,
+        schemaName: String? = nil,
+        session: ConnectionSession? = nil
+    ) -> WorkspaceContextKey {
+        WorkspaceContextKey.resolve(
+            connection: connection,
+            databaseName: databaseName,
+            schemaName: schemaName,
+            activeDatabase: session?.browseDatabase,
+            activeSchema: session?.browseSchema,
+            supportsSchemaSwitching: PluginManager.shared.supportsSchemaSwitching(for: connection.type)
+        )
+    }
+
+    internal static func resolve(payload: EditorTabPayload, connection: DatabaseConnection) -> WorkspaceContextKey {
+        resolve(
+            connection: connection,
+            databaseName: payload.databaseName,
+            schemaName: payload.schemaName,
+            session: DatabaseManager.shared.session(for: connection.id)
+        )
+    }
+
+    internal static func connection(for id: UUID) -> DatabaseConnection? {
+        DatabaseManager.shared.activeSessions[id]?.connection
+            ?? ConnectionStorage.shared.loadConnections().first { $0.id == id }
+    }
+
+    internal static func descriptor(connection: DatabaseConnection, key: WorkspaceContextKey) -> WorkspaceContextDescriptor {
+        WorkspaceContextDescriptor(
+            key: key,
+            connectionName: connection.name,
+            databaseType: connection.type,
+            connectionColor: connection.color,
+            isConnected: DatabaseManager.shared.session(for: connection.id)?.isConnected == true
+        )
+    }
+}

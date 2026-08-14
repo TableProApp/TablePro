@@ -20,28 +20,48 @@ internal final class WorkspaceContextActivationCoordinator {
         schemaName: String?,
         initialQuery _: String? = nil
     ) {
-        let key = WorkspaceContextKey.resolve(
+        let key = WorkspaceContextResolver.resolve(
             connection: connection,
             databaseName: databaseName,
             schemaName: schemaName,
-            activeDatabase: nil,
-            activeSchema: nil,
-            supportsSchemaSwitching: true
+            session: DatabaseManager.shared.session(for: connection.id)
         )
         activate(key)
     }
 
     internal func activate(
         _ key: WorkspaceContextKey,
-        preferredWindowId _: UUID? = nil,
+        preferredWindowId: UUID? = nil,
         sourceWindow _: NSWindow? = nil
     ) {
         guard let sequence = registry.beginActivation(for: key) else { return }
-        // Reconnect, switch DB/schema (existing logic)
-        // Activate the context's last-used native tab group
-        // (WindowManager logic for grouping by tabbingIdentifier)
+
+        let window = windowToRaise(for: key, preferredWindowId: preferredWindowId)
+        if let window {
+            if let group = window.tabGroup, group.selectedWindow !== window {
+                group.selectedWindow = window
+            }
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate()
+        }
+
         registry.commitActivation(key, request: sequence)
-        // Bring forward the context's last active window
-        // (native tab group activation)
+    }
+
+    private func windowToRaise(for key: WorkspaceContextKey, preferredWindowId: UUID?) -> NSWindow? {
+        if let preferredWindowId,
+           let preferred = MainContentCoordinator.coordinator(for: preferredWindowId)?.contentWindow {
+            return preferred
+        }
+
+        let registered = registry.windowIds(for: key).compactMap { windowId in
+            MainContentCoordinator.coordinator(for: windowId)?.contentWindow
+        }
+        if let lastFocused = WindowLifecycleMonitor.shared.mostRecentWindow(for: key.connectionId),
+           registered.contains(where: { $0 === lastFocused }) {
+            return lastFocused
+        }
+        return registered.first
+            ?? WindowLifecycleMonitor.shared.mostRecentWindow(for: key.connectionId)
     }
 }

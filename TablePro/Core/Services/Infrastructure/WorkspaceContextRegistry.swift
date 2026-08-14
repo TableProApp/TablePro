@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Observation
 
@@ -16,26 +17,15 @@ internal final class WorkspaceContextRegistry {
     private var windowIdsByKey: [WorkspaceContextKey: [UUID]] = [:]
     private var activationSequence: UInt64 = 0
     private var activationHistory: [WorkspaceContextKey] = []
+    private var preferredOrder: [WorkspaceContextKey] = []
 
     internal init(store: WorkspaceContextSnapshotStoring = WorkspaceContextSnapshotStore()) {
         self.store = store
         let snapshot = store.load()
-        self.contexts = snapshot.orderedKeys.map {
-            WorkspaceContextDescriptor(
-                key: $0,
-                connectionName: "Unknown",
-                databaseType: .mysql,
-                connectionColor: .blue,
-                isConnected: true
-            )
-        }
+        // Saved keys only restore order. Publishing them as descriptors would invent
+        // rail rows with no windows, which violates "only contexts with open tabs".
+        self.preferredOrder = snapshot.orderedKeys
         self.selectedKey = snapshot.selectedKey
-        // Rebuild indexes from loaded state (simplified)
-        for key in contexts.map(\.key) {
-            windowIdsByKey[key, default: []].forEach { id in
-                keyByWindowId[id] = key
-            }
-        }
     }
 
     internal func register(windowId: UUID, descriptor: WorkspaceContextDescriptor) {
@@ -54,7 +44,7 @@ internal final class WorkspaceContextRegistry {
         if let index = contexts.firstIndex(where: { $0.key == descriptor.key }) {
             contexts[index] = descriptor
         } else {
-            contexts.append(descriptor)
+            insertInPreferredOrder(descriptor)
         }
         persist()
     }
@@ -80,8 +70,7 @@ internal final class WorkspaceContextRegistry {
 
     internal func markActive(windowId: UUID) {
         guard let key = keyByWindowId[windowId] else { return }
-        activationHistory.append(key)
-        activationSequence += 1
+        recordActivation(key)
         persist()
     }
 
@@ -107,6 +96,21 @@ internal final class WorkspaceContextRegistry {
         contexts.contains { $0.key == key }
     }
 
+    private func insertInPreferredOrder(_ descriptor: WorkspaceContextDescriptor) {
+        if let preferredIndex = preferredOrder.firstIndex(of: descriptor.key) {
+            let insertAt = contexts.firstIndex { existing in
+                guard let existingIndex = preferredOrder.firstIndex(of: existing.key) else {
+                    return true
+                }
+                return existingIndex > preferredIndex
+            } ?? contexts.endIndex
+            contexts.insert(descriptor, at: insertAt)
+        } else {
+            preferredOrder.append(descriptor.key)
+            contexts.append(descriptor)
+        }
+    }
+
     private func removeContext(_ key: WorkspaceContextKey) {
         contexts.removeAll { $0.key == key }
         if selectedKey == key {
@@ -130,5 +134,6 @@ internal final class WorkspaceContextRegistry {
                 selectedKey: selectedKey
             )
         )
+        AppEvents.shared.workspaceTabsChanged.send()
     }
 }

@@ -175,6 +175,46 @@ struct WorkspaceContextRegistryTests {
 
         #expect(store.snapshot.orderedKeys == [item.key])
     }
+
+    @Test("Snapshot keys are not shown until a window registers")
+    func snapshotDoesNotFabricateRailRows() {
+        let first = contextDescriptor(database: "app", schema: "public")
+        let second = contextDescriptor(database: "app", schema: "audit")
+        let store = InMemoryWorkspaceContextSnapshotStore()
+        store.snapshot = WorkspaceContextSnapshot(
+            orderedKeys: [second.key, first.key],
+            selectedKey: first.key
+        )
+
+        let registry = WorkspaceContextRegistry(store: store)
+
+        #expect(registry.contexts.isEmpty)
+        #expect(registry.selectedKey == first.key)
+
+        registry.register(windowId: UUID(), descriptor: first)
+        registry.register(windowId: UUID(), descriptor: second)
+
+        #expect(registry.contexts.map(\.key) == [second.key, first.key])
+    }
+
+    @Test("Driver capability decides whether schema is part of the key")
+    func resolveUsesDriverSchemaCapability() {
+        let mysql = TestFixtures.makeConnection(database: "app", type: .mysql)
+        let mysqlKey = WorkspaceContextResolver.resolve(
+            connection: mysql,
+            databaseName: "app",
+            schemaName: "ignored"
+        )
+        #expect(mysqlKey.schemaName == nil)
+
+        let postgres = TestFixtures.makeConnection(database: "app", type: .postgresql)
+        let postgresKey = WorkspaceContextResolver.resolve(
+            connection: postgres,
+            databaseName: "app",
+            schemaName: "audit"
+        )
+        #expect(postgresKey.schemaName == "audit")
+    }
 }
 
 @MainActor

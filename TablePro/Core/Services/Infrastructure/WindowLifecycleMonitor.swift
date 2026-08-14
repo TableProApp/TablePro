@@ -59,6 +59,7 @@ internal final class WindowLifecycleMonitor {
                 NotificationCenter.default.removeObserver(observer)
             }
             forgetFocus(windowId: supersededId, connectionId: superseded.connectionId)
+            WorkspaceContextRegistry.shared.unregister(windowId: supersededId)
         }
 
         // Remove any existing entry for this windowId to avoid duplicate observers
@@ -271,6 +272,7 @@ internal final class WindowLifecycleMonitor {
                 NotificationCenter.default.removeObserver(observer)
             }
             forgetFocus(windowId: windowId, connectionId: entry.connectionId)
+            WorkspaceContextRegistry.shared.unregister(windowId: windowId)
         }
     }
 
@@ -278,6 +280,7 @@ internal final class WindowLifecycleMonitor {
         guard let entry = entries[windowId] else { return }
         guard lastFocusedWindowIds[entry.connectionId] != windowId else { return }
         lastFocusedWindowIds[entry.connectionId] = windowId
+        WorkspaceContextRegistry.shared.markActive(windowId: windowId)
         AppEvents.shared.connectionWindowsChanged.send()
     }
 
@@ -305,6 +308,7 @@ internal final class WindowLifecycleMonitor {
         unregisterSourceFiles(for: windowId)
         entries.removeValue(forKey: windowId)
         forgetFocus(windowId: windowId, connectionId: closedConnectionId)
+        WorkspaceContextRegistry.shared.unregister(windowId: windowId)
         AppEvents.shared.connectionWindowsChanged.send()
 
         let hasRemainingWindows = entries.values.contains {
