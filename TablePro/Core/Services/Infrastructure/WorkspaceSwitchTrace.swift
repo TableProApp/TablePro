@@ -31,6 +31,9 @@ internal final class WorkspaceSwitchTrace {
     private let started: ContinuousClock.Instant
     private var stageStarted: ContinuousClock.Instant
     private let label: String
+    /// An `OSSignpostIntervalState` may be ended once. Core Animation gives no guarantee that a
+    /// completion block runs exactly once, so the guarantee is made here instead.
+    private var hasEnded = false
 
     /// The click itself, recorded before anything acts on it. Without this a trace that shows no
     /// switch cannot say whether the switch was slow, never started, or went to another window.
@@ -70,29 +73,32 @@ internal final class WorkspaceSwitchTrace {
 
     /// Ends the synchronous part and hands the rest to the layout pass. The completion block runs
     /// once the transaction the switch dirtied has been committed to the screen.
+    ///
+    /// The block is assigned, not chained onto whatever the transaction already carries.
+    /// `CATransaction.completionBlock()` will hand back a block Core Animation has already run, so
+    /// calling it again ran a previous switch's ending a second time and trapped on an interval
+    /// that was already closed. Replacing is the safe direction here: nothing else in the app sets
+    /// a completion block, and `finish` is idempotent so a repeat call costs nothing either way.
     internal func endAfterDisplay() {
         let synchronous = Self.milliseconds(from: started, to: clock.now)
-        let started = started
-        let clock = clock
-        let label = label
-        let interval = interval
-        /// Chained rather than assigned. `setCompletionBlock` replaces whatever the current
-        /// transaction already carries, and a diagnostic has no business dropping somebody else's
-        /// completion handler.
-        let existing = CATransaction.completionBlock()
         CATransaction.setCompletionBlock {
-            existing?()
             MainActor.assumeIsolated {
-                let total = Self.milliseconds(from: started, to: clock.now)
-                Self.signposter.endInterval("switch", interval)
-                Self.logger.notice(
-                    """
-                    switch end conn=\(label, privacy: .public) \
-                    synchronous=\(synchronous, privacy: .public)ms displayed=\(total, privacy: .public)ms
-                    """
-                )
+                self.finish(synchronous: synchronous)
             }
         }
+    }
+
+    private func finish(synchronous: Int) {
+        guard !hasEnded else { return }
+        hasEnded = true
+        let total = Self.milliseconds(from: started, to: clock.now)
+        Self.signposter.endInterval("switch", interval)
+        Self.logger.notice(
+            """
+            switch end conn=\(self.label, privacy: .public) \
+            synchronous=\(synchronous, privacy: .public)ms displayed=\(total, privacy: .public)ms
+            """
+        )
     }
 
     private static func milliseconds(from: ContinuousClock.Instant, to: ContinuousClock.Instant) -> Int {
