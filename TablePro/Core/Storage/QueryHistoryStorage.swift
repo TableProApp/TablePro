@@ -184,6 +184,7 @@ actor QueryHistoryStorage {
         let historyIndexes = [
             "CREATE INDEX IF NOT EXISTS idx_history_connection ON history(connection_id);",
             "CREATE INDEX IF NOT EXISTS idx_history_executed_at ON history(executed_at DESC);",
+            "CREATE INDEX IF NOT EXISTS idx_history_connection_executed_at ON history(connection_id, executed_at DESC);",
         ]
 
         execute(historyTable)
@@ -407,6 +408,95 @@ actor QueryHistoryStorage {
         return entries
     }
 
+    func fetchInsights(
+        connectionId: UUID,
+        referenceDate: Date = Date(),
+        limit: Int = 5
+    ) -> QueryHistoryInsightSnapshot {
+        guard limit > 0 else { return .empty }
+
+        let referenceTimestamp = referenceDate.timeIntervalSince1970
+        let recentStart = referenceTimestamp - QueryHistoryInsightPolicy.comparisonWindow
+        let previousStart = recentStart - QueryHistoryInsightPolicy.comparisonWindow
+        guard referenceTimestamp.isFinite, recentStart.isFinite, previousStart.isFinite else { return .empty }
+
+        let sql = """
+            SELECT query,
+                   database_name,
+                   COUNT(*),
+                   SUM(CASE WHEN was_successful = 1
+                       AND execution_time BETWEEN 0 AND 1.7976931348623157e308 THEN 1 ELSE 0 END),
+                   AVG(CASE WHEN was_successful = 1
+                       AND execution_time BETWEEN 0 AND 1.7976931348623157e308 THEN execution_time END),
+                   MAX(CASE WHEN was_successful = 1
+                       AND execution_time BETWEEN 0 AND 1.7976931348623157e308 THEN execution_time END),
+                   MAX(executed_at),
+                   SUM(CASE WHEN was_successful = 1
+                       AND execution_time BETWEEN 0 AND 1.7976931348623157e308
+                       AND executed_at >= ? AND executed_at < ? THEN 1 ELSE 0 END),
+                   AVG(CASE WHEN was_successful = 1
+                       AND execution_time BETWEEN 0 AND 1.7976931348623157e308
+                       AND executed_at >= ? AND executed_at < ? THEN execution_time END),
+                   SUM(CASE WHEN was_successful = 1
+                       AND execution_time BETWEEN 0 AND 1.7976931348623157e308
+                       AND executed_at >= ? AND executed_at < ? THEN 1 ELSE 0 END),
+                   AVG(CASE WHEN was_successful = 1
+                       AND execution_time BETWEEN 0 AND 1.7976931348623157e308
+                       AND executed_at >= ? AND executed_at < ? THEN execution_time END)
+            FROM history
+            WHERE connection_id = ?
+              AND executed_at < ?
+              AND length(trim(query, char(9) || char(10) || char(11) || char(12) || char(13) || ' ')) > 0
+            GROUP BY query, database_name;
+            """
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            return .empty
+        }
+        defer { sqlite3_finalize(statement) }
+
+        sqlite3_bind_double(statement, 1, recentStart)
+        sqlite3_bind_double(statement, 2, referenceTimestamp)
+        sqlite3_bind_double(statement, 3, recentStart)
+        sqlite3_bind_double(statement, 4, referenceTimestamp)
+        sqlite3_bind_double(statement, 5, previousStart)
+        sqlite3_bind_double(statement, 6, recentStart)
+        sqlite3_bind_double(statement, 7, previousStart)
+        sqlite3_bind_double(statement, 8, recentStart)
+
+        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 9, connectionId.uuidString, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_double(statement, 10, referenceTimestamp)
+
+        var insights: [QueryHistoryInsight] = []
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
+            if let insight = parseInsight(from: statement, connectionId: connectionId) {
+                insights.append(insight)
+            }
+            stepResult = sqlite3_step(statement)
+        }
+        guard stepResult == SQLITE_DONE else { return .empty }
+
+        let resultLimit = min(limit, QueryHistoryInsightPolicy.maximumResultLimit)
+        let mostRun = insights.sorted(by: frequencySort).prefix(resultLimit)
+        let slowest = insights
+            .filter { $0.successfulExecutionCount > 0 }
+            .sorted(by: latencySort)
+            .prefix(resultLimit)
+        let regressions = insights
+            .filter(isMeaningfulRegression)
+            .sorted(by: regressionSort)
+            .prefix(resultLimit)
+
+        return QueryHistoryInsightSnapshot(
+            mostRun: Array(mostRun),
+            slowest: Array(slowest),
+            regressions: Array(regressions)
+        )
+    }
+
     func deleteHistory(id: UUID) -> Bool {
         let idString = id.uuidString
         let sql = "DELETE FROM history WHERE id = ?;"
@@ -555,5 +645,93 @@ actor QueryHistoryStorage {
             errorMessage: errorMessage,
             parameterValues: parameterValues
         )
+    }
+
+    private func parseInsight(
+        from statement: OpaquePointer?,
+        connectionId: UUID
+    ) -> QueryHistoryInsight? {
+        guard let statement,
+              let query = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
+              let databaseName = sqlite3_column_text(statement, 1).map({ String(cString: $0) })
+        else {
+            return nil
+        }
+
+        let lastExecutedTimestamp = sqlite3_column_double(statement, 6)
+        guard lastExecutedTimestamp.isFinite else { return nil }
+
+        return QueryHistoryInsight(
+            connectionId: connectionId,
+            databaseName: databaseName,
+            query: query,
+            executionCount: Int(sqlite3_column_int64(statement, 2)),
+            successfulExecutionCount: Int(sqlite3_column_int64(statement, 3)),
+            averageExecutionTime: nonnegativeFiniteColumn(statement, index: 4),
+            maximumExecutionTime: nonnegativeFiniteColumn(statement, index: 5),
+            lastExecutedAt: Date(timeIntervalSince1970: lastExecutedTimestamp),
+            recentExecutionCount: Int(sqlite3_column_int64(statement, 7)),
+            recentAverageExecutionTime: nonnegativeFiniteColumn(statement, index: 8),
+            previousExecutionCount: Int(sqlite3_column_int64(statement, 9)),
+            previousAverageExecutionTime: nonnegativeFiniteColumn(statement, index: 10)
+        )
+    }
+
+    private func nonnegativeFiniteColumn(_ statement: OpaquePointer, index: Int32) -> TimeInterval {
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL else { return 0 }
+        let value = sqlite3_column_double(statement, index)
+        return value.isFinite && value >= 0 ? value : 0
+    }
+
+    private func frequencySort(_ lhs: QueryHistoryInsight, _ rhs: QueryHistoryInsight) -> Bool {
+        if lhs.executionCount != rhs.executionCount {
+            return lhs.executionCount > rhs.executionCount
+        }
+        if lhs.lastExecutedAt != rhs.lastExecutedAt {
+            return lhs.lastExecutedAt > rhs.lastExecutedAt
+        }
+        return insightTieBreak(lhs, rhs)
+    }
+
+    private func latencySort(_ lhs: QueryHistoryInsight, _ rhs: QueryHistoryInsight) -> Bool {
+        if lhs.averageExecutionTime != rhs.averageExecutionTime {
+            return lhs.averageExecutionTime > rhs.averageExecutionTime
+        }
+        if lhs.successfulExecutionCount != rhs.successfulExecutionCount {
+            return lhs.successfulExecutionCount > rhs.successfulExecutionCount
+        }
+        return insightTieBreak(lhs, rhs)
+    }
+
+    private func regressionSort(_ lhs: QueryHistoryInsight, _ rhs: QueryHistoryInsight) -> Bool {
+        if lhs.slowdownRatio != rhs.slowdownRatio {
+            return lhs.slowdownRatio > rhs.slowdownRatio
+        }
+        let lhsIncrease = lhs.recentAverageExecutionTime - lhs.previousAverageExecutionTime
+        let rhsIncrease = rhs.recentAverageExecutionTime - rhs.previousAverageExecutionTime
+        if lhsIncrease != rhsIncrease {
+            return lhsIncrease > rhsIncrease
+        }
+        return insightTieBreak(lhs, rhs)
+    }
+
+    private func insightTieBreak(_ lhs: QueryHistoryInsight, _ rhs: QueryHistoryInsight) -> Bool {
+        if lhs.databaseName != rhs.databaseName {
+            return lhs.databaseName < rhs.databaseName
+        }
+        return lhs.query < rhs.query
+    }
+
+    private func isMeaningfulRegression(_ insight: QueryHistoryInsight) -> Bool {
+        guard insight.recentExecutionCount >= QueryHistoryInsightPolicy.minimumRegressionSamples,
+              insight.previousExecutionCount >= QueryHistoryInsightPolicy.minimumRegressionSamples,
+              insight.previousAverageExecutionTime > 0,
+              insight.slowdownRatio >= QueryHistoryInsightPolicy.minimumSlowdownRatio
+        else {
+            return false
+        }
+
+        return insight.recentAverageExecutionTime - insight.previousAverageExecutionTime
+            >= QueryHistoryInsightPolicy.minimumSlowdownDuration
     }
 }

@@ -132,6 +132,7 @@ struct LicenseTierTests {
         #expect(ProFeature.encryptedExport.requiredTier == .starter)
         #expect(ProFeature.envVarReferences.requiredTier == .starter)
         #expect(ProFeature.linkedFolders.requiredTier == .starter)
+        #expect(ProFeature.queryHistoryInsights.requiredTier == .starter)
         #expect(ProFeature.teamCatalog.requiredTier == .team)
     }
 }

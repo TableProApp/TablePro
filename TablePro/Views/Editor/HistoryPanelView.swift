@@ -16,6 +16,7 @@ struct HistoryPanelView: View {
     let connectionId: UUID
     // MARK: - State
 
+    @State private var mode: HistoryPanelMode = .history
     @State private var selectedEntryID: UUID?
     @State private var searchText = ""
     @State private var dateFilter: UIDateFilter = .all
@@ -39,12 +40,25 @@ struct HistoryPanelView: View {
     // MARK: - Body
 
     var body: some View {
-        HSplitView {
-            historyList
-                .frame(minWidth: 200, idealWidth: 250)
+        VStack(spacing: 0) {
+            Picker(String(localized: "History View"), selection: $mode) {
+                Text("History").tag(HistoryPanelMode.history)
+                Text("Insights").tag(HistoryPanelMode.insights)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 220)
+            .padding(8)
+            .accessibilityIdentifier("history-panel-mode-picker")
 
-            queryPreview
-                .frame(minWidth: 300)
+            Divider()
+
+            switch mode {
+            case .history:
+                historyContent
+            case .insights:
+                QueryHistoryInsightsView(connectionId: connectionId)
+            }
         }
         .onAppear {
             restoreFilterState()
@@ -61,6 +75,23 @@ struct HistoryPanelView: View {
                 initialQuery: item.query,
                 folders: []
             )
+        }
+    }
+}
+
+private enum HistoryPanelMode: Hashable {
+    case history
+    case insights
+}
+
+private extension HistoryPanelView {
+    var historyContent: some View {
+        HSplitView {
+            historyList
+                .frame(minWidth: 200, idealWidth: 250)
+
+            queryPreview
+                .frame(minWidth: 300)
         }
     }
 }

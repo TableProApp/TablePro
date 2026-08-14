@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - PostgreSQL array columns of a simple type, including arrays of an enum, get a list editor in the data grid. One row per element, with reordering, add and remove, and NULL per element. An empty array and a NULL column stay separate values. Enum arrays pick from the labels the type declares. Arrays of `jsonb`, `bytea` or composite types, and multi-dimensional values, keep the plain text editor.
+- Query History Insights for Starter licenses, with most-run, slowest and week-over-week regression views for the current connection. (#2107)
 
 ### Fixed
 

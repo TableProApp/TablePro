@@ -107,6 +107,18 @@ final class QueryHistoryManager {
         return await storage.fetchHistory(searchText: text)
     }
 
+    func fetchInsights(
+        connectionId: UUID,
+        referenceDate: Date = Date(),
+        limit: Int = 5
+    ) async -> QueryHistoryInsightSnapshot {
+        await storage.fetchInsights(
+            connectionId: connectionId,
+            referenceDate: referenceDate,
+            limit: limit
+        )
+    }
+
     func deleteHistory(id: UUID) async -> Bool {
         let success = await storage.deleteHistory(id: id)
         if success {

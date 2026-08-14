@@ -13,6 +13,7 @@ internal enum ProFeature: String, CaseIterable {
     case encryptedExport
     case envVarReferences
     case linkedFolders
+    case queryHistoryInsights
     case teamCatalog
     case teamLibrary
 
@@ -26,6 +27,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Environment Variables")
         case .linkedFolders:
             return String(localized: "Linked Folders")
+        case .queryHistoryInsights:
+            return String(localized: "Query History Insights")
         case .teamCatalog:
             return String(localized: "Team Catalog")
         case .teamLibrary:
@@ -43,6 +46,8 @@ internal enum ProFeature: String, CaseIterable {
             return "dollarsign.square"
         case .linkedFolders:
             return "folder.badge.gearshape"
+        case .queryHistoryInsights:
+            return "chart.line.uptrend.xyaxis"
         case .teamCatalog:
             return "person.2.fill"
         case .teamLibrary:
@@ -60,6 +65,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Use environment variables in connection fields.")
         case .linkedFolders:
             return String(localized: "Watch shared folders for connection files.")
+        case .queryHistoryInsights:
+            return String(localized: "See your most-run, slowest, and regressing queries on this connection.")
         case .teamCatalog:
             return String(localized: "Publish connections to a shared folder your team reads from. Passwords are never included.")
         case .teamLibrary:
@@ -70,7 +77,7 @@ internal enum ProFeature: String, CaseIterable {
     /// The lowest license tier that unlocks this feature.
     var requiredTier: LicenseTier {
         switch self {
-        case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders:
+        case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders, .queryHistoryInsights:
             return .starter
         case .teamCatalog, .teamLibrary:
             return .team

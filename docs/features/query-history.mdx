@@ -20,6 +20,20 @@ Narrow the list with the date picker (Today, This Week, This Month, All Time) or
 
 Recent queries also appear in the [Quick Switcher](/features/quick-switcher).
 
+## Insights
+
+Choose **Insights** at the top of the panel to review query activity for the current connection. This Starter feature shows:
+
+<Frame caption="Query History Insights with frequent, slow, and regressed queries">
+  <img src="/images/query-history-insights.png" alt="Query History Insights panel" />
+</Frame>
+
+- **Most Run**: queries with the highest execution count.
+- **Slowest**: queries with the highest average successful execution time.
+- **Slower Than Last Week**: queries whose average time rose by at least 25% and 50 ms, with at least three successful runs in each seven-day period.
+
+Insights are calculated from the local history database. Query text and timing data never leave the Mac. Failed runs count toward **Most Run**, but are excluded from latency calculations. Select an insight to inspect its SQL, copy it, or load it into the current editor.
+
 ## Working With Entries
 
 | Action | How |
