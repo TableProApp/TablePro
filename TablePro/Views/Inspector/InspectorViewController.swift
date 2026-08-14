@@ -451,9 +451,6 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         )
         mode.selectedSegment = 0
         mode.setAccessibilityLabel(String(localized: "Split mode"))
-        if #available(macOS 27.0, *) {
-            mode.role = .valueSelection
-        }
         let stack = accessoryStack(with: [field, mode])
         alert.accessoryView = stack
         alert.window.initialFirstResponder = field
