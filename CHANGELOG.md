@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Database context rail: a permanent vertical rail at the left of the editor workspace that represents each open `(connection, database, schema)` context. Native macOS tab groups are now keyed by the full context, ensuring the top tab bar always shows tabs from exactly one context. Only contexts with open tabs are shown. (#2026-08-04-database-context-rail)
 - PostgreSQL array columns of a simple type, including arrays of an enum, get a list editor in the data grid. One row per element, with reordering, add and remove, and NULL per element. An empty array and a NULL column stay separate values. Enum arrays pick from the labels the type declares. Arrays of `jsonb`, `bytea` or composite types, and multi-dimensional values, keep the plain text editor.
 
 ### Fixed

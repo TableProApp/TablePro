@@ -168,3 +168,4 @@ Libs/ios/
 .analysis/
 .docs/
 /plans/reports
+.worktrees/

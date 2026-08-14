@@ -143,6 +143,10 @@ Pings active connections every 30 seconds. Auto-reconnects with exponential back
 
 The central coordinator for the main window. It is split across extension files in `Views/Main/Extensions/` (`MainContentCoordinator+Alerts`, `+Filtering`, `+Pagination`, and so on). New coordinator functionality goes in a new extension file, not the main file.
 
+### Database Context Rail
+
+Each open `(connection, database, schema)` tuple is a workspace context. Native window tabs group by that key, so the top tab bar never mixes environments. See [Database Context Rail](/development/database-context-rail).
+
 ### Autocomplete Engine
 
 ```mermaid

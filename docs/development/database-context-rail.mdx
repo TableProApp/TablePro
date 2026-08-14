@@ -1,0 +1,232 @@
+---
+title: Database Context Rail
+description: How workspace contexts isolate native tab groups by connection, database, and schema
+---
+
+## Status
+
+Approved on 2026-08-04.
+
+## Context
+
+TablePro represents each editor tab as a native macOS window tab. The optional
+`groupAllConnectionTabs` setting can put tabs from different connections in the same native tab
+group. When similarly named tables from test and production connections are open together, the
+top tab bar does not mark which database a tab belongs to. Accidental operations on the wrong
+environment become easier.
+
+The table-browser sidebar already shows and hides independently. This design leaves that alone.
+
+## Goals
+
+- Add a permanent vertical rail at the far left of the editor workspace.
+- Represent each open `(connection, database, schema)` context as one rail item.
+- Keep multiple connections in one workspace. Use the connection color to tell them apart.
+- Make the native top tab bar contain tabs from exactly one database context.
+- Preserve native macOS tab behavior, unsaved-change protection, query state, restoration, and
+  keyboard shortcuts.
+- Show only contexts that currently contain open tabs.
+
+## Non-goals
+
+- Reimplement the existing table-browser sidebar toggle.
+- Replace native macOS window tabs with a custom top tab bar.
+- Display every database and schema available on connected servers in the rail.
+- Add rail-item drag reordering in the initial implementation.
+- Infer context changes by parsing arbitrary SQL such as `USE ...`. Context changes come from
+  TablePro's existing database and schema navigation actions.
+
+## Chosen approach
+
+Each database context owns a stable native macOS tab group. A shared workspace registry shows
+those groups as vertical rail items and activates the selected group in place. Inactive groups stay
+alive and hidden. Switching contexts does not rebuild editors or discard results.
+
+The app still uses one native window per editor tab. Building a custom top tab bar would mean
+rewriting query handling, persistence, focus, and close lifecycle. Detaching and reattaching
+windows on every switch would make native tab order and focus fragile.
+
+## Architecture
+
+### `WorkspaceContextKey`
+
+`WorkspaceContextKey` is a `Hashable` and `Codable` value with:
+
+- `connectionId`
+- normalized `databaseName`
+- normalized `schemaName`
+
+For engines without a distinct schema-switching concept, `schemaName` is normalized to `nil` so the
+same database cannot be registered twice. PostgreSQL-like engines use the full
+`(connection, database, schema)` tuple. MySQL-like engines use `(connection, database)`.
+
+Empty database values fall back to the connection's configured or active database before a window
+is grouped. One resolver produces the key for registration, routing, restoration, and native
+tab identifiers, so those paths cannot disagree.
+
+### `WorkspaceContextRegistry`
+
+The main-actor observable registry owns only workspace navigation state:
+
+- open context order
+- selected context key
+- display metadata derived from the connection: name, database type icon, and color
+- the last active native window tab for each context
+- the latest activation request sequence
+
+It deduplicates contexts by `WorkspaceContextKey`. It does not execute queries, switch drivers, or
+own editor data.
+
+### `DatabaseContextRailView`
+
+The SwiftUI rail view renders registry state and forwards select and close actions. It does not
+mutate database sessions or close windows itself.
+
+`MainSplitViewController` gains a fixed-width, non-collapsible rail split item before the existing
+sidebar split item. The table-browser sidebar remains the native sidebar item. Its toggle, menu
+command, keyboard shortcut, sizing, and persistence stay independent of the rail.
+
+### Workspace activation coordinator
+
+The activation coordinator connects registry intent to existing database and window services. It:
+
+1. records a monotonically increasing activation sequence;
+2. reconnects the target connection when necessary;
+3. switches the target connection's database and then schema;
+4. ignores completion from an activation that is no longer the latest request;
+5. activates the context's last-used native tab group only after the context switch succeeds;
+6. records the selected context and last active window.
+
+The latest-request check exists because a slow connection or schema switch must not override a
+newer user selection and expose the wrong environment.
+
+### Native tab grouping
+
+`WindowManager` resolves a context key before making an editor window visible. The native
+`tabbingIdentifier` comes from that complete key, not from only the connection or the
+legacy group-all setting.
+
+Windows with identical keys join the same native tab group. Windows with different connection,
+database, or schema values never join. The native top tab bar therefore shows one context. The
+app does not filter private AppKit tab state.
+
+When the rail activates another context, the target group takes the current workspace frame before
+coming forward. The previous group becomes inactive but stays alive. The user still sees one
+workspace. Native window-tab lifecycle behavior is unchanged.
+
+## Rail presentation
+
+The rail is always visible. Each item shows a database-type icon and a compact database or schema
+label. The connection's existing display color is applied to the icon, label, or leading selection
+marker. The selected item also has a standard selection background so state is not communicated by
+color alone.
+
+A tooltip and accessibility label expose the full `connection / database / schema` path. Identically
+named contexts stay distinguishable without turning the rail into a second database tree.
+Disconnected contexts keep their item and show a disconnected status treatment.
+
+Items are appended on first use and keep a stable order. Only contexts with open editor tabs appear.
+
+## Interaction and routing
+
+### Creating or selecting a context
+
+Existing database and schema navigation actions become context navigation actions:
+
+- Switching database or schema creates or activates the target context.
+- The source editor tab remains bound to its original context.
+- An existing target context restores its last active top tab.
+- A new target context receives an empty query tab bound to the full target context.
+- Opening a table, favorite, ER diagram, dashboard, users-and-roles view, SQL file, deep link, or MCP
+  request routes the new native tab to the context specified by its payload.
+- A new empty query inherits the currently selected rail context.
+- Switching connections activates that connection's last-used context, falling back to its default
+  database and schema when necessary.
+
+Connection-scoped content without a more specific container is attached to the active context for
+that connection. There is no separate connection-only rail level.
+
+### Selecting a rail item
+
+Selecting a rail item does not mutate or move existing editor tabs. After the target database and
+schema are active, the coordinator brings forward the context's last active native window tab. The
+top bar therefore changes as an entire group.
+
+Rapid selections are coalesced by activation sequence. A stale async completion performs
+no window activation and no selected-context update.
+
+### Closing tabs and contexts
+
+Closing one top tab continues through the existing native-tab close pipeline.
+
+Closing a rail item requests a batch close of every top tab in that context. Existing safeguards for
+unsaved SQL, pending data-grid changes, and running queries are reused. If the user cancels any
+required confirmation, the context and all its tabs remain registered. After the last tab closes,
+the rail removes the context and activates the most recently used remaining context.
+
+Closing a context does not disconnect its connection while another context for that connection is
+open. Existing session cleanup runs only after the connection has no remaining editor windows.
+
+## Persistence and restoration
+
+Persisted tabs already carry connection, database, and schema metadata. Restoration groups those
+tabs by `WorkspaceContextKey` and recreates their stable native tab groups.
+
+A lightweight workspace snapshot persists:
+
+- ordered open context keys
+- the last selected context key
+
+During restoration, missing connections and contexts with no restorable tabs are ignored. Tabs with
+legacy missing schema data use the driver's normal schema fallback. No database migration is
+required.
+
+The `groupAllConnectionTabs` setting is removed from Settings and no longer affects grouping. Its
+legacy serialized value may be ignored during settings decoding. The context rail already allows
+multiple connections in one workspace while keeping their top tab groups separate.
+
+## Error handling
+
+- A target context is not shown until reconnection and database/schema activation succeed.
+- On failure, the current context stays visible and the existing connection error UI reports the
+  failure.
+- A disconnected context remains selectable and retries the connection when chosen.
+- A context whose saved connection no longer exists is dropped during restoration.
+- Closing a connection removes its contexts only after existing close guards complete.
+- Context lookup never falls back to another connection merely because database or schema names
+  match.
+
+## Testing
+
+### Pure logic tests
+
+- Equal connection/database/schema values produce equal context keys and identifiers.
+- Changing any relevant component produces a distinct group.
+- Drivers without independent schemas normalize schema to `nil`.
+- Registry insertion deduplicates keys and preserves first-open order.
+- Removing a context selects the most recently used remaining context.
+- A stale activation sequence cannot replace the latest selection.
+
+### Coordinator and routing tests
+
+- A new query inherits the active full context.
+- Switching database or schema creates or reuses a rail context without rebinding the source tab.
+- Opening a table in another context routes to the correct native group.
+- Tabs from different connections may coexist in the registry but never share a native group.
+- Rail close uses the existing batch-close guard and cancellation leaves the context intact.
+- Restoration groups persisted tabs by full context and restores the selected context.
+- Connection cleanup waits until all contexts for that connection are closed.
+
+### UI and regression tests
+
+- Open same-named tables from test and production connections, verify distinct colored rail items,
+  and verify that selecting either item exposes only that context's top tabs.
+- Toggle the existing table-browser sidebar and verify the context rail remains visible.
+- Verify native previous/next tab shortcuts navigate only within the selected context.
+- Verify tooltips and accessibility labels include connection, database, and schema names.
+
+## Acceptance invariant
+
+At every user-visible point, every native top tab in the selected group must resolve to exactly the
+same `WorkspaceContextKey`. Different connections, databases, or schemas must never be mixed in the
+same top tab bar.

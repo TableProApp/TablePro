@@ -208,6 +208,7 @@
               "development/overview",
               "development/setup",
               "development/architecture",
+              "development/database-context-rail",
               "development/building",
               "development/code-style",
               "development/plugin-development",
