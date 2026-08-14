@@ -91,7 +91,7 @@ internal struct JsonRowConverter {
             return formatBoolean(value)
         case .json:
             return formatJson(value)
-        case .blob, .text, .date, .timestamp, .datetime, .enumType, .set, .spatial:
+        case .blob, .text, .date, .timestamp, .datetime, .enumType, .set, .spatial, .array:
             return quotedEscaped(value)
         }
     }

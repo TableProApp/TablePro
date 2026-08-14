@@ -13,6 +13,14 @@ struct ColumnTypeClassifier {
     func classify(rawTypeName: String) -> ColumnType {
         let stripped = stripWrappers(rawTypeName)
         let (base, params) = extractBaseAndParams(stripped)
+
+        if base.hasSuffix("[]") {
+            let elementBase = String(base.dropLast(2))
+            guard !elementBase.isEmpty else { return .text(rawType: rawTypeName) }
+            let elementRaw = params.map { "\(elementBase)(\($0))" } ?? elementBase
+            return .array(rawType: rawTypeName, element: classify(rawTypeName: elementRaw))
+        }
+
         let upper = base.uppercased()
 
         // MySQL convention: TINYINT(1) means boolean

@@ -245,6 +245,54 @@ extension TableViewCoordinator {
         }
     }
 
+    func showArrayEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+
+        let typedValue = cellTypedValue(at: row, column: columnIndex)
+        let elements: [PostgresArrayElement]?
+        if typedValue.isNull {
+            elements = nil
+        } else {
+            guard let parsed = PostgresArrayLiteralCodec.parse(typedValue.asText ?? "") else {
+                beginCellEdit(row: row, tableColumnIndex: column)
+                return
+            }
+            elements = parsed
+        }
+
+        let allowedValues = tableRows.columnEnumValues[columnName] ?? []
+        let isNullable = tableRows.columnNullable[columnName] ?? true
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+
+        activeArrayEditorPopover = PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            behavior: .applicationDefined
+        ) { [weak self] dismiss in
+            ArrayValueEditorView(
+                initialElements: elements,
+                allowedValues: allowedValues,
+                isNullable: isNullable,
+                onCommit: { newValue in
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                },
+                onDismiss: {
+                    dismiss()
+                    self?.activeArrayEditorPopover = nil
+                }
+            )
+        }
+    }
+
+    func dismissActiveArrayEditorPopover() {
+        guard let popover = activeArrayEditorPopover else { return }
+        activeArrayEditorPopover = nil
+        popover.close()
+    }
+
     func showDropdownMenu(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
         let tableRows = tableRowsProvider()

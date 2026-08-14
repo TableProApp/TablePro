@@ -141,6 +141,10 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection?.setPostgisOidMap(map)
     }
 
+    func setEnumOidMap(_ map: [UInt32: String]) {
+        libpqConnection?.setEnumOidMap(map)
+    }
+
     func applyQueryTimeout(_ seconds: Int) async throws {
         let ms = seconds * 1_000
         _ = try await execute(query: "SET statement_timeout = '\(ms)'")

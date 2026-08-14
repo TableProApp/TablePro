@@ -1071,9 +1071,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         let schemes = driverType.urlSchemes
         let primaryScheme = schemes.first ?? driverType.databaseTypeId.lowercased()
 
-        // Preserve supportsColumnReorder from existing built-in snapshot.
-        // Cannot read from driverType directly — stale plugins without the
-        // property crash with EXC_BAD_INSTRUCTION (missing witness table entry).
+        // A capability with no DriverPlugin static is curated per type, so it has to be carried
+        // over from the built-in snapshot or plugin registration silently resets it to the
+        // struct default. Cannot read these from driverType directly: stale plugins without
+        // the property crash with EXC_BAD_INSTRUCTION (missing witness table entry).
         let existingSnapshot = snapshot(forTypeId: driverType.databaseTypeId)
 
         return PluginMetadataSnapshot(
@@ -1123,7 +1124,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
                 supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
                 supportsCloudflareTunnel: driverType.supportsSSH,
-                supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false
+                supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,
+                supportsConnectionPooling: existingSnapshot?.capabilities.supportsConnectionPooling ?? true,
+                authenticationIsDatabaseScoped: existingSnapshot?.capabilities
+                    .authenticationIsDatabaseScoped ?? false
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

@@ -51,6 +51,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         core.onPostConnect = { [weak self] in
             await self?.probeCatalogPresence()
             await self?.probePostgisOids()
+            await self?.probeEnumOids()
         }
         try await core.connect()
     }

@@ -146,10 +146,13 @@ extension DatabaseManager {
         return [driver(for: connectionId)].compactMap { $0 }
     }
 
-    /// A pooled connection is keyed by database, so one that rewrites the connection's
-    /// database field to reach it would authenticate as a different identity, and one
-    /// whose database comes from a connection field rather than the database field would
-    /// silently serve the wrong database entirely.
+    /// Pooling assumes a second connection to the same definition reaches the same database.
+    /// Three engines break that assumption. One that rewrites the connection's database field
+    /// to reach the pooled database would authenticate as a different identity. One whose
+    /// database comes from a connection field rather than the database field would silently
+    /// serve the wrong database entirely. And one whose database lives inside the driver
+    /// instance, rather than on a server it reconnects to, hands the pool a different database
+    /// altogether: `supportsConnectionPooling` is how those opt out.
     private func canPool(_ session: ConnectionSession) -> Bool {
         guard session.connection.type.supportsConnectionPooling else { return false }
         let actions = PluginMetadataRegistry.shared.snapshot(

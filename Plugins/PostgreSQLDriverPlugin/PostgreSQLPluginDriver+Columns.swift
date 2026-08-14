@@ -10,7 +10,7 @@ extension PostgreSQLPluginDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let safeSchema = escapeStringLiteral(schema ?? core.currentSchema)
         let safeTable = escapeStringLiteral(table)
-        let enumMap = try await fetchEnumLabelMap(schema: safeSchema)
+        let catalog = try await fetchTypeCatalog()
         let projections = columnProjections()
         let query = PostgreSQLSchemaQueries.columnsQuery(
             schemaLiteral: safeSchema,
@@ -21,13 +21,13 @@ extension PostgreSQLPluginDriver {
         )
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
-            mapPgColumnRow(row, tableNameOffset: 0, enumLabelsByType: enumMap)
+            mapPgColumnRow(row, tableNameOffset: 0, catalog: catalog)
         }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let safeSchema = escapeStringLiteral(schema ?? core.currentSchema)
-        let enumMap = try await fetchEnumLabelMap(schema: safeSchema)
+        let catalog = try await fetchTypeCatalog()
         let projections = columnProjections()
         let query = PostgreSQLSchemaQueries.columnsQuery(
             schemaLiteral: safeSchema,
@@ -40,7 +40,7 @@ extension PostgreSQLPluginDriver {
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard row.count >= 5, let tableName = row[0].asText else { continue }
-            if let column = mapPgColumnRow(row, tableNameOffset: 1, enumLabelsByType: enumMap) {
+            if let column = mapPgColumnRow(row, tableNameOffset: 1, catalog: catalog) {
                 allColumns[tableName, default: []].append(column)
             }
         }
@@ -60,29 +60,43 @@ extension PostgreSQLPluginDriver {
         return (identity, generated, attributeJoin)
     }
 
-    fileprivate func fetchEnumLabelMap(schema: String) async throws -> [String: [String]] {
-        let query = """
-            SELECT t.typname, e.enumlabel
-            FROM pg_catalog.pg_type t
-            JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
-            JOIN pg_catalog.pg_enum e ON e.enumtypid = t.oid
-            WHERE n.nspname = '\(schema)'
-            ORDER BY t.typname, e.enumsortorder
-            """
-        let result = try await execute(query: query)
+    fileprivate func fetchEnumLabelMap() async throws -> [String: [String]] {
+        let result = try await execute(query: PostgreSQLSchemaQueries.enumLabelQuery)
         var map: [String: [String]] = [:]
         for row in result.rows {
-            guard let typeName = row[safe: 0]?.asText,
-                  let label = row[safe: 1]?.asText else { continue }
-            map[typeName, default: []].append(label)
+            guard let schemaName = row[safe: 0]?.asText,
+                  let typeName = row[safe: 1]?.asText,
+                  let label = row[safe: 2]?.asText else { continue }
+            let key = PostgresColumnTypeResolver.qualifiedName(schema: schemaName, name: typeName)
+            map[key, default: []].append(label)
         }
         return map
+    }
+
+    fileprivate func fetchArrayTypeMap() async throws -> [String: PostgresArrayTypeInfo] {
+        let result = try await execute(query: PostgreSQLSchemaQueries.arrayTypeQuery)
+        var map: [String: PostgresArrayTypeInfo] = [:]
+        for row in result.rows {
+            guard let schemaName = row[safe: 0]?.asText,
+                  let arrayTypeName = row[safe: 1]?.asText,
+                  let elementTypeName = row[safe: 2]?.asText,
+                  let elementKind = row[safe: 3]?.asText?.first else { continue }
+            let key = PostgresColumnTypeResolver.qualifiedName(schema: schemaName, name: arrayTypeName)
+            map[key] = PostgresArrayTypeInfo(elementTypeName: elementTypeName, elementTypeKind: elementKind)
+        }
+        return map
+    }
+
+    fileprivate func fetchTypeCatalog() async throws -> PostgresTypeCatalog {
+        let enumLabels = try await fetchEnumLabelMap()
+        let arrayTypes = try await fetchArrayTypeMap()
+        return PostgresTypeCatalog(enumLabels: enumLabels, arrayTypes: arrayTypes)
     }
 
     fileprivate func mapPgColumnRow(
         _ row: [PluginCellValue],
         tableNameOffset: Int,
-        enumLabelsByType: [String: [String]]
+        catalog: PostgresTypeCatalog
     ) -> PluginColumnInfo? {
         let nameIdx = tableNameOffset
         let typeIdx = tableNameOffset + 1
@@ -94,6 +108,7 @@ extension PostgreSQLPluginDriver {
         let pkIdx = tableNameOffset + 7
         let identityIdx = tableNameOffset + 8
         let generatedIdx = tableNameOffset + 9
+        let udtSchemaIdx = tableNameOffset + 10
 
         guard row.count > typeIdx,
               let name = row[nameIdx].asText,
@@ -101,20 +116,16 @@ extension PostgreSQLPluginDriver {
         else { return nil }
 
         let udtName = row.count > udtIdx ? row[udtIdx].asText : nil
-        let allowedValues: [String]?
-        let dataType: String
-        if rawDataType.uppercased() == "USER-DEFINED", let udt = udtName {
-            if let labels = enumLabelsByType[udt] {
-                allowedValues = labels
-                dataType = "ENUM"
-            } else {
-                allowedValues = nil
-                dataType = "ENUM(\(udt))"
-            }
-        } else {
-            allowedValues = nil
-            dataType = rawDataType.uppercased()
-        }
+        let udtSchema = row.count > udtSchemaIdx ? row[udtSchemaIdx].asText : nil
+        let resolution = PostgresColumnTypeResolver.resolve(
+            rawDataType: rawDataType,
+            udtSchema: udtSchema,
+            udtName: udtName,
+            enumLabelsByQualifiedName: catalog.enumLabels,
+            arrayTypesByQualifiedName: catalog.arrayTypes
+        )
+        let allowedValues = resolution.allowedValues
+        let dataType = resolution.dataType
 
         let isNullable = row.count > nullableIdx && row[nullableIdx].asText == "YES"
         let defaultValue = row.count > defaultIdx ? row[defaultIdx].asText : nil

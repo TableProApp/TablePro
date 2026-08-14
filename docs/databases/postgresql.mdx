@@ -41,7 +41,9 @@ Connect to RDS or Aurora with your AWS identity instead of a static password: se
 
 **Partitioned tables**: A partitioned table is listed once, under its own icon. Its partitions are not listed beside it; expand the table in the sidebar to see them, and expand a partition again if it is subpartitioned. Opening a partition works like opening any other table. Tables that use the older `INHERITS` inheritance are listed normally, since a child there is a table in its own right. Requires PostgreSQL 10 or later, which is where declarative partitioning was added.
 
-**Types**: `jsonb` renders as formatted JSON. `array`, `uuid`, `inet`, `timestamp with time zone`, `interval`, and `bytea` display natively.
+**Types**: `jsonb` renders as formatted JSON. `uuid`, `inet`, `timestamp with time zone`, `interval`, and `bytea` display natively.
+
+**Arrays**: An array column whose elements are a simple type (`text[]`, `integer[]`, `uuid[]`, `timestamptz[]`, and enum arrays such as `mood[]`) opens a list editor, one row per element. Reorder rows with the arrows, add and remove elements, and set any single element to NULL. An empty array and a NULL column are separate values and the editor keeps them apart. Elements of an enum array pick from the labels the type declares, in declaration order; a value the type no longer lists stays selectable and is flagged. Switch to **Edit as Text** for the raw `{...}` literal. Arrays of `jsonb`, `bytea`, or composite types, and multi-dimensional values, keep the plain text editor, since their quoting cannot round-trip through a per-element list.
 
 **EXPLAIN**: `EXPLAIN` and `EXPLAIN ANALYZE` run with `FORMAT JSON` and render as a plan diagram or tree. See [EXPLAIN Visualization](/features/explain-visualization).
 

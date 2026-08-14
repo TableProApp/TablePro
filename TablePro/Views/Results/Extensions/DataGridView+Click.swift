@@ -86,6 +86,8 @@ extension TableViewCoordinator {
 
         if columnType.isBooleanType {
             showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if columnType.supportsElementEditing {
+            showArrayEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if let values = tableRows.columnEnumValues[columnName], !values.isEmpty {
             if columnType.isSetType {
                 showSetPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)

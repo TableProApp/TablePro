@@ -107,6 +107,21 @@ struct ScopedDriverRoutingTests {
         }
     }
 
+    @Test("An embedded engine keeps its metadata reads on the session driver too")
+    func embeddedEnginesNeverPoolMetadataReads() throws {
+        let connection = Self.makeSession(type: .duckdb, browseDatabase: "memory")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(DatabaseType.duckdb.supportsConnectionPooling == false)
+
+        let browsed = Self.scope(connection, database: "memory")
+
+        #expect(
+            DatabaseManager.shared.metadataRoute(for: browsed) == .sessionDriver,
+            "A second duckdb_open is a different database, so a pooled read lists nothing (#2108)"
+        )
+    }
+
     @Test("A metadata read on a poolable engine leaves the shared driver where it is")
     func metadataReadsPoolWhenTheEngineCan() throws {
         let connection = Self.makeSession(type: .mysql, browseDatabase: "inventory")
