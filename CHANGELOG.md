@@ -24,14 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB field suggestions include nested paths. A document with `address: { city }` now suggests `address.city`, not just `address`. (#2095)
 - MongoDB updates accept an options argument, so `db.users.updateOne({...}, {...}, {upsert: true})` upserts instead of ignoring the option. `arrayFilters` and `hint` are passed through too. (#2095)
 - Format Query follows the editor language. On a MongoDB tab it lays out filters and pipelines by nesting depth instead of running the SQL formatter over them. (#2095)
-
-### Added
-
 - The MongoDB editor accepts mongosh value constructors in filters and pipelines, so a value copied from the grid pastes straight into a query. Covers `ObjectId`, `ISODate`, `Date`, the `Number*` family, `Timestamp`, `BinData`, `HexData`, `MinKey`, `MaxKey` and the UUID names. (#2086)
 
 ### Fixed
 
 - A chained method on a MongoDB aggregation no longer goes missing. `db.orders.aggregate([...]).limit(10)` used to drop the limit and return everything the pipeline matched. Chaining a method that a query does not support now reports an error instead of ignoring it. (#2095)
+- Tables you create in an in-memory DuckDB database now show up in the sidebar. The object list was reading a second, empty in-memory database, so a refresh always came back with nothing. (#2108)
+- MongoDB again authenticates against the database the connection names when browsing another database, so credentials that only exist in one database keep working.
 
 ### Changed
 

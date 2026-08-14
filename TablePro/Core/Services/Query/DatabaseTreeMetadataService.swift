@@ -184,10 +184,10 @@ final class DatabaseTreeMetadataService {
         let normalizedSchema = key.schema
         do {
             let list = try await routinesDedup.execute(key: key) { [self] in
-                try await MetadataConnectionPool.shared.withDriver(
-                    scope: DatabaseScope(
-                        connectionId: connectionId, database: database, schema: normalizedSchema
-                    ),
+                try await withDriver(
+                    connectionId: connectionId,
+                    database: database,
+                    schema: normalizedSchema,
                     workload: .bulk
                 ) { driver in
                     let procedures = try await driver.fetchProcedures(schema: normalizedSchema)
@@ -428,17 +428,23 @@ final class DatabaseTreeMetadataService {
     /// Always routes through a scoped driver. Reusing the session driver when the target
     /// looked like the browsed database used to be safe; it is not now that a tab's
     /// execution moves that driver without writing session state.
+    ///
+    /// Every read goes through here rather than reaching for `MetadataConnectionPool`
+    /// directly, because only `metadataRoute` knows which engines cannot answer a metadata
+    /// read on a second connection.
     private func withDriver<T: Sendable>(
         connectionId: UUID,
         database: String?,
+        schema: String? = nil,
+        workload: MetadataConnectionPool.Workload = .interactive,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         guard let scope = DatabaseManager.shared.resolvedScope(
-            database: database, schema: nil, for: connectionId
+            database: database, schema: schema, for: connectionId
         ) else {
             throw DatabaseError.notConnected
         }
-        return try await DatabaseManager.shared.withMetadataDriver(scope: scope, body)
+        return try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: workload, body)
     }
 
     private static func objectsKey(connectionId: UUID, database: String, schema: String?) -> ObjectsKey {
