@@ -617,11 +617,18 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         payloadConnection ?? currentSession?.connection
     }
 
+    /// Keyed by connection for the same reason the detail pane is. A window shows one of several
+    /// connections now, so a pane can be asked to change connection in place, and SwiftUI updates a
+    /// view of unchanged type rather than rebuilding it. `SidebarView` keeps its `SidebarViewModel`
+    /// in `@State`, and a `State` initial value is discarded on an update, so the sidebar went on
+    /// answering from the previous connection's view model: its database type, its capabilities and
+    /// its filter caches, under the new connection's name.
     @ViewBuilder
     private func buildSidebarView() -> some View {
         if currentPane == .content, let currentSession, let sessionState {
             sidebarBody(currentSession: currentSession, sessionState: sessionState)
                 .transaction { $0.animation = nil }
+                .id(currentSession.connection.id)
         } else {
             Color.clear
         }
@@ -692,6 +699,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 connection: currentSession.connection
             )
             .environment(\.commandActions, commandActions)
+            .id(currentSession.connection.id)
         } else {
             Color.clear
         }
