@@ -7,7 +7,14 @@ Click **Explain** in the query editor toolbar, or use **Query > Explain Query** 
 
 Databases with multiple EXPLAIN variants show a dropdown: PostgreSQL offers **EXPLAIN** (estimated plan) and **EXPLAIN ANALYZE** (runs the query and shows actual timing); MySQL and MariaDB offer **EXPLAIN** and **EXPLAIN (JSON)**. Databases with a single variant, like SQLite or DuckDB, show a plain Explain button.
 
-Typing an `EXPLAIN`, `EXPLAIN ANALYZE`, `EXPLAIN FORMAT=JSON`, or MariaDB's `ANALYZE FORMAT=JSON` statement in the editor and running it opens the same plan viewer, as long as the plan comes back in a single column. Multi-column plans like MySQL's plain `EXPLAIN` table stay in the results grid.
+Typing an `EXPLAIN`, `EXPLAIN ANALYZE`, `EXPLAIN FORMAT=JSON`, or MariaDB's `ANALYZE FORMAT=JSON` statement in the editor and running it opens the same plan viewer, as long as the plan comes back in a single column. MySQL's TREE and ANALYZE text output is parsed into the diagram and tree views. Multi-column plans like MySQL's plain `EXPLAIN` table stay in the results grid.
+
+<Frame caption="MySQL EXPLAIN ANALYZE diagram">
+  <img
+    src="/images/mysql-explain-analyze.png"
+    alt="MySQL EXPLAIN ANALYZE rendered as a plan diagram"
+  />
+</Frame>
 
 <Frame caption="EXPLAIN diagram view">
   <img
@@ -52,7 +59,8 @@ Toggle between three views using the segmented control above the results:
 | PostgreSQL | EXPLAIN, EXPLAIN ANALYZE | JSON, parsed into diagram and tree |
 | Redshift | EXPLAIN, EXPLAIN ANALYZE | PostgreSQL's `EXPLAIN (FORMAT JSON)`, read by the PostgreSQL plan parser |
 | CockroachDB | EXPLAIN, EXPLAIN ANALYZE | Text plan, parsed into diagram and tree |
-| MySQL / MariaDB | EXPLAIN, EXPLAIN (JSON) | JSON variant parsed into diagram and tree; plain EXPLAIN stays in the results grid |
+| MySQL | EXPLAIN, EXPLAIN (JSON); typed EXPLAIN FORMAT=TREE or EXPLAIN ANALYZE | JSON and TREE output parsed into diagram and tree; plain EXPLAIN stays in the results grid |
+| MariaDB | EXPLAIN, EXPLAIN (JSON); typed ANALYZE FORMAT=JSON | JSON output parsed into diagram and tree; plain EXPLAIN stays in the results grid |
 | SQLite | Explain | EXPLAIN QUERY PLAN, parsed into diagram and tree |
 | ClickHouse | Plan, Pipeline, AST, Syntax, Estimate | Indented text, parsed into diagram and tree |
 | DuckDB | Explain | Indented text, parsed into diagram and tree |
