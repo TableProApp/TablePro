@@ -60,3 +60,224 @@ struct WorkspaceContextTests {
         #expect(key.databaseName == "payload")
     }
 }
+
+@MainActor
+@Suite("WorkspaceContextRegistry")
+struct WorkspaceContextRegistryTests {
+    @Test("A second window for the same key does not add another rail item")
+    func registerDeduplicatesByKey() {
+        let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
+        let item = contextDescriptor(database: "app", schema: "public")
+        let firstWindow = UUID()
+        let secondWindow = UUID()
+
+        registry.register(windowId: firstWindow, descriptor: item)
+        registry.register(windowId: secondWindow, descriptor: item)
+
+        #expect(registry.contexts.map(\.key) == [item.key])
+        #expect(registry.windowIds(for: item.key) == [firstWindow, secondWindow])
+    }
+
+    @Test("Registering the same key keeps first-open order")
+    func registerPreservesFirstOpenOrder() {
+        let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
+        let first = contextDescriptor(database: "app", schema: "public")
+        let second = contextDescriptor(database: "app", schema: "audit")
+
+        registry.register(windowId: UUID(), descriptor: first)
+        registry.register(windowId: UUID(), descriptor: second)
+        registry.register(windowId: UUID(), descriptor: first)
+
+        #expect(registry.contexts.map(\.key) == [first.key, second.key])
+    }
+
+    @Test("The last window for a key removes that rail item")
+    func unregisterLastWindowRemovesDescriptor() {
+        let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
+        let item = contextDescriptor(database: "app", schema: "public")
+        let firstWindow = UUID()
+        let secondWindow = UUID()
+
+        registry.register(windowId: firstWindow, descriptor: item)
+        registry.register(windowId: secondWindow, descriptor: item)
+        registry.unregister(windowId: firstWindow)
+
+        #expect(registry.contexts.map(\.key) == [item.key])
+        #expect(registry.windowIds(for: item.key) == [secondWindow])
+
+        registry.unregister(windowId: secondWindow)
+
+        #expect(registry.contexts.isEmpty)
+        #expect(registry.windowIds(for: item.key).isEmpty)
+        #expect(!registry.contains(item.key))
+    }
+
+    @Test("unregisterAll removes every window and the rail item")
+    func unregisterAllRemovesContext() {
+        let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
+        let item = contextDescriptor(database: "app", schema: "public")
+        registry.register(windowId: UUID(), descriptor: item)
+        registry.register(windowId: UUID(), descriptor: item)
+
+        registry.unregisterAll(for: item.key)
+
+        #expect(registry.contexts.isEmpty)
+        #expect(registry.windowIds(for: item.key).isEmpty)
+        #expect(!registry.contains(item.key))
+    }
+
+    @Test("Removing the selected context selects the most recently used remainder")
+    func removingSelectedContextSelectsMRU() throws {
+        let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
+        let first = contextDescriptor(database: "app", schema: "public")
+        let second = contextDescriptor(database: "app", schema: "audit")
+        let firstWindow = UUID()
+        let secondWindow = UUID()
+
+        registry.register(windowId: firstWindow, descriptor: first)
+        registry.register(windowId: secondWindow, descriptor: second)
+
+        let firstRequest = try #require(registry.beginActivation(for: first.key))
+        #expect(registry.commitActivation(first.key, request: firstRequest))
+        let secondRequest = try #require(registry.beginActivation(for: second.key))
+        #expect(registry.commitActivation(second.key, request: secondRequest))
+
+        registry.unregister(windowId: secondWindow)
+
+        #expect(registry.selectedKey == first.key)
+        #expect(registry.contexts.map(\.key) == [first.key])
+    }
+
+    @Test("A stale activation request cannot replace the latest selection")
+    func staleActivationIsIgnored() throws {
+        let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
+        let first = contextDescriptor(database: "app", schema: "public")
+        let second = contextDescriptor(database: "app", schema: "audit")
+        registry.register(windowId: UUID(), descriptor: first)
+        registry.register(windowId: UUID(), descriptor: second)
+
+        let stale = try #require(registry.beginActivation(for: first.key))
+        let latest = try #require(registry.beginActivation(for: second.key))
+
+        #expect(!registry.commitActivation(first.key, request: stale))
+        #expect(registry.commitActivation(second.key, request: latest))
+        #expect(registry.selectedKey == second.key)
+    }
+
+    @Test("Persisted order is the unique first-open key list")
+    func persistWritesDeduplicatedKeys() {
+        let store = InMemoryWorkspaceContextSnapshotStore()
+        let registry = WorkspaceContextRegistry(store: store)
+        let item = contextDescriptor(database: "app", schema: "public")
+
+        registry.register(windowId: UUID(), descriptor: item)
+        registry.register(windowId: UUID(), descriptor: item)
+
+        #expect(store.snapshot.orderedKeys == [item.key])
+    }
+}
+
+@MainActor
+@Suite("WorkspaceContextCloseCoordinator")
+struct WorkspaceContextCloseCoordinatorTests {
+    @Test("A cancelled window close leaves the context registered")
+    func cancelLeavesContextIntact() async {
+        let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
+        let item = contextDescriptor(database: "app", schema: "public")
+        let firstWindow = UUID()
+        let secondWindow = UUID()
+        registry.register(windowId: firstWindow, descriptor: item)
+        registry.register(windowId: secondWindow, descriptor: item)
+
+        var closed: [UUID] = []
+        let coordinator = WorkspaceContextCloseCoordinator(
+            registry: registry,
+            closeWindow: { windowId in
+                closed.append(windowId)
+                return windowId != secondWindow
+            },
+            activate: { _ in }
+        )
+
+        let didClose = await coordinator.close(key: item.key, sourceWindow: nil)
+
+        #expect(!didClose)
+        #expect(closed == [firstWindow, secondWindow])
+        #expect(registry.contains(item.key))
+        #expect(registry.windowIds(for: item.key) == [secondWindow])
+    }
+
+    @Test("A successful close unregisters every window and the rail item")
+    func successfulCloseRemovesContext() async throws {
+        let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
+        let first = contextDescriptor(database: "app", schema: "public")
+        let second = contextDescriptor(database: "app", schema: "audit")
+        let firstWindow = UUID()
+        let remainingWindow = UUID()
+        registry.register(windowId: firstWindow, descriptor: first)
+        registry.register(windowId: remainingWindow, descriptor: second)
+
+        let firstRequest = try #require(registry.beginActivation(for: first.key))
+        #expect(registry.commitActivation(first.key, request: firstRequest))
+        let secondRequest = try #require(registry.beginActivation(for: second.key))
+        #expect(registry.commitActivation(second.key, request: secondRequest))
+
+        var activated: [WorkspaceContextKey] = []
+        let coordinator = WorkspaceContextCloseCoordinator(
+            registry: registry,
+            closeWindow: { _ in true },
+            activate: { activated.append($0) }
+        )
+
+        let didClose = await coordinator.close(key: second.key, sourceWindow: nil)
+
+        #expect(didClose)
+        #expect(!registry.contains(second.key))
+        #expect(registry.contains(first.key))
+        #expect(registry.selectedKey == first.key)
+        #expect(activated == [first.key])
+    }
+
+    @Test("Activation and close share the registry they were given")
+    func coordinatorsShareInjectedRegistry() {
+        let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
+        let item = contextDescriptor(database: "app", schema: "public")
+        registry.register(windowId: UUID(), descriptor: item)
+
+        let activation = WorkspaceContextActivationCoordinator(registry: registry)
+        activation.activate(item.key)
+
+        #expect(registry.selectedKey == item.key)
+    }
+}
+
+private func contextDescriptor(database: String, schema: String?) -> WorkspaceContextDescriptor {
+    let connection = TestFixtures.makeConnection(database: database, type: .postgresql)
+    let key = WorkspaceContextKey.resolve(
+        connection: connection,
+        databaseName: database,
+        schemaName: schema,
+        activeDatabase: nil,
+        activeSchema: nil,
+        supportsSchemaSwitching: true
+    )
+    return WorkspaceContextDescriptor(
+        key: key,
+        connectionName: connection.name,
+        databaseType: connection.type,
+        connectionColor: .blue,
+        isConnected: true
+    )
+}
+
+private final class InMemoryWorkspaceContextSnapshotStore: WorkspaceContextSnapshotStoring {
+    var snapshot = WorkspaceContextSnapshot(orderedKeys: [], selectedKey: nil)
+
+    func load() -> WorkspaceContextSnapshot {
+        snapshot
+    }
+
+    func save(_ snapshot: WorkspaceContextSnapshot) {
+        self.snapshot = snapshot
+    }
+}

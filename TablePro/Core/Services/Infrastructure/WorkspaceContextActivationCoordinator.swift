@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 // WorkspaceContextActivationCoordinator.swift — reconnect/database/schema activation and visible-group switching
@@ -6,24 +7,18 @@ import Foundation
 @MainActor
 internal final class WorkspaceContextActivationCoordinator {
     private var registry: WorkspaceContextRegistry
-    private var windowManager: WindowManager
-    private var databaseManager: DatabaseManager
-    private var alertHelper: AlertHelper
 
     internal static let shared = WorkspaceContextActivationCoordinator()
 
-    private init() {
-        self.registry = WorkspaceContextRegistry()
-        self.windowManager = WindowManager.shared
-        self.databaseManager = DatabaseManager.shared
-        self.alertHelper = AlertHelper.shared
+    internal init(registry: WorkspaceContextRegistry = .shared) {
+        self.registry = registry
     }
 
     internal func openOrActivate(
         connection: DatabaseConnection,
         databaseName: String?,
         schemaName: String?,
-        initialQuery: String? = nil
+        initialQuery _: String? = nil
     ) {
         let key = WorkspaceContextKey.resolve(
             connection: connection,
@@ -38,8 +33,8 @@ internal final class WorkspaceContextActivationCoordinator {
 
     internal func activate(
         _ key: WorkspaceContextKey,
-        preferredWindowId: UUID? = nil,
-        sourceWindow: NSWindow? = nil
+        preferredWindowId _: UUID? = nil,
+        sourceWindow _: NSWindow? = nil
     ) {
         guard let sequence = registry.beginActivation(for: key) else { return }
         // Reconnect, switch DB/schema (existing logic)

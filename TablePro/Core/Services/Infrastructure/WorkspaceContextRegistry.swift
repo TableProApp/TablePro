@@ -7,6 +7,8 @@ import Observation
 @MainActor
 @Observable
 internal final class WorkspaceContextRegistry {
+    internal static let shared = WorkspaceContextRegistry()
+
     private var store: WorkspaceContextSnapshotStoring
     private(set) var contexts: [WorkspaceContextDescriptor] = []
     private(set) var selectedKey: WorkspaceContextKey?
@@ -18,13 +20,15 @@ internal final class WorkspaceContextRegistry {
     internal init(store: WorkspaceContextSnapshotStoring = WorkspaceContextSnapshotStore()) {
         self.store = store
         let snapshot = store.load()
-        self.contexts = snapshot.orderedKeys.map { WorkspaceContextDescriptor(
-            key: $0,
-            connectionName: "Unknown",
-            databaseType: .mysql,
-            connectionColor: .blue,
-            isConnected: true
-        )}
+        self.contexts = snapshot.orderedKeys.map {
+            WorkspaceContextDescriptor(
+                key: $0,
+                connectionName: "Unknown",
+                databaseType: .mysql,
+                connectionColor: .blue,
+                isConnected: true
+            )
+        }
         self.selectedKey = snapshot.selectedKey
         // Rebuild indexes from loaded state (simplified)
         for key in contexts.map(\.key) {
@@ -35,18 +39,42 @@ internal final class WorkspaceContextRegistry {
     }
 
     internal func register(windowId: UUID, descriptor: WorkspaceContextDescriptor) {
-        contexts.append(descriptor)
+        if let previous = keyByWindowId[windowId], previous != descriptor.key {
+            unregister(windowId: windowId)
+        }
+
         keyByWindowId[windowId] = descriptor.key
-        windowIdsByKey[descriptor.key, default: []].append(windowId)
+        var windowIds = windowIdsByKey[descriptor.key] ?? []
+        if !windowIds.contains(windowId) {
+            windowIds.append(windowId)
+            windowIdsByKey[descriptor.key] = windowIds
+        }
+
+        // A second window for the same key must reuse the existing rail item.
+        if let index = contexts.firstIndex(where: { $0.key == descriptor.key }) {
+            contexts[index] = descriptor
+        } else {
+            contexts.append(descriptor)
+        }
         persist()
     }
 
     internal func unregister(windowId: UUID) {
         guard let key = keyByWindowId.removeValue(forKey: windowId) else { return }
         windowIdsByKey[key]?.removeAll { $0 == windowId }
-        if windowIdsByKey[key]?.isEmpty == true {
+        if windowIdsByKey[key]?.isEmpty != false {
             windowIdsByKey.removeValue(forKey: key)
+            removeContext(key)
         }
+        persist()
+    }
+
+    internal func unregisterAll(for key: WorkspaceContextKey) {
+        let windowIds = windowIdsByKey.removeValue(forKey: key) ?? []
+        for windowId in windowIds {
+            keyByWindowId.removeValue(forKey: windowId)
+        }
+        removeContext(key)
         persist()
     }
 
@@ -66,6 +94,7 @@ internal final class WorkspaceContextRegistry {
     internal func commitActivation(_ key: WorkspaceContextKey, request: UInt64) -> Bool {
         guard contains(key) && request == activationSequence else { return false }
         selectedKey = key
+        recordActivation(key)
         persist()
         return true
     }
@@ -75,14 +104,31 @@ internal final class WorkspaceContextRegistry {
     }
 
     internal func contains(_ key: WorkspaceContextKey) -> Bool {
-        windowIdsByKey[key] != nil
+        contexts.contains { $0.key == key }
+    }
+
+    private func removeContext(_ key: WorkspaceContextKey) {
+        contexts.removeAll { $0.key == key }
+        if selectedKey == key {
+            selectedKey = mostRecentlyUsedRemaining()
+        }
+    }
+
+    private func mostRecentlyUsedRemaining() -> WorkspaceContextKey? {
+        activationHistory.reversed().first(where: contains) ?? contexts.last?.key
+    }
+
+    private func recordActivation(_ key: WorkspaceContextKey) {
+        activationHistory.removeAll { $0 == key }
+        activationHistory.append(key)
     }
 
     private func persist() {
-        let snapshot = WorkspaceContextSnapshot(
-            orderedKeys: contexts.map(\.key),
-            selectedKey: selectedKey
+        store.save(
+            WorkspaceContextSnapshot(
+                orderedKeys: contexts.map(\.key),
+                selectedKey: selectedKey
+            )
         )
-        (store as? WorkspaceContextSnapshotStore)?.save(snapshot)
     }
 }
