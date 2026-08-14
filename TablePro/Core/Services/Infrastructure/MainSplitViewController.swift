@@ -110,6 +110,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     /// hand over key-window state the same way AppKit would between windows.
     private weak var lastActiveCoordinator: MainContentCoordinator?
 
+    /// Set only for the duration of a workspace switch, so the work `rebuildPanes` does can be
+    /// attributed without every other caller of it paying for a timer.
+    private var switchTrace: WorkspaceSwitchTrace?
+
     // MARK: - Observers
 
     private var connectionStatusCancellable: AnyCancellable?
@@ -458,6 +462,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     /// Switching workspace repaints the window in place. The rail used to raise a different
     /// window instead, which is what made several connections mean several windows.
     internal func applySelectedWorkspace() {
+        let trace = WorkspaceSwitchTrace(connectionId: workspaces.selectedConnectionId)
+        switchTrace = trace
+        defer {
+            switchTrace = nil
+            trace.endAfterDisplay()
+        }
+
         /// Switching workspace is this window's key-window change as far as a coordinator is
         /// concerned. Only the selected one receives the real `windowDidBecomeKey`, so without
         /// this the outgoing connection keeps `isKeyWindow` true and never schedules the eviction
@@ -468,6 +479,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             incoming?.handleWindowDidBecomeKey()
             lastActiveCoordinator = incoming
         }
+        trace.stage("keyHandover")
 
         /// A workspace with no session has no toolbar of its own, and the outgoing one's is not a
         /// stand-in: it names the other connection, its database and its schema, and every one of
@@ -481,13 +493,17 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         } else {
             invalidateToolbar()
         }
+        trace.stage("toolbar")
+
         rebuildPanes()
         applyPaneChrome()
         applyWindowTitle()
+        trace.stage("chrome")
 
         /// Only this window's rail moved, and only its highlight. Broadcasting instead made every
         /// rail in the app rebuild its whole entry list to answer a question none of them asked.
         navigationSidebar?.railController.refreshSelection()
+        trace.stage("rail")
     }
 
     private func applyPhase() {
@@ -561,8 +577,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 SharedSidebarState.forConnection(currentSession.connection.id)
             )
         }
+        switchTrace?.stage("sidebarPane")
         detailHosting.rootView = AnyView(buildDetailView())
+        switchTrace?.stage("detailPane")
         inspectorHosting.rootView = AnyView(buildInspectorView())
+        switchTrace?.stage("inspectorPane")
     }
 
     /// The command surface every menu action forwards into. Menu items reach this
