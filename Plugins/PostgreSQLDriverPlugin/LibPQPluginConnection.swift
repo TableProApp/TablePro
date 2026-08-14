@@ -69,6 +69,26 @@ private func pgOidToTypeName(_ oid: UInt32) -> String {
     case 829: return "macaddr"
     case 869: return "inet"
     case 1_009: return "text[]"
+    case 1_000: return "boolean[]"
+    case 1_001: return "bytea[]"
+    case 1_005: return "smallint[]"
+    case 1_007: return "integer[]"
+    case 1_014: return "char[]"
+    case 1_015: return "varchar[]"
+    case 1_016: return "bigint[]"
+    case 1_021: return "real[]"
+    case 1_022: return "double precision[]"
+    case 1_115: return "timestamp[]"
+    case 1_182: return "date[]"
+    case 1_183: return "time[]"
+    case 1_185: return "timestamptz[]"
+    case 1_187: return "interval[]"
+    case 1_231: return "numeric[]"
+    case 1_270: return "timetz[]"
+    case 199: return "json[]"
+    case 3_807: return "jsonb[]"
+    case 2_951: return "uuid[]"
+    case 1_041: return "inet[]"
     case 1_042: return "char"
     case 1_043: return "varchar"
     case 1_082: return "date"
@@ -109,6 +129,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _cachedServerVersionNumber: Int32 = 0
     private var _isConnectCancelled: Bool = false
     private var _postgisOidMap: [UInt32: String] = [:]
+    private var _enumOidMap: [UInt32: String] = [:]
 
     var isConnected: Bool {
         stateLock.lock()
@@ -378,6 +399,19 @@ final class LibPQPluginConnection: @unchecked Sendable {
         stateLock.lock()
         defer { stateLock.unlock() }
         return _postgisOidMap
+    }
+
+    func setEnumOidMap(_ map: [UInt32: String]) {
+        stateLock.lock()
+        _enumOidMap = map
+        stateLock.unlock()
+    }
+
+    private func resolveTypeName(_ oid: UInt32) -> String {
+        stateLock.lock()
+        let mapped = _enumOidMap[oid]
+        stateLock.unlock()
+        return mapped ?? pgOidToTypeName(oid)
     }
 
     // MARK: - Query Cancellation
@@ -698,7 +732,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                                 }
                                 let oid = UInt32(PQftype(result, Int32(i)))
                                 columnOids.append(oid)
-                                columnTypeNames.append(pgOidToTypeName(oid))
+                                columnTypeNames.append(resolveTypeName(oid))
                             }
 
                             continuation.yield(.header(PluginStreamHeader(
@@ -821,7 +855,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             }
             let oid = UInt32(PQftype(result, Int32(i)))
             columnOids.append(oid)
-            columnTypeNames.append(pgOidToTypeName(oid))
+            columnTypeNames.append(resolveTypeName(oid))
         }
         return ColumnMetadata(columns: columns, columnOids: columnOids, columnTypeNames: columnTypeNames)
     }

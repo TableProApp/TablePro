@@ -20,7 +20,7 @@ internal enum ColumnTypeSQLQuoting {
             return RowValueCopyFormatter.isIntegerLiteral(value)
         case .decimal:
             return PluginNumericLiteral.isValid(value)
-        case .text, .date, .timestamp, .datetime, .boolean, .blob, .json, .enumType, .set, .spatial:
+        case .text, .date, .timestamp, .datetime, .boolean, .blob, .json, .enumType, .set, .spatial, .array:
             return false
         }
     }
@@ -28,7 +28,7 @@ internal enum ColumnTypeSQLQuoting {
     static func isKnownTextLike(_ type: ColumnType?) -> Bool {
         guard let type else { return false }
         switch type {
-        case .text, .enumType, .set:
+        case .text, .enumType, .set, .array:
             return true
         case .integer, .decimal, .date, .timestamp, .datetime, .boolean, .blob, .json, .spatial:
             return false

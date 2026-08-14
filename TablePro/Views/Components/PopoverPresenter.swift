@@ -18,13 +18,14 @@ enum PopoverPresenter {
         of view: NSView,
         preferredEdge: NSRectEdge = .maxY,
         contentSize: NSSize? = nil,
+        behavior: NSPopover.Behavior = .semitransient,
         @ViewBuilder content: (_ dismiss: @escaping () -> Void) -> Content
     ) -> NSPopover {
         let popover = NSPopover()
         let dismiss: () -> Void = { [weak popover] in popover?.close() }
         let hostingController = NSHostingController(rootView: content(dismiss))
         popover.contentViewController = hostingController
-        popover.behavior = .semitransient
+        popover.behavior = behavior
         if let size = contentSize {
             popover.contentSize = size
         }

@@ -9,7 +9,7 @@
 import Foundation
 
 /// Represents the semantic type of a database column
-enum ColumnType: Equatable {
+enum ColumnType: Equatable, Sendable {
     case text(rawType: String?)
     case integer(rawType: String?)
     case decimal(rawType: String?)
@@ -22,6 +22,7 @@ enum ColumnType: Equatable {
     case enumType(rawType: String?, values: [String]?)
     case set(rawType: String?, values: [String]?)
     case spatial(rawType: String?)
+    indirect case array(rawType: String?, element: ColumnType)
 
     /// Raw database type name (e.g., "LONGTEXT", "VARCHAR(255)", "CLOB")
     var rawType: String? {
@@ -29,7 +30,7 @@ enum ColumnType: Equatable {
         case .text(let raw), .integer(let raw), .decimal(let raw),
              .date(let raw), .timestamp(let raw), .datetime(let raw),
              .boolean(let raw), .blob(let raw), .json(let raw),
-             .spatial(let raw):
+             .spatial(let raw), .array(let raw, _):
             return raw
         case .enumType(let raw, _), .set(let raw, _):
             return raw
@@ -53,6 +54,7 @@ enum ColumnType: Equatable {
         case .enumType: return "Enum"
         case .set: return "Set"
         case .spatial: return "Spatial"
+        case .array(_, let element): return "\(element.displayName) Array"
         }
     }
 
@@ -146,6 +148,25 @@ enum ColumnType: Equatable {
         }
     }
 
+    /// The element type of an array column, if this is one
+    var arrayElement: ColumnType? {
+        switch self {
+        case .array(_, let element): return element
+        default: return nil
+        }
+    }
+
+    /// Whether this array's elements can be edited one at a time
+    var supportsElementEditing: Bool {
+        guard let element = arrayElement else { return false }
+        switch element {
+        case .text, .integer, .decimal, .date, .timestamp, .datetime, .boolean, .enumType, .set:
+            return true
+        case .json, .blob, .spatial, .array:
+            return false
+        }
+    }
+
     /// Compact lowercase badge label for sidebar
     var badgeLabel: String {
         switch self {
@@ -162,6 +183,7 @@ enum ColumnType: Equatable {
         case .text(let rawType):
             return rawType == "RedisRaw" ? "raw" : "string"
         case .spatial: return "spatial"
+        case .array(_, let element): return "\(element.badgeLabel)[]"
         }
     }
 
@@ -170,6 +192,8 @@ enum ColumnType: Equatable {
         switch self {
         case .enumType(_, let values), .set(_, let values):
             return values
+        case .array(_, let element):
+            return element.enumValues
         default:
             return nil
         }

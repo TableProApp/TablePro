@@ -9,7 +9,7 @@ import TableProPluginKit
 extension ColumnType {
     var pluginColumnKind: PluginColumnKind {
         switch self {
-        case .text, .enumType, .set:
+        case .text, .enumType, .set, .array:
             return .text
         case .integer:
             return .integer

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- PostgreSQL array columns of a simple type, including arrays of an enum, get a list editor in the data grid. One row per element, with reordering, add and remove, and NULL per element. An empty array and a NULL column stay separate values. Enum arrays pick from the labels the type declares. Arrays of `jsonb`, `bytea` or composite types, and multi-dimensional values, keep the plain text editor.
+
+### Fixed
+
+- PostgreSQL enum columns whose type lives in another schema now show their values instead of a plain text box.
+
 - Select several databases or schemas in the sidebar tree and act on them at once: drop, refresh, copy names, or export. Shift-click and Cmd-click extend the selection.
 - The database switcher takes a multiple selection too, with the same actions on the right-click menu.
 - Drop Schema for PostgreSQL, SQL Server and SurrealDB.

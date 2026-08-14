@@ -31,6 +31,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private let displayCache = RowDisplayCache()
     weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
+    weak var activeArrayEditorPopover: NSPopover?
     weak var activeValueFilterPopover: NSPopover?
     var activeFKPreviewModel: FKPreviewModel?
     var activeFKPreviewColumnIndex: Int?
@@ -306,6 +307,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         activeFKPreviewPopover?.close()
         activeValueFilterPopover?.close()
         activeValueFilterPopover = nil
+        dismissActiveArrayEditorPopover()
         clearFKPreviewState()
     }
 
@@ -783,9 +785,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         for i in 0..<columns.count {
             let name = columns[i]
-            if let values = enumValues[name], !values.isEmpty {
-                let ct = i < types.count ? types[i] : nil
-                let isExcluded = ct?.isJsonType == true || ct?.isBlobType == true || ct?.isBooleanType == true
+            let columnType = i < types.count ? types[i] : nil
+            if columnType?.supportsElementEditing == true {
+                enumSet.insert(i)
+            } else if let values = enumValues[name], !values.isEmpty {
+                let isExcluded = columnType?.isJsonType == true
+                    || columnType?.isBlobType == true
+                    || columnType?.isBooleanType == true
                 if !isExcluded {
                     enumSet.insert(i)
                 }
