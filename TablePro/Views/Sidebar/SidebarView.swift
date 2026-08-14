@@ -45,9 +45,20 @@ struct SidebarView: View {
         PluginManager.shared.databaseGroupingStrategy(for: viewModel.databaseType)
     }
 
+    /// The one derivation of the sidebar's shape. The outline's coordinator calls the same resolver
+    /// with the same inputs, so the wrapper this view picks and the root the outline builds can
+    /// never describe different sidebars.
+    private var rootShape: SidebarRootShape {
+        SidebarRootShapeResolver.resolve(
+            groupingStrategy: groupingStrategy,
+            sidebarLayout: sidebarState.sidebarLayout,
+            supportsDatabaseTree: PluginManager.shared.supportsDatabaseTree(for: viewModel.databaseType)
+        )
+    }
+
     private var supportsSchemaFooter: Bool {
         guard PluginManager.shared.supportsSchemaSwitching(for: viewModel.databaseType) else { return false }
-        return groupingStrategy != .hierarchicalSchema && !usesDatabaseTree
+        return rootShape == .flat
     }
 
     init(
@@ -156,12 +167,10 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var tablesContent: some View {
-        if groupingStrategy == .hierarchicalSchema {
-            hierarchicalContent
-        } else if usesDatabaseTree {
-            databaseTreeContent
-        } else {
-            flatContent
+        switch rootShape {
+        case .hierarchicalSchema: hierarchicalContent
+        case .databaseTree: databaseTreeContent
+        case .flat: flatContent
         }
     }
 
@@ -172,7 +181,7 @@ struct SidebarView: View {
             Divider()
             HStack(spacing: 8) {
                 createObjectMenu
-                if usesDatabaseTree {
+                if rootShape == .databaseTree {
                     databaseFilterButton
                 }
                 DelayedProgressIndicator(isActive: schemaService.isRefreshing(connectionId: connectionId))
@@ -235,11 +244,6 @@ struct SidebarView: View {
         .help(String(localized: "Create a new table or view"))
         .disabled(coordinator?.safeModeLevel.blocksAllWrites ?? true)
         .accessibilityIdentifier("sidebar-create-table")
-    }
-
-    private var usesDatabaseTree: Bool {
-        PluginManager.shared.supportsDatabaseTree(for: viewModel.databaseType)
-            && sidebarState.sidebarLayout == .tree
     }
 
     @ViewBuilder

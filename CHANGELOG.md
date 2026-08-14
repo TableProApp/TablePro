@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hiding a database in the sidebar's database filter takes effect straight away. The tree kept listing every database until some other change happened to rebuild it.
+- An alert opens on the window you were working in. It could attach itself to a floating panel such as the Quick Switcher, which takes the alert with it when it closes.
 - Holding an arrow key in the sidebar no longer opens a tab and runs a query for every object it passes. Arrowing through 20 tables fired 20 queries; it now opens only the object you stop on.
 - Clicking a row in the sidebar puts the keyboard on the list. The click moved the selection but sometimes left the keyboard in the filter field above it, so the row drew grey instead of in the accent colour and the arrow keys went to the field. Switching to the Favorites tab left the keyboard nowhere at all, so the first arrow key did nothing.
 - Opening a table from somewhere that asks for the grid, such as Favorites or Show Structure, puts the keyboard in the grid. Only the first such table of a session did; every one after it left the keyboard where it was.

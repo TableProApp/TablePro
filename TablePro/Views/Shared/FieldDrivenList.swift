@@ -177,7 +177,8 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
         }
 
         internal func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-            FieldDrivenRowView()
+            tableView.makeView(withIdentifier: FieldDrivenRowView.reuseIdentifier, owner: self) as? FieldDrivenRowView
+                ?? FieldDrivenRowView.make()
         }
 
         internal func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
@@ -251,9 +252,19 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
 /// for the search field's selection and that field is the thing holding focus. `window` is read
 /// rather than `NSApp.keyWindow`, which does not return a popover's own window.
 internal final class FieldDrivenRowView: NSTableRowView {
+    internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("FieldDrivenRow")
+
+    internal static func make() -> FieldDrivenRowView {
+        let view = FieldDrivenRowView()
+        view.identifier = reuseIdentifier
+        return view
+    }
+
+    /// `NSTableRowView` declares this settable, so an override has to supply a setter. AppKit is
+    /// the only caller and it has nothing to tell this row that the key window does not.
     override internal var isEmphasized: Bool {
         get { window?.isKeyWindow ?? false }
-        set { _ = newValue }
+        set {}
     }
 }
 
