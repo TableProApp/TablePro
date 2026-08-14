@@ -7,18 +7,21 @@ import Foundation
 @MainActor
 internal final class WorkspaceContextCloseCoordinator {
     private let registry: WorkspaceContextRegistry
-    private let closeWindow: (UUID) async -> Bool
+    private let confirmWindow: (UUID) async -> Bool
+    private let closeWindow: (UUID) -> Void
     private let activate: (WorkspaceContextKey) -> Void
 
     internal static let shared = WorkspaceContextCloseCoordinator()
 
     internal init(
         registry: WorkspaceContextRegistry = .shared,
-        closeWindow: ((UUID) async -> Bool)? = nil,
+        confirmWindow: ((UUID) async -> Bool)? = nil,
+        closeWindow: ((UUID) -> Void)? = nil,
         activate: ((WorkspaceContextKey) -> Void)? = nil
     ) {
         self.registry = registry
-        self.closeWindow = closeWindow ?? WorkspaceContextCloseCoordinator.closeRegisteredWindow
+        self.confirmWindow = confirmWindow ?? WorkspaceContextCloseCoordinator.confirmRegisteredWindow
+        self.closeWindow = closeWindow ?? WorkspaceContextCloseCoordinator.commitRegisteredWindow
         self.activate = activate ?? { key in
             WorkspaceContextActivationCoordinator.shared.activate(key)
         }
@@ -27,10 +30,14 @@ internal final class WorkspaceContextCloseCoordinator {
     internal func close(key: WorkspaceContextKey, sourceWindow _: NSWindow?) async -> Bool {
         let windowIds = registry.windowIds(for: key)
 
-        // Existing closeWindowAwaiting already prompts for unsaved SQL, pending
-        // data-grid edits, and running work. Cancel must leave the context intact.
+        // Confirm every window before any close. A later cancel must leave earlier
+        // windows open and still registered.
         for windowId in windowIds {
-            guard await closeWindow(windowId) else { return false }
+            guard await confirmWindow(windowId) else { return false }
+        }
+
+        for windowId in windowIds {
+            closeWindow(windowId)
             registry.unregister(windowId: windowId)
         }
 
@@ -45,20 +52,28 @@ internal final class WorkspaceContextCloseCoordinator {
         return true
     }
 
-    /// Reuse existing batch close logic from MainContentCommandActions+BulkClose.swift
-    /// (unsaved SQL, pending data-grid changes, running queries)
-    /// Return false on any cancel
-    private static func closeRegisteredWindow(_ windowId: UUID) async -> Bool {
+    /// Unsaved SQL, pending grid edits, and a running query all prompt here.
+    /// Nothing is closed or unregistered until every window has agreed.
+    private static func confirmRegisteredWindow(_ windowId: UUID) async -> Bool {
         guard let coordinator = MainContentCoordinator.coordinator(for: windowId) else {
             return true
         }
         if let actions = coordinator.commandActions {
-            return await actions.closeWindowAwaiting(asBatchSurvivor: false) == .closed
+            return await actions.confirmWindowClose()
         }
-        // A live coordinator without command actions still has unsaved work that
-        // closeWindowAwaiting would have prompted for. Do not discard it.
-        guard !coordinator.hasAnyUnsavedWork() else { return false }
-        coordinator.contentWindow?.close()
+        // A live coordinator without command actions still has work that
+        // confirmWindowClose would have prompted for. Do not discard it.
+        if coordinator.hasAnyUnsavedWork() { return false }
+        if coordinator.toolbarState.isExecuting { return false }
         return true
+    }
+
+    private static func commitRegisteredWindow(_ windowId: UUID) {
+        guard let coordinator = MainContentCoordinator.coordinator(for: windowId) else { return }
+        if let actions = coordinator.commandActions {
+            actions.commitWindowClose(asBatchSurvivor: false)
+            return
+        }
+        coordinator.contentWindow?.close()
     }
 }

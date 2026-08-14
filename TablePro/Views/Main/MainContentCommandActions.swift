@@ -424,29 +424,58 @@ final class MainContentCommandActions {
     /// window it keeps blank and `false` for every window it tears down.
     @discardableResult
     func closeWindowAwaiting(asBatchSurvivor: Bool? = nil) async -> WindowCloseOutcome {
+        guard await confirmWindowClose() else { return .cancelled }
+        commitWindowClose(asBatchSurvivor: asBatchSurvivor)
+        return .closed
+    }
+
+    /// Prompts for unsaved work and a running query without closing the window.
+    /// Save applies now; Don't Save only records consent so a later cancel can still keep the tabs.
+    func confirmWindowClose() async -> Bool {
         let seq = MainContentCoordinator.nextSwitchSeq()
-        Self.logger.info("[close] closeWindowAwaiting seq=\(seq) hasUnsavedWork=\(self.hasUnsavedWorkInWindow)")
-
-        guard hasUnsavedWorkInWindow else {
-            finish(asBatchSurvivor: asBatchSurvivor)
-            return .closed
-        }
-
-        selectInTabGroup()
-        let result = await AlertHelper.confirmSaveChanges(
-            message: String(localized: "Your changes will be lost if you don't save them."),
-            window: closeAnchorWindow
+        Self.logger.info(
+            "[close] confirmWindowClose seq=\(seq) hasUnsavedWork=\(self.hasUnsavedWorkInWindow) isExecuting=\(self.hasRunningQueryInWindow)"
         )
 
-        switch result {
-        case .save:
-            return await saveAndClose(asBatchSurvivor: asBatchSurvivor) ? .closed : .cancelled
-        case .dontSave:
-            discardAndClose(asBatchSurvivor: asBatchSurvivor)
-            return .closed
-        case .cancel:
-            return .cancelled
+        if hasUnsavedWorkInWindow {
+            selectInTabGroup()
+            let result = await AlertHelper.confirmSaveChanges(
+                message: String(localized: "Your changes will be lost if you don't save them."),
+                window: closeAnchorWindow
+            )
+            switch result {
+            case .save:
+                guard await saveWithoutClosing() else { return false }
+            case .dontSave:
+                break
+            case .cancel:
+                return false
+            }
         }
+
+        if hasRunningQueryInWindow {
+            selectInTabGroup()
+            return await AlertHelper.confirmDestructive(
+                title: String(localized: "A query is still running"),
+                message: String(localized: "A query is still running. Closing cancels it."),
+                confirmButton: String(localized: "Close"),
+                window: closeAnchorWindow
+            )
+        }
+
+        return true
+    }
+
+    func commitWindowClose(asBatchSurvivor: Bool? = nil) {
+        coordinator?.changeManager.clearChangesAndUndoHistory()
+        pendingTruncates.wrappedValue.removeAll()
+        pendingDeletes.wrappedValue.removeAll()
+        rightPanelState.editState.clearEdits()
+        finish(asBatchSurvivor: asBatchSurvivor)
+    }
+
+    private var hasRunningQueryInWindow: Bool {
+        coordinator?.toolbarState.isExecuting ?? false
     }
 
     var closeAnchorWindow: NSWindow? {
@@ -516,11 +545,8 @@ final class MainContentCommandActions {
         coordinator.toolbarState.isTableTab = false
     }
 
-    private func saveAndClose(asBatchSurvivor: Bool?) async -> Bool {
-        guard let coordinator = coordinator else {
-            finish(asBatchSurvivor: asBatchSurvivor)
-            return true
-        }
+    private func saveWithoutClosing() async -> Bool {
+        guard let coordinator else { return true }
 
         // User and role changes can only be applied after the SQL is reviewed, so Save opens the
         // review sheet and cancels the close. Falling through here would close the window and
@@ -530,43 +556,31 @@ final class MainContentCommandActions {
             return false
         }
 
-        // Structure view saves via direct coordinator call
         if coordinator.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator.structureActions?.saveChanges?()
-            finish(asBatchSurvivor: asBatchSurvivor)
             return true
         }
 
-        // Data grid changes or pending table operations take priority
         let hasDataChanges = coordinator.changeManager.hasChanges
             || !pendingTruncates.wrappedValue.isEmpty
             || !pendingDeletes.wrappedValue.isEmpty
         if hasDataChanges {
-            let saved = await withCheckedContinuation { continuation in
+            return await withCheckedContinuation { continuation in
                 coordinator.saveCompletionContinuation = continuation
                 saveChanges()
             }
-            if saved {
-                finish(asBatchSurvivor: asBatchSurvivor)
-            }
-            return saved
         }
 
-        // Sidebar-only edits (made directly in the inspector panel)
         if rightPanelState.editState.hasEdits {
             rightPanelState.onSave?()
-            finish(asBatchSurvivor: asBatchSurvivor)
             return true
         }
 
-        // File save (query editor with source file)
         if coordinator.tabManager.selectedTab?.content.isFileDirty == true {
             saveFileToSourceURL()
-            finish(asBatchSurvivor: asBatchSurvivor)
             return true
         }
 
-        finish(asBatchSurvivor: asBatchSurvivor)
         return true
     }
 

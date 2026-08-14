@@ -220,8 +220,8 @@ struct WorkspaceContextRegistryTests {
 @MainActor
 @Suite("WorkspaceContextCloseCoordinator")
 struct WorkspaceContextCloseCoordinatorTests {
-    @Test("A cancelled window close leaves the context registered")
-    func cancelLeavesContextIntact() async {
+    @Test("A later cancel does not close an earlier window that already passed preflight")
+    func laterCancelLeavesEveryWindowRegistered() async {
         let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
         let item = contextDescriptor(database: "app", schema: "public")
         let firstWindow = UUID()
@@ -229,12 +229,16 @@ struct WorkspaceContextCloseCoordinatorTests {
         registry.register(windowId: firstWindow, descriptor: item)
         registry.register(windowId: secondWindow, descriptor: item)
 
+        var confirmed: [UUID] = []
         var closed: [UUID] = []
         let coordinator = WorkspaceContextCloseCoordinator(
             registry: registry,
+            confirmWindow: { windowId in
+                confirmed.append(windowId)
+                return windowId != secondWindow
+            },
             closeWindow: { windowId in
                 closed.append(windowId)
-                return windowId != secondWindow
             },
             activate: { _ in }
         )
@@ -242,9 +246,36 @@ struct WorkspaceContextCloseCoordinatorTests {
         let didClose = await coordinator.close(key: item.key, sourceWindow: nil)
 
         #expect(!didClose)
-        #expect(closed == [firstWindow, secondWindow])
+        #expect(confirmed == [firstWindow, secondWindow])
+        #expect(closed.isEmpty)
         #expect(registry.contains(item.key))
-        #expect(registry.windowIds(for: item.key) == [secondWindow])
+        #expect(registry.windowIds(for: item.key) == [firstWindow, secondWindow])
+    }
+
+    @Test("A running query without unsaved work blocks context close")
+    func runningQueryCancelLeavesContextIntact() async {
+        let connection = TestFixtures.makeConnection(database: "app", type: .postgresql)
+        let state = SessionStateFactory.create(connection: connection, payload: nil)
+        defer { state.coordinator.teardown() }
+
+        let windowId = UUID()
+        state.coordinator.windowId = windowId
+        state.coordinator.toolbarState.setExecuting(true)
+
+        let item = contextDescriptor(database: "app", schema: "public")
+        let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
+        registry.register(windowId: windowId, descriptor: item)
+
+        let coordinator = WorkspaceContextCloseCoordinator(
+            registry: registry,
+            activate: { _ in }
+        )
+
+        let didClose = await coordinator.close(key: item.key, sourceWindow: nil)
+
+        #expect(!didClose)
+        #expect(registry.contains(item.key))
+        #expect(registry.windowIds(for: item.key) == [windowId])
     }
 
     @Test("A successful close unregisters every window and the rail item")
@@ -262,20 +293,56 @@ struct WorkspaceContextCloseCoordinatorTests {
         let secondRequest = try #require(registry.beginActivation(for: second.key))
         #expect(registry.commitActivation(second.key, request: secondRequest))
 
+        var confirmed: [UUID] = []
+        var closed: [UUID] = []
         var activated: [WorkspaceContextKey] = []
         let coordinator = WorkspaceContextCloseCoordinator(
             registry: registry,
-            closeWindow: { _ in true },
+            confirmWindow: { windowId in
+                confirmed.append(windowId)
+                return true
+            },
+            closeWindow: { windowId in
+                closed.append(windowId)
+            },
             activate: { activated.append($0) }
         )
 
         let didClose = await coordinator.close(key: second.key, sourceWindow: nil)
 
         #expect(didClose)
+        #expect(confirmed == [remainingWindow])
+        #expect(closed == [remainingWindow])
         #expect(!registry.contains(second.key))
         #expect(registry.contains(first.key))
         #expect(registry.selectedKey == first.key)
         #expect(activated == [first.key])
+    }
+
+    @Test("Unsaved work without a prompt still blocks context close")
+    func unsavedWorkBlocksCloseWhenPromptUnavailable() async {
+        let connection = TestFixtures.makeConnection(database: "app", type: .postgresql)
+        let state = SessionStateFactory.create(connection: connection, payload: nil)
+        defer { state.coordinator.teardown() }
+
+        let windowId = UUID()
+        state.coordinator.windowId = windowId
+        state.coordinator.changeManager.hasChanges = true
+
+        let item = contextDescriptor(database: "app", schema: "public")
+        let registry = WorkspaceContextRegistry(store: InMemoryWorkspaceContextSnapshotStore())
+        registry.register(windowId: windowId, descriptor: item)
+
+        let coordinator = WorkspaceContextCloseCoordinator(
+            registry: registry,
+            activate: { _ in }
+        )
+
+        let didClose = await coordinator.close(key: item.key, sourceWindow: nil)
+
+        #expect(!didClose)
+        #expect(registry.contains(item.key))
+        #expect(registry.windowIds(for: item.key) == [windowId])
     }
 
     @Test("Activation and close share the registry they were given")
