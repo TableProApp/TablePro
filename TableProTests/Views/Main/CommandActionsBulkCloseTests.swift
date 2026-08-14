@@ -2,7 +2,7 @@
 //  CommandActionsBulkCloseTests.swift
 //  TableProTests
 //
-//  Covers the bulk tab-close commands: which sibling windows they target and
+//  Covers the bulk tab-close commands: which of the connection's tabs they target and
 //  that the surviving window empties in place instead of closing (#1972).
 //
 
@@ -71,40 +71,37 @@ struct CommandActionsBulkCloseTests {
 
     // MARK: - Database scope
 
-    @Test("a sibling window on another database is offered for closing")
-    func canCloseTabsForOtherDatabasesWhenSiblingIsForeign() {
+    /// A connection keeps one tab list now, so the scope of a database-scoped close is that list.
+    /// These used to spread a connection's tabs over sibling windows and check that the command
+    /// reached across them, which is a shape the app can no longer be in.
+    @Test("a tab on another database is offered for closing")
+    func canCloseTabsForOtherDatabasesWhenATabIsForeign() {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let current = makeWindow(connection: connection)
-        let sibling = makeWindow(connection: connection)
-        defer {
-            current.coordinator.teardown()
-            sibling.coordinator.teardown()
-        }
+        defer { current.coordinator.teardown() }
 
         current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
-        sibling.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_b")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_b")
 
         #expect(current.actions.browseDatabaseName == "db_a")
         #expect(current.actions.canCloseTabsForOtherDatabases)
     }
 
-    @Test("nothing is offered when every sibling is on the active database")
+    @Test("nothing is offered when every tab is on the active database")
     func cannotCloseTabsForOtherDatabasesWhenAllMatch() {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let current = makeWindow(connection: connection)
-        let sibling = makeWindow(connection: connection)
-        defer {
-            current.coordinator.teardown()
-            sibling.coordinator.teardown()
-        }
+        defer { current.coordinator.teardown() }
 
         current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
-        sibling.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
 
         #expect(!current.actions.canCloseTabsForOtherDatabases)
     }
 
-    @Test("another connection's window is never a database-scoped target")
+    /// Another connection's tabs are out of scope by construction rather than by a filter: they
+    /// live in that connection's own tab list, which this command never reads.
+    @Test("another connection's tabs are never a database-scoped target")
     func otherConnectionsAreOutOfScope() {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let otherConnection = TestFixtures.makeConnection(database: "db_b")
@@ -119,6 +116,7 @@ struct CommandActionsBulkCloseTests {
         unrelated.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_b")
 
         #expect(!current.actions.canCloseTabsForOtherDatabases)
+        #expect(unrelated.actions.canCloseTabsForOtherDatabases == false)
     }
 
     // MARK: - Enablement
