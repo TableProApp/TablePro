@@ -36,15 +36,11 @@ final class AlertHelper {
         return cancel
     }
 
+    /// The window a sheet belongs on. A sheet the user is meant to read against their work must
+    /// land on a document window, so a floating panel is never a candidate: the Quick Switcher
+    /// closes the moment it loses focus, taking the sheet with it. An explicit window is honoured
+    /// as given, and when nothing qualifies the caller runs the alert application-modal instead.
     static func resolveWindow(_ window: NSWindow?) -> NSWindow? {
-        window ?? NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible }
-    }
-
-    /// A sheet the user is meant to read against their work must land on a document window.
-    /// `resolveWindow`'s last resort accepts any visible window, which includes floating panels
-    /// such as the Quick Switcher, so a file error can end up attached to a panel that closes
-    /// the moment it loses focus.
-    static func resolveContentWindow(_ window: NSWindow?) -> NSWindow? {
         if let window { return window }
         if let candidate = [NSApp.keyWindow, NSApp.mainWindow].compactMap({ $0 }).first(where: isContentWindow) {
             return candidate
@@ -56,22 +52,25 @@ final class AlertHelper {
         !(window is NSPanel) && window.styleMask.contains(.titled)
     }
 
-    /// An alert belongs to the window the user was working in, so it runs as a sheet whenever one
-    /// can be resolved and falls back to an application-modal run only when none can.
-    private static func run(_ alert: NSAlert, in window: NSWindow?) async -> NSApplication.ModalResponse {
-        guard let parent = resolveWindow(window) else { return alert.runModal() }
-        return await withCheckedContinuation { continuation in
-            alert.beginSheetModal(for: parent) { continuation.resume(returning: $0) }
-        }
-    }
-
-    /// For the alerts whose only button is an acknowledgement, where nothing waits on the answer.
-    private static func present(_ alert: NSAlert, in window: NSWindow?) {
+    /// The one presentation path for every alert in the app: a sheet on the window the user was
+    /// working in, and an application-modal run only when no window qualifies. Each presenter used
+    /// to spell this out for itself, which is how they drifted apart on which window they accepted.
+    static func present(
+        _ alert: NSAlert,
+        in window: NSWindow?,
+        completion: @escaping @MainActor (NSApplication.ModalResponse) -> Void = { _ in }
+    ) {
         guard let parent = resolveWindow(window) else {
-            alert.runModal()
+            completion(alert.runModal())
             return
         }
-        alert.beginSheetModal(for: parent) { _ in }
+        alert.beginSheetModal(for: parent, completionHandler: completion)
+    }
+
+    private static func run(_ alert: NSAlert, in window: NSWindow?) async -> NSApplication.ModalResponse {
+        await withCheckedContinuation { continuation in
+            present(alert, in: window) { continuation.resume(returning: $0) }
+        }
     }
 
     // MARK: - Destructive Confirmations
@@ -149,7 +148,7 @@ final class AlertHelper {
         sheetWindow.title = String(localized: "Approve Integration")
         sheetWindow.isReleasedWhenClosed = false
 
-        guard let parent = resolveContentWindow(nil) else {
+        guard let parent = resolveWindow(nil) else {
             let delegate = PairingApprovalWindowDelegate(gate: gate)
             sheetWindow.delegate = delegate
             gate.onResolve = { [weak sheetWindow] in

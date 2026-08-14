@@ -41,7 +41,7 @@ struct AlertWindowResolutionTests {
     @Test("An explicit window is honoured without a search")
     func explicitWindowWins() {
         let window = makeWindow()
-        #expect(AlertHelper.resolveContentWindow(window) === window)
+        #expect(AlertHelper.resolveWindow(window) === window)
     }
 
     @Test("A titled panel is still rejected")

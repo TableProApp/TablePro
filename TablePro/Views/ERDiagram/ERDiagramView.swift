@@ -279,7 +279,7 @@ struct ERDiagramView: View {
         panel.title = String(localized: "Export ER Diagram")
         panel.message = String(localized: "Choose a location to save the diagram as PNG.")
 
-        guard let window = AlertHelper.resolveContentWindow(nil) else { return }
+        guard let window = AlertHelper.resolveWindow(nil) else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
             guard let tiffData = image.tiffRepresentation,

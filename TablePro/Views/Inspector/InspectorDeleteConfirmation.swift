@@ -65,13 +65,7 @@ enum InspectorDeleteConfirmation {
         window: NSWindow?,
         proceed: @escaping @MainActor () -> Void
     ) {
-        let alert = makeAlert(messageText: messageText)
-        guard let parent = AlertHelper.resolveWindow(window) else {
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-            proceed()
-            return
-        }
-        alert.beginSheetModal(for: parent) { response in
+        AlertHelper.present(makeAlert(messageText: messageText), in: window) { response in
             guard response == .alertFirstButtonReturn else { return }
             proceed()
         }

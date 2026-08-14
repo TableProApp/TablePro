@@ -618,7 +618,7 @@ internal struct FavoritesTabView: View {
         panel.allowsMultipleSelection = false
         panel.message = String(localized: "Choose a folder containing .sql files")
 
-        guard let window = AlertHelper.resolveContentWindow(nil) else { return }
+        guard let window = AlertHelper.resolveWindow(nil) else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
             let path = PathPortability.contractHome(url.path)

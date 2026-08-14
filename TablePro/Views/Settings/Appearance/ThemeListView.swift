@@ -192,7 +192,7 @@ internal struct ThemeListView: View {
     }
 
     private func exportActiveTheme() {
-        guard let window = AlertHelper.resolveContentWindow(nil) else { return }
+        guard let window = AlertHelper.resolveWindow(nil) else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = engine.activeTheme.name + ".json"
@@ -212,7 +212,7 @@ internal struct ThemeListView: View {
     }
 
     private func importTheme() {
-        guard let window = AlertHelper.resolveContentWindow(nil) else { return }
+        guard let window = AlertHelper.resolveWindow(nil) else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false

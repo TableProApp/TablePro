@@ -37,7 +37,7 @@ internal enum TableOperationAlert {
         )
         alert.layout()
 
-        let deliver: @MainActor (NSApplication.ModalResponse) -> Void = { response in
+        AlertHelper.present(alert, in: window) { response in
             guard response == .alertFirstButtonReturn else {
                 completion(nil)
                 return
@@ -49,12 +49,6 @@ internal enum TableOperationAlert {
                 )
             )
         }
-
-        guard let parent = AlertHelper.resolveWindow(window) else {
-            deliver(alert.runModal())
-            return
-        }
-        alert.beginSheetModal(for: parent, completionHandler: deliver)
     }
 
     private static func checkbox(title: String, isEnabled: Bool) -> NSButton {

@@ -37,7 +37,7 @@ internal enum TransferResultAlert {
             completion(response == .alertFirstButtonReturn ? .openFolder : .close)
         }
 
-        present(alert, in: window, deliver: deliver)
+        AlertHelper.present(alert, in: window, completion: deliver)
     }
 
     internal static func presentImportSuccess(
@@ -59,7 +59,7 @@ internal enum TransferResultAlert {
             alert.layout()
         }
 
-        present(alert, in: window) { _ in completion() }
+        AlertHelper.present(alert, in: window) { _ in completion() }
     }
 
     internal static func presentImportFailure(
@@ -85,7 +85,7 @@ internal enum TransferResultAlert {
             alert.informativeText = error?.localizedDescription ?? String(localized: "Unknown error")
         }
 
-        present(alert, in: window) { _ in completion() }
+        AlertHelper.present(alert, in: window) { _ in completion() }
     }
 
     /// A row import names its failing entry `row 12`, which the line number already says, so only
@@ -148,17 +148,5 @@ internal enum TransferResultAlert {
 
         scroll.documentView = textView
         return scroll
-    }
-
-    private static func present(
-        _ alert: NSAlert,
-        in window: NSWindow?,
-        deliver: @escaping @MainActor (NSApplication.ModalResponse) -> Void
-    ) {
-        guard let parent = AlertHelper.resolveContentWindow(window) else {
-            deliver(alert.runModal())
-            return
-        }
-        alert.beginSheetModal(for: parent, completionHandler: deliver)
     }
 }
