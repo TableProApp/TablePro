@@ -186,7 +186,19 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             rightPanelState: panelState,
             phase: phase
         )
-        return workspaces.insert(workspace)
+        let adopted = workspaces.insert(workspace)
+
+        /// A workspace adopted into a window that is already on screen has to dial for itself.
+        /// `viewWillAppear` is what starts the connect for the window's first workspace, and it
+        /// runs once: every connection opened into that window afterwards reached the registry
+        /// with its intent to connect recorded and nothing left to act on it, so picking a
+        /// connection from the toolbar switcher landed on the not-connected pane with a Connect
+        /// button the user had to press themselves. The guard is the lifecycle, not a special
+        /// case: before the view loads there are no panes for a phase change to repaint.
+        if isViewLoaded, view.window != nil {
+            startActivationConnectIfNeeded()
+        }
+        return adopted
     }
 
     @available(*, unavailable)
@@ -360,9 +372,12 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
     }
 
+    /// The window's toolbar goes too. Dropping only the owner left the built `NSToolbar` on the
+    /// window with item views still pointing at the coordinator that was just released.
     func invalidateToolbar() {
         toolbarOwner?.invalidate()
         toolbarOwner = nil
+        if isViewLoaded { view.window?.toolbar = nil }
     }
 
     // MARK: - Connection Status
@@ -454,10 +469,17 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             lastActiveCoordinator = incoming
         }
 
+        /// A workspace with no session has no toolbar of its own, and the outgoing one's is not a
+        /// stand-in: it names the other connection, its database and its schema, and every one of
+        /// its buttons still acts on that connection. Switching to a connection that has not come
+        /// up yet showed the previous connection's engine icon and schema over a pane that said
+        /// the new one was not connected. A plain titlebar is what a sessionless window shows.
         if let coordinator = workspaces.selected?.sessionState?.coordinator {
             coordinator.inspectorProxy = self
             coordinator.splitViewController = self
             installToolbar(coordinator: coordinator)
+        } else {
+            invalidateToolbar()
         }
         rebuildPanes()
         applyPaneChrome()
