@@ -168,6 +168,20 @@ internal final class WindowManager {
         hosts().contains { $0.workspaces.contains(connectionId) }
     }
 
+    /// The coordinator a connection is actually using, found through the window hosting it.
+    ///
+    /// `MainContentCoordinator.activeCoordinators` cannot answer this. It is keyed by coordinator
+    /// instance and also holds throwaway instances SwiftUI built and discarded while re-evaluating a
+    /// body, so picking the first one with a matching connection id returns one of those about as
+    /// often as the real one: no tabs, no command surface, and every command silently does nothing.
+    /// A window's workspace registry names exactly one coordinator per connection.
+    internal func coordinator(for connectionId: UUID) -> MainContentCoordinator? {
+        hosts()
+            .lazy
+            .compactMap { $0.workspaces.workspace(for: connectionId)?.sessionState?.coordinator }
+            .first
+    }
+
     private func hosts() -> [MainSplitViewController] {
         controllers.values.compactMap { $0.window?.contentViewController as? MainSplitViewController }
     }

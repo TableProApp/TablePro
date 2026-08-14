@@ -335,11 +335,12 @@ internal final class WorkspaceRailViewController: NSViewController {
             )
             return
         }
-        /// Resolved by connection, never by window. `coordinator(forWindow:)` answers with the
-        /// window's selected workspace, so a row for any other connection moved the browse cursor
-        /// of the one on screen instead: it switched the visible connection to a database named
-        /// after a different one, or failed against a database that connection does not have.
-        guard let coordinator = MainContentCoordinator.coordinator(forConnection: workspace.connectionId) else {
+        /// Resolved by connection through the window that hosts it, never by window alone.
+        /// `coordinator(forWindow:)` answers with the window's selected workspace, so a row for any
+        /// other connection moved the browse cursor of the one on screen instead: it switched the
+        /// visible connection to a database named after a different one, or failed against a
+        /// database that connection does not have.
+        guard let coordinator = WindowManager.shared.coordinator(for: workspace.connectionId) else {
             Self.logger.error(
                 """
                 moveBrowseCursor has no coordinator target=\(Self.describe(workspace), privacy: .public) \
@@ -399,7 +400,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     @objc
     private func closeWorkspace(_ sender: NSMenuItem) {
         guard let workspace = sender.representedObject as? WorkspaceID,
-              let coordinator = MainContentCoordinator.coordinator(forConnection: workspace.connectionId)
+              let coordinator = WindowManager.shared.coordinator(for: workspace.connectionId)
         else { return }
         coordinator.commandActions?.closeWorkspace(container: workspace.container)
     }
