@@ -28,6 +28,27 @@ private struct PositionedNode: Identifiable {
     let parentId: UUID?
 }
 
+enum QueryPlanDiagramZoom {
+    static let minimum: CGFloat = 0.25
+    static let maximum: CGFloat = 3.0
+    static let step: CGFloat = 0.25
+
+    static func clamped(_ value: CGFloat) -> CGFloat {
+        if value.isNaN { return 1.0 }
+        if value == .infinity { return maximum }
+        if value == -.infinity { return minimum }
+        return min(maximum, max(minimum, value))
+    }
+
+    static func scaled(from startingMagnification: CGFloat, by gestureMagnification: CGFloat) -> CGFloat {
+        let startingMagnification = clamped(startingMagnification)
+        guard gestureMagnification.isFinite, gestureMagnification > 0 else {
+            return startingMagnification
+        }
+        return clamped(startingMagnification * gestureMagnification)
+    }
+}
+
 // MARK: - Diagram View
 
 struct QueryPlanDiagramView: View {
@@ -37,6 +58,7 @@ struct QueryPlanDiagramView: View {
     @State private var selectedNode: SelectedNodeID?
     @State private var positioned: [PositionedNode] = []
     @State private var canvasSize = CGSize(width: 400, height: 300)
+    @State private var magnifyStartMagnification: CGFloat?
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -58,7 +80,7 @@ struct QueryPlanDiagramView: View {
                     }
                 }
                 .frame(width: canvasSize.width, height: canvasSize.height)
-                .scaleEffect(magnification)
+                .scaleEffect(magnification, anchor: .topLeading)
                 .frame(
                     width: canvasSize.width * magnification,
                     height: canvasSize.height * magnification,
@@ -69,6 +91,7 @@ struct QueryPlanDiagramView: View {
             zoomControls
                 .padding(12)
         }
+        .simultaneousGesture(magnifyGesture)
         .onAppear {
             let nodes = layoutNodes(plan.rootNode, depth: 0, xOffset: 0, parentId: nil)
             positioned = nodes
@@ -139,21 +162,41 @@ struct QueryPlanDiagramView: View {
 
     // MARK: - Zoom
 
+    private var magnifyGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                if magnifyStartMagnification == nil {
+                    magnifyStartMagnification = magnification
+                }
+                magnification = QueryPlanDiagramZoom.scaled(
+                    from: magnifyStartMagnification ?? magnification,
+                    by: value.magnification
+                )
+            }
+            .onEnded { _ in
+                magnifyStartMagnification = nil
+            }
+    }
+
     private var zoomControls: some View {
         HStack(spacing: 4) {
-            Button { magnification = max(0.25, magnification - 0.25) } label: {
+            Button {
+                magnification = QueryPlanDiagramZoom.clamped(magnification - QueryPlanDiagramZoom.step)
+            } label: {
                 Image(systemName: "minus.magnifyingglass")
                     .frame(width: 24, height: 24)
             }
             .accessibilityLabel(String(localized: "Zoom out"))
             .help(String(localized: "Zoom out"))
 
-            Text("\(Int(magnification * 100))%")
+            Text("\(Int((magnification * 100).rounded()))%")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 36)
 
-            Button { magnification = min(3.0, magnification + 0.25) } label: {
+            Button {
+                magnification = QueryPlanDiagramZoom.clamped(magnification + QueryPlanDiagramZoom.step)
+            } label: {
                 Image(systemName: "plus.magnifyingglass")
                     .frame(width: 24, height: 24)
             }
