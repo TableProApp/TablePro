@@ -153,7 +153,7 @@ When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (
 - **`SQLEditorTheme`** — single source of truth for editor colors/fonts
 - **`TableProEditorTheme`** — adapter to CodeEdit's `EditorTheme` protocol
 - **`CompletionEngine`** — framework-agnostic; **`SQLCompletionAdapter`** bridges to CodeEdit's `CodeSuggestionDelegate`
-- Editor tabs use native NSWindow tabs (`NSWindow.tabbingMode = .preferred` in `TabWindowController`); there is no custom tab bar.
+- Editor tabs are drawn by `EditorTabStrip`, not by native window tabs. A window belongs to exactly one `NSWindow` tab group and that group's bar shows every window in it, so a window hosting several connections could only ever show all of their tabs interleaved. Window tabbing itself stays on AppKit's terms: `TabWindowController` leaves `tabbingMode` at `.automatic`, which is the user's own System Settings preference, and never forces `.preferred`.
 - Cursor model: `cursorPositions: [CursorPosition]` (multi-cursor via CodeEditSourceEditor)
 
 ### Change Tracking Flow

@@ -68,9 +68,10 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.isRestorable = false
         window.toolbarStyle = .unified
         window.titleVisibility = .visible
-        /// Apple asks an app that drives tabbing itself to read the user's preference before
-        /// showing a window rather than forcing tabs, which hard-coding `.preferred` did.
-        window.tabbingMode = NSWindow.userTabbingPreference == .always ? .preferred : .automatic
+        /// `.automatic` is AppKit reading the user's own tabbing preference. Hard-coding
+        /// `.preferred` overrode that setting, which an app that draws its own editor tabs has no
+        /// reason to do.
+        window.tabbingMode = .automatic
         window.tabbingIdentifier = WindowManager.mainTabbingIdentifier
         window.collectionBehavior.insert([.fullScreenPrimary, .managed])
 

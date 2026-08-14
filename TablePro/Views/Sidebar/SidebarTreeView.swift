@@ -20,6 +20,10 @@ struct SidebarTreeView: View {
         return name.isEmpty ? nil : name
     }
 
+    private var isConnected: Bool {
+        DatabaseManager.shared.session(for: connectionId)?.status == .connected
+    }
+
     private var systemSchemas: Set<String> {
         Set(PluginManager.shared.systemSchemaNames(for: viewModel.databaseType))
     }
@@ -65,7 +69,7 @@ struct SidebarTreeView: View {
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
             searchText: viewModel.filterQuery,
-            connectionToken: connectionId.uuidString,
+            isConnected: isConnected,
             activeDatabase: activeDatabase,
             activeSchema: coordinator?.toolbarState.currentSchema,
             selectedTables: windowState.selectedTables,
@@ -120,13 +124,6 @@ struct SidebarTreeView: View {
                 }
                 loadTables(for: schema)
             }
-        }
-    }
-
-    private func reloadTables(for schema: String) {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-        Task {
-            await schemaService.reloadSchemaTables(connectionId: connectionId, schema: schema, driver: driver)
         }
     }
 }

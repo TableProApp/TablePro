@@ -20,7 +20,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var sidebarState: SharedSidebarState?
     private weak var viewModel: SidebarViewModel?
     private var searchText = ""
-    private var connectionToken = ""
+    private var isConnected = false
     private var activeDatabase: String?
     private var activeSchema: String?
     private var pendingTruncates: Set<String> = []
@@ -85,14 +85,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
         let activeChanged = activeDatabase != view.activeDatabase || activeSchema != view.activeSchema
         let changed = searchText != view.searchText
-            || connectionToken != view.connectionToken
+            || isConnected != view.isConnected
             || activeChanged
             || pendingTruncates != view.pendingTruncates
             || pendingDeletes != view.pendingDeletes
             || showRecentTables != view.showRecentTables
 
         searchText = view.searchText
-        connectionToken = view.connectionToken
+        isConnected = view.isConnected
         activeDatabase = view.activeDatabase
         activeSchema = view.activeSchema
         pendingTruncates = view.pendingTruncates
@@ -799,15 +799,10 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         lastSelection = Set(DatabaseTreeSelection.tableRefs(of: Array(nodes)))
     }
 
-    private func open(_ ref: DatabaseTreeTableRef, activateGridFocus: Bool, forceNewTab: Bool = false) {
+    private func open(_ ref: DatabaseTreeTableRef, activateGridFocus: Bool) {
         Task { @MainActor in
             await activate(ref)
-            mainCoordinator?.openTableTab(
-                ref.table,
-                schema: ref.schema,
-                activateGridFocus: activateGridFocus,
-                forceNewTab: forceNewTab
-            )
+            mainCoordinator?.openTableTab(ref.table, schema: ref.schema, activateGridFocus: activateGridFocus)
             publishSelection()
         }
     }

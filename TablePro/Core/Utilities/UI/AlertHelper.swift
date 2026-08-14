@@ -56,6 +56,24 @@ final class AlertHelper {
         !(window is NSPanel) && window.styleMask.contains(.titled)
     }
 
+    /// An alert belongs to the window the user was working in, so it runs as a sheet whenever one
+    /// can be resolved and falls back to an application-modal run only when none can.
+    private static func run(_ alert: NSAlert, in window: NSWindow?) async -> NSApplication.ModalResponse {
+        guard let parent = resolveWindow(window) else { return alert.runModal() }
+        return await withCheckedContinuation { continuation in
+            alert.beginSheetModal(for: parent) { continuation.resume(returning: $0) }
+        }
+    }
+
+    /// For the alerts whose only button is an acknowledgement, where nothing waits on the answer.
+    private static func present(_ alert: NSAlert, in window: NSWindow?) {
+        guard let parent = resolveWindow(window) else {
+            alert.runModal()
+            return
+        }
+        alert.beginSheetModal(for: parent) { _ in }
+    }
+
     // MARK: - Destructive Confirmations
 
     static func confirmDestructive(
@@ -70,15 +88,7 @@ final class AlertHelper {
         alert.informativeText = message
         alert.alertStyle = .warning
         Self.addConfirmAndCancel(to: alert, confirmButton: confirmButton, cancelButton: cancelButton)
-
-        if let window = resolveWindow(window) {
-            return await withCheckedContinuation { continuation in
-                alert.beginSheetModal(for: window) { response in
-                    continuation.resume(returning: response == .alertFirstButtonReturn)
-                }
-            }
-        }
-        return alert.runModal() == .alertFirstButtonReturn
+        return await run(alert, in: window) == .alertFirstButtonReturn
     }
 
     // MARK: - Critical Confirmations
@@ -95,15 +105,7 @@ final class AlertHelper {
         alert.informativeText = message
         alert.alertStyle = .critical
         Self.addConfirmAndCancel(to: alert, confirmButton: confirmButton, cancelButton: cancelButton)
-
-        if let window = resolveWindow(window) {
-            return await withCheckedContinuation { continuation in
-                alert.beginSheetModal(for: window) { response in
-                    continuation.resume(returning: response == .alertFirstButtonReturn)
-                }
-            }
-        }
-        return alert.runModal() == .alertFirstButtonReturn
+        return await run(alert, in: window) == .alertFirstButtonReturn
     }
 
     // MARK: - Cross-Process Approval
@@ -184,7 +186,7 @@ final class AlertHelper {
         alert.informativeText = message
         alert.alertStyle = .warning
 
-        // Button order follows NSDocument convention: Save | Cancel | Don't Save (Cmd+D)
+        /// `NSDocument`'s own order: Save, Cancel, then Don't Save on Cmd+D.
         alert.addButton(withTitle: String(localized: "Save"))
         alert.addButton(withTitle: String(localized: "Cancel"))
         let dontSaveButton = alert.addButton(withTitle: String(localized: "Don't Save"))
@@ -192,18 +194,7 @@ final class AlertHelper {
         dontSaveButton.keyEquivalent = "d"
         dontSaveButton.keyEquivalentModifierMask = .command
 
-        let response: NSApplication.ModalResponse
-        if let window = resolveWindow(window) {
-            response = await withCheckedContinuation { continuation in
-                alert.beginSheetModal(for: window) { resp in
-                    continuation.resume(returning: resp)
-                }
-            }
-        } else {
-            response = alert.runModal()
-        }
-
-        switch response {
+        switch await run(alert, in: window) {
         case .alertFirstButtonReturn: return .save
         case .alertThirdButtonReturn: return .dontSave
         default: return .cancel
@@ -228,18 +219,7 @@ final class AlertHelper {
         alert.addButton(withTitle: second)
         alert.addButton(withTitle: third)
 
-        let response: NSApplication.ModalResponse
-        if let window = resolveWindow(window) {
-            response = await withCheckedContinuation { continuation in
-                alert.beginSheetModal(for: window) { resp in
-                    continuation.resume(returning: resp)
-                }
-            }
-        } else {
-            response = alert.runModal()
-        }
-
-        switch response {
+        switch await run(alert, in: window) {
         case .alertFirstButtonReturn: return 0
         case .alertSecondButtonReturn: return 1
         case .alertThirdButtonReturn: return 2
@@ -262,12 +242,7 @@ final class AlertHelper {
             .joined(separator: "\n\n")
         alert.alertStyle = .critical
         alert.addButton(withTitle: String(localized: "OK"))
-
-        if let window = resolveWindow(window) {
-            alert.beginSheetModal(for: window) { _ in }
-        } else {
-            alert.runModal()
-        }
+        present(alert, in: window)
     }
 
     static func showInfoSheet(
@@ -280,11 +255,6 @@ final class AlertHelper {
         alert.informativeText = message
         alert.alertStyle = .informational
         alert.addButton(withTitle: String(localized: "OK"))
-
-        if let window = resolveWindow(window) {
-            alert.beginSheetModal(for: window) { _ in }
-        } else {
-            alert.runModal()
-        }
+        present(alert, in: window)
     }
 }

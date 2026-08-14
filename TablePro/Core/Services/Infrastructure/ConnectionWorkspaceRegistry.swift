@@ -83,7 +83,7 @@ internal final class ConnectionWorkspaceRegistry {
 
     internal func select(_ connectionId: UUID?) {
         guard selectedConnectionId != connectionId else { return }
-        guard connectionId == nil || workspacesById[connectionId ?? UUID()] != nil else { return }
+        if let connectionId, workspacesById[connectionId] == nil { return }
         selectedConnectionId = connectionId
         Self.logger.info(
             "select connId=\(connectionId?.uuidString ?? "none", privacy: .public)"

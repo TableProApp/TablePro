@@ -17,7 +17,9 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
     let pendingTruncates: Set<String>
     let pendingDeletes: Set<String>
     let searchText: String
-    let connectionToken: String
+    /// Rebuilds the tree when the session comes back, which is the one thing outside the metadata
+    /// services that invalidates every node at once.
+    let isConnected: Bool
     let activeDatabase: String?
     let activeSchema: String?
     let selectedTables: Set<TableInfo>

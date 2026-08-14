@@ -46,7 +46,6 @@ struct DatabaseTreeView: View {
     let coordinator: MainContentCoordinator?
     let sidebarState: SharedSidebarState
 
-    @State private var searchText: String = ""
     @State private var settingsManager = AppSettingsManager.shared
 
     private var activeDatabase: String? {
@@ -60,10 +59,6 @@ struct DatabaseTreeView: View {
 
     private var isConnected: Bool {
         DatabaseManager.shared.session(for: connectionId)?.status == .connected
-    }
-
-    private var connectionToken: String {
-        isConnected ? "connected" : "down"
     }
 
     private var databases: [DatabaseMetadata] {
@@ -98,15 +93,8 @@ struct DatabaseTreeView: View {
                 loadingState
             }
         }
-        .task(id: connectionToken) {
+        .task(id: isConnected) {
             await treeService.loadDatabases(connectionId: connectionId, databaseType: databaseType)
-        }
-        .task(id: viewModel.searchText) {
-            let live = viewModel.searchText
-            guard !live.isEmpty else { searchText = ""; return }
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            guard !Task.isCancelled else { return }
-            searchText = live
         }
     }
 
@@ -120,8 +108,8 @@ struct DatabaseTreeView: View {
             viewModel: viewModel,
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
-            searchText: searchText,
-            connectionToken: connectionToken,
+            searchText: viewModel.filterQuery,
+            isConnected: isConnected,
             activeDatabase: activeDatabase,
             activeSchema: activeSchema,
             selectedTables: windowState.selectedTables,

@@ -349,6 +349,10 @@ struct SidebarView: View {
         return name.isEmpty ? nil : name
     }
 
+    private var isConnected: Bool {
+        DatabaseManager.shared.session(for: connectionId)?.status == .connected
+    }
+
     private var tableList: some View {
         DatabaseTreeOutlineView(
             connectionId: connectionId,
@@ -360,7 +364,7 @@ struct SidebarView: View {
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
             searchText: viewModel.filterQuery,
-            connectionToken: connectionId.uuidString,
+            isConnected: isConnected,
             activeDatabase: activeDatabase,
             activeSchema: coordinator?.toolbarState.currentSchema,
             selectedTables: windowState.selectedTables,
