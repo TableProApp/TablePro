@@ -49,13 +49,13 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
             details(for: connection).joined(separator: "\n")
         )
         alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "Connect"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
+        /// Connecting is the risky half of this decision, so it gives up Return. Escape stays on
+        /// Cancel, which is the only binding that dismisses the alert from the keyboard.
+        alert.addButton(withTitle: String(localized: "Connect")).keyEquivalent = ""
+        AlertHelper.addCancelButton(to: alert, title: String(localized: "Cancel"))
         if offerAlwaysAllow {
             alert.addButton(withTitle: String(localized: "Always Allow"))
         }
-        alert.buttons[0].keyEquivalent = ""
-        alert.buttons[1].keyEquivalent = "\r"
         return alert
     }
 

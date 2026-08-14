@@ -151,30 +151,21 @@ struct DatabaseSwitcherPopover: View {
         }
     }
 
+    /// The search field keeps focus for the whole flow, so the list is a presentation of that
+    /// field's selection rather than a second focusable control. See `FieldDrivenList`.
     private var list: some View {
-        ScrollViewReader { proxy in
-            List(selection: $viewModel.selectedDatabases) {
-                ForEach(viewModel.filteredDatabases) { db in
-                    row(for: db)
-                }
-            }
-            .listStyle(.inset)
-            .scrollContentBackground(.hidden)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contextMenu(forSelectionType: String.self) { selection in
-                contextMenuItems(for: selection)
-            } primaryAction: { selection in
-                guard let name = selection.first else { return }
+        FieldDrivenList(
+            sections: [FieldDrivenListSection(id: "databases", items: viewModel.filteredDatabases)],
+            selection: $viewModel.selectedDatabases,
+            allowsMultipleSelection: true,
+            onPrimaryAction: { name in
                 viewModel.selectedDatabase = name
                 commitSelection()
-            }
-            .onChange(of: viewModel.primarySelection) { _, newValue in
-                guard let item = newValue else { return }
-                withMotion(.easeInOut(duration: 0.15)) {
-                    proxy.scrollTo(item)
-                }
-            }
-        }
+            },
+            menuItems: { contextMenuItems(for: $0) },
+            row: { row(for: $0) }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func row(for database: DatabaseMetadata) -> some View {
@@ -201,43 +192,36 @@ struct DatabaseSwitcherPopover: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 1)
+        .padding(.horizontal, 8)
         .contentShape(Rectangle())
-        .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
-        .listRowSeparator(.hidden)
-        .id(database.name)
-        .tag(database.name)
     }
 
-    @ViewBuilder
-    private func contextMenuItems(for selection: Set<String>) -> some View {
+    private func contextMenuItems(for selection: Set<String>) -> [FieldDrivenMenuItem] {
         let targets = containerRefs(for: selection)
         let droppable = ContainerDropEligibility.droppable(targets, context: dropEligibilityContext)
+        var items: [FieldDrivenMenuItem] = []
 
         if !targets.isEmpty {
-            Button(targets.count == 1
+            let copyTitle = targets.count == 1
                 ? String(localized: "Copy Name")
                 : String(format: String(localized: "Copy %lld Names"), targets.count)
-            ) {
+            items.append(FieldDrivenMenuItem(title: copyTitle) {
                 ClipboardService.shared.writeText(targets.map(\.name).joined(separator: ","))
-            }
-
-            Button(String(localized: "Export…")) {
+            })
+            items.append(FieldDrivenMenuItem(title: String(localized: "Export…")) {
                 dismiss()
                 onRequestExport(targets)
-            }
+            })
         }
 
         if !droppable.isEmpty {
-            Divider()
-
-            Button(role: .destructive) {
+            items.append(.separator)
+            items.append(FieldDrivenMenuItem(title: dropMenuTitle(for: droppable)) {
                 dismiss()
                 onRequestDrop(droppable)
-            } label: {
-                Label(dropMenuTitle(for: droppable), systemImage: "trash")
-            }
+            })
         }
+        return items
     }
 
     private func containerRefs(for selection: Set<String>) -> [DatabaseContainerRef] {

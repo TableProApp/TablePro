@@ -59,7 +59,8 @@ extension MainWindowToolbar {
                 symbol: "magnifyingglass",
                 action: #selector(performOpenQuickSwitcher(_:)),
                 keyEquivalent: "o",
-                modifiers: [.command, .shift]
+                modifiers: [.command, .shift],
+                shortcut: .quickSwitcher
             )
         case Self.newTab:
             return menuOnlyItem(
@@ -68,7 +69,9 @@ extension MainWindowToolbar {
                 symbol: "plus.rectangle",
                 action: #selector(performNewTab(_:)),
                 keyEquivalent: "t",
-                modifiers: .command
+                modifiers: .command,
+                shortcut: .newTab,
+                description: String(localized: "New Query Tab")
             )
         case Self.previewSQL:
             return menuOnlyItem(
@@ -77,7 +80,9 @@ extension MainWindowToolbar {
                 symbol: "eye",
                 action: #selector(performPreviewSQL(_:)),
                 keyEquivalent: "p",
-                modifiers: [.command, .shift]
+                modifiers: [.command, .shift],
+                shortcut: .previewSQL,
+                description: previewDescription
             )
         case Self.results:
             return menuOnlyItem(
@@ -86,7 +91,14 @@ extension MainWindowToolbar {
                 symbol: "rectangle.bottomhalf.inset.filled",
                 action: #selector(performToggleResults(_:)),
                 keyEquivalent: "r",
-                modifiers: [.command, .option]
+                modifiers: [.command, .option],
+                shortcut: .toggleResults,
+                description: String(localized: "Toggle Results"),
+                symbolProvider: { [weak coordinator] in
+                    coordinator?.toolbarState.isResultsCollapsed == false
+                        ? "rectangle.inset.filled"
+                        : "rectangle.bottomhalf.inset.filled"
+                }
             )
         case Self.inspector:
             let item = NSToolbarItem(itemIdentifier: Self.inspector)
@@ -100,7 +112,8 @@ extension MainWindowToolbar {
                 symbol: "gauge.with.dots.needle.33percent",
                 action: #selector(performShowDashboard(_:)),
                 keyEquivalent: "",
-                modifiers: []
+                modifiers: [],
+                description: String(localized: "Server Dashboard")
             )
         case Self.history:
             return menuOnlyItem(
@@ -109,7 +122,9 @@ extension MainWindowToolbar {
                 symbol: "clock",
                 action: #selector(performToggleHistory(_:)),
                 keyEquivalent: "y",
-                modifiers: .command
+                modifiers: .command,
+                shortcut: .toggleHistory,
+                description: String(localized: "Toggle Query History")
             )
         case Self.refreshSaveGroup:
             return makeNativeGroup(

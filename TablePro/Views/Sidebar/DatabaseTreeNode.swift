@@ -11,6 +11,8 @@ final class DatabaseTreeNode {
         case loading
         case empty
         case error(String)
+        /// Results are real but incomplete, which `empty` cannot say.
+        case truncated(String)
     }
 
     enum Kind {
@@ -21,6 +23,14 @@ final class DatabaseTreeNode {
         case table(DatabaseTreeTableRef)
         case routine(DatabaseTreeRoutineRef)
         case status(Status)
+
+        /// Flat shape: one collapsible section per object kind.
+        case objectKindSection(SidebarObjectKind)
+        /// Hierarchical shape: a schema with no database above it.
+        case hierarchicalSchemaSection(schema: String)
+        /// Flat shape, Redis only.
+        case redisKeysSection
+        case redisNode(RedisKeyNode)
     }
 
     let id: String
@@ -33,9 +43,16 @@ final class DatabaseTreeNode {
 
     var isExpandable: Bool {
         switch kind {
-        case .recentSection, .database, .schema: return true
-        case .table(let ref): return ref.table.type == .partitionedTable
-        case .recentTable, .routine, .status: return false
+        case .recentSection, .database, .schema,
+             .objectKindSection, .hierarchicalSchemaSection, .redisKeysSection:
+            return true
+        case .table(let ref):
+            return ref.table.type == .partitionedTable
+        case .redisNode(let node):
+            guard case .namespace = node else { return false }
+            return true
+        case .recentTable, .routine, .status:
+            return false
         }
     }
 
@@ -49,10 +66,29 @@ final class DatabaseTreeNode {
         return nil
     }
 
+    /// A source-list group row: chrome the app invented to bucket objects, not an object the
+    /// database has. AppKit draws these itself once `isGroupItem` says so, and it stops indenting
+    /// their children, which is what puts a table at the same depth as a database in the tree.
+    ///
+    /// A schema is deliberately not one. It is a real object with its own menu and its own
+    /// children, so it stays an ordinary container row the way a folder does in Xcode's navigator.
+    var isSectionHeader: Bool {
+        switch kind {
+        case .recentSection, .objectKindSection, .redisKeysSection:
+            return true
+        case .database, .schema, .hierarchicalSchemaSection, .recentTable, .table,
+             .routine, .status, .redisNode:
+            return false
+        }
+    }
+
     var isContainer: Bool {
         switch kind {
-        case .database, .schema: return true
-        case .recentSection, .recentTable, .table, .routine, .status: return false
+        case .database, .schema:
+            return true
+        case .recentSection, .recentTable, .table, .routine, .status,
+             .objectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+            return false
         }
     }
 
@@ -62,7 +98,8 @@ final class DatabaseTreeNode {
             return .database(metadata.name, isSystem: metadata.isSystemDatabase)
         case .schema(let database, let schema):
             return .schema(database: database, schema: schema, isSystem: systemSchemas.contains(schema))
-        case .recentSection, .recentTable, .table, .routine, .status:
+        case .recentSection, .recentTable, .table, .routine, .status,
+             .objectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
             return nil
         }
     }
@@ -78,6 +115,12 @@ final class DatabaseTreeNode {
         case .loading: return "\(parentId)\u{1}status.loading"
         case .empty: return "\(parentId)\u{1}status.empty"
         case .error: return "\(parentId)\u{1}status.error"
+        case .truncated: return "\(parentId)\u{1}status.truncated"
         }
     }
+
+    static func objectKindSectionId(_ kind: SidebarObjectKind) -> String { "kindSection\u{1}\(kind.rawValue)" }
+    static func hierarchicalSchemaSectionId(_ schema: String) -> String { "hschema\u{1}\(schema)" }
+    static let redisKeysSectionId = "redis-keys-section"
+    static func redisNodeId(_ node: RedisKeyNode) -> String { "redisnode\u{1}\(node.id)" }
 }

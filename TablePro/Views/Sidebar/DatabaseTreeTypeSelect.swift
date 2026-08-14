@@ -17,11 +17,25 @@ internal enum DatabaseTreeTypeSelect {
         return keyCode == upArrowKeyCode || keyCode == downArrowKeyCode
     }
 
-    /// Group rows and status rows have no name a user would type, and returning a string for them
-    /// makes type-select land on a row that cannot be opened.
+    /// Reads `keyCode` only once the event is known to be a key event.
+    ///
+    /// `NSEvent.keyCode` is documented as valid for key-up and key-down alone, and AppKit raises on
+    /// anything else. Passing `event.keyCode` as an argument to the test above evaluates it before
+    /// the type is checked, so a mouse-driven selection raised from inside the selection-changed
+    /// notification. The exception unwound through AppKit's own mouse tracking, which left the
+    /// table view's click handling half finished: no open, no mouse up, and a tracking loop that
+    /// only ended when the next click arrived.
+    internal static func isArrowNavigation(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown || event.type == .keyUp else { return false }
+        return isArrowNavigation(type: event.type, keyCode: event.keyCode)
+    }
+
+    /// Type-select finds objects, and a section title or a status line is not one. AppKit already
+    /// walks past a match it cannot select, so this decides what the search means rather than
+    /// keeping the selection off a dead row.
     internal static func matchString(for kind: DatabaseTreeNode.Kind) -> String? {
         switch kind {
-        case .recentSection, .status:
+        case .recentSection, .status, .objectKindSection, .redisKeysSection:
             return nil
         case .recentTable(let ref), .table(let ref):
             return ref.table.name
@@ -31,6 +45,10 @@ internal enum DatabaseTreeTypeSelect {
             return schema
         case .routine(let ref):
             return ref.routine.name
+        case .hierarchicalSchemaSection(let schema):
+            return schema
+        case .redisNode(let node):
+            return node.displayName
         }
     }
 }

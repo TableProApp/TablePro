@@ -9,7 +9,6 @@ struct AIChatWalkthroughBlockView: View {
     @Bindable var block: ChatContentBlock
 
     @Environment(AIChatViewModel.self) private var viewModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.commandActions) private var actions
 
     @State private var expandedStepIDs: Set<UUID> = []
@@ -111,7 +110,7 @@ struct AIChatWalkthroughBlockView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .onChange(of: scrollTarget) { _, target in
                 guard let target else { return }
-                withMotion { proxy.scrollTo(target, anchor: .center) }
+                withMotion(.easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .center) }
             }
         }
     }
@@ -256,7 +255,7 @@ struct AIChatWalkthroughBlockView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .onChange(of: scrollTarget) { _, target in
                 guard let target else { return }
-                withMotion { proxy.scrollTo(target, anchor: .center) }
+                withMotion(.easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .center) }
             }
         }
     }
@@ -449,7 +448,7 @@ struct AIChatWalkthroughBlockView: View {
         highlightClearTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
-            withMotion { activeAnchor = nil }
+            withMotion(.easeInOut(duration: 0.25)) { activeAnchor = nil }
         }
     }
 
@@ -510,14 +509,6 @@ struct AIChatWalkthroughBlockView: View {
     private func autoExpandFirstStep(_ steps: [SqlWalkthroughStep]) {
         guard expandedStepIDs.isEmpty, let first = steps.first else { return }
         expandedStepIDs.insert(first.id)
-    }
-
-    private func withMotion(_ change: () -> Void) {
-        if reduceMotion {
-            change()
-        } else {
-            withAnimation(.easeInOut(duration: 0.25)) { change() }
-        }
     }
 }
 

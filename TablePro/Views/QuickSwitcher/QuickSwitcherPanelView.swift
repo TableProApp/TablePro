@@ -87,7 +87,6 @@ struct QuickSwitcherPanelContent: View {
     @Bindable var viewModel: QuickSwitcherViewModel
     let onCommit: (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void
 
-    @State private var isNavigating = false
     @State private var keyMonitor: Any?
 
     var body: some View {
@@ -101,8 +100,6 @@ struct QuickSwitcherPanelContent: View {
             }
         }
         .frame(width: PanelMetrics.width)
-        .onChange(of: viewModel.searchText) { _, _ in isNavigating = false }
-        .onChange(of: viewModel.scope) { _, _ in isNavigating = false }
         .onAppear { installKeyMonitor() }
         .onDisappear { removeKeyMonitor() }
     }
@@ -191,14 +188,8 @@ struct QuickSwitcherPanelContent: View {
             QuickSwitcherSearchField(
                 text: $viewModel.searchText,
                 placeholder: String(localized: "Search tables, views, databases, queries..."),
-                onMoveUp: {
-                    isNavigating = true
-                    viewModel.moveSelection(by: -1)
-                },
-                onMoveDown: {
-                    isNavigating = true
-                    viewModel.moveSelection(by: 1)
-                },
+                onMoveUp: { viewModel.moveSelection(by: -1) },
+                onMoveDown: { viewModel.moveSelection(by: 1) },
                 onSubmit: { openSelectedItem() }
             )
         }
@@ -267,8 +258,11 @@ struct QuickSwitcherPanelContent: View {
     }
 
     private func itemRow(_ item: QuickSwitcherItem) -> some View {
+        /// The panel closes as soon as it stops being key, so "unfocused" is a state it cannot be in
+        /// and must not depict. Gating this on whether an arrow key had fired painted the row Return
+        /// commits as inactive until the user pressed one.
         let isSelected = item.id == viewModel.selectedItemId
-        let isEmphasized = isSelected && isNavigating
+        let isEmphasized = isSelected
 
         return HStack(spacing: 12) {
             iconView(for: item, isEmphasized: isEmphasized)
@@ -298,15 +292,11 @@ struct QuickSwitcherPanelContent: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-            isNavigating = true
             viewModel.selectedItemId = item.id
             onCommit(item, .open)
         }
         .simultaneousGesture(
-            TapGesture().onEnded {
-                isNavigating = true
-                viewModel.selectedItemId = item.id
-            }
+            TapGesture().onEnded { viewModel.selectedItemId = item.id }
         )
         .contextMenu { contextMenuActions(for: item) }
         .accessibilityElement(children: .combine)
@@ -459,11 +449,9 @@ struct QuickSwitcherPanelContent: View {
             if modifiers == .control {
                 switch characters {
                 case "j", "n":
-                    isNavigating = true
                     viewModel.moveSelection(by: 1)
                     return nil
                 case "k", "p":
-                    isNavigating = true
                     viewModel.moveSelection(by: -1)
                     return nil
                 default:

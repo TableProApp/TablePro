@@ -133,10 +133,18 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
         writeSearchText("")
     }
 
+    /// Down from the filter field hands focus to the list. The handoff goes through the key view loop,
+    /// which only ever lands on a view that answers `acceptsFirstResponder`; naming the hosting view
+    /// directly parked focus on a view that does not, so the selection never moved, the list never drew
+    /// as focused, and returning true swallowed the key. Returning false when nothing took focus leaves
+    /// AppKit's own handling in place.
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        guard commandSelector == #selector(NSResponder.moveDown(_:)) else { return false }
-        view.window?.makeFirstResponder(hostingController.view)
-        return true
+        guard commandSelector == #selector(NSResponder.moveDown(_:)), let window = view.window else {
+            return false
+        }
+        let previous = window.firstResponder
+        window.selectKeyView(following: searchField)
+        return window.firstResponder !== previous
     }
 
     private func writeSearchText(_ text: String) {

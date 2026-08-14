@@ -30,6 +30,46 @@ struct DatabaseTreeTypeSelectTests {
         #expect(DatabaseTreeTypeSelect.isArrowNavigation(type: .leftMouseDown, keyCode: Self.upArrow) == false)
     }
 
+    /// Reading `keyCode` off a real mouse event raises, and the raise unwound through AppKit's
+    /// mouse tracking: clicking a table selected it but never opened it. The pure test above cannot
+    /// catch that, because it never touches an `NSEvent`.
+    @Test("A real mouse event is answered without reading its key code")
+    func realMouseEventDoesNotReadKeyCode() throws {
+        let event = try #require(
+            NSEvent.mouseEvent(
+                with: .leftMouseDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 1,
+                pressure: 1
+            )
+        )
+        #expect(DatabaseTreeTypeSelect.isArrowNavigation(event) == false)
+    }
+
+    @Test("A real arrow key event counts as navigation")
+    func realArrowEventNavigates() throws {
+        let event = try #require(
+            NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: "",
+                charactersIgnoringModifiers: "",
+                isARepeat: false,
+                keyCode: Self.downArrow
+            )
+        )
+        #expect(DatabaseTreeTypeSelect.isArrowNavigation(event))
+    }
+
     @Test("Group and status rows have no type select string")
     func groupRowsHaveNoMatchString() {
         #expect(DatabaseTreeTypeSelect.matchString(for: .recentSection) == nil)

@@ -24,21 +24,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB field suggestions include nested paths. A document with `address: { city }` now suggests `address.city`, not just `address`. (#2095)
 - MongoDB updates accept an options argument, so `db.users.updateOne({...}, {...}, {upsert: true})` upserts instead of ignoring the option. `arrayFilters` and `hint` are passed through too. (#2095)
 - Format Query follows the editor language. On a MongoDB tab it lays out filters and pipelines by nesting depth instead of running the SQL formatter over them. (#2095)
-
-### Added
-
 - The MongoDB editor accepts mongosh value constructors in filters and pipelines, so a value copied from the grid pastes straight into a query. Covers `ObjectId`, `ISODate`, `Date`, the `Number*` family, `Timestamp`, `BinData`, `HexData`, `MinKey`, `MaxKey` and the UUID names. (#2086)
 
 ### Fixed
 
+- Holding an arrow key in the sidebar no longer opens a tab and runs a query for every object it passes. Arrowing through 20 tables fired 20 queries; it now opens only the object you stop on.
+- Clicking a row in the sidebar puts the keyboard on the list. The click moved the selection but sometimes left the keyboard in the filter field above it, so the row drew grey instead of in the accent colour and the arrow keys went to the field. Switching to the Favorites tab left the keyboard nowhere at all, so the first arrow key did nothing.
+- Opening a table from somewhere that asks for the grid, such as Favorites or Show Structure, puts the keyboard in the grid. Only the first such table of a session did; every one after it left the keyboard where it was.
 - A chained method on a MongoDB aggregation no longer goes missing. `db.orders.aggregate([...]).limit(10)` used to drop the limit and return everything the pipeline matched. Chaining a method that a query does not support now reports an error instead of ignoring it. (#2095)
+- Escape closes the drop, truncate, delete and external-link alerts again, and the risky button no longer answers Return. (#2104)
+- The line under the toolbar sits under the toolbar again. The tab strip moved back above the editor, where its colours were designed to sit, instead of into the titlebar. (#2104)
+- A selected range of cells stays visible when the grid is not the focused view, and the column header no longer stays highlighted after the body has dimmed. (#2104)
+- Dropping a SQL file on a connection window opens it. (#2104)
+- Opening Settings, Appearance no longer replaces the theme saved for the light or dark slot. A theme that does not match the slot stays listed while it is the one in use.
+- The selected tag filter is readable again on light tag colours, and the picked colour swatch keeps its ring whatever accent colour is set. (#2104)
+- Toolbar tooltips name what the button does and show the current keyboard shortcut again. Import works from the toolbar, and the Results button shows whether the pane is open. (#2104)
+- Nested connection groups show their nesting in the group menus again. (#2104)
+- The import result lists the statement that failed, not just the line number. (#2104)
+- A tag with no colour is readable in the toolbar instead of drawing white on nothing.
+- The Quick Switcher row that Return will open is highlighted from the moment the panel opens, not only after an arrow key.
+- Down arrow in the sidebar filter field moves into the object list instead of being swallowed.
+- The highlighted row in the connection switcher and the database switcher is drawn as the active selection while you type and arrow through it, the way Spotlight does, instead of looking inactive until you click.
+- Routines and Recent entries in the object tree can be selected, so arrow keys reach them and type-to-find lands on them. Clicking a Recent entry now highlights the row it opened.
+- The sidebar object list is now a native outline in every layout, so the selected row is drawn as the active selection, arrow keys move between objects, and typing jumps to a name. The flat and schema layouts were SwiftUI lists that could not do any of that.
+- Procedures, functions and Redis keys can be selected and reached with the keyboard in the sidebar.
+- The Favorites tab is a native outline too, so saved queries, folders and linked SQL files take the keyboard and show a real selection. Team Library entries can be selected for the first time; opening one is now a double-click or Return rather than a single click, and its publisher shows beside the name instead of under it.
+- Truncate, Copy Name and Delete act on the sidebar selection in tree layout. They read a selection the tree never published, so they did nothing at all.
+- Clicking a table under Recent in the sidebar highlights it. The Recent entries sit at the top of the list and were the only rows that opened a table without ever showing as selected, which read as the highlight working on some tables and not others.
 
 ### Changed
 
+- Clicking a table in the sidebar opens it right away. It used to wait out the double-click interval, about half a second, to find out whether a second click was coming. Double-click no longer opens a second copy of the table; **Open in New Tab** on the table's contextual menu does that.
+- Opening a table from the sidebar leaves the keyboard in the sidebar, so you can keep clicking or arrowing through tables and watch each one load. Click into the grid when you want to work in it.
+- Sidebar section titles are real source list headers now, the way Package Dependencies reads in Xcode's navigator: a short grey title with no icon, and the objects under it sitting at the same depth as a database instead of one step in.
 - Every open connection now lives in one window. Picking a connection in the workspace rail switches that window to it instead of raising a second window.
 - Opening a table or query on a connection you already have open adds a tab to that window instead of opening another window. A tab strip appears once a connection holds more than one tab.
 - Closing the last tab leaves the connection open on its empty state. Close Tab again closes the connection, and the window once that was the last one open.
-- Window tabs follow your "Prefer tabs when opening documents" setting instead of always forcing tabs, and the Window menu gained Merge All Windows.
+- Window tabs follow your "Prefer tabs when opening documents" setting instead of always forcing tabs, and the Window menu carries Move Tab to New Window and Merge All Windows.
 - Mobile keeps remote connections open when you switch apps.
 - MongoDB shows a standard binary UUID as `UUID("...")` everywhere, including in exports.
 - Mobile no longer copies database passwords to iCloud Keychain unless you turn on Sync Passwords. Mac already worked this way.

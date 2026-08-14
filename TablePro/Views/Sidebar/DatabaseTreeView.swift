@@ -47,6 +47,7 @@ struct DatabaseTreeView: View {
     let sidebarState: SharedSidebarState
 
     @State private var searchText: String = ""
+    @State private var settingsManager = AppSettingsManager.shared
 
     private var activeDatabase: String? {
         let name = coordinator?.toolbarState.currentDatabase ?? ""
@@ -122,7 +123,9 @@ struct DatabaseTreeView: View {
             searchText: searchText,
             connectionToken: connectionToken,
             activeDatabase: activeDatabase,
-            activeSchema: activeSchema
+            activeSchema: activeSchema,
+            selectedTables: windowState.selectedTables,
+            showRecentTables: settingsManager.general.showRecentTables
         )
     }
 

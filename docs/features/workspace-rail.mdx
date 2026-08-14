@@ -40,9 +40,9 @@ An entry goes away when its last tab closes and you are no longer browsing it. N
 
 ## Switching
 
-Click an entry to go to it. Moving between two connections raises that connection's window, returning you to the tab you last used there rather than an arbitrary one. Moving between two databases of one connection stays in the same window and moves what the sidebar lists.
+Click an entry to go to it. Moving between two connections switches the window to that connection, returning you to the tab you last used there rather than an arbitrary one. Moving between two databases of one connection stays in the same window and moves what the sidebar lists.
 
-Each connection is its own window with its own set of tabs, and the tab bar along the top shows only that connection's tabs. A new connection window opens over the one you were in, so switching reads as the window changing content until you move a window somewhere you want it.
+One window hosts every connection you have open. Each connection keeps its own set of tabs, and the tab strip above the editor lists only the tabs of the connection you are in. Switching reads as the window changing content, because that is what it is.
 
 Open tabs are never closed or retargeted by a switch. A tab keeps the database it was opened against and keeps querying it, whichever workspace you are in.
 
@@ -52,11 +52,11 @@ The rail takes the keyboard too. Click into it and the arrow keys move the highl
 
 ## Closing
 
-Right-click a workspace and choose **Close Workspace** to close every tab in it. A window holding a tab in another database stays open, because that tab is not part of the workspace you are closing. Unsaved work is confirmed first, the same as closing a window.
+Right-click a workspace and choose **Close Workspace** to close every tab in it. Tabs bound to another database stay open, because they are not part of the workspace you are closing. Unsaved work is confirmed first, the same as closing a window.
 
 ## Disconnecting
 
-Right-click a workspace and choose **Disconnect** to end its connection. The item only appears while the connection is live. Unlike Close Workspace, this covers every window and workspace of that connection, and no window closes: each one shows a Reconnect screen in place of its tabs, with the tabs saved before the session ends. See [disconnecting](/features/tabs#disconnecting).
+Right-click a workspace and choose **Disconnect** to end its connection. The item only appears while the connection is live. Unlike Close Workspace, this covers every workspace of that connection, and no window closes: the connection shows a Reconnect screen in place of its tabs, with the tabs saved before the session ends. See [disconnecting](/features/tabs#disconnecting).
 
 ## Reordering
 

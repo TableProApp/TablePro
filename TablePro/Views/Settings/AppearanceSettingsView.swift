@@ -27,25 +27,6 @@ struct AppearanceSettingsView: View {
         editSlot == .dark ? .dark : .light
     }
 
-    private var slotDefaultThemeId: String {
-        editSlot == .dark
-            ? AppearanceSettings.default.preferredDarkThemeId
-            : AppearanceSettings.default.preferredLightThemeId
-    }
-
-    /// A slot that already holds a contradicting theme is re-anchored on read, so filtering the
-    /// list can never hide the row the user is standing on.
-    private func validateSlot() {
-        let resolved = ThemeSlotValidation.resolvedThemeId(
-            current: slotThemeBinding.wrappedValue,
-            slot: slotAppearance,
-            themes: ThemeEngine.shared.availableThemes,
-            defaultId: slotDefaultThemeId
-        )
-        guard resolved != slotThemeBinding.wrappedValue else { return }
-        slotThemeBinding.wrappedValue = resolved
-    }
-
     private var slotThemeBinding: Binding<String> {
         Binding(
             get: {
@@ -106,7 +87,6 @@ struct AppearanceSettingsView: View {
                     .frame(minWidth: 400)
             }
         }
-        .task(id: editSlot) { validateSlot() }
     }
 }
 

@@ -461,7 +461,7 @@ final class FilterCoordinator {
     // MARK: - Panel Visibility
 
     func toggleFilterPanel() {
-        withAnimation(.easeInOut(duration: 0.15)) {
+        withMotion(.easeInOut(duration: 0.15)) {
             mutateSelectedTabFilterState { state in
                 state.isVisible.toggle()
             }
@@ -469,7 +469,7 @@ final class FilterCoordinator {
     }
 
     func showFilterPanel() {
-        withAnimation(.easeInOut(duration: 0.15)) {
+        withMotion(.easeInOut(duration: 0.15)) {
             mutateSelectedTabFilterState { state in
                 state.isVisible = true
             }
@@ -477,7 +477,7 @@ final class FilterCoordinator {
     }
 
     func closeFilterPanel() {
-        withAnimation(.easeInOut(duration: 0.15)) {
+        withMotion(.easeInOut(duration: 0.15)) {
             mutateSelectedTabFilterState { state in
                 state.isVisible = false
             }

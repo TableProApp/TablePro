@@ -55,9 +55,9 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         }
     }
 
-    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
-        guard let state = coordinator?.toolbarState else { return false }
-        let context = ValidationContext(
+    func validationContext() -> ValidationContext? {
+        guard let state = coordinator?.toolbarState else { return nil }
+        return ValidationContext(
             connected: Self.hasLiveSession(state.connectionState),
             isTableTab: state.isTableTab,
             hasPendingChanges: state.hasPendingChanges,
@@ -68,6 +68,21 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             supportsImport: PluginManager.shared.supportsImport(for: state.databaseType),
             supportsServerDashboard: coordinator?.commandActions?.supportsServerDashboard ?? false
         )
+    }
+
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        guard let context = validationContext() else { return false }
         return Self.isEnabled(itemIdentifier: item.itemIdentifier, context: context)
+    }
+}
+
+/// The Import item carries no action, so `validateToolbarItem(_:)` never reaches it. Its menu items
+/// do, and AppKit validates them each time the menu opens, which keeps the safe-mode gate live
+/// instead of frozen at the moment the toolbar was built.
+extension MainWindowToolbar: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(performImportFormat(_:)) else { return true }
+        guard let context = validationContext() else { return false }
+        return Self.isEnabled(itemIdentifier: Self.importTables, context: context)
     }
 }

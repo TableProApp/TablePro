@@ -8,24 +8,32 @@ import SwiftUI
 
 @MainActor
 final class AlertHelper {
-    /// The confirming button destroys something, so it takes the destructive treatment and gives
-    /// up Return, and the cancelling button becomes the default in its place. That is the shape
-    /// macOS itself uses for a destructive alert: Return does the safe thing, and destroying
-    /// takes a deliberate click.
+    /// An `NSButton` holds exactly one key equivalent, so moving Return onto Cancel overwrites the
+    /// Escape that `NSAlert` puts there and leaves the alert with no way out from the keyboard.
+    /// Return is taken off the confirming button instead and handed to nobody, which is the shape
+    /// macOS itself ships for a destructive alert: Escape cancels, and destroying takes a
+    /// deliberate click.
     ///
-    /// Leaving the confirming button as the default made a stray Return delete. Taking Return off
-    /// it without handing it anywhere left the alert with no default button at all, which reads as
-    /// unfinished chrome and gives the keyboard no safe way out.
+    /// `hasDestructiveAction` alone reaches the same state, but only once the alert lays out, so
+    /// the binding is written here as well to make it true from the moment the alert is built.
     static func addConfirmAndCancel(
         to alert: NSAlert,
         confirmButton: String,
         cancelButton: String
     ) {
         let confirm = alert.addButton(withTitle: confirmButton)
-        let cancel = alert.addButton(withTitle: cancelButton)
         confirm.hasDestructiveAction = true
         confirm.keyEquivalent = ""
-        cancel.keyEquivalent = "\r"
+        addCancelButton(to: alert, title: cancelButton)
+    }
+
+    /// `NSAlert` only recognises a cancel button by its title, which stops matching the moment the
+    /// title is localized, so the binding is made explicit rather than inferred.
+    @discardableResult
+    static func addCancelButton(to alert: NSAlert, title: String) -> NSButton {
+        let cancel = alert.addButton(withTitle: title)
+        cancel.keyEquivalent = "\u{1B}"
+        return cancel
     }
 
     static func resolveWindow(_ window: NSWindow?) -> NSWindow? {

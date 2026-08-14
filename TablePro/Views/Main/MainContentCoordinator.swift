@@ -971,10 +971,10 @@ final class MainContentCoordinator {
     func loadQueryIntoEditor(
         _ query: String,
         databaseName: String? = nil,
-        forceNewWindowTab: Bool = false
+        forceNewTab: Bool = false
     ) -> WindowTabOpenDisposition {
         let targetDatabaseName = databaseName ?? browseDatabaseName
-        if !forceNewWindowTab,
+        if !forceNewTab,
            let (tab, tabIndex) = tabManager.selectedTabAndIndex,
            tab.tabType == .query,
            databaseName == nil
@@ -986,7 +986,7 @@ final class MainContentCoordinator {
             return .currentCoordinator
         }
 
-        if !forceNewWindowTab, tabManager.tabs.isEmpty {
+        if !forceNewTab, tabManager.tabs.isEmpty {
             tabManager.addTab(initialQuery: query, databaseName: targetDatabaseName)
             return .currentCoordinator
         }

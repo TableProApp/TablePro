@@ -13,15 +13,27 @@ internal struct ThemeListView: View {
     @State private var showError = false
 
     private var builtInThemes: [ThemeDefinition] {
-        ThemeSlotValidation.eligibleThemes(engine.availableThemes.filter(\.isBuiltIn), slot: slotAppearance)
+        ThemeSlotValidation.eligibleThemes(
+            engine.availableThemes.filter(\.isBuiltIn),
+            slot: slotAppearance,
+            keeping: selectedThemeId
+        )
     }
 
     private var registryThemes: [ThemeDefinition] {
-        ThemeSlotValidation.eligibleThemes(engine.registryThemes, slot: slotAppearance)
+        ThemeSlotValidation.eligibleThemes(
+            engine.registryThemes,
+            slot: slotAppearance,
+            keeping: selectedThemeId
+        )
     }
 
     private var customThemes: [ThemeDefinition] {
-        ThemeSlotValidation.eligibleThemes(engine.availableThemes.filter(\.isEditable), slot: slotAppearance)
+        ThemeSlotValidation.eligibleThemes(
+            engine.availableThemes.filter(\.isEditable),
+            slot: slotAppearance,
+            keeping: selectedThemeId
+        )
     }
 
     private var selectedTheme: ThemeDefinition? {

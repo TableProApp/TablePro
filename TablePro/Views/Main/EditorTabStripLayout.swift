@@ -21,8 +21,6 @@ internal enum EditorTabStripLayout {
     internal static let accessoryInset: CGFloat = 5
     internal static let fontSize: CGFloat = 11
 
-    internal static var totalHeight: CGFloat { trackHeight + stripInset * 2 }
-
     /// Tabs share the track equally, and stop shrinking at a width that still fits a name so a
     /// long list scrolls instead of collapsing into slivers. The system staggers widths slightly
     /// by an undocumented rule; an equal share is within a couple of points of it.

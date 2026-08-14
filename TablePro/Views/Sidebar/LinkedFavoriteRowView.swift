@@ -9,11 +9,6 @@ internal struct LinkedFavoriteRowView: View {
     let favorite: LinkedSQLFavorite
 
     var body: some View {
-        rowContent
-            .draggable(LinkedFavoriteTransfer(fileURL: favorite.fileURL))
-    }
-
-    private var rowContent: some View {
         HStack(spacing: 6) {
             Image(systemName: "doc.text")
                 .font(.callout)

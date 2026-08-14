@@ -106,6 +106,17 @@ struct SidebarContextMenu: View {
         Divider()
 
         if clickedTable != nil {
+            /// Where pinning a preview tab lives now that one click opens. Double click used to
+            /// carry it, which only worked because the click waited half a second to find out
+            /// whether a second one was coming.
+            Button("Open in New Tab") {
+                perform {
+                    if let clickedTable {
+                        coordinator?.openTableTab(clickedTable, forceNewTab: true)
+                    }
+                }
+            }
+
             if isView {
                 Button("Edit View Definition") {
                     perform {

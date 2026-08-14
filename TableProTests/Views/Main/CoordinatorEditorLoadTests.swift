@@ -143,7 +143,7 @@ struct CoordinatorEditorLoadTests {
         let disposition = coordinator.loadQueryIntoEditor(
             "SELECT 2",
             databaseName: "testdb",
-            forceNewWindowTab: true
+            forceNewTab: true
         )
 
         #expect(disposition == .focusedElsewhere)

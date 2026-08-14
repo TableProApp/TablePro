@@ -17,7 +17,7 @@ Press `Cmd+Shift+O` (or **Query** > **Quick Switcher**) in a connection window t
 | Open Quick Switcher | `Cmd+Shift+O` |
 | Move selection | `Up` / `Down`, or `Ctrl+J`/`Ctrl+N` and `Ctrl+K`/`Ctrl+P` |
 | Open selected item | `Return` (double-click also works) |
-| Open in a new window tab | `Option+Return` |
+| Open in a new tab | `Option+Return` |
 | Switch scope | `Cmd+1` to `Cmd+5` |
 | Clear the search text | `Escape` |
 | Dismiss | `Escape` on an empty field, `Cmd+Shift+O` again, or click outside |
@@ -46,7 +46,7 @@ The **Queries** scope searches saved queries and up to 200 recent query-history 
   <img src="/images/quick-switcher-cross-connection-queries.png" alt="Quick Switcher showing query history from Chinook and Analytics connections" />
 </Frame>
 
-Opening a query brings its connection forward and loads the SQL without running it. The window you opened Quick Switcher from is used whenever it is on the right connection and database, so a query never replaces the editor in a window you were not looking at. Query-history entries keep their recorded database context. If no open window uses that database, TablePro opens a new native window tab instead of loading the SQL into a tab for another database. `Option+Return` always opens a new native window tab.
+Opening a query brings its connection forward and loads the SQL without running it. The tab you opened Quick Switcher from is used whenever it is on the right connection and database, so a query never replaces an editor you were not looking at. Query-history entries keep their recorded database context. If no open tab uses that database, TablePro opens a new tab instead of loading the SQL into a tab bound to another database. `Option+Return` always opens a new tab.
 
 ## Ranking
 
@@ -61,7 +61,7 @@ The list shows at most 200 results.
 
 ## Open badge
 
-Tables already open in a tab show an **Open** badge, and the selected row's hint reads **Switch to Tab**. Committing switches to the existing tab instead of opening a duplicate. `Option+Return` forces a new window tab.
+Tables already open in a tab show an **Open** badge, and the selected row's hint reads **Switch to Tab**. Committing switches to the existing tab instead of opening a duplicate. `Option+Return` forces a new tab.
 
 What opening does depends on the item: tables and views open a table tab, databases and schemas switch the active database or schema, and queries load into the SQL editor.
 

@@ -7,8 +7,11 @@ import AppKit
 import os
 import SwiftUI
 
+/// The conformance is what makes the drag methods reachable. `NSWindow` does not adopt
+/// `NSDraggingDestination`, so without it Swift emits no selector for these and AppKit, which
+/// dispatches a drag by selector, runs `NSWindow`'s own refusal instead.
 @MainActor
-private final class EditorWindow: NSWindow {
+private final class EditorWindow: NSWindow, NSDraggingDestination {
     override func performClose(_ sender: Any?) {
         if let coordinator = MainContentCoordinator.coordinator(forWindow: self),
            let actions = coordinator.commandActions {
@@ -17,7 +20,6 @@ private final class EditorWindow: NSWindow {
             super.performClose(sender)
         }
     }
-
 
     func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         FileDropDestination.acceptedURLs(from: sender.draggingPasteboard).isEmpty ? [] : .copy

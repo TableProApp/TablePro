@@ -51,7 +51,7 @@ extension MainContentCoordinator {
                 showStructure: intent == .openStructure,
                 isView: item.isReadOnly,
                 activateGridFocus: true,
-                forceNewWindowTab: intent == .openInNewWindowTab
+                forceNewTab: intent == .openInNewWindowTab
             )
 
         case .view:
@@ -61,7 +61,7 @@ extension MainContentCoordinator {
                 showStructure: intent == .openStructure,
                 isView: true,
                 activateGridFocus: true,
-                forceNewWindowTab: intent == .openInNewWindowTab
+                forceNewTab: intent == .openInNewWindowTab
             )
 
         case .database:
@@ -77,13 +77,13 @@ extension MainContentCoordinator {
         case .savedQuery:
             loadQueryIntoEditor(
                 item.payload ?? item.name,
-                forceNewWindowTab: intent == .openInNewWindowTab
+                forceNewTab: intent == .openInNewWindowTab
             )
 
         case .queryHistory:
             loadQueryIntoEditor(
                 item.payload ?? item.name,
-                forceNewWindowTab: intent == .openInNewWindowTab
+                forceNewTab: intent == .openInNewWindowTab
             )
         }
     }
@@ -99,7 +99,7 @@ extension MainContentCoordinator {
                 schema: target.schemaName,
                 isView: item.kind == .view || item.isReadOnly,
                 activateGridFocus: true,
-                forceNewWindowTab: intent == .openInNewWindowTab
+                forceNewTab: intent == .openInNewWindowTab
             )
             switch disposition {
             case .currentCoordinator:
@@ -155,7 +155,7 @@ extension MainContentCoordinator {
             let disposition = coordinator.loadQueryIntoEditor(
                 query,
                 databaseName: target.databaseName,
-                forceNewWindowTab: intent == .openInNewWindowTab
+                forceNewTab: intent == .openInNewWindowTab
             )
             if disposition == .currentCoordinator,
                let tabId = coordinator.tabManager.selectedTabId {

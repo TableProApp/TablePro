@@ -9,6 +9,15 @@ import SwiftUI
 extension MainWindowToolbar {
     // MARK: - Subitem Builders
 
+    /// The name of the driver's own query language, so the Preview tooltip says "Preview MQL" on
+    /// MongoDB rather than a generic word the user has to translate.
+    var previewDescription: String {
+        let language = coordinator.map {
+            PluginManager.shared.queryLanguageName(for: $0.toolbarState.databaseType)
+        } ?? String(localized: "SQL")
+        return String(format: String(localized: "Preview %@"), language)
+    }
+
     func subitemConnection() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.connection,
@@ -16,7 +25,9 @@ extension MainWindowToolbar {
             symbol: "network",
             action: #selector(performOpenConnectionSwitcher(_:)),
             keyEquivalent: "c",
-            modifiers: [.command, .option]
+            modifiers: [.command, .option],
+            shortcut: .switchConnection,
+            description: String(localized: "Switch Connection")
         )
     }
 
@@ -30,7 +41,9 @@ extension MainWindowToolbar {
             symbol: "cylinder",
             action: #selector(performOpenDatabaseSwitcher(_:)),
             keyEquivalent: "k",
-            modifiers: .command
+            modifiers: .command,
+            shortcut: .openDatabase,
+            description: String(format: String(localized: "Open %@"), containerName)
         )
     }
 
@@ -41,7 +54,8 @@ extension MainWindowToolbar {
             symbol: "arrow.clockwise",
             action: #selector(performRefresh(_:)),
             keyEquivalent: "r",
-            modifiers: .command
+            modifiers: .command,
+            shortcut: .refresh
         )
     }
 
@@ -52,7 +66,8 @@ extension MainWindowToolbar {
             symbol: "checkmark.circle.fill",
             action: #selector(performSaveChanges(_:)),
             keyEquivalent: "s",
-            modifiers: .command
+            modifiers: .command,
+            shortcut: .saveChanges
         )
     }
 
@@ -63,16 +78,28 @@ extension MainWindowToolbar {
             symbol: "square.and.arrow.up",
             action: #selector(performExport(_:)),
             keyEquivalent: "e",
-            modifiers: [.command, .shift]
+            modifiers: [.command, .shift],
+            shortcut: .export,
+            description: String(localized: "Export Data")
         )
     }
 
+    /// `NSMenuToolbarItem` is the toolbar control that opens a menu. A plain `NSToolbarItem` with a
+    /// submenu on its `menuFormRepresentation` only shows that menu in the overflow list.
+    ///
+    /// It carries no action on purpose. Given one, AppKit splits the control into a body that sends
+    /// the action and a separate chevron that opens the menu, so clicking the item itself does
+    /// nothing whenever the driver offers more than one format. With no action the whole control
+    /// opens the menu, and a single-format driver simply gets a one-item menu.
     func subitemImport() -> NSToolbarItem {
         let label = String(localized: "Import")
-        let item = NSToolbarItem(itemIdentifier: Self.importTables)
+        let item = NSMenuToolbarItem(itemIdentifier: Self.importTables)
         item.label = label
         item.paletteLabel = label
+        item.toolTip = toolTip(String(localized: "Import Data"), shortcut: .importData)
+        item.isBordered = true
         item.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: label)
+        item.menu = buildImportSubmenu()
 
         let menuItem = NSMenuItem(title: label, action: nil, keyEquivalent: "")
         menuItem.image = item.image
@@ -137,23 +164,29 @@ extension MainWindowToolbar {
         return item
     }
 
+    /// The label is what the customization palette and the overflow menu show, so it stays short.
+    /// The tooltip is the one place with room to say what the item does and which key runs it.
     func menuOnlyItem(
         id: NSToolbarItem.Identifier,
         label: String,
         symbol: String,
         action: Selector,
         keyEquivalent: String,
-        modifiers: NSEvent.ModifierFlags
+        modifiers: NSEvent.ModifierFlags,
+        shortcut: ShortcutAction? = nil,
+        description: String? = nil,
+        symbolProvider: (@MainActor () -> String)? = nil
     ) -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: id)
+        let item = StatefulToolbarItem(itemIdentifier: id)
         item.label = label
         item.paletteLabel = label
         item.target = self
         item.action = action
         item.autovalidates = true
         item.isBordered = true
-        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-        item.toolTip = label
+        item.symbolAccessibilityDescription = label
+        item.symbolProvider = symbolProvider ?? { symbol }
+        item.toolTip = toolTip(description ?? label, shortcut: shortcut)
 
         let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: keyEquivalent)
         menuItem.keyEquivalentModifierMask = modifiers
@@ -162,6 +195,11 @@ extension MainWindowToolbar {
         item.menuFormRepresentation = menuItem
 
         return item
+    }
+
+    func toolTip(_ label: String, shortcut: ShortcutAction?) -> String {
+        guard let shortcut else { return label }
+        return AppSettingsManager.shared.keyboard.shortcutHint(label, for: shortcut)
     }
 
     /// A group with real subitems and no `view` is drawn by AppKit itself, so it answers display

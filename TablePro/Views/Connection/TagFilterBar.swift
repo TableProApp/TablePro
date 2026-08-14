@@ -41,6 +41,11 @@ struct TagFilterBar: View {
 
     /// `ButtonToggleStyle` reports the on and off value itself, and brings hover, press and the
     /// keyboard focus ring that a plain button with a hand-drawn capsule never had.
+    ///
+    /// The tint stays at the accent colour. Routing the tag's own colour through it turned the
+    /// on-state from a prominent fill with a legible label into a wash of the tag colour with the
+    /// label drawn in that same colour, which measured 1.37:1 on yellow. A tint is the accent for
+    /// a control's selected state, not a decorative fill; the tag's colour belongs in the dot.
     private func tagPill(_ tag: ConnectionTag) -> some View {
         Toggle(isOn: binding(for: tag)) {
             HStack(spacing: 4) {
@@ -53,7 +58,6 @@ struct TagFilterBar: View {
         }
         .toggleStyle(.button)
         .controlSize(.small)
-        .tint(tag.color.color)
         .help(Text(tag.name))
     }
 

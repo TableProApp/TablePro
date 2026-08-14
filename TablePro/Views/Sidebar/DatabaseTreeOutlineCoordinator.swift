@@ -25,18 +25,24 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var activeSchema: String?
     private var pendingTruncates: Set<String> = []
     private var pendingDeletes: Set<String> = []
+    private var showRecentTables = true
 
     private var nodeCache: [String: DatabaseTreeNode] = [:]
     private var childrenCache: [String: [DatabaseTreeNode]] = [:]
     private var lastSelection: Set<DatabaseTreeTableRef> = []
     private var lastSelectedNodeIds: [String] = []
-    private var pendingSingleClickWork: DispatchWorkItem?
+    private var publishedTables: Set<TableInfo> = []
+    private var pendingOpenWork: DispatchWorkItem?
     private var isApplyingExpansion = false
     private var isSyncingSelection = false
     private var isReloading = false
     private var hasRenderedOnce = false
     private var reconcileScheduled = false
     private var observationGeneration = 0
+
+    private let schemaService = SchemaService.shared
+    private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
+    private var favoritesObserver: (any NSObjectProtocol)?
 
     private var supportsSchemaLevel: Bool {
         PluginManager.shared.databaseGroupingStrategy(for: databaseType) == .bySchema
@@ -50,10 +56,27 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     func attach(outlineView: NSOutlineView) {
         self.outlineView = outlineView
+        favoritesObserver = NotificationCenter.default.addObserver(
+            forName: .favoriteTablesDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.reloadFavorites()
+                self.refreshVisibleRows()
+            }
+        }
+    }
+
+    deinit {
+        if let favoritesObserver {
+            NotificationCenter.default.removeObserver(favoritesObserver)
+        }
     }
 
     func update(from view: DatabaseTreeOutlineView) {
+        let connectionChanged = connectionId != view.connectionId
         connectionId = view.connectionId
+        if connectionChanged { reloadFavorites() }
         databaseType = view.databaseType
         mainCoordinator = view.coordinator
         windowState = view.windowState
@@ -66,6 +89,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             || activeChanged
             || pendingTruncates != view.pendingTruncates
             || pendingDeletes != view.pendingDeletes
+            || showRecentTables != view.showRecentTables
 
         searchText = view.searchText
         connectionToken = view.connectionToken
@@ -73,6 +97,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         activeSchema = view.activeSchema
         pendingTruncates = view.pendingTruncates
         pendingDeletes = view.pendingDeletes
+        showRecentTables = view.showRecentTables
 
         if !hasRenderedOnce || activeChanged {
             persistActiveExpansion()
@@ -83,6 +108,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             refresh()
         } else if changed {
             refresh()
+        } else {
+            syncSelectionToModel()
         }
     }
 
@@ -126,6 +153,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private func snapshotDependencies() {
         _ = service.databaseListState(for: connectionId)
         _ = sidebarState?.recentTables
+        /// One token covers every table, routine and per-schema load for this connection, which is
+        /// the whole reactive surface the flat and hierarchical shapes read.
+        _ = schemaService.generationToken(for: connectionId)
+        if let keyTree = sidebarState?.redisKeyTreeViewModel {
+            _ = keyTree.isLoading
+            _ = keyTree.isTruncated
+            _ = keyTree.allKeys.count
+        }
         for node in nodeCache.values {
             switch node.kind {
             case .database(let metadata):
@@ -135,11 +170,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             case .schema(let database, let schema):
                 _ = service.tablesLoadState(connectionId: connectionId, database: database, schema: schema)
                 _ = service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)
+            case .hierarchicalSchemaSection(let schema):
+                _ = schemaService.schemaState(for: connectionId, schema: schema)
             case .table(let ref) where ref.table.type == .partitionedTable:
                 _ = service.partitionsLoadState(
                     connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
                 )
-            case .recentSection, .recentTable, .table, .routine, .status:
+            case .recentSection, .recentTable, .table, .routine, .status,
+                 .objectKindSection, .redisKeysSection, .redisNode:
                 break
             }
         }
@@ -154,6 +192,40 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         syncSelectionToModel()
         isReloading = false
         beginObserving()
+    }
+
+    /// A star toggling on or off changes no row and no ordering, so the rows are reconfigured in
+    /// place. Reloading would throw away every hosted SwiftUI view to repaint one glyph.
+    private func refreshVisibleRows() {
+        guard let outlineView else { return }
+        let context = rowContext()
+        let actions = rowActions()
+        for row in 0..<outlineView.numberOfRows {
+            guard let node = outlineView.item(atRow: row) as? DatabaseTreeNode,
+                  let cell = outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) as? DatabaseTreeCellView
+            else { continue }
+            cell.configure(node: node, context: context, actions: actions)
+        }
+    }
+
+    private func reloadFavorites() {
+        favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
+    }
+
+    private func favoriteEntry(for ref: DatabaseTreeTableRef) -> FavoriteTablesStorage.FavoriteEntry {
+        FavoriteTablesStorage.FavoriteEntry(
+            connectionId: connectionId,
+            database: ref.database.isEmpty ? nil : ref.database,
+            schema: ref.table.schema,
+            name: ref.table.name
+        )
+    }
+
+    private func toggleFavorite(_ ref: DatabaseTreeTableRef) {
+        let entry = favoriteEntry(for: ref)
+        FavoriteTablesStorage.shared.toggle(
+            name: entry.name, schema: entry.schema, database: entry.database, connectionId: connectionId
+        )
     }
 
     // MARK: - Node building
@@ -191,6 +263,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             return objectNodes(database: database, schema: schema)
         case .table(let ref):
             return ref.table.type == .partitionedTable ? partitionNodes(of: ref) : []
+        case .objectKindSection(let kind):
+            return flatObjectNodes(for: kind)
+        case .hierarchicalSchemaSection(let schema):
+            return hierarchicalTableNodes(schema: schema)
+        case .redisKeysSection:
+            return redisChildren(of: nil)
+        case .redisNode(let redisNode):
+            return redisChildren(of: redisNode)
         case .recentTable, .routine, .status:
             return []
         }
@@ -215,7 +295,25 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         }
     }
 
+    /// Which shape the root takes. The three sidebar modes used to be three views; they are one
+    /// outline now and this is the only thing that still differs between them.
+    private var rootShape: SidebarRootShape {
+        SidebarRootShapeResolver.resolve(
+            groupingStrategy: PluginManager.shared.databaseGroupingStrategy(for: databaseType),
+            sidebarLayout: sidebarState?.sidebarLayout ?? .flat,
+            supportsDatabaseTree: PluginManager.shared.supportsDatabaseTree(for: databaseType)
+        )
+    }
+
     private func rootNodes() -> [DatabaseTreeNode] {
+        switch rootShape {
+        case .databaseTree: return databaseTreeRootNodes()
+        case .flat: return flatRootNodes()
+        case .hierarchicalSchema: return hierarchicalRootNodes()
+        }
+    }
+
+    private func databaseTreeRootNodes() -> [DatabaseTreeNode] {
         var nodes: [DatabaseTreeNode] = []
         if !recentTableRefs().isEmpty {
             nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
@@ -233,8 +331,140 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         return nodes
     }
 
+    private var browsingDatabase: String? {
+        let name = mainCoordinator?.browseDatabaseName ?? activeDatabase ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    private func flatRootNodes() -> [DatabaseTreeNode] {
+        var nodes: [DatabaseTreeNode] = []
+        if !recentTableRefs().isEmpty {
+            nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
+        }
+        nodes += visibleObjectKinds().map {
+            node(id: DatabaseTreeNode.objectKindSectionId($0), kind: .objectKindSection($0))
+        }
+        if sidebarState?.redisKeyTreeViewModel != nil {
+            nodes.append(node(id: DatabaseTreeNode.redisKeysSectionId, kind: .redisKeysSection))
+        }
+        return nodes
+    }
+
+    /// The section list is the same rule the flat list used, so a kind that was hidden before stays
+    /// hidden: Tables always shows, anything else needs both the capability and something in it.
+    private func visibleObjectKinds() -> [SidebarObjectKind] {
+        guard let viewModel else { return [] }
+        let capabilities = viewModel.capabilities(for: connectionId)
+        return SidebarObjectKind.allCases.filter { kind in
+            viewModel.sectionShouldRender(
+                kind: kind,
+                itemCount: flatItemCount(for: kind),
+                capabilities: capabilities
+            )
+        }
+    }
+
+    private func flatItemCount(for kind: SidebarObjectKind) -> Int {
+        guard let viewModel else { return 0 }
+        if kind.isRoutine {
+            return viewModel.filteredRoutines(of: kind, from: schemaService.routines(for: connectionId)).count
+        }
+        return viewModel.filteredTables(of: kind, from: schemaService.tables(for: connectionId)).count
+    }
+
+    private func flatObjectNodes(for kind: SidebarObjectKind) -> [DatabaseTreeNode] {
+        guard let viewModel else { return [] }
+        let database = browsingDatabase ?? ""
+        if kind.isRoutine {
+            return viewModel.filteredRoutines(of: kind, from: schemaService.routines(for: connectionId))
+                .map { routine in
+                    let ref = DatabaseTreeRoutineRef(database: database, schema: routine.schema, routine: routine)
+                    return node(id: DatabaseTreeNode.routineId(ref), kind: .routine(ref))
+                }
+        }
+        return viewModel.filteredTables(of: kind, from: schemaService.tables(for: connectionId))
+            .map { table in
+                let ref = DatabaseTreeTableRef(database: database, schema: table.schema, table: table)
+                return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
+            }
+    }
+
+    private func hierarchicalRootNodes() -> [DatabaseTreeNode] {
+        var nodes: [DatabaseTreeNode] = []
+        if !recentTableRefs().isEmpty {
+            nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
+        }
+        let hidden = systemSchemas
+        nodes += schemaService.schemas(for: connectionId)
+            .filter { !hidden.contains($0) }
+            .filter { searchText.isEmpty || hierarchicalSchemaMatches($0) }
+            .map {
+                node(id: DatabaseTreeNode.hierarchicalSchemaSectionId($0), kind: .hierarchicalSchemaSection(schema: $0))
+            }
+        return nodes
+    }
+
+    private func hierarchicalSchemaMatches(_ schema: String) -> Bool {
+        DatabaseTreeFilter.hierarchicalSchemaIsVisible(
+            schema,
+            searchText: searchText,
+            isLoaded: isSchemaLoaded(schema),
+            tables: schemaService.tables(for: connectionId, schema: schema)
+        )
+    }
+
+    private func isSchemaLoaded(_ schema: String) -> Bool {
+        if case .loaded = schemaService.schemaState(for: connectionId, schema: schema) { return true }
+        return false
+    }
+
+    private func hierarchicalTableNodes(schema: String) -> [DatabaseTreeNode] {
+        let parentId = DatabaseTreeNode.hierarchicalSchemaSectionId(schema)
+        switch schemaService.schemaState(for: connectionId, schema: schema) {
+        case .idle, .loading:
+            return [statusNode(parentId: parentId, status: .loading)]
+        case .failed(let message):
+            return [statusNode(parentId: parentId, status: .error(message))]
+        case .loaded:
+            let tables = DatabaseTreeFilter.hierarchicalTables(
+                schemaService.tables(for: connectionId, schema: schema), schema: schema, searchText: searchText
+            )
+            guard !tables.isEmpty else { return [statusNode(parentId: parentId, status: .empty)] }
+            let database = browsingDatabase ?? ""
+            return tables.map { table in
+                let ref = DatabaseTreeTableRef(database: database, schema: schema, table: table)
+                return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
+            }
+        }
+    }
+
+    private func redisChildren(of parent: RedisKeyNode?) -> [DatabaseTreeNode] {
+        guard let keyTree = sidebarState?.redisKeyTreeViewModel else { return [] }
+        if let parent {
+            guard case .namespace(_, _, let children, _) = parent else { return [] }
+            return children.map { node(id: DatabaseTreeNode.redisNodeId($0), kind: .redisNode($0)) }
+        }
+        if keyTree.isLoading {
+            return [statusNode(parentId: DatabaseTreeNode.redisKeysSectionId, status: .loading)]
+        }
+        let roots = keyTree.displayNodes(searchText: searchText)
+        guard !roots.isEmpty else {
+            return [statusNode(parentId: DatabaseTreeNode.redisKeysSectionId, status: .empty)]
+        }
+        var nodes = roots.map { node(id: DatabaseTreeNode.redisNodeId($0), kind: .redisNode($0)) }
+        if keyTree.isTruncated {
+            nodes.append(
+                statusNode(
+                    parentId: DatabaseTreeNode.redisKeysSectionId,
+                    status: .truncated(RedisKeyTreeTruncation.message(limit: RedisKeyTreeViewModel.maxKeys))
+                )
+            )
+        }
+        return nodes
+    }
+
     private func recentTableRefs() -> [DatabaseTreeTableRef] {
-        guard let sidebarState, AppSettingsManager.shared.general.showRecentTables else { return [] }
+        guard let sidebarState, showRecentTables else { return [] }
         let database = mainCoordinator?.browseDatabaseName ?? activeDatabase ?? ""
         return sidebarState.recentEntries(inDatabase: database).compactMap { entry -> DatabaseTreeTableRef? in
             if !searchText.isEmpty, !DatabaseTreeFilter.matches(searchText, entry.name) { return nil }
@@ -342,6 +572,23 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         for rootNode in resolvedChildren(of: nil) where rootNode.id == DatabaseTreeNode.recentSectionId {
             setExpanded(rootNode, searching || (viewModel?.isRecentsExpanded ?? true))
         }
+        for sectionNode in resolvedChildren(of: nil) {
+            switch sectionNode.kind {
+            case .objectKindSection(let kind):
+                let hasMatches = flatItemCount(for: kind) > 0
+                setExpanded(sectionNode, viewModel?.effectiveExpanded(kind: kind, hasMatches: hasMatches) ?? true)
+            case .redisKeysSection:
+                setExpanded(sectionNode, searching || (viewModel?.isRedisKeysExpanded ?? true))
+            case .hierarchicalSchemaSection(let schema):
+                let want = searching
+                    ? hierarchicalSchemaMatches(schema)
+                    : windowState?.expandedTreeSchemas.contains(schema) ?? false
+                setExpanded(sectionNode, want)
+                if outlineView.isItemExpanded(sectionNode) { triggerLoad(for: sectionNode) }
+            default:
+                break
+            }
+        }
         for databaseNode in resolvedChildren(of: nil) {
             guard case .database(let metadata) = databaseNode.kind else { continue }
             let want = searching
@@ -394,6 +641,16 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         switch node.kind {
         case .recentSection:
             viewModel?.isRecentsExpanded = expanded
+        case .objectKindSection(let kind):
+            viewModel?.expanded[kind] = expanded
+        case .redisKeysSection:
+            viewModel?.isRedisKeysExpanded = expanded
+        case .hierarchicalSchemaSection(let schema):
+            if expanded {
+                windowState?.expandedTreeSchemas.insert(schema)
+            } else {
+                windowState?.expandedTreeSchemas.remove(schema)
+            }
         case .database(let metadata):
             if expanded {
                 windowState?.expandedTreeDatabases.insert(metadata.name)
@@ -414,7 +671,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             } else {
                 windowState?.expandedTreeTables.remove(key)
             }
-        case .recentTable, .routine, .status:
+        case .recentTable, .routine, .status, .redisNode:
             break
         }
     }
@@ -434,9 +691,19 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             loadObjects(database: database, schema: schema)
         case .table(let ref):
             loadPartitions(ref)
-        case .recentSection, .recentTable, .routine, .status:
+        case .hierarchicalSchemaSection(let schema):
+            loadHierarchicalSchemaTables(schema)
+        case .recentSection, .recentTable, .routine, .status,
+             .objectKindSection, .redisKeysSection, .redisNode:
             break
         }
+    }
+
+    private func loadHierarchicalSchemaTables(_ schema: String) {
+        guard case .idle = schemaService.schemaState(for: connectionId, schema: schema),
+              let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+        let connectionId = connectionId
+        Task { await schemaService.loadSchemaTables(connectionId: connectionId, schema: schema, driver: driver) }
     }
 
     private func loadExternalSchemaNames(database: String) {
@@ -484,7 +751,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     // MARK: - Selection / open
 
     private func selectedRefs() -> [DatabaseTreeTableRef] {
-        selectedNodes().compactMap(\.tableRef)
+        DatabaseTreeSelection.tableRefs(of: selectedNodes())
     }
 
     private func selectedContainerRefs() -> [DatabaseContainerRef] {
@@ -501,26 +768,63 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     private func syncSelectionToModel() {
         guard let outlineView else { return }
+        adoptModelSelection()
         let rows = lastSelectedNodeIds.compactMap { nodeId -> Int? in
             guard let node = nodeCache[nodeId] else { return nil }
             let row = outlineView.row(forItem: node)
             return row >= 0 ? row : nil
         }
+        guard outlineView.selectedRowIndexes != IndexSet(rows) else { return }
         isSyncingSelection = true
         outlineView.selectRowIndexes(IndexSet(rows), byExtendingSelection: false)
         isSyncingSelection = false
     }
 
-    private func open(_ ref: DatabaseTreeTableRef, activateGridFocus: Bool, forceNewWindowTab: Bool = false) {
+    /// The window writes `selectedTables` whenever the active editor tab moves, so the highlight has
+    /// to follow it the way the `List(selection:)` binding this outline replaced did. Reading it back
+    /// is also what keeps a click on the row that is still highlighted from being swallowed: AppKit
+    /// posts no selection change when the selection already holds that row, so a highlight left
+    /// behind on a table the user has since navigated away from becomes a dead row.
+    ///
+    /// A table can be drawn twice, once under Recent and once in its own section. Only the section
+    /// row is adopted, because that is the row the model's `TableInfo` stands for.
+    private func adoptModelSelection() {
+        guard let windowState, windowState.selectedTables != publishedTables else { return }
+        publishedTables = windowState.selectedTables
+        let nodes = nodeCache.values.filter { node in
+            guard case .table(let ref) = node.kind else { return false }
+            return publishedTables.contains(ref.table)
+        }
+        lastSelectedNodeIds = nodes.map(\.id)
+        lastSelection = Set(DatabaseTreeSelection.tableRefs(of: Array(nodes)))
+    }
+
+    private func open(_ ref: DatabaseTreeTableRef, activateGridFocus: Bool, forceNewTab: Bool = false) {
         Task { @MainActor in
             await activate(ref)
             mainCoordinator?.openTableTab(
                 ref.table,
                 schema: ref.schema,
                 activateGridFocus: activateGridFocus,
-                forceNewWindowTab: forceNewWindowTab
+                forceNewTab: forceNewTab
             )
+            publishSelection()
         }
+    }
+
+    /// The Table menu reads `windowState.selectedTables`, so the tree has to put its own selection
+    /// there or every command that acts on a selection does nothing in tree layout.
+    ///
+    /// Timing is the whole trick. The shared navigation observer also watches this property, and it
+    /// opens whatever single table appeared. Publishing before the tree's own open landed would race
+    /// it into opening the table twice, so a selection that navigates publishes only once the tab is
+    /// already the clicked table, which is exactly the case that observer resolves to skip.
+    private func publishSelection() {
+        guard let windowState else { return }
+        let tables = DatabaseTreeSelection.tableInfos(of: selectedNodes())
+        publishedTables = tables
+        guard windowState.selectedTables != tables else { return }
+        windowState.selectedTables = tables
     }
 
     private func activate(_ ref: DatabaseTreeTableRef) async {
@@ -591,6 +895,15 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                     database: database,
                     schema: schema
                 )
+            },
+            objectKindTitle: { [databaseType] kind in
+                kind == .table
+                    ? PluginManager.shared.tableEntityName(for: databaseType)
+                    : kind.pluralDisplayName
+            },
+            isFavorite: { [weak self] ref in
+                guard let self else { return false }
+                return self.favoriteTables.contains(self.favoriteEntry(for: ref))
             }
         )
     }
@@ -615,34 +928,62 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             },
             clearRecents: { [weak self] in
                 self?.sidebarState?.clearRecentTables(inDatabase: self?.mainCoordinator?.browseDatabaseName)
-            }
+            },
+            showAllTablesMetadata: { [weak self] in self?.mainCoordinator?.showAllTablesMetadata() },
+            refreshObjectKind: { [weak self] in self?.refreshObjectKind($0) },
+            refreshHierarchicalSchema: { [weak self] in self?.reloadHierarchicalSchemaTables($0) },
+            openRedisKey: { [weak self] key, keyType in self?.mainCoordinator?.openRedisKey(key, keyType: keyType) },
+            toggleFavorite: { [weak self] ref in self?.toggleFavorite(ref) }
         )
     }
 
-    @objc
-    func handleSingleClick() {
-        guard let outlineView, outlineView.clickedRow >= 0,
-              let node = outlineView.item(atRow: outlineView.clickedRow) as? DatabaseTreeNode,
-              let ref = node.recentTableRef else { return }
-        scheduleSingleClickOpen(ref)
+    /// A namespace rescopes the browse pattern and a key opens; neither goes through the
+    /// double-click window a table open needs, because there is no preview tab to promote.
+    private func openRedis(_ node: RedisKeyNode) {
+        switch node {
+        case .namespace(_, let fullPrefix, _, _):
+            mainCoordinator?.browseRedisNamespace(fullPrefix)
+        case .key(_, let fullKey, let keyType):
+            mainCoordinator?.openRedisKey(fullKey, keyType: keyType)
+        }
     }
 
+    private func refreshObjectKind(_ kind: SidebarObjectKind) {
+        guard let mainCoordinator else { return }
+        switch kind {
+        case .procedure: Task { await mainCoordinator.refreshProcedures() }
+        case .function: Task { await mainCoordinator.refreshFunctions() }
+        case .table, .view, .materializedView, .foreignTable: Task { await mainCoordinator.refreshTables() }
+        }
+    }
+
+    private func reloadHierarchicalSchemaTables(_ schema: String) {
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+        let connectionId = connectionId
+        Task { await schemaService.reloadSchemaTables(connectionId: connectionId, schema: schema, driver: driver) }
+    }
+
+    /// Selection already opened whatever was clicked, so the second click is only ever a
+    /// disclosure gesture.
     @objc
     func handleDoubleClick() {
         guard let outlineView, outlineView.clickedRow >= 0,
-              let node = outlineView.item(atRow: outlineView.clickedRow) as? DatabaseTreeNode else { return }
-        if let ref = node.tableRef ?? node.recentTableRef {
-            pendingSingleClickWork?.cancel()
-            pendingSingleClickWork = nil
-            open(ref, activateGridFocus: true, forceNewWindowTab: true)
-            return
-        }
-        guard node.isExpandable else { return }
+              let node = outlineView.item(atRow: outlineView.clickedRow) as? DatabaseTreeNode,
+              node.isExpandable else { return }
         if outlineView.isItemExpanded(node) {
             outlineView.collapseItem(node)
         } else {
             outlineView.expandItem(node)
         }
+    }
+}
+
+extension DatabaseTreeOutlineCoordinator: DatabaseTreeSelectionClearing {
+    /// Deselecting runs the normal delegate path, which publishes the now empty selection, so the
+    /// Table menu and the outline agree without a second write.
+    func clearSelection() {
+        guard let outlineView, !outlineView.selectedRowIndexes.isEmpty else { return }
+        outlineView.deselectAll(nil)
     }
 }
 
@@ -671,7 +1012,16 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
         guard let node = item as? DatabaseTreeNode else { return false }
-        return node.tableRef != nil || node.isContainer
+        return DatabaseTreeSelection.isSelectable(node.kind)
+    }
+
+    /// Hands the section headers to AppKit. In `.sourceList` a group row is drawn at its own
+    /// height with its own background and collapse control, and its children are laid out at the
+    /// depth the group itself sits at rather than one level in. That last part is what makes a
+    /// table under "Tables" line up with a database, the way a package lines up with the project
+    /// in Xcode's navigator.
+    func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
+        (item as? DatabaseTreeNode)?.isSectionHeader ?? false
     }
 
     func outlineView(
@@ -694,36 +1044,60 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         if !isApplyingExpansion { recordExpansion(node, expanded: false) }
     }
 
+    /// Selection drives the content, which is how a source list works: the navigator picks, the
+    /// detail follows. Both the mouse and the keyboard land here, so there is one entry point.
+    ///
+    /// This deliberately does not use `NSTableView.action`. AppKit sends the action on mouse up,
+    /// which is a whole gesture later than the selection the user already sees.
+    ///
+    /// Nothing is published when a single table was added, because the open publishes it once the
+    /// tab is already that table. Publishing here would hand the same table to the window's
+    /// navigation observer first and open it twice.
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !isSyncingSelection, !isReloading else { return }
         let nodes = selectedNodes()
         lastSelectedNodeIds = nodes.map(\.id)
-        let refs = Set(nodes.compactMap(\.tableRef))
+        let refs = Set(DatabaseTreeSelection.tableRefs(of: nodes))
         if let added = SelectionDelta.singleAddition(old: lastSelection, new: refs) {
+            /// A held arrow key is one gesture, so the keyboard waits it out. A click is already
+            /// the whole gesture and opens now.
             if isKeyboardDrivenSelection {
-                pendingSingleClickWork?.cancel()
-                pendingSingleClickWork = nil
-                open(added, activateGridFocus: false)
+                scheduleOpen(added, after: NSEvent.keyRepeatInterval)
             } else {
-                scheduleSingleClickOpen(added)
+                pendingOpenWork?.cancel()
+                pendingOpenWork = nil
+                open(added, activateGridFocus: false)
             }
+        } else if let redisNode = singleSelectedRedisNode(in: nodes) {
+            openRedis(redisNode)
+        } else {
+            publishSelection()
         }
         lastSelection = refs
+    }
+
+    private func singleSelectedRedisNode(in nodes: [DatabaseTreeNode]) -> RedisKeyNode? {
+        guard nodes.count == 1, case .redisNode(let redisNode) = nodes[0].kind else { return nil }
+        return redisNode
     }
 
     private var isKeyboardDrivenSelection: Bool {
         guard let outlineView, outlineView.window?.firstResponder === outlineView else { return false }
         guard let event = NSApp.currentEvent else { return false }
-        return DatabaseTreeTypeSelect.isArrowNavigation(type: event.type, keyCode: event.keyCode)
+        return DatabaseTreeTypeSelect.isArrowNavigation(event)
     }
 
-    private func scheduleSingleClickOpen(_ ref: DatabaseTreeTableRef) {
-        pendingSingleClickWork?.cancel()
+    /// A held arrow key is one gesture, not one open per row it travels over, so a keyboard open
+    /// waits out `NSEvent.keyRepeatInterval` and each new selection cancels the pending one. The
+    /// burst collapses to the row the user stopped on. Without it, arrowing down a schema ran a
+    /// query and opened a tab for every row in between.
+    private func scheduleOpen(_ ref: DatabaseTreeTableRef, after delay: TimeInterval) {
+        pendingOpenWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             self?.open(ref, activateGridFocus: false)
         }
-        pendingSingleClickWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: work)
+        pendingOpenWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func makeCell() -> DatabaseTreeCellView {

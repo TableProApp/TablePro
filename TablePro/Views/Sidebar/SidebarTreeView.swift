@@ -10,7 +10,6 @@ struct SidebarTreeView: View {
     var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
-    var onDoubleClick: ((TableInfo) -> Void)?
     weak var coordinator: MainContentCoordinator?
 
     @State private var settingsManager = AppSettingsManager.shared
@@ -19,12 +18,6 @@ struct SidebarTreeView: View {
     private var activeDatabase: String? {
         let name = coordinator?.browseDatabaseName ?? ""
         return name.isEmpty ? nil : name
-    }
-
-    private var recentRows: [RecentTableRow] {
-        guard settingsManager.general.showRecentTables else { return [] }
-        let infos = sidebarState.recentEntries(inDatabase: activeDatabase).map(\.tableInfo)
-        return viewModel.filteredRecentTables(infos).map(RecentTableRow.init)
     }
 
     private var systemSchemas: Set<String> {
@@ -44,13 +37,6 @@ struct SidebarTreeView: View {
         return schemas.filter { schemaIsVisibleDuringSearch($0) }
     }
 
-    private var selectedTablesBinding: Binding<Set<TableInfo>> {
-        Binding(
-            get: { windowState.selectedTables },
-            set: { windowState.selectedTables = $0 }
-        )
-    }
-
     var body: some View {
         Group {
             if schemas.isEmpty {
@@ -66,142 +52,25 @@ struct SidebarTreeView: View {
         }
     }
 
+    /// Same outline the other two sidebar shapes use. See `SidebarView.tableList` for why a SwiftUI
+    /// `List` cannot serve here.
     private var treeList: some View {
-        List(selection: selectedTablesBinding) {
-            recentSection
-            ForEach(visibleSchemas, id: \.self) { schema in
-                Section(isExpanded: expansionBinding(for: schema)) {
-                    datasetContent(for: schema)
-                } header: {
-                    datasetHeader(schema)
-                }
-            }
-        }
-        .sidebarListLayout()
-        .contextMenu(forSelectionType: TableInfo.self) { _ in
-            EmptyView()
-        } primaryAction: { selection in
-            guard let table = selection.first else { return }
-            onDoubleClick?(table)
-        }
-        .onExitCommand {
-            windowState.selectedTables.removeAll()
-        }
-    }
-
-    @ViewBuilder
-    private func datasetContent(for schema: String) -> some View {
-        switch schemaService.schemaState(for: connectionId, schema: schema) {
-        case .idle, .loading:
-            HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.small)
-                Text(String(localized: "Loading tables\u{2026}"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 4)
-        case .failed(let message):
-            Label(message, systemImage: "exclamationmark.triangle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .padding(.vertical, 4)
-        case .loaded:
-            let tables = tablesToShow(for: schema)
-            if tables.isEmpty {
-                Text(String(localized: "No tables"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 4)
-            } else {
-                ForEach(tables) { table in
-                    tableRow(table)
-                }
-            }
-        }
-    }
-
-    private func tableRow(_ table: TableInfo) -> some View {
-        TableRow(
-            table: table,
-            isPendingTruncate: pendingTruncates.contains(table.name),
-            isPendingDelete: pendingDeletes.contains(table.name)
-        )
-        .tag(table)
-        .contextMenu {
-            tableContextMenu(table)
-            Divider()
-            SidebarViewOptionsMenu()
-        }
-    }
-
-    @ViewBuilder
-    private func tableContextMenu(_ table: TableInfo) -> some View {
-        SidebarContextMenu(
-            clickedTable: table,
+        DatabaseTreeOutlineView(
+            connectionId: connectionId,
+            databaseType: viewModel.databaseType,
+            coordinator: coordinator,
+            windowState: windowState,
+            sidebarState: sidebarState,
+            viewModel: viewModel,
+            pendingTruncates: pendingTruncates,
+            pendingDeletes: pendingDeletes,
+            searchText: viewModel.filterQuery,
+            connectionToken: connectionId.uuidString,
+            activeDatabase: activeDatabase,
+            activeSchema: coordinator?.toolbarState.currentSchema,
             selectedTables: windowState.selectedTables,
-            isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-            onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
-            onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-            coordinator: coordinator
+            showRecentTables: settingsManager.general.showRecentTables
         )
-    }
-
-    @ViewBuilder
-    private var recentSection: some View {
-        let rows = recentRows
-        if !rows.isEmpty {
-            Section(isExpanded: recentsExpansionBinding) {
-                ForEach(rows) { row in
-                    let table = row.table
-                    TableRow(
-                        table: table,
-                        isPendingTruncate: pendingTruncates.contains(table.name),
-                        isPendingDelete: pendingDeletes.contains(table.name)
-                    )
-                    .selectionDisabled()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        onDoubleClick?(table)
-                    }
-                    .contextMenu {
-                        tableContextMenu(table)
-                        Divider()
-                        Button(String(localized: "Remove from Recent")) {
-                            sidebarState.removeRecentTable(
-                                database: activeDatabase, schema: table.schema, name: table.name
-                            )
-                        }
-                        Button(String(localized: "Clear Recent Tables")) {
-                            sidebarState.clearRecentTables(inDatabase: activeDatabase)
-                        }
-                        Divider()
-                        SidebarViewOptionsMenu()
-                    }
-                }
-            } header: {
-                Text(String(localized: "Recent"))
-            }
-        }
-    }
-
-    private var recentsExpansionBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.isRecentsExpanded },
-            set: { viewModel.isRecentsExpanded = $0 }
-        )
-    }
-
-    private func datasetHeader(_ schema: String) -> some View {
-        Text(schema)
-            .contextMenu {
-                Button(String(localized: "Refresh")) {
-                    reloadTables(for: schema)
-                }
-                Divider()
-                SidebarViewOptionsMenu()
-            }
     }
 
     private var emptyDatasetsState: some View {
@@ -218,36 +87,17 @@ struct SidebarTreeView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func expansionBinding(for schema: String) -> Binding<Bool> {
-        Binding(
-            get: { !searchText.isEmpty || windowState.expandedTreeSchemas.contains(schema) },
-            set: { isExpanded in
-                if isExpanded {
-                    windowState.expandedTreeSchemas.insert(schema)
-                    loadTables(for: schema)
-                } else {
-                    windowState.expandedTreeSchemas.remove(schema)
-                }
-            }
-        )
-    }
-
-    private func tablesToShow(for schema: String) -> [TableInfo] {
-        let tables = schemaService.tables(for: connectionId, schema: schema)
-        guard !searchText.isEmpty, !SidebarNameFilter.matches(query: searchText, candidate: schema) else {
-            return tables
-        }
-        return SidebarNameFilter.ranked(tables, query: searchText, name: { $0.name })
-    }
-
+    /// The same rule the outline applies, so the empty state and the rows can never disagree about
+    /// whether a schema survived the filter.
     private func schemaIsVisibleDuringSearch(_ schema: String) -> Bool {
-        if SidebarNameFilter.matches(query: searchText, candidate: schema) { return true }
-        switch schemaService.schemaState(for: connectionId, schema: schema) {
-        case .loaded:
-            return !tablesToShow(for: schema).isEmpty
-        case .idle, .loading, .failed:
-            return true
-        }
+        var isLoaded = false
+        if case .loaded = schemaService.schemaState(for: connectionId, schema: schema) { isLoaded = true }
+        return DatabaseTreeFilter.hierarchicalSchemaIsVisible(
+            schema,
+            searchText: searchText,
+            isLoaded: isLoaded,
+            tables: schemaService.tables(for: connectionId, schema: schema)
+        )
     }
 
     private func loadTables(for schema: String) {

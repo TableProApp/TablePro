@@ -33,55 +33,33 @@ struct ThemeSlotValidationTests {
         return copy
     }
 
-    @Test("A contradicting slot re-anchors to the default")
-    func contradictingSlotReanchors() {
-        let themes = [theme("light", .light), theme("dark", .dark)]
-        let resolved = ThemeSlotValidation.resolvedThemeId(
-            current: "dark",
-            slot: .light,
-            themes: themes,
-            defaultId: "light"
-        )
-        #expect(resolved == "light")
-    }
-
-    @Test("A matching slot is left alone")
-    func matchingSlotUntouched() {
-        let themes = [theme("light", .light), theme("dark", .dark)]
-        let resolved = ThemeSlotValidation.resolvedThemeId(
-            current: "light",
-            slot: .light,
-            themes: themes,
-            defaultId: "light"
-        )
-        #expect(resolved == "light")
-    }
-
-    @Test("An auto theme survives either slot")
-    func autoThemeSurvives() {
-        let themes = [theme("auto", .auto)]
-        #expect(
-            ThemeSlotValidation.resolvedThemeId(
-                current: "auto", slot: .dark, themes: themes, defaultId: "dark"
-            ) == "auto"
-        )
-    }
-
-    @Test("An unknown theme id falls back to the default")
-    func unknownIdFallsBack() {
-        let resolved = ThemeSlotValidation.resolvedThemeId(
-            current: "does.not.exist",
-            slot: .dark,
-            themes: [theme("dark", .dark)],
-            defaultId: "dark"
-        )
-        #expect(resolved == "dark")
+    private var sample: [ThemeDefinition] {
+        [theme("light", .light), theme("dark", .dark), theme("auto", .auto)]
     }
 
     @Test("Only fitting themes stay in the list")
     func listIsFiltered() {
-        let themes = [theme("light", .light), theme("dark", .dark), theme("auto", .auto)]
-        let eligible = ThemeSlotValidation.eligibleThemes(themes, slot: .light)
+        let eligible = ThemeSlotValidation.eligibleThemes(sample, slot: .light, keeping: nil)
         #expect(eligible.map(\.id) == ["light", "auto"])
+    }
+
+    /// The row the user is standing on can never be filtered away, because the alternative was to
+    /// rewrite their saved theme so the filter came out true.
+    @Test("A contradicting theme stays listed while it is the one selected")
+    func selectedContradictingThemeIsKept() {
+        let eligible = ThemeSlotValidation.eligibleThemes(sample, slot: .light, keeping: "dark")
+        #expect(eligible.map(\.id) == ["light", "dark", "auto"])
+    }
+
+    @Test("Keeping a selection does not duplicate a theme that already fits")
+    func keptSelectionIsNotDuplicated() {
+        let eligible = ThemeSlotValidation.eligibleThemes(sample, slot: .light, keeping: "light")
+        #expect(eligible.map(\.id) == ["light", "auto"])
+    }
+
+    @Test("An unknown selected id adds nothing to the list")
+    func unknownSelectionAddsNothing() {
+        let eligible = ThemeSlotValidation.eligibleThemes(sample, slot: .dark, keeping: "does.not.exist")
+        #expect(eligible.map(\.id) == ["dark", "auto"])
     }
 }

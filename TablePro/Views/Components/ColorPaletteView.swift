@@ -87,9 +87,12 @@ private struct ColorSwatch: View {
                     .frame(width: size.dotSize, height: size.dotSize)
             }
 
+            /// The ring is the only thing that says which swatch is picked, so it cannot be drawn
+            /// in a colour the user configures. On a yellow or green accent it measured 1.32:1
+            /// against the sheet; the label colour holds 12.49:1 whatever the accent is.
             if isSelected {
                 Circle()
-                    .stroke(Color.accentColor, lineWidth: 2)
+                    .stroke(Color.primary, lineWidth: 2)
                     .frame(width: size.selectionRingSize, height: size.selectionRingSize)
             }
         }

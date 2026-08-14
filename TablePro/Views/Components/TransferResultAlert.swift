@@ -55,14 +55,7 @@ internal enum TransferResultAlert {
         alert.addButton(withTitle: String(localized: "Done"))
 
         if let errors = result?.errors, !errors.isEmpty {
-            let lines = errors.map { failure in
-                String(
-                    format: String(localized: "Line %1$lld: %2$@"),
-                    Int64(failure.line),
-                    failure.errorMessage
-                )
-            }
-            alert.accessoryView = scrollingText(lines.joined(separator: "\n"))
+            alert.accessoryView = scrollingText(failureReport(for: errors))
             alert.layout()
         }
 
@@ -93,6 +86,22 @@ internal enum TransferResultAlert {
         }
 
         present(alert, in: window) { _ in completion() }
+    }
+
+    /// A row import names its failing entry `row 12`, which the line number already says, so only
+    /// a statement that carries something the line number does not is worth repeating.
+    internal static func failureReport(for failures: [PluginImportResult.ImportStatementError]) -> String {
+        failures.map { failure in
+            let heading = String(
+                format: String(localized: "Line %1$lld: %2$@"),
+                Int64(failure.line),
+                failure.errorMessage
+            )
+            let statement = failure.statement.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !statement.isEmpty, statement != "row \(failure.line)" else { return heading }
+            return "\(heading)\n\(statement)"
+        }
+        .joined(separator: "\n\n")
     }
 
     private static func importSummary(_ result: PluginImportResult?) -> String {
