@@ -27,6 +27,10 @@ internal final class ConnectionWorkspace {
     /// undo in one connection roll back an edit made in another.
     internal let undoManager: UndoManager
 
+    /// This connection's own view tree, built once and kept. The window shows one workspace's panes
+    /// at a time by swapping which of these is the split items' child.
+    internal let panes = WorkspacePanes()
+
     internal init(
         connectionId: UUID,
         payload: EditorTabPayload?,
@@ -87,7 +91,10 @@ internal final class ConnectionWorkspace {
         ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: phase)
     }
 
+    /// The panes go down with the rest of it. They retain the SwiftUI tree, which retains the
+    /// coordinator this tears down, and a coordinator only leaves the app-wide registry on deinit.
     internal func teardown() {
+        panes.teardown()
         rightPanelState?.teardown()
         rightPanelState = nil
         sessionState?.coordinator.teardown()

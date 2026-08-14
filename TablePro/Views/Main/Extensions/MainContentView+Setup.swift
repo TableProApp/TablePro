@@ -240,7 +240,10 @@ extension MainContentView {
         )
         windowTitle = resolved.title
         windowSubtitle = resolved.subtitle
-        coordinator.splitViewController?.updateDetailMinimumThickness(for: selectedTab?.tabType)
+        coordinator.splitViewController?.updateDetailMinimumThickness(
+            for: selectedTab?.tabType,
+            connectionId: connection.id
+        )
         viewWindow?.representedURL = selectedTab?.content.sourceFileURL
         viewWindow?.isDocumentEdited = selectedTab?.showsUnsavedIndicator ?? false
     }

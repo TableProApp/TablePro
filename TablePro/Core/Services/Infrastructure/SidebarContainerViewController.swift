@@ -9,17 +9,18 @@ import SwiftUI
 @MainActor
 internal final class SidebarContainerViewController: NSViewController {
     private let searchField = NSSearchField()
-    private var hostingController: NSHostingController<AnyView>
+    /// The filter field is window chrome and stays put; only the object list below it belongs to a
+    /// connection, so that is the part the window swaps.
+    private let listHost = WorkspacePaneHost()
     private var sidebarState: SharedSidebarState?
     private var observationTask: Task<Void, Never>?
 
-    var rootView: AnyView {
-        get { hostingController.rootView }
-        set { hostingController.rootView = newValue }
+    internal func show(_ controller: NSViewController?) {
+        listHost.show(controller)
+        searchField.nextKeyView = controller?.view ?? listHost.view
     }
 
-    init(rootView: AnyView) {
-        self.hostingController = NSHostingController(rootView: rootView)
+    init() {
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -41,8 +42,8 @@ internal final class SidebarContainerViewController: NSViewController {
         searchField.setAccessibilityLabel(String(localized: "Filter"))
         view.addSubview(searchField)
 
-        addChild(hostingController)
-        let hostingView = hostingController.view
+        addChild(listHost)
+        let hostingView = listHost.view
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hostingView)
         searchField.nextKeyView = hostingView
