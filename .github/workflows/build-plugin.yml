@@ -284,6 +284,10 @@ jobs:
         if: ${{ contains(matrix.tag, 'plugin-cassandra-') }}
         run: ./scripts/build-cassandra.sh both
 
+      - name: Build Dameng native bridge
+        if: ${{ contains(matrix.tag, 'plugin-dameng-') }}
+        run: ./scripts/build-dameng.sh both
+
       - name: Build plugin binaries
         env:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}

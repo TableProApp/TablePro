@@ -105,6 +105,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh
 
+      # Cargo and rustup need access outside Xcode's user-script sandbox. Build the
+      # native bridge explicitly before compiling the driver target.
+      - name: Build Dameng native bridge
+        run: scripts/build-dameng.sh arm64
+
       # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so an empty
       # value is enough for the project to resolve $(ANALYTICS_HMAC_SECRET).
       - name: Create Secrets.xcconfig

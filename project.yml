@@ -702,13 +702,6 @@ targets:
     templateAttributes:
       folder: DamengDriverPlugin
       principalClass: DamengPlugin
-    preBuildScripts:
-      - name: Build Dameng native bridge
-        script: |
-          if [[ ! -f "$SRCROOT/Libs/libdameng_bridge.a" ]]; then
-            "$SRCROOT/scripts/build-dameng.sh" both
-          fi
-        basedOnDependencyAnalysis: false
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -739,13 +732,6 @@ targets:
       - Plugins/DamengDriverPluginTests
     dependencies:
       - target: TableProPluginKit
-    preBuildScripts:
-      - name: Build Dameng native bridge
-        script: |
-          if [[ ! -f "$SRCROOT/Libs/libdameng_bridge.a" ]]; then
-            "$SRCROOT/scripts/build-dameng.sh" both
-          fi
-        basedOnDependencyAnalysis: false
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
