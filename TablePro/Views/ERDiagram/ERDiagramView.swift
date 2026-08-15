@@ -199,7 +199,7 @@ struct ERDiagramView: View {
                     magnifyStartMag = viewModel.magnification
                 }
                 let base = magnifyStartMag ?? viewModel.magnification
-                let newMag = max(0.25, min(3.0, base * value.magnification))
+                let newMag = DiagramZoom.scaled(from: base, by: value.magnification)
                 viewModel.zoom(to: newMag, anchor: value.startLocation)
             }
             .onEnded { _ in

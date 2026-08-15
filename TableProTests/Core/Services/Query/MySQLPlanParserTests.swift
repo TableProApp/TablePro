@@ -1,3 +1,10 @@
+//
+//  MySQLPlanParserTests.swift
+//  TableProTests
+//
+//  Tests for parsing MySQL EXPLAIN JSON and TREE output into a QueryPlan tree.
+//
+
 import Foundation
 @testable import TablePro
 import Testing
@@ -124,12 +131,58 @@ struct MySQLPlanParserTests {
     func wrapsMultipleRoots() throws {
         let output = [
             "-> Table scan on users  (cost=1 rows=1)",
-            "-> Table scan on roles  (cost=1 rows=1)",
+            "-> Table scan on roles  (cost=3 rows=1)",
         ].joined(separator: "\n")
 
         let plan = try #require(parser.parse(rawText: output))
         #expect(plan.rootNode.operation == "Query Plan")
         #expect(plan.rootNode.children.count == 2)
+        #expect(plan.rootNode.estimatedTotalCost == 4)
+        #expect(plan.rootNode.costFraction == 0)
+        #expect(plan.rootNode.children[0].costFraction == 0.25)
+        #expect(plan.rootNode.children[1].costFraction == 0.75)
+    }
+
+    @Test("Reports the estimated cost even without a startup cost")
+    func reportsCostWithoutStartupCost() throws {
+        let plan = try #require(parser.parse(rawText: "-> Table scan on users  (cost=3.5 rows=5)"))
+
+        #expect(plan.rootNode.estimatedStartupCost == nil)
+        #expect(plan.rootNode.costRangeText(fractionDigits: 1) == "3.5")
+        #expect(plan.rootNode.costRangeText(fractionDigits: 2) == "3.50")
+    }
+
+    @Test("Keeps node text that the query's own literals split across lines")
+    func keepsSplitNodeText() throws {
+        let output = [
+            "-> Filter: (users.name = 'a",
+            "b')  (cost=4.2 rows=8)",
+            "    -> Table scan on users  (cost=3 rows=10)",
+        ].joined(separator: "\n")
+
+        let plan = try #require(parser.parse(rawText: output))
+        #expect(plan.rootNode.operation == "Filter: (users.name = 'a b')")
+        #expect(plan.rootNode.estimatedTotalCost == 4.2)
+        #expect(plan.rootNode.estimatedRows == 8)
+        #expect(plan.rootNode.children.first?.relation == "users")
+    }
+
+    @Test("Reads the index name when the relation is padded with extra spaces")
+    func readsIndexNameAfterPaddedRelation() throws {
+        let output = "-> Index lookup on  orders  using  customer_id_idx  (cost=2 rows=3)"
+
+        let plan = try #require(parser.parse(rawText: output))
+        #expect(plan.rootNode.operation == "Index lookup")
+        #expect(plan.rootNode.relation == "orders")
+        #expect(plan.rootNode.properties["Index Name"] == "customer_id_idx")
+    }
+
+    @Test("Rejects oversized JSON before it reaches JSONSerialization")
+    func rejectsOversizedJSON() {
+        let oversizedJson = "{\"query_block\": {\"comment\": \""
+            + String(repeating: "x", count: 2_000_001)
+            + "\"}}"
+        #expect(parser.parse(rawText: oversizedJson) == nil)
     }
 
     @Test("Rejects malformed, oversized, and excessively deep input")

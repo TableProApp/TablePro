@@ -85,8 +85,8 @@ private struct QueryPlanRowView: View {
 
             Spacer(minLength: 16)
 
-            if let startup = node.estimatedStartupCost, let total = node.estimatedTotalCost {
-                Text(String(format: "%.2f..%.2f", startup, total))
+            if let cost = node.costRangeText(fractionDigits: 2) {
+                Text(cost)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .frame(width: 110, alignment: .trailing)
@@ -143,9 +143,7 @@ private struct QueryPlanDetailView: View {
                         Text(node.operation)
                             .font(.caption.weight(.semibold))
                         if let relation = node.relation { detailRow("Table", relation) }
-                        if let s = node.estimatedStartupCost, let t = node.estimatedTotalCost {
-                            detailRow("Cost", String(format: "%.2f..%.2f", s, t))
-                        }
+                        if let cost = node.costRangeText(fractionDigits: 2) { detailRow("Cost", cost) }
                         if let rows = node.estimatedRows { detailRow("Rows", "\(rows)") }
                         if let width = node.estimatedWidth, width > 0 { detailRow("Width", "\(width)") }
                     }

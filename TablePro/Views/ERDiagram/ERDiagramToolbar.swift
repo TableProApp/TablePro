@@ -7,7 +7,7 @@ struct ERDiagramToolbar: View {
     var body: some View {
         HStack(spacing: 8) {
             Button {
-                viewModel.zoom(to: viewModel.magnification - 0.25)
+                viewModel.zoom(to: viewModel.magnification - DiagramZoom.step)
             } label: {
                 Image(systemName: "minus.magnifyingglass")
             }
@@ -26,7 +26,7 @@ struct ERDiagramToolbar: View {
             .help(String(localized: "Reset Zoom"))
 
             Button {
-                viewModel.zoom(to: viewModel.magnification + 0.25)
+                viewModel.zoom(to: viewModel.magnification + DiagramZoom.step)
             } label: {
                 Image(systemName: "plus.magnifyingglass")
             }

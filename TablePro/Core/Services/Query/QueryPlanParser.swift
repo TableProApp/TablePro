@@ -86,8 +86,14 @@ struct PostgreSQLPlanParser: QueryPlanParser {
 // MARK: - MySQL Parsers
 
 struct MySQLPlanParser: QueryPlanParser {
+    static let maximumInputBytes = 2_000_000
+
     func parse(rawText: String) -> QueryPlan? {
-        MySQLJsonPlanParser().parse(rawText: rawText)
+        guard rawText.utf8.count <= Self.maximumInputBytes else {
+            logger.debug("MySQL EXPLAIN plan exceeds parser input limit")
+            return nil
+        }
+        return MySQLJsonPlanParser().parse(rawText: rawText)
             ?? MySQLTreePlanParser().parse(rawText: rawText)
     }
 }
@@ -238,7 +244,6 @@ struct MySQLTreePlanParser: QueryPlanParser {
         let metrics: ParsedMetrics
     }
 
-    private static let maximumInputBytes = 2_000_000
     private static let maximumNodes = 10_000
     private static let maximumDepth = 128
     private static let numberPattern = "[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][-+]?\\d+)?"
@@ -255,60 +260,12 @@ struct MySQLTreePlanParser: QueryPlanParser {
     )
 
     func parse(rawText: String) -> QueryPlan? {
-        guard rawText.utf8.count <= Self.maximumInputBytes else {
-            logger.debug("MySQL TREE plan exceeds parser input limit")
-            return nil
-        }
-
         guard let rawNodes = parseRawNodes(rawText), !rawNodes.isEmpty else { return nil }
 
-        var index = 0
-        func build(parentDepth: Int) -> [QueryPlanNode] {
-            var nodes: [QueryPlanNode] = []
-            while index < rawNodes.count {
-                let rawNode = rawNodes[index]
-                if rawNode.depth <= parentDepth { break }
-                index += 1
-                let parsed = Self.parseNodeText(rawNode.text)
-                let children = build(parentDepth: rawNode.depth)
-                nodes.append(QueryPlanNode(
-                    operation: parsed.operation,
-                    relation: parsed.relation,
-                    schema: nil,
-                    alias: nil,
-                    estimatedStartupCost: nil,
-                    estimatedTotalCost: parsed.metrics.estimatedCost,
-                    estimatedRows: parsed.metrics.estimatedRows,
-                    estimatedWidth: nil,
-                    actualStartupTime: parsed.metrics.actualStartupTime,
-                    actualTotalTime: parsed.metrics.actualTotalTime,
-                    actualRows: parsed.metrics.actualRows,
-                    actualLoops: parsed.metrics.actualLoops,
-                    properties: parsed.properties,
-                    children: children
-                ))
-            }
-            return nodes
+        let roots = QueryPlanTreeBuilder.forest(from: rawNodes, depth: \.depth) { rawNode, children in
+            Self.makeNode(rawNode, children: children)
         }
-
-        let roots = build(parentDepth: -1)
-        guard !roots.isEmpty else { return nil }
-
-        let rootNode: QueryPlanNode
-        if roots.count == 1 {
-            rootNode = roots[0]
-        } else {
-            rootNode = QueryPlanNode(
-                operation: "Query Plan",
-                relation: nil, schema: nil, alias: nil,
-                estimatedStartupCost: nil, estimatedTotalCost: nil,
-                estimatedRows: nil, estimatedWidth: nil,
-                actualStartupTime: nil, actualTotalTime: nil,
-                actualRows: nil, actualLoops: nil,
-                properties: [:],
-                children: roots
-            )
-        }
+        guard let rootNode = QueryPlanTreeBuilder.root(from: roots) else { return nil }
 
         let executionTime = roots.compactMap(Self.totalExecutionTime).max()
         var plan = QueryPlan(
@@ -321,6 +278,29 @@ struct MySQLTreePlanParser: QueryPlanParser {
         return plan
     }
 
+    private static func makeNode(_ rawNode: RawNode, children: [QueryPlanNode]) -> QueryPlanNode {
+        let parsed = parseNodeText(rawNode.text)
+        return QueryPlanNode(
+            operation: parsed.operation,
+            relation: parsed.relation,
+            schema: nil,
+            alias: nil,
+            estimatedStartupCost: nil,
+            estimatedTotalCost: parsed.metrics.estimatedCost,
+            estimatedRows: parsed.metrics.estimatedRows,
+            estimatedWidth: nil,
+            actualStartupTime: parsed.metrics.actualStartupTime,
+            actualTotalTime: parsed.metrics.actualTotalTime,
+            actualRows: parsed.metrics.actualRows,
+            actualLoops: parsed.metrics.actualLoops,
+            properties: parsed.properties,
+            children: children
+        )
+    }
+
+    /// A TREE plan starts a node at every `->` line, so every line in between belongs to the
+    /// node above it: MySQL wraps the metrics group, and node text keeps any newline the
+    /// query's own literals contain.
     private func parseRawNodes(_ rawText: String) -> [RawNode]? {
         var nodes: [RawNode] = []
         var indentationStack: [Int] = []
@@ -346,7 +326,7 @@ struct MySQLTreePlanParser: QueryPlanParser {
             }
 
             let continuation = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if var current = pending, Self.isMetricContinuation(continuation) {
+            if var current = pending, !continuation.isEmpty {
                 current.text += " \(continuation)"
                 pending = current
             }
@@ -368,14 +348,6 @@ struct MySQLTreePlanParser: QueryPlanParser {
             width += character == "\t" ? 4 : 1
         }
         return (indent, text)
-    }
-
-    private static func isMetricContinuation(_ line: String) -> Bool {
-        guard line.first == "(" else { return false }
-        let lowercased = line.lowercased()
-        return lowercased.hasPrefix("(cost=")
-            || lowercased.hasPrefix("(actual time=")
-            || lowercased == "(never executed)"
     }
 
     private static func parseNodeText(_ rawText: String) -> ParsedNodeText {
@@ -402,7 +374,7 @@ struct MySQLTreePlanParser: QueryPlanParser {
         let presentation = accessPresentation(from: text)
         var properties = presentation.properties
         if !metrics.wasExecuted {
-            properties["Execution"] = "Never executed"
+            properties["Execution"] = String(localized: "Never executed")
         }
         return ParsedNodeText(
             operation: presentation.operation,
@@ -421,7 +393,7 @@ struct MySQLTreePlanParser: QueryPlanParser {
         }
 
         let operation = text[..<onRange.lowerBound].trimmingCharacters(in: .whitespaces)
-        let remainder = String(text[onRange.upperBound...])
+        let remainder = String(text[onRange.upperBound...]).trimmingCharacters(in: .whitespaces)
         guard let relation = leadingIdentifier(in: remainder) else { return (text, nil, [:]) }
 
         var properties = ["Details": text]
@@ -539,21 +511,8 @@ struct SQLitePlanParser: QueryPlanParser {
 
         // Find the minimum parent ID to use as the virtual root parent
         let minParent = nodes.map(\.parent).min() ?? 0
-        let rootChildren = buildChildren(parentId: minParent)
-        let rootNode: QueryPlanNode
-        if rootChildren.count == 1 {
-            rootNode = rootChildren[0]
-        } else {
-            rootNode = QueryPlanNode(
-                operation: "Query Plan",
-                relation: nil, schema: nil, alias: nil,
-                estimatedStartupCost: nil, estimatedTotalCost: nil,
-                estimatedRows: nil, estimatedWidth: nil,
-                actualStartupTime: nil, actualTotalTime: nil,
-                actualRows: nil, actualLoops: nil,
-                properties: [:],
-                children: rootChildren
-            )
+        guard let rootNode = QueryPlanTreeBuilder.root(from: buildChildren(parentId: minParent)) else {
+            return nil
         }
 
         return QueryPlan(rootNode: rootNode, planningTime: nil, executionTime: nil, rawText: rawText)
@@ -617,21 +576,7 @@ struct IndentedTextPlanParser: QueryPlanParser {
         }
 
         let result = buildNodes(from: 0, parentIndent: -1)
-        let rootNode: QueryPlanNode
-        if result.nodes.count == 1 {
-            rootNode = result.nodes[0]
-        } else {
-            rootNode = QueryPlanNode(
-                operation: "Query Plan",
-                relation: nil, schema: nil, alias: nil,
-                estimatedStartupCost: nil, estimatedTotalCost: nil,
-                estimatedRows: nil, estimatedWidth: nil,
-                actualStartupTime: nil, actualTotalTime: nil,
-                actualRows: nil, actualLoops: nil,
-                properties: [:],
-                children: result.nodes
-            )
-        }
+        guard let rootNode = QueryPlanTreeBuilder.root(from: result.nodes) else { return nil }
 
         return QueryPlan(rootNode: rootNode, planningTime: nil, executionTime: nil, rawText: rawText)
     }
@@ -681,37 +626,10 @@ struct CockroachDBPlanParser: QueryPlanParser {
             nodes.append(RawNode(depth: depth, operation: operation, properties: [:]))
         }
 
-        guard !nodes.isEmpty else { return nil }
-
-        var index = 0
-        func build(parentDepth: Int) -> [QueryPlanNode] {
-            var result: [QueryPlanNode] = []
-            while index < nodes.count {
-                let raw = nodes[index]
-                if raw.depth <= parentDepth { break }
-                index += 1
-                let children = build(parentDepth: raw.depth)
-                result.append(Self.makeNode(raw, children: children))
-            }
-            return result
+        let roots = QueryPlanTreeBuilder.forest(from: nodes, depth: \.depth) { raw, children in
+            Self.makeNode(raw, children: children)
         }
-
-        let roots = build(parentDepth: -1)
-        let rootNode: QueryPlanNode
-        if roots.count == 1 {
-            rootNode = roots[0]
-        } else {
-            rootNode = QueryPlanNode(
-                operation: "Query Plan",
-                relation: nil, schema: nil, alias: nil,
-                estimatedStartupCost: nil, estimatedTotalCost: nil,
-                estimatedRows: nil, estimatedWidth: nil,
-                actualStartupTime: nil, actualTotalTime: nil,
-                actualRows: nil, actualLoops: nil,
-                properties: [:],
-                children: roots
-            )
-        }
+        guard let rootNode = QueryPlanTreeBuilder.root(from: roots) else { return nil }
 
         return QueryPlan(
             rootNode: rootNode,

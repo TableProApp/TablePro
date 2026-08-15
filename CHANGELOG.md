@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- EXPLAIN plan diagrams line every node of the same depth up on one row, so a tall box no longer pushes its children up into itself.
+- Running a second EXPLAIN in the same tab redraws the diagram instead of leaving the previous plan on screen.
+- Plans that report a cost per node but no startup cost, such as MySQL's, now show that cost in the diagram and the tree.
+- Nodes in a plan whose root reports no cost are no longer all painted red.
 - PostgreSQL enum columns whose type lives in another schema now show their values instead of a plain text box.
 
 - Select several databases or schemas in the sidebar tree and act on them at once: drop, refresh, copy names, or export. Shift-click and Cmd-click extend the selection.

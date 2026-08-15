@@ -33,6 +33,14 @@ struct QueryPlanNode: Identifiable {
         let childCost = children.reduce(0.0) { $0 + ($1.estimatedTotalCost ?? 0) }
         return max(0, (estimatedTotalCost ?? 0) - childCost)
     }
+
+    /// `startup..total` when the plan reports both, `total` alone when it reports only the total.
+    func costRangeText(fractionDigits: Int) -> String? {
+        guard let total = estimatedTotalCost else { return nil }
+        let number = "%.\(fractionDigits)f"
+        guard let startup = estimatedStartupCost else { return String(format: number, total) }
+        return String(format: "\(number)..\(number)", startup, total)
+    }
 }
 
 /// A parsed EXPLAIN query plan.
@@ -42,10 +50,10 @@ struct QueryPlan {
     let executionTime: Double?
     let rawText: String
 
-    /// Compute cost fractions relative to root total cost.
+    /// Compute cost fractions relative to root total cost. A plan whose root reports no cost
+    /// keeps every fraction at zero rather than dividing by a made-up total.
     mutating func computeCostFractions() {
-        let totalCost = rootNode.estimatedTotalCost ?? 1
-        guard totalCost > 0 else { return }
+        guard let totalCost = rootNode.estimatedTotalCost, totalCost > 0 else { return }
         assignFractions(node: &rootNode, totalCost: totalCost)
     }
 

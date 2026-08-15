@@ -495,7 +495,7 @@ final class ERDiagramViewModel {
     // MARK: - Zoom
 
     func zoom(to newMag: CGFloat, anchor: CGPoint? = nil) {
-        let clamped = max(0.25, min(3.0, newMag))
+        let clamped = DiagramZoom.clamped(newMag)
         let center = anchor ?? CGPoint(x: viewportSize.width / 2, y: viewportSize.height / 2)
         let canvasPoint = CGPoint(
             x: (center.x - canvasOffset.x) / magnification,
@@ -516,7 +516,7 @@ final class ERDiagramViewModel {
         let padding: CGFloat = 40
         let scaleX = (viewportSize.width - padding * 2) / diagramSize.width
         let scaleY = (viewportSize.height - padding * 2) / diagramSize.height
-        let fitScale = max(0.25, min(1.0, min(scaleX, scaleY)))
+        let fitScale = max(DiagramZoom.minimum, min(1.0, min(scaleX, scaleY)))
 
         withAnimation(.easeOut(duration: 0.3)) {
             magnification = fitScale
