@@ -10,12 +10,12 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         XCTAssertTrue(searchField.waitForExistence(timeout: 10))
 
         app.typeKey("5", modifierFlags: .command)
-        XCTAssertTrue(app.staticTexts["Connections"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Connections"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Chinook (Sample)"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["Track"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Track"].waitForExistence(timeout: 5))
 
         searchField.typeText("track")
-        XCTAssertTrue(app.staticTexts["Track"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Track"].waitForExistence(timeout: 5))
 
         searchField.typeKey("a", modifierFlags: .command)
         searchField.typeText("missing-object-name")
@@ -69,10 +69,10 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         let searchField = app.textFields["quick-switcher-search-field"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 10))
         app.typeKey("4", modifierFlags: .command)
-        XCTAssertTrue(app.staticTexts["Queries"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Queries"].waitForExistence(timeout: 5))
 
         searchField.typeText("cross_connection_probe")
-        let historyResult = app.staticTexts.matching(
+        let historyResult = app.buttons.matching(
             NSPredicate(format: "label CONTAINS %@", "cross_connection_probe")
         ).firstMatch
         XCTAssertTrue(historyResult.waitForExistence(timeout: 10))

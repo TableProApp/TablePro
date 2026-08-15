@@ -4,7 +4,7 @@ final class QueryTabDeleteLineUITests: UITestCase {
     private let query = "SELECT * FROM Genre;"
 
     func testCommandDeleteDeletesTheEditorLineAfterRunningAQuery() throws {
-        let app = try launchWithSampleQueryTab()
+        let app = try launchWithSampleDatabase()
         let editor = openQueryTab(in: app)
 
         app.typeText(query)
@@ -20,7 +20,7 @@ final class QueryTabDeleteLineUITests: UITestCase {
     }
 
     func testCommandDeleteDeletesTheEditorLineAfterSelectingAResultRow() throws {
-        let app = try launchWithSampleQueryTab()
+        let app = try launchWithSampleDatabase()
         let editor = openQueryTab(in: app)
 
         app.typeText(query)
@@ -42,13 +42,6 @@ final class QueryTabDeleteLineUITests: UITestCase {
             "A selected result row must not steal Cmd+Delete from the editor; got "
                 + "'\(editor.value as? String ?? "nil")'"
         )
-    }
-
-    /// The sample opens a table tab, which has no editor, so a query tab is what this suite needs.
-    private func launchWithSampleQueryTab() throws -> XCUIApplication {
-        let app = try launchWithSampleDatabase()
-        _ = openQueryTab(in: app)
-        return app
     }
 
     private func openQueryTab(in app: XCUIApplication) -> XCUIElement {

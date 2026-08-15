@@ -24,6 +24,7 @@ struct QueryEditorView: View {
     var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
     var claimFocusOnAppear: Bool = false
+    var onFocusClaimed: (() -> Void)?
     var restoredCursorRange: NSRange?
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
@@ -67,6 +68,7 @@ struct QueryEditorView: View {
                 connectionAIPolicy: connectionAIPolicy,
                 tabID: tabID,
                 claimFocusOnAppear: claimFocusOnAppear,
+                onFocusClaimed: onFocusClaimed,
                 restoredCursorRange: restoredCursorRange,
                 vimMode: $vimMode,
                 onCloseTab: onCloseTab,

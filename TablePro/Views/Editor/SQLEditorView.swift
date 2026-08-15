@@ -24,6 +24,9 @@ struct SQLEditorView: View {
     var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
     var claimFocusOnAppear: Bool = false
+    /// Called once the editor has latched a focus claim. The owner's one-shot intent is cleared
+    /// here rather than on its own `onAppear`, which fires before this subtree renders.
+    var onFocusClaimed: (() -> Void)?
     var restoredCursorRange: NSRange?
     @Binding var vimMode: VimMode
     var onCloseTab: (() -> Void)?
@@ -53,6 +56,7 @@ struct SQLEditorView: View {
         coordinator.connectionId = connectionId
         if claimFocusOnAppear {
             coordinator.scheduleEditorFocusClaim()
+            onFocusClaimed?()
         }
         if let restoredCursorRange {
             coordinator.scheduleCursorRestore(restoredCursorRange)

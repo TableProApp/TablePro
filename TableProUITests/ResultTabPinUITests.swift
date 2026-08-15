@@ -24,7 +24,9 @@ final class ResultTabPinUITests: UITestCase {
         XCTAssertTrue(resultTab.waitForExistence(timeout: 20), "The query must produce a result tab")
         resultTab.rightClick()
 
-        let contextMenu = app.menus.firstMatch
+        /// The app has a menu per menu-bar item, so firstMatch is not the menu that just opened.
+        /// The result tab's contextual menu carries the tab's own identifier.
+        let contextMenu = app.menus.matching(identifier: "result-tab").firstMatch
         XCTAssertTrue(
             contextMenu.menuItems["Close Others"].waitForExistence(timeout: 5),
             "Right-clicking a result tab must open the result menu, not the editor menu"

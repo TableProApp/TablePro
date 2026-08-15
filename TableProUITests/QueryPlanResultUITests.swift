@@ -77,9 +77,6 @@ final class QueryPlanResultUITests: UITestCase {
     // MARK: - Helpers
 
     private func runQuery(_ sql: String, in app: XCUIApplication) {
-        let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitForExistence(timeout: 15))
-
         app.typeKey("t", modifierFlags: .command)
         let queryEditor = editorTextView(in: app)
         XCTAssertTrue(queryEditor.waitForExistence(timeout: 10))

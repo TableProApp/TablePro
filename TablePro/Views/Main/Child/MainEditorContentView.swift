@@ -371,6 +371,11 @@ struct MainEditorContentView: View {
                         connectionAIPolicy: coordinator.connection.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
                         tabID: tab.id,
                         claimFocusOnAppear: claimFocus,
+                        onFocusClaimed: {
+                            if coordinator.tabManager.pendingFocusTabId == tab.id {
+                                coordinator.tabManager.pendingFocusTabId = nil
+                            }
+                        },
                         restoredCursorRange: coordinator.restoredCursorRange(for: tab.id),
                         onCloseTab: {
                             coordinator.commandActions?.closeTab()
@@ -406,9 +411,6 @@ struct MainEditorContentView: View {
         )
         .onAppear {
             coordinator.clearRestoredCursor(for: tab.id)
-            if coordinator.tabManager.pendingFocusTabId == tab.id {
-                coordinator.tabManager.pendingFocusTabId = nil
-            }
         }
     }
 
