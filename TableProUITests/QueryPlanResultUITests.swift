@@ -9,17 +9,9 @@
 
 import XCTest
 
-final class QueryPlanResultUITests: XCTestCase {
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
-    override func tearDownWithError() throws {
-        XCUIApplication().terminate()
-    }
-
+final class QueryPlanResultUITests: UITestCase {
     func testExplainProducesAResultTabAlongsideTheData() throws {
-        let app = launchWithSampleDatabase()
+        let app = try launchWithSampleDatabase()
         runQuery("EXPLAIN QUERY PLAN SELECT * FROM users;", in: app)
 
         let resultTab = app.buttons["result-tab"].firstMatch
@@ -36,7 +28,7 @@ final class QueryPlanResultUITests: XCTestCase {
     }
 
     func testTreeModeShowsTheOutlineWithColumns() throws {
-        let app = launchWithSampleDatabase()
+        let app = try launchWithSampleDatabase()
         runQuery("EXPLAIN QUERY PLAN SELECT * FROM users;", in: app)
 
         let modePicker = app.radioGroups["query-plan-mode-picker"].firstMatch
@@ -52,7 +44,7 @@ final class QueryPlanResultUITests: XCTestCase {
     }
 
     func testDiagramModeShowsTheScrollableCanvas() throws {
-        let app = launchWithSampleDatabase()
+        let app = try launchWithSampleDatabase()
         runQuery("EXPLAIN QUERY PLAN SELECT * FROM users;", in: app)
 
         let canvas = app.descendants(matching: .any).matching(identifier: "query-plan-diagram").firstMatch
@@ -60,7 +52,7 @@ final class QueryPlanResultUITests: XCTestCase {
     }
 
     func testAPlanCanBePinnedLikeAnyResult() throws {
-        let app = launchWithSampleDatabase()
+        let app = try launchWithSampleDatabase()
         runQuery("EXPLAIN QUERY PLAN SELECT * FROM users;", in: app)
 
         let resultTab = app.buttons["result-tab"].firstMatch
@@ -94,20 +86,6 @@ final class QueryPlanResultUITests: XCTestCase {
         queryEditor.click()
         app.typeText(sql)
         app.typeKey(.return, modifierFlags: .command)
-    }
-
-    private func launchWithSampleDatabase() -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
-        app.launch()
-
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
-        menuBar.menuBarItems["File"].click()
-        let openSample = menuBar.menuItems["Open Sample Database"]
-        XCTAssertTrue(openSample.waitForExistence(timeout: 5))
-        openSample.click()
-        return app
     }
 
     private func editorTextView(in app: XCUIApplication) -> XCUIElement {
