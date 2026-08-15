@@ -9,4 +9,5 @@
 # accessibility tree of the failing runner has not been captured yet, so the cause is unknown
 # and guessing at it would be worse than skipping it. Take this off the list once a runner
 # result bundle has been read.
-QuickSwitcherCrossConnectionUITests/testConnectionsScopeSearchesTheOpenSampleDatabase
+# TEMPORARILY ENABLED to capture the runner's element tree; restore or fix after that run.
+# QuickSwitcherCrossConnectionUITests/testConnectionsScopeSearchesTheOpenSampleDatabase
