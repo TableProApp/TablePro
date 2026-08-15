@@ -8,14 +8,14 @@ import SwiftUI
 
 @MainActor
 internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutlineViewDataSource,
-    NSOutlineViewDelegate, FavoritesOutlineKeyHandling {
+    NSOutlineViewDelegate, NSTextFieldDelegate, FavoritesOutlineKeyHandling {
     private static var cellIdentifier: NSUserInterfaceItemIdentifier {
         NSUserInterfaceItemIdentifier("FavoritesOutlineCell")
     }
 
-    private var owner: FavoritesOutlineView<Row>
-    private weak var outlineView: NSOutlineView?
-    private let rename = FavoriteFolderRenameOverlay()
+    internal private(set) var owner: FavoritesOutlineView<Row>
+    internal weak var outlineView: NSOutlineView?
+    internal var renameSession: FavoritesRenameSession?
 
     /// Keyed by id and mutated in place, never rebuilt, so `NSOutlineView` keeps the row identity a
     /// reload would otherwise throw away along with the user's expansion and selection.
@@ -33,8 +33,6 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
 
     internal func attach(outlineView: NSOutlineView) {
         self.outlineView = outlineView
-        rename.onCommit = { [weak self] folder, name in self?.owner.actions.commitRename(folder, name) }
-        rename.onCancel = { [weak self] in self?.owner.actions.cancelRename() }
         lastInputFingerprint = Self.fingerprint(of: owner.input)
         reload()
     }
@@ -74,7 +72,7 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
         outlineView.reloadData()
         applyExpansion()
         applySelection()
-        rename.reposition(in: outlineView)
+        restoreRenameAfterReload()
         isReloading = false
     }
 
@@ -262,17 +260,53 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
 
     // MARK: - Rename
 
-    private func applyRenameState() {
-        guard let outlineView else { return }
-        guard let folderId = owner.input.renamingFolderId else {
-            rename.dismiss(commit: false)
-            return
+    // MARK: - NSTextFieldDelegate
+
+    /// The rename editor's delegate callbacks. They live on the main declaration because a generic
+    /// class cannot adopt an `@objc` protocol from an extension; everything else about renaming is
+    /// in `FavoritesOutlineCoordinator+Rename`.
+    internal func controlTextDidChange(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField else { return }
+        renameSession?.pendingName = field.stringValue
+    }
+
+    /// The click-away path, which commits the way Finder and the Xcode navigator do. It fires for
+    /// free because `SidebarOutlineView.mouseDown` claims first responder on every click.
+    internal func controlTextDidEndEditing(_ obj: Notification) {
+        guard renameSession != nil else { return }
+        endRename(commit: true)
+    }
+
+    internal func control(
+        _ control: NSControl,
+        textView: NSTextView,
+        doCommandBy selector: Selector
+    ) -> Bool {
+        if selector == #selector(NSResponder.insertNewline(_:)) {
+            endRename(commit: true)
+            return true
         }
-        guard !rename.isActive,
-              let node = nodeCache["folder-\(folderId)"],
-              case .query(let favoriteNode) = node.kind,
-              let folder = favoriteNode.asFolder else { return }
-        rename.begin(node: node, folder: folder, in: outlineView)
+        if selector == #selector(NSResponder.cancelOperation(_:)) {
+            /// `abortEditing` discards the edit without posting `controlTextDidEndEditing`, so the
+            /// cancel does not immediately arrive back as a commit.
+            (control as? NSTextField)?.abortEditing()
+            endRename(commit: false)
+            return true
+        }
+        return false
+    }
+
+    internal func node(forId id: String) -> FavoritesOutlineNode? {
+        nodeCache[id]
+    }
+
+    /// Every id the outline is currently showing, which is what tells a rename request whether its
+    /// row exists yet.
+    internal func visibleNodeIds() -> [String] {
+        guard let outlineView else { return [] }
+        return (0..<outlineView.numberOfRows).compactMap {
+            (outlineView.item(atRow: $0) as? FavoritesOutlineNode)?.id
+        }
     }
 
     // MARK: - Data source

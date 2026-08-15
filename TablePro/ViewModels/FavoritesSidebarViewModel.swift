@@ -316,7 +316,8 @@ internal final class FavoritesSidebarViewModel {
             let success = await manager.addFolder(folder)
             if success {
                 services.favoritesExpansionState.setFolderExpanded(folder.id, expanded: true, for: connectionId)
-                try? await Task.sleep(for: .milliseconds(100))
+                /// No wait for the row to appear. The rename request is held until the outline
+                /// actually has that row, which it reports itself.
                 startRenameFolder(folder)
             }
         }
