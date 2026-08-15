@@ -38,6 +38,7 @@ struct GeneralPaneView: View {
                     prompt: Text(String(localized: "Connection name"))
                 )
                 .focused($nameFocused)
+                .accessibilityIdentifier("connection-form-name")
             }
 
             connectionSection
@@ -70,6 +71,7 @@ struct GeneralPaneView: View {
                         text: $coordinator.network.database,
                         prompt: Text(filePathPrompt)
                     )
+                    .accessibilityIdentifier("connection-form-file-path")
                     Button(String(localized: "Browse...")) {
                         browseForFile()
                     }

@@ -68,17 +68,20 @@ final class SingleWindowMenuContractUITests: XCTestCase {
 
     /// The rail is named for what it lists. "Workspace" was a term the product invented for a
     /// window-like thing, which the HIG's Windows guidance rules out.
+    /// Either verb, because the item toggles with the strip's visibility and this is about the noun.
+    /// Asserting only on "Show" made the test depend on how many connections happened to be
+    /// restored at launch, which another suite could change out from under it.
     func testViewMenuNamesTheConnectionsStrip() throws {
         let app = launchApp()
+        let menuItems = app.menuBars.menuItems
 
         XCTAssertTrue(
-            app.menuBars.menuItems["Show Connections"].waitForExistence(timeout: 5),
+            menuItems["Show Connections"].waitForExistence(timeout: 5)
+                || menuItems["Hide Connections"].exists,
             "View menu must name the strip after what it lists"
         )
-        XCTAssertFalse(
-            app.menuBars.menuItems["Show Workspace Rail"].exists,
-            "The invented noun must be gone from the menu bar"
-        )
+        XCTAssertFalse(menuItems["Show Workspace Rail"].exists, "The invented noun must be gone")
+        XCTAssertFalse(menuItems["Hide Workspace Rail"].exists, "The invented noun must be gone")
     }
 
     /// Launching shows the welcome window and nothing else. A second main window appearing here
