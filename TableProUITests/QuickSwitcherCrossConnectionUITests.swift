@@ -79,8 +79,10 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
 
         searchField.typeKey(.return, modifierFlags: .option)
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
-        let openedEditor = app.textViews.matching(identifier: "sql-editor-textview")
-            .matching(NSPredicate(format: "value == %@", query))
+        /// The editor's accessibility identifier is set on the SwiftUI wrapper and does not reach
+        /// the text view itself, so the query it carries is what identifies the tab that opened.
+        let openedEditor = app.textViews
+            .matching(NSPredicate(format: "value CONTAINS %@", "cross_connection_probe"))
             .firstMatch
         XCTAssertTrue(openedEditor.waitForExistence(timeout: 10))
     }

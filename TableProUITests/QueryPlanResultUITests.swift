@@ -12,7 +12,7 @@ import XCTest
 final class QueryPlanResultUITests: UITestCase {
     func testExplainProducesAResultTabAlongsideTheData() throws {
         let app = try launchWithSampleDatabase()
-        runQuery("EXPLAIN QUERY PLAN SELECT * FROM users;", in: app)
+        runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track;", in: app)
 
         let resultTab = app.buttons["result-tab"].firstMatch
         XCTAssertTrue(
@@ -29,7 +29,7 @@ final class QueryPlanResultUITests: UITestCase {
 
     func testTreeModeShowsTheOutlineWithColumns() throws {
         let app = try launchWithSampleDatabase()
-        runQuery("EXPLAIN QUERY PLAN SELECT * FROM users;", in: app)
+        runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track;", in: app)
 
         let modePicker = app.radioGroups["query-plan-mode-picker"].firstMatch
         XCTAssertTrue(modePicker.waitForExistence(timeout: 20))
@@ -45,7 +45,7 @@ final class QueryPlanResultUITests: UITestCase {
 
     func testDiagramModeShowsTheScrollableCanvas() throws {
         let app = try launchWithSampleDatabase()
-        runQuery("EXPLAIN QUERY PLAN SELECT * FROM users;", in: app)
+        runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track;", in: app)
 
         let canvas = app.descendants(matching: .any).matching(identifier: "query-plan-diagram").firstMatch
         XCTAssertTrue(canvas.waitForExistence(timeout: 20), "Diagram mode must show the plan canvas")
@@ -53,13 +53,15 @@ final class QueryPlanResultUITests: UITestCase {
 
     func testAPlanCanBePinnedLikeAnyResult() throws {
         let app = try launchWithSampleDatabase()
-        runQuery("EXPLAIN QUERY PLAN SELECT * FROM users;", in: app)
+        runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track;", in: app)
 
         let resultTab = app.buttons["result-tab"].firstMatch
         XCTAssertTrue(resultTab.waitForExistence(timeout: 20))
         resultTab.rightClick()
 
-        let contextMenu = app.menus.firstMatch
+        /// The app has a menu per menu-bar item, so firstMatch is not the menu that just opened.
+        /// The result tab's contextual menu carries the tab's own identifier.
+        let contextMenu = app.menus.matching(identifier: "result-tab").firstMatch
         XCTAssertTrue(
             contextMenu.menuItems["Pin Result"].waitForExistence(timeout: 5),
             "A plan is a result set, so it must offer Pin Result"
