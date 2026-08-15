@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Closing a connection removes it from the connections strip, ends its session, and closes its tunnel. It stayed listed as connected, could not be clicked, and its database connection stayed open.
 - **Open in New Window** on a connection in the strip moves it out of the shared window with its tabs, its session and its unsaved work.
-- The strip's close command ends the connection: every tab across every database it has open, its session, and every row it holds in the rail. It used to close only the tabs of one database and leave the row you clicked exactly where it was, which read as doing nothing. Disconnect still ends only the session and keeps the row. **File > Close Connection** does the same from the menu bar.
+- The strip's close command ends the connection: every tab across every database it has open, its session, and every row it holds in the strip. It used to close only the tabs of one database and leave the row you clicked exactly where it was, which read as doing nothing. Disconnect still ends only the session and keeps the row. **File > Close Connection** does the same from the menu bar.
 - Closing a window disconnects every connection it was showing, not just one of them.
 - Hiding a database in the sidebar's database filter takes effect straight away. The tree kept listing every database until some other change happened to rebuild it.
 - An alert opens on the window you were working in. It could attach itself to a floating panel such as the Quick Switcher, which takes the alert with it when it closes.
@@ -71,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clicking a table in the sidebar opens it right away. It used to wait out the double-click interval, about half a second, to find out whether a second click was coming. Double-click no longer opens a second copy of the table; **Open in New Tab** on the table's contextual menu does that.
 - Opening a table from the sidebar leaves the keyboard in the sidebar, so you can keep clicking or arrowing through tables and watch each one load. Click into the grid when you want to work in it.
 - Sidebar section titles are real source list headers now, the way Package Dependencies reads in Xcode's navigator: a short grey title with no icon, and the objects under it sitting at the same depth as a database instead of one step in.
-- Every open connection now lives in one window. Picking a connection in the workspace rail switches that window to it instead of raising a second window.
+- Every open connection now lives in one window. Picking a connection in the connections strip switches that window to it instead of raising a second window. Each connection keeps its own view while it waits its turn, so switching away and back leaves the grid scrolled where it was, the query editor's cursor and selection where you left them, and a half-filled sheet still filled in.
 - Opening a table or query on a connection you already have open adds a tab to that window instead of opening another window. A tab strip appears once a connection holds more than one tab.
 - Closing the last tab leaves the connection open on its empty state. Close Tab again closes the connection, and the window once that was the last one open.
 - Window tabs follow your "Prefer tabs when opening documents" setting instead of always forcing tabs, and the Window menu carries Move Tab to New Window and Merge All Windows.
