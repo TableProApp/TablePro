@@ -37,7 +37,9 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let urlSchemes: [String] = ["libsql"]
 
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
+        ExplainVariant(
+            id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN", format: .sqliteQueryPlan
+        )
     ]
 
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue]

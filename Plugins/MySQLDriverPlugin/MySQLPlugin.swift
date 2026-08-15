@@ -30,8 +30,13 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let urlSchemes: [String] = ["mysql"]
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
-        ExplainVariant(id: "explain-json", label: "EXPLAIN (JSON)", sqlPrefix: "EXPLAIN FORMAT=JSON"),
+        ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .mysqlComposite),
+        ExplainVariant(
+            id: "explain-json",
+            label: "EXPLAIN (JSON)",
+            sqlPrefix: "EXPLAIN FORMAT=JSON",
+            format: .mysqlComposite
+        ),
     ]
     static let brandColorHex = "#FF9500"
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]

@@ -518,11 +518,17 @@ extension PluginMetadataRegistry {
                 requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "clickhouse", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
-                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN"),
-                    ExplainVariant(id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE"),
-                    ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST"),
-                    ExplainVariant(id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX"),
-                    ExplainVariant(id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE")
+                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .indentedText),
+                    ExplainVariant(
+                        id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE", format: .indentedText
+                    ),
+                    ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST", format: .indentedText),
+                    ExplainVariant(
+                        id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX", format: .indentedText
+                    ),
+                    ExplainVariant(
+                        id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE", format: .indentedText
+                    )
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["clickhouse", "ch"], postConnectActions: [.selectDatabaseFromLastSession],
@@ -574,7 +580,7 @@ extension PluginMetadataRegistry {
                 isDownloadable: true, primaryUrlScheme: "duckdb", parameterStyle: .dollar,
                 navigationModel: .standard,
                 explainVariants: [
-                    ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
+                    ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .indentedText),
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: false, urlSchemes: ["duckdb", "quack"], postConnectActions: [],
@@ -918,7 +924,9 @@ extension PluginMetadataRegistry {
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
                 isDownloadable: true, primaryUrlScheme: "d1", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
-                    ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
+                    ExplainVariant(
+                        id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN", format: .sqliteQueryPlan
+                    )
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["d1"], postConnectActions: [],
@@ -976,7 +984,9 @@ extension PluginMetadataRegistry {
                 requiresAuthentication: false, supportsForeignKeys: true, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "libsql", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
-                    ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
+                    ExplainVariant(
+                        id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN", format: .sqliteQueryPlan
+                    )
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["libsql"], postConnectActions: [],

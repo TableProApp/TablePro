@@ -730,8 +730,15 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 isDownloadable: false, primaryUrlScheme: "cockroachdb", parameterStyle: .dollar,
                 navigationModel: .standard,
                 explainVariants: [
-                    ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
-                    ExplainVariant(id: "analyze", label: "EXPLAIN ANALYZE", sqlPrefix: "EXPLAIN ANALYZE"),
+                    ExplainVariant(
+                        id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .cockroachText
+                    ),
+                    ExplainVariant(
+                        id: "analyze",
+                        label: "EXPLAIN ANALYZE",
+                        sqlPrefix: "EXPLAIN ANALYZE",
+                        format: .cockroachText
+                    ),
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["cockroachdb", "cockroach"],

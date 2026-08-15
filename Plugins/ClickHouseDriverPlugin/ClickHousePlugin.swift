@@ -22,11 +22,11 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let isDownloadable = true
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN"),
-        ExplainVariant(id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE"),
-        ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST"),
-        ExplainVariant(id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX"),
-        ExplainVariant(id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE"),
+        ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .indentedText),
+        ExplainVariant(id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE", format: .indentedText),
+        ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST", format: .indentedText),
+        ExplainVariant(id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX", format: .indentedText),
+        ExplainVariant(id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE", format: .indentedText),
     ]
     static let brandColorHex = "#FFD100"
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]
