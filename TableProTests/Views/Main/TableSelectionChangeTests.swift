@@ -33,14 +33,23 @@ struct TableSelectionChangeTests {
         #expect(action == .navigate(table: TableInfo(name: "my_view", type: .view, rowCount: nil)))
     }
 
-    @Test("Cmd+click adds exactly one more table — navigate to it")
+    @Test("Cmd+click extends the selection without opening the table it added")
     func cmdClickAddsOneMore() {
         let existing = TestFixtures.makeTableInfo(name: "users")
         let added = TestFixtures.makeTableInfo(name: "orders")
         let old: Set<TableInfo> = [existing]
         let new: Set<TableInfo> = [existing, added]
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new)
-        #expect(action == .navigate(table: TableInfo(name: "orders", type: .table, rowCount: nil)))
+        #expect(action == .noNavigation)
+    }
+
+    @Test("Narrowing a multi-selection back to one table does not reopen it")
+    func narrowingToAPreviouslySelectedTableDoesNotNavigate() {
+        let kept = TestFixtures.makeTableInfo(name: "users")
+        let old: Set<TableInfo> = [kept, TestFixtures.makeTableInfo(name: "orders")]
+        let new: Set<TableInfo> = [kept]
+        let action = TableSelectionAction.resolve(oldTables: old, newTables: new)
+        #expect(action == .noNavigation)
     }
 
     // MARK: - Multi-selection (Cmd+A, Shift+click)

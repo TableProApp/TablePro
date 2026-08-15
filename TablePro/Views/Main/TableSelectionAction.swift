@@ -9,18 +9,23 @@
 import Foundation
 
 /// Describes what should happen when the sidebar selection set changes.
+///
+/// Navigation follows a selection of one. Extending a selection is how a source list builds a batch
+/// for Truncate, Delete or Export, so it must not also open a table, switch the session's database
+/// and run a query. Requiring the resulting selection to be a single table keeps Cmd-click and
+/// Shift-arrow out of the navigating path, which a delta on its own cannot do: adding one row to a
+/// selection is still exactly one addition.
 enum TableSelectionAction: Equatable {
-    /// Selection changed but no single table was added — skip navigation.
-    /// Covers: Cmd+A (multi-select), Shift+click range, deselection.
     case noNavigation
-    /// Exactly one table was added — navigate to it.
     case navigate(table: TableInfo)
 
     static func resolve(
         oldTables: Set<TableInfo>,
         newTables: Set<TableInfo>
     ) -> TableSelectionAction {
-        guard let table = SelectionDelta.singleAddition(old: oldTables, new: newTables) else {
+        guard newTables.count == 1,
+              let table = SelectionDelta.singleAddition(old: oldTables, new: newTables)
+        else {
             return .noNavigation
         }
         return .navigate(table: table)

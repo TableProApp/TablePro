@@ -561,15 +561,18 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         let nodes = selectedNodes()
         lastSelectedNodeIds = nodes.map(\.id)
         let refs = Set(DatabaseTreeSelection.tableRefs(of: nodes))
-        if let added = SelectionDelta.singleAddition(old: lastSelection, new: refs) {
-            /// A held arrow key is one gesture, so the keyboard waits it out. A click is already
-            /// the whole gesture and opens now.
-            if isKeyboardDrivenSelection {
-                scheduleOpen(added, after: NSEvent.keyRepeatInterval)
+        let target = DatabaseTreeSelection.navigationTarget(
+            selectedNodes: nodes, previousRefs: lastSelection, newRefs: refs
+        )
+        if let target {
+            /// Only a repeating key is a burst to wait out. A discrete press is the whole gesture
+            /// and opens now, the way a click does.
+            if isAutorepeatingSelection {
+                scheduleOpen(target, after: NSEvent.keyRepeatInterval)
             } else {
                 pendingOpenWork?.cancel()
                 pendingOpenWork = nil
-                open(added, activateGridFocus: false)
+                open(target, activateGridFocus: false)
             }
         } else if let redisNode = singleSelectedRedisNode(in: nodes) {
             openRedis(redisNode)
@@ -584,13 +587,13 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         return redisNode
     }
 
-    private var isKeyboardDrivenSelection: Bool {
+    private var isAutorepeatingSelection: Bool {
         guard let outlineView, outlineView.window?.firstResponder === outlineView else { return false }
         guard let event = NSApp.currentEvent else { return false }
-        return DatabaseTreeTypeSelect.isArrowNavigation(event)
+        return DatabaseTreeTypeSelect.isAutorepeatingArrowNavigation(event)
     }
 
-    /// A held arrow key is one gesture, not one open per row it travels over, so a keyboard open
+    /// A held arrow key is one gesture, not one open per row it travels over, so a repeating key
     /// waits out `NSEvent.keyRepeatInterval` and each new selection cancels the pending one. The
     /// burst collapses to the row the user stopped on. Without it, arrowing down a schema ran a
     /// query and opened a tab for every row in between.

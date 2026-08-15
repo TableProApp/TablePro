@@ -82,4 +82,62 @@ struct DatabaseTreeSelectionPolicyTests {
         ]
         #expect(DatabaseTreeSelection.tableRefs(of: nodes) == [users, orders])
     }
+
+    // MARK: - Navigation target
+
+    private func tableNode(_ ref: DatabaseTreeTableRef) -> DatabaseTreeNode {
+        DatabaseTreeNode(id: ref.id, kind: .table(ref))
+    }
+
+    @Test("Picking one table opens it")
+    func singlePickNavigates() {
+        let users = tableRef("users")
+        let target = DatabaseTreeSelection.navigationTarget(
+            selectedNodes: [tableNode(users)], previousRefs: [], newRefs: [users]
+        )
+        #expect(target == users)
+    }
+
+    @Test("Cmd-clicking a second table extends the selection without opening it")
+    func extendingSelectionDoesNotNavigate() {
+        let users = tableRef("users")
+        let orders = tableRef("orders")
+        let target = DatabaseTreeSelection.navigationTarget(
+            selectedNodes: [tableNode(users), tableNode(orders)],
+            previousRefs: [users],
+            newRefs: [users, orders]
+        )
+        #expect(target == nil)
+    }
+
+    /// A schema row is selectable but is not a table, so a table added beside one is still an
+    /// extension. Counting only the table refs would miss this and open the table.
+    @Test("Adding a table beside a selected schema does not open it")
+    func addingATableBesideAContainerDoesNotNavigate() {
+        let users = tableRef("users")
+        let schema = node(.schema(database: "app", schema: "public"))
+        let target = DatabaseTreeSelection.navigationTarget(
+            selectedNodes: [schema, tableNode(users)], previousRefs: [], newRefs: [users]
+        )
+        #expect(target == nil)
+    }
+
+    @Test("Reselecting the table that is already selected does not reopen it")
+    func reselectingDoesNotNavigate() {
+        let users = tableRef("users")
+        let target = DatabaseTreeSelection.navigationTarget(
+            selectedNodes: [tableNode(users)], previousRefs: [users], newRefs: [users]
+        )
+        #expect(target == nil)
+    }
+
+    @Test("Selecting a container alone opens nothing")
+    func containerSelectionNavigatesNowhere() {
+        let target = DatabaseTreeSelection.navigationTarget(
+            selectedNodes: [node(.schema(database: "app", schema: "public"))],
+            previousRefs: [],
+            newRefs: []
+        )
+        #expect(target == nil)
+    }
 }

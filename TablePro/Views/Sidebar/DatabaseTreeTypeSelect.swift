@@ -30,6 +30,16 @@ internal enum DatabaseTreeTypeSelect {
         return isArrowNavigation(type: event.type, keyCode: event.keyCode)
     }
 
+    /// Whether a selection change came from a key the user is holding down.
+    ///
+    /// Only a repeat is a burst worth coalescing. `NSEvent.keyRepeatInterval` is the user's key
+    /// repeat rate from System Settings, up to two seconds at the slowest stop, so charging it to a
+    /// single deliberate press left the row highlighted and the table unopened for that whole time.
+    internal static func isAutorepeatingArrowNavigation(_ event: NSEvent) -> Bool {
+        guard isArrowNavigation(event), event.type == .keyDown else { return false }
+        return event.isARepeat
+    }
+
     /// Type-select finds objects, and a section title or a status line is not one. AppKit already
     /// walks past a match it cannot select, so this decides what the search means rather than
     /// keeping the selection off a dead row.
