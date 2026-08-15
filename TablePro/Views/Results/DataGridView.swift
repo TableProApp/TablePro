@@ -60,6 +60,7 @@ struct DataGridView: NSViewRepresentable {
         tableView.style = .plain
         tableView.wantsLayer = true
         tableView.layerContentsRedrawPolicy = .onSetNeedsDisplay
+        tableView.setAccessibilityIdentifier("data-grid")
         tableView.setAccessibilityLabel(String(localized: "Data grid"))
         tableView.setAccessibilityRole(.table)
         let settings = AppSettingsManager.shared.dataGrid

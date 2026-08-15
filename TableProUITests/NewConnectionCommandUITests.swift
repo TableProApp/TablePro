@@ -1,23 +1,8 @@
 import XCTest
 
-final class NewConnectionCommandUITests: XCTestCase {
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
-    override func tearDownWithError() throws {
-        XCUIApplication().terminate()
-    }
-
-    private func launchApp() -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
-        app.launch()
-        return app
-    }
-
+final class NewConnectionCommandUITests: UITestCase {
     func testNewConnectionOpensTheChooserAfterTheWelcomeWindowIsClosed() throws {
-        let app = launchApp()
+        let app = try launchApp()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
 
         app.typeKey("w", modifierFlags: .command)

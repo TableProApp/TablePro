@@ -1,18 +1,10 @@
 import XCTest
 
-final class QueryTabDeleteLineUITests: XCTestCase {
+final class QueryTabDeleteLineUITests: UITestCase {
     private let query = "SELECT * FROM Genre;"
 
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
-    override func tearDownWithError() throws {
-        XCUIApplication().terminate()
-    }
-
     func testCommandDeleteDeletesTheEditorLineAfterRunningAQuery() throws {
-        let app = launchWithSampleDatabase()
+        let app = try launchWithSampleQueryTab()
         let editor = openQueryTab(in: app)
 
         app.typeText(query)
@@ -28,14 +20,16 @@ final class QueryTabDeleteLineUITests: XCTestCase {
     }
 
     func testCommandDeleteDeletesTheEditorLineAfterSelectingAResultRow() throws {
-        let app = launchWithSampleDatabase()
+        let app = try launchWithSampleQueryTab()
         let editor = openQueryTab(in: app)
 
         app.typeText(query)
         XCTAssertTrue(waitForValue(query, in: editor, timeout: 5))
         executeQuery(in: app)
 
-        let firstRow = app.windows.firstMatch.tables.firstMatch.tableRows.element(boundBy: 0)
+        let grid = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 10))
+        let firstRow = grid.tableRows.element(boundBy: 0)
         XCTAssertTrue(firstRow.waitForExistence(timeout: 10))
         firstRow.click()
 
@@ -50,19 +44,10 @@ final class QueryTabDeleteLineUITests: XCTestCase {
         )
     }
 
-    private func launchWithSampleDatabase() -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
-        app.launch()
-
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
-        menuBar.menuBarItems["File"].click()
-        let openSample = menuBar.menuItems["Open Sample Database"]
-        XCTAssertTrue(openSample.waitForExistence(timeout: 5))
-        openSample.click()
-
-        XCTAssertTrue(editorTextView(in: app).waitForExistence(timeout: 15))
+    /// The sample opens a table tab, which has no editor, so a query tab is what this suite needs.
+    private func launchWithSampleQueryTab() throws -> XCUIApplication {
+        let app = try launchWithSampleDatabase()
+        _ = openQueryTab(in: app)
         return app
     }
 
@@ -76,7 +61,7 @@ final class QueryTabDeleteLineUITests: XCTestCase {
 
     private func executeQuery(in app: XCUIApplication) {
         app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: .command)
-        let results = app.windows.firstMatch.tables.firstMatch
+        let results = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
         XCTAssertTrue(results.waitForExistence(timeout: 15), "The query must produce a result grid")
     }
 

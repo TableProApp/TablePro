@@ -7,15 +7,7 @@ import XCTest
 /// These drive the command through the menu bar rather than the connections strip, because the
 /// strip only appears once a second connection is open and the sample database is a single-file
 /// SQLite connection. The command is the same one the strip's row invokes.
-final class ConnectionCloseUITests: XCTestCase {
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
-    override func tearDownWithError() throws {
-        XCUIApplication().terminate()
-    }
-
+final class ConnectionCloseUITests: UITestCase {
     /// The regression test for the reported bug: choosing Close must have an observable effect.
     ///
     /// The observable is the command's own enablement, which is `hasSelectedWorkspace`: true while
@@ -24,7 +16,7 @@ final class ConnectionCloseUITests: XCTestCase {
     /// which is not what this is testing. The sample connection has no unsaved work, so it takes
     /// the close-without-asking path.
     func testClosingTheOnlyConnectionLeavesNoConnectionShowing() throws {
-        let app = launchWithSampleDatabase()
+        let app = try launchWithSampleDatabase()
 
         XCTAssertTrue(
             waitForCloseConnection(in: app, toBeEnabled: true, timeout: 30),
@@ -60,19 +52,5 @@ final class ConnectionCloseUITests: XCTestCase {
         let menuBar = app.menuBars.firstMatch
         menuBar.menuBarItems["File"].click()
         return menuBar.menuItems["Close Connection"]
-    }
-
-    private func launchWithSampleDatabase() -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
-        app.launch()
-
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
-        menuBar.menuBarItems["Help"].click()
-        let openSample = menuBar.menuItems["Open Sample Database"]
-        XCTAssertTrue(openSample.waitForExistence(timeout: 5))
-        openSample.click()
-        return app
     }
 }

@@ -1,28 +1,8 @@
 import XCTest
 
-final class EditorAutocompleteFocusUITests: XCTestCase {
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
-    override func tearDownWithError() throws {
-        XCUIApplication().terminate()
-    }
-
+final class EditorAutocompleteFocusUITests: UITestCase {
     func testTypingInNewTabKeepsEditorFocusWhileAutocompleteAppears() throws {
-        let app = XCUIApplication()
-        app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
-        app.launch()
-
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
-        menuBar.menuBarItems["File"].click()
-        let openSample = menuBar.menuItems["Open Sample Database"]
-        XCTAssertTrue(openSample.waitForExistence(timeout: 5))
-        openSample.click()
-
-        let firstEditor = editorTextView(in: app)
-        XCTAssertTrue(firstEditor.waitForExistence(timeout: 15))
+        let app = try launchWithSampleDatabase()
 
         app.typeKey("t", modifierFlags: .command)
 

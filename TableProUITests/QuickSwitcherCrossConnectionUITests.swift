@@ -1,17 +1,9 @@
 import XCTest
 
-final class QuickSwitcherCrossConnectionUITests: XCTestCase {
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
-    override func tearDownWithError() throws {
-        XCUIApplication().terminate()
-    }
-
+final class QuickSwitcherCrossConnectionUITests: UITestCase {
     func testConnectionsScopeSearchesTheOpenSampleDatabase() throws {
-        let app = launchWithSampleDatabase()
-        XCTAssertTrue(editorTextView(in: app).waitForExistence(timeout: 15))
+        let app = try launchWithSampleDatabase()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
 
         app.typeKey("o", modifierFlags: [.command, .shift])
         let searchField = app.textFields["quick-switcher-search-field"]
@@ -56,8 +48,7 @@ final class QuickSwitcherCrossConnectionUITests: XCTestCase {
     }
 
     func testQueriesScopeSearchesHistoryAndOpensANewWindowTab() throws {
-        let app = launchWithSampleDatabase()
-        XCTAssertTrue(editorTextView(in: app).waitForExistence(timeout: 15))
+        let app = try launchWithSampleDatabase()
 
         app.typeKey("t", modifierFlags: .command)
         let queryEditor = editorTextView(in: app)
@@ -66,7 +57,10 @@ final class QuickSwitcherCrossConnectionUITests: XCTestCase {
         queryEditor.click()
         app.typeText(query)
         app.typeKey(.return, modifierFlags: .command)
-        XCTAssertTrue(app.windows.firstMatch.tables.firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(
+            app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
+                .waitForExistence(timeout: 15)
+        )
         queryEditor.click()
         queryEditor.typeKey("a", modifierFlags: .command)
         queryEditor.typeText("SELECT 0;")
@@ -89,20 +83,6 @@ final class QuickSwitcherCrossConnectionUITests: XCTestCase {
             .matching(NSPredicate(format: "value == %@", query))
             .firstMatch
         XCTAssertTrue(openedEditor.waitForExistence(timeout: 10))
-    }
-
-    private func launchWithSampleDatabase() -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
-        app.launch()
-
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
-        menuBar.menuBarItems["Help"].click()
-        let openSample = menuBar.menuItems["Open Sample Database"]
-        XCTAssertTrue(openSample.waitForExistence(timeout: 5))
-        openSample.click()
-        return app
     }
 
     private func editorTextView(in app: XCUIApplication) -> XCUIElement {
