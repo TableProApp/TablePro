@@ -61,6 +61,13 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
     internal var onSingleClickAction: ((Item.ID) -> Void)?
     internal var onPrimaryAction: (Item.ID) -> Void = { _ in }
     internal var menuItems: ((Set<Item.ID>) -> [FieldDrivenMenuItem])?
+    /// A browser takes focus so it can be arrowed through; a chooser leaves focus in its field.
+    internal var acceptsFocus = false
+    internal var onDeleteCommand: (() -> Void)?
+    internal var onCopyCommand: (() -> Void)?
+    /// Set on the table view itself, because an identifier applied to the SwiftUI wrapper does not
+    /// reach the AppKit view a test or a screen reader actually queries.
+    internal var accessibilityIdentifier: String?
     @ViewBuilder internal let row: (Item) -> Row
 
     internal func makeCoordinator() -> Coordinator {
@@ -80,6 +87,11 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
         tableView.target = context.coordinator
         tableView.action = #selector(Coordinator.handleSingleClick)
         tableView.doubleAction = #selector(Coordinator.handleDoubleClick)
+        tableView.acceptsFocus = acceptsFocus
+        if let accessibilityIdentifier {
+            tableView.setAccessibilityIdentifier(accessibilityIdentifier)
+        }
+        context.coordinator.bindKeyboardActions(to: tableView)
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("FieldDrivenColumn"))
         column.resizingMask = .autoresizingMask
@@ -115,9 +127,21 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
             entries = FieldDrivenListEntry.flatten(owner.sections)
         }
 
+        /// The closures capture the coordinator rather than the owner, because the owner is a
+        /// struct that SwiftUI replaces on every update while the table view outlives all of them.
+        internal func bindKeyboardActions(to tableView: FieldDrivenTableView) {
+            tableView.onActivate = { [weak self] in
+                guard let self, let id = owner.selection.first else { return }
+                owner.onPrimaryAction(id)
+            }
+            tableView.onDelete = { [weak self] in self?.owner.onDeleteCommand?() }
+            tableView.onCopy = { [weak self] in self?.owner.onCopyCommand?() }
+        }
+
         internal func apply(owner: FieldDrivenList) {
             self.owner = owner
             guard let tableView else { return }
+            tableView.acceptsFocus = owner.acceptsFocus
             let next = FieldDrivenListEntry.flatten(owner.sections)
             let identityChanged = next.map(\.identity) != entries.map(\.identity)
             entries = next
@@ -248,9 +272,9 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
     }
 }
 
-/// The row draws emphasized whenever the window carrying it is key, because the highlight stands
-/// for the search field's selection and that field is the thing holding focus. `window` is read
-/// rather than `NSApp.keyWindow`, which does not return a popover's own window.
+/// A chooser's highlight stands for the search field's selection, so it draws emphasized whenever
+/// the window is key: the field is the thing holding focus. A browser owns its own focus, so its
+/// highlight follows first responder the way every other list on the system does.
 internal final class FieldDrivenRowView: NSTableRowView {
     internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("FieldDrivenRow")
 
@@ -261,17 +285,48 @@ internal final class FieldDrivenRowView: NSTableRowView {
     }
 
     /// `NSTableRowView` declares this settable, so an override has to supply a setter. AppKit is
-    /// the only caller and it has nothing to tell this row that the key window does not.
+    /// the only caller and it has nothing to tell this row that the window does not.
     override internal var isEmphasized: Bool {
-        get { window?.isKeyWindow ?? false }
+        get {
+            guard let table = superview as? FieldDrivenTableView, table.acceptsFocus else {
+                return window?.isKeyWindow ?? false
+            }
+            return window?.firstResponder === table
+        }
         set {}
     }
 }
 
-/// The table is a presentation of the field's selection, so it never takes focus away from the
-/// field. Refusing first responder is what makes that true rather than incidental.
+/// A chooser is a presentation of a search field's selection, so it never takes focus away from
+/// that field. A browser is read by arrowing through it, so it has to take focus like any other
+/// list. `acceptsFocus` is the difference, and it stays off unless a caller asks for it.
 internal final class FieldDrivenTableView: NSTableView {
-    override internal var acceptsFirstResponder: Bool { false }
+    internal var acceptsFocus = false
+    internal var onActivate: (() -> Void)?
+    internal var onDelete: (() -> Void)?
+    internal var onCopy: (() -> Void)?
+
+    override internal var acceptsFirstResponder: Bool { acceptsFocus }
+
+    override internal func keyDown(with event: NSEvent) {
+        guard acceptsFocus else {
+            super.keyDown(with: event)
+            return
+        }
+
+        switch event.keyCode {
+        case 36, 76:
+            onActivate?()
+        case 51, 117:
+            onDelete?()
+        default:
+            super.keyDown(with: event)
+        }
+    }
+
+    @objc internal func copy(_ sender: Any?) {
+        onCopy?()
+    }
 
     override internal func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
@@ -290,6 +345,14 @@ internal protocol FieldDrivenMenuProviding: AnyObject {
 
 extension FieldDrivenList.Coordinator: FieldDrivenMenuProviding {}
 
+/// A row draws its content and nothing more. Left to itself the hosting view takes first responder
+/// on a click, which parks focus inside a cell and leaves the table unable to be arrowed through.
+private final class FieldDrivenCellHostingView<Content: View>: NSHostingView<Content> {
+    override var acceptsFirstResponder: Bool { false }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 internal final class FieldDrivenCellView<Row: View>: NSTableCellView {
     internal static var reuseIdentifier: NSUserInterfaceItemIdentifier {
         NSUserInterfaceItemIdentifier("FieldDrivenCell")
@@ -303,7 +366,7 @@ internal final class FieldDrivenCellView<Row: View>: NSTableCellView {
             hosting.rootView = rootView
             return
         }
-        let view = NSHostingView(rootView: rootView)
+        let view = FieldDrivenCellHostingView(rootView: rootView)
         view.translatesAutoresizingMaskIntoConstraints = false
         addSubview(view)
         NSLayoutConstraint.activate([

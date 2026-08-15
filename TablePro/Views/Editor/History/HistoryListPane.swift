@@ -26,53 +26,75 @@ struct HistoryListPane: View {
         }
     }
 
+    /// A history is read by arrowing through it, so the list owns the keyboard: selecting a row
+    /// leaves focus here, and only Return or a double-click sends the query to the editor.
     private var entryList: some View {
-        List(selection: $viewModel.selectedEntryId) {
-            ForEach(viewModel.sections) { section in
-                Section(QueryHistoryGrouping.title(for: section.day)) {
-                    ForEach(section.entries) { entry in
-                        HistoryRowView(entry: entry, connectionLabel: viewModel.connectionLabel(for: entry))
-                            .tag(entry.id)
-                            .contextMenu { menu(for: entry) }
-                    }
-                }
+        FieldDrivenList(
+            sections: viewModel.sections.map { section in
+                FieldDrivenListSection(
+                    id: String(section.day.timeIntervalSince1970),
+                    title: QueryHistoryGrouping.title(for: section.day),
+                    items: section.entries
+                )
+            },
+            selection: selectionBinding,
+            rowHeight: 44,
+            onPrimaryAction: { id in
+                guard let entry = entry(id) else { return }
+                onLoadInEditor(entry)
+            },
+            menuItems: { ids in menuItems(for: ids) },
+            acceptsFocus: true,
+            onDeleteCommand: { Task { await viewModel.deleteSelection() } },
+            onCopyCommand: {
+                guard let entry = viewModel.selectedEntry else { return }
+                onCopy(entry)
+            },
+            accessibilityIdentifier: "query-history-list",
+            row: { entry in
+                HistoryRowView(entry: entry, connectionLabel: viewModel.connectionLabel(for: entry))
             }
-
+        )
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             if viewModel.hasMore {
-                loadMoreRow
+                loadMoreBar
             }
-        }
-        .listStyle(.inset)
-        .alternatingRowBackgrounds(.enabled)
-        .accessibilityIdentifier("query-history-list")
-        .onDeleteCommand {
-            Task { await viewModel.deleteSelection() }
-        }
-        .onCopyCommand {
-            guard let entry = viewModel.selectedEntry else { return [] }
-            onCopy(entry)
-            return []
         }
     }
 
-    private var loadMoreRow: some View {
-        HStack {
-            Spacer()
-            Button {
-                Task { await viewModel.loadMore() }
-            } label: {
-                if viewModel.isLoadingMore {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Text("Load More")
+    private var selectionBinding: Binding<Set<UUID>> {
+        Binding(
+            get: { viewModel.selectedEntryId.map { [$0] } ?? [] },
+            set: { viewModel.selectedEntryId = $0.first }
+        )
+    }
+
+    private func entry(_ id: UUID) -> QueryHistoryEntry? {
+        viewModel.sections.lazy.flatMap(\.entries).first { $0.id == id }
+    }
+
+    private var loadMoreBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack {
+                Spacer()
+                Button {
+                    Task { await viewModel.loadMore() }
+                } label: {
+                    if viewModel.isLoadingMore {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("Load More")
+                    }
                 }
+                .buttonStyle(.link)
+                .disabled(viewModel.isLoadingMore)
+                .accessibilityIdentifier("query-history-load-more")
+                Spacer()
             }
-            .buttonStyle(.link)
-            .disabled(viewModel.isLoadingMore)
-            .accessibilityIdentifier("query-history-load-more")
-            Spacer()
+            .padding(.vertical, 6)
         }
-        .selectionDisabled()
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private var emptyState: some View {
@@ -99,16 +121,18 @@ struct HistoryListPane: View {
         .accessibilityIdentifier("query-history-empty")
     }
 
-    @ViewBuilder
-    private func menu(for entry: QueryHistoryEntry) -> some View {
-        Button(String(localized: "Load in Editor")) { onLoadInEditor(entry) }
-        Button(String(localized: "Run in New Tab")) { onRunInNewTab(entry) }
-        Divider()
-        Button(String(localized: "Copy Query")) { onCopy(entry) }
-        Button(String(localized: "Save as Favorite…")) { onSaveAsFavorite(entry) }
-        Divider()
-        Button(String(localized: "Delete")) {
-            Task { await viewModel.delete(entry) }
-        }
+    private func menuItems(for ids: Set<UUID>) -> [FieldDrivenMenuItem] {
+        guard let id = ids.first, let entry = entry(id) else { return [] }
+        return [
+            FieldDrivenMenuItem(title: String(localized: "Load in Editor")) { onLoadInEditor(entry) },
+            FieldDrivenMenuItem(title: String(localized: "Run in New Tab")) { onRunInNewTab(entry) },
+            .separator,
+            FieldDrivenMenuItem(title: String(localized: "Copy Query")) { onCopy(entry) },
+            FieldDrivenMenuItem(title: String(localized: "Save as Favorite…")) { onSaveAsFavorite(entry) },
+            .separator,
+            FieldDrivenMenuItem(title: String(localized: "Delete")) {
+                Task { await viewModel.delete(entry) }
+            }
+        ]
     }
 }

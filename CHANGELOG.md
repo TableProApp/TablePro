@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Query History can be scoped to one connection or searched across all of them, and shows which connection each query belongs to when you widen the scope.
 - Query History can be filtered to failed queries only, and by last hour, today, last 7 days or last 4 weeks.
 - Clearing query history from the drawer now clears only what the drawer is showing, so clearing one connection leaves the others alone. Settings still clears everything.
+- Query History can be read from the keyboard. Selecting a row keeps the keyboard in the list, so arrow keys move through entries, and `Return` or a double-click loads the query into the editor.
 - Query History has a pause button. While it is paused nothing is recorded from any source, including row edits, structure changes, imports and AI clients. Pausing stays on the Mac you press it on.
 - MySQL `EXPLAIN FORMAT=TREE` and `EXPLAIN ANALYZE` output now renders as a visual plan diagram or tree instead of raw text only.
 - A query plan now opens as a result tab next to your query results, so you can switch back to the data without re-running the query, and pin a plan to keep it.
