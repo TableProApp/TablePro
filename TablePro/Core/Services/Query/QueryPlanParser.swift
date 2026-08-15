@@ -691,24 +691,3 @@ struct CockroachDBPlanParser: QueryPlanParser {
         }
     }
 }
-
-// MARK: - Factory
-
-enum QueryPlanParserFactory {
-    static func parser(for databaseType: DatabaseType) -> QueryPlanParser? {
-        switch databaseType {
-        case .postgresql, .redshift:
-            return PostgreSQLPlanParser()
-        case .cockroachdb:
-            return CockroachDBPlanParser()
-        case .mysql, .mariadb:
-            return MySQLPlanParser()
-        case .sqlite:
-            return SQLitePlanParser()
-        case .clickhouse, .duckdb:
-            return IndentedTextPlanParser()
-        default:
-            return nil
-        }
-    }
-}

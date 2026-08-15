@@ -69,20 +69,16 @@ extension MainContentCoordinator {
                 let result = try await driver.execute(query: explainSQL)
                 let duration = Date().timeIntervalSince(startTime)
 
-                let text = result.rows.map { row in
-                    row.compactMap { $0.asText }.joined(separator: "\t")
-                }.joined(separator: "\n")
+                let text = ExplainPlanTextFlattener.flatten(rows: result.rows)
+                let format = ExplainFormatResolver.resolve(
+                    declared: variant.format, databaseType: connection.type
+                )
+                let plan = ExplainPlanParserRegistry.plan(from: text, format: format)
 
-                let parser = QueryPlanParserFactory.parser(for: connection.type)
                 tabManager.mutate(tabId: tabId) { tab in
                     tab.display.explainText = text
                     tab.display.explainExecutionTime = duration
-
-                    if let parser {
-                        tab.display.explainPlan = parser.parse(rawText: text)
-                    } else {
-                        tab.display.explainPlan = nil
-                    }
+                    tab.display.explainPlan = plan
                 }
             } catch {
                 tabManager.mutate(tabId: tabId) { tab in

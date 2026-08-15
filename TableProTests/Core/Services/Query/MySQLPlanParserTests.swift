@@ -7,6 +7,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("MySQL Plan Parser")
@@ -200,9 +201,11 @@ struct MySQLPlanParserTests {
         #expect(parser.parse(rawText: excessiveDepth) == nil)
     }
 
-    @Test("Factory uses the composite parser for MySQL and MariaDB")
-    func factoryUsesCompositeParser() {
-        #expect(QueryPlanParserFactory.parser(for: .mysql) is MySQLPlanParser)
-        #expect(QueryPlanParserFactory.parser(for: .mariadb) is MySQLPlanParser)
+    @Test("MySQL and MariaDB resolve to the composite parser")
+    func registryUsesCompositeParser() {
+        for databaseType in [DatabaseType.mysql, .mariadb] {
+            let format = ExplainFormatResolver.resolve(declared: .plainText, databaseType: databaseType)
+            #expect(ExplainPlanParserRegistry.parser(for: format) is MySQLPlanParser)
+        }
     }
 }

@@ -85,7 +85,9 @@ extension QueryExecutionCoordinator {
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
-        if let planText = ExplainResultRouter.planText(sql: sql, columns: columns, rows: rows) {
+        if let planText = ExplainResultRouter.planText(
+            sql: sql, columns: columns, rows: rows, declaredVariants: conn.type.explainVariants
+        ) {
             applyExplainResult(
                 tabId: tabId,
                 planText: planText,
@@ -238,7 +240,10 @@ extension QueryExecutionCoordinator {
         connection conn: DatabaseConnection,
         queryParameterValues: [QueryParameter]?
     ) {
-        let plan = QueryPlanParserFactory.parser(for: conn.type)?.parse(rawText: planText)
+        let format = ExplainFormatResolver.resolve(
+            sql: sql, databaseType: conn.type, declaredVariants: conn.type.explainVariants
+        )
+        let plan = ExplainPlanParserRegistry.plan(from: planText, format: format)
 
         parent.tabManager.mutate(tabId: tabId) { tab in
             tab.execution.executionTime = executionTime
