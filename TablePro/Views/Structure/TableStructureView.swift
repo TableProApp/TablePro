@@ -25,6 +25,8 @@ struct TableStructureView: View {
     let coordinator: MainContentCoordinator?
     let selectionState: GridSelectionState
 
+    @Environment(\.appServices) private var services
+
     /// Derived from the tab's own binding on every render so it can never go stale.
     var scope: DatabaseScope {
         DatabaseScope(connectionId: connection.id, database: databaseName, schema: schemaName)
@@ -385,13 +387,17 @@ struct TableStructureView: View {
                             tableName: tableName,
                             connectionId: connection.id
                         )
-                        QueryHistoryManager.shared.recordQuery(
-                            query: executedSQL.hasSuffix(";") ? executedSQL : executedSQL + ";",
-                            connectionId: connection.id,
-                            databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
-                            executionTime: 0,
-                            rowCount: 0,
-                            wasSuccessful: true
+                        await services.queryHistoryManager.record(
+                            QueryHistoryRecordRequest(
+                                query: executedSQL.hasSuffix(";") ? executedSQL : executedSQL + ";",
+                                connectionId: connection.id,
+                                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                                databaseType: connection.type,
+                                source: .structureDDL,
+                                executionTime: 0,
+                                rowCount: -1,
+                                wasSuccessful: true
+                            )
                         )
                         isReloadingAfterSave = true
                         await loadColumns()

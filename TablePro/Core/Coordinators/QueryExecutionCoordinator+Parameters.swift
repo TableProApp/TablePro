@@ -558,14 +558,19 @@ extension QueryExecutionCoordinator {
 
             let rawSQL = failedStatement
             let recordSQL = rawSQL.hasSuffix(";") ? rawSQL : rawSQL + ";"
-            QueryHistoryManager.shared.recordQuery(
-                query: recordSQL,
-                connectionId: connection.id,
-                databaseName: historyDatabaseName(tabId: tabId),
-                executionTime: cumulativeTime,
-                rowCount: 0,
-                wasSuccessful: false,
-                errorMessage: errorDescription
+            recordHistory(
+                QueryHistoryRecordRequest(
+                    query: recordSQL,
+                    connectionId: connection.id,
+                    databaseName: historyDatabaseName(tabId: tabId),
+                    databaseType: connection.type,
+                    schemaName: historySchemaName(tabId: tabId),
+                    source: .editor,
+                    executionTime: cumulativeTime,
+                    rowCount: -1,
+                    wasSuccessful: false,
+                    errorMessage: errorDescription
+                )
             )
         }
     }

@@ -1,9 +1,11 @@
 import AppKit
 import SwiftUI
 
-struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRepresentable {
+struct VerticalCollapsibleSplitView<TopContent: View, BottomContent: View>: NSViewControllerRepresentable {
     @Binding var isBottomCollapsed: Bool
     var autosaveName: String
+    var topMinimumThickness: CGFloat = 100
+    var bottomMinimumThickness: CGFloat = 150
     @ViewBuilder var topContent: TopContent
     @ViewBuilder var bottomContent: BottomContent
 
@@ -15,16 +17,15 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
         let splitViewController = ResizeCursorSplitViewController()
         splitViewController.splitView.isVertical = false
         splitViewController.splitView.dividerStyle = .thin
-        splitViewController.splitView.autosaveName = autosaveName
 
         let topController = NSHostingController(rootView: topContent)
         let topItem = NSSplitViewItem(viewController: topController)
-        topItem.minimumThickness = 100
+        topItem.minimumThickness = topMinimumThickness
 
         let bottomController = NSHostingController(rootView: bottomContent)
         let bottomItem = NSSplitViewItem(viewController: bottomController)
         bottomItem.canCollapse = true
-        bottomItem.minimumThickness = 150
+        bottomItem.minimumThickness = bottomMinimumThickness
 
         // Without this the hosting controllers report their content's ideal size as a
         // preferredContentSize, which this split view forwards to the window: wide results
@@ -34,6 +35,10 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
 
         splitViewController.addSplitViewItem(topItem)
         splitViewController.addSplitViewItem(bottomItem)
+
+        // autosaveName is assigned after the items are added; setting it earlier does not record
+        // the divider, and adjustSubviews then resets it.
+        splitViewController.splitView.autosaveName = autosaveName
 
         context.coordinator.topController = topController
         context.coordinator.bottomController = bottomController
@@ -72,8 +77,8 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
     }
 
     /// The divider is draggable and double-clickable, so AppKit owns this state as much as
-    /// SwiftUI does. Observing it back keeps the tab's persisted value honest instead of
-    /// letting the two drift until the next programmatic toggle snaps the pane back.
+    /// SwiftUI does. Observing it back keeps the persisted value honest instead of letting the
+    /// two drift until the next programmatic toggle snaps the pane back.
     final class Coordinator {
         var topController: NSHostingController<TopContent>?
         var bottomController: NSHostingController<BottomContent>?

@@ -76,28 +76,34 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             allowlist = allConnectionIds.subtracting(blocked)
         }
 
-        let entries = await QueryHistoryManager.shared.fetchHistory(
-            limit: limit,
-            offset: 0,
-            connectionId: connectionId,
-            searchText: query.isEmpty ? nil : query,
-            dateFilter: .all,
-            since: since,
-            until: until,
-            allowedConnectionIds: allowlist
+        let page = await services.queryHistoryManager.fetch(
+            QueryHistoryFilter(
+                scope: connectionId.map { .connection($0) } ?? .all,
+                searchText: query.isEmpty ? nil : query,
+                since: since,
+                until: until,
+                allowedConnectionIds: allowlist
+            ),
+            limit: limit
         )
 
-        let payload: [JsonValue] = entries.map { entry in
+        let payload: [JsonValue] = page.entries.map { entry in
             var dict: [String: JsonValue] = [
                 "id": .string(entry.id.uuidString),
                 "query": .string(entry.query),
                 "connection_id": .string(entry.connectionId.uuidString),
                 "database_name": .string(entry.databaseName),
+                "database_type": .string(entry.databaseType.rawValue),
+                "source": .string(entry.source.rawValue),
+                "statement_type": .string(entry.statementType.rawValue),
                 "executed_at": .double(entry.executedAt.timeIntervalSince1970),
                 "execution_time_ms": .double(entry.executionTime * 1_000),
                 "row_count": .int(entry.rowCount),
                 "was_successful": .bool(entry.wasSuccessful)
             ]
+            if let schemaName = entry.schemaName {
+                dict["schema_name"] = .string(schemaName)
+            }
             if let error = entry.errorMessage {
                 dict["error_message"] = .string(error)
             }

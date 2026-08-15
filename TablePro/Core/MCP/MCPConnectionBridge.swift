@@ -444,31 +444,37 @@ public actor MCPConnectionBridge {
         search: String?,
         dateFilter: String?
     ) async throws -> JsonValue {
-        let filter: DateFilter
+        let calendar = Calendar.current
+        let now = Date()
+        let since: Date?
         switch dateFilter {
-        case "today": filter = .today
-        case "thisWeek": filter = .thisWeek
-        case "thisMonth": filter = .thisMonth
-        default: filter = .all
+        case "today": since = calendar.startOfDay(for: now)
+        case "thisWeek": since = calendar.date(byAdding: .day, value: -7, to: now)
+        case "thisMonth": since = calendar.date(byAdding: .day, value: -30, to: now)
+        default: since = nil
         }
 
-        let entries = await QueryHistoryManager.shared.fetchHistory(
-            limit: limit,
-            connectionId: connectionId,
-            searchText: search,
-            dateFilter: filter
+        let page = await QueryHistoryManager.shared.fetch(
+            QueryHistoryFilter(scope: .connection(connectionId), searchText: search, since: since),
+            limit: limit
         )
 
-        let jsonEntries: [JsonValue] = entries.map { entry in
+        let jsonEntries: [JsonValue] = page.entries.map { entry in
             var obj: [String: JsonValue] = [
                 "id": .string(entry.id.uuidString),
                 "query": .string(entry.query),
                 "database_name": .string(entry.databaseName),
+                "database_type": .string(entry.databaseType.rawValue),
+                "source": .string(entry.source.rawValue),
+                "statement_type": .string(entry.statementType.rawValue),
                 "executed_at": .string(ISO8601DateFormatter().string(from: entry.executedAt)),
                 "execution_time_ms": .double(entry.executionTime * 1_000),
                 "row_count": .int(entry.rowCount),
                 "was_successful": .bool(entry.wasSuccessful)
             ]
+            if let schemaName = entry.schemaName {
+                obj["schema_name"] = .string(schemaName)
+            }
             if let errorMsg = entry.errorMessage {
                 obj["error_message"] = .string(errorMsg)
             }

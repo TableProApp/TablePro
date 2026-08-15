@@ -20,6 +20,7 @@ final class DatabaseManager {
     @ObservationIgnored internal let connectionStorage: ConnectionStorage
     @ObservationIgnored internal let appSettingsStorage: AppSettingsStorage
     @ObservationIgnored internal let pluginManager: PluginManager
+    @ObservationIgnored internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
 
     /// All active connection sessions
     internal(set) var activeSessions: [UUID: ConnectionSession] = [:] {

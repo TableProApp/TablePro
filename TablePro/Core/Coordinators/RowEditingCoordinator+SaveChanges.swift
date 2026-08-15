@@ -192,14 +192,18 @@ extension RowEditingCoordinator {
 
                 for (statement, executionTime) in zip(validStatements, executionTimes) {
                     let historySQL = statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
-                    QueryHistoryManager.shared.recordQuery(
-                        query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
-                        connectionId: conn.id,
-                        databaseName: scope.database,
-                        executionTime: executionTime,
-                        rowCount: 0,
-                        wasSuccessful: true,
-                        errorMessage: nil
+                    parent.recordHistory(
+                        QueryHistoryRecordRequest(
+                            query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
+                            connectionId: conn.id,
+                            databaseName: scope.database,
+                            databaseType: conn.type,
+                            schemaName: scope.schema,
+                            source: .rowEdit,
+                            executionTime: executionTime,
+                            rowCount: -1,
+                            wasSuccessful: true
+                        )
                     )
                 }
 
@@ -247,16 +251,23 @@ extension RowEditingCoordinator {
             } catch {
                 let executionTime = Date().timeIntervalSince(overallStartTime)
 
-                let allSQL = validStatements.map { $0.sql }.joined(separator: "; ")
-                QueryHistoryManager.shared.recordQuery(
-                    query: allSQL,
-                    connectionId: conn.id,
-                    databaseName: scope.database,
-                    executionTime: executionTime,
-                    rowCount: 0,
-                    wasSuccessful: false,
-                    errorMessage: error.localizedDescription
-                )
+                for statement in validStatements {
+                    let historySQL = statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+                    parent.recordHistory(
+                        QueryHistoryRecordRequest(
+                            query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
+                            connectionId: conn.id,
+                            databaseName: scope.database,
+                            databaseType: conn.type,
+                            schemaName: scope.schema,
+                            source: .rowEdit,
+                            executionTime: executionTime,
+                            rowCount: -1,
+                            wasSuccessful: false,
+                            errorMessage: error.localizedDescription
+                        )
+                    )
+                }
 
                 let diagnosis = DatabaseWriteRejectionDiagnosis.classify(error)
 

@@ -237,10 +237,10 @@ internal final class QuickSwitcherViewModel {
             ))
         }
 
-        let historyEntries = await services.queryHistoryManager.fetchHistory(
-            limit: 50,
-            connectionId: connectionId
-        )
+        let historyEntries = await services.queryHistoryManager.fetch(
+            QueryHistoryFilter(scope: .connection(connectionId), sources: QueryHistorySource.userAuthored),
+            limit: 50
+        ).entries
         for entry in historyEntries {
             items.append(QuickSwitcherItem(
                 id: "history_\(entry.id.uuidString)",
@@ -354,7 +354,10 @@ internal final class QuickSwitcherViewModel {
         let perConnection = await withTaskGroup(of: [QueryHistoryEntry].self) { group in
             for id in connectionIds {
                 group.addTask {
-                    await manager.fetchHistory(limit: limit, connectionId: id)
+                    await manager.fetch(
+                        QueryHistoryFilter(scope: .connection(id), sources: QueryHistorySource.userAuthored),
+                        limit: limit
+                    ).entries
                 }
             }
             var collected: [[QueryHistoryEntry]] = []

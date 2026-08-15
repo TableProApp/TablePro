@@ -79,6 +79,7 @@ enum TriggerEditing {
         )
         let dropSQL = originalName.flatMap { driver.generateDropTriggerSQL(name: $0, table: tableName) }
 
+        let startedAt = Date()
         switch strategy {
         case let .transactional(dropFirst):
             try await runInTransaction(driver: driver, dropSQL: dropFirst ? dropSQL : nil, sql: sql)
@@ -89,7 +90,7 @@ enum TriggerEditing {
             _ = try await driver.execute(query: sql)
         }
 
-        recordHistory(sql, connection: connection)
+        await recordHistory(sql, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
     }
 
@@ -116,8 +117,9 @@ enum TriggerEditing {
             throw TriggerEditingError.denied(decision.deniedReason ?? String(localized: "Operation not permitted"))
         }
 
+        let startedAt = Date()
         _ = try await driver.execute(query: dropSQL)
-        recordHistory(dropSQL, connection: connection)
+        await recordHistory(dropSQL, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
     }
 
@@ -150,14 +152,18 @@ enum TriggerEditing {
         }
     }
 
-    private static func recordHistory(_ sql: String, connection: DatabaseConnection) {
-        QueryHistoryManager.shared.recordQuery(
-            query: sql,
-            connectionId: connection.id,
-            databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
-            executionTime: 0,
-            rowCount: 0,
-            wasSuccessful: true
+    private static func recordHistory(_ sql: String, connection: DatabaseConnection, executionTime: TimeInterval) async {
+        await DatabaseManager.shared.historyRecorder.record(
+            QueryHistoryRecordRequest(
+                query: sql,
+                connectionId: connection.id,
+                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                databaseType: connection.type,
+                source: .structureDDL,
+                executionTime: executionTime,
+                rowCount: -1,
+                wasSuccessful: true
+            )
         )
     }
 }

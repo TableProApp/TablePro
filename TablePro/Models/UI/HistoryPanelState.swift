@@ -1,0 +1,94 @@
+import Foundation
+import Observation
+
+@MainActor
+@Observable
+final class HistoryPanelState {
+    let connectionId: UUID
+
+    var isVisible: Bool { didSet { persistIfChanged(oldValue != isVisible) } }
+    var showsAllConnections: Bool { didSet { persistIfChanged(oldValue != showsAllConnections) } }
+    var pinnedConnectionId: UUID? { didSet { persistIfChanged(oldValue != pinnedConnectionId) } }
+    var sources: Set<QueryHistorySource> { didSet { persistIfChanged(oldValue != sources) } }
+    var dateRange: HistoryDateRange { didSet { persistIfChanged(oldValue != dateRange) } }
+    var outcome: QueryHistoryOutcome { didSet { persistIfChanged(oldValue != outcome) } }
+
+    /// Search text is deliberately not persisted: a stale query on relaunch reads as an empty
+    /// history rather than as a filter the user forgot they left behind.
+    var searchText: String = ""
+
+    private init(connectionId: UUID) {
+        self.connectionId = connectionId
+        let preferences = HistoryPanelPreferencesStorage.load(for: connectionId)
+        isVisible = preferences.isVisible
+        showsAllConnections = preferences.showsAllConnections
+        pinnedConnectionId = preferences.pinnedConnectionId
+        sources = preferences.sources
+        dateRange = preferences.dateRange
+        outcome = preferences.outcome
+    }
+
+    var scope: QueryHistoryScope {
+        if let pinnedConnectionId {
+            return .connection(pinnedConnectionId)
+        }
+        return showsAllConnections ? .all : .connection(connectionId)
+    }
+
+    var showsConnectionColumn: Bool {
+        scope.connectionId != connectionId
+    }
+
+    func filter(referenceDate: Date = Date()) -> QueryHistoryFilter {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return QueryHistoryFilter(
+            scope: scope,
+            sources: sources,
+            outcome: outcome,
+            searchText: trimmed.isEmpty ? nil : trimmed,
+            since: dateRange.since(from: referenceDate)
+        )
+    }
+
+    var hasNarrowingFilter: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || dateRange != .all
+            || outcome != .any
+            || sources != Set(QueryHistorySource.allCases)
+    }
+
+    func resetFilters() {
+        searchText = ""
+        dateRange = .all
+        outcome = .any
+        sources = QueryHistorySource.userAuthored
+    }
+
+    private func persistIfChanged(_ changed: Bool) {
+        guard changed else { return }
+        HistoryPanelPreferencesStorage.save(
+            HistoryPanelPreferences(
+                isVisible: isVisible,
+                showsAllConnections: showsAllConnections,
+                pinnedConnectionId: pinnedConnectionId,
+                sources: sources,
+                dateRange: dateRange,
+                outcome: outcome
+            ),
+            for: connectionId
+        )
+    }
+
+    private static var registry: [UUID: HistoryPanelState] = [:]
+
+    static func forConnection(_ id: UUID) -> HistoryPanelState {
+        if let existing = registry[id] { return existing }
+        let state = HistoryPanelState(connectionId: id)
+        registry[id] = state
+        return state
+    }
+
+    static func removeConnection(_ id: UUID) {
+        registry.removeValue(forKey: id)
+    }
+}

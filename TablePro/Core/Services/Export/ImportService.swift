@@ -32,10 +32,12 @@ final class ImportService {
     var state = ImportState()
 
     private let connection: DatabaseConnection
+    private let historyRecorder: QueryHistoryRecording
     private var currentProgress: PluginImportProgress?
 
-    init(connection: DatabaseConnection) {
+    init(connection: DatabaseConnection, historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared) {
         self.connection = connection
+        self.historyRecorder = historyRecorder
     }
 
     // MARK: - Cancellation
@@ -133,14 +135,18 @@ final class ImportService {
         } catch {
             state.errorMessage = error.localizedDescription
 
-            QueryHistoryManager.shared.recordQuery(
-                query: "-- Import from \(url.lastPathComponent) (\(progress.processedStatements) statements before failure)",
-                connectionId: connection.id,
-                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
-                executionTime: 0,
-                rowCount: progress.processedStatements,
-                wasSuccessful: false,
-                errorMessage: error.localizedDescription
+            await historyRecorder.record(
+                QueryHistoryRecordRequest(
+                    query: "-- Import from \(url.lastPathComponent) (\(progress.processedStatements) statements before failure)",
+                    connectionId: connection.id,
+                    databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                    databaseType: connection.type,
+                    source: .dataImport,
+                    executionTime: 0,
+                    rowCount: progress.processedStatements,
+                    wasSuccessful: false,
+                    errorMessage: error.localizedDescription
+                )
             )
 
             throw error
@@ -151,14 +157,17 @@ final class ImportService {
         state.estimatedTotalStatements = result.executedStatements + result.skippedStatements
         state.progress = 1.0
 
-        QueryHistoryManager.shared.recordQuery(
-            query: "-- Import from \(url.lastPathComponent) (\(result.executedStatements) statements)",
-            connectionId: connection.id,
-            databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
-            executionTime: result.executionTime,
-            rowCount: result.executedStatements,
-            wasSuccessful: true,
-            errorMessage: nil
+        await historyRecorder.record(
+            QueryHistoryRecordRequest(
+                query: "-- Import from \(url.lastPathComponent) (\(result.executedStatements) statements)",
+                connectionId: connection.id,
+                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                databaseType: connection.type,
+                source: .dataImport,
+                executionTime: result.executionTime,
+                rowCount: result.executedStatements,
+                wasSuccessful: true
+            )
         )
 
         return result

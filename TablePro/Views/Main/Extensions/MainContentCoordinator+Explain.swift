@@ -167,15 +167,18 @@ extension MainContentCoordinator {
                     toolbarState.isResultsCollapsed = false
                     tabExecution.settle(claim)
 
-                    QueryHistoryManager.shared.recordQuery(
-                        query: request.sql,
-                        connectionId: conn.id,
-                        databaseName: queryExecutionCoordinator.historyDatabaseName(tabId: tabId),
-                        executionTime: fetchResult.executionTime,
-                        rowCount: fetchResult.rows.count,
-                        wasSuccessful: true,
-                        errorMessage: nil,
-                        parameterValues: nil
+                    recordHistory(
+                        QueryHistoryRecordRequest(
+                            query: request.sql,
+                            connectionId: conn.id,
+                            databaseName: queryExecutionCoordinator.historyDatabaseName(tabId: tabId),
+                            databaseType: conn.type,
+                            schemaName: queryExecutionCoordinator.historySchemaName(tabId: tabId),
+                            source: .explain,
+                            executionTime: fetchResult.executionTime,
+                            rowCount: fetchResult.rows.count,
+                            wasSuccessful: true
+                        )
                     )
                 }
             } catch {
@@ -194,15 +197,19 @@ extension MainContentCoordinator {
                         tab.execution.errorMessage = error.localizedDescription
                     }
 
-                    QueryHistoryManager.shared.recordQuery(
-                        query: request.sql,
-                        connectionId: conn.id,
-                        databaseName: queryExecutionCoordinator.historyDatabaseName(tabId: tabId),
-                        executionTime: 0,
-                        rowCount: 0,
-                        wasSuccessful: false,
-                        errorMessage: error.localizedDescription,
-                        parameterValues: nil
+                    recordHistory(
+                        QueryHistoryRecordRequest(
+                            query: request.sql,
+                            connectionId: conn.id,
+                            databaseName: queryExecutionCoordinator.historyDatabaseName(tabId: tabId),
+                            databaseType: conn.type,
+                            schemaName: queryExecutionCoordinator.historySchemaName(tabId: tabId),
+                            source: .explain,
+                            executionTime: 0,
+                            rowCount: -1,
+                            wasSuccessful: false,
+                            errorMessage: error.localizedDescription
+                        )
                     )
                 }
             }

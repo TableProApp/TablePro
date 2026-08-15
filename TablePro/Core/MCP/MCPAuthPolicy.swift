@@ -28,13 +28,18 @@ public actor MCPAuthPolicy {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPAuthPolicy")
 
     private let connectionResolver: MCPConnectionSnapshotResolver
+    private let historyRecorder: QueryHistoryRecording
 
     public init() {
         self.init(connectionResolver: MCPAuthPolicy.defaultConnectionResolver)
     }
 
-    init(connectionResolver: @escaping MCPConnectionSnapshotResolver) {
+    init(
+        connectionResolver: @escaping MCPConnectionSnapshotResolver,
+        historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
+    ) {
         self.connectionResolver = connectionResolver
+        self.historyRecorder = historyRecorder
     }
 
     private var sessionApprovals: [String: Set<UUID>] = [:]
@@ -181,17 +186,21 @@ public actor MCPAuthPolicy {
         }
         guard shouldLog else { return }
 
-        let entry = QueryHistoryEntry(
-            query: sql,
-            connectionId: connectionId,
-            databaseName: databaseName,
-            executionTime: executionTime,
-            rowCount: rowCount,
-            wasSuccessful: wasSuccessful,
-            errorMessage: errorMessage
-        )
+        let databaseType = await connectionResolver(connectionId)?.databaseType ?? ""
 
-        _ = await QueryHistoryManager.shared.addHistory(entry)
+        await historyRecorder.record(
+            QueryHistoryRecordRequest(
+                query: sql,
+                connectionId: connectionId,
+                databaseName: databaseName,
+                databaseType: DatabaseType(rawValue: databaseType),
+                source: .mcp,
+                executionTime: executionTime,
+                rowCount: rowCount,
+                wasSuccessful: wasSuccessful,
+                errorMessage: errorMessage
+            )
+        )
     }
 
     private func runApprovalDedup(

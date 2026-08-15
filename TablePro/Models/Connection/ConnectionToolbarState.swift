@@ -164,9 +164,6 @@ final class ConnectionToolbarState {
     /// Whether the current editor has non-empty query text
     var hasQueryText: Bool = false
 
-    /// Whether the history panel is visible
-    var isHistoryPanelVisible: Bool = false
-
     /// SQL statements rendered in the SQL preview sheet
     var previewStatements: [String] = []
 
