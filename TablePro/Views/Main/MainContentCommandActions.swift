@@ -310,6 +310,17 @@ final class MainContentCommandActions {
         PluginManager.shared.supportsDatabaseTree(for: connection.type)
     }
 
+    var supportsSchemaSwitching: Bool {
+        PluginManager.shared.supportsSchemaSwitching(for: connection.type)
+    }
+
+    /// Filtering the database list only means anything on a connection whose sidebar can show one,
+    /// which is the same rule the tree layout itself is gated on.
+    var canFilterDatabases: Bool {
+        PluginManager.shared.supportsDatabaseTree(for: connection.type)
+            && sidebarLayout == .tree
+    }
+
     var sidebarLayout: SidebarLayout {
         SharedSidebarState.forConnection(connection.id).sidebarLayout
     }

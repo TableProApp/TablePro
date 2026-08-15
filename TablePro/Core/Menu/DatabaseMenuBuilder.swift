@@ -60,6 +60,7 @@ enum DatabaseMenuBuilder {
                 String(localized: "Edit View Definition..."),
                 action: #selector(MainSplitViewController.editViewDefinition(_:))
             ),
+            schemaSubmenu(),
             maintenanceSubmenu(),
             MenuItemFactory.item(
                 String(localized: "Truncate Table"),
@@ -97,6 +98,16 @@ enum DatabaseMenuBuilder {
     private static func maintenanceSubmenu() -> NSMenuItem {
         let container = MenuItemFactory.submenu(String(localized: "Table Maintenance"), items: [])
         container.submenu?.delegate = maintenanceDelegate
+        return container
+    }
+
+    private static let schemaDelegate = SchemaMenuDelegate()
+
+    /// Where switching schema lives now that the sidebar has no bottom bar. The active schema is
+    /// still readable at a glance from the toolbar's chip, which already shows it.
+    private static func schemaSubmenu() -> NSMenuItem {
+        let container = MenuItemFactory.submenu(String(localized: "Schema"), items: [])
+        container.submenu?.delegate = schemaDelegate
         return container
     }
 }

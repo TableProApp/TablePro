@@ -13,8 +13,14 @@ import TableProPluginKit
 extension DatabaseTreeOutlineCoordinator {
     internal func perform(_ command: SidebarMenuCommand) {
         switch command {
+        case .createTable:
+            mainCoordinator?.createNewTable()
         case .createView:
             mainCoordinator?.createView()
+        case .filterDatabases:
+            mainCoordinator?.splitViewController?.presentDatabaseFilter()
+        case .showAllDatabases:
+            mainCoordinator?.splitViewController?.clearDatabaseFilter()
         case .openInNewTab(let ref):
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.openTableTab(ref.table, schema: ref.schema, forceNewTab: true)

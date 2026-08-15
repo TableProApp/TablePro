@@ -14,6 +14,7 @@ internal final class SidebarContainerViewController: NSViewController {
     private let listHost = WorkspacePaneHost()
     private var sidebarState: SharedSidebarState?
     private var observationTask: Task<Void, Never>?
+    private var filterPopover: NSPopover?
 
     internal func show(_ controller: NSViewController?) {
         listHost.show(controller)
@@ -65,8 +66,34 @@ internal final class SidebarContainerViewController: NSViewController {
         view.window?.makeFirstResponder(searchField)
     }
 
+    /// The database filter, shown from the View menu and from the object list's contextual menu
+    /// rather than from a button at the bottom of the sidebar. It anchors on the filter field
+    /// because that is what it scopes, and because the field is the one piece of sidebar chrome
+    /// that outlives a workspace switch.
+    func presentDatabaseFilter(connectionId: UUID, sidebarState: SharedSidebarState) {
+        guard !searchField.isHidden else { return }
+        filterPopover?.close()
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = NSHostingController(
+            rootView: DatabaseTreeFilterPopover(
+                connectionId: connectionId,
+                selectedDatabases: Binding(
+                    get: { sidebarState.databaseFilterSelected },
+                    set: { sidebarState.databaseFilterSelected = $0 }
+                )
+            )
+        )
+        popover.show(relativeTo: searchField.bounds, of: searchField, preferredEdge: .maxY)
+        filterPopover = popover
+    }
+
     func updateSidebarState(_ state: SharedSidebarState?) {
         observationTask?.cancel()
+        /// The popover is scoped to the connection whose databases it lists, and this is the field
+        /// being repointed at a different one.
+        filterPopover?.close()
+        filterPopover = nil
         self.sidebarState = state
         guard let state else {
             searchField.isHidden = true

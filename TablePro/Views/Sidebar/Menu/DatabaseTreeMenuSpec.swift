@@ -31,6 +31,8 @@ internal struct DatabaseTreeMenuContext {
     internal let showObjectIcons: Bool
     internal let showObjectComments: Bool
     internal let rowSize: SidebarRowSizePreference
+    internal var canFilterDatabases: Bool = false
+    internal var hasDatabaseFilter: Bool = false
 }
 
 internal enum DatabaseTreeMenuSpec {
@@ -255,10 +257,18 @@ internal enum DatabaseTreeMenuSpec {
     private static func backgroundItems(_ context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
         var items: [DatabaseTreeMenuItem] = []
         if !context.isReadOnly {
-            items.append(.command(String(localized: "Create New View…"), .createView))
+            items.append(.command(String(localized: "New Table…"), .createTable))
+            items.append(.command(String(localized: "New View…"), .createView))
             items.append(.separator)
         }
         items.append(.command(String(localized: "View ER Diagram"), .showERDiagram))
+        if context.canFilterDatabases {
+            items.append(.separator)
+            items.append(.command(String(localized: "Filter Databases…"), .filterDatabases))
+            if context.hasDatabaseFilter {
+                items.append(.command(String(localized: "Show All Databases"), .showAllDatabases))
+            }
+        }
         items.append(.separator)
         items.append(.submenu(title: String(localized: "View Options"), items: viewOptionItems(context)))
         return items

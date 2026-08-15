@@ -26,7 +26,9 @@ struct DatabaseTreeMenuSpecTests {
         isReadOnly: Bool = false,
         isFavorite: Bool = false,
         activeDatabase: String? = "app",
-        activeSchema: String? = "public"
+        activeSchema: String? = "public",
+        canFilterDatabases: Bool = false,
+        hasDatabaseFilter: Bool = false
     ) -> DatabaseTreeMenuContext {
         DatabaseTreeMenuContext(
             clicked: clicked,
@@ -54,7 +56,9 @@ struct DatabaseTreeMenuSpecTests {
             isFavorite: isFavorite,
             showObjectIcons: true,
             showObjectComments: false,
-            rowSize: .matchSystem
+            rowSize: .matchSystem,
+            canFilterDatabases: canFilterDatabases,
+            hasDatabaseFilter: hasDatabaseFilter
         )
     }
 
@@ -95,6 +99,46 @@ struct DatabaseTreeMenuSpecTests {
         let items = DatabaseTreeMenuSpec.items(for: context(clicked: .status(.loading)))
 
         #expect(titles(items).contains(String(localized: "View Options")))
+    }
+
+    /// These moved out of the bar at the bottom of the sidebar, which the HIG reserves for nothing
+    /// critical, so the background menu is now their only sidebar-local home.
+    @Test("Creating objects is reachable from the empty area")
+    func emptyAreaOffersCreation() {
+        let issued = commands(DatabaseTreeMenuSpec.items(for: context(clicked: nil)))
+
+        #expect(issued.contains(.createTable))
+        #expect(issued.contains(.createView))
+    }
+
+    @Test("Read-only hides creation from the empty area too")
+    func readOnlyEmptyAreaHidesCreation() {
+        let issued = commands(DatabaseTreeMenuSpec.items(for: context(clicked: nil, isReadOnly: true)))
+
+        #expect(!issued.contains(.createTable))
+        #expect(!issued.contains(.createView))
+    }
+
+    @Test("The database filter is offered only where a database list exists")
+    func filterOnlyWhereADatabaseListExists() {
+        let tree = commands(DatabaseTreeMenuSpec.items(for: context(clicked: nil, canFilterDatabases: true)))
+        let flat = commands(DatabaseTreeMenuSpec.items(for: context(clicked: nil, canFilterDatabases: false)))
+
+        #expect(tree.contains(.filterDatabases))
+        #expect(!flat.contains(.filterDatabases))
+    }
+
+    @Test("Show All Databases appears only when a filter is actually on")
+    func showAllOnlyWhenFiltered() {
+        let filtered = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: nil, canFilterDatabases: true, hasDatabaseFilter: true)
+        ))
+        let unfiltered = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: nil, canFilterDatabases: true, hasDatabaseFilter: false)
+        ))
+
+        #expect(filtered.contains(.showAllDatabases))
+        #expect(!unfiltered.contains(.showAllDatabases))
     }
 
     @Test("View Options reports the settings it is toggling")

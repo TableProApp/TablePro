@@ -35,7 +35,7 @@ Connect to RDS or Aurora with your AWS identity instead of a static password: se
 
 ## Features
 
-**Schemas**: The sidebar shows all accessible schemas and tables. Cmd+K switches databases; pick the active schema from the schema menu at the bottom of the sidebar. Table info shows columns, indexes, constraints, and DDL. Right-click a schema for **Drop Schema...**, which runs `DROP SCHEMA ... CASCADE`, so objects in other schemas that depend on it are dropped too. Select several databases or schemas with Shift-click or Cmd-click and the menu covers all of them. See [Work on Several Databases at Once](/features/table-operations#work-on-several-databases-at-once).
+**Schemas**: The sidebar shows all accessible schemas and tables. Cmd+K switches databases; pick the active schema from Database > Schema, and the toolbar shows the active one. Table info shows columns, indexes, constraints, and DDL. Right-click a schema for **Drop Schema...**, which runs `DROP SCHEMA ... CASCADE`, so objects in other schemas that depend on it are dropped too. Select several databases or schemas with Shift-click or Cmd-click and the menu covers all of them. See [Work on Several Databases at Once](/features/table-operations#work-on-several-databases-at-once).
 
 **Databases**: Every database on the server is listed, including `postgres`. It is an ordinary database that `initdb` creates for users and applications, not a system database. `template0` and `template1` are not listed.
 

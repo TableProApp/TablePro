@@ -38,6 +38,14 @@ enum ViewMenuBuilder {
                 shortcut: .focusSidebarSearch,
                 keyboard: keyboard
             ),
+            MenuItemFactory.item(
+                String(localized: "Filter Databases..."),
+                action: #selector(MainSplitViewController.filterDatabases(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Show All Databases"),
+                action: #selector(MainSplitViewController.showAllDatabases(_:))
+            ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Show Filter Bar"),

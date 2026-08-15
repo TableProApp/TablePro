@@ -125,6 +125,7 @@ internal struct ToolbarPrincipalSubjectContent: View {
         if let coordinator = subject.coordinator {
             ToolbarPrincipalContent(
                 state: coordinator.toolbarState,
+                connectionId: coordinator.connection.id,
                 onSwitchDatabase: { [weak coordinator] in coordinator?.commandActions?.openDatabaseSwitcher() },
                 onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() },
                 onSafeModeChange: { [weak coordinator] level in coordinator?.setSafeModeLevel(level) }

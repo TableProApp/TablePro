@@ -30,6 +30,14 @@ extension MainSplitViewController {
         commandActions?.focusSidebarSearch()
     }
 
+    @objc func filterDatabases(_ sender: Any?) {
+        presentDatabaseFilter()
+    }
+
+    @objc func showAllDatabases(_ sender: Any?) {
+        clearDatabaseFilter()
+    }
+
     @objc func toggleFilterBar(_ sender: Any?) {
         commandActions?.toggleFilterPanel()
     }

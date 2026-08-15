@@ -60,7 +60,10 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             isFavorite: clickedRef.map { isFavorite($0) } ?? false,
             showObjectIcons: settings.showObjectIcons,
             showObjectComments: settings.showObjectComments,
-            rowSize: settings.sidebarRowSize
+            rowSize: settings.sidebarRowSize,
+            canFilterDatabases: PluginManager.shared.supportsDatabaseTree(for: databaseType)
+                && sidebarState?.sidebarLayout == .tree,
+            hasDatabaseFilter: !(sidebarState?.databaseFilterSelected.isEmpty ?? true)
         )
     }
 

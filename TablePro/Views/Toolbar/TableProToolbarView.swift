@@ -18,11 +18,21 @@ private enum ToolbarPrincipalLayout {
 /// Displays environment badge, connection status, safe-mode badge, and execution indicator.
 struct ToolbarPrincipalContent: View {
     var state: ConnectionToolbarState
+    var connectionId: UUID?
     var onSwitchDatabase: (() -> Void)?
     var onCancelQuery: (() -> Void)?
     var onSafeModeChange: ((SafeModeLevel) -> Void)?
 
     @State private var showingAllTags = false
+    @State private var schemaService = SchemaService.shared
+
+    /// The sidebar's own reload, reported where every other piece of background activity is. It
+    /// used to sit at the bottom of the sidebar, which the HIG reserves for nothing critical
+    /// because a window can be moved so that edge is off screen.
+    private var isRefreshingSchema: Bool {
+        guard let connectionId else { return false }
+        return schemaService.isRefreshing(connectionId: connectionId)
+    }
 
     var body: some View {
         let tags = TagStorage.shared.tags(for: state.tagIds)
@@ -53,6 +63,9 @@ struct ToolbarPrincipalContent: View {
                 lastClickHouseProgress: state.lastClickHouseProgress,
                 onCancel: onCancelQuery
             )
+
+            DelayedProgressIndicator(isActive: isRefreshingSchema)
+                .accessibilityLabel(String(localized: "Refreshing"))
         }
         .padding(.horizontal, ToolbarPrincipalLayout.edgePadding)
     }

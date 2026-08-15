@@ -13,7 +13,10 @@ import TableProPluginKit
 /// the clicked-versus-selection rule runs once, while the menu is being built, rather than again
 /// when the item fires against a selection the user may have changed in between.
 internal enum SidebarMenuCommand: Equatable {
+    case createTable
     case createView
+    case filterDatabases
+    case showAllDatabases
     case openInNewTab(DatabaseTreeTableRef)
     case editViewDefinition(DatabaseTreeTableRef)
     case showStructure(DatabaseTreeTableRef)

@@ -914,6 +914,24 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         navigationSidebar.objectBrowser.focusSearchField()
     }
 
+    func presentDatabaseFilter() {
+        guard let connectionId = currentSession?.connection.id else { return }
+        if sidebarSplitItem?.isCollapsed == true {
+            sidebarSplitItem?.isCollapsed = false
+        }
+        navigationSidebar.objectBrowser.presentDatabaseFilter(
+            connectionId: connectionId,
+            sidebarState: SharedSidebarState.forConnection(connectionId)
+        )
+    }
+
+    func clearDatabaseFilter() {
+        guard let connectionId = currentSession?.connection.id else { return }
+        let state = SharedSidebarState.forConnection(connectionId)
+        guard !state.databaseFilterSelected.isEmpty else { return }
+        state.databaseFilterSelected = []
+    }
+
     func setSidebarTab(_ tab: SidebarTab) {
         guard let connectionId = currentSession?.connection.id else { return }
         let sidebarState = SharedSidebarState.forConnection(connectionId)
