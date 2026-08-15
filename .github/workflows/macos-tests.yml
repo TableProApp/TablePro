@@ -160,6 +160,37 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
 
+      # UI tests drive the real app, so they need the runner's GUI session and cannot run beside
+      # the unit run. Every case launches the app against a throwaway storage sandbox that
+      # UITestCase hands it, so nothing here touches a real store.
+      #
+      # One retry is allowed. A full local suite flaked once in three runs on a single
+      # waitForExistence, which without a retry would fail roughly a third of runs and train
+      # people to re-run until green. A case that fails twice is a real failure.
+      - name: Run UI tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "$TEST_DESTINATION" \
+            -only-testing:TableProUITests \
+            -parallel-testing-enabled NO \
+            -test-iterations 2 \
+            -retry-tests-on-failure \
+            -skipPackagePluginValidation \
+            -resultBundlePath UITestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      - name: Upload UI test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-ui-test-results
+          path: UITestResults.xcresult
+          retention-days: 7
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
