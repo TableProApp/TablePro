@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cancelling an import is no longer recorded as a failed import, and an import no longer reports its statement count as a row count.
 - The Quick Switcher no longer fills up with the same statement repeated. It shows each distinct query once, most recent first, and a long list of saved queries can no longer push recent queries out of the panel entirely.
 - Corrected two claims about iCloud sync: it does not sync query history, and there is no history sync limit to reduce when storage is full.
+- On iPhone and iPad, a query that failed is now kept in history and marked, instead of vanishing. Failures are what you most often want to look back at.
+- The query history database is now protected at rest, matching the AI chat store.
 - Query History showed every connection's queries mixed together, with no way to tell them apart, even though it opened per connection. Loading one could put another connection's SQL into the editor in front of you.
 - Searching query history now matches as you type. It only ever matched whole words, so typing `user` found nothing until you finished `users`.
 - Query history highlights each query for the database it actually ran on. Everything except MongoDB was coloured as MySQL.
