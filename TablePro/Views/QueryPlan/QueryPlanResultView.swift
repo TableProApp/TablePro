@@ -66,7 +66,7 @@ struct QueryPlanResultView: View {
     let executionTime: TimeInterval?
     let plan: QueryPlan?
 
-    @AppStorage("explainRawFontSize") private var fontSize: Double = 13
+    @AppStorage(PreferenceKeys.queryPlanRawFontSize.name) private var fontSize: Double = 13
     @State private var showCopyConfirmation = false
     @State private var copyResetTask: Task<Void, Never>?
     @State private var viewMode: QueryPlanViewMode = .diagram
