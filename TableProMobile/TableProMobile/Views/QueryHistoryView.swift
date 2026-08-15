@@ -12,10 +12,24 @@ struct QueryHistoryView: View {
                     coordinator.selectedTab = .query
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(verbatim: item.query)
-                            .font(.system(.footnote, design: .monospaced))
-                            .lineLimit(3)
-                            .foregroundStyle(.primary)
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            if !item.wasSuccessful {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .font(.footnote)
+                                    .foregroundStyle(.red)
+                                    .accessibilityLabel(String(localized: "Failed"))
+                            }
+                            Text(verbatim: item.query)
+                                .font(.system(.footnote, design: .monospaced))
+                                .lineLimit(3)
+                                .foregroundStyle(.primary)
+                        }
+                        if let errorMessage = item.errorMessage {
+                            Text(errorMessage)
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                                .lineLimit(2)
+                        }
                         Text(item.timestamp, style: .relative)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)

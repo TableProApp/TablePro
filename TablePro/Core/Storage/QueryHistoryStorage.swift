@@ -50,6 +50,7 @@ actor QueryHistoryStorage {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let dbPath = databaseURL.path(percentEncoded: false)
+        protectDatabaseFiles(at: dbPath)
 
         guard sqlite3_open(dbPath, &db) == SQLITE_OK else {
             Self.logger.error("Failed to open query history database at \(dbPath, privacy: .public)")
@@ -66,6 +67,20 @@ actor QueryHistoryStorage {
 
         createTables()
         migrateIfNeeded()
+        protectDatabaseFiles(at: dbPath)
+    }
+
+    /// Query text is user content, so it gets the same at-rest protection as the other local store
+    /// of user content in the app. SQLite creates the sidecar files itself, so they are marked as
+    /// they appear rather than only at creation.
+    private func protectDatabaseFiles(at path: String) {
+        for candidate in [path, path + "-wal", path + "-shm"] {
+            guard FileManager.default.fileExists(atPath: candidate) else { continue }
+            try? FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: candidate
+            )
+        }
     }
 
     // MARK: - Schema

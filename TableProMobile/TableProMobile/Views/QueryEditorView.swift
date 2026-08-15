@@ -440,6 +440,14 @@ struct QueryEditorView: View {
         if case .error(let err) = viewModel.phase {
             appError = err
             hapticError.toggle()
+            coordinator.addHistoryItem(
+                QueryHistoryItem(
+                    query: trimmed,
+                    connectionId: connectionId,
+                    wasSuccessful: false,
+                    errorMessage: err.localizedDescription
+                )
+            )
             return
         }
 

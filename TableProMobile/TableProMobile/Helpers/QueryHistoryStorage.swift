@@ -5,12 +5,33 @@ struct QueryHistoryItem: Identifiable, Codable, Hashable {
     let query: String
     let timestamp: Date
     let connectionId: UUID
+    let wasSuccessful: Bool
+    let errorMessage: String?
 
-    init(id: UUID = UUID(), query: String, timestamp: Date = Date(), connectionId: UUID) {
+    init(
+        id: UUID = UUID(),
+        query: String,
+        timestamp: Date = Date(),
+        connectionId: UUID,
+        wasSuccessful: Bool = true,
+        errorMessage: String? = nil
+    ) {
         self.id = id
         self.query = query
         self.timestamp = timestamp
         self.connectionId = connectionId
+        self.wasSuccessful = wasSuccessful
+        self.errorMessage = errorMessage
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        query = try container.decode(String.self, forKey: .query)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        connectionId = try container.decode(UUID.self, forKey: .connectionId)
+        wasSuccessful = try container.decodeIfPresent(Bool.self, forKey: .wasSuccessful) ?? true
+        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
     }
 }
 
@@ -28,7 +49,10 @@ struct QueryHistoryStorage {
 
     func save(_ item: QueryHistoryItem) {
         var items = loadAll()
-        if items.last?.query == item.query && items.last?.connectionId == item.connectionId {
+        if let last = items.last,
+           last.query == item.query,
+           last.connectionId == item.connectionId,
+           last.wasSuccessful == item.wasSuccessful {
             return
         }
         items.append(item)
