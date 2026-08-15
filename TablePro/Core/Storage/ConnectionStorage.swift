@@ -52,10 +52,7 @@ final class ConnectionStorage {
     }
 
     nonisolated static func defaultFileURL() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         let dir = appSupport.appendingPathComponent("TablePro", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("connections.json")

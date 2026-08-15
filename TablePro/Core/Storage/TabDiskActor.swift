@@ -144,10 +144,7 @@ internal actor TabDiskActor {
     // MARK: - Static Path Helpers
 
     nonisolated private static func resolvedTabStateDirectory() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         let baseDirectory = appSupport.appendingPathComponent("TablePro", isDirectory: true)
         return baseDirectory.appendingPathComponent("TabState", isDirectory: true)
     }

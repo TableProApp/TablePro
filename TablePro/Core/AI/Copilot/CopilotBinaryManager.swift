@@ -16,8 +16,7 @@ actor CopilotBinaryManager {
     private var downloadTask: Task<Void, Error>?
 
     private init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         baseDirectory = appSupport.appendingPathComponent("TablePro/copilot-language-server", isDirectory: true)
     }
 

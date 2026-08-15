@@ -27,13 +27,7 @@ internal final class HostKeyStore: @unchecked Sendable {
     private let lock = NSLock()
 
     private init() {
-        guard let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first else {
-            self.filePath = NSTemporaryDirectory() + "TablePro_known_hosts"
-            return
-        }
-        let tableProDir = appSupport.appendingPathComponent("TablePro")
+        let tableProDir = AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro")
         try? FileManager.default.createDirectory(at: tableProDir, withIntermediateDirectories: true)
         self.filePath = tableProDir.appendingPathComponent("known_hosts").path
     }

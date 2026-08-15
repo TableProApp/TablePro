@@ -156,9 +156,7 @@ actor MCPTokenStore {
     private var revocationObservers: [UUID: @Sendable (String) async -> Void] = [:]
 
     init() {
-        let appSupportUrl = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        let directory = appSupportUrl.appendingPathComponent("TablePro")
+        let directory = AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro")
         self.storageUrl = directory.appendingPathComponent("mcp-tokens.json")
     }
 

@@ -142,7 +142,7 @@ final class PluginManager {
     }
 
     nonisolated static func defaultUserPluginsDir() -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro/Plugins", isDirectory: true)
     }
 

@@ -70,14 +70,14 @@ final class RegistryClient {
         config.urlCache = URLCache(
             memoryCapacity: 1_000_000,
             diskCapacity: 5_000_000,
-            directory: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            directory: AppStorageEnvironment.shared.applicationSupportRoot
                 .appendingPathComponent("TablePro/Registry/URLCache", isDirectory: true)
         )
         return URLSession(configuration: config)
     }
 
     nonisolated static func defaultManifestCacheURL() -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro/Registry", isDirectory: true)
             .appendingPathComponent(manifestCacheFileName)
     }

@@ -19,8 +19,7 @@ final class LastOpenConnectionsStorage {
     private let fileURL: URL
 
     private convenience init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         self.init(directory: appSupport.appendingPathComponent("TablePro", isDirectory: true))
     }
 

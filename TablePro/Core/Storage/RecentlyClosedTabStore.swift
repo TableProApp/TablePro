@@ -217,8 +217,7 @@ internal final class RecentlyClosedTabStore {
     }
 
     nonisolated internal static func defaultDirectory() -> URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         return appSupport
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("RecentlyClosedTabs", isDirectory: true)

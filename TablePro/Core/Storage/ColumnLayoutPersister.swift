@@ -214,10 +214,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
     }
 
     private static func resolvedStorageDirectory() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         return appSupport
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("ColumnLayout", isDirectory: true)

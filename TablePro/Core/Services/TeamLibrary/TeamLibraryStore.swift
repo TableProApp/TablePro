@@ -21,8 +21,7 @@ actor TeamLibraryStore {
         if let fileURL {
             self.fileURL = fileURL
         } else {
-            let directory = FileManager.default
-                .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            let directory = AppStorageEnvironment.shared.applicationSupportRoot
                 .appendingPathComponent("TablePro", isDirectory: true)
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             self.fileURL = directory.appendingPathComponent("team_library.json")

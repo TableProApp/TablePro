@@ -26,10 +26,7 @@ internal actor SQLFavoriteStorage {
 
     static func defaultDatabaseURL() -> URL {
         let fileManager = FileManager.default
-        let appSupport = fileManager.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first ?? fileManager.temporaryDirectory
-        let dir = appSupport.appendingPathComponent("TablePro")
+        let dir = AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro")
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("sql_favorites.db")
     }

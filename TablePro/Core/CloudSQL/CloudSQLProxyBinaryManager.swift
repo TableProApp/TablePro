@@ -29,8 +29,7 @@ actor CloudSQLProxyBinaryManager {
         expectedSHA256: [String: String] = CloudSQLProxyBinaryManager.defaultExpectedSHA256,
         fetch: @escaping @Sendable (URL) async throws -> Data = { try await URLSession.shared.data(from: $0).0 }
     ) {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         self.baseDirectory = baseDirectory
             ?? appSupport.appendingPathComponent("TablePro/cloud-sql-proxy", isDirectory: true)
         self.expectedSHA256 = expectedSHA256

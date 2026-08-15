@@ -426,10 +426,7 @@ final class FilterSettingsStorage {
     }
 
     private static func resolvedFilterStateDirectory() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         return appSupport
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("FilterState", isDirectory: true)
