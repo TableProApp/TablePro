@@ -21,6 +21,11 @@ private struct TabLoadKey: Hashable {
 }
 
 struct MainEditorContentView: View {
+    /// A query tab nests its own editor/results split, whose two minimums are required constraints.
+    /// The drawer's own minimum has to clear their sum, or dragging the drawer down asks AppKit to
+    /// satisfy a height the content it contains cannot reach.
+    static let tabContentMinimumHeight = VerticalCollapsibleSplitView<EmptyView, EmptyView>.combinedMinimumThickness
+
     // MARK: - Dependencies
 
     var tabManager: QueryTabManager
@@ -87,7 +92,7 @@ struct MainEditorContentView: View {
                 set: { historyState.isVisible = !$0 }
             ),
             autosaveName: "HistoryDrawer-\(connectionId)",
-            topMinimumThickness: 200,
+            topMinimumThickness: Self.tabContentMinimumHeight,
             bottomMinimumThickness: 180,
             topContent: {
                 // Native macOS window tabs replace the custom tab bar.

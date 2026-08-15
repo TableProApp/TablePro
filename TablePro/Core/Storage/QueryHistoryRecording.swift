@@ -8,7 +8,7 @@ protocol QueryHistoryRecording: Sendable {
 protocol QueryHistoryReading: Sendable {
     func fetch(_ filter: QueryHistoryFilter, after cursor: QueryHistoryCursor?, limit: Int) async -> QueryHistoryPage
     func delete(id: UUID) async -> Bool
-    func clear(scope: QueryHistoryScope, since: Date?) async -> Bool
+    func clear(matching filter: QueryHistoryFilter) async -> Bool
     func count(scope: QueryHistoryScope) async -> Int
 }
 
@@ -17,7 +17,7 @@ extension QueryHistoryReading {
         await fetch(filter, after: nil, limit: limit)
     }
 
-    func clear(scope: QueryHistoryScope) async -> Bool {
-        await clear(scope: scope, since: nil)
+    func clearEverything() async -> Bool {
+        await clear(matching: QueryHistoryFilter(scope: .all))
     }
 }

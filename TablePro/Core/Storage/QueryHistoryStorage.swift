@@ -131,14 +131,21 @@ actor QueryHistoryStorage {
     private func migrateIfNeeded() {
         guard db != nil else { return }
 
-        if hasColumn("source", inTable: "history") == false {
-            migrateToVersion3()
+        guard hasColumn("source", inTable: "history") == false else {
+            setUserVersion(3)
+            return
         }
-
-        setUserVersion(3)
+        migrateToVersion3()
     }
 
+    /// Renaming the table takes its triggers with it and dropping it destroys them, so between the
+    /// rename and `createFtsTriggers` the search index has no way to stay in step. Everything runs
+    /// in one transaction, and the version is only stamped once that transaction commits, so an
+    /// app killed midway reopens as the old schema and migrates again instead of stranding a
+    /// half-built index behind a version number that says the work is done.
     private func migrateToVersion3() {
+        let legacyRows = readLegacyRowsForBackfill()
+
         beginTransaction()
         execute("ALTER TABLE history RENAME TO history_legacy;")
         execute(Self.historyTableSql)
@@ -155,7 +162,6 @@ actor QueryHistoryStorage {
             FROM history_legacy;
             """)
         execute("DROP TABLE history_legacy;")
-        commitTransaction()
 
         execute("DROP TRIGGER IF EXISTS history_ai;")
         execute("DROP TRIGGER IF EXISTS history_ad;")
@@ -168,38 +174,55 @@ actor QueryHistoryStorage {
         execute("DROP INDEX IF EXISTS idx_history_connection;")
         createIndexes()
 
-        backfillStatementTypes()
+        applyStatementTypes(legacyRows)
+        setUserVersion(3)
+
+        commitTransaction()
     }
 
-    private func backfillStatementTypes() {
+    private func readLegacyRowsForBackfill() -> [(id: String, statementType: String)] {
         var pending: [(id: String, statementType: String)] = []
 
-        var readStatement: OpaquePointer?
-        if sqlite3_prepare_v2(db, "SELECT id, query FROM history;", -1, &readStatement, nil) == SQLITE_OK {
-            while sqlite3_step(readStatement) == SQLITE_ROW {
-                guard let id = sqlite3_column_text(readStatement, 0).map({ String(cString: $0) }),
-                      let query = sqlite3_column_text(readStatement, 1).map({ String(cString: $0) })
-                else { continue }
-                pending.append((id, QueryHistoryStatementType.classify(query).rawValue))
-            }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, "SELECT id, query FROM history;", -1, &statement, nil) == SQLITE_OK else {
+            logSqliteError(context: "prepare backfill read")
+            return pending
         }
-        sqlite3_finalize(readStatement)
-
-        guard !pending.isEmpty else { return }
-
-        beginTransaction()
-        var updateStatement: OpaquePointer?
-        if sqlite3_prepare_v2(db, "UPDATE history SET statement_type = ? WHERE id = ?;", -1, &updateStatement, nil) == SQLITE_OK {
-            for row in pending {
-                QueryHistorySqlBinding.text(row.statementType).bind(to: updateStatement, at: 1)
-                QueryHistorySqlBinding.text(row.id).bind(to: updateStatement, at: 2)
-                sqlite3_step(updateStatement)
-                sqlite3_reset(updateStatement)
-                sqlite3_clear_bindings(updateStatement)
-            }
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let id = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
+                  let query = sqlite3_column_text(statement, 1).map({ String(cString: $0) })
+            else { continue }
+            pending.append((id, QueryHistoryStatementType.classify(query).rawValue))
         }
-        sqlite3_finalize(updateStatement)
-        commitTransaction()
+        return pending
+    }
+
+    private func applyStatementTypes(_ rows: [(id: String, statementType: String)]) {
+        guard !rows.isEmpty else { return }
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(
+            db,
+            "UPDATE history SET statement_type = ? WHERE id = ?;",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            logSqliteError(context: "prepare backfill write")
+            return
+        }
+
+        for row in rows {
+            QueryHistorySqlBinding.text(row.statementType).bind(to: statement, at: 1)
+            QueryHistorySqlBinding.text(row.id).bind(to: statement, at: 2)
+            if sqlite3_step(statement) != SQLITE_DONE {
+                logSqliteError(context: "backfill statement type")
+            }
+            sqlite3_reset(statement)
+            sqlite3_clear_bindings(statement)
+        }
     }
 
     private func hasColumn(_ column: String, inTable table: String) -> Bool {
@@ -495,17 +518,31 @@ actor QueryHistoryStorage {
         return true
     }
 
-    func clear(scope: QueryHistoryScope, since: Date? = nil) -> Bool {
+    /// Deleting has to narrow by exactly what the caller is looking at. Scope and date alone would
+    /// take rows a source, outcome or search filter is hiding, which is not what the user asked for.
+    func clear(matching filter: QueryHistoryFilter) -> Bool {
         guard let db else { return false }
+        guard !filter.matchesNothing else { return true }
 
         var clause = QueryHistorySqlClause()
-        clause.append("DELETE FROM history WHERE 1 = 1")
-        if let connectionId = scope.connectionId {
-            clause.append(" AND connection_id = ?", .text(connectionId.uuidString))
+
+        if let searchText = filter.searchText, !searchText.isEmpty {
+            clause.append(
+                """
+                DELETE FROM history WHERE rowid IN (
+                    SELECT h.rowid FROM history h
+                    INNER JOIN history_fts ON h.rowid = history_fts.rowid
+                    WHERE history_fts MATCH ?
+                """,
+                .text(Self.ftsQuery(for: searchText))
+            )
+            appendFilters(filter, to: &clause, columnPrefix: "h.")
+            clause.append(")")
+        } else {
+            clause.append("DELETE FROM history WHERE 1 = 1")
+            appendFilters(filter, to: &clause, columnPrefix: "")
         }
-        if let since {
-            clause.append(" AND executed_at >= ?", .double(since.timeIntervalSince1970))
-        }
+
         clause.append(";")
 
         var statement: OpaquePointer?

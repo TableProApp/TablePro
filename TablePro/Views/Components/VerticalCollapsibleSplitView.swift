@@ -2,10 +2,19 @@ import AppKit
 import SwiftUI
 
 struct VerticalCollapsibleSplitView<TopContent: View, BottomContent: View>: NSViewControllerRepresentable {
+    static var defaultTopMinimumThickness: CGFloat { 100 }
+    static var defaultBottomMinimumThickness: CGFloat { 150 }
+
+    /// What a split using the defaults needs before its own constraints become unsatisfiable.
+    /// An enclosing split whose pane hosts one of these must not promise less than this.
+    static var combinedMinimumThickness: CGFloat {
+        defaultTopMinimumThickness + defaultBottomMinimumThickness + 10
+    }
+
     @Binding var isBottomCollapsed: Bool
     var autosaveName: String
-    var topMinimumThickness: CGFloat = 100
-    var bottomMinimumThickness: CGFloat = 150
+    var topMinimumThickness: CGFloat = VerticalCollapsibleSplitView.defaultTopMinimumThickness
+    var bottomMinimumThickness: CGFloat = VerticalCollapsibleSplitView.defaultBottomMinimumThickness
     @ViewBuilder var topContent: TopContent
     @ViewBuilder var bottomContent: BottomContent
 

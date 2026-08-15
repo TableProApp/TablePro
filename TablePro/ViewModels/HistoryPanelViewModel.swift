@@ -155,7 +155,7 @@ final class HistoryPanelViewModel {
 
     @discardableResult
     func clearVisibleScope() async -> Bool {
-        let cleared = await history.clear(scope: state.scope, since: state.dateRange.since())
+        let cleared = await history.clear(matching: state.filter())
         if cleared {
             selectedEntryId = nil
             await reload()

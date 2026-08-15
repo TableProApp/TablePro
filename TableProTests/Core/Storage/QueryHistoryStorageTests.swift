@@ -378,7 +378,7 @@ struct QueryHistoryStorageTests {
         _ = await isolated.record(makeEntry(query: "SELECT keep", connectionId: keep))
         _ = await isolated.record(makeEntry(query: "SELECT drop", connectionId: drop))
 
-        #expect(await isolated.clear(scope: .connection(drop), since: nil))
+        #expect(await isolated.clear(matching: QueryHistoryFilter(scope: .connection(drop))))
 
         let remaining = await fetchAll(isolated)
         #expect(remaining.count == 1)
@@ -389,7 +389,7 @@ struct QueryHistoryStorageTests {
     func clearAllRemovesEverything() async {
         let isolated = Self.makeIsolatedStorage()
         _ = await isolated.record(makeEntry(query: "SELECT clear_test"))
-        #expect(await isolated.clear(scope: .all, since: nil))
+        #expect(await isolated.clear(matching: QueryHistoryFilter(scope: .all)))
         #expect(await fetchAll(isolated).isEmpty)
     }
 
@@ -403,11 +403,77 @@ struct QueryHistoryStorageTests {
         )
         _ = await isolated.record(makeEntry(query: "SELECT recent", connectionId: connId, executedAt: now))
 
-        #expect(await isolated.clear(scope: .connection(connId), since: now.addingTimeInterval(-3_600)))
+        #expect(
+            await isolated.clear(
+                matching: QueryHistoryFilter(scope: .connection(connId), since: now.addingTimeInterval(-3_600))
+            )
+        )
 
         let remaining = await fetchAll(isolated, connectionId: connId)
         #expect(remaining.count == 1)
         #expect(remaining.first?.query == "SELECT old")
+    }
+
+    @Test("clear only removes the outcome it was filtered to")
+    func clearRespectsOutcome() async {
+        let isolated = Self.makeIsolatedStorage()
+        let connId = UUID()
+        _ = await isolated.record(makeEntry(query: "SELECT good", connectionId: connId, wasSuccessful: true))
+        _ = await isolated.record(makeEntry(query: "SELECT bad", connectionId: connId, wasSuccessful: false))
+
+        #expect(
+            await isolated.clear(matching: QueryHistoryFilter(scope: .connection(connId), outcome: .failed))
+        )
+
+        let remaining = await fetchAll(isolated, connectionId: connId)
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.query == "SELECT good")
+    }
+
+    @Test("clear only removes the sources it was filtered to")
+    func clearRespectsSources() async {
+        let isolated = Self.makeIsolatedStorage()
+        let connId = UUID()
+        _ = await isolated.record(makeEntry(query: "SELECT typed", connectionId: connId, source: .editor))
+        _ = await isolated.record(makeEntry(query: "SELECT browsed", connectionId: connId, source: .tableBrowse))
+
+        #expect(
+            await isolated.clear(
+                matching: QueryHistoryFilter(scope: .connection(connId), sources: QueryHistorySource.userAuthored)
+            )
+        )
+
+        let remaining = await fetchAll(isolated, connectionId: connId)
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.query == "SELECT browsed")
+    }
+
+    @Test("clear only removes what the search matched")
+    func clearRespectsSearchText() async {
+        let isolated = Self.makeIsolatedStorage()
+        let connId = UUID()
+        _ = await isolated.record(makeEntry(query: "SELECT alpha_rows FROM t", connectionId: connId))
+        _ = await isolated.record(makeEntry(query: "SELECT beta_rows FROM t", connectionId: connId))
+
+        #expect(
+            await isolated.clear(
+                matching: QueryHistoryFilter(scope: .connection(connId), searchText: "alpha_rows")
+            )
+        )
+
+        let remaining = await fetchAll(isolated, connectionId: connId)
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.query == "SELECT beta_rows FROM t")
+    }
+
+    @Test("clear with a filter that matches nothing deletes nothing")
+    func clearWithImpossibleFilterDeletesNothing() async {
+        let isolated = Self.makeIsolatedStorage()
+        let connId = UUID()
+        _ = await isolated.record(makeEntry(connectionId: connId))
+
+        #expect(await isolated.clear(matching: QueryHistoryFilter(scope: .connection(connId), sources: [])))
+        #expect(await isolated.count(scope: .connection(connId)) == 1)
     }
 
     @Test("count is scoped")

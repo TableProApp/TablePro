@@ -526,7 +526,10 @@ internal final class QuickSwitcherViewModel {
                 id: "history_\(entry.id.uuidString)",
                 name: entry.queryPreview,
                 kind: .queryHistory,
-                subtitle: [connectionPath(for: target), entry.formattedExecutionTime]
+                subtitle: [
+                    connectionPath(for: target),
+                    entry.hasMeasuredDuration ? entry.formattedExecutionTime : ""
+                ]
                     .filter { !$0.isEmpty }
                     .joined(separator: " · "),
                 payload: entry.query,

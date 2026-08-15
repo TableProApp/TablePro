@@ -50,18 +50,22 @@ final class HistoryPanelState {
         )
     }
 
+    /// Measured against the filter the panel opens with, not against "everything selected".
+    /// The source filter starts narrowed to the user's own queries, so comparing it to the full
+    /// set would report an untouched panel as filtered and show the wrong empty state.
     var hasNarrowingFilter: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || dateRange != .all
-            || outcome != .any
-            || sources != Set(QueryHistorySource.allCases)
+            || dateRange != HistoryPanelPreferences.default.dateRange
+            || outcome != HistoryPanelPreferences.default.outcome
+            || sources != HistoryPanelPreferences.default.sources
     }
 
     func resetFilters() {
+        let defaults = HistoryPanelPreferences.default
         searchText = ""
-        dateRange = .all
-        outcome = .any
-        sources = QueryHistorySource.userAuthored
+        dateRange = defaults.dateRange
+        outcome = defaults.outcome
+        sources = defaults.sources
     }
 
     private func persistIfChanged(_ changed: Bool) {

@@ -39,7 +39,7 @@ struct HistorySection: View {
                             cancelButton: String(localized: "Cancel")
                         )
                         if confirmed {
-                            Task { _ = await QueryHistoryManager.shared.clear(scope: .all) }
+                            Task { _ = await QueryHistoryManager.shared.clearEverything() }
                         }
                     }
                 }

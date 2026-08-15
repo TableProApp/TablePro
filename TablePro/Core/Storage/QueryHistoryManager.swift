@@ -62,8 +62,8 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading {
         return success
     }
 
-    func clear(scope: QueryHistoryScope, since: Date?) async -> Bool {
-        let success = await storage.clear(scope: scope, since: since)
+    func clear(matching filter: QueryHistoryFilter) async -> Bool {
+        let success = await storage.clear(matching: filter)
         if success {
             await MainActor.run {
                 AppEvents.shared.queryHistoryDidUpdate.send(nil)

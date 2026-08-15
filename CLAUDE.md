@@ -227,6 +227,7 @@ These have caused real bugs when violated:
 | Favorite tables      | UserDefaults     | `FavoriteTablesStorage` (per connection + database + schema; iCloud-synced) |
 | Tree database filter | UserDefaults     | `DatabaseTreeFilterStorage` (per connection; selected database set, empty = show all; device-local). Live value held in `SharedSidebarState`. |
 | Recent tables        | UserDefaults     | `RecentTablesStore` (per connection, keyed by database, last 10 each; device-local). Live value held in `SharedSidebarState`, recorded at the `QueryTabManager` open chokepoint. |
+| History drawer state | UserDefaults     | `HistoryPanelPreferencesStorage` (per connection; visibility, connection scope, source/date/outcome filters; device-local). Live value held in `HistoryPanelState.forConnection`, cleared alongside `SharedSidebarState` when a session ends. |
 | Trusted external links | UserDefaults   | `ExternalConnectionTrustStore` (keyed by database type + host + database + username + URL `name`, never the port; loopback hosts only, enforced on read and write). Consulted by `ExternalConnectionGate` before the external-URL confirmation alert. |
 
 ### Logging & Debugging

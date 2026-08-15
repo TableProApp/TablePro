@@ -10,7 +10,7 @@ import Testing
 private actor RecordingHistoryReader: QueryHistoryReading {
     private var entries: [QueryHistoryEntry]
     private(set) var receivedFilters: [QueryHistoryFilter] = []
-    private(set) var clearCalls: [(scope: QueryHistoryScope, since: Date?)] = []
+    private(set) var clearCalls: [QueryHistoryFilter] = []
 
     init(entries: [QueryHistoryEntry]) {
         self.entries = entries.sorted { lhs, rhs in
@@ -56,11 +56,21 @@ private actor RecordingHistoryReader: QueryHistoryReading {
         return entries.count < before
     }
 
-    func clear(scope: QueryHistoryScope, since: Date?) -> Bool {
-        clearCalls.append((scope, since))
+    func clear(matching filter: QueryHistoryFilter) -> Bool {
+        clearCalls.append(filter)
         entries.removeAll { entry in
-            if let connectionId = scope.connectionId, entry.connectionId != connectionId { return false }
-            if let since, entry.executedAt < since { return false }
+            if let connectionId = filter.scope.connectionId, entry.connectionId != connectionId { return false }
+            if !filter.sources.contains(entry.source) { return false }
+            switch filter.outcome {
+            case .any: break
+            case .succeeded where !entry.wasSuccessful: return false
+            case .failed where entry.wasSuccessful: return false
+            default: break
+            }
+            if let searchText = filter.searchText, !entry.query.localizedCaseInsensitiveContains(searchText) {
+                return false
+            }
+            if let since = filter.since, entry.executedAt < since { return false }
             return true
         }
         return true
@@ -373,6 +383,70 @@ struct HistoryPanelViewModelTests {
         #expect(calls.first?.since != nil)
     }
 
+    @Test("clearing a failures-only view keeps the queries that succeeded")
+    func clearRespectsOutcomeFilter() async {
+        let connectionId = UUID()
+        let (viewModel, reader) = makeViewModel(
+            connectionId: connectionId,
+            entries: [
+                Self.makeEntry(connectionId: connectionId, query: "SELECT good", wasSuccessful: true),
+                Self.makeEntry(connectionId: connectionId, query: "SELECT bad", wasSuccessful: false)
+            ]
+        )
+
+        viewModel.state.outcome = .failed
+        await viewModel.reload()
+        #expect(viewModel.totalLoaded == 1)
+
+        _ = await viewModel.clearVisibleScope()
+
+        #expect(await reader.clearCalls.first?.outcome == .failed)
+        viewModel.state.outcome = .any
+        await viewModel.reload()
+        #expect(viewModel.sections.flatMap(\.entries).map(\.query) == ["SELECT good"])
+    }
+
+    @Test("clearing a source-filtered view keeps the sources it was hiding")
+    func clearRespectsSourceFilter() async {
+        let connectionId = UUID()
+        let (viewModel, reader) = makeViewModel(
+            connectionId: connectionId,
+            entries: [
+                Self.makeEntry(connectionId: connectionId, query: "SELECT typed", source: .editor),
+                Self.makeEntry(connectionId: connectionId, query: "SELECT browsed", source: .tableBrowse)
+            ]
+        )
+
+        await viewModel.reload()
+        _ = await viewModel.clearVisibleScope()
+
+        #expect(await reader.clearCalls.first?.sources == QueryHistorySource.userAuthored)
+        viewModel.state.sources = Set(QueryHistorySource.allCases)
+        await viewModel.reload()
+        #expect(viewModel.sections.flatMap(\.entries).map(\.query) == ["SELECT browsed"])
+    }
+
+    @Test("clearing a searched view keeps the rows the search was hiding")
+    func clearRespectsSearchText() async {
+        let connectionId = UUID()
+        let (viewModel, reader) = makeViewModel(
+            connectionId: connectionId,
+            entries: [
+                Self.makeEntry(connectionId: connectionId, query: "SELECT alpha"),
+                Self.makeEntry(connectionId: connectionId, query: "SELECT beta")
+            ]
+        )
+
+        viewModel.state.searchText = "alpha"
+        await viewModel.reload()
+        _ = await viewModel.clearVisibleScope()
+
+        #expect(await reader.clearCalls.first?.searchText == "alpha")
+        viewModel.state.searchText = ""
+        await viewModel.reload()
+        #expect(viewModel.sections.flatMap(\.entries).map(\.query) == ["SELECT beta"])
+    }
+
     @Test("search text reaches the filter and a blank search does not")
     func searchTextReachesFilter() async {
         let connectionId = UUID()
@@ -395,20 +469,44 @@ struct HistoryPanelViewModelTests {
         #expect(viewModel.totalLoaded == 2)
     }
 
+    @Test("an untouched panel does not report itself as filtered")
+    func defaultFilterIsNotNarrowing() async {
+        let connectionId = UUID()
+        let (viewModel, _) = makeViewModel(connectionId: connectionId, entries: [])
+
+        #expect(viewModel.state.sources == QueryHistorySource.userAuthored)
+        #expect(
+            viewModel.state.hasNarrowingFilter == false,
+            "A connection with no history must offer the empty state, not 'no matches, reset filters'"
+        )
+    }
+
     @Test("filter state reports whether it is narrowing the view")
     func narrowingFilterIsReported() async {
         let connectionId = UUID()
         let (viewModel, _) = makeViewModel(connectionId: connectionId, entries: [])
 
-        viewModel.state.sources = Set(QueryHistorySource.allCases)
+        viewModel.state.dateRange = .today
+        #expect(viewModel.state.hasNarrowingFilter)
+
+        viewModel.state.resetFilters()
         #expect(viewModel.state.hasNarrowingFilter == false)
 
-        viewModel.state.dateRange = .today
+        viewModel.state.outcome = .failed
+        #expect(viewModel.state.hasNarrowingFilter)
+
+        viewModel.state.resetFilters()
+        viewModel.state.searchText = "users"
+        #expect(viewModel.state.hasNarrowingFilter)
+
+        viewModel.state.resetFilters()
+        viewModel.state.sources = Set(QueryHistorySource.allCases)
         #expect(viewModel.state.hasNarrowingFilter)
 
         viewModel.state.resetFilters()
         #expect(viewModel.state.dateRange == .all)
         #expect(viewModel.state.outcome == .any)
         #expect(viewModel.state.sources == QueryHistorySource.userAuthored)
+        #expect(viewModel.state.searchText.isEmpty)
     }
 }
