@@ -128,8 +128,8 @@ struct TableRow: View {
                     Image(systemName: isFavorite ? "star.fill" : "star")
                         .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(isFavorite ? Color.yellow : Color.secondary)
-                        .contentShape(Rectangle())
                         .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .opacity(starVisible ? 1 : 0)

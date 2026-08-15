@@ -250,6 +250,8 @@ struct DatabaseTreeRowView: View {
                 activateBeforeAction: { await actions.activate(ref) }
             )
             Divider()
+            favoriteButton(for: ref)
+            Divider()
             Button(String(localized: "Remove from Recent")) {
                 actions.removeRecent(ref)
             }
@@ -272,6 +274,8 @@ struct DatabaseTreeRowView: View {
                 coordinator: actions.coordinator,
                 activateBeforeAction: { await actions.activate(ref) }
             )
+            Divider()
+            favoriteButton(for: ref)
         case .routine(let ref):
             RoutineContextMenu(routine: ref.routine, onShowDDL: actions.showRoutineDDL)
         case .status, .redisKeysSection:
@@ -290,6 +294,16 @@ struct DatabaseTreeRowView: View {
             }
         case .redisNode(let redisNode):
             redisMenuItems(redisNode)
+        }
+    }
+
+    /// The star only appears on hover, so the menu is the one route to favouriting that a pointer
+    /// can always reach and the only one a keyboard has at all.
+    private func favoriteButton(for ref: DatabaseTreeTableRef) -> some View {
+        Button(context.isFavorite(ref)
+            ? String(localized: "Remove from Favorites")
+            : String(localized: "Add to Favorites")) {
+            actions.toggleFavorite(ref)
         }
     }
 

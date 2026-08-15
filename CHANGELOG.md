@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disabling a linked SQL folder no longer makes it disappear with no way back. It stays in the sidebar, marked disabled, so you can enable it again. Choosing the same folder from Add Linked SQL Folder now re-enables it instead of reporting that it is already linked.
 - Cmd-clicking or Shift-arrowing to select several tables no longer opens the table it added. Building a selection for Truncate, Delete or Export ran a query, replaced the tab, and could switch the active database.
 - Arrowing to a table in the sidebar now opens it right away. The open waited out the key repeat rate from System Settings, which is up to two seconds, even for a single press.
+- Collapsing a database or a section while the sidebar filter has text no longer throws away the layout you had before searching. The row sprang back open on the next keystroke, and stayed collapsed once the filter was cleared.
+- The favourite star in the sidebar now takes a click anywhere in its button, not only on the star itself. A near miss selected the table and opened it instead. Add to Favorites is also in the right-click menu now, so it no longer needs a hover to reach.
+- A connection dropping and reconnecting no longer reopens a sidebar you hid, or closes an inspector you opened.
+- Sidebar and inspector widths are remembered per window again. They were saved under whichever connection happened to be selected, so widths set for one connection were written under another's name.
 
 - Select several databases or schemas in the sidebar tree and act on them at once: drop, refresh, copy names, or export. Shift-click and Cmd-click extend the selection.
 - The database switcher takes a multiple selection too, with the same actions on the right-click menu.

@@ -93,15 +93,20 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Panel Layout State
 
+    /// One name for the window's split view, because one `NSSplitView` can only carry one.
+    ///
+    /// The name used to be derived from the selected connection, which stopped meaning anything
+    /// once a window began hosting every connection: the widths a user set while one connection
+    /// was selected were autosaved under whichever connection the name happened to name at the
+    /// time. Per-connection widths are not reachable through `autosaveName` anyway, since assigning
+    /// a name to a split view that has already laid out does not re-apply the saved frames.
+    ///
     /// Never version this key to force a relayout. `NSSplitView` clamps a restored frame against
     /// the current minimums, so the sidebar simply widens to fit the rail. Bumping it instead
     /// throws away every saved sidebar width, inspector width and collapse state the user has,
     /// leaves the old keys orphaned in `UserDefaults`, and reads as a regression nobody asked for.
     private var splitAutosaveName: NSSplitView.AutosaveName {
-        if let connectionId = payload?.connectionId ?? currentSession?.connection.id {
-            return "com.TablePro.mainSplit.\(connectionId.uuidString)"
-        }
-        return "com.TablePro.mainSplit"
+        "com.TablePro.mainSplit"
     }
 
     // MARK: - Toolbar
@@ -248,6 +253,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         inspectorSplitItem.canCollapse = true
         inspectorSplitItem.minimumThickness = Self.inspectorMinThickness
         inspectorSplitItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
+        /// The inspector ships closed. Set before the autosave name, so a user who has opened it
+        /// gets their own state restored over this one and a first run gets a closed inspector
+        /// without anyone having to read AppKit's own autosave record to find out which it is.
+        inspectorSplitItem.isCollapsed = true
         addSplitViewItem(inspectorSplitItem)
 
         navigationSidebar.railController.onEntryCountChange = { [weak self] count in
@@ -1030,12 +1039,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Panel Layout Persistence
 
-    private func applyDefaultCollapseStateIfNoAutosave() {
-        let key = "NSSplitView Subview Frames \(splitAutosaveName)"
-        guard AppStorageEnvironment.shared.defaults.object(forKey: key) == nil else { return }
-        inspectorSplitItem.isCollapsed = true
-    }
-
     // MARK: - Pane Chrome
 
     private enum ChromeState {
@@ -1043,6 +1046,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         case hidden
         case revealed
     }
+
+    private var userPaneLayout: ChromePaneLayout?
 
     /// A split item's collapse state is written into the autosave record, which is how the
     /// inspector remembers being hidden. Collapsing the sidebar for a phase the user did not
@@ -1063,24 +1068,35 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         chromeState = .hidden
 
         resignFirstResponderInsideChrome()
-        splitView.autosaveName = ""
+        splitView.autosaveName = nil
+        userPaneLayout = ChromePaneLayout(
+            isSidebarCollapsed: sidebarSplitItem.isCollapsed,
+            isInspectorCollapsed: inspectorSplitItem.isCollapsed
+        )
         sidebarSplitItem.isCollapsed = true
         inspectorSplitItem.isCollapsed = true
         view.window?.recalculateKeyViewLoop()
     }
 
+    /// Autosaving is off while the chrome is hidden, so the record still holds what the user had.
+    /// AppKit will not re-apply it though: assigning an autosave name to a split view that has
+    /// already laid out restores nothing. The state captured on the way in is therefore what gives
+    /// the panes back. Forcing the sidebar open here instead reopened a sidebar the user had
+    /// deliberately hidden, every time a connection dropped and came back.
     private func revealWindowChrome() {
         guard chromeState != .revealed else { return }
         chromeState = .revealed
 
-        sidebarSplitItem.isCollapsed = false
+        let restored = ChromePaneLayout.toRestore(captured: userPaneLayout)
+        userPaneLayout = nil
+        sidebarSplitItem.isCollapsed = restored.isSidebarCollapsed
+        inspectorSplitItem.isCollapsed = restored.isInspectorCollapsed
         restoreUserPaneLayout()
         view.window?.recalculateKeyViewLoop()
     }
 
     private func restoreUserPaneLayout() {
         splitView.autosaveName = splitAutosaveName
-        applyDefaultCollapseStateIfNoAutosave()
     }
 
     /// A collapsed pane keeps whatever first responder it held, which would leave the window

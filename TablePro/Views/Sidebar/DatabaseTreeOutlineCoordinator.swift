@@ -539,12 +539,20 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
     func outlineViewItemWillExpand(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode else { return }
         triggerLoad(for: node)
-        if !isApplyingExpansion { recordExpansion(node, expanded: true) }
+        if isRecordingExpansion { recordExpansion(node, expanded: true) }
     }
 
     func outlineViewItemWillCollapse(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode else { return }
-        if !isApplyingExpansion { recordExpansion(node, expanded: false) }
+        if isRecordingExpansion { recordExpansion(node, expanded: false) }
+    }
+
+    /// A filtered tree discloses whatever matches, so while the field has text the disclosure on
+    /// screen is the search's, not the user's. A gesture against it is an edit of the search view
+    /// and must stay out of the saved state: recording it made the row spring back open on the next
+    /// keystroke and then, once the filter cleared, took the layout the user had built with it.
+    private var isRecordingExpansion: Bool {
+        !isApplyingExpansion && searchText.isEmpty
     }
 
     /// Selection drives the content, which is how a source list works: the navigator picks, the
