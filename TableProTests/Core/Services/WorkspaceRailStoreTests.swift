@@ -59,6 +59,30 @@ struct WorkspaceRailStoreTests {
         #expect(entries.isEmpty)
     }
 
+    /// Close acts on the connection, so every row it owns has to go in one pass. A connection with
+    /// tabs in two databases has two rows, and leaving either behind is what made the old
+    /// container-scoped close read as doing nothing.
+    @Test("Closing a connection removes every row it owns, not just one")
+    func closingAConnectionDropsAllOfItsRows() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let session = makeSession(connection, browseDatabase: "app")
+        let tabs = [connection.id: [tableTab(database: "app"), tableTab(database: "logs")]]
+
+        let before = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: session],
+            tabs: tabs
+        )
+        #expect(Set(before.map(\.container)) == ["app", "logs"])
+
+        let after = resolve(
+            openConnectionIds: [],
+            sessions: [connection.id: session],
+            tabs: tabs
+        )
+        #expect(after.isEmpty)
+    }
+
     @Test("An entry shows the database being browsed, not the connection's saved default")
     func entryShowsBrowsedContainer() throws {
         let connection = TestFixtures.makeConnection(database: "saved_default")

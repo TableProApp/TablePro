@@ -92,7 +92,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         /// ours to enable and disable now.
         case #selector(newEditorTab(_:)):
             return context.isConnected
-        case #selector(closeEditorTab(_:)):
+        case #selector(closeEditorTab(_:)), #selector(closeConnection(_:)):
             return context.hasSelectedWorkspace
         case #selector(selectNextEditorTab(_:)), #selector(selectPreviousEditorTab(_:)):
             return context.isConnected

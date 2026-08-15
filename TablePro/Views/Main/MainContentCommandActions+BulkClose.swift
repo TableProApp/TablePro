@@ -13,12 +13,6 @@ extension MainContentCommandActions {
         /// that is not always the selected one.
         case others(anchor: UUID)
         case otherDatabases
-        case container(String)
-    }
-
-    /// Closes a workspace from the rail: every tab of this connection sitting in that container.
-    func closeWorkspace(container: String) {
-        Task { await runBatchClose(kind: .container(container)) }
     }
 
     func closeAllTabs() {
@@ -117,8 +111,6 @@ extension MainContentCommandActions {
         case .otherDatabases:
             let current = browsedContainerName
             return tabs.filter { WorkspaceAnchoring.containerName(of: $0, target: target) != current }
-        case .container(let container):
-            return tabs.filter { WorkspaceAnchoring.containerName(of: $0, target: target) == container }
         }
     }
 }

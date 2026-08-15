@@ -29,6 +29,26 @@ internal protocol WorkspaceRailHost: AnyObject {
     func selectHostedConnection(_ connectionId: UUID)
 }
 
+/// Middle-click closes the row under the pointer, which is what a list of open things does
+/// everywhere it exists: browser tabs, and every database client surveyed. `NSTableView` routes no
+/// action for the tertiary button, so the row is resolved from the click point the same way
+/// `menu(for:)` resolves one.
+@MainActor
+internal final class WorkspaceRailTableView: NSTableView {
+    internal var onMiddleClick: ((Int) -> Void)?
+
+    override internal func otherMouseUp(with event: NSEvent) {
+        guard event.buttonNumber == 2 else {
+            super.otherMouseUp(with: event)
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        let clicked = row(at: point)
+        guard clicked >= 0 else { return }
+        onMiddleClick?(clicked)
+    }
+}
+
 @MainActor
 internal final class WorkspaceRailViewController: NSViewController {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WorkspaceRail")
@@ -39,7 +59,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     internal weak var host: (any WorkspaceRailHost)?
 
     private let scrollView = NSScrollView()
-    private let tableView = NSTableView()
+    private let tableView = WorkspaceRailTableView()
 
     /// `rowSizeStyle` is the only route to the sidebar icon size preference, but any value
     /// other than `.custom` makes the table impose the system row height and ignore
@@ -93,6 +113,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         tableView.menu = contextMenu()
         tableView.registerForDraggedTypes([Self.reorderType])
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
+        tableView.onMiddleClick = { [weak self] row in self?.closeConnection(atRow: row) }
         tableView.setAccessibilityIdentifier("workspace-rail")
         tableView.setAccessibilityLabel(String(localized: "Open Workspaces"))
 
@@ -393,16 +414,19 @@ internal final class WorkspaceRailViewController: NSViewController {
         return menu
     }
 
-    /// The connection the row names, not the one the window is showing. Resolving through the
-    /// window handed this to the selected connection's coordinator, so Close Workspace on a row for
-    /// another connection closed the visible connection's tabs in a container of the same name,
-    /// taking its unsaved editor work with them.
     @objc
-    private func closeWorkspace(_ sender: NSMenuItem) {
-        guard let workspace = sender.representedObject as? WorkspaceID,
-              let coordinator = WindowManager.shared.coordinator(for: workspace.connectionId)
-        else { return }
-        coordinator.commandActions?.closeWorkspace(container: workspace.container)
+    private func closeConnection(_ sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID else { return }
+        close(connectionId: workspace.connectionId)
+    }
+
+    private func closeConnection(atRow row: Int) {
+        guard entries.indices.contains(row) else { return }
+        close(connectionId: entries[row].workspace.connectionId)
+    }
+
+    private func close(connectionId: UUID) {
+        Task { await ConnectionCloseAction.close(connectionId: connectionId) }
     }
 
     /// Ends the session, which every workspace of the connection shares, so the other rows for it
@@ -429,29 +453,38 @@ internal final class WorkspaceRailViewController: NSViewController {
 // MARK: - NSMenuDelegate
 
 extension WorkspaceRailViewController: NSMenuDelegate {
+    /// Lighter action first, the one that ends the connection last, which is the order Finder uses
+    /// on a Locations row and Mail on an account. Close carries the connection's own name because
+    /// a row can be one of several a connection has open, and the command takes all of them.
     internal func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let row = tableView.clickedRow
         guard entries.indices.contains(row) else { return }
+        let entry = entries[row]
 
-        let item = NSMenuItem(
-            title: String(localized: "Close Workspace"),
-            action: #selector(closeWorkspace(_:)),
-            keyEquivalent: ""
+        if ConnectionMenuPolicy.showsDisconnect(status: entry.status) {
+            addItem(
+                to: menu,
+                title: String(localized: "Disconnect"),
+                action: #selector(disconnectWorkspace(_:)),
+                workspace: entry.workspace
+            )
+            menu.addItem(.separator())
+        }
+
+        addItem(
+            to: menu,
+            title: String(format: String(localized: "Close “%@”"), entry.connection.name),
+            action: #selector(closeConnection(_:)),
+            workspace: entry.workspace
         )
+    }
+
+    private func addItem(to menu: NSMenu, title: String, action: Selector, workspace: WorkspaceID) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
-        item.representedObject = entries[row].workspace
+        item.representedObject = workspace
         menu.addItem(item)
-
-        guard ConnectionMenuPolicy.showsDisconnect(status: entries[row].status) else { return }
-        let disconnectItem = NSMenuItem(
-            title: String(localized: "Disconnect"),
-            action: #selector(disconnectWorkspace(_:)),
-            keyEquivalent: ""
-        )
-        disconnectItem.target = self
-        disconnectItem.representedObject = entries[row].workspace
-        menu.addItem(disconnectItem)
     }
 }
 

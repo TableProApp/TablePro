@@ -73,6 +73,10 @@ enum FileMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "Close Connection"),
+                action: #selector(MainSplitViewController.closeConnection(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "Reopen Closed Tab"),
                 action: #selector(AppDelegate.reopenClosedTab(_:)),
                 shortcut: .reopenClosedTab,

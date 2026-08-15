@@ -37,6 +37,13 @@ extension MainSplitViewController {
         actions.closeTab()
     }
 
+    /// The contextual menu on a rail row offers this too, and the HIG requires every context-menu
+    /// command to be reachable from the menu bar.
+    @objc func closeConnection(_ sender: Any?) {
+        guard let connectionId = workspaces.selectedConnectionId else { return }
+        Task { await ConnectionCloseAction.close(connectionId: connectionId) }
+    }
+
     @objc func selectNextEditorTab(_ sender: Any?) {
         commandActions?.selectTab(offsetBy: 1)
     }
