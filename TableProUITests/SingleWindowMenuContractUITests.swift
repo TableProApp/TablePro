@@ -55,6 +55,32 @@ final class SingleWindowMenuContractUITests: XCTestCase {
         }
     }
 
+    /// The connections strip offers Close on a row, and the HIG requires every context-menu command
+    /// to be reachable from the menu bar too.
+    func testFileMenuOffersCloseConnection() throws {
+        let app = launchApp()
+
+        XCTAssertTrue(
+            app.menuBars.menuItems["Close Connection"].waitForExistence(timeout: 5),
+            "File menu must mirror the connections strip's Close command"
+        )
+    }
+
+    /// The rail is named for what it lists. "Workspace" was a term the product invented for a
+    /// window-like thing, which the HIG's Windows guidance rules out.
+    func testViewMenuNamesTheConnectionsStrip() throws {
+        let app = launchApp()
+
+        XCTAssertTrue(
+            app.menuBars.menuItems["Show Connections"].waitForExistence(timeout: 5),
+            "View menu must name the strip after what it lists"
+        )
+        XCTAssertFalse(
+            app.menuBars.menuItems["Show Workspace Rail"].exists,
+            "The invented noun must be gone from the menu bar"
+        )
+    }
+
     /// Launching shows the welcome window and nothing else. A second main window appearing here
     /// is the shape of the bug the single-window model exists to prevent.
     func testLaunchOpensExactlyOneWindow() throws {
