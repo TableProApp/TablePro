@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProPluginKit
 
 /// The three roots every persistent store resolves through: the Application Support directory, the
 /// defaults domain, and the keychain. Production resolves them to the user's own locations. A UI
@@ -37,7 +38,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppStorageEnvironment")
 
     internal static let uiTestingVariable = "TABLEPRO_UI_TESTING"
-    internal static let sandboxVariable = "TABLEPRO_UI_TEST_SANDBOX"
+    internal static let sandboxVariable = PluginHostStorage.sandboxVariable
 
     private init(
         applicationSupportRoot: URL,
@@ -105,7 +106,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
             exit(EXIT_FAILURE)
         }
 
-        let suiteName = "com.TablePro.uitest.\(root.lastPathComponent)"
+        let suiteName = PluginHostStorage.suiteName(forSandboxAt: root.path)
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             logger.fault("Refusing to launch: could not open the defaults suite \(suiteName, privacy: .public)")
             exit(EXIT_FAILURE)

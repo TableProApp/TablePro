@@ -113,7 +113,24 @@ struct KeychainIntegrityKeySource: IntegrityKeySource {
         ]
     }
 
+    /// A sandboxed run keeps its key inside the sandbox. The production query is left exactly as it
+    /// is: the key it finds is the one that stamped the user's existing store, and looking somewhere
+    /// else would mint a new key, fail every verification against it, and drop `storeIsTrusted`.
+    private static var isolatedStore: (any KeychainStoring)? {
+        AppStorageEnvironment.shared.isIsolated ? AppStorageEnvironment.shared.keychain : nil
+    }
+
+    private static let isolatedKey = "connectionStoreIntegrity"
+
     private static func read() -> SymmetricKey? {
+        if let isolatedStore {
+            guard case let .found(encoded) = isolatedStore.readStringResult(forKey: isolatedKey),
+                  let data = Data(base64Encoded: encoded),
+                  data.count == byteCount
+            else { return nil }
+            return SymmetricKey(data: data)
+        }
+
         var query = baseQuery()
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -132,6 +149,14 @@ struct KeychainIntegrityKeySource: IntegrityKeySource {
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
             ConnectionStoreIntegrity.logger.error("Could not generate a connection store integrity key")
             return nil
+        }
+
+        if let isolatedStore {
+            guard isolatedStore.writeString(Data(bytes).base64EncodedString(), forKey: isolatedKey) else {
+                ConnectionStoreIntegrity.logger.error("Could not store the connection store integrity key")
+                return nil
+            }
+            return SymmetricKey(data: Data(bytes))
         }
 
         var addQuery = baseQuery()

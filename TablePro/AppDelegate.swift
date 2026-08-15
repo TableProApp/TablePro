@@ -16,10 +16,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var hasRunPostLaunchActivation = false
 
-    private static var isUITesting: Bool {
-        ProcessInfo.processInfo.environment["TABLEPRO_UI_TESTING"] == "1"
-    }
-
     // MARK: - URL & File Open
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -34,7 +30,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = InspectorDocumentController()
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         PluginManager.shared.loadPlugins()
-        Task { await RegistryClient.shared.ensureManifest(.ifStale) }
+        /// The registry manifest only feeds the plugin-install UI, and fetching it is a network call
+        /// at launch. A sandboxed run has no user plugins directory to install into anyway.
+        if !AppStorageEnvironment.shared.isIsolated {
+            Task { await RegistryClient.shared.ensureManifest(.ifStale) }
+        }
 
         Task { await QueryHistoryManager.shared.performStartupCleanup() }
         Task { @MainActor in
@@ -99,7 +99,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWorkspace.didWakeNotification, object: nil
         )
 
-        if AppSettingsManager.shared.mcp.enabled {
+        if AppSettingsManager.shared.mcp.enabled, !AppStorageEnvironment.shared.isIsolated {
             Task {
                 await MCPServerManager.shared.start(port: UInt16(clamping: AppSettingsManager.shared.mcp.port))
             }
@@ -119,14 +119,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         runPostLaunchActivationIfNeeded()
-        guard !Self.isUITesting else { return }
+        guard !AppStorageEnvironment.shared.isIsolated else { return }
         SyncCoordinator.shared.syncIfNeeded()
     }
 
     private func runPostLaunchActivationIfNeeded() {
         guard !hasRunPostLaunchActivation else { return }
         hasRunPostLaunchActivation = true
-        guard !Self.isUITesting else { return }
+        guard !AppStorageEnvironment.shared.isIsolated else { return }
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
         AnalyticsService.shared.startPeriodicHeartbeat()

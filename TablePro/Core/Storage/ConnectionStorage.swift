@@ -40,7 +40,7 @@ final class ConnectionStorage {
         userDefaults: UserDefaults = .standard,
         syncTracker: SyncChangeTracker = .shared,
         appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared,
-        keychain: any KeychainStoring = KeychainHelper.shared
+        keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain
     ) {
         self.fileURL = fileURL
         self.defaults = userDefaults
