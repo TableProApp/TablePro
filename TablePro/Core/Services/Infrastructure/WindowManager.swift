@@ -150,7 +150,17 @@ internal final class WindowManager {
         // orderFront before addTabbedWindow avoids a synchronous full-tree
         // SwiftUI layout pass that adds 700-900ms per open.
         let tabbingId = window.tabbingIdentifier ?? ""
-        let sibling = findSibling(tabbingIdentifier: tabbingId, excluding: window)
+        let sibling = isHandoff ? nil : findSibling(tabbingIdentifier: tabbingId, excluding: window)
+
+        /// A connection moved out of a shared window must land in a window of its own. Joining the
+        /// group here made Open in New Window produce a second native tab of the very window it was
+        /// asked to leave. `.disallowed` keeps AppKit from tabbing it anyway when the user's system
+        /// preference is to always prefer tabs; it is restored right after, because the window is
+        /// entitled to be merged back by hand afterwards, the way Safari's own moved-out tab is.
+        if isHandoff {
+            window.tabbingMode = .disallowed
+        }
+        defer { if isHandoff { window.tabbingMode = .automatic } }
 
         if let sibling {
             let target = sibling.tabbedWindows?.last ?? sibling
