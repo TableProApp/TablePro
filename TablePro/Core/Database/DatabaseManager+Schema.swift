@@ -69,18 +69,26 @@ extension DatabaseManager {
             )
         }
 
-        try await withScopedDriver(scope: scope, route: route, cancellation: .protectedWrite) { driver in
+        let executionTimes: [TimeInterval] = try await withScopedDriver(
+            scope: scope,
+            route: route,
+            cancellation: .protectedWrite
+        ) { driver in
             let useTransaction = driver.supportsTransactions
             if useTransaction {
                 try await driver.beginTransaction(mode: schemaKind.declaresWrite ? .readWrite : .serverDefault)
             }
             do {
+                var measured: [TimeInterval] = []
                 for stmt in statements {
+                    let startedAt = Date()
                     _ = try await driver.execute(query: stmt.sql)
+                    measured.append(Date().timeIntervalSince(startedAt))
                 }
                 if useTransaction {
                     try await driver.commitTransaction()
                 }
+                return measured
             } catch {
                 if useTransaction {
                     do {
@@ -93,14 +101,20 @@ extension DatabaseManager {
             }
         }
 
-        for stmt in statements {
-            QueryHistoryManager.shared.recordQuery(
-                query: stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";",
-                connectionId: scope.connectionId,
-                databaseName: scope.database,
-                executionTime: 0,
-                rowCount: 0,
-                wasSuccessful: true
+        let databaseTypeForHistory = databaseType
+        for (index, stmt) in statements.enumerated() {
+            await historyRecorder.record(
+                QueryHistoryRecordRequest(
+                    query: stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";",
+                    connectionId: scope.connectionId,
+                    databaseName: scope.database,
+                    databaseType: databaseTypeForHistory,
+                    schemaName: scope.schema,
+                    source: .structureDDL,
+                    executionTime: executionTimes.indices.contains(index) ? executionTimes[index] : 0,
+                    rowCount: -1,
+                    wasSuccessful: true
+                )
             )
         }
 

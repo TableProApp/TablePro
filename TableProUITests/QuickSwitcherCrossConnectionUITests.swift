@@ -3,11 +3,22 @@ import XCTest
 final class QuickSwitcherCrossConnectionUITests: UITestCase {
     func testConnectionsScopeSearchesTheOpenSampleDatabase() throws {
         let app = try launchWithSampleDatabase()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        /// The sample opens a table tab, and the switcher shortcut is sent to an app that is still
+        /// connecting and loading if the test does not wait for that to finish. The grid appearing
+        /// is the signal, and waiting for the window alone is not: the window exists immediately.
+        /// This test passed locally and lost the keystroke on the slower CI runner without it.
+        XCTAssertTrue(
+            app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
+                .waitForExistence(timeout: 30)
+        )
 
+        /// The switcher is a floating panel, and on the CI runner the shortcut produced nothing
+        /// while the grid was loaded and focused. Activating first makes the app frontmost before
+        /// the key goes out, which is the one difference between here and a developer's machine.
+        app.activate()
         app.typeKey("o", modifierFlags: [.command, .shift])
         let searchField = app.textFields["quick-switcher-search-field"]
-        XCTAssertTrue(searchField.waitForExistence(timeout: 10))
+        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
 
         app.typeKey("5", modifierFlags: .command)
         XCTAssertTrue(app.buttons["Connections"].waitForExistence(timeout: 5))

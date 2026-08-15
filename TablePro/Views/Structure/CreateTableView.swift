@@ -35,6 +35,8 @@ struct CreateTableView: View {
     var coordinator: MainContentCoordinator?
     let selectionState: GridSelectionState
 
+    @Environment(\.appServices) private var services
+
     @State private var structureChangeManager: StructureChangeManager
     @State private var wrappedChangeManager: AnyChangeManager
     @State private var tableName = ""
@@ -404,15 +406,20 @@ struct CreateTableView: View {
                     return
                 }
 
+                let startedAt = Date()
                 _ = try await driver.execute(query: sql)
 
-                QueryHistoryManager.shared.recordQuery(
-                    query: sql,
-                    connectionId: connection.id,
-                    databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
-                    executionTime: 0,
-                    rowCount: 0,
-                    wasSuccessful: true
+                await services.queryHistoryManager.record(
+                    QueryHistoryRecordRequest(
+                        query: sql,
+                        connectionId: connection.id,
+                        databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                        databaseType: connection.type,
+                        source: .structureDDL,
+                        executionTime: Date().timeIntervalSince(startedAt),
+                        rowCount: -1,
+                        wasSuccessful: true
+                    )
                 )
 
                 if let coordinator {

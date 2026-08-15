@@ -197,6 +197,8 @@ struct QuickSwitcherViewModelTests {
             query: "SELECT * FROM events",
             connectionId: remoteConnection.id,
             databaseName: "reporting",
+            databaseType: .postgresql,
+            source: .editor,
             executionTime: 0.025,
             rowCount: 12,
             wasSuccessful: true
@@ -205,12 +207,14 @@ struct QuickSwitcherViewModelTests {
             query: "DELETE FROM audit_log",
             connectionId: inactiveConnection.id,
             databaseName: "archive",
+            databaseType: .postgresql,
+            source: .editor,
             executionTime: 1,
             rowCount: 1,
             wasSuccessful: true
         )
-        #expect(await historyStorage.addHistory(remoteHistory))
-        #expect(await historyStorage.addHistory(inactiveHistory))
+        #expect(await historyStorage.record(remoteHistory))
+        #expect(await historyStorage.record(inactiveHistory))
 
         let vm = makeViewModel(
             items: [QuickSwitcherItem(id: "stale", name: "stale", kind: .queryHistory, subtitle: "")],
@@ -949,6 +953,8 @@ struct QuickSwitcherViewModelTests {
                 query: "SELECT \(index)",
                 connectionId: busy,
                 databaseName: "app",
+                databaseType: .postgresql,
+                source: .editor,
                 executedAt: now.addingTimeInterval(-Double(index)),
                 executionTime: 0.01,
                 rowCount: 1,
@@ -960,6 +966,8 @@ struct QuickSwitcherViewModelTests {
                 query: "SELECT yesterday",
                 connectionId: quiet,
                 databaseName: "warehouse",
+                databaseType: .postgresql,
+                source: .editor,
                 executedAt: now.addingTimeInterval(-86_400),
                 executionTime: 0.01,
                 rowCount: 1,

@@ -21,6 +21,11 @@ private struct TabLoadKey: Hashable {
 }
 
 struct MainEditorContentView: View {
+    /// A query tab nests its own editor/results split, whose two minimums are required constraints.
+    /// The drawer's own minimum has to clear their sum, or dragging the drawer down asks AppKit to
+    /// satisfy a height the content it contains cannot reach.
+    static let tabContentMinimumHeight = VerticalCollapsibleSplitView<EmptyView, EmptyView>.combinedMinimumThickness
+
     // MARK: - Dependencies
 
     var tabManager: QueryTabManager
@@ -79,23 +84,29 @@ struct MainEditorContentView: View {
     // MARK: - Body
 
     var body: some View {
-        let isHistoryVisible = coordinator.toolbarState.isHistoryPanelVisible
+        @Bindable var historyState = HistoryPanelState.forConnection(connectionId)
 
-        VStack(spacing: 0) {
-            // Native macOS window tabs replace the custom tab bar.
-            // Each window-tab contains a single tab — no ZStack keep-alive needed.
-            if let tab = tabManager.selectedTab {
-                tabContent(for: tab)
-            } else {
-                emptyStateView
-            }
-
-            if isHistoryVisible {
-                Divider()
+        VerticalCollapsibleSplitView(
+            isBottomCollapsed: Binding(
+                get: { !historyState.isVisible },
+                set: { historyState.isVisible = !$0 }
+            ),
+            autosaveName: "HistoryDrawer-\(connectionId)",
+            topMinimumThickness: Self.tabContentMinimumHeight,
+            bottomMinimumThickness: 180,
+            topContent: {
+                // Native macOS window tabs replace the custom tab bar.
+                // Each window-tab contains a single tab, so no ZStack keep-alive is needed.
+                if let tab = tabManager.selectedTab {
+                    tabContent(for: tab)
+                } else {
+                    emptyStateView
+                }
+            },
+            bottomContent: {
                 HistoryPanelView(connectionId: connectionId)
-                    .frame(height: 300)
             }
-        }
+        )
         .background(.background)
         .sheet(item: Binding(
             get: { coordinator.favoriteDialogQuery },
@@ -339,7 +350,7 @@ struct MainEditorContentView: View {
     private func queryTabContent(tab: QueryTab) -> some View {
         @Bindable var bindableCoordinator = coordinator
         let claimFocus = coordinator.tabManager.pendingFocusTabId == tab.id
-        QuerySplitView(
+        VerticalCollapsibleSplitView(
             isBottomCollapsed: Binding(
                 get: { tab.display.isResultsCollapsed },
                 set: { collapsed in

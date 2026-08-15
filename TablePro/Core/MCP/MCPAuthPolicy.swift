@@ -28,13 +28,18 @@ public actor MCPAuthPolicy {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPAuthPolicy")
 
     private let connectionResolver: MCPConnectionSnapshotResolver
+    private let historyRecorder: QueryHistoryRecording
 
     public init() {
         self.init(connectionResolver: MCPAuthPolicy.defaultConnectionResolver)
     }
 
-    init(connectionResolver: @escaping MCPConnectionSnapshotResolver) {
+    init(
+        connectionResolver: @escaping MCPConnectionSnapshotResolver,
+        historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
+    ) {
         self.connectionResolver = connectionResolver
+        self.historyRecorder = historyRecorder
     }
 
     private var sessionApprovals: [String: Set<UUID>] = [:]
@@ -94,6 +99,22 @@ public actor MCPAuthPolicy {
         }
 
         return .allowed
+    }
+
+    /// An aggregate read spans connections, so it cannot prompt for one that asks each time. It
+    /// answers the narrower question every per-connection check already asks: may this principal
+    /// see this connection at all. Anything it excludes is a connection the client could not have
+    /// named directly either.
+    func readableConnectionIds(principal: MCPPrincipal, from candidates: Set<UUID>) async -> Set<UUID> {
+        var readable: Set<UUID> = []
+        for candidate in candidates {
+            guard let snapshot = await connectionResolver(candidate) else { continue }
+            guard snapshot.policy != .never else { continue }
+            guard snapshot.externalAccess != .blocked else { continue }
+            guard principal.connectionAccess.allows(candidate) else { continue }
+            readable.insert(candidate)
+        }
+        return readable
     }
 
     func resolveAndAuthorize(
@@ -181,17 +202,21 @@ public actor MCPAuthPolicy {
         }
         guard shouldLog else { return }
 
-        let entry = QueryHistoryEntry(
-            query: sql,
-            connectionId: connectionId,
-            databaseName: databaseName,
-            executionTime: executionTime,
-            rowCount: rowCount,
-            wasSuccessful: wasSuccessful,
-            errorMessage: errorMessage
-        )
+        let databaseType = await connectionResolver(connectionId)?.databaseType ?? ""
 
-        _ = await QueryHistoryManager.shared.addHistory(entry)
+        await historyRecorder.record(
+            QueryHistoryRecordRequest(
+                query: sql,
+                connectionId: connectionId,
+                databaseName: databaseName,
+                databaseType: DatabaseType(rawValue: databaseType),
+                source: .mcp,
+                executionTime: executionTime,
+                rowCount: rowCount,
+                wasSuccessful: wasSuccessful,
+                errorMessage: errorMessage
+            )
+        )
     }
 
     private func runApprovalDedup(

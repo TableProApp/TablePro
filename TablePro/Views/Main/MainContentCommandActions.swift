@@ -949,7 +949,9 @@ final class MainContentCommandActions {
     // MARK: - UI Operations (Group A — Called Directly)
 
     func toggleHistoryPanel() {
-        coordinator?.toolbarState.isHistoryPanelVisible.toggle()
+        guard let connectionId = coordinator?.connectionId else { return }
+        let state = HistoryPanelState.forConnection(connectionId)
+        state.isVisible.toggle()
     }
 
     func toggleRightSidebar() {

@@ -32,6 +32,7 @@ internal class UITestCase: XCTestCase {
     /// Terminating before removing the directory matters: the app writes on the way down, and a
     /// directory deleted underneath it would let those writes fail into somewhere unexamined.
     override internal func tearDownWithError() throws {
+        attachElementTreeIfFailed()
         for app in launchedApps where app.state != .notRunning {
             app.terminate()
         }
@@ -43,6 +44,20 @@ internal class UITestCase: XCTestCase {
         }
         sandboxRoot = nil
         try super.tearDownWithError()
+    }
+
+    /// A UI test that fails only on CI is undiagnosable from a log line: the assertion says what
+    /// was not found, never what was there instead. The tree is captured here so the result bundle
+    /// the workflow already uploads carries it, which is the difference between reading a runner
+    /// failure and guessing at it.
+    private func attachElementTreeIfFailed() {
+        guard let run = testRun, run.failureCount + run.unexpectedExceptionCount > 0 else { return }
+        for (index, app) in launchedApps.enumerated() {
+            let attachment = XCTAttachment(string: app.debugDescription)
+            attachment.name = "element-tree-\(index)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
     }
 
     internal func launchApp() throws -> XCUIApplication {

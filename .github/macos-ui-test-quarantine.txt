@@ -4,9 +4,4 @@
 #
 # Each entry needs a reason and, where known, what would take it off the list.
 
-# Passes locally on macOS 27 and fails on the macos-26 runner on both the first run and the
-# retry, so it is a real difference in what that OS build exposes rather than a flake. The
-# accessibility tree of the failing runner has not been captured yet, so the cause is unknown
-# and guessing at it would be worse than skipping it. Take this off the list once a runner
-# result bundle has been read.
-QuickSwitcherCrossConnectionUITests/testConnectionsScopeSearchesTheOpenSampleDatabase
+# (empty)

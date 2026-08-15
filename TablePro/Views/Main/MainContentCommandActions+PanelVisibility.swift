@@ -14,7 +14,8 @@ extension MainContentCommandActions {
     }
 
     var isQueryHistoryVisible: Bool {
-        coordinator?.toolbarState.isHistoryPanelVisible ?? false
+        guard let connectionId = coordinator?.connectionId else { return false }
+        return HistoryPanelState.forConnection(connectionId).isVisible
     }
 
     var isResultsVisible: Bool {

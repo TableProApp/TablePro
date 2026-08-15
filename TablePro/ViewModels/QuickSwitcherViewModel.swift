@@ -237,16 +237,16 @@ internal final class QuickSwitcherViewModel {
             ))
         }
 
-        let historyEntries = await services.queryHistoryManager.fetchHistory(
-            limit: 50,
-            connectionId: connectionId
-        )
-        for entry in historyEntries {
+        let historyEntries = await services.queryHistoryManager.fetch(
+            QueryHistoryFilter(scope: .connection(connectionId), sources: QueryHistorySource.userAuthored),
+            limit: 200
+        ).entries
+        for entry in Self.distinctByQuery(historyEntries).prefix(50) {
             items.append(QuickSwitcherItem(
                 id: "history_\(entry.id.uuidString)",
                 name: entry.queryPreview,
                 kind: .queryHistory,
-                subtitle: entry.databaseName,
+                subtitle: entry.databaseDisplayName,
                 payload: entry.query
             ))
         }
@@ -354,7 +354,10 @@ internal final class QuickSwitcherViewModel {
         let perConnection = await withTaskGroup(of: [QueryHistoryEntry].self) { group in
             for id in connectionIds {
                 group.addTask {
-                    await manager.fetchHistory(limit: limit, connectionId: id)
+                    await manager.fetch(
+                        QueryHistoryFilter(scope: .connection(id), sources: QueryHistorySource.userAuthored),
+                        limit: limit
+                    ).entries
                 }
             }
             var collected: [[QueryHistoryEntry]] = []
@@ -506,7 +509,7 @@ internal final class QuickSwitcherViewModel {
             )
         }
 
-        let historyItems = historyEntries.compactMap { entry -> QuickSwitcherItem? in
+        let historyItems = distinctByQuery(historyEntries).compactMap { entry -> QuickSwitcherItem? in
             guard let baseTarget = targets[entry.connectionId] else { return nil }
             let databaseName = entry.databaseName.isEmpty ? nil : entry.databaseName
             let target = QuickSwitcherTarget(
@@ -523,7 +526,10 @@ internal final class QuickSwitcherViewModel {
                 id: "history_\(entry.id.uuidString)",
                 name: entry.queryPreview,
                 kind: .queryHistory,
-                subtitle: [connectionPath(for: target), entry.formattedExecutionTime]
+                subtitle: [
+                    connectionPath(for: target),
+                    entry.hasMeasuredDuration ? entry.formattedExecutionTime : ""
+                ]
                     .filter { !$0.isEmpty }
                     .joined(separator: " · "),
                 payload: entry.query,
@@ -531,7 +537,36 @@ internal final class QuickSwitcherViewModel {
             )
         }
 
-        return Array((favoriteItems + historyItems).prefix(QuickSwitcherRanking.maxResults))
+        return interleaveToCap(favoriteItems, historyItems, cap: QuickSwitcherRanking.maxResults)
+    }
+
+    /// The switcher is a recall list, so one statement run twenty times is one thing to recall.
+    /// Every execution stays in history; only the list collapses them, keeping the most recent.
+    nonisolated static func distinctByQuery(_ entries: [QueryHistoryEntry]) -> [QueryHistoryEntry] {
+        var seen: Set<String> = []
+        var distinct: [QueryHistoryEntry] = []
+        for entry in entries {
+            let key = entry.query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty, seen.insert(key).inserted else { continue }
+            distinct.append(entry)
+        }
+        return distinct
+    }
+
+    /// Concatenating and truncating let a long favourites list push recent queries out of the
+    /// panel entirely. Each source keeps its own half of the cap and only lends what it does
+    /// not use.
+    nonisolated static func interleaveToCap(
+        _ favorites: [QuickSwitcherItem],
+        _ history: [QuickSwitcherItem],
+        cap: Int
+    ) -> [QuickSwitcherItem] {
+        guard favorites.count + history.count > cap else { return favorites + history }
+
+        let share = cap / 2
+        let favoriteCount = min(favorites.count, max(share, cap - history.count))
+        let historyCount = min(history.count, cap - favoriteCount)
+        return Array(favorites.prefix(favoriteCount)) + Array(history.prefix(historyCount))
     }
 
     func canOpenStructure(_ item: QuickSwitcherItem) -> Bool {
