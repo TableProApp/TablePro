@@ -40,12 +40,10 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
         selectRootRow()
     }
 
+    /// Only ever drives the selection forward. A nil never clears the row, because the parent's
+    /// binding starts nil and would otherwise wipe the root selection made on first load.
     func select(nodeId: UUID?) {
-        guard let outlineView else { return }
-        guard let nodeId, let node = find(nodeId, in: root) else {
-            outlineView.deselectAll(nil)
-            return
-        }
+        guard let outlineView, let nodeId, let node = find(nodeId, in: root) else { return }
         let row = outlineView.row(forItem: node)
         guard row >= 0 else { return }
         guard outlineView.selectedRow != row else { return }
@@ -184,9 +182,16 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
 
     // MARK: - Private
 
+    /// Publishing the root selection is deferred, because the first update runs while SwiftUI is
+    /// building the view and a binding written there is dropped.
     private func selectRootRow() {
         guard let outlineView, outlineView.numberOfRows > 0 else { return }
         outlineView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+
+        let rootId = selectedNodeId
+        Task { @MainActor [weak self] in
+            self?.onSelect(rootId)
+        }
     }
 
     private func find(_ id: UUID, in node: QueryPlanOutlineNode?) -> QueryPlanOutlineNode? {
