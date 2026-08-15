@@ -30,6 +30,13 @@ final class ResultSet: Identifiable {
     var pagination = PaginationState()
     var columnLayout = ColumnLayoutState()
 
+    /// An EXPLAIN result is a result set like any other, so it rides the same tab strip, pinning
+    /// and history. It carries a plan instead of rows.
+    var queryPlan: QueryPlan?
+    var explainRawText: String?
+
+    var isExplainResult: Bool { explainRawText != nil }
+
     var resultColumns: [String] { tableRows.columns }
 
     init(id: UUID = UUID(), label: String, tableRows: TableRows = TableRows()) {

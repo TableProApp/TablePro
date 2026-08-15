@@ -141,9 +141,12 @@ extension MainContentCoordinator {
                         tab.execution.rowsAffected = 0
                         tab.execution.statusMessage = nil
                         tab.execution.lastExecutedAt = Date()
-                        tab.display.explainText = rawText
-                        tab.display.explainPlan = plan
-                        tab.display.explainExecutionTime = fetchResult.executionTime
+                        tab.display.replaceUnpinnedResults(
+                            with: [ExplainResultSetFactory.make(
+                                rawText: rawText, plan: plan, sql: request.sql,
+                                executionTime: fetchResult.executionTime
+                            )]
+                        )
                         if tab.display.isResultsCollapsed {
                             tab.display.isResultsCollapsed = false
                         }

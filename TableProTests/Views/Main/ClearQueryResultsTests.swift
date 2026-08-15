@@ -73,20 +73,22 @@ struct ClearQueryResultsTests {
 
         coordinator.tabManager.addTab(databaseName: "db")
         let index = try #require(coordinator.tabManager.selectedTabIndex)
+        let plan = ExplainResultSetFactory.make(
+            rawText: "Seq Scan on orders", plan: nil, sql: "EXPLAIN SELECT 1", executionTime: 0.4
+        )
         coordinator.tabManager.mutate(at: index) { tab in
-            tab.display.explainText = "Seq Scan on orders"
-            tab.display.explainExecutionTime = 0.4
+            tab.display.resultSets = [plan]
+            tab.display.activeResultSetId = plan.id
         }
 
         coordinator.clearActiveQueryResults()
 
         let tab = try #require(coordinator.tabManager.selectedTab)
-        #expect(tab.display.explainText == nil)
-        #expect(tab.display.explainPlan == nil)
-        #expect(tab.display.explainExecutionTime == nil)
+        #expect(tab.display.resultSets.isEmpty)
+        #expect(tab.display.activeExplainResult == nil)
     }
 
-    @Test("Clearing results drops a query plan even when a pinned result survives")
+    @Test("Clearing results drops an unpinned plan but keeps a pinned result")
     @MainActor
     func clearDropsExplainResultWithPinnedResults() throws {
         let coordinator = Self.makeCoordinator()
@@ -98,17 +100,19 @@ struct ClearQueryResultsTests {
 
         let pinned = ResultSet(label: "Result 1")
         pinned.isPinned = true
+        let plan = ExplainResultSetFactory.make(
+            rawText: "Seq Scan on orders", plan: nil, sql: "EXPLAIN SELECT 1", executionTime: 0.4
+        )
         coordinator.tabManager.mutate(at: index) { tab in
-            tab.display.resultSets = [pinned]
-            tab.display.activeResultSetId = pinned.id
-            tab.display.explainText = "Seq Scan on orders"
+            tab.display.resultSets = [pinned, plan]
+            tab.display.activeResultSetId = plan.id
         }
 
         coordinator.clearActiveQueryResults()
 
         let tab = try #require(coordinator.tabManager.selectedTab)
-        #expect(tab.display.explainText == nil)
-        #expect(tab.display.resultSets.count == 1)
+        #expect(tab.display.resultSets.map(\.id) == [pinned.id])
+        #expect(tab.display.activeExplainResult == nil)
         #expect(tabId == tab.id)
     }
 

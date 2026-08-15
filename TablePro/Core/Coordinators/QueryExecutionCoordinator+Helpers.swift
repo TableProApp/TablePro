@@ -250,9 +250,11 @@ extension QueryExecutionCoordinator {
             tab.execution.rowsAffected = 0
             tab.execution.statusMessage = nil
             tab.execution.lastExecutedAt = Date()
-            tab.display.explainText = planText
-            tab.display.explainPlan = plan
-            tab.display.explainExecutionTime = executionTime
+            tab.display.replaceUnpinnedResults(
+                with: [ExplainResultSetFactory.make(
+                    rawText: planText, plan: plan, sql: sql, executionTime: executionTime
+                )]
+            )
             if tab.display.isResultsCollapsed {
                 tab.display.isResultsCollapsed = false
             }

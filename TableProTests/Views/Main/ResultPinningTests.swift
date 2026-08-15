@@ -226,19 +226,16 @@ struct ResultPinningTests {
         let result = Self.makeResultSet(label: "Result")
 
         for mode in [ResultsViewMode.data, .json, .structure] {
-            for explainText in [nil, "plan"] as [String?] {
-                coordinator.tabManager.mutate(at: index) { tab in
-                    tab.display.resultSets = [result]
-                    tab.display.activeResultSetId = result.id
-                    tab.display.resultsViewMode = mode
-                    tab.display.explainText = explainText
-                }
-                let tab = try #require(coordinator.tabManager.selectedTab)
-                #expect(
-                    coordinator.canPinActiveResultSet
-                        == ResultTabBarPolicy.canPin(tabType: tab.tabType, display: tab.display)
-                )
+            coordinator.tabManager.mutate(at: index) { tab in
+                tab.display.resultSets = [result]
+                tab.display.activeResultSetId = result.id
+                tab.display.resultsViewMode = mode
             }
+            let tab = try #require(coordinator.tabManager.selectedTab)
+            #expect(
+                coordinator.canPinActiveResultSet
+                    == ResultTabBarPolicy.canPin(tabType: tab.tabType, display: tab.display)
+            )
         }
     }
 

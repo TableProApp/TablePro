@@ -26,6 +26,12 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
         bottomItem.canCollapse = true
         bottomItem.minimumThickness = 150
 
+        // Without this the hosting controllers report their content's ideal size as a
+        // preferredContentSize, which this split view forwards to the window: wide results
+        // content then outranks a divider drag and the editor/results divider stops moving.
+        topController.sizingOptions = []
+        bottomController.sizingOptions = []
+
         splitViewController.addSplitViewItem(topItem)
         splitViewController.addSplitViewItem(bottomItem)
 

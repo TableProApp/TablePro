@@ -1068,7 +1068,6 @@ final class MainContentCoordinator {
         tabManager.mutate(at: index) { tab in
             tab.execution.executionTime = nil
             tab.execution.errorMessage = nil
-            tab.display.clearExplainResult()
         }
         let tab = tabManager.tabs[index]
         toolbarState.setExecuting(true)

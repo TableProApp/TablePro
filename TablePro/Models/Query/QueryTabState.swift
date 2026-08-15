@@ -461,9 +461,6 @@ struct TabQueryContent: Equatable {
 struct TabDisplayState: Equatable {
     var resultsViewMode: ResultsViewMode = .data
     var erDiagramSchemaKey: String?
-    var explainText: String?
-    var explainExecutionTime: TimeInterval?
-    var explainPlan: QueryPlan?
     var isResultsCollapsed: Bool = false
     var resultSets: [ResultSet] = []
     var activeResultSetId: UUID?
@@ -487,10 +484,10 @@ struct TabDisplayState: Equatable {
         activeResultSetId = resultSets.last?.id
     }
 
-    mutating func clearExplainResult() {
-        explainText = nil
-        explainPlan = nil
-        explainExecutionTime = nil
+    @MainActor
+    var activeExplainResult: ResultSet? {
+        guard let activeResultSet, activeResultSet.isExplainResult else { return nil }
+        return activeResultSet
     }
 
     @MainActor

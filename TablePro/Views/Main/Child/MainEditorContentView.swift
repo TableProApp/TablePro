@@ -555,12 +555,16 @@ struct MainEditorContentView: View {
                 )
                 .id(tab.id)
             case .data:
-                if let explainText = tab.display.explainText {
-                    ExplainResultView(text: explainText, executionTime: tab.display.explainExecutionTime, plan: tab.display.explainPlan)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    resultTabBarSection(tab: tab)
+                resultTabBarSection(tab: tab)
 
+                if let explain = tab.display.activeExplainResult {
+                    QueryPlanResultView(
+                        rawText: explain.explainRawText ?? "",
+                        executionTime: explain.executionTime,
+                        plan: explain.queryPlan
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
                     let resolvedRows = resolvedTableRows(for: tab)
                     if let rs = tab.display.activeResultSet, rs.resultColumns.isEmpty,
                        rs.errorMessage == nil, tab.execution.lastExecutedAt != nil,
@@ -613,7 +617,7 @@ struct MainEditorContentView: View {
                 }
             }
 
-            if tab.display.explainText == nil {
+            if tab.display.activeExplainResult == nil {
                 Divider()
                 statusBar(tab: tab)
             }
