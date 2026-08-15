@@ -68,6 +68,13 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
         outlineView.doubleAction = #selector(DatabaseTreeOutlineCoordinator.handleDoubleClick)
         outlineView.selectionClearing = context.coordinator
 
+        /// The menu hangs off the table, not off the row's hosted view, so `NSTableView`'s own
+        /// secondary-click handling runs: it sets `clickedRow`, draws the clicked-row highlight, and
+        /// answers a right-click in the empty area below the last row.
+        let menu = NSMenu()
+        menu.delegate = context.coordinator
+        outlineView.menu = menu
+
         context.coordinator.attach(outlineView: outlineView)
         context.coordinator.update(from: self)
 

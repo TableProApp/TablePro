@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Select several databases or schemas in the sidebar tree and act on them at once: drop, refresh, copy names, or export. Shift-click and Cmd-click extend the selection.
 - The sidebar now follows Sidebar icon size in System Settings > Appearance, so it matches Finder and Mail. A Row Size control in General settings and in the sidebar's View Options menu overrides it when you want to fit more objects on screen.
 - Add to Favorites is now in the sidebar's right-click menu, so it no longer needs a hover to reach.
+- Right-clicking a row in the object list now highlights the row the menu will act on, the way Finder does. Right-clicking the empty space below the list gives a menu too, which is also how View Options stays reachable when the list is empty, loading or failed.
 - The database switcher takes a multiple selection too, with the same actions on the right-click menu.
 - Drop Schema for PostgreSQL, SQL Server and SurrealDB.
 - Quick Switcher can search tables and views across every open connection.

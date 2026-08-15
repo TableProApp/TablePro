@@ -49,23 +49,3 @@ struct RoutineRowView: View {
         .help(RoutineRowLogic.tooltip(for: routine) ?? routine.name)
     }
 }
-
-struct RoutineContextMenu: View {
-    let routine: RoutineInfo
-    let onShowDDL: (RoutineInfo) -> Void
-
-    var body: some View {
-        Button(String(localized: "Copy Name")) {
-            ClipboardService.shared.writeText(routine.name)
-        }
-        if let signature = routine.signature, !signature.isEmpty {
-            Button(String(localized: "Copy with Signature")) {
-                ClipboardService.shared.writeText("\(routine.name)\(signature)")
-            }
-        }
-        Divider()
-        Button(String(localized: "Show DDL")) {
-            onShowDDL(routine)
-        }
-    }
-}

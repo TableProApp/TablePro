@@ -24,7 +24,7 @@ struct DatabaseTreeTableRef: Hashable, Identifiable {
     }
 }
 
-struct DatabaseTreeRoutineRef: Identifiable {
+struct DatabaseTreeRoutineRef: Identifiable, Equatable {
     let database: String
     let schema: String?
     let routine: RoutineInfo
