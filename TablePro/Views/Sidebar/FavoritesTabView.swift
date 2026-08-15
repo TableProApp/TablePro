@@ -623,19 +623,26 @@ internal struct FavoritesTabView: View {
             guard response == .OK, let url = panel.url else { return }
             let path = PathPortability.contractHome(url.path)
             let existing = LinkedSQLFolderStorage.shared.loadFolders()
-            guard !existing.contains(where: { $0.path == path }) else {
-                AlertHelper.showInfoSheet(
-                    title: String(localized: "This folder is already linked"),
-                    message: String(
-                        format: String(localized: "%@ is already in the favorites list."),
-                        url.lastPathComponent
-                    ),
-                    window: window
-                )
+            guard let linked = existing.first(where: { $0.path == path }) else {
+                LinkedSQLFolderStorage.shared.addFolder(LinkedSQLFolder(path: path))
+                SQLFolderWatcher.shared.reload()
                 return
             }
-            LinkedSQLFolderStorage.shared.addFolder(LinkedSQLFolder(path: path))
-            SQLFolderWatcher.shared.reload()
+            guard linked.isEnabled else {
+                var reEnabled = linked
+                reEnabled.isEnabled = true
+                LinkedSQLFolderStorage.shared.updateFolder(reEnabled)
+                SQLFolderWatcher.shared.reload()
+                return
+            }
+            AlertHelper.showInfoSheet(
+                title: String(localized: "This folder is already linked"),
+                message: String(
+                    format: String(localized: "%@ is already in the favorites list."),
+                    url.lastPathComponent
+                ),
+                window: window
+            )
         }
     }
 }

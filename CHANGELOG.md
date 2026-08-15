@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Nodes in a plan whose root reports no cost are no longer all painted red.
 - PostgreSQL enum columns whose type lives in another schema now show their values instead of a plain text box.
 - Refreshing a database or schema from the sidebar no longer empties it. The tables and routines stayed on screen only until the refresh started, then came back when it finished, and a refresh that failed left an error where they had been.
+- Disabling a linked SQL folder no longer makes it disappear with no way back. It stays in the sidebar, marked disabled, so you can enable it again. Choosing the same folder from Add Linked SQL Folder now re-enables it instead of reporting that it is already linked.
 
 - Select several databases or schemas in the sidebar tree and act on them at once: drop, refresh, copy names, or export. Shift-click and Cmd-click extend the selection.
 - The database switcher takes a multiple selection too, with the same actions on the right-click menu.

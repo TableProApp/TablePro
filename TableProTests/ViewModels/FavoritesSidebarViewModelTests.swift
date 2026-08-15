@@ -46,6 +46,29 @@ struct FavoriteNodeTests {
         #expect(node.id == "folder-\(folder.id)")
     }
 
+    // MARK: - Disabled linked folders
+
+    @Test("A disabled linked folder keeps a row so its Enable command stays reachable")
+    func disabledLinkedFolderIsALeafRow() {
+        let folder = LinkedSQLFolder(path: "~/queries")
+        let node = FavoriteNode.disabledLinkedFolder(folder)
+
+        #expect(node.asLinkedFolder?.id == folder.id)
+        #expect(node.isFolder == false)
+    }
+
+    @Test("Enabling a linked folder does not change its node ID")
+    func disabledLinkedFolderKeepsItsIdentity() {
+        var folder = LinkedSQLFolder(path: "~/queries")
+        folder.isEnabled = false
+        let disabled = FavoriteNode.disabledLinkedFolder(folder)
+
+        folder.isEnabled = true
+        let enabled = FavoriteNode.linkedFolder(folder, children: [])
+
+        #expect(disabled.id == enabled.id)
+    }
+
     // MARK: - collectFavorites
 
     @Test("collectFavorites from flat list")
