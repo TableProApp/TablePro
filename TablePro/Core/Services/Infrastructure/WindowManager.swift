@@ -89,52 +89,32 @@ internal final class WindowManager {
         return host.workspaces.count > 1
     }
 
+    /// Removing and inserting both move the registry's selection, and the registry is what tells the
+    /// window to repaint. Repainting here as well ran the whole switch twice for one action.
     internal func moveToNewWindow(connectionId: UUID) {
         guard canMoveToNewWindow(connectionId: connectionId),
               let host = hosts().first(where: { $0.workspaces.contains(connectionId) }),
               let workspace = host.workspaces.remove(connectionId) else { return }
-        host.applySelectedWorkspace()
 
         let payload = EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
         ConnectionWorkspaceHandoff.register(workspace, for: payload.id)
-        openInNewWindow(payload: payload, activate: true, autoConnect: false, isHandoff: true)
+        openStandaloneWindow(payload: payload)
 
         /// The new window consumes the handoff while it builds. Anything still pending means it
         /// never got there, and the connection would otherwise be hosted by no window at all.
         if let stranded = ConnectionWorkspaceHandoff.reclaim(for: payload.id) {
             host.workspaces.insert(stranded)
-            host.applySelectedWorkspace()
         }
     }
 
-    private func openInNewWindow(
+    private func buildWindow(
         payload: EditorTabPayload,
-        activate: Bool,
-        autoConnect: Bool,
-        isHandoff: Bool = false
-    ) {
-        let t0 = Date()
-        Self.lifecycleLogger.info(
-            "[open] WindowManager.openTab start payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) intent=\(String(describing: payload.intent), privacy: .public) skipAutoExecute=\(payload.skipAutoExecute) activate=\(activate)"
-        )
-
-        let resolvedConnection = DatabaseManager.shared.activeSessions[payload.connectionId]?.connection
-        let preCreatedSessionState: SessionStateFactory.SessionState?
-        /// A handoff brings its own state. Building a second one here would register it pending and
-        /// leave it there, holding a coordinator for a connection that already has one.
-        if isHandoff {
-            preCreatedSessionState = nil
-        } else if let resolvedConnection {
-            let state = SessionStateFactory.create(connection: resolvedConnection, payload: payload)
-            SessionStateFactory.registerPending(state, for: payload.id)
-            preCreatedSessionState = state
-        } else {
-            preCreatedSessionState = nil
-        }
-
+        sessionState: SessionStateFactory.SessionState?,
+        autoConnect: Bool
+    ) -> NSWindow? {
         let controller = TabWindowController(
             payload: payload,
-            sessionState: preCreatedSessionState,
+            sessionState: sessionState,
             autoConnect: autoConnect
         )
         guard let window = controller.window else {
@@ -142,27 +122,55 @@ internal final class WindowManager {
                 "[open] WindowManager.openTab failed: controller has no window payloadId=\(payload.id, privacy: .public)"
             )
             SessionStateFactory.removePending(for: payload.id)
-            return
+            return nil
+        }
+        retain(controller: controller, window: window)
+        return window
+    }
+
+    /// A connection moved out of a shared window lands in a window of its own.
+    ///
+    /// It shares only the building with `openInNewWindow`, never the presentation: that one joins
+    /// the existing tab group on purpose, which is what made Open in New Window produce a second
+    /// native tab of the very window it was asked to leave. It also brings its own session state,
+    /// so nothing is built for it here.
+    private func openStandaloneWindow(payload: EditorTabPayload) {
+        guard let window = buildWindow(payload: payload, sessionState: nil, autoConnect: false) else { return }
+
+        /// The system preference can tab a window on its own, without anyone asking AppKit to.
+        /// Refused for the moment the window is placed, then allowed again, because a window moved
+        /// out by hand is still entitled to be merged back by hand.
+        window.tabbingMode = .disallowed
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window.tabbingMode = .automatic
+    }
+
+    private func openInNewWindow(payload: EditorTabPayload, activate: Bool, autoConnect: Bool) {
+        let t0 = Date()
+        Self.lifecycleLogger.info(
+            "[open] WindowManager.openTab start payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) intent=\(String(describing: payload.intent), privacy: .public) skipAutoExecute=\(payload.skipAutoExecute) activate=\(activate)"
+        )
+
+        let resolvedConnection = DatabaseManager.shared.activeSessions[payload.connectionId]?.connection
+        var preCreatedSessionState: SessionStateFactory.SessionState?
+        if let resolvedConnection {
+            let state = SessionStateFactory.create(connection: resolvedConnection, payload: payload)
+            SessionStateFactory.registerPending(state, for: payload.id)
+            preCreatedSessionState = state
         }
 
-        retain(controller: controller, window: window)
+        guard let window = buildWindow(
+            payload: payload,
+            sessionState: preCreatedSessionState,
+            autoConnect: autoConnect
+        ) else { return }
 
         // orderFront before addTabbedWindow avoids a synchronous full-tree
         // SwiftUI layout pass that adds 700-900ms per open.
-        let tabbingId = window.tabbingIdentifier ?? ""
-        let sibling = isHandoff ? nil : findSibling(tabbingIdentifier: tabbingId, excluding: window)
+        let tabbingId = window.tabbingIdentifier
 
-        /// A connection moved out of a shared window must land in a window of its own. Joining the
-        /// group here made Open in New Window produce a second native tab of the very window it was
-        /// asked to leave. `.disallowed` keeps AppKit from tabbing it anyway when the user's system
-        /// preference is to always prefer tabs; it is restored right after, because the window is
-        /// entitled to be merged back by hand afterwards, the way Safari's own moved-out tab is.
-        if isHandoff {
-            window.tabbingMode = .disallowed
-        }
-        defer { if isHandoff { window.tabbingMode = .automatic } }
-
-        if let sibling {
+        if let sibling = findSibling(tabbingIdentifier: tabbingId, excluding: window) {
             let target = sibling.tabbedWindows?.last ?? sibling
             target.addTabbedWindow(window, ordered: .above)
             if activate {
@@ -273,10 +281,10 @@ internal final class WindowManager {
             guard let removed = host.workspaces.remove(connectionId) else { continue }
             removed.teardown()
             closedAnywhere = true
+            /// No repaint here: `remove` already moved the registry's selection to a neighbour,
+            /// and that is what repaints the window.
             if host.workspaces.isEmpty {
                 window.close()
-            } else {
-                host.applySelectedWorkspace()
             }
         }
         guard closedAnywhere else { return }
