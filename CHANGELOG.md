@@ -44,8 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The favourite star in the sidebar now takes a click anywhere in its button, not only on the star itself. A near miss selected the table and opened it instead. Add to Favorites is also in the right-click menu now, so it no longer needs a hover to reach.
 - A connection dropping and reconnecting no longer reopens a sidebar you hid, or closes an inspector you opened.
 - Sidebar and inspector widths are remembered per window again. They were saved under whichever connection happened to be selected, so widths set for one connection were written under another's name.
+- The sidebar scrollers follow Show scroll bars in General settings instead of always overlaying.
+- A selected row in the Favorites list now reads correctly on the highlight. The linked file and folder icons were drawn in blue on the blue selection, and the keyword badge kept its unselected colours.
 
 - Select several databases or schemas in the sidebar tree and act on them at once: drop, refresh, copy names, or export. Shift-click and Cmd-click extend the selection.
+- The sidebar now follows Sidebar icon size in System Settings > Appearance, so it matches Finder and Mail. A Row Size control in General settings and in the sidebar's View Options menu overrides it when you want to fit more objects on screen.
+- Add to Favorites is now in the sidebar's right-click menu, so it no longer needs a hover to reach.
 - The database switcher takes a multiple selection too, with the same actions on the right-click menu.
 - Drop Schema for PostgreSQL, SQL Server and SurrealDB.
 - Quick Switcher can search tables and views across every open connection.

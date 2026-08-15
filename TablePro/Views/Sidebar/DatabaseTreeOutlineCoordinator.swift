@@ -5,6 +5,7 @@
 
 import AppKit
 import Observation
+import SwiftUI
 import TableProPluginKit
 
 @MainActor
@@ -26,6 +27,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var pendingTruncates: Set<String> = []
     private var pendingDeletes: Set<String> = []
     internal var showRecentTables = true
+    private var rowSize: SidebarRowSize = .medium
 
     internal var nodeCache: [String: DatabaseTreeNode] = [:]
     internal var childrenCache: [String: [DatabaseTreeNode]] = [:]
@@ -93,6 +95,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             || pendingTruncates != view.pendingTruncates
             || pendingDeletes != view.pendingDeletes
             || showRecentTables != view.showRecentTables
+            || rowSize != view.resolvedRowSize
 
         searchText = view.searchText
         isConnected = view.isConnected
@@ -101,6 +104,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         pendingTruncates = view.pendingTruncates
         pendingDeletes = view.pendingDeletes
         showRecentTables = view.showRecentTables
+        rowSize = view.resolvedRowSize
 
         if !hasRenderedOnce || activeChanged {
             persistActiveExpansion()
@@ -392,6 +396,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             systemSchemas: systemSchemas,
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
+            rowSize: rowSize,
             isExternalSchema: { [connectionId] database, schema in
                 ExternalSchemaTracker.shared.isExternal(
                     connectionId: connectionId,

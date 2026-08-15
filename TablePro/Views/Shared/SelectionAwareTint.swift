@@ -10,7 +10,7 @@ import SwiftUI
 /// left at the accent colour renders accent-on-accent and disappears.
 enum SelectionAwareTintResolver {
     static func color(standard: Color, prominence: BackgroundProminence) -> Color {
-        prominence == .increased ? .white : standard
+        prominence == .increased ? .emphasizedSelectionLabel : standard
     }
 }
 

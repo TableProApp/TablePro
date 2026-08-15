@@ -8,6 +8,11 @@ import SwiftUI
 import TableProPluginKit
 
 struct DatabaseTreeOutlineView: NSViewRepresentable {
+    /// The system's own sidebar row size, from System Settings > Appearance. Reading it here is
+    /// what makes a change to that setting reach the outline: SwiftUI re-runs `updateNSView` when
+    /// the environment value changes, so nothing has to be observed by hand.
+    @Environment(\.sidebarRowSize) private var systemRowSize
+
     let connectionId: UUID
     let databaseType: DatabaseType
     let coordinator: MainContentCoordinator?
@@ -24,6 +29,12 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
     let activeSchema: String?
     let selectedTables: Set<TableInfo>
     let showRecentTables: Bool
+    let rowSizePreference: SidebarRowSizePreference
+
+    /// The size the rows are actually drawn at, which is the system's unless the user overrode it.
+    var resolvedRowSize: SidebarRowSize {
+        SidebarRowSizeResolver.resolve(preference: rowSizePreference, system: systemRowSize)
+    }
 
     func makeCoordinator() -> DatabaseTreeOutlineCoordinator {
         DatabaseTreeOutlineCoordinator()
@@ -33,11 +44,11 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
         let outlineView = DatabaseTreeNSOutlineView()
         outlineView.headerView = nil
         outlineView.style = .sourceList
-        /// The two metrics come from AppKit rather than from taste: `.small` is the 24pt source
-        /// list row, and 13 is the indent a source list steps by. A hand-picked number here is the
-        /// difference between a sidebar that lines up with Finder and Xcode and one that nearly does.
-        outlineView.rowSizeStyle = .small
-        outlineView.indentationPerLevel = 13
+        /// `.sourceList` already supplies the row height and the indent per level, and `.default`
+        /// is how a table says "the size the user picked in Appearance". Pinning `.small` here made
+        /// the sidebar one size step shorter than Finder on a stock Mac, and deaf to that setting
+        /// while the workspace rail beside it still followed it.
+        outlineView.rowSizeStyle = SidebarRowSizeResolver.rowSizeStyle(for: rowSizePreference)
         outlineView.allowsMultipleSelection = true
         outlineView.allowsEmptySelection = true
         outlineView.floatsGroupRows = false
@@ -60,18 +71,23 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
         context.coordinator.attach(outlineView: outlineView)
         context.coordinator.update(from: self)
 
+        /// No `scrollerStyle`: it is the user's "Show scroll bars" setting in General settings, and
+        /// `NSScrollView` already follows it.
         let scrollView = NSScrollView()
         scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
         scrollView.backgroundColor = .clear
         return scrollView
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
+        if let outlineView = nsView.documentView as? NSOutlineView {
+            let style = SidebarRowSizeResolver.rowSizeStyle(for: rowSizePreference)
+            if outlineView.rowSizeStyle != style { outlineView.rowSizeStyle = style }
+        }
         context.coordinator.update(from: self)
     }
 }

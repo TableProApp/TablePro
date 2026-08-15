@@ -42,6 +42,7 @@ internal struct FavoritesOutlineActions {
 internal struct FavoritesOutlineView<Row: View>: NSViewRepresentable {
     internal let input: FavoritesOutlineInput
     @Binding internal var selection: FavoriteSelection?
+    internal let rowSizePreference: SidebarRowSizePreference
     internal let actions: FavoritesOutlineActions
     @ViewBuilder internal let row: (FavoritesOutlineNode) -> Row
 
@@ -54,8 +55,7 @@ internal struct FavoritesOutlineView<Row: View>: NSViewRepresentable {
         outlineView.headerView = nil
         outlineView.style = .sourceList
         /// AppKit's own source list metrics, the same ones the object outline uses.
-        outlineView.rowSizeStyle = .small
-        outlineView.indentationPerLevel = 13
+        outlineView.rowSizeStyle = SidebarRowSizeResolver.rowSizeStyle(for: rowSizePreference)
         outlineView.allowsMultipleSelection = false
         outlineView.allowsEmptySelection = true
         outlineView.floatsGroupRows = false
@@ -78,11 +78,18 @@ internal struct FavoritesOutlineView<Row: View>: NSViewRepresentable {
         let scrollView = NSScrollView()
         scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
+        scrollView.backgroundColor = .clear
         return scrollView
     }
 
     internal func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        if let outlineView = scrollView.documentView as? NSOutlineView {
+            let style = SidebarRowSizeResolver.rowSizeStyle(for: rowSizePreference)
+            if outlineView.rowSizeStyle != style { outlineView.rowSizeStyle = style }
+        }
         context.coordinator.update(owner: self)
     }
 }

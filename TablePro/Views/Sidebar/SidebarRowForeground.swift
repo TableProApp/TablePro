@@ -7,27 +7,46 @@ import SwiftUI
 
 internal enum SidebarRowForeground {
     internal enum Role: Equatable {
-        case emphasized
         case active
         case system
         case normal
     }
 
-    /// Emphasis outranks the active-object tint. A tinted label on an emphasized fill reads as
-    /// unselected, so the marker has to give way to legibility while the row is selected.
-    internal static func role(isEmphasized: Bool, isActive: Bool, isSystem: Bool) -> Role {
-        if isEmphasized { return .emphasized }
+    internal static func role(isActive: Bool, isSystem: Bool) -> Role {
         if isActive { return .active }
         if isSystem { return .system }
         return .normal
     }
+}
 
-    internal static func style(for role: Role) -> AnyShapeStyle {
+/// Emphasis is not a role. AppKit publishes the row's background prominence into the hosted view,
+/// and `.primary` and `.secondary` both answer it on their own, so only the active-object tint needs
+/// resolving: an accent label on an accent fill reads as unselected.
+private struct SidebarRowForegroundModifier: ViewModifier {
+    let role: SidebarRowForeground.Role
+
+    @Environment(\.backgroundProminence) private var backgroundProminence
+
+    func body(content: Content) -> some View {
+        content.foregroundStyle(style)
+    }
+
+    private var style: AnyShapeStyle {
         switch role {
-        case .emphasized: return AnyShapeStyle(Color.emphasizedSelectionLabel)
-        case .active: return AnyShapeStyle(.tint)
-        case .system: return AnyShapeStyle(.secondary)
-        case .normal: return AnyShapeStyle(.primary)
+        case .active:
+            return AnyShapeStyle(
+                SelectionAwareTintResolver.color(standard: Color.accentColor, prominence: backgroundProminence)
+            )
+        case .system:
+            return AnyShapeStyle(.secondary)
+        case .normal:
+            return AnyShapeStyle(.primary)
         }
+    }
+}
+
+internal extension View {
+    func sidebarRowForeground(isActive: Bool, isSystem: Bool) -> some View {
+        modifier(SidebarRowForegroundModifier(role: SidebarRowForeground.role(isActive: isActive, isSystem: isSystem)))
     }
 }

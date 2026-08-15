@@ -6,30 +6,23 @@
 @testable import TablePro
 import Testing
 
+/// Emphasis is not a role any more. AppKit publishes the row's background prominence into the
+/// hosted view, so `.primary` and `.secondary` answer it themselves and only the active-object
+/// tint has a decision to make.
 @Suite("Sidebar row foreground")
 struct SidebarRowForegroundTests {
-    @Test("Emphasis outranks the active tint")
-    func emphasisBeatsActive() {
-        #expect(SidebarRowForeground.role(isEmphasized: true, isActive: true, isSystem: false) == .emphasized)
-    }
-
-    @Test("Emphasis outranks the system dimming")
-    func emphasisBeatsSystem() {
-        #expect(SidebarRowForeground.role(isEmphasized: true, isActive: false, isSystem: true) == .emphasized)
-    }
-
     @Test("The active tint outranks the system dimming")
     func activeBeatsSystem() {
-        #expect(SidebarRowForeground.role(isEmphasized: false, isActive: true, isSystem: true) == .active)
+        #expect(SidebarRowForeground.role(isActive: true, isSystem: true) == .active)
     }
 
-    @Test("A system object without emphasis or activity dims")
+    @Test("A system object that is not active dims")
     func systemAlone() {
-        #expect(SidebarRowForeground.role(isEmphasized: false, isActive: false, isSystem: true) == .system)
+        #expect(SidebarRowForeground.role(isActive: false, isSystem: true) == .system)
     }
 
     @Test("A plain row uses the primary label")
     func plainRow() {
-        #expect(SidebarRowForeground.role(isEmphasized: false, isActive: false, isSystem: false) == .normal)
+        #expect(SidebarRowForeground.role(isActive: false, isSystem: false) == .normal)
     }
 }

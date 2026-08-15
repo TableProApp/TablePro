@@ -74,6 +74,9 @@ struct GeneralSettings: Codable, Equatable {
     /// Whether the window shows the workspace rail listing every open connection and database
     var showWorkspaceRail: Bool
 
+    /// How tall sidebar rows are drawn, following the system Appearance setting unless overridden
+    var sidebarRowSize: SidebarRowSizePreference
+
     static let `default` = GeneralSettings(
         startupBehavior: .reopenLast,
         language: .system,
@@ -83,7 +86,8 @@ struct GeneralSettings: Codable, Equatable {
         showRecentTables: false,
         showObjectComments: true,
         showObjectIcons: true,
-        showWorkspaceRail: true
+        showWorkspaceRail: true,
+        sidebarRowSize: .matchSystem
     )
 
     init(
@@ -95,7 +99,8 @@ struct GeneralSettings: Codable, Equatable {
         showRecentTables: Bool = false,
         showObjectComments: Bool = true,
         showObjectIcons: Bool = true,
-        showWorkspaceRail: Bool = true
+        showWorkspaceRail: Bool = true,
+        sidebarRowSize: SidebarRowSizePreference = .matchSystem
     ) {
         self.startupBehavior = startupBehavior
         self.language = language
@@ -106,6 +111,7 @@ struct GeneralSettings: Codable, Equatable {
         self.showObjectComments = showObjectComments
         self.showObjectIcons = showObjectIcons
         self.showWorkspaceRail = showWorkspaceRail
+        self.sidebarRowSize = sidebarRowSize
     }
 
     init(from decoder: Decoder) throws {
@@ -119,5 +125,8 @@ struct GeneralSettings: Codable, Equatable {
         showObjectComments = try container.decodeIfPresent(Bool.self, forKey: .showObjectComments) ?? true
         showObjectIcons = try container.decodeIfPresent(Bool.self, forKey: .showObjectIcons) ?? true
         showWorkspaceRail = try container.decodeIfPresent(Bool.self, forKey: .showWorkspaceRail) ?? true
+        sidebarRowSize = try container.decodeIfPresent(
+            SidebarRowSizePreference.self, forKey: .sidebarRowSize
+        ) ?? .matchSystem
     }
 }

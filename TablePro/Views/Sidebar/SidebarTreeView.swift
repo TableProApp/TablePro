@@ -73,7 +73,8 @@ struct SidebarTreeView: View {
             activeDatabase: activeDatabase,
             activeSchema: coordinator?.toolbarState.currentSchema,
             selectedTables: windowState.selectedTables,
-            showRecentTables: settingsManager.general.showRecentTables
+            showRecentTables: settingsManager.general.showRecentTables,
+            rowSizePreference: settingsManager.general.sidebarRowSize
         )
     }
 

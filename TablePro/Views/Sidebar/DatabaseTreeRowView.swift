@@ -36,6 +36,10 @@ struct DatabaseTreeRowContext {
     let systemSchemas: Set<String>
     let pendingTruncates: Set<String>
     let pendingDeletes: Set<String>
+    /// AppKit sizes the row, but it lays out `NSTableCellView.textField` and `imageView` to do it,
+    /// and this cell hosts SwiftUI instead. The size has to reach the content or the text stays one
+    /// size inside three different row heights.
+    var rowSize: SidebarRowSize = .medium
     var isExternalSchema: @MainActor (String, String) -> Bool = { _, _ in false }
     /// The plugin decides what a table is called, so a section header cannot hardcode "Tables".
     var objectKindTitle: @MainActor (SidebarObjectKind) -> String = { $0.pluralDisplayName }
@@ -44,7 +48,6 @@ struct DatabaseTreeRowContext {
 
 struct DatabaseTreeRowView: View {
     let node: DatabaseTreeNode
-    let isEmphasized: Bool
     let context: DatabaseTreeRowContext
     let actions: DatabaseTreeRowActions
 
@@ -70,6 +73,8 @@ struct DatabaseTreeRowView: View {
 
     private var row: some View {
         rowContent
+            .font(context.rowSize.rowFont)
+            .imageScale(.medium)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
     }
@@ -100,7 +105,6 @@ struct DatabaseTreeRowView: View {
             tableRow(ref)
         case .routine(let ref):
             RoutineRowView(routine: ref.routine)
-                .foregroundStyle(isEmphasized ? AnyShapeStyle(Color.emphasizedSelectionLabel) : AnyShapeStyle(.primary))
         case .status(let status):
             statusRow(status)
         case .objectKindSection(let kind):
@@ -137,7 +141,6 @@ struct DatabaseTreeRowView: View {
             isFavorite: context.isFavorite(ref),
             onToggleFavorite: { actions.toggleFavorite(ref) }
         )
-        .foregroundStyle(isEmphasized ? AnyShapeStyle(Color.emphasizedSelectionLabel) : AnyShapeStyle(.primary))
     }
 
     /// Redis rows carry their own count and type rather than reusing `TableRow`, which is built
@@ -157,7 +160,6 @@ struct DatabaseTreeRowView: View {
             } icon: {
                 Image(systemName: "folder")
             }
-            .foregroundStyle(isEmphasized ? AnyShapeStyle(Color.emphasizedSelectionLabel) : AnyShapeStyle(.primary))
         case .key(let name, _, let keyType):
             Label {
                 HStack(spacing: 6) {
@@ -171,7 +173,6 @@ struct DatabaseTreeRowView: View {
             } icon: {
                 Image(systemName: RedisKeyNode.iconName(forKeyType: keyType))
             }
-            .foregroundStyle(isEmphasized ? AnyShapeStyle(Color.emphasizedSelectionLabel) : AnyShapeStyle(.primary))
         }
     }
 
@@ -197,7 +198,7 @@ struct DatabaseTreeRowView: View {
         }
         .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
         .lineLimit(1)
-        .foregroundStyle(foreground(isActive: isActive, isSystem: isSystem))
+        .sidebarRowForeground(isActive: isActive, isSystem: isSystem)
     }
 
     @ViewBuilder
@@ -415,16 +416,6 @@ struct DatabaseTreeRowView: View {
             supportsDropDatabase: PluginManager.shared.supportsDropDatabase(for: context.databaseType),
             supportsDropSchema: PluginManager.shared.supportsDropSchema(for: context.databaseType),
             isReadOnly: actions.isReadOnly
-        )
-    }
-
-    private func foreground(isActive: Bool, isSystem: Bool) -> AnyShapeStyle {
-        SidebarRowForeground.style(
-            for: SidebarRowForeground.role(
-                isEmphasized: isEmphasized,
-                isActive: isActive,
-                isSystem: isSystem
-            )
         )
     }
 }

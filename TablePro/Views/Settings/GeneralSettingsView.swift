@@ -64,6 +64,16 @@ struct GeneralSettingsView: View {
                 Toggle("Show object comments", isOn: $settings.showObjectComments)
                     .help("Shows database object comments next to tables in the sidebar and in grid column headers.")
 
+                Picker("Row size:", selection: $settings.sidebarRowSize) {
+                    ForEach(SidebarRowSizePreference.allCases, id: \.self) { size in
+                        Text(size.title).tag(size)
+                    }
+                }
+                .help(String(localized: """
+                    Match System follows Sidebar icon size in System Settings > Appearance. \
+                    Choose a size to fit more objects on screen than the rest of the system shows.
+                    """))
+
                 Picker("Default layout for new connections:", selection: $defaultSidebarLayout) {
                     Text("List").tag(SidebarLayout.flat)
                     Text("Tree").tag(SidebarLayout.tree)

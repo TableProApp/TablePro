@@ -113,7 +113,8 @@ struct DatabaseTreeView: View {
             activeDatabase: activeDatabase,
             activeSchema: activeSchema,
             selectedTables: windowState.selectedTables,
-            showRecentTables: settingsManager.general.showRecentTables
+            showRecentTables: settingsManager.general.showRecentTables,
+            rowSizePreference: settingsManager.general.sidebarRowSize
         )
     }
 

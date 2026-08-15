@@ -238,6 +238,7 @@ internal struct FavoritesTabView: View {
                 renamingFolderId: viewModel.renamingFolderId
             ),
             selection: $sharedSidebarState.selectedFavorite,
+            rowSizePreference: AppSettingsManager.shared.general.sidebarRowSize,
             actions: FavoritesOutlineActions(
                 primaryAction: { handlePrimaryAction($0) },
                 deleteSelection: { deleteNode($0) },

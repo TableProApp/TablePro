@@ -5,17 +5,8 @@
 
 import AppKit
 import Combine
+import Observation
 import OSLog
-
-/// Reads System Settings > Appearance > Sidebar icon size. `UserDefaults` is KVO compliant
-/// for its keys, and the `@objc` name is what the observation resolves to, so the rail is
-/// told when the preference changes instead of noticing at the next layout pass.
-private extension UserDefaults {
-    @objc(NSTableViewDefaultSizeMode)
-    dynamic var tableViewDefaultSizeMode: Int {
-        integer(forKey: "NSTableViewDefaultSizeMode")
-    }
-}
 
 /// The window a rail belongs to. A window hosts several connections and shows one at a time, so
 /// which row the rail highlights is a question only the window can answer, and the answer changes.
@@ -71,7 +62,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     private var entries: [WorkspaceRailEntry] = []
     private var layout: WorkspaceRailMetrics.Layout = WorkspaceRailMetrics.medium
     private var changeCancellable: AnyCancellable?
-    private var sizeModeObservation: NSKeyValueObservation?
+    private var activationObserver: (any NSObjectProtocol)?
     private var contentTopConstraint: NSLayoutConstraint?
 
     /// What the rail last put on screen as selected, which after every `applySelection` is the
@@ -151,12 +142,15 @@ internal final class WorkspaceRailViewController: NSViewController {
             .sink { [weak self] _ in
                 self?.reload()
             }
-        sizeModeObservation = UserDefaults.standard.observe(
-            \.tableViewDefaultSizeMode,
-            options: [.new]
-        ) { [weak self] _, _ in
-            Task { @MainActor in self?.refreshLayoutIfNeeded() }
+        /// Changing the Appearance setting means leaving TablePro and coming back, and AppKit
+        /// publishes that. `effectiveRowSizeStyle` is then re-read, which is the documented way to
+        /// ask what the system resolved. The undocumented defaults key this used to observe is gone.
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshLayoutIfNeeded() }
         }
+        observeRowSizePreference()
         reload()
     }
 
@@ -164,6 +158,12 @@ internal final class WorkspaceRailViewController: NSViewController {
         super.viewWillAppear()
         pinContentBelowTitleBar()
         refreshLayoutIfNeeded()
+    }
+
+    deinit {
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+        }
     }
 
     override func viewDidLayout() {
@@ -198,8 +198,31 @@ internal final class WorkspaceRailViewController: NSViewController {
         return String(connectionId.uuidString.prefix(8))
     }
 
-    private func refreshLayoutIfNeeded() {
-        let resolved = WorkspaceRailMetrics.layout(for: rowSizeProbe.effectiveRowSizeStyle)
+    /// Re-arms itself, because `withObservationTracking` fires once per registration.
+    private func observeRowSizePreference() {
+        withObservationTracking {
+            _ = AppSettingsManager.shared.general.sidebarRowSize
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.refreshLayoutIfNeeded()
+                self.observeRowSizePreference()
+            }
+        }
+    }
+
+    /// The rail sits directly beside the object list, so it takes the same size. Following only the
+    /// system preference left the two disagreeing the moment the user set a size of their own.
+    private var resolvedRowSizeStyle: NSTableView.RowSizeStyle {
+        let preference = AppSettingsManager.shared.general.sidebarRowSize
+        guard preference == .matchSystem else {
+            return SidebarRowSizeResolver.rowSizeStyle(for: preference)
+        }
+        return rowSizeProbe.effectiveRowSizeStyle
+    }
+
+    internal func refreshLayoutIfNeeded() {
+        let resolved = WorkspaceRailMetrics.layout(for: resolvedRowSizeStyle)
         guard resolved != layout else { return }
         layout = resolved
         tableView.sizeLastColumnToFit()

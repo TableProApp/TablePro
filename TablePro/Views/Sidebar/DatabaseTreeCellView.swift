@@ -6,31 +6,19 @@
 import AppKit
 import SwiftUI
 
+/// Hosts one SwiftUI row. The hosting view is created once and its root swapped on reuse, so the
+/// row keeps its own state instead of being rebuilt on every scroll.
+///
+/// No emphasis is threaded through: AppKit publishes `backgroundStyle` into the hosted view's
+/// environment as `backgroundProminence`, and every semantic foreground reads it, so a selected row
+/// switches to the selected-content colour on its own. Only an explicitly tinted glyph needs help,
+/// which is what `selectionAwareTint` is for. Threading a Bool instead cost a full SwiftUI root swap
+/// on every visible row every time the selection moved.
 final class DatabaseTreeCellView: NSTableCellView {
     private var hosting: NSHostingView<DatabaseTreeRowView>?
-    private var node: DatabaseTreeNode?
-    private var rowContext: DatabaseTreeRowContext?
-    private var actions: DatabaseTreeRowActions?
-
-    override var backgroundStyle: NSView.BackgroundStyle {
-        didSet { rebuild() }
-    }
 
     func configure(node: DatabaseTreeNode, context: DatabaseTreeRowContext, actions: DatabaseTreeRowActions) {
-        self.node = node
-        self.rowContext = context
-        self.actions = actions
-        rebuild()
-    }
-
-    private func rebuild() {
-        guard let node, let rowContext, let actions else { return }
-        let rootView = DatabaseTreeRowView(
-            node: node,
-            isEmphasized: backgroundStyle == .emphasized,
-            context: rowContext,
-            actions: actions
-        )
+        let rootView = DatabaseTreeRowView(node: node, context: context, actions: actions)
         if let hosting {
             hosting.rootView = rootView
             return
@@ -41,8 +29,8 @@ final class DatabaseTreeCellView: NSTableCellView {
         NSLayoutConstraint.activate([
             view.leadingAnchor.constraint(equalTo: leadingAnchor),
             view.trailingAnchor.constraint(equalTo: trailingAnchor),
-            view.topAnchor.constraint(equalTo: topAnchor, constant: 2),
-            view.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2)
+            view.topAnchor.constraint(equalTo: topAnchor, constant: 1),
+            view.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1)
         ])
         hosting = view
     }

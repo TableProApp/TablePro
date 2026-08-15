@@ -13,7 +13,7 @@ internal struct FavoriteRowView: View {
         HStack(spacing: 6) {
             Image(systemName: "star.fill")
                 .font(.callout)
-                .foregroundStyle(.yellow)
+                .selectionAwareTint(.yellow)
                 .accessibilityHidden(true)
 
             Text(favorite.name)
@@ -35,10 +35,7 @@ internal struct FavoriteRowView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
-                    .background(
-                        Capsule()
-                            .fill(Color(nsColor: .quaternaryLabelColor))
-                    )
+                    .background(Capsule().fill(.quaternary))
                     .accessibilityHidden(true)
             }
         }
