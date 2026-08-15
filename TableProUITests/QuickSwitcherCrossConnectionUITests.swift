@@ -12,9 +12,13 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
                 .waitForExistence(timeout: 30)
         )
 
+        /// The switcher is a floating panel, and on the CI runner the shortcut produced nothing
+        /// while the grid was loaded and focused. Activating first makes the app frontmost before
+        /// the key goes out, which is the one difference between here and a developer's machine.
+        app.activate()
         app.typeKey("o", modifierFlags: [.command, .shift])
         let searchField = app.textFields["quick-switcher-search-field"]
-        XCTAssertTrue(searchField.waitForExistence(timeout: 10))
+        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
 
         app.typeKey("5", modifierFlags: .command)
         XCTAssertTrue(app.buttons["Connections"].waitForExistence(timeout: 5))
