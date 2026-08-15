@@ -57948,6 +57948,7 @@
         }
       }
     },
+    "Not recording new queries on this Mac.": {},
     "Not signed in": {
       "localizations": {
         "tr": {
@@ -62268,6 +62269,7 @@
         }
       }
     },
+    "Pause Query History": {},
     "Paused after %d tool calls.": {
       "localizations": {
         "tr": {
@@ -71528,6 +71530,7 @@
         }
       }
     },
+    "Resume Query History": {},
     "Resume with a fresh tool call budget.": {
       "localizations": {
         "tr": {
@@ -82181,6 +82184,7 @@
         }
       }
     },
+    "Start recording queries again": {},
     "Starter": {
       "localizations": {
         "tr": {
@@ -83013,6 +83017,7 @@
         }
       }
     },
+    "Stop recording queries on this Mac": {},
     "Stopped": {
       "localizations": {
         "tr": {
@@ -84182,6 +84187,7 @@
         }
       }
     },
+    "Sync connections, settings, and favorites across your Macs.": {},
     "Sync connections, settings, and history across your Macs.": {
       "localizations": {
         "tr": {

@@ -126,6 +126,7 @@ final class ImportService {
         defer { statusObservation.invalidate() }
 
         let result: PluginImportResult
+        let startedAt = Date()
         do {
             result = try await plugin.performImport(
                 source: source,
@@ -135,6 +136,10 @@ final class ImportService {
         } catch {
             state.errorMessage = error.localizedDescription
 
+            // An import the user cancelled is not a failed import, and the query paths already
+            // keep cancellations out of history for the same reason.
+            guard !(error is PluginImportCancellationError) else { throw error }
+
             await historyRecorder.record(
                 QueryHistoryRecordRequest(
                     query: "-- Import from \(url.lastPathComponent) (\(progress.processedStatements) statements before failure)",
@@ -142,8 +147,8 @@ final class ImportService {
                     databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
                     databaseType: connection.type,
                     source: .dataImport,
-                    executionTime: 0,
-                    rowCount: progress.processedStatements,
+                    executionTime: Date().timeIntervalSince(startedAt),
+                    rowCount: -1,
                     wasSuccessful: false,
                     errorMessage: error.localizedDescription
                 )
@@ -165,7 +170,7 @@ final class ImportService {
                 databaseType: connection.type,
                 source: .dataImport,
                 executionTime: result.executionTime,
-                rowCount: result.executedStatements,
+                rowCount: -1,
                 wasSuccessful: true
             )
         )

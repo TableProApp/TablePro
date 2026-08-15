@@ -53,7 +53,7 @@ internal enum ProFeature: String, CaseIterable {
     var featureDescription: String {
         switch self {
         case .iCloudSync:
-            return String(localized: "Sync connections, settings, and history across your Macs.")
+            return String(localized: "Sync connections, settings, and favorites across your Macs.")
         case .encryptedExport:
             return String(localized: "Export connections with encrypted credentials.")
         case .envVarReferences:

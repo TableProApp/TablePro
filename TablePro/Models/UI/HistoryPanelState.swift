@@ -17,6 +17,13 @@ final class HistoryPanelState {
     /// history rather than as a filter the user forgot they left behind.
     var searchText: String = ""
 
+    /// Device-local and shared by every connection, because pausing is a decision about this Mac
+    /// rather than about one database.
+    var isCapturePaused: Bool {
+        get { QueryHistoryCaptureState.shared.isPaused }
+        set { QueryHistoryCaptureState.shared.isPaused = newValue }
+    }
+
     private init(connectionId: UUID) {
         self.connectionId = connectionId
         let preferences = HistoryPanelPreferencesStorage.load(for: connectionId)

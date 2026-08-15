@@ -101,6 +101,22 @@ public actor MCPAuthPolicy {
         return .allowed
     }
 
+    /// An aggregate read spans connections, so it cannot prompt for one that asks each time. It
+    /// answers the narrower question every per-connection check already asks: may this principal
+    /// see this connection at all. Anything it excludes is a connection the client could not have
+    /// named directly either.
+    func readableConnectionIds(principal: MCPPrincipal, from candidates: Set<UUID>) async -> Set<UUID> {
+        var readable: Set<UUID> = []
+        for candidate in candidates {
+            guard let snapshot = await connectionResolver(candidate) else { continue }
+            guard snapshot.policy != .never else { continue }
+            guard snapshot.externalAccess != .blocked else { continue }
+            guard principal.connectionAccess.allows(candidate) else { continue }
+            readable.insert(candidate)
+        }
+        return readable
+    }
+
     func resolveAndAuthorize(
         principal: MCPPrincipal,
         tool: MCPToolName,

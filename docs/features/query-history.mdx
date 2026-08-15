@@ -5,7 +5,7 @@ description: Every executed query is saved to a local SQLite database with full-
 
 Every query you run is saved automatically, whether it succeeded or failed. History persists across sessions and is searchable.
 
-Open the drawer with `Cmd+Y`, **View** > **Show Query History**, or the **History** button in the toolbar.
+Open the drawer with `Cmd+Y` or **View** > **Show Query History**. There is also a **History** toolbar button, which you add through **View** > **Customize Toolbar**.
 
 <Frame caption="Query history drawer: entry list on the left, details on the right">
   <img className="block dark:hidden" src="/images/query-history.png" alt="Query history drawer" />
@@ -38,7 +38,11 @@ Loading a query that belongs to another connection opens it in a new tab rather 
 | Outcome | Any, succeeded, or failed |
 | Search | Full-text search across query text, matching as you type |
 
-Search matches partial words, so typing `cust` finds `customers`.
+Search matches partial words, so typing `cust` finds `customers`. Several words all have to match, but they do not have to be next to each other: `select customers` finds `SELECT id, name FROM customers`.
+
+## Pausing
+
+The pause button stops recording new queries on this Mac. Nothing is recorded from any source while it is paused, including row edits, structure changes, imports and AI clients, and the drawer says so until you resume. Pausing is local to the Mac you press it on, and it survives relaunch.
 
 ### Sources
 
@@ -85,7 +89,9 @@ Configure retention in **Settings > Data > Query History**:
 | Keep entries for | 90 days | 7 days to 1 year, or Forever |
 | Auto cleanup | On | Applies the two limits above. Turn it off and nothing is pruned. |
 
-Query parameter values are never written to disk. Statements that carry credentials, such as `CREATE USER ... IDENTIFIED BY`, are not recorded at all.
+Deleting a connection deletes its query history with it.
+
+Query parameter values are never written to disk. The user and role editor never records a statement that carries a password, such as `CREATE USER ... IDENTIFIED BY`. A query you write yourself is recorded as you wrote it, so use the pause button before running one that contains a secret.
 
 ## Search From External Clients
 

@@ -58,23 +58,25 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             throw MCPProtocolError.invalidParams(detail: "'since' must be less than or equal to 'until'")
         }
 
-        let blocked = await MainActor.run { MCPTabSnapshotProvider.blockedExternalConnectionIds() }
-
-        if let connectionId, blocked.contains(connectionId) {
-            throw MCPProtocolError.forbidden(reason: "External access is disabled for this connection")
+        if let connectionId {
+            try await services.authPolicy.resolveAndAuthorize(
+                principal: context.principal,
+                tool: Self.name,
+                connectionId: connectionId,
+                sessionId: context.sessionId.rawValue
+            )
         }
 
-        let allowlist: Set<UUID>?
-        if connectionId != nil {
-            allowlist = nil
-        } else if blocked.isEmpty {
-            allowlist = nil
-        } else {
-            let allConnectionIds = await MainActor.run {
-                Set(ConnectionStorage.shared.loadConnections().map(\.id))
-            }
-            allowlist = allConnectionIds.subtracting(blocked)
+        // Query text is the most sensitive thing this store holds, so the unscoped search resolves
+        // the allowlist rather than leaving it open: a token limited to one connection, or a
+        // connection the user marked private, must not be readable by omitting connection_id.
+        let candidates = await MainActor.run {
+            Set(ConnectionStorage.shared.loadConnections().map(\.id))
         }
+        let allowlist = await services.authPolicy.readableConnectionIds(
+            principal: context.principal,
+            from: connectionId.map { [$0] } ?? candidates
+        )
 
         let page = await services.queryHistoryManager.fetch(
             QueryHistoryFilter(

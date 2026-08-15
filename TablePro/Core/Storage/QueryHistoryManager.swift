@@ -5,9 +5,14 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading {
     static let shared = QueryHistoryManager()
 
     private let storage: QueryHistoryStorage
+    private let isCapturePaused: @Sendable () -> Bool
 
-    init(storage: QueryHistoryStorage = QueryHistoryStorage()) {
+    init(
+        storage: QueryHistoryStorage = QueryHistoryStorage(),
+        isCapturePaused: @escaping @Sendable () -> Bool = { QueryHistoryCaptureStore.isPaused }
+    ) {
         self.storage = storage
+        self.isCapturePaused = isCapturePaused
     }
 
     // MARK: - Recording
@@ -29,8 +34,12 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading {
         return await record(entry)
     }
 
+    /// The single writer, so pausing here covers every source: the editor, the grid, structure
+    /// changes, imports and MCP alike.
     @discardableResult
     func record(_ entry: QueryHistoryEntry) async -> Bool {
+        guard !isCapturePaused() else { return false }
+
         let success = await storage.record(entry)
         if success {
             await MainActor.run {
@@ -78,20 +87,27 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading {
     func performStartupCleanup() async {
         await applyRetentionSettings()
         guard AppSettingsManager.shared.history.autoCleanup else { return }
-        await storage.cleanup()
+        await runCleanup()
     }
 
     @MainActor
     func applySettingsChange() async {
         await applyRetentionSettings()
         guard AppSettingsManager.shared.history.autoCleanup else { return }
-        await storage.cleanup()
+        await runCleanup()
     }
 
     @MainActor
     func cleanup() async {
         await applyRetentionSettings()
-        await storage.cleanup()
+        await runCleanup()
+    }
+
+    private func runCleanup() async {
+        guard await storage.cleanup() else { return }
+        await MainActor.run {
+            AppEvents.shared.queryHistoryDidUpdate.send(nil)
+        }
     }
 
     @MainActor

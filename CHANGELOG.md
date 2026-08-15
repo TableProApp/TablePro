@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Query History can be scoped to one connection or searched across all of them, and shows which connection each query belongs to when you widen the scope.
 - Query History can be filtered to failed queries only, and by last hour, today, last 7 days or last 4 weeks.
 - Clearing query history from the drawer now clears only what the drawer is showing, so clearing one connection leaves the others alone. Settings still clears everything.
+- Query History has a pause button. While it is paused nothing is recorded from any source, including row edits, structure changes, imports and AI clients. Pausing stays on the Mac you press it on.
 - MySQL `EXPLAIN FORMAT=TREE` and `EXPLAIN ANALYZE` output now renders as a visual plan diagram or tree instead of raw text only.
 - A query plan now opens as a result tab next to your query results, so you can switch back to the data without re-running the query, and pin a plan to keep it.
 - EXPLAIN plan diagrams zoom with a trackpad pinch, a two-finger double tap, or Cmd and scroll, and the controls gained fit-to-window. Plans can be copied or exported as a PNG.
@@ -25,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An MCP client could read the query history and schema of a connection whose external access was turned off, or that its token was not allowed to reach, by naming the connection directly. Both now go through the same permission check as every other request.
+- Searching query history for several words now finds entries that contain them all, wherever they appear. It only matched when the words sat next to each other in that order, so `select customers` found nothing.
+- Query History no longer throws away the older entries you loaded when a query finishes while the drawer is open. It also stops refetching once per statement while a large save or import runs.
+- Deleting a connection now deletes its query history, its drawer filters and its saved queries with it.
+- Trimming history to the retention limits now refreshes the open drawer instead of leaving deleted entries on screen, including when the limits arrive from another Mac over iCloud.
+- Cancelling an import is no longer recorded as a failed import, and an import no longer reports its statement count as a row count.
+- The Quick Switcher no longer fills up with the same statement repeated. It shows each distinct query once, most recent first, and a long list of saved queries can no longer push recent queries out of the panel entirely.
+- Corrected two claims about iCloud sync: it does not sync query history, and there is no history sync limit to reduce when storage is full.
 - Query History showed every connection's queries mixed together, with no way to tell them apart, even though it opened per connection. Loading one could put another connection's SQL into the editor in front of you.
 - Searching query history now matches as you type. It only ever matched whole words, so typing `user` found nothing until you finished `users`.
 - Query history highlights each query for the database it actually ran on. Everything except MongoDB was coloured as MySQL.

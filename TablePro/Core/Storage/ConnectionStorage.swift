@@ -294,8 +294,12 @@ final class ConnectionStorage {
         FilterSettingsStorage.shared.removeFilters(for: connection.id)
         DatabaseTreeFilterStorage.shared.removeFilter(for: connection.id)
         RecentlyClosedTabStore.shared.removeEntries(for: connection.id)
+        HistoryPanelPreferencesStorage.remove(for: connection.id)
         Task {
             await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: connection.id)
+            await QueryHistoryManager.shared.clear(
+                matching: QueryHistoryFilter(scope: .connection(connection.id))
+            )
         }
     }
 
@@ -331,9 +335,15 @@ final class ConnectionStorage {
         FilterSettingsStorage.shared.removeFilters(for: idsToDelete)
         DatabaseTreeFilterStorage.shared.removeFilters(for: idsToDelete)
         RecentlyClosedTabStore.shared.removeEntries(for: idsToDelete)
+        for id in idsToDelete {
+            HistoryPanelPreferencesStorage.remove(for: id)
+        }
         Task {
             for conn in connectionsToDelete {
                 await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: conn.id)
+                await QueryHistoryManager.shared.clear(
+                    matching: QueryHistoryFilter(scope: .connection(conn.id))
+                )
             }
         }
     }

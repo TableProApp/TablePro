@@ -21,7 +21,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
 
         do {
             let route = try Self.parseRoute(uri: uri)
-            let payload = try await Self.fetchPayload(for: route, services: services)
+            let payload = try await Self.fetchPayload(for: route, context: context, services: services)
             let text = Self.encodeJsonString(payload)
 
             let result: JsonValue = .object([
@@ -110,13 +110,21 @@ public struct ResourcesReadHandler: MCPMethodHandler {
         }
     }
 
-    private static func fetchPayload(for route: ResourceRoute, services: MCPToolServices) async throws -> JsonValue {
+    /// A resource URI names a connection directly, so it has to clear the same gate a tool call
+    /// does. `resources/list` already hides a connection the user blocked, which left its id as
+    /// the only thing standing between a client and that connection's SQL text.
+    private static func fetchPayload(
+        for route: ResourceRoute,
+        context: MCPRequestContext,
+        services: MCPToolServices
+    ) async throws -> JsonValue {
         switch route {
         case .connectionsList:
             return await services.connectionBridge.listConnections()
 
         case .connectionSchema(let connectionId):
             do {
+                try await authorizeConnection(connectionId, context: context, services: services)
                 return try await services.connectionBridge.fetchSchemaResource(connectionId: connectionId)
             } catch let error as MCPDataLayerError {
                 throw mapDomainError(error)
@@ -124,6 +132,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
 
         case .connectionHistory(let connectionId, let limit, let search, let dateFilter):
             do {
+                try await authorizeConnection(connectionId, context: context, services: services)
                 return try await services.connectionBridge.fetchHistoryResource(
                     connectionId: connectionId,
                     limit: limit,
@@ -134,6 +143,19 @@ public struct ResourcesReadHandler: MCPMethodHandler {
                 throw mapDomainError(error)
             }
         }
+    }
+
+    private static func authorizeConnection(
+        _ connectionId: UUID,
+        context: MCPRequestContext,
+        services: MCPToolServices
+    ) async throws {
+        try await services.authPolicy.resolveAndAuthorize(
+            principal: context.principal,
+            tool: method,
+            connectionId: connectionId,
+            sessionId: context.sessionId.rawValue
+        )
     }
 
     private static func mapDomainError(_ error: MCPDataLayerError) -> MCPProtocolError {

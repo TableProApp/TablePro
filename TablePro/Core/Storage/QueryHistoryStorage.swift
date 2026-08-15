@@ -470,11 +470,19 @@ actor QueryHistoryStorage {
         )
     }
 
-    /// FTS5 matches whole tokens, so an unadorned phrase never matches the word being typed.
-    /// The trailing `*` makes it a phrase-prefix query, which the `prefix='2 3 4'` index serves.
+    /// FTS5 matches whole tokens, so an unadorned term never matches the word being typed, and a
+    /// whole search string quoted as one phrase only matches when the words are adjacent in that
+    /// order. Each word becomes its own prefix term and the terms are ANDed, so "select customers"
+    /// finds `SELECT * FROM customers` the way a reader expects. Quoting every term keeps FTS5's
+    /// own operators inert, so a search for AND or NOT is text rather than syntax.
     static func ftsQuery(for searchText: String) -> String {
-        let escaped = searchText.replacingOccurrences(of: "\"", with: "\"\"")
-        return "\"\(escaped)\"*"
+        let terms = searchText
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { $0.replacingOccurrences(of: "\"", with: "\"\"") }
+            .filter { !$0.isEmpty }
+
+        guard !terms.isEmpty else { return "\"\(searchText.replacingOccurrences(of: "\"", with: "\"\""))\"*" }
+        return terms.map { "\"\($0)\"*" }.joined(separator: " AND ")
     }
 
     func count(scope: QueryHistoryScope = .all) -> Int {
@@ -569,13 +577,19 @@ actor QueryHistoryStorage {
         cachedAutoCleanup = autoCleanup
     }
 
-    func cleanup() {
+    @discardableResult
+    func cleanup() -> Bool {
         performCleanup()
     }
 
-    private func performCleanup() {
-        guard db != nil else { return }
+    /// Reports whether anything was actually removed, so a caller can tell open UI that the rows
+    /// under it are gone. Retention runs from a settings change too, including one arriving from
+    /// another Mac over iCloud, where nothing else would say the list just shrank.
+    @discardableResult
+    private func performCleanup() -> Bool {
+        guard let db else { return false }
 
+        let changesBefore = sqlite3_total_changes(db)
         beginTransaction()
 
         if cachedMaxDays < Int.max {
@@ -611,6 +625,7 @@ actor QueryHistoryStorage {
         }
 
         commitTransaction()
+        return sqlite3_total_changes(db) != changesBefore
     }
 
     // MARK: - Parsing

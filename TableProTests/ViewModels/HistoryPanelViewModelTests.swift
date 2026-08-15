@@ -222,6 +222,53 @@ struct HistoryPanelViewModelTests {
         #expect(Set(queries).count == 25)
     }
 
+    @Test("a live refresh keeps the pages the user already loaded")
+    func liveRefreshKeepsLoadedPages() async {
+        let connectionId = UUID()
+        let base = Date()
+        let entries = (0 ..< 40).map { index in
+            Self.makeEntry(
+                connectionId: connectionId,
+                query: "SELECT page_\(index)",
+                executedAt: base.addingTimeInterval(-Double(index))
+            )
+        }
+        let (viewModel, _) = makeViewModel(connectionId: connectionId, entries: entries, pageSize: 10)
+
+        await viewModel.reload()
+        await viewModel.loadMore()
+        await viewModel.loadMore()
+        #expect(viewModel.totalLoaded == 30)
+
+        await viewModel.reload(preservingLoadedWindow: true)
+
+        #expect(
+            viewModel.totalLoaded == 30,
+            "A query finishing while the drawer is open must not throw away Load More"
+        )
+    }
+
+    @Test("changing a filter starts the list over")
+    func filterChangeResetsPaging() async {
+        let connectionId = UUID()
+        let base = Date()
+        let entries = (0 ..< 40).map { index in
+            Self.makeEntry(
+                connectionId: connectionId,
+                query: "SELECT page_\(index)",
+                executedAt: base.addingTimeInterval(-Double(index))
+            )
+        }
+        let (viewModel, _) = makeViewModel(connectionId: connectionId, entries: entries, pageSize: 10)
+
+        await viewModel.reload()
+        await viewModel.loadMore()
+        #expect(viewModel.totalLoaded == 20)
+
+        await viewModel.reload()
+        #expect(viewModel.totalLoaded == 10, "A new question does not inherit the old scroll depth")
+    }
+
     @Test("load more stops when there is nothing further")
     func loadMoreStopsAtTheEnd() async {
         let connectionId = UUID()

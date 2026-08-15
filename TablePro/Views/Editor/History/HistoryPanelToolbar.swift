@@ -22,10 +22,15 @@ struct HistoryPanelToolbar: View {
                     accessibilityIdentifier: "query-history-search-field"
                 )
 
+                pauseButton
                 clearButton
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
+
+            if state.isCapturePaused {
+                pausedBanner
+            }
 
             Divider()
         }
@@ -121,6 +126,45 @@ struct HistoryPanelToolbar: View {
                 state.sources = updated
             }
         )
+    }
+
+    private var pauseButton: some View {
+        Button {
+            state.isCapturePaused.toggle()
+        } label: {
+            Image(systemName: state.isCapturePaused ? "play.circle" : "pause.circle")
+        }
+        .buttonStyle(.borderless)
+        .help(
+            state.isCapturePaused
+                ? String(localized: "Start recording queries again")
+                : String(localized: "Stop recording queries on this Mac")
+        )
+        .accessibilityLabel(
+            state.isCapturePaused
+                ? String(localized: "Resume Query History")
+                : String(localized: "Pause Query History")
+        )
+        .accessibilityIdentifier("query-history-pause")
+    }
+
+    private var pausedBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "pause.circle.fill")
+                .foregroundStyle(.secondary)
+            Text("Not recording new queries on this Mac.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button(String(localized: "Resume")) {
+                state.isCapturePaused = false
+            }
+            .buttonStyle(.link)
+            .font(.caption)
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 6)
+        .accessibilityIdentifier("query-history-paused-banner")
     }
 
     private var clearButton: some View {

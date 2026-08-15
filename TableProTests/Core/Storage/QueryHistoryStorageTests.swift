@@ -203,6 +203,26 @@ struct QueryHistoryStorageTests {
         }
     }
 
+    @Test("search matches words that are not next to each other")
+    func searchMatchesNonAdjacentWords() async {
+        let connId = UUID()
+        _ = await storage.record(makeEntry(query: "SELECT * FROM customers WHERE active = 1", connectionId: connId))
+
+        for typed in ["select customers", "customers select", "sel cust", "from active"] {
+            let entries = await fetchAll(storage, connectionId: connId, searchText: typed)
+            #expect(entries.count == 1, "typing \(typed) should match")
+        }
+    }
+
+    @Test("every word in the search has to match")
+    func searchRequiresEveryWord() async {
+        let connId = UUID()
+        _ = await storage.record(makeEntry(query: "SELECT * FROM customers", connectionId: connId))
+
+        let entries = await fetchAll(storage, connectionId: connId, searchText: "customers zzz")
+        #expect(entries.isEmpty)
+    }
+
     @Test("search survives quotes and FTS operators without erroring")
     func searchIsInjectionSafe() async {
         let connId = UUID()
@@ -525,6 +545,20 @@ struct QueryHistoryStorageTests {
         let remaining = await fetchAll(isolated, connectionId: connId)
         #expect(remaining.count == 5)
         #expect(remaining.first?.query == "SELECT trim_11")
+    }
+
+    @Test("cleanup reports whether it removed anything")
+    func cleanupReportsWhetherItRemovedAnything() async {
+        let isolated = Self.makeIsolatedStorage()
+        let connId = UUID()
+        await isolated.updateSettingsCache(maxEntries: 2, maxDays: 0, autoCleanup: true)
+
+        for index in 0 ..< 5 {
+            _ = await isolated.record(makeEntry(query: "SELECT trim_\(index)", connectionId: connId))
+        }
+
+        #expect(await isolated.cleanup(), "pruning rows must report that the list changed")
+        #expect(await isolated.cleanup() == false, "a second pass removes nothing and must say so")
     }
 
     @Test("cleanup drops entries older than the day cap")

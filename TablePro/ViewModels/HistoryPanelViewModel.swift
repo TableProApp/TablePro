@@ -6,6 +6,7 @@ import Observation
 @Observable
 final class HistoryPanelViewModel {
     static let pageSize = 60
+    static let maximumRefreshWindow = 600
 
     private(set) var sections: [QueryHistoryDaySection] = []
     private(set) var isLoading = false
@@ -25,8 +26,10 @@ final class HistoryPanelViewModel {
 
     private var entries: [QueryHistoryEntry] = []
     private var nextCursor: QueryHistoryCursor?
+    private var loadedPageCount = 1
     private var loadToken = UUID()
     private var searchDebounce: Task<Void, Never>?
+    private var liveRefresh: Task<Void, Never>?
     private var updateSubscription: AnyCancellable?
 
     init(
@@ -67,7 +70,7 @@ final class HistoryPanelViewModel {
             .sink { [weak self] payload in
                 guard let self else { return }
                 guard payload == nil || state.scope == .all || payload == state.scope.connectionId else { return }
-                Task { await self.reload() }
+                scheduleLiveRefresh()
             }
     }
 
@@ -76,11 +79,28 @@ final class HistoryPanelViewModel {
         updateSubscription = nil
         searchDebounce?.cancel()
         searchDebounce = nil
+        liveRefresh?.cancel()
+        liveRefresh = nil
+    }
+
+    /// Saving a grid full of edits or importing a file records one entry per statement, and each
+    /// one broadcasts. Collapsing the burst keeps the list from refetching hundreds of times for a
+    /// single user action.
+    private func scheduleLiveRefresh() {
+        liveRefresh?.cancel()
+        liveRefresh = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled, let self else { return }
+            await reload(preservingLoadedWindow: true)
+        }
     }
 
     // MARK: - Loading
 
-    func reload() async {
+    /// A live refresh keeps everything the user paged in, because replacing a scrolled list with
+    /// its own first page throws away the Load More they asked for. Changing a filter starts over,
+    /// because the old depth means nothing against a new question.
+    func reload(preservingLoadedWindow: Bool = false) async {
         let token = UUID()
         loadToken = token
 
@@ -88,13 +108,18 @@ final class HistoryPanelViewModel {
             isLoading = true
         }
 
-        let page = await history.fetch(state.filter(), after: nil, limit: pageSize)
+        if !preservingLoadedWindow {
+            loadedPageCount = 1
+        }
+        let windowLimit = min(max(pageSize, loadedPageCount * pageSize), Self.maximumRefreshWindow)
+        let page = await history.fetch(state.filter(), after: nil, limit: windowLimit)
         guard loadToken == token else { return }
 
         entries = page.entries
         nextCursor = page.nextCursor
         hasMore = page.nextCursor != nil
         totalLoaded = entries.count
+        loadedPageCount = max(1, Int(ceil(Double(entries.count) / Double(pageSize))))
         rebuildSections()
 
         isLoading = false
@@ -118,6 +143,7 @@ final class HistoryPanelViewModel {
         nextCursor = page.nextCursor
         hasMore = page.nextCursor != nil
         totalLoaded = entries.count
+        loadedPageCount += 1
         rebuildSections()
     }
 
