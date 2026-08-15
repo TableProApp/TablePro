@@ -30,7 +30,7 @@ extension MainContentCoordinator {
 
         let level = safeModeLevel
         guard level.appliesToAllQueries, level.requiresConfirmation else {
-            executeExplain(request)
+            run(request)
             return
         }
 
@@ -47,7 +47,7 @@ extension MainContentCoordinator {
                 )
             )
             guard case .authorized = decision else { return }
-            executeExplain(request)
+            run(request)
         }
     }
 
@@ -98,6 +98,14 @@ extension MainContentCoordinator {
 
     // MARK: - Execution
 
+    private func run(_ request: ExplainRequest) {
+        guard !request.isDriverBuilt else {
+            executeQueryInternal(request.sql)
+            return
+        }
+        executeExplain(request)
+    }
+
     private func executeExplain(_ request: ExplainRequest) {
         guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
         guard let scope = scope(for: tab) else {
@@ -132,15 +140,20 @@ extension MainContentCoordinator {
 
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+
+                    // Every write below belongs to whoever owns the tab now. A superseded plan
+                    // that cleared the spinner or nilled the task handle would be reporting on a
+                    // query that is still running, so the gate comes before all of them.
+                    guard tabExecution.isCurrent(claim), !Task.isCancelled else { return }
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
-                    guard tabExecution.isCurrent(claim) else { return }
 
                     tabManager.mutate(tabId: tabId) { tab in
                         tab.execution.executionTime = fetchResult.executionTime
                         tab.execution.rowsAffected = 0
                         tab.execution.statusMessage = nil
                         tab.execution.lastExecutedAt = Date()
+                        tab.pagination.resetLoadMore()
                         tab.display.replaceUnpinnedResults(
                             with: [ExplainResultSetFactory.make(
                                 rawText: rawText, plan: plan, sql: request.sql,
@@ -168,14 +181,18 @@ extension MainContentCoordinator {
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    tabExecution.settle(claim)
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
+
+                    // A cancelled EXPLAIN is not a failure the user needs told about, and it does
+                    // not belong in history either.
+                    if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
                     guard tabExecution.isCurrent(claim) else { return }
 
                     tabManager.mutate(tabId: tabId) { tab in
                         tab.execution.errorMessage = error.localizedDescription
                     }
-                    tabExecution.settle(claim)
 
                     QueryHistoryManager.shared.recordQuery(
                         query: request.sql,

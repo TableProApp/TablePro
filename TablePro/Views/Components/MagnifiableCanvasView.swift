@@ -48,11 +48,20 @@ final class DiagramViewportController {
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
+    /// Clamped through the clip view's own rule, so a fast pan or a node dragged against the edge
+    /// cannot push the document out of view and have AppKit snap it back on the next tile.
     func scrollBy(_ delta: CGSize) {
         guard let scrollView else { return }
-        let origin = scrollView.contentView.bounds.origin
-        scrollView.contentView.scroll(to: CGPoint(x: origin.x + delta.width, y: origin.y + delta.height))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
+        let clipView = scrollView.contentView
+        let proposed = CGRect(
+            origin: CGPoint(
+                x: clipView.bounds.origin.x + delta.width,
+                y: clipView.bounds.origin.y + delta.height
+            ),
+            size: clipView.bounds.size
+        )
+        clipView.scroll(to: clipView.constrainBoundsRect(proposed).origin)
+        scrollView.reflectScrolledClipView(clipView)
     }
 
     func attach(to scrollView: NSScrollView) {

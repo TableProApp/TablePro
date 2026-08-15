@@ -31,6 +31,10 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
 
         planId = plan.rootNode.id
         root = QueryPlanOutlineNode(plan.rootNode)
+
+        // The rebuilt tree is in parse order, so a sort indicator left over from the previous
+        // plan would advertise an order the rows are not in.
+        outlineView?.sortDescriptors = []
         outlineView?.reloadData()
         expandAll()
         selectRootRow()

@@ -222,11 +222,19 @@ final class ERDiagramViewModel {
     func setPositionOverride(nodeId: UUID, position: CGPoint) {
         positionOverrides[nodeId] = position
         let height = ERDiagramLayout.estimateHeight(columnCount: columnCountByNodeId[nodeId] ?? 1)
-        cachedNodeRects[nodeId] = CGRect(
+        let rect = CGRect(
             x: position.x - ERDiagramLayout.nodeWidth / 2,
             y: position.y - height / 2,
             width: ERDiagramLayout.nodeWidth,
             height: height
+        )
+        cachedNodeRects[nodeId] = rect
+
+        // The scroll view's document is sized from this, so a node dragged past the load-time
+        // bounds has to grow it or the node ends up somewhere the canvas cannot scroll to.
+        cachedCanvasSize = CGSize(
+            width: max(cachedCanvasSize.width, rect.maxX + Self.canvasPadding),
+            height: max(cachedCanvasSize.height, rect.maxY + Self.canvasPadding)
         )
     }
 
@@ -328,6 +336,7 @@ final class ERDiagramViewModel {
     // MARK: - Canvas Size
 
     private(set) var cachedCanvasSize = CGSize(width: 800, height: 600)
+    private static let canvasPadding: CGFloat = 80
 
     // MARK: - Node Rect (for edge rendering)
 
@@ -369,7 +378,9 @@ final class ERDiagramViewModel {
                 csMaxX = max(csMaxX, rect.maxX)
                 csMaxY = max(csMaxY, rect.maxY)
             }
-            cachedCanvasSize = CGSize(width: csMaxX + 80, height: csMaxY + 80)
+            cachedCanvasSize = CGSize(
+                width: csMaxX + Self.canvasPadding, height: csMaxY + Self.canvasPadding
+            )
         }
     }
 
