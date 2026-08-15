@@ -183,10 +183,27 @@ struct DatabaseTreeMenuSpecTests {
         let items = DatabaseTreeMenuSpec.items(for: context(clicked: .table(clicked), isReadOnly: true))
         let issued = commands(items)
 
-        #expect(!issued.contains(.truncateTables(["orders"])))
-        #expect(!issued.contains(.dropTables(["orders"])))
+        #expect(!issued.contains(.truncateTables(names: ["orders"], ref: clicked)))
+        #expect(!issued.contains(.dropTables(names: ["orders"], ref: clicked)))
         #expect(!issued.contains(.createView))
         #expect(issued.contains(.copyTableNames(["orders"])))
+    }
+
+    /// The session may be browsing a different database than the one the user right-clicked in, so
+    /// every command that reaches the database carries the row it came from and switches there
+    /// first. Without it, Truncate and Drop run against a same-named table somewhere else.
+    @Test("Every command that reaches the database carries the row it was raised from")
+    func databaseCommandsCarryTheirRow() {
+        let elsewhere = DatabaseTreeTableRef(
+            database: "reporting",
+            schema: "public",
+            table: TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
+        )
+        let issued = commands(DatabaseTreeMenuSpec.items(for: context(clicked: .table(elsewhere))))
+
+        #expect(issued.contains(.truncateTables(names: ["orders"], ref: elsewhere)))
+        #expect(issued.contains(.dropTables(names: ["orders"], ref: elsewhere)))
+        #expect(issued.contains(.exportTables(names: ["orders"], ref: elsewhere)))
     }
 
     @Test("The favourite item names the action it will take")

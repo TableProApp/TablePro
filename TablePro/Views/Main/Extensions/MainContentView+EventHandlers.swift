@@ -96,7 +96,11 @@ extension MainContentView {
     func handleTableSelectionChange(
         from oldTables: Set<TableInfo>, to newTables: Set<TableInfo>
     ) {
-        let action = TableSelectionAction.resolve(oldTables: oldTables, newTables: newTables)
+        let action = TableSelectionAction.resolve(
+            oldTables: oldTables,
+            newTables: newTables,
+            selectedRowCount: coordinator.windowSidebarState.selectedRowCount
+        )
 
         guard case .navigate(let table) = action else {
             return
@@ -151,7 +155,7 @@ extension MainContentView {
         }
         if coordinator.windowSidebarState.selectedTables != target {
             if target.isEmpty && liveTables.isEmpty { return }
-            coordinator.windowSidebarState.selectedTables = target
+            coordinator.windowSidebarState.selectTables(target)
         }
     }
 

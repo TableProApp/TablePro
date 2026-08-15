@@ -36,8 +36,18 @@ internal struct DatabaseTreeMenuContext {
 }
 
 internal enum DatabaseTreeMenuSpec {
+    /// Every menu ends with View Options, including a row's. It used to hang off row menus only,
+    /// which put it out of reach whenever the list was empty, loading or failed.
     internal static func items(for context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
-        DatabaseTreeMenuItem.collapsingSeparators(rawItems(for: context))
+        let rows = rawItems(for: context)
+        let viewOptions = DatabaseTreeMenuItem.submenu(
+            title: String(localized: "View Options"),
+            items: viewOptionItems(context)
+        )
+        guard !rows.contains(viewOptions) else {
+            return DatabaseTreeMenuItem.collapsingSeparators(rows)
+        }
+        return DatabaseTreeMenuItem.collapsingSeparators(rows + [.separator, viewOptions])
     }
 
     private static func rawItems(for context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
@@ -95,12 +105,12 @@ internal enum DatabaseTreeMenuSpec {
         ))
         items.append(.separator)
         items.append(.command(copyNamesTitle(count: names.count), .copyTableNames(names)))
-        items.append(.command(String(localized: "Export…"), .exportTables(Set(names))))
+        items.append(.command(String(localized: "Export…"), .exportTables(names: Set(names), ref: ref)))
         items.append(.command(String(localized: "View ER Diagram"), .showERDiagram))
 
         if !context.isReadOnly,
            SidebarContextMenuLogic.importVisible(clickedTable: ref.table, supportsImport: context.supportsImport) {
-            items += importItems(context.importFormats)
+            items += importItems(context.importFormats, ref: ref)
         }
 
         if SidebarContextMenuLogic.maintenanceGroupEnabled(
@@ -111,36 +121,37 @@ internal enum DatabaseTreeMenuSpec {
             items.append(.submenu(
                 title: String(localized: "Maintenance"),
                 items: context.maintenanceOperations.map { operation in
-                    .command(operation, .maintenance(operation: operation, tableName: ref.table.name))
+                    .command(operation, .maintenance(operation: operation, tableName: ref.table.name, ref: ref))
                 }
             ))
         }
 
         guard !context.isReadOnly else { return items }
         items.append(.separator)
-        if !context.isReadOnly {
-            items.append(.command(String(localized: "Create New View…"), .createView))
-        }
+        items.append(.command(String(localized: "Create New View…"), .createView))
         if SidebarContextMenuLogic.truncateVisible(clickedTable: ref.table) {
-            items.append(.command(String(localized: "Truncate"), .truncateTables(names)))
+            items.append(.command(String(localized: "Truncate"), .truncateTables(names: names, ref: ref)))
         }
         items.append(.command(
             SidebarContextMenuLogic.deleteLabel(for: ref.table.type),
-            .dropTables(names)
+            .dropTables(names: names, ref: ref)
         ))
         return items
     }
 
     /// One format is a plain item, several are a submenu, matching what the menu bar's own Import
     /// command does rather than inventing a second shape for the sidebar.
-    private static func importItems(_ formats: [ImportFormatOption]) -> [DatabaseTreeMenuItem] {
+    private static func importItems(
+        _ formats: [ImportFormatOption],
+        ref: DatabaseTreeTableRef
+    ) -> [DatabaseTreeMenuItem] {
         guard !formats.isEmpty else { return [] }
         if formats.count == 1, let only = formats.first {
-            return [.command(only.standaloneLabel, .importTables(formatId: only.id))]
+            return [.command(only.standaloneLabel, .importTables(formatId: only.id, ref: ref))]
         }
         return [.submenu(
             title: String(localized: "Import"),
-            items: formats.map { .command($0.submenuLabel, .importTables(formatId: $0.id)) }
+            items: formats.map { .command($0.submenuLabel, .importTables(formatId: $0.id, ref: ref)) }
         )]
     }
 

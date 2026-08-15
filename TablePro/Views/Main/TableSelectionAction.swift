@@ -19,11 +19,16 @@ enum TableSelectionAction: Equatable {
     case noNavigation
     case navigate(table: TableInfo)
 
+    /// `selectedRowCount` is how many rows the sidebar has selected, which the table set alone
+    /// cannot tell: a table Cmd-clicked alongside a schema yields one table and is still an
+    /// extension. Callers that can only ever select tables pass the table count.
     static func resolve(
         oldTables: Set<TableInfo>,
-        newTables: Set<TableInfo>
+        newTables: Set<TableInfo>,
+        selectedRowCount: Int
     ) -> TableSelectionAction {
-        guard newTables.count == 1,
+        guard selectedRowCount == 1,
+              newTables.count == 1,
               let table = SelectionDelta.singleAddition(old: oldTables, new: newTables)
         else {
             return .noNavigation

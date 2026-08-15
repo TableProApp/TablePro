@@ -26,6 +26,24 @@ internal final class WindowSidebarState {
     @ObservationIgnored private var isLoaded = false
 
     var selectedTables: Set<TableInfo> = []
+
+    /// How many rows are selected, which is not the same as how many tables. A table selected
+    /// alongside a schema is an extension of a selection, not a pick, and the set of tables alone
+    /// cannot say so: it looks identical to having selected that one table.
+    ///
+    /// Only the object tree can select a row that is not a table, so every other writer goes
+    /// through `selectTables(_:)` and the two stay consistent by construction.
+    private(set) var selectedRowCount = 0
+
+    func selectTables(_ tables: Set<TableInfo>) {
+        select(tables: tables, rowCount: tables.count)
+    }
+
+    func select(tables: Set<TableInfo>, rowCount: Int) {
+        selectedRowCount = rowCount
+        guard selectedTables != tables else { return }
+        selectedTables = tables
+    }
     var expandedTreeSchemas: Set<String> = [] { didSet { persistExpansion() } }
     var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
     var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }

@@ -289,7 +289,7 @@ extension MainContentView {
             selectionState: coordinator.selectionState,
             selectedTables: Binding(
                 get: { coordinator.windowSidebarState.selectedTables },
-                set: { coordinator.windowSidebarState.selectedTables = $0 }
+                set: { coordinator.windowSidebarState.selectTables($0) }
             ),
             pendingTruncates: $pendingTruncates,
             pendingDeletes: $pendingDeletes,

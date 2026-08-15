@@ -39,16 +39,26 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.showERDiagram()
         case .copyTableNames(let names):
             ClipboardService.shared.writeText(names.joined(separator: ","))
-        case .exportTables(let names):
-            mainCoordinator?.openExportDialog(preselectedTableNames: names)
-        case .importTables(let formatId):
-            mainCoordinator?.openImportDialog(formatId: formatId)
-        case .maintenance(let operation, let tableName):
-            mainCoordinator?.showMaintenanceSheet(operation: operation, tableName: tableName)
-        case .truncateTables(let names):
-            viewModel?.batchToggleTruncate(tableNames: names)
-        case .dropTables(let names):
-            viewModel?.batchToggleDelete(tableNames: names)
+        case .exportTables(let names, let ref):
+            activateThen(ref) { [weak self] in
+                self?.mainCoordinator?.openExportDialog(preselectedTableNames: names)
+            }
+        case .importTables(let formatId, let ref):
+            activateThen(ref) { [weak self] in
+                self?.mainCoordinator?.openImportDialog(formatId: formatId)
+            }
+        case .maintenance(let operation, let tableName, let ref):
+            activateThen(ref) { [weak self] in
+                self?.mainCoordinator?.showMaintenanceSheet(operation: operation, tableName: tableName)
+            }
+        case .truncateTables(let names, let ref):
+            activateThen(ref) { [weak self] in
+                self?.viewModel?.batchToggleTruncate(tableNames: names)
+            }
+        case .dropTables(let names, let ref):
+            activateThen(ref) { [weak self] in
+                self?.viewModel?.batchToggleDelete(tableNames: names)
+            }
         case .toggleFavorite(let ref):
             toggleFavorite(ref)
         case .removeRecent(let ref):

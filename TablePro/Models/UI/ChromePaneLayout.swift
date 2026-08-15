@@ -12,13 +12,10 @@ import Foundation
 /// down as their layout. That leaves the reveal with nothing to read back, because AppKit does not
 /// re-apply an autosave record to a split view that has already laid out. This is what the reveal
 /// reads instead.
+///
+/// A window that never hid its chrome has none of this: its panes are already where the autosaved
+/// layout put them, so the reveal leaves them alone rather than restoring a default over them.
 internal struct ChromePaneLayout: Equatable {
     internal let isSidebarCollapsed: Bool
     internal let isInspectorCollapsed: Bool
-
-    /// A reveal with nothing captured is the window's first, so it opens on the sidebar with the
-    /// inspector closed, which is what a fresh window shows.
-    internal static func toRestore(captured: ChromePaneLayout?) -> ChromePaneLayout {
-        captured ?? ChromePaneLayout(isSidebarCollapsed: false, isInspectorCollapsed: true)
-    }
 }

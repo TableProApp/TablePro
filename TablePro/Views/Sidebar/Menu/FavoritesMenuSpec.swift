@@ -62,7 +62,9 @@ internal enum FavoritesMenuSpec {
         case .linkedFolder(let folder):
             return linkedFolderItems(folder)
         case .linkedSubfolder:
-            return []
+            /// A subfolder mirrors a directory, so it owns no command of its own. It still gets the
+            /// background menu rather than an empty frame.
+            return backgroundItems(context)
         }
     }
 

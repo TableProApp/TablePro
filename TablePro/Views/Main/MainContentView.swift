@@ -382,7 +382,7 @@ struct MainContentView: View {
                 if case .select(let tableName) = syncAction,
                     let match = newTables.first(where: { $0.name == tableName })
                 {
-                    coordinator.windowSidebarState.selectedTables = [match]
+                    coordinator.windowSidebarState.selectTables([match])
                 }
             }
     }

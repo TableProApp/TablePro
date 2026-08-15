@@ -71,7 +71,7 @@ struct SidebarView: View {
         _pendingDeletes = pendingDeletes
         let selectedBinding = Binding(
             get: { windowState.selectedTables },
-            set: { windowState.selectedTables = $0 }
+            set: { windowState.selectTables($0) }
         )
         let vm = SidebarViewModel.shared(
             connectionId: connectionId,

@@ -321,6 +321,10 @@ final class MainContentCommandActions {
             && sidebarLayout == .tree
     }
 
+    var hasDatabaseFilter: Bool {
+        !SharedSidebarState.forConnection(connection.id).databaseFilterSelected.isEmpty
+    }
+
     var sidebarLayout: SidebarLayout {
         SharedSidebarState.forConnection(connection.id).sidebarLayout
     }

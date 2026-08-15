@@ -1105,10 +1105,14 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         guard chromeState != .revealed else { return }
         chromeState = .revealed
 
-        let restored = ChromePaneLayout.toRestore(captured: userPaneLayout)
-        userPaneLayout = nil
-        sidebarSplitItem.isCollapsed = restored.isSidebarCollapsed
-        inspectorSplitItem.isCollapsed = restored.isInspectorCollapsed
+        /// Only a reveal that follows a hide has something to put back. A first reveal is a window
+        /// opening on a live connection, where the panes are already where the user's autosaved
+        /// layout put them, and writing over them would discard that.
+        if let restored = userPaneLayout {
+            userPaneLayout = nil
+            sidebarSplitItem.isCollapsed = restored.isSidebarCollapsed
+            inspectorSplitItem.isCollapsed = restored.isInspectorCollapsed
+        }
         restoreUserPaneLayout()
         view.window?.recalculateKeyViewLoop()
     }

@@ -22,11 +22,15 @@ internal enum SidebarMenuCommand: Equatable {
     case showStructure(DatabaseTreeTableRef)
     case showERDiagram
     case copyTableNames([String])
-    case exportTables(Set<String>)
-    case importTables(formatId: String)
-    case maintenance(operation: String, tableName: String)
-    case truncateTables([String])
-    case dropTables([String])
+    /// Every command that reaches the database carries the row it was raised from, because the
+    /// session may be browsing a different database than the one the user right-clicked in. Acting
+    /// without switching there first runs the command against a same-named table somewhere else,
+    /// which for Truncate and Drop destroys the wrong data.
+    case exportTables(names: Set<String>, ref: DatabaseTreeTableRef)
+    case importTables(formatId: String, ref: DatabaseTreeTableRef)
+    case maintenance(operation: String, tableName: String, ref: DatabaseTreeTableRef)
+    case truncateTables(names: [String], ref: DatabaseTreeTableRef)
+    case dropTables(names: [String], ref: DatabaseTreeTableRef)
     case toggleFavorite(DatabaseTreeTableRef)
     case removeRecent(DatabaseTreeTableRef)
     case clearRecents

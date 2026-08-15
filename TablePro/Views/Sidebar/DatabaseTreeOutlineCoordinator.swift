@@ -309,10 +309,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     /// already the clicked table, which is exactly the case that observer resolves to skip.
     private func publishSelection() {
         guard let windowState else { return }
-        let tables = DatabaseTreeSelection.tableInfos(of: selectedNodes())
+        let nodes = selectedNodes()
+        let tables = DatabaseTreeSelection.tableInfos(of: nodes)
         publishedTables = tables
-        guard windowState.selectedTables != tables else { return }
-        windowState.selectedTables = tables
+        /// The row count goes with the tables, because this is the one list that can select a row
+        /// which is not a table. One table selected beside a schema must not read as a pick.
+        windowState.select(tables: tables, rowCount: nodes.count)
     }
 
     internal func activate(_ ref: DatabaseTreeTableRef) async {

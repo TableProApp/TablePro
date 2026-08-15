@@ -88,13 +88,44 @@ struct DatabaseTreeView: View {
             case .loaded where isFilterHidingEverything:
                 filteredEmptyState
             case .loaded:
-                outline
+                VStack(spacing: 0) {
+                    filterBanner
+                    outline
+                }
             case .idle, .loading:
                 loadingState
             }
         }
         .task(id: isConnected) {
             await treeService.loadDatabases(connectionId: connectionId, databaseType: databaseType)
+        }
+    }
+
+    /// A filtered list looks exactly like a short one, so it has to say it is filtered. The button
+    /// that used to carry that state, at the bottom of the sidebar, is gone.
+    @ViewBuilder
+    private var filterBanner: some View {
+        if DatabaseTreeVisibility.isFiltering(selected: sidebarState.databaseFilterSelected) {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                    .foregroundStyle(.tint)
+                Text(String(
+                    format: String(localized: "Showing %lld of %lld"),
+                    filteredDatabases.count,
+                    databases.count
+                ))
+                .lineLimit(1)
+                Spacer(minLength: 4)
+                Button(String(localized: "Show All")) {
+                    sidebarState.databaseFilterSelected = []
+                }
+                .buttonStyle(.link)
+            }
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .accessibilityElement(children: .combine)
+            Divider()
         }
     }
 

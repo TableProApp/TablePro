@@ -108,6 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A filtered database tree now says so, with a banner naming how many of the databases it is showing and a button to show them all.
 - The bar at the bottom of the sidebar is gone, and everything it held moved somewhere a window can never hide. New Table and New View are in the Database menu and in the sidebar's right-click menu. Switching schema is Database > Schema, and the toolbar already shows which schema is active. The database filter is View > Filter Databases, also in the sidebar's right-click menu. The refresh spinner joined the other progress in the toolbar.
 - Clicking a table in the sidebar opens it right away. It used to wait out the double-click interval, about half a second, to find out whether a second click was coming. Double-click no longer opens a second copy of the table; **Open in New Tab** on the table's contextual menu does that.
 - Opening a table from the sidebar leaves the keyboard in the sidebar, so you can keep clicking or arrowing through tables and watch each one load. Click into the grid when you want to work in it.

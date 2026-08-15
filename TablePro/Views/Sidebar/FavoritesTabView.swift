@@ -466,12 +466,20 @@ internal struct FavoritesTabView: View {
 
     // MARK: - Empty States
 
+    /// An empty list has no row to right-click, so the commands the background menu carries have to
+    /// be here too. They used to live in a bar at the bottom of the sidebar.
     private var emptyState: some View {
         ContentUnavailableView {
             Label(String(localized: "No Favorites"), systemImage: "star")
         } description: {
             Text("Save frequently used queries, or link a folder of .sql files to share with your team.")
         } actions: {
+            Button(String(localized: "New Favorite...")) {
+                viewModel.createFavorite()
+            }
+            Button(String(localized: "New Folder")) {
+                viewModel.createFolder()
+            }
             Button(String(localized: "Link a Folder...")) {
                 addLinkedFolder()
             }
