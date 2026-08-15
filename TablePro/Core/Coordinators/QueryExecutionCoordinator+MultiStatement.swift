@@ -83,13 +83,10 @@ extension QueryExecutionCoordinator {
         lastSelectSQL: String?,
         newResultSets: [ResultSet]
     ) {
-        parent.currentQueryTask = nil
-        parent.toolbarState.setExecuting(false)
+        guard parent.tabExecution.settle(claim) else { return }
+        parent.retireQueryTask(for: claim)
         parent.toolbarState.lastQueryDuration = cumulativeTime
 
-        if !parent.tabExecution.isCurrent(claim) {
-            return
-        }
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             return
         }

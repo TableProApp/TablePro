@@ -46,18 +46,6 @@ extension MainContentCoordinator {
 
     // MARK: - Error Alerts
 
-    /// Show query execution error as a sheet
-    /// - Parameters:
-    ///   - error: The error that occurred
-    ///   - window: Parent window (optional)
-    func showQueryError(_ error: Error, window: NSWindow?) {
-        AlertHelper.showErrorSheet(
-            title: String(localized: "Query Execution Failed"),
-            message: error.localizedDescription,
-            window: window
-        )
-    }
-
     /// Show save changes error as a sheet
     /// - Parameters:
     ///   - error: The error that occurred

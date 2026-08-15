@@ -63,7 +63,8 @@ struct TabRetargetInvalidationTests {
         registry.invalidate(tabId)
         let tableB = registry.claim(tabId)
 
-        registry.settle(tableA)
+        let settled = registry.settle(tableA)
+        #expect(settled == false)
 
         #expect(registry.isCurrent(tableB))
         #expect(registry.isExecuting(tabId))
@@ -76,7 +77,8 @@ struct TabRetargetInvalidationTests {
         var registry = TabExecutionRegistry()
         let tabId = UUID()
         let claim = registry.claim(tabId)
-        registry.settle(claim)
+        let settled = registry.settle(claim)
+        #expect(settled)
 
         let captured = registry.contentEpoch(for: tabId)
         #expect(registry.isSameContent(captured, for: tabId))
@@ -93,7 +95,8 @@ struct TabRetargetInvalidationTests {
         let claim = registry.claim(tabId)
         let captured = registry.contentEpoch(for: tabId)
 
-        registry.settle(claim)
+        let settled = registry.settle(claim)
+        #expect(settled)
 
         #expect(registry.isSameContent(captured, for: tabId))
     }

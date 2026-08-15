@@ -121,7 +121,7 @@ extension QueryExecutionCoordinator {
             needsMetadataFetch = false
         }
 
-        parent.currentQueryTask = Task { [weak self, parent] in
+        let parameterizedTask = Task { [weak self, parent] in
             guard let self else { return }
 
             let schemaTask: Task<FetchedTableSchema, Error>?
@@ -147,7 +147,7 @@ extension QueryExecutionCoordinator {
 
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
-                    await parent.resetExecutionState(tabId: tabId, executionTime: fetchResult.executionTime)
+                    await parent.resetExecutionState(claim: claim, executionTime: fetchResult.executionTime)
                     return
                 }
 
@@ -185,28 +185,25 @@ extension QueryExecutionCoordinator {
                         )
                     }
                 } else if !isEditable || tableName == nil {
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        guard parent.tabExecution.isCurrent(claim) else { return }
-                        guard !Task.isCancelled else { return }
-                        parent.changeManager.clearChangesAndUndoHistory()
+                    await MainActor.run { [parent] in
+                        parent.clearChangesIfCurrent(claim: claim)
                     }
                 }
             } catch {
                 schemaTask?.cancel()
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    guard parent.tabExecution.settle(claim) else { return }
                     parent.tabManager.mutate(tabId: tabId) { tab in
                         tab.pagination.isLoadingMore = false
                     }
-                    parent.currentQueryTask = nil
-                    parent.toolbarState.setExecuting(false)
+                    parent.retireQueryTask(for: claim)
                     if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
-                    guard parent.tabExecution.isCurrent(claim) else { return }
                     handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
                 }
             }
         }
+        parent.installQueryTask(parameterizedTask, for: claim)
     }
 
     /// Every statement of the run shares one lease on the tab's database, so the
@@ -269,7 +266,7 @@ extension QueryExecutionCoordinator {
             )
         }
 
-        parent.currentQueryTask = Task { [weak self, parent] in
+        let multiStatementTask = Task { [weak self, parent] in
             guard let self else { return }
 
             let outcome = await runMultiStatementTransaction(
@@ -281,8 +278,8 @@ extension QueryExecutionCoordinator {
 
             switch outcome {
             case .cancelled:
-                parent.currentQueryTask = nil
-                parent.toolbarState.setExecuting(false)
+                guard parent.tabExecution.settle(claim) else { return }
+                parent.retireQueryTask(for: claim)
             case .completed(let results):
                 let resultSets = applyExecutedStatements(
                     prepared: prepared,
@@ -323,6 +320,7 @@ extension QueryExecutionCoordinator {
                 )
             }
         }
+        parent.installQueryTask(multiStatementTask, for: claim)
     }
 
     private func prepareStatement(
@@ -473,16 +471,13 @@ extension QueryExecutionCoordinator {
     ) async {
         await MainActor.run { [weak self] in
             guard let self else { return }
-            parent.currentQueryTask = nil
+            guard parent.tabExecution.settle(claim) else { return }
+            parent.retireQueryTask(for: claim)
+            guard !Task.isCancelled else { return }
             if PluginManager.shared.supportsQueryProgress(for: parent.connection.type) {
                 parent.clearClickHouseProgress()
             }
-            parent.toolbarState.setExecuting(false)
             parent.toolbarState.lastQueryDuration = fetchResult.executionTime
-
-            if !parent.tabExecution.isCurrent(claim) || Task.isCancelled {
-                return
-            }
 
             applyPhase1Result(
                 tabId: tabId,
@@ -525,15 +520,6 @@ extension QueryExecutionCoordinator {
         failedSQL: String?,
         resultSets: inout [ResultSet]
     ) async {
-        if !parent.tabExecution.isCurrent(claim) {
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                parent.currentQueryTask = nil
-                parent.toolbarState.setExecuting(false)
-            }
-            return
-        }
-
         let failedStmtIndex = executedCount + 1
         let contextMsg = "Statement \(failedStmtIndex)/\(totalCount) failed: " + errorDescription
 
@@ -545,15 +531,24 @@ extension QueryExecutionCoordinator {
         let capturedResultSets = resultSets
         await MainActor.run { [weak self] in
             guard let self else { return }
-            parent.currentQueryTask = nil
-            parent.toolbarState.setExecuting(false)
+            guard parent.tabExecution.settle(claim) else { return }
+            parent.retireQueryTask(for: claim)
 
             parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.execution.errorMessage = contextMsg
                 tab.execution.errorQuery = failedStatement
                 tab.execution.executionTime = cumulativeTime
+                tab.execution.lastExecutedAt = Date()
 
                 tab.display.replaceUnpinnedResults(with: capturedResultSets)
+                if tab.display.isResultsCollapsed {
+                    tab.display.isResultsCollapsed = false
+                }
+            }
+            if parent.tabManager.selectedTabId == tabId {
+                parent.toolbarState.isResultsCollapsed = false
+                parent.toolbarState.lastQueryDuration = cumulativeTime
+                parent.announceQueryError(contextMsg)
             }
 
             let rawSQL = failedStatement

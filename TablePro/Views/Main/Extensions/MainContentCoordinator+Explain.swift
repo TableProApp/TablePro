@@ -123,7 +123,7 @@ extension MainContentCoordinator {
         tabManager.mutate(at: index) { $0.execution.errorMessage = nil }
         toolbarState.setExecuting(true)
 
-        currentQueryTask = Task { [weak self] in
+        let explainTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let fetchResult = try await services.databaseManager.withScopedDriver(
@@ -144,9 +144,9 @@ extension MainContentCoordinator {
                     // Every write below belongs to whoever owns the tab now. A superseded plan
                     // that cleared the spinner or nilled the task handle would be reporting on a
                     // query that is still running, so the gate comes before all of them.
-                    guard tabExecution.isCurrent(claim), !Task.isCancelled else { return }
-                    currentQueryTask = nil
-                    toolbarState.setExecuting(false)
+                    guard tabExecution.settle(claim) else { return }
+                    retireQueryTask(for: claim)
+                    guard !Task.isCancelled else { return }
 
                     tabManager.mutate(tabId: tabId) { tab in
                         tab.execution.executionTime = fetchResult.executionTime
@@ -165,7 +165,6 @@ extension MainContentCoordinator {
                         }
                     }
                     toolbarState.isResultsCollapsed = false
-                    tabExecution.settle(claim)
 
                     recordHistory(
                         QueryHistoryRecordRequest(
@@ -184,17 +183,23 @@ extension MainContentCoordinator {
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    tabExecution.settle(claim)
-                    currentQueryTask = nil
-                    toolbarState.setExecuting(false)
+                    guard tabExecution.settle(claim) else { return }
+                    retireQueryTask(for: claim)
 
                     // A cancelled EXPLAIN is not a failure the user needs told about, and it does
                     // not belong in history either.
                     if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
-                    guard tabExecution.isCurrent(claim) else { return }
 
                     tabManager.mutate(tabId: tabId) { tab in
                         tab.execution.errorMessage = error.localizedDescription
+                        tab.execution.lastExecutedAt = Date()
+                        if tab.display.isResultsCollapsed {
+                            tab.display.isResultsCollapsed = false
+                        }
+                    }
+                    if tabManager.selectedTabId == tabId {
+                        toolbarState.isResultsCollapsed = false
+                        announceQueryError(error.localizedDescription)
                     }
 
                     recordHistory(
@@ -214,5 +219,6 @@ extension MainContentCoordinator {
                 }
             }
         }
+        installQueryTask(explainTask, for: claim)
     }
 }

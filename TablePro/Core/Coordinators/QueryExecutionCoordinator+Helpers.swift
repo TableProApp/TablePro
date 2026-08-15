@@ -543,26 +543,37 @@ extension QueryExecutionCoordinator {
         return exceedsThreshold ? .skip : .exactCount(filtered: false)
     }
 
+    /// Reports a failure that belongs to this tab. Ownership of the window's task handle and the
+    /// spinner is settled by the caller before this runs, so nothing here touches them.
     func handleQueryExecutionError(
         _ error: Error,
         sql: String,
         tabId: UUID,
         connection conn: DatabaseConnection
     ) {
-        parent.currentQueryTask = nil
-        guard !DatabaseCancellationDiagnosis.isCancellation(error) else {
-            parent.tabManager.mutate(tabId: tabId) { tab in
-                tab.pagination.isLoadingMore = false
-            }
-            parent.toolbarState.setExecuting(false)
-            return
-        }
+        let message = DatabaseWriteRejectionDiagnosis.formatted(error)
+        helpersLogger.error(
+            "Query failed on tab \(tabId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+        )
         parent.tabManager.mutate(tabId: tabId) { tab in
-            tab.execution.errorMessage = DatabaseWriteRejectionDiagnosis.formatted(error)
+            tab.execution.errorMessage = message
             tab.execution.errorQuery = sql
             tab.execution.lastExecutedAt = Date()
+            tab.execution.executionTime = nil
+
+            // The banner lives at the top of the results pane, so a collapsed pane hides the only
+            // thing telling the user their query failed. Every success path opens it the same way.
+            if tab.display.isResultsCollapsed {
+                tab.display.isResultsCollapsed = false
+            }
         }
-        parent.toolbarState.setExecuting(false)
+        // The toolbar mirrors the selected tab, so a failure on a tab in the background describes
+        // itself on its own tab and leaves the window chrome to whatever is actually on screen.
+        if parent.tabManager.selectedTabId == tabId {
+            parent.toolbarState.isResultsCollapsed = false
+            parent.toolbarState.lastQueryDuration = nil
+            parent.announceQueryError(message)
+        }
 
         recordHistory(
             QueryHistoryRecordRequest(

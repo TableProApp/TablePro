@@ -66,7 +66,8 @@ struct TabExecutionRegistryTests {
         #expect(registry.isExecuting(tabId))
         #expect(registry.isAnyExecuting)
 
-        registry.settle(claim)
+        let settled = registry.settle(claim)
+        #expect(settled)
         #expect(registry.isExecuting(tabId) == false)
         #expect(registry.isAnyExecuting == false)
     }
@@ -80,10 +81,52 @@ struct TabExecutionRegistryTests {
         let stale = registry.claim(tabId)
         let live = registry.claim(tabId)
 
-        registry.settle(stale)
+        let settledStale = registry.settle(stale)
+        #expect(settledStale == false)
 
         #expect(registry.isExecuting(tabId))
         #expect(registry.isCurrent(live))
+    }
+
+    /// The whole point of the return value. A completing execution has one question, "may I write
+    /// this?", and settling has to answer it, because asking `isCurrent` afterwards is always false
+    /// and asking it beforehand is a separate call someone will eventually put in the wrong order.
+    /// That is what silently swallowed every query error in 0.64.0 (#2120).
+    @Test("Settling answers whether the claim owned the tab")
+    func settleReportsOwnership() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let claim = registry.claim(tabId)
+
+        let firstSettle = registry.settle(claim)
+        #expect(firstSettle)
+        let secondSettle = registry.settle(claim)
+        #expect(secondSettle == false)
+
+        let superseded = registry.claim(tabId)
+        registry.invalidate(tabId)
+        let settledSuperseded = registry.settle(superseded)
+        #expect(settledSuperseded == false)
+    }
+
+    /// Work that outlives its own claim, phase 2 and clearing pending edits, asks about content
+    /// instead. Content identity is what survives the settle and dies on a retarget.
+    @Test("Content ownership survives a settle but not a retarget or a reclaim")
+    func ownsContentOutlivesTheClaim() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let claim = registry.claim(tabId)
+
+        let settled = registry.settle(claim)
+        #expect(settled)
+        #expect(registry.ownsContent(claim))
+
+        registry.invalidate(tabId)
+        #expect(registry.ownsContent(claim) == false)
+
+        let reclaimed = registry.claim(tabId)
+        _ = registry.claim(tabId)
+        #expect(registry.ownsContent(reclaimed) == false)
     }
 
 

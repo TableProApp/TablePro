@@ -264,7 +264,7 @@ final class PaginationCoordinator {
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
 
-        parent.currentQueryTask = Task { [weak self, parent] in
+        let fetchAllTask = Task { [weak self, parent] in
             guard let self, !parent.isTearingDown else { return }
 
             do {
@@ -291,11 +291,11 @@ final class PaginationCoordinator {
                     guard let self, !parent.isTearingDown else { return }
                     guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else {
                         parent.tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
-                        parent.toolbarState.setExecuting(false)
+                        parent.retireQueryTask(for: nil)
                         return
                     }
                     guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-                        parent.toolbarState.setExecuting(false)
+                        parent.retireQueryTask(for: nil)
                         return
                     }
 
@@ -309,9 +309,8 @@ final class PaginationCoordinator {
                         tab.display.activeResultSet?.isTruncated = false
                     }
                     parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(replaceDelta)
-                    parent.toolbarState.setExecuting(false)
+                    parent.retireQueryTask(for: nil)
                     parent.toolbarState.lastQueryDuration = result.executionTime
-                    parent.currentQueryTask = nil
 
                     let totalTime = CFAbsoluteTimeGetCurrent() - start
                     progressLog.info("[fetchAll] DONE rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s totalTime=\(String(format: "%.3f", totalTime))s")
@@ -326,13 +325,11 @@ final class PaginationCoordinator {
                         guard !isStale, !isCancelled else { return }
                         tab.execution.errorMessage = DatabaseWriteRejectionDiagnosis.formatted(error)
                     }
-                    parent.toolbarState.setExecuting(false)
-                    if !isStale {
-                        parent.currentQueryTask = nil
-                    }
+                    parent.retireQueryTask(for: nil)
                     MainContentCoordinator.logger.error("Fetch all failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
+        parent.installQueryTask(fetchAllTask, for: nil)
     }
 }

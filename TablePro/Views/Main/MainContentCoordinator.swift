@@ -210,6 +210,12 @@ final class MainContentCoordinator {
     /// property and invalidates its readers.
     internal var tabExecution = TabExecutionRegistry()
     @ObservationIgnored internal var currentQueryTask: Task<Void, Never>?
+
+    /// Which claim installed `currentQueryTask`. The handle is one per window while claims are one
+    /// per tab, so owning your own tab is not the same as owning the query the window is running:
+    /// superseding tab B cancels tab A's task, and A's completion would otherwise nil out B's
+    /// handle and leave B's query with no spinner and no way to stop it.
+    @ObservationIgnored internal var currentQueryTaskOwner: TabExecutionClaim?
     @ObservationIgnored internal var rowCountTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
     @ObservationIgnored internal var tableLoadTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
@@ -1067,7 +1073,7 @@ final class MainContentCoordinator {
             )
         }
         guard let scope = scope(for: tab) else {
-            tabExecution.settle(claim)
+            guard tabExecution.settle(claim) else { return }
             tabManager.mutate(at: index) { tab in
                 tab.execution.errorMessage = String(localized: "Not connected to database")
             }
@@ -1075,7 +1081,7 @@ final class MainContentCoordinator {
             return
         }
 
-        currentQueryTask = Task { [weak self] in
+        let queryTask = Task { [weak self] in
             guard let self else { return }
 
             if isAutoLoad {
@@ -1085,9 +1091,8 @@ final class MainContentCoordinator {
                     await MainActor.run { [weak self] in
                         guard let self else { return }
                         traceConnectUnavailable(traceToken)
-                        tabExecution.settle(claim)
-                        currentQueryTask = nil
-                        toolbarState.setExecuting(false)
+                        guard tabExecution.settle(claim) else { return }
+                        retireQueryTask(for: claim)
                         pendingLoadTrigger = trigger
                     }
                     return
@@ -1120,7 +1125,7 @@ final class MainContentCoordinator {
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
                     traceFetchCancelled(traceToken, began: fetchBeganAt, ended: fetchEndedAt)
-                    await resetExecutionState(tabId: tabId, executionTime: fetchResult.executionTime)
+                    await resetExecutionState(claim: claim, executionTime: fetchResult.executionTime)
                     return
                 }
 
@@ -1134,16 +1139,22 @@ final class MainContentCoordinator {
 
                     // Every write below belongs to whoever owns the tab now. A superseded result
                     // that cleared the spinner or nilled the task handle would be reporting on a
-                    // query that is still running, so the gate comes before all of them.
-                    guard tabExecution.isCurrent(claim), !Task.isCancelled else {
+                    // query that is still running, so the gate comes before all of them. Settling
+                    // is that gate: it answers and releases in one step, and it comes before the
+                    // cancellation check rather than sharing a guard with it, because a short
+                    // circuit there would leave the tab claimed forever and refusing later runs.
+                    guard tabExecution.settle(claim) else {
                         traceStaleResultDropped(traceToken)
                         return
                     }
-                    currentQueryTask = nil
+                    retireQueryTask(for: claim)
+                    guard !Task.isCancelled else {
+                        traceStaleResultDropped(traceToken)
+                        return
+                    }
                     if services.pluginManager.supportsQueryProgress(for: self.connection.type) {
                         self.clearClickHouseProgress()
                     }
-                    toolbarState.setExecuting(false)
                     toolbarState.lastQueryDuration = fetchResult.executionTime
 
                     traceApplyingResult(traceToken, tabId: tabId)
@@ -1165,7 +1176,6 @@ final class MainContentCoordinator {
                         isTruncated: fetchResult.isTruncated
                     )
 
-                    tabExecution.settle(claim)
                     scheduleTraceCompletion(traceToken, outcome: "completed")
                 }
 
@@ -1194,6 +1204,24 @@ final class MainContentCoordinator {
                 )
             }
         }
+        installQueryTask(queryTask, for: claim)
+    }
+
+    /// A nil claim means work that runs against a tab without claiming it, which is Fetch All. It
+    /// still owns the handle for as long as it runs; it just cannot be retired by any claim.
+    internal func installQueryTask(_ task: Task<Void, Never>, for claim: TabExecutionClaim?) {
+        currentQueryTask = task
+        currentQueryTaskOwner = claim
+    }
+
+    /// Retires the window's task handle and the spinner it drives, but only for the execution that
+    /// installed them. A completion that owns its own tab can still be a stranger to the query the
+    /// window is running, and clearing that one's spinner reports on work still in flight.
+    internal func retireQueryTask(for claim: TabExecutionClaim?) {
+        guard currentQueryTaskOwner == claim else { return }
+        currentQueryTask = nil
+        currentQueryTaskOwner = nil
+        toolbarState.setExecuting(false)
     }
 
     internal func cancelInFlightQueryTask(reach: DriverCancellationReach = .userStop) {
@@ -1205,24 +1233,36 @@ final class MainContentCoordinator {
             Self.logger.warning("cancelQuery failed: \(error.localizedDescription, privacy: .public)")
         }
         currentQueryTask = nil
+        currentQueryTaskOwner = nil
     }
 
     /// Ends whatever the tab was doing so a new navigation owns it outright. Invalidating before the
     /// new claim is minted is what makes "the user navigated away and no successor ever ran" still
     /// discard the old result, which a counter that only moved on a successful start could not do.
+    ///
+    /// Clearing the spinner here is what makes the cancelled execution's own completion free to stay
+    /// silent. A retarget need not be followed by a successor, so nothing else would put the
+    /// titlebar back to idle, and a stuck spinner keeps Stop enabled and makes Disconnect warn about
+    /// a query that is not running.
     internal func supersedeExecution(for tabId: UUID) {
         tabExecution.invalidate(tabId)
         cancelTableLoad(for: tabId)
         cancelRowCountTask(for: tabId)
+        let hadInFlightQuery = currentQueryTask != nil
         cancelInFlightQueryTask(reach: .supersededNavigation)
+        if hadInFlightQuery {
+            toolbarState.setExecuting(false)
+        }
     }
 
-    /// Reset execution state when a query is cancelled
+    /// Reset execution state when a query is cancelled. The task handle is retired through the same
+    /// ownership check as any other completion: a cancelled attempt that has already been replaced
+    /// would otherwise take its successor's handle and spinner down with it.
     @MainActor
-    internal func resetExecutionState(tabId: UUID, executionTime: TimeInterval) {
-        tabExecution.invalidate(tabId)
-        currentQueryTask = nil
-        toolbarState.setExecuting(false)
+    internal func resetExecutionState(claim: TabExecutionClaim, executionTime: TimeInterval) {
+        tabExecution.invalidate(claim.tabId)
+        guard currentQueryTaskOwner == claim else { return }
+        retireQueryTask(for: claim)
         toolbarState.lastQueryDuration = executionTime
     }
 

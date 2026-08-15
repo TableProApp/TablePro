@@ -54,8 +54,19 @@ internal struct TabExecutionRegistry {
         contentEpoch(for: tabId) == epoch
     }
 
+    /// Only for an execution that is still in flight and has more work to do. An execution that has
+    /// finished asks `settle` instead, which answers the same question and releases the tab in one
+    /// step: `settle` removes the entry, so `isCurrent` after it is false whether or not the claim
+    /// owned anything, and a guard written that way rejects every result it was meant to admit.
     internal func isCurrent(_ claim: TabExecutionClaim) -> Bool {
         entries[claim.tabId]?.epoch == claim.epoch
+    }
+
+    /// Identity of what the tab is showing, asked on behalf of the claim that produced it. Work
+    /// that outlives its own claim (phase 2, clearing pending edits) has to ask this, because its
+    /// claim was settled the moment the result was applied.
+    internal func ownsContent(_ claim: TabExecutionClaim) -> Bool {
+        isSameContent(claim.epoch, for: claim.tabId)
     }
 
     /// Retarget, explicit cancel, tab close, teardown. Removing the entry rather than bumping a
@@ -76,11 +87,22 @@ internal struct TabExecutionRegistry {
         }
     }
 
-    /// Ends a claim that ran to completion. A claim that is no longer current settles nothing, so a
-    /// late result cannot clear the busy state of the navigation that superseded it.
-    internal mutating func settle(_ claim: TabExecutionClaim) {
-        guard isCurrent(claim) else { return }
+    /// Ends a claim that ran to completion and reports whether it still owned the tab. A claim that
+    /// is no longer current settles nothing, so a late result cannot clear the busy state of the
+    /// navigation that superseded it.
+    ///
+    /// The answer and the release are one call on purpose. Asking them separately is
+    /// order-dependent, and releasing first makes the check that follows answer "no" forever, which
+    /// is how a failed query stopped reporting its error (#2120). The returned value is the
+    /// caller's authority to write: `guard settle(claim) else { return }`, with every write below
+    /// the guard. It is deliberately not `@discardableResult`.
+    ///
+    /// `ConnectionAttemptRegistry.finish` is the same idea for connections and keeps the older
+    /// void shape, because its completion sites call it last, after validating through a pure read.
+    internal mutating func settle(_ claim: TabExecutionClaim) -> Bool {
+        guard isCurrent(claim) else { return false }
         entries.removeValue(forKey: claim.tabId)
+        return true
     }
 
     internal func isExecuting(_ tabId: UUID) -> Bool {

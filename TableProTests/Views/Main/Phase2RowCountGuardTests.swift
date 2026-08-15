@@ -23,7 +23,8 @@ struct Phase2RowCountGuardTests {
         let claim = registry.claim(tabId)
         let contentEpoch = registry.contentEpoch(for: tabId)
 
-        registry.settle(claim)
+        let settled = registry.settle(claim)
+        #expect(settled)
 
         #expect(registry.isCurrent(claim) == false)
         #expect(registry.isSameContent(contentEpoch, for: tabId))
@@ -37,7 +38,8 @@ struct Phase2RowCountGuardTests {
         let (coordinator, tabManager) = Self.makeCoordinator()
         let tabId = Self.addTableTab(to: tabManager)
         let claim = coordinator.tabExecution.claim(tabId)
-        coordinator.tabExecution.settle(claim)
+        let settled = coordinator.tabExecution.settle(claim)
+        #expect(settled)
         #expect(coordinator.tabExecution.isCurrent(claim) == false)
 
         coordinator.launchPhase2Count(tableName: "users", tabId: tabId, connectionType: .mysql)
@@ -53,7 +55,8 @@ struct Phase2RowCountGuardTests {
         let tabId = UUID()
         let claim = registry.claim(tabId)
         let contentEpoch = registry.contentEpoch(for: tabId)
-        registry.settle(claim)
+        let settled = registry.settle(claim)
+        #expect(settled)
 
         registry.invalidate(tabId)
 

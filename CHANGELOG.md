@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A query that fails now shows the database's error again and is recorded in query history. A syntax error, or selecting from a table that does not exist, left the results area blank with no message at all, and opening a table that failed to load was silent the same way. The error also opens the results pane if you had it collapsed. (#2120)
+- Running a query with parameters, or several statements at once, no longer stops the tab from accepting any later run.
 - An MCP client could read the query history and schema of a connection whose external access was turned off, or that its token was not allowed to reach, by naming the connection directly. Both now go through the same permission check as every other request.
 - Searching query history for several words now finds entries that contain them all, wherever they appear. It only matched when the words sat next to each other in that order, so `select customers` found nothing.
 - Query History no longer throws away the older entries you loaded when a query finishes while the drawer is open. It also stops refetching once per statement while a large save or import runs.

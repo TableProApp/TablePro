@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import Foundation
 import os
 import TableProPluginKit
@@ -11,6 +12,17 @@ extension MainContentCoordinator {
     func fixErrorWithAI(query: String, error: String) {
         showAIChatPanel()
         aiViewModel?.handleFixError(query: query, error: error)
+    }
+
+    /// The banner appears without the user doing anything, and macOS has no live region to mark it
+    /// with, so an announcement is the only way VoiceOver hears about it. Announcements are
+    /// app-scoped rather than window-scoped, so a background window has to stay quiet instead of
+    /// talking over whatever the front one is doing.
+    func announceQueryError(_ message: String) {
+        guard contentWindow?.isKeyWindow == true else { return }
+        AccessibilityNotification.Announcement(
+            String(format: String(localized: "Query failed. %@"), message)
+        ).post()
     }
 
     func finishFailedQuery(
@@ -23,15 +35,16 @@ extension MainContentCoordinator {
         trigger: TableLoadTrigger,
         traceToken: TableLoadTraceToken?
     ) {
+        guard tabExecution.settle(claim) else {
+            traceStaleResultDropped(traceToken)
+            return
+        }
         tabManager.mutate(tabId: tabId) { tab in
             tab.pagination.isLoadingMore = false
         }
-        tabExecution.settle(claim)
-        currentQueryTask = nil
-        toolbarState.setExecuting(false)
+        retireQueryTask(for: claim)
         traceExecutionFailed(traceToken, error: error)
         if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
-        guard tabExecution.isCurrent(claim) else { return }
         if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
             pendingLoadTrigger = trigger
             return
@@ -39,8 +52,12 @@ extension MainContentCoordinator {
         handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
     }
 
+    /// The change manager is one per window and holds whichever tab is selected, so a result that
+    /// still owns its own tab may not own the edits on screen. Clearing without the selection check
+    /// throws away another tab's uncommitted cells and its undo history.
     func clearChangesIfCurrent(claim: TabExecutionClaim) {
-        guard tabExecution.isCurrent(claim), !Task.isCancelled else { return }
+        guard tabExecution.ownsContent(claim), !Task.isCancelled else { return }
+        guard tabManager.selectedTabId == claim.tabId else { return }
         changeManager.clearChangesAndUndoHistory()
     }
 
