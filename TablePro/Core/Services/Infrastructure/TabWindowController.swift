@@ -49,10 +49,14 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     private var activity: NSUserActivity?
 
+    /// `adopting` carries a connection that is moving here from another window, whole. Everything
+    /// the user has in it lives on that object, so the window takes it rather than building a
+    /// second one around the same connection.
     internal init(
         payload: EditorTabPayload,
         sessionState: SessionStateFactory.SessionState? = nil,
-        autoConnect: Bool = false
+        autoConnect: Bool = false,
+        adopting workspace: ConnectionWorkspace? = nil
     ) {
         self.payload = payload
         self.controllerId = UUID()
@@ -78,7 +82,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         let splitVC = MainSplitViewController(
             payload: payload,
             sessionState: sessionState,
-            autoConnect: autoConnect
+            autoConnect: autoConnect,
+            adopting: workspace
         )
         window.contentViewController = splitVC
         FileDropDestination.register(on: window)

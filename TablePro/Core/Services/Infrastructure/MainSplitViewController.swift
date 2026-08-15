@@ -124,13 +124,22 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Init
 
-    init(payload: EditorTabPayload?, sessionState: SessionStateFactory.SessionState?, autoConnect: Bool = false) {
+    init(
+        payload: EditorTabPayload?,
+        sessionState: SessionStateFactory.SessionState?,
+        autoConnect: Bool = false,
+        adopting workspace: ConnectionWorkspace? = nil
+    ) {
         self.windowTitle = ""
         self.windowSubtitle = ""
 
         super.init(nibName: nil, bundle: nil)
 
-        adoptWorkspace(payload: payload, autoConnect: autoConnect)
+        if let workspace {
+            workspaces.insert(workspace)
+        } else {
+            adoptWorkspace(payload: payload, autoConnect: autoConnect)
+        }
 
         /// AppKit renders a native tab's label even for a tab that is never activated, so the
         /// title has to be right at creation rather than at first appearance.
@@ -153,12 +162,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         if let existing = workspaces.workspace(for: connectionId) {
             workspaces.select(connectionId)
             return existing
-        }
-
-        /// A connection moving here from another window arrives whole. Building a new workspace for
-        /// it would replace the session state its open tabs, unsaved edits and undo stack live on.
-        if let payloadId = payload?.id, let moved = ConnectionWorkspaceHandoff.consume(for: payloadId) {
-            return workspaces.insert(moved)
         }
 
         let resolvedConnection = DatabaseManager.shared.activeSessions[connectionId]?.connection
@@ -1083,15 +1086,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private func restoreUserPaneLayout() {
         splitView.autosaveName = splitAutosaveName
         applyDefaultCollapseStateIfNoAutosave()
-    }
-
-    /// Whether the connections strip holds the keyboard. A close command is interpreted by the view
-    /// that has focus, so with the strip focused it means the connection it has highlighted rather
-    /// than the editor's front tab.
-    internal var railOwnsFocus: Bool {
-        guard let navigationSidebar, navigationSidebar.isRailVisible,
-              let responder = view.window?.firstResponder as? NSView else { return false }
-        return responder.isDescendant(of: navigationSidebar.railController.view)
     }
 
     /// A collapsed pane keeps whatever first responder it held, which would leave the window

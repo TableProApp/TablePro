@@ -97,25 +97,25 @@ internal final class WindowManager {
               let workspace = host.workspaces.remove(connectionId) else { return }
 
         let payload = EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
-        ConnectionWorkspaceHandoff.register(workspace, for: payload.id)
-        openStandaloneWindow(payload: payload)
-
-        /// The new window consumes the handoff while it builds. Anything still pending means it
-        /// never got there, and the connection would otherwise be hosted by no window at all.
-        if let stranded = ConnectionWorkspaceHandoff.reclaim(for: payload.id) {
-            host.workspaces.insert(stranded)
+        guard openStandaloneWindow(payload: payload, adopting: workspace) else {
+            /// The window never built, and the connection is out of its old registry. Putting it
+            /// back is the only alternative to it being hosted by no window at all.
+            host.workspaces.insert(workspace)
+            return
         }
     }
 
     private func buildWindow(
         payload: EditorTabPayload,
         sessionState: SessionStateFactory.SessionState?,
-        autoConnect: Bool
+        autoConnect: Bool,
+        adopting workspace: ConnectionWorkspace? = nil
     ) -> NSWindow? {
         let controller = TabWindowController(
             payload: payload,
             sessionState: sessionState,
-            autoConnect: autoConnect
+            autoConnect: autoConnect,
+            adopting: workspace
         )
         guard let window = controller.window else {
             Self.lifecycleLogger.error(
@@ -134,8 +134,14 @@ internal final class WindowManager {
     /// the existing tab group on purpose, which is what made Open in New Window produce a second
     /// native tab of the very window it was asked to leave. It also brings its own session state,
     /// so nothing is built for it here.
-    private func openStandaloneWindow(payload: EditorTabPayload) {
-        guard let window = buildWindow(payload: payload, sessionState: nil, autoConnect: false) else { return }
+    @discardableResult
+    private func openStandaloneWindow(payload: EditorTabPayload, adopting workspace: ConnectionWorkspace) -> Bool {
+        guard let window = buildWindow(
+            payload: payload,
+            sessionState: nil,
+            autoConnect: false,
+            adopting: workspace
+        ) else { return false }
 
         /// The system preference can tab a window on its own, without anyone asking AppKit to.
         /// Refused for the moment the window is placed, then allowed again, because a window moved
@@ -144,6 +150,7 @@ internal final class WindowManager {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         window.tabbingMode = .automatic
+        return true
     }
 
     private func openInNewWindow(payload: EditorTabPayload, activate: Bool, autoConnect: Bool) {
