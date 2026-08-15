@@ -99,8 +99,7 @@ extension QueryExecutionCoordinator {
         parent.tabManager.mutate(at: index) { tab in
             tab.execution.executionTime = nil
             tab.execution.errorMessage = nil
-            tab.display.explainText = nil
-            tab.display.explainPlan = nil
+            tab.display.clearExplainResult()
         }
         let tab = parent.tabManager.tabs[index]
         parent.toolbarState.setExecuting(true)

@@ -376,16 +376,7 @@ struct MainEditorContentView: View {
                             NSApp.keyWindow?.close()
                         },
                         onExecuteQuery: { coordinator.runQuery() },
-                        onExplain: { variant in
-                            if let variant {
-                                coordinator.runClickHouseExplain(variant: variant)
-                            } else {
-                                coordinator.runExplainQuery()
-                            }
-                        },
-                        onExplainVariant: { variant in
-                            coordinator.runVariantExplain(variant)
-                        },
+                        onExplain: { variant in coordinator.runExplain(variant: variant) },
                         onAIExplain: { text in
                             coordinator.showAIChatPanel()
                             coordinator.aiViewModel?.handleExplainSelection(text)

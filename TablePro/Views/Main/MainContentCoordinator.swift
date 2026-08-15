@@ -1054,107 +1054,6 @@ final class MainContentCoordinator {
         }
     }
 
-    /// Run EXPLAIN on the current query (database-type-aware prefix)
-    func runExplainQuery() {
-        guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
-        guard !tabExecution.isExecuting(tab.id) else {
-            traceExecutionBlocked(tabId: tab.id, site: "runExplainQuery")
-            return
-        }
-
-        let fullQuery = tab.content.query
-
-        let sql: String
-        if tab.tabType == .table {
-            sql = fullQuery
-        } else if let firstCursor = cursorPositions.first,
-                  firstCursor.range.length > 0 {
-            let nsQuery = fullQuery as NSString
-            let clampedRange = NSIntersectionRange(
-                firstCursor.range,
-                NSRange(location: 0, length: nsQuery.length)
-            )
-            sql = nsQuery.substring(with: clampedRange)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        } else {
-            sql = SQLStatementScanner.statementAtCursor(
-                in: fullQuery,
-                cursorPosition: cursorPositions.first?.range.location ?? 0,
-                dialect: sqlDialect
-            )
-        }
-
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        // Use first statement only (EXPLAIN on a single statement)
-        let statements = SQLStatementScanner.allStatements(in: trimmed, dialect: sqlDialect)
-        guard let stmt = statements.first else { return }
-
-        let level = safeModeLevel
-        let needsConfirmation = level.appliesToAllQueries && level.requiresConfirmation
-
-        // Multi-variant EXPLAIN: use plugin-declared variants if available
-        let explainVariants = connection.type.explainVariants
-
-        if !explainVariants.isEmpty {
-            if needsConfirmation {
-                Task {
-                    let decision = await ExecutionGateProvider.shared.authorize(
-                        OperationRequest(
-                            connectionId: connectionId,
-                            databaseType: connection.type,
-                            sql: "EXPLAIN",
-                            kind: .readQuery,
-                            caller: .userInterface,
-                            capabilities: .interactiveUser,
-                            operationDescription: String(localized: "Execute Query")
-                        )
-                    )
-                    if case .authorized = decision {
-                        runVariantExplain(explainVariants[0])
-                    }
-                }
-            } else {
-                runVariantExplain(explainVariants[0])
-            }
-            return
-        }
-
-        guard let adapter = services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter,
-              let explainSQL = adapter.buildExplainQuery(stmt) else {
-            if let (_, index) = tabManager.selectedTabAndIndex {
-                tabManager.mutate(at: index) {
-                    $0.execution.errorMessage = String(localized: "EXPLAIN is not supported for this database type.")
-                }
-            }
-            return
-        }
-
-        if needsConfirmation {
-            Task {
-                let decision = await ExecutionGateProvider.shared.authorize(
-                    OperationRequest(
-                        connectionId: connectionId,
-                        databaseType: connection.type,
-                        sql: explainSQL,
-                        kind: .readQuery,
-                        caller: .userInterface,
-                        capabilities: .interactiveUser,
-                        operationDescription: String(localized: "Execute Query")
-                    )
-                )
-                if case .authorized = decision {
-                    executeQueryInternal(explainSQL)
-                }
-            }
-        } else {
-            Task {
-                executeQueryInternal(explainSQL)
-            }
-        }
-    }
-
     internal func executeQueryInternal(
         _ sql: String,
         isAutoLoad: Bool = false,
@@ -1169,8 +1068,7 @@ final class MainContentCoordinator {
         tabManager.mutate(at: index) { tab in
             tab.execution.executionTime = nil
             tab.execution.errorMessage = nil
-            tab.display.explainText = nil
-            tab.display.explainPlan = nil
+            tab.display.clearExplainResult()
         }
         let tab = tabManager.tabs[index]
         toolbarState.setExecuting(true)

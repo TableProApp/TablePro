@@ -796,7 +796,7 @@ final class MainContentCommandActions {
     }
 
     func explainQuery() {
-        coordinator?.runExplainQuery()
+        coordinator?.runExplain()
     }
 
     func aiExplainQuery() {

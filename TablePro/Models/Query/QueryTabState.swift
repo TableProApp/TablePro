@@ -487,6 +487,12 @@ struct TabDisplayState: Equatable {
         activeResultSetId = resultSets.last?.id
     }
 
+    mutating func clearExplainResult() {
+        explainText = nil
+        explainPlan = nil
+        explainExecutionTime = nil
+    }
+
     @MainActor
     mutating func togglePin(resultSetId: UUID) {
         guard let target = resultSets.first(where: { $0.id == resultSetId }) else { return }

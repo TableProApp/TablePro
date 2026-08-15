@@ -65,6 +65,53 @@ struct ClearQueryResultsTests {
         #expect(coordinator.canClearActiveQueryResults == true)
     }
 
+    @Test("Clearing results also drops a query plan")
+    @MainActor
+    func clearDropsExplainResult() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+
+        coordinator.tabManager.addTab(databaseName: "db")
+        let index = try #require(coordinator.tabManager.selectedTabIndex)
+        coordinator.tabManager.mutate(at: index) { tab in
+            tab.display.explainText = "Seq Scan on orders"
+            tab.display.explainExecutionTime = 0.4
+        }
+
+        coordinator.clearActiveQueryResults()
+
+        let tab = try #require(coordinator.tabManager.selectedTab)
+        #expect(tab.display.explainText == nil)
+        #expect(tab.display.explainPlan == nil)
+        #expect(tab.display.explainExecutionTime == nil)
+    }
+
+    @Test("Clearing results drops a query plan even when a pinned result survives")
+    @MainActor
+    func clearDropsExplainResultWithPinnedResults() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+
+        coordinator.tabManager.addTab(databaseName: "db")
+        let tabId = try #require(coordinator.tabManager.selectedTab?.id)
+        let index = try #require(coordinator.tabManager.selectedTabIndex)
+
+        let pinned = ResultSet(label: "Result 1")
+        pinned.isPinned = true
+        coordinator.tabManager.mutate(at: index) { tab in
+            tab.display.resultSets = [pinned]
+            tab.display.activeResultSetId = pinned.id
+            tab.display.explainText = "Seq Scan on orders"
+        }
+
+        coordinator.clearActiveQueryResults()
+
+        let tab = try #require(coordinator.tabManager.selectedTab)
+        #expect(tab.display.explainText == nil)
+        #expect(tab.display.resultSets.count == 1)
+        #expect(tabId == tab.id)
+    }
+
     @Test("Cannot clear results on a table tab")
     @MainActor
     func cannotClearOnTableTab() throws {

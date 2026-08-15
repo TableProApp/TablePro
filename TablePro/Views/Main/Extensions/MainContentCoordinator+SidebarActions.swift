@@ -62,13 +62,17 @@ extension MainContentCoordinator {
 
         if let lastPinned = tabManager.tabs[tabIdx].display.resultSets.last(where: \.isPinned) {
             switchActiveResultSet(to: lastPinned.id, in: tabId)
-            tabManager.mutate(at: tabIdx) { $0.display.removeUnpinnedResults() }
+            tabManager.mutate(at: tabIdx) { tab in
+                tab.display.removeUnpinnedResults()
+                tab.display.clearExplainResult()
+            }
             return
         }
 
         setActiveTableRows(TableRows(), for: tabId)
         tabManager.mutate(at: tabIdx) { tab in
             tab.display.removeUnpinnedResults()
+            tab.display.clearExplainResult()
             tab.execution.errorMessage = nil
             tab.execution.rowsAffected = 0
             tab.execution.executionTime = nil

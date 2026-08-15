@@ -27,8 +27,7 @@ struct QueryEditorView: View {
     var restoredCursorRange: NSRange?
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
-    var onExplain: ((ClickHouseExplainVariant?) -> Void)?
-    var onExplainVariant: ((ExplainVariant) -> Void)?
+    var onExplain: ((ExplainVariant?) -> Void)?
     var onAIExplain: ((String) -> Void)?
     var onAIOptimize: ((String) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
@@ -177,15 +176,7 @@ struct QueryEditorView: View {
 
         if variants.count <= 1 {
             Button {
-                if let variant = variants.first {
-                    if let handler = onExplainVariant {
-                        handler(variant)
-                    } else {
-                        onExplain?(nil)
-                    }
-                } else {
-                    onExplain?(nil)
-                }
+                onExplain?(variants.first)
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "chart.bar.doc.horizontal")
@@ -199,13 +190,7 @@ struct QueryEditorView: View {
         } else {
             Menu {
                 ForEach(variants) { variant in
-                    Button(variant.label) {
-                        if let handler = onExplainVariant {
-                            handler(variant)
-                        } else if let legacy = ClickHouseExplainVariant(rawValue: variant.label) {
-                            onExplain?(legacy)
-                        }
-                    }
+                    Button(variant.label) { onExplain?(variant) }
                 }
             } label: {
                 HStack(spacing: 4) {

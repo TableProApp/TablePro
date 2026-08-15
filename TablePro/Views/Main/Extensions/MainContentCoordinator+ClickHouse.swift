@@ -2,12 +2,10 @@
 //  MainContentCoordinator+ClickHouse.swift
 //  TablePro
 //
-//  ClickHouse-specific coordinator methods: progress tracking, EXPLAIN variants.
+//  ClickHouse-specific coordinator methods: progress tracking.
 //
 
-import CodeEditSourceEditor
 import Foundation
-import TableProPluginKit
 
 extension MainContentCoordinator {
     func installClickHouseProgressHandler() {
@@ -20,84 +18,5 @@ extension MainContentCoordinator {
             toolbarState.lastClickHouseProgress = live
         }
         toolbarState.clickHouseProgress = nil
-    }
-
-    /// Run EXPLAIN with a specific variant (e.g. ClickHouse Plan/Pipeline/AST).
-    /// Accepts the plugin-kit `ExplainVariant` type for generic dispatch.
-    func runVariantExplain(_ variant: ExplainVariant) {
-        guard let (tab, _) = tabManager.selectedTabAndIndex,
-              !tabExecution.isExecuting(tab.id) else { return }
-
-        let fullQuery = tab.content.query
-
-        let sql: String
-        if tab.tabType == .table {
-            sql = fullQuery
-        } else if let firstCursor = cursorPositions.first,
-                  firstCursor.range.length > 0 {
-            let nsQuery = fullQuery as NSString
-            let clampedRange = NSIntersectionRange(
-                firstCursor.range,
-                NSRange(location: 0, length: nsQuery.length)
-            )
-            sql = nsQuery.substring(with: clampedRange)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        } else {
-            sql = SQLStatementScanner.statementAtCursor(
-                in: fullQuery,
-                cursorPosition: cursorPositions.first?.range.location ?? 0,
-                dialect: sqlDialect
-            )
-        }
-
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        let statements = SQLStatementScanner.allStatements(in: trimmed, dialect: sqlDialect)
-        guard let stmt = statements.first else { return }
-
-        let explainSQL = "\(variant.sqlPrefix) \(stmt)"
-        let tabId = tab.id
-
-        Task {
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-
-            toolbarState.setExecuting(true)
-
-            do {
-                let startTime = Date()
-                let result = try await driver.execute(query: explainSQL)
-                let duration = Date().timeIntervalSince(startTime)
-
-                let text = ExplainPlanTextFlattener.flatten(rows: result.rows)
-                let format = ExplainFormatResolver.resolve(
-                    declared: variant.format, databaseType: connection.type
-                )
-                let plan = ExplainPlanParserRegistry.plan(from: text, format: format)
-
-                tabManager.mutate(tabId: tabId) { tab in
-                    tab.display.explainText = text
-                    tab.display.explainExecutionTime = duration
-                    tab.display.explainPlan = plan
-                }
-            } catch {
-                tabManager.mutate(tabId: tabId) { tab in
-                    tab.display.explainText = "Error: \(error.localizedDescription)"
-                    tab.display.explainPlan = nil
-                }
-            }
-
-            toolbarState.setExecuting(false)
-        }
-    }
-
-    /// Legacy bridge: calls runVariantExplain with the matching ExplainVariant.
-    func runClickHouseExplain(variant: ClickHouseExplainVariant) {
-        let pluginVariant = ExplainVariant(
-            id: variant.rawValue.lowercased(),
-            label: variant.rawValue,
-            sqlPrefix: variant.sqlKeyword
-        )
-        runVariantExplain(pluginVariant)
     }
 }
