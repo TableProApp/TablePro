@@ -69,11 +69,11 @@ internal struct FavoritesTabView: View {
             }
         }
         .onAppear {
-            SQLFolderWatcher.shared.start()
-            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId).sorted { $0.name < $1.name }
+            viewModel.startWatchingLinkedFolders()
+            favoriteTables = viewModel.favoriteTables(for: connectionId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .favoriteTablesDidChange)) { _ in
-            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId).sorted { $0.name < $1.name }
+            favoriteTables = viewModel.favoriteTables(for: connectionId)
         }
         .sheet(item: $viewModel.editDialogItem) { item in
             FavoriteEditDialog(
@@ -112,8 +112,7 @@ internal struct FavoritesTabView: View {
                 linkedFolderToRemove = nil
             }
             Button(String(localized: "Remove"), role: .destructive) {
-                LinkedSQLFolderStorage.shared.removeFolder(folder)
-                SQLFolderWatcher.shared.reload()
+                viewModel.removeLinkedFolder(folder)
                 linkedFolderToRemove = nil
             }
         } message: { folder in
@@ -129,7 +128,7 @@ internal struct FavoritesTabView: View {
             }
             Button(String(localized: "Move to Trash"), role: .destructive) {
                 coordinator?.trashLinkedFavorite(file)
-                SQLFolderWatcher.shared.reload()
+                viewModel.reloadLinkedFolders()
                 linkedFileToTrash = nil
             }
         } message: { file in
@@ -410,9 +409,7 @@ internal struct FavoritesTabView: View {
         case .showERDiagram:
             coordinator?.showERDiagram()
         case .removeTableFavorite(let table):
-            FavoriteTablesStorage.shared.removeFavorite(
-                name: table.name, schema: table.schema, database: activeDatabase, connectionId: connectionId
-            )
+            viewModel.removeTableFavorite(table, database: activeDatabase)
         case .insertFavorite(let favorite):
             coordinator?.insertFavorite(favorite)
         case .runFavoriteInNewTab(let favorite):
@@ -441,14 +438,11 @@ internal struct FavoritesTabView: View {
             linkedFileToTrash = favorite
             showTrashLinkedFileAlert = true
         case .revealLinkedFolder(let folder):
-            NSWorkspace.shared.activateFileViewerSelecting([folder.expandedURL])
+            viewModel.revealLinkedFolder(folder)
         case .setLinkedFolderEnabled(let folder, let isEnabled):
-            var updated = folder
-            updated.isEnabled = isEnabled
-            LinkedSQLFolderStorage.shared.updateFolder(updated)
-            SQLFolderWatcher.shared.reload()
+            viewModel.setLinkedFolder(folder, enabled: isEnabled)
         case .reloadLinkedFolders:
-            SQLFolderWatcher.shared.reload()
+            viewModel.reloadLinkedFolders()
         case .addLinkedFolder:
             addLinkedFolder()
         case .removeLinkedFolder(let folder):
@@ -500,28 +494,14 @@ internal struct FavoritesTabView: View {
         guard let window = AlertHelper.resolveWindow(nil) else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
-            let path = PathPortability.contractHome(url.path)
-            let existing = LinkedSQLFolderStorage.shared.loadFolders()
-            guard let linked = existing.first(where: { $0.path == path }) else {
-                LinkedSQLFolderStorage.shared.addFolder(LinkedSQLFolder(path: path))
-                SQLFolderWatcher.shared.reload()
-                return
+            MainActor.assumeIsolated {
+                guard case .alreadyLinked(let name) = viewModel.addLinkedFolder(at: url) else { return }
+                AlertHelper.showInfoSheet(
+                    title: String(localized: "This folder is already linked"),
+                    message: String(format: String(localized: "%@ is already in the favorites list."), name),
+                    window: window
+                )
             }
-            guard linked.isEnabled else {
-                var reEnabled = linked
-                reEnabled.isEnabled = true
-                LinkedSQLFolderStorage.shared.updateFolder(reEnabled)
-                SQLFolderWatcher.shared.reload()
-                return
-            }
-            AlertHelper.showInfoSheet(
-                title: String(localized: "This folder is already linked"),
-                message: String(
-                    format: String(localized: "%@ is already in the favorites list."),
-                    url.lastPathComponent
-                ),
-                window: window
-            )
         }
     }
 }

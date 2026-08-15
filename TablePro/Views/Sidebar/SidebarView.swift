@@ -81,10 +81,8 @@ struct SidebarView: View {
             pendingDeletes: pendingDeletes,
             tableOperationOptions: tableOperationOptions
         )
-        vm.searchText = sidebarState.searchText
-        if databaseType == .redis, let existingVM = sidebarState.redisKeyTreeViewModel {
-            vm.redisKeyTreeViewModel = existingVM
-        }
+        /// Nothing observable is written here. This initializer runs on every evaluation of the
+        /// parent's body, and the view model already seeds its own filter and watches the field.
         _viewModel = State(wrappedValue: vm)
         self.connectionId = connectionId
         self.coordinator = coordinator
@@ -109,9 +107,6 @@ struct SidebarView: View {
                     Color.clear
                 }
             }
-        }
-        .onChange(of: sidebarState.searchText) { _, newValue in
-            viewModel.searchText = newValue
         }
         .onChange(of: settingsManager.general.showRecentTables) { _, _ in
             sidebarState.reloadRecentTablesFromStore()

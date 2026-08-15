@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The sidebar now follows Sidebar icon size in System Settings > Appearance, so it matches Finder and Mail. A Row Size control in General settings and in the sidebar's View Options menu overrides it when you want to fit more objects on screen.
 - Add to Favorites is now in the sidebar's right-click menu, so it no longer needs a hover to reach.
 - Right-clicking a row in the object list now highlights the row the menu will act on, the way Finder does. Right-clicking the empty space below the list gives a menu too, which is also how View Options stays reachable when the list is empty, loading or failed.
+- Typing in the sidebar filter no longer restarts its own delay when anything else redraws the sidebar, so the list settles when you stop typing rather than when the window next changes.
 - Favorites rows now follow the sidebar row size like the object list does, and both lists draw their rows at the same height. One inset its rows a point more than the other, so the two tabs of one sidebar did not line up.
 - Collapsing a database or schema is recorded once AppKit has applied it rather than just before, so the saved state always describes what is on screen.
 - The Favorites list right-click menu now highlights the row it acts on, and right-clicking the empty space below it offers New Query, New Favorite, New Folder and Add Linked SQL Folder. Those moved out of the bar at the bottom of the sidebar.

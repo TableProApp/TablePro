@@ -78,12 +78,30 @@ final class SidebarViewModel {
 
     // MARK: - Published State
 
+    /// The text in the sidebar's filter field, which the field itself writes into
+    /// `SharedSidebarState`. This is a window onto that one value rather than a second copy, so a
+    /// write here is a write there.
     var searchText: String {
         get { sharedState.searchText }
         set {
             let oldValue = sharedState.searchText
             sharedState.searchText = newValue
             scheduleFilterQueryUpdate(oldValue: oldValue)
+        }
+    }
+
+    /// Watches the shared state directly instead of being told by a view's `onChange`. The relay
+    /// meant a keystroke reached the filter only while a SwiftUI body was evaluating, and the view
+    /// that carried it also re-seeded the debounce on every rebuild.
+    private func observeSearchText() {
+        withObservationTracking { [weak self] in
+            _ = self?.sharedState.searchText
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.scheduleFilterQueryUpdate(oldValue: self.filterQuery)
+                self.observeSearchText()
+            }
         }
     }
 
@@ -190,6 +208,10 @@ final class SidebarViewModel {
             perConnectionKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId),
             defaultValue: true
         )
+        /// Seeded once, at creation, from whatever the field already holds. Doing it from a view's
+        /// initializer instead ran on every view-graph pass.
+        self.filterQuery = self.sharedState.searchText
+        observeSearchText()
     }
 
     private static func loadInitialExpansion(connectionId: UUID) -> ExpansionState {
@@ -455,7 +477,11 @@ final class SidebarViewModel {
         cachedFilteredRoutinesFingerprint = nil
     }
 
+    /// Clearing the field, or typing the first character into an empty one, changes what the list
+    /// shows wholesale, so it applies at once. Editing an existing query only narrows it, which is
+    /// worth waiting a moment for.
     private func scheduleFilterQueryUpdate(oldValue: String) {
+        guard filterQuery != searchText else { return }
         if searchText.isEmpty || oldValue.isEmpty {
             filterDebounceTask?.cancel()
             filterDebounceTask = nil

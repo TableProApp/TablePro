@@ -160,7 +160,7 @@ internal final class FavoritesSidebarViewModel {
     var showDeleteConfirmation = false
     var favoritesToDelete: [SQLFavorite] = []
 
-    @ObservationIgnored private let connectionId: UUID
+    @ObservationIgnored internal let connectionId: UUID
     @ObservationIgnored private let cache: ConnectionDataCache
     @ObservationIgnored private let services: AppServices
     @ObservationIgnored private var manager: SQLFavoriteManager { services.sqlFavoriteManager }
