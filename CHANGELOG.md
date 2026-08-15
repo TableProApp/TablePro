@@ -10,11 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - MySQL `EXPLAIN FORMAT=TREE` and `EXPLAIN ANALYZE` output now renders as a visual plan diagram or tree instead of raw text only.
-- EXPLAIN plan diagrams now support trackpad pinch-to-zoom in addition to the zoom buttons.
+- A query plan now opens as a result tab next to your query results, so you can switch back to the data without re-running the query, and pin a plan to keep it.
+- EXPLAIN plan diagrams zoom with a trackpad pinch, a two-finger double tap, or Cmd and scroll, and the controls gained fit-to-window. Plans can be copied or exported as a PNG.
+- The plan tree now has resizable, sortable Operation, Cost, Rows and Actual Time columns, arrow-key navigation, a right-click menu to copy a step, and a detail panel you can resize.
+- PGlite, Cloudflare D1, libSQL and Turso query plans now render as a diagram and tree instead of raw text.
+- Plan steps show a cost badge whose shape and colour escalate together, so cost reads without relying on colour.
+- The ER diagram now uses the same zoom and scrolling as the plan diagram, gaining two-finger double tap to zoom, Cmd and scroll, and standard scrollers.
 - PostgreSQL array columns of a simple type, including arrays of an enum, get a list editor in the data grid. One row per element, with reordering, add and remove, and NULL per element. An empty array and a NULL column stay separate values. Enum arrays pick from the labels the type declares. Arrays of `jsonb`, `bytea` or composite types, and multi-dimensional values, keep the plain text editor.
 
 ### Fixed
 
+- Running EXPLAIN from the toolbar now asks for confirmation when Safe Mode requires it. It previously skipped that check on every database that offers an EXPLAIN variant, even though `EXPLAIN ANALYZE` runs the query.
+- The Stop button can now cancel a running `EXPLAIN ANALYZE`.
+- An EXPLAIN that fails now reports the error in the usual place instead of showing it where the plan should be.
+- Clear Query now clears the query plan too, instead of leaving a stale plan on screen.
+- EXPLAIN runs started from the toolbar are now recorded in Query History.
+- A query plan that cannot be read as a tree now says so and shows the raw output, instead of leaving an empty pane.
 - EXPLAIN plan diagrams line every node of the same depth up on one row, so a tall box no longer pushes its children up into itself.
 - Running a second EXPLAIN in the same tab redraws the diagram instead of leaving the previous plan on screen.
 - Plans that report a cost per node but no startup cost, such as MySQL's, now show that cost in the diagram and the tree.
