@@ -15,6 +15,8 @@ internal struct FavoritesOutlineInput {
     internal let queryNodes: [FavoriteNode]
     internal let teamQueries: [FavoritesOutlineTeamQuery]
     internal let renamingFolderId: UUID?
+    internal let allFolders: [SQLFavoriteFolder]
+    internal let teamLibraryAvailable: Bool
 }
 
 internal struct FavoritesOutlineTeamQuery {
@@ -31,6 +33,9 @@ internal struct FavoritesOutlineActions {
     internal let deleteSelection: (FavoritesOutlineNode.Kind) -> Void
     internal let commitRename: (SQLFavoriteFolder, String) -> Void
     internal let cancelRename: () -> Void
+    /// Menu commands go back to the view, because several of them end in a confirmation the view
+    /// owns. The menu itself stays a pure function of values either way.
+    internal let performMenuCommand: (FavoritesMenuCommand) -> Void
 }
 
 /// The Favorites list as an `NSOutlineView`.
@@ -73,6 +78,13 @@ internal struct FavoritesOutlineView<Row: View>: NSViewRepresentable {
         outlineView.target = context.coordinator
         outlineView.doubleAction = #selector(FavoritesOutlineCoordinator<Row>.handleDoubleClick)
         outlineView.favoritesCoordinator = context.coordinator
+
+        /// The table owns the menu, so AppKit sets `clickedRow`, draws the clicked-row highlight,
+        /// and answers a right-click below the last row. The same shape the object list uses.
+        let menu = NSMenu()
+        menu.delegate = context.coordinator
+        outlineView.menu = menu
+
         context.coordinator.attach(outlineView: outlineView)
 
         let scrollView = NSScrollView()

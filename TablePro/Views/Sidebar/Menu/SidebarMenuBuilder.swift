@@ -11,9 +11,9 @@ import AppKit
 /// pure function of values.
 @MainActor
 internal enum SidebarMenuBuilder {
-    internal static func fill(
+    internal static func fill<Command: Equatable>(
         _ menu: NSMenu,
-        with items: [SidebarMenuItem],
+        with items: [SidebarMenuItem<Command>],
         target: AnyObject,
         action: Selector
     ) {
@@ -27,8 +27,8 @@ internal enum SidebarMenuBuilder {
         }
     }
 
-    private static func makeItem(
-        _ item: SidebarMenuItem,
+    private static func makeItem<Command: Equatable>(
+        _ item: SidebarMenuItem<Command>,
         target: AnyObject,
         action: Selector
     ) -> NSMenuItem {
@@ -46,8 +46,8 @@ internal enum SidebarMenuBuilder {
         }
     }
 
-    private static func makeCommandItem(
-        _ entry: SidebarMenuEntry,
+    private static func makeCommandItem<Command: Equatable>(
+        _ entry: SidebarMenuEntry<Command>,
         target: AnyObject,
         action: Selector
     ) -> NSMenuItem {
@@ -58,19 +58,16 @@ internal enum SidebarMenuBuilder {
         if let isOn = entry.isOn {
             item.state = isOn ? .on : .off
         }
-        if let symbolName = entry.symbolName {
-            item.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
-        }
         return item
     }
 }
 
 /// `representedObject` is `Any?`, and an enum with associated values does not survive the round trip
 /// through the Objective-C runtime on its own.
-internal final class SidebarMenuCommandBox: NSObject {
-    internal let command: SidebarMenuCommand
+internal final class SidebarMenuCommandBox<Command>: NSObject {
+    internal let command: Command
 
-    internal init(_ command: SidebarMenuCommand) {
+    internal init(_ command: Command) {
         self.command = command
     }
 }

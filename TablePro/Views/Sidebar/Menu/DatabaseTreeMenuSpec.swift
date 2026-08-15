@@ -34,11 +34,11 @@ internal struct DatabaseTreeMenuContext {
 }
 
 internal enum DatabaseTreeMenuSpec {
-    internal static func items(for context: DatabaseTreeMenuContext) -> [SidebarMenuItem] {
-        SidebarMenuItem.collapsingSeparators(rawItems(for: context))
+    internal static func items(for context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
+        DatabaseTreeMenuItem.collapsingSeparators(rawItems(for: context))
     }
 
-    private static func rawItems(for context: DatabaseTreeMenuContext) -> [SidebarMenuItem] {
+    private static func rawItems(for context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
         guard let clicked = context.clicked else { return backgroundItems(context) }
         switch clicked {
         case .recentTable(let ref):
@@ -74,10 +74,10 @@ internal enum DatabaseTreeMenuSpec {
     private static func tableItems(
         _ ref: DatabaseTreeTableRef,
         context: DatabaseTreeMenuContext
-    ) -> [SidebarMenuItem] {
+    ) -> [DatabaseTreeMenuItem] {
         let targets = SidebarMenuTarget.resolve(clicked: ref.table, selection: Array(context.selectedTables))
         let names = targets.map(\.name).sorted()
-        var items: [SidebarMenuItem] = [
+        var items: [DatabaseTreeMenuItem] = [
             .command(String(localized: "Open in New Tab"), .openInNewTab(ref)),
             .command(String(localized: "Show Structure"), .showStructure(ref))
         ]
@@ -131,7 +131,7 @@ internal enum DatabaseTreeMenuSpec {
 
     /// One format is a plain item, several are a submenu, matching what the menu bar's own Import
     /// command does rather than inventing a second shape for the sidebar.
-    private static func importItems(_ formats: [ImportFormatOption]) -> [SidebarMenuItem] {
+    private static func importItems(_ formats: [ImportFormatOption]) -> [DatabaseTreeMenuItem] {
         guard !formats.isEmpty else { return [] }
         if formats.count == 1, let only = formats.first {
             return [.command(only.standaloneLabel, .importTables(formatId: only.id))]
@@ -142,8 +142,8 @@ internal enum DatabaseTreeMenuSpec {
         )]
     }
 
-    private static func routineItems(_ ref: DatabaseTreeRoutineRef) -> [SidebarMenuItem] {
-        var items: [SidebarMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.routine.name))]
+    private static func routineItems(_ ref: DatabaseTreeRoutineRef) -> [DatabaseTreeMenuItem] {
+        var items: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.routine.name))]
         if let signature = ref.routine.signature, !signature.isEmpty {
             items.append(.command(
                 String(localized: "Copy with Signature"),
@@ -155,7 +155,7 @@ internal enum DatabaseTreeMenuSpec {
         return items
     }
 
-    private static func redisItems(_ node: RedisKeyNode) -> [SidebarMenuItem] {
+    private static func redisItems(_ node: RedisKeyNode) -> [DatabaseTreeMenuItem] {
         switch node {
         case .namespace(_, let fullPrefix, _, _):
             return [.command(String(localized: "Copy Namespace Prefix"), .copyRedisNamespacePrefix(fullPrefix))]
@@ -170,8 +170,8 @@ internal enum DatabaseTreeMenuSpec {
     private static func objectKindItems(
         _ kind: SidebarObjectKind,
         context: DatabaseTreeMenuContext
-    ) -> [SidebarMenuItem] {
-        var items: [SidebarMenuItem] = []
+    ) -> [DatabaseTreeMenuItem] {
+        var items: [DatabaseTreeMenuItem] = []
         if kind == .table {
             let title = context.objectKindTitles[kind] ?? kind.pluralDisplayName
             items.append(.command(
@@ -188,10 +188,10 @@ internal enum DatabaseTreeMenuSpec {
     private static func containerItems(
         _ clicked: DatabaseContainerRef,
         context: DatabaseTreeMenuContext
-    ) -> [SidebarMenuItem] {
+    ) -> [DatabaseTreeMenuItem] {
         let targets = SidebarMenuTarget.resolveContainers(clicked: clicked, selection: context.selectedContainers)
         let droppable = ContainerDropEligibility.droppable(targets, context: context.dropEligibility)
-        var items: [SidebarMenuItem] = []
+        var items: [DatabaseTreeMenuItem] = []
 
         /// Omitted rather than disabled: a menu item that can never fire in this state is noise, and
         /// the HIG prefers removing an item that does not apply over showing it greyed out.
@@ -252,8 +252,8 @@ internal enum DatabaseTreeMenuSpec {
 
     /// The menu for the empty area below the last row, and for the rows that stand for nothing.
     /// It has to produce at least one item: a menu that updates to nothing still shows an empty frame.
-    private static func backgroundItems(_ context: DatabaseTreeMenuContext) -> [SidebarMenuItem] {
-        var items: [SidebarMenuItem] = []
+    private static func backgroundItems(_ context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
+        var items: [DatabaseTreeMenuItem] = []
         if !context.isReadOnly {
             items.append(.command(String(localized: "Create New View…"), .createView))
             items.append(.separator)
@@ -266,8 +266,8 @@ internal enum DatabaseTreeMenuSpec {
 
     /// Reachable from every menu, including the empty-area one, because it was previously nested in
     /// a row's menu and so disappeared entirely whenever the sidebar was empty, loading or failed.
-    internal static func viewOptionItems(_ context: DatabaseTreeMenuContext) -> [SidebarMenuItem] {
-        var items: [SidebarMenuItem] = [
+    internal static func viewOptionItems(_ context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
+        var items: [DatabaseTreeMenuItem] = [
             .command(SidebarMenuEntry(
                 title: String(localized: "Icons"),
                 command: .toggleObjectIcons,

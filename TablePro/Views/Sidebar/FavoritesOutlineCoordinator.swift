@@ -8,7 +8,7 @@ import SwiftUI
 
 @MainActor
 internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutlineViewDataSource,
-    NSOutlineViewDelegate, NSTextFieldDelegate, FavoritesOutlineKeyHandling {
+    NSOutlineViewDelegate, NSTextFieldDelegate, NSMenuDelegate, FavoritesOutlineKeyHandling {
     private static var cellIdentifier: NSUserInterfaceItemIdentifier {
         NSUserInterfaceItemIdentifier("FavoritesOutlineCell")
     }
@@ -259,6 +259,32 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
     }
 
     // MARK: - Rename
+
+    // MARK: - NSMenuDelegate
+
+    /// `clickedRow` is a display position, so the node comes from the outline view rather than from
+    /// indexing anything. -1 is the empty area below the last row.
+    internal func menuNeedsUpdate(_ menu: NSMenu) {
+        let clicked = outlineView
+            .flatMap { $0.clickedRow >= 0 ? $0.item(atRow: $0.clickedRow) as? FavoritesOutlineNode : nil }
+        let context = FavoritesMenuContext(
+            clicked: clicked?.kind,
+            allFolders: owner.input.allFolders,
+            teamLibraryAvailable: owner.input.teamLibraryAvailable
+        )
+        SidebarMenuBuilder.fill(
+            menu,
+            with: FavoritesMenuSpec.items(for: context),
+            target: self,
+            action: #selector(performFavoritesMenuCommand(_:))
+        )
+    }
+
+    @objc
+    internal func performFavoritesMenuCommand(_ sender: NSMenuItem) {
+        guard let box = sender.representedObject as? SidebarMenuCommandBox<FavoritesMenuCommand> else { return }
+        owner.actions.performMenuCommand(box.command)
+    }
 
     // MARK: - NSTextFieldDelegate
 

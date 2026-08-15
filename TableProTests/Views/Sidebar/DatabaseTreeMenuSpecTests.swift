@@ -58,7 +58,7 @@ struct DatabaseTreeMenuSpecTests {
         )
     }
 
-    private func commands(_ items: [SidebarMenuItem]) -> [SidebarMenuCommand] {
+    private func commands(_ items: [DatabaseTreeMenuItem]) -> [SidebarMenuCommand] {
         items.flatMap { item -> [SidebarMenuCommand] in
             switch item {
             case .separator: return []
@@ -68,7 +68,7 @@ struct DatabaseTreeMenuSpecTests {
         }
     }
 
-    private func titles(_ items: [SidebarMenuItem]) -> [String] {
+    private func titles(_ items: [DatabaseTreeMenuItem]) -> [String] {
         items.compactMap { item in
             switch item {
             case .command(let entry): return entry.title
@@ -100,7 +100,7 @@ struct DatabaseTreeMenuSpecTests {
     @Test("View Options reports the settings it is toggling")
     func viewOptionsCarryTheirState() {
         let items = DatabaseTreeMenuSpec.viewOptionItems(context(clicked: nil))
-        let icons = items.compactMap { item -> SidebarMenuEntry? in
+        let icons = items.compactMap { item -> SidebarMenuEntry<SidebarMenuCommand>? in
             guard case .command(let entry) = item, entry.command == .toggleObjectIcons else { return nil }
             return entry
         }

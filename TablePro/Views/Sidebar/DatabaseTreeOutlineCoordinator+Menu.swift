@@ -76,7 +76,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
 
     @objc
     internal func performMenuCommand(_ sender: NSMenuItem) {
-        guard let box = sender.representedObject as? SidebarMenuCommandBox else { return }
+        guard let box = sender.representedObject as? SidebarMenuCommandBox<SidebarMenuCommand> else { return }
         perform(box.command)
     }
 }

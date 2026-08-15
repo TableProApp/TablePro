@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The sidebar now follows Sidebar icon size in System Settings > Appearance, so it matches Finder and Mail. A Row Size control in General settings and in the sidebar's View Options menu overrides it when you want to fit more objects on screen.
 - Add to Favorites is now in the sidebar's right-click menu, so it no longer needs a hover to reach.
 - Right-clicking a row in the object list now highlights the row the menu will act on, the way Finder does. Right-clicking the empty space below the list gives a menu too, which is also how View Options stays reachable when the list is empty, loading or failed.
+- The Favorites list right-click menu now highlights the row it acts on, and right-clicking the empty space below it offers New Query, New Favorite, New Folder and Add Linked SQL Folder. Those moved out of the bar at the bottom of the sidebar.
 - Renaming a favourites folder now edits the row itself. The field used to float above the list, so expanding or collapsing anything left it sitting over a different folder, and a new folder could open its rename before its row existed.
 - The database switcher takes a multiple selection too, with the same actions on the right-click menu.
 - Drop Schema for PostgreSQL, SQL Server and SurrealDB.
