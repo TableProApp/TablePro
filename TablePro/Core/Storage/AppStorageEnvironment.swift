@@ -31,6 +31,11 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
     internal let keychain: any KeychainStoring
     internal let isIsolated: Bool
 
+    /// Named so a test can remove the domain once the app it belongs to is gone. The app cannot do
+    /// it itself: `XCUIApplication.terminate()` kills the process, so `applicationWillTerminate`
+    /// never runs under a UI test.
+    internal let defaultsSuiteName: String?
+
     internal var supportDirectory: URL {
         applicationSupportRoot.appendingPathComponent("TablePro", isDirectory: true)
     }
@@ -44,13 +49,16 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         applicationSupportRoot: URL,
         defaults: UserDefaults,
         keychain: any KeychainStoring,
-        isIsolated: Bool
+        isIsolated: Bool,
+        defaultsSuiteName: String? = nil
     ) {
         self.applicationSupportRoot = applicationSupportRoot
         self.defaults = defaults
         self.keychain = keychain
         self.isIsolated = isIsolated
+        self.defaultsSuiteName = defaultsSuiteName
     }
+
 
     /// Resolved from `main.swift` before anything else runs. A storage singleton reached from a
     /// static initializer would otherwise have computed a production path already, and the sandbox
@@ -131,7 +139,8 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
             applicationSupportRoot: root,
             defaults: defaults,
             keychain: SandboxKeychainStore(fileURL: supportDirectory.appendingPathComponent("keychain.json")),
-            isIsolated: true
+            isIsolated: true,
+            defaultsSuiteName: suiteName
         )
     }
 

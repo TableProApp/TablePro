@@ -15,10 +15,16 @@ import Foundation
 public enum PluginHostStorage {
     public static let sandboxVariable = "TABLEPRO_UI_TEST_SANDBOX"
 
-    /// The sandbox path names the suite, so a run gets its own domain and two runs in different
-    /// directories never share one.
+    /// One fixed domain for every sandboxed run, not one per run. A defaults domain is a file in
+    /// the user's preferences directory and `cfprefsd` writes it out after the process that owns it
+    /// has already exited, so neither the app nor the test can reliably delete its own: one session
+    /// left 194 of them behind that way. A single name means at most one file exists, and the test
+    /// harness empties the domain before each test, which is what actually isolates them. The files
+    /// inside the sandbox directory stay per-run.
+    public static let sandboxSuiteName = "com.TablePro.uitest"
+
     public static func suiteName(forSandboxAt path: String) -> String {
-        "com.TablePro.uitest.\(URL(fileURLWithPath: path).lastPathComponent)"
+        sandboxSuiteName
     }
 
     public static func resolveDefaults() -> UserDefaults {

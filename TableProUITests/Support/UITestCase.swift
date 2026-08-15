@@ -1,3 +1,4 @@
+import TableProPluginKit
 import XCTest
 
 /// The base every UI test builds on, and the only supported way to get a running app.
@@ -23,6 +24,9 @@ internal class UITestCase: XCTestCase {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         sandboxRoot = root
+        /// Every run shares one defaults domain, so emptying it here is what keeps one test from
+        /// reading what the last one wrote.
+        UserDefaults.standard.removePersistentDomain(forName: PluginHostStorage.sandboxSuiteName)
     }
 
     /// Terminating before removing the directory matters: the app writes on the way down, and a
@@ -71,17 +75,27 @@ internal class UITestCase: XCTestCase {
         UITestCase.removeSuite(named: "com.TablePro.uitest.\(root.lastPathComponent)")
     }
 
-    /// `cfprefsd` writes a suite's plist lazily, so the per-test removal above can run before the
-    /// file exists and miss it. Sweeping the whole namespace once the class is done catches those,
-    /// and any left behind by a run that crashed before its teardown.
+    /// The app removes its own defaults domain as it terminates, which is the only point that
+    /// reliably comes after `cfprefsd` has written it. This sweep is the backstop for a run that
+    /// crashed or was killed before it got there, and it runs before the class's tests so a
+    /// previous session's leftovers go too.
+    override internal class func setUp() {
+        super.setUp()
+        sweepLeftoverSuites()
+    }
+
     override internal class func tearDown() {
+        sweepLeftoverSuites()
+        super.tearDown()
+    }
+
+    private static func sweepLeftoverSuites() {
         let preferences = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Preferences", isDirectory: true)
         let names = (try? FileManager.default.contentsOfDirectory(atPath: preferences.path)) ?? []
-        for name in names where name.hasPrefix("com.TablePro.uitest.") && name.hasSuffix(".plist") {
+        for name in names where name.hasPrefix("com.TablePro.uitest") && name.hasSuffix(".plist") {
             removeSuite(named: String(name.dropLast(".plist".count)))
         }
-        super.tearDown()
     }
 
     private static func removeSuite(named suiteName: String) {
