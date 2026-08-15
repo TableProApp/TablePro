@@ -59,25 +59,39 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         _ = shared
     }
 
-    private static func resolve() -> AppStorageEnvironment {
-        let environment = ProcessInfo.processInfo.environment
+    /// The choice the environment variables imply, separated from acting on it so it can be tested
+    /// without a process that has already resolved its storage.
+    internal enum Decision: Equatable {
+        case production
+        case isolated(path: String)
+        /// A UI test opted in but named no sandbox. Launching would drive the real store.
+        case refuseToLaunch
+    }
+
+    internal static func decision(for environment: [String: String]) -> Decision {
         let sandboxPath = environment[sandboxVariable]?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard let sandboxPath, !sandboxPath.isEmpty else {
-            guard environment[uiTestingVariable] != "1" else {
-                logger.fault(
-                    """
-                    Refusing to launch: \(uiTestingVariable, privacy: .public) is set but \
-                    \(sandboxVariable, privacy: .public) is not. A UI test must run against its own \
-                    storage, never the real one.
-                    """
-                )
-                exit(EXIT_FAILURE)
-            }
-            return production()
+        if let sandboxPath, !sandboxPath.isEmpty {
+            return .isolated(path: sandboxPath)
         }
+        return environment[uiTestingVariable] == "1" ? .refuseToLaunch : .production
+    }
 
-        return isolated(at: URL(fileURLWithPath: sandboxPath))
+    private static func resolve() -> AppStorageEnvironment {
+        switch decision(for: ProcessInfo.processInfo.environment) {
+        case .production:
+            return production()
+        case let .isolated(path):
+            return isolated(at: URL(fileURLWithPath: path))
+        case .refuseToLaunch:
+            logger.fault(
+                """
+                Refusing to launch: \(uiTestingVariable, privacy: .public) is set but \
+                \(sandboxVariable, privacy: .public) is not. A UI test must run against its own \
+                storage, never the real one.
+                """
+            )
+            exit(EXIT_FAILURE)
+        }
     }
 
     private static func production() -> AppStorageEnvironment {
