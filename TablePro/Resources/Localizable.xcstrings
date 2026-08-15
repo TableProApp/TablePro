@@ -3075,6 +3075,9 @@
         }
       }
     },
+    "%lld sources": {
+      "comment": "Count of selected query history sources"
+    },
     "%lld statements": {
       "localizations": {
         "tr": {
@@ -5255,6 +5258,9 @@
     ":%@": {
       "shouldTranslate": false
     },
+    "<1 ms": {
+      "comment": "Query duration under one millisecond"
+    },
     "<1ms": {
       "localizations": {
         "tr": {
@@ -6129,6 +6135,7 @@
         }
       }
     },
+    "AI and MCP": {},
     "AI is disabled for this connection.": {
       "localizations": {
         "tr": {
@@ -10412,6 +10419,7 @@
         }
       }
     },
+    "Any Outcome": {},
     "App": {
       "localizations": {
         "tr": {
@@ -12311,6 +12319,7 @@
         }
       }
     },
+    "Auto cleanup": {},
     "Auto cleanup on startup": {
       "localizations": {
         "tr": {
@@ -17099,6 +17108,7 @@
         }
       }
     },
+    "Clear History": {},
     "Clear History...": {
       "localizations": {
         "tr": {
@@ -17184,6 +17194,7 @@
         }
       }
     },
+    "Clear Query History?": {},
     "Clear Recent Tables": {
       "localizations": {
         "tr": {
@@ -17523,6 +17534,7 @@
         }
       }
     },
+    "Clear the queries shown here": {},
     "Click \"+ Add new global MCP server\"": {
       "localizations": {
         "tr": {
@@ -26901,6 +26913,7 @@
         }
       }
     },
+    "Date Range": {},
     "Date format:": {
       "localizations": {
         "tr": {
@@ -34078,6 +34091,7 @@
         }
       }
     },
+    "Everything": {},
     "Examples": {
       "localizations": {
         "tr": {
@@ -36592,6 +36606,7 @@
         }
       }
     },
+    "Failed": {},
     "Failed at line %lld": {
       "localizations": {
         "tr": {
@@ -43530,6 +43545,7 @@
         }
       }
     },
+    "Imports": {},
     "Import…": {
       "localizations": {
         "tr": {
@@ -47183,6 +47199,8 @@
         }
       }
     },
+    "Last 4 Weeks": {},
+    "Last 7 Days": {},
     "Last 7 days": {
       "localizations": {
         "tr": {
@@ -47239,6 +47257,7 @@
         }
       }
     },
+    "Last Hour": {},
     "Last Page": {
       "localizations": {
         "tr": {
@@ -49041,6 +49060,7 @@
         }
       }
     },
+    "Load More": {},
     "Load Query": {
       "localizations": {
         "tr": {
@@ -52760,6 +52780,8 @@
         }
       }
     },
+    "My Queries": {},
+    "My Queries Only": {},
     "My Server": {
       "localizations": {
         "en": {
@@ -55281,6 +55303,7 @@
         }
       }
     },
+    "No Query History": {},
     "No Query History Yet": {
       "localizations": {
         "tr": {
@@ -55309,6 +55332,7 @@
         }
       }
     },
+    "No Query Selected": {},
     "No SSL encryption": {
       "localizations": {
         "tr": {
@@ -56963,6 +56987,7 @@
         }
       }
     },
+    "No query matches the current search and filters.": {},
     "No results for \"%@\"": {
       "localizations": {
         "tr": {
@@ -65994,6 +66019,7 @@
         }
       }
     },
+    "Queries you run appear here.": {},
     "Query": {
       "localizations": {
         "tr": {
@@ -66944,6 +66970,7 @@
         }
       }
     },
+    "Ran": {},
     "Range": {
       "localizations": {
         "tr": {
@@ -67196,6 +67223,7 @@
         }
       }
     },
+    "Read": {},
     "Read & Write": {
       "localizations": {
         "tr": {
@@ -70638,6 +70666,7 @@
         }
       }
     },
+    "Reset Filters": {},
     "Reset Layout": {
       "localizations": {
         "tr": {
@@ -72251,6 +72280,7 @@
         }
       }
     },
+    "Row Edits": {},
     "Row Heights": {
       "extractionState": "stale",
       "localizations": {
@@ -75210,6 +75240,7 @@
         }
       }
     },
+    "Save as Favorite…": {},
     "Save as Preset...": {
       "localizations": {
         "tr": {
@@ -76009,6 +76040,7 @@
         }
       }
     },
+    "Scope": {},
     "Scroll to latest message": {
       "localizations": {
         "tr": {
@@ -77341,6 +77373,7 @@
         }
       }
     },
+    "Select a query to see its full text and details.": {},
     "Select a row or table to view details": {
       "localizations": {
         "tr": {
@@ -83120,6 +83153,7 @@
         }
       }
     },
+    "Structure Changes": {},
     "Structure, Drop, and Data options are configured per table in the table list.": {
       "extractionState": "stale",
       "localizations": {
@@ -83264,6 +83298,7 @@
         }
       }
     },
+    "Succeeded": {},
     "Success": {
       "localizations": {
         "tr": {
@@ -84945,6 +84980,7 @@
         }
       }
     },
+    "Table Browsing": {},
     "Table Favorites:": {
       "localizations": {
         "tr": {
@@ -88603,6 +88639,7 @@
         }
       }
     },
+    "This Connection": {},
     "This DELETE query has no WHERE clause and will delete ALL rows in the table. This action cannot be undone.": {
       "extractionState": "stale",
       "localizations": {
@@ -89040,6 +89077,9 @@
         }
       }
     },
+    "This deletes the query history from %@. You cannot undo this.": {},
+    "This deletes the query history of every connection. You cannot undo this.": {},
+    "This deletes this connection's query history. You cannot undo this.": {},
     "This diagram is not bound to a database": {},
     "This discards your edits to the Chinook sample and restores the original copy.": {
       "localizations": {
@@ -96852,6 +96892,7 @@
         }
       }
     },
+    "Yesterday": {},
     "You": {
       "localizations": {
         "tr": {
