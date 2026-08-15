@@ -150,7 +150,7 @@ extension MainWindowToolbar {
         // Controller must outlive the item; AppKit doesn't retain it and the view orphans otherwise.
         // focusable(false) stops SwiftUI from claiming scene focus on click, which would break menu shortcuts.
         let controller = NSHostingController(rootView: AnyView(content.focusable(false)))
-        controller.sizingOptions = .intrinsicContentSize
+        controller.sizingOptions = MainWindowToolbar.hostedItemSizingOptions
         retain(controller, for: id, when: retainsController)
         item.view = controller.view
 
@@ -237,7 +237,7 @@ extension MainWindowToolbar {
 
         // Same retention requirement as hostingItem: group.view comes from this controller.
         let controller = NSHostingController(rootView: AnyView(content.focusable(false)))
-        controller.sizingOptions = .intrinsicContentSize
+        controller.sizingOptions = MainWindowToolbar.hostedItemSizingOptions
         retain(controller, for: id, when: retainsController)
         group.view = controller.view
 

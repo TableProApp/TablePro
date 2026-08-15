@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed grid save now records one history entry per statement, the same as a successful one, instead of joining them all into a single unusable entry.
 - Turning off automatic query history cleanup now actually stops it. Entries were still pruned to the limits every hundred queries regardless of the setting.
 - Query parameter values are no longer written to the history database. They were stored in the clear, nothing read them back, and existing ones are deleted on upgrade.
-- Switching connection no longer rebuilds the toolbar. It kept its buttons and status readout but threw them away and made them again on every switch, which cost a frame and reset the titlebar.
+- Switching connection no longer rebuilds the toolbar. It kept its buttons and status readout but threw them away and made them again on every switch, which cost a frame and reset the titlebar. Those items now resize to the connection you switched to instead of holding the previous one's width until you click the toolbar, the Results button tracks the pane you are looking at, and Snowflake's role and warehouse menus reload.
 - Typing in a new query tab now goes into the editor. Cmd+T left the keyboard on the sidebar, so the first characters you typed went to the object list instead.
 - Cmd+W closes the welcome window. The shortcut was bound to Close Tab, which the welcome window has no answer for, so it did nothing there.
 - Customize Toolbar no longer blanks the connection and status controls. Opening it rebuilt those two items and released the ones already on screen, so they shrank to nothing until the window switched connection.

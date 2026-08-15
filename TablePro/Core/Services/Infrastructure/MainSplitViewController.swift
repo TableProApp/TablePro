@@ -370,14 +370,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Toolbar
 
-    /// Only ever called with a live coordinator. The toolbar's delegate builds no item without
-    /// one, and `NSToolbar` asks it once, so a toolbar created early is permanently empty: a
-    /// later coordinator cannot refill it, and validation only speaks to items that already
-    /// exist. A window with no session shows a plain titlebar instead.
-    /// `NSToolbar` asks its delegate for an item once and keeps what it returns, and every item
-    /// view captures the coordinator it was built with. Reassigning the owner's coordinator
-    /// therefore repoints nothing: the toolbar goes on naming, and acting on, the connection it
-    /// was built for. Switching connection rebuilds it instead.
+    /// Only ever called with a live coordinator. The window keeps one toolbar for its whole life
+    /// and points it at whichever connection it is showing, so this builds the owner once and
+    /// repoints it afterwards. `NSWindow.toolbar` is assigned only when it differs, because
+    /// assigning an already-built toolbar still makes AppKit rebuild the titlebar hierarchy.
     func installToolbar(coordinator: MainContentCoordinator) {
         guard let window = view.window else { return }
         let owner = toolbarOwner ?? MainWindowToolbar()

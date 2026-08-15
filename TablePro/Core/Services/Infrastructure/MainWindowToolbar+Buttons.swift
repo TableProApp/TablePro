@@ -85,13 +85,17 @@ struct SessionContextToolbarButton: View {
 }
 
 /// Thin wrappers so the toolbar's hosted content follows the window's subject instead of capturing
-/// one connection. Reading `subject.coordinator` inside `body` is what registers the observation.
+/// one connection. Reading `subject.coordinator` inside `body` is what registers the observation,
+/// and the `id` is what makes the connection's identity the view's identity. The `if let` alone
+/// keeps one branch across a repoint, so SwiftUI carried the outgoing connection's `@State` over
+/// and left its `task(id:)` running instead of restarting it for the connection that arrived.
 internal struct ConnectionToolbarSubjectButton: View {
     internal let subject: ToolbarSubject
 
     internal var body: some View {
         if let coordinator = subject.coordinator {
             ConnectionToolbarButton(coordinator: coordinator)
+                .id(coordinator.connectionId)
         }
     }
 }
@@ -102,6 +106,7 @@ internal struct DatabaseToolbarSubjectButton: View {
     internal var body: some View {
         if let coordinator = subject.coordinator {
             DatabaseToolbarButton(coordinator: coordinator)
+                .id(coordinator.connectionId)
         }
     }
 }
@@ -112,6 +117,7 @@ internal struct SessionContextToolbarSubjectButton: View {
     internal var body: some View {
         if let coordinator = subject.coordinator {
             SessionContextToolbarButton(coordinator: coordinator)
+                .id(coordinator.connectionId)
         }
     }
 }
@@ -130,6 +136,7 @@ internal struct ToolbarPrincipalSubjectContent: View {
                 onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() },
                 onSafeModeChange: { [weak coordinator] level in coordinator?.setSafeModeLevel(level) }
             )
+            .id(coordinator.connectionId)
         }
     }
 }

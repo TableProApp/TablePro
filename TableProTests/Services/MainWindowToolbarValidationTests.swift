@@ -310,6 +310,40 @@ struct MainWindowToolbarRepointTests {
         #expect(owner.subject.coordinator === subjectBefore)
     }
 
+    /// The item is built once and outlives every connection the window shows, so anything it reads
+    /// has to be resolved when it is asked, not when it was vended. Capturing the coordinator left
+    /// the glyph reporting the results pane of the connection the user had switched away from, and
+    /// pinned it to the collapsed glyph for good once that coordinator went away.
+    @Test("The Results glyph follows the repointed connection")
+    func resultsSymbolFollowsTheRepointedConnection() throws {
+        let collapsed = makeCoordinator()
+        let expanded = makeCoordinator()
+        defer {
+            collapsed.teardown()
+            expanded.teardown()
+        }
+        collapsed.toolbarState.isResultsCollapsed = true
+        expanded.toolbarState.isResultsCollapsed = false
+
+        let owner = MainWindowToolbar()
+        owner.repoint(to: collapsed)
+        let item = try #require(
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.results,
+                willBeInsertedIntoToolbar: true
+            ) as? StatefulToolbarItem
+        )
+        let provider = try #require(item.symbolProvider)
+        #expect(provider() == "rectangle.bottomhalf.inset.filled")
+
+        owner.repoint(to: expanded)
+        #expect(provider() == "rectangle.inset.filled")
+
+        owner.repoint(to: nil)
+        #expect(provider() == "rectangle.bottomhalf.inset.filled")
+    }
+
     /// The delegate used to answer nil for every identifier when it had no coordinator. With
     /// `autosavesConfiguration` on, a vend in that state pruned the user's saved arrangement for
     /// good, which this project has already paid for once.

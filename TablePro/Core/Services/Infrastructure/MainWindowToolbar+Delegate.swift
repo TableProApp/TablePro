@@ -89,8 +89,8 @@ extension MainWindowToolbar {
                 modifiers: [.command, .option],
                 shortcut: .toggleResults,
                 description: String(localized: "Toggle Results"),
-                symbolProvider: { [weak coordinator] in
-                    coordinator?.toolbarState.isResultsCollapsed == false
+                symbolProvider: { [weak self] in
+                    self?.coordinator?.toolbarState.isResultsCollapsed == false
                         ? "rectangle.inset.filled"
                         : "rectangle.bottomhalf.inset.filled"
                 }

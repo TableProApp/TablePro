@@ -24,6 +24,14 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     internal let managedToolbar: NSToolbar
 
+    /// How a hosted item answers "how wide are you". `.intrinsicContentSize` only overrides the
+    /// hosting view's `intrinsicContentSize`, and AppKit measures a view-backed item when it is
+    /// inserted and never reads that value again. Repointing the subject then left the item at the
+    /// width of the connection that had gone: the content redrew correctly inside a container
+    /// measured for the other engine, and only a click on the toolbar resized it. Under
+    /// `.preferredContentSize` the hosting view resizes itself, which is what AppKit follows.
+    internal static let hostedItemSizingOptions: NSHostingSizingOptions = .preferredContentSize
+
     /// Retain hosting controllers per item identifier. NSHostingController is not retained by NSToolbarItem,
     /// so without this its view orphans and the toolbar item collapses to zero width.
     internal var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
