@@ -6,50 +6,25 @@
 import AppKit
 import SwiftUI
 
-/// Hosts one SwiftUI row, and owns the field that renames it.
-///
-/// No emphasis is threaded through: AppKit publishes `backgroundStyle` into the hosted view's
-/// environment as `backgroundProminence`, which is what the row content already reads.
+/// One row of the Favorites list, plus the field that renames it.
 ///
 /// The rename field is a real subview assigned to `NSTableCellView.textField`, so `NSOutlineView`
 /// lays it out through every expand, collapse, scroll and row-height change, and AppKit treats a
 /// cell with an edit in progress as in use rather than recycling it. The overlay this replaced was
 /// a bare field added to the outline view, positioned by hand from one call site, which left it
 /// painted over a neighbouring row after any disclosure change.
-internal final class FavoritesOutlineCellView<Row: View>: NSTableCellView {
-    private var hosting: NSHostingView<Row>?
+internal final class FavoritesOutlineCellView<Row: View>: SidebarHostingCellView<Row> {
     private var editorField: NSTextField?
     private var editorIcon: NSImageView?
 
     internal private(set) var isRenaming = false
 
-    internal func update(rootView: Row) {
-        if let hosting {
-            hosting.rootView = rootView
-            /// A reload during an edit must not put the row's label back over the field.
-            hosting.isHidden = isRenaming
-            return
-        }
-        let view = NSHostingView(rootView: rootView)
-        view.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(view)
-        NSLayoutConstraint.activate([
-            view.leadingAnchor.constraint(equalTo: leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: trailingAnchor),
-            view.topAnchor.constraint(equalTo: topAnchor, constant: 1),
-            view.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1),
-        ])
-        hosting = view
-    }
-
     internal func beginRename(text: String, delegate: any NSTextFieldDelegate) {
         let field = makeEditorIfNeeded()
         field.stringValue = text
         field.delegate = delegate
-        field.isHidden = false
-        editorIcon?.isHidden = false
-        hosting?.isHidden = true
         isRenaming = true
+        applyContentVisibility()
     }
 
     @discardableResult
@@ -57,14 +32,20 @@ internal final class FavoritesOutlineCellView<Row: View>: NSTableCellView {
         guard let field = editorField else { return "" }
         let value = field.stringValue
         field.delegate = nil
-        field.isHidden = true
-        editorIcon?.isHidden = true
-        hosting?.isHidden = false
         isRenaming = false
+        applyContentVisibility()
         return value
     }
 
     internal var editor: NSTextField? { editorField }
+
+    /// A reload during an edit calls `update(rootView:)` on every visible cell, so the row's own
+    /// label must not come back over the field the user is typing in.
+    override internal func applyContentVisibility() {
+        setHostedContentHidden(isRenaming)
+        editorField?.isHidden = !isRenaming
+        editorIcon?.isHidden = !isRenaming
+    }
 
     private func makeEditorIfNeeded() -> NSTextField {
         if let editorField { return editorField }

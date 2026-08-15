@@ -10,7 +10,7 @@ import Foundation
 /// A reference type because `NSOutlineView` tracks rows by object identity, which is what lets a
 /// reload keep the expansion and selection a user set. The coordinator caches these by `id` and
 /// mutates the cached instance rather than building a new one, exactly as the object tree does.
-internal final class FavoritesOutlineNode {
+internal final class FavoritesOutlineNode: SidebarOutlineNode {
     internal enum Kind {
         case header(String)
         case table(TableInfo)
@@ -29,6 +29,13 @@ internal final class FavoritesOutlineNode {
     internal var isExpandable: Bool {
         guard case .query(let node) = kind else { return false }
         return node.isFolder
+    }
+
+    /// Tables, Queries and Team Library are buckets rather than objects, so AppKit draws them as
+    /// source list group rows. See `DatabaseTreeNode.isGroupRow` for why that matters beyond styling.
+    internal var isGroupRow: Bool {
+        guard case .header = kind else { return false }
+        return true
     }
 
     internal static let tablesHeaderId = "favorites\u{1}header\u{1}tables"

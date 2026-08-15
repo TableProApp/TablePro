@@ -362,12 +362,8 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
         return FavoritesOutlineSelection.isSelectable(node.kind)
     }
 
-    /// Tables, Queries and Team Library are buckets rather than objects, so AppKit draws them as
-    /// source list group rows. See `DatabaseTreeNode.isSectionHeader` for why that matters beyond
-    /// the styling.
     internal func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
-        guard case .header = (item as? FavoritesOutlineNode)?.kind else { return false }
-        return true
+        (item as? FavoritesOutlineNode)?.isGroupRow ?? false
     }
 
     internal func outlineView(

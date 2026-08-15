@@ -507,7 +507,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
     /// table under "Tables" line up with a database, the way a package lines up with the project
     /// in Xcode's navigator.
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
-        (item as? DatabaseTreeNode)?.isSectionHeader ?? false
+        (item as? DatabaseTreeNode)?.isGroupRow ?? false
     }
 
     func outlineView(
@@ -519,13 +519,20 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         return DatabaseTreeTypeSelect.matchString(for: node.kind)
     }
 
+    /// The load has to run before AppKit asks for the children, which is what `will` is for. The
+    /// recording is the opposite: `will` fires before the state flips, so a disclosure recorded
+    /// there is describing the state the row is leaving.
     func outlineViewItemWillExpand(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode else { return }
         triggerLoad(for: node)
+    }
+
+    func outlineViewItemDidExpand(_ notification: Notification) {
+        guard let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode else { return }
         if isRecordingExpansion { recordExpansion(node, expanded: true) }
     }
 
-    func outlineViewItemWillCollapse(_ notification: Notification) {
+    func outlineViewItemDidCollapse(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode else { return }
         if isRecordingExpansion { recordExpansion(node, expanded: false) }
     }

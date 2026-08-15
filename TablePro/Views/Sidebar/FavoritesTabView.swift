@@ -2,6 +2,8 @@ import SwiftUI
 import TableProImport
 
 internal struct FavoritesTabView: View {
+    @Environment(\.sidebarRowSize) private var systemRowSize
+
     @State private var viewModel: FavoritesSidebarViewModel
     @State private var favoriteTables: [FavoriteTablesStorage.FavoriteEntry] = []
     @State private var folderToDelete: SQLFavoriteFolder?
@@ -252,8 +254,20 @@ internal struct FavoritesTabView: View {
     /// to the middle.
     private func outlineRow(_ node: FavoritesOutlineNode) -> some View {
         rowContent(node)
+            .font(resolvedRowSize.rowFont)
+            .imageScale(.medium)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
+    }
+
+    /// AppKit sizes the row from `rowSizeStyle`, but it does that by laying out
+    /// `NSTableCellView.textField`, and these cells host SwiftUI instead. Without this the object
+    /// list grew with the sidebar size and the Favorites list beside it did not.
+    private var resolvedRowSize: SidebarRowSize {
+        SidebarRowSizeResolver.resolve(
+            preference: AppSettingsManager.shared.general.sidebarRowSize,
+            system: systemRowSize
+        )
     }
 
     /// No `.contextMenu` on any row: the outline view owns the menu, so AppKit sets `clickedRow`,

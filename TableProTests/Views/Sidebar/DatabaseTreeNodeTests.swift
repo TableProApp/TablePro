@@ -36,14 +36,14 @@ struct DatabaseTreeNodeTests {
         func node(_ kind: DatabaseTreeNode.Kind) -> DatabaseTreeNode {
             DatabaseTreeNode(id: "n", kind: kind)
         }
-        #expect(node(.recentSection).isSectionHeader)
-        #expect(node(.objectKindSection(.table)).isSectionHeader)
-        #expect(node(.redisKeysSection).isSectionHeader)
+        #expect(node(.recentSection).isGroupRow)
+        #expect(node(.objectKindSection(.table)).isGroupRow)
+        #expect(node(.redisKeysSection).isGroupRow)
 
-        #expect(node(.schema(database: "shop", schema: "public")).isSectionHeader == false)
-        #expect(node(.hierarchicalSchemaSection(schema: "analytics")).isSectionHeader == false)
-        #expect(node(.table(tableRef("users"))).isSectionHeader == false)
-        #expect(node(.status(.loading)).isSectionHeader == false)
+        #expect(node(.schema(database: "shop", schema: "public")).isGroupRow == false)
+        #expect(node(.hierarchicalSchemaSection(schema: "analytics")).isGroupRow == false)
+        #expect(node(.table(tableRef("users"))).isGroupRow == false)
+        #expect(node(.status(.loading)).isGroupRow == false)
     }
 
     private func partitionedRef(_ name: String, schema: String? = "public") -> DatabaseTreeTableRef {

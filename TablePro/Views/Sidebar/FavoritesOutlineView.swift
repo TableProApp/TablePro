@@ -57,21 +57,15 @@ internal struct FavoritesOutlineView<Row: View>: NSViewRepresentable {
 
     internal func makeNSView(context: Context) -> NSScrollView {
         let outlineView = FavoritesNSOutlineView()
-        outlineView.headerView = nil
-        outlineView.style = .sourceList
-        /// AppKit's own source list metrics, the same ones the object outline uses.
-        outlineView.rowSizeStyle = SidebarRowSizeResolver.rowSizeStyle(for: rowSizePreference)
-        outlineView.allowsMultipleSelection = false
-        outlineView.allowsEmptySelection = true
-        outlineView.floatsGroupRows = false
-        outlineView.autosaveExpandedItems = false
-        outlineView.backgroundColor = .clear
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: outlineView,
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "FavoritesColumn",
+                allowsMultipleSelection: false,
+                rowSizePreference: rowSizePreference
+            )
+        )
         outlineView.setDraggingSourceOperationMask(.copy, forLocal: false)
-
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("FavoritesColumn"))
-        column.resizingMask = .autoresizingMask
-        outlineView.addTableColumn(column)
-        outlineView.outlineTableColumn = column
 
         outlineView.dataSource = context.coordinator
         outlineView.delegate = context.coordinator
@@ -86,22 +80,11 @@ internal struct FavoritesOutlineView<Row: View>: NSViewRepresentable {
         outlineView.menu = menu
 
         context.coordinator.attach(outlineView: outlineView)
-
-        let scrollView = NSScrollView()
-        scrollView.documentView = outlineView
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = false
-        scrollView.backgroundColor = .clear
         return scrollView
     }
 
     internal func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        if let outlineView = scrollView.documentView as? NSOutlineView {
-            let style = SidebarRowSizeResolver.rowSizeStyle(for: rowSizePreference)
-            if outlineView.rowSizeStyle != style { outlineView.rowSizeStyle = style }
-        }
+        SidebarOutlineScaffold.applyRowSize(rowSizePreference, to: scrollView)
         context.coordinator.update(owner: self)
     }
 }

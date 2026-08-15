@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-final class DatabaseTreeNode {
+final class DatabaseTreeNode: SidebarOutlineNode {
     enum Status: Equatable {
         case loading
         case empty
@@ -72,7 +72,7 @@ final class DatabaseTreeNode {
     ///
     /// A schema is deliberately not one. It is a real object with its own menu and its own
     /// children, so it stays an ordinary container row the way a folder does in Xcode's navigator.
-    var isSectionHeader: Bool {
+    var isGroupRow: Bool {
         switch kind {
         case .recentSection, .objectKindSection, .redisKeysSection:
             return true

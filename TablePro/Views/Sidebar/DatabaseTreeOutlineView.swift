@@ -42,23 +42,14 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let outlineView = DatabaseTreeNSOutlineView()
-        outlineView.headerView = nil
-        outlineView.style = .sourceList
-        /// `.sourceList` already supplies the row height and the indent per level, and `.default`
-        /// is how a table says "the size the user picked in Appearance". Pinning `.small` here made
-        /// the sidebar one size step shorter than Finder on a stock Mac, and deaf to that setting
-        /// while the workspace rail beside it still followed it.
-        outlineView.rowSizeStyle = SidebarRowSizeResolver.rowSizeStyle(for: rowSizePreference)
-        outlineView.allowsMultipleSelection = true
-        outlineView.allowsEmptySelection = true
-        outlineView.floatsGroupRows = false
-        outlineView.autosaveExpandedItems = false
-        outlineView.backgroundColor = .clear
-
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("DatabaseTreeColumn"))
-        column.resizingMask = .autoresizingMask
-        outlineView.addTableColumn(column)
-        outlineView.outlineTableColumn = column
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: outlineView,
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "DatabaseTreeColumn",
+                allowsMultipleSelection: true,
+                rowSizePreference: rowSizePreference
+            )
+        )
 
         outlineView.dataSource = context.coordinator
         outlineView.delegate = context.coordinator
@@ -77,24 +68,11 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
 
         context.coordinator.attach(outlineView: outlineView)
         context.coordinator.update(from: self)
-
-        /// No `scrollerStyle`: it is the user's "Show scroll bars" setting in General settings, and
-        /// `NSScrollView` already follows it.
-        let scrollView = NSScrollView()
-        scrollView.documentView = outlineView
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = false
-        scrollView.backgroundColor = .clear
         return scrollView
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        if let outlineView = nsView.documentView as? NSOutlineView {
-            let style = SidebarRowSizeResolver.rowSizeStyle(for: rowSizePreference)
-            if outlineView.rowSizeStyle != style { outlineView.rowSizeStyle = style }
-        }
+        SidebarOutlineScaffold.applyRowSize(rowSizePreference, to: nsView)
         context.coordinator.update(from: self)
     }
 }
