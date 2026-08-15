@@ -39,7 +39,7 @@ struct ExplainResultView: View {
                 }
             case .tree:
                 if let plan {
-                    QueryPlanTreeView(plan: plan)
+                    QueryPlanTreeView(plan: plan, selectedNodeId: $selectedNodeId)
                 } else {
                     DDLTextView(ddl: text, fontSize: $fontSize)
                 }
