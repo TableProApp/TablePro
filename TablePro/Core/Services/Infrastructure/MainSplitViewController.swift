@@ -153,6 +153,12 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             return existing
         }
 
+        /// A connection moving here from another window arrives whole. Building a new workspace for
+        /// it would replace the session state its open tabs, unsaved edits and undo stack live on.
+        if let payloadId = payload?.id, let moved = ConnectionWorkspaceHandoff.consume(for: payloadId) {
+            return workspaces.insert(moved)
+        }
+
         let resolvedConnection = DatabaseManager.shared.activeSessions[connectionId]?.connection
             ?? ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }
 
@@ -1017,6 +1023,15 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private func restoreUserPaneLayout() {
         splitView.autosaveName = splitAutosaveName
         applyDefaultCollapseStateIfNoAutosave()
+    }
+
+    /// Whether the connections strip holds the keyboard. A close command is interpreted by the view
+    /// that has focus, so with the strip focused it means the connection it has highlighted rather
+    /// than the editor's front tab.
+    internal var railOwnsFocus: Bool {
+        guard let navigationSidebar, navigationSidebar.isRailVisible,
+              let responder = view.window?.firstResponder as? NSView else { return false }
+        return responder.isDescendant(of: navigationSidebar.railController.view)
     }
 
     /// A collapsed pane keeps whatever first responder it held, which would leave the window

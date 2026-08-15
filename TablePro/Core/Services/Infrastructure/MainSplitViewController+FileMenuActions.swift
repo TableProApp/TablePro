@@ -29,6 +29,12 @@ extension MainSplitViewController {
     /// itself. Leaving it to `commandActions` made the shortcut inert on exactly the pane a
     /// user most wants to dismiss.
     @objc func closeEditorTab(_ sender: Any?) {
+        /// Close is interpreted by whatever holds the keyboard. With the connections strip focused
+        /// it means the connection highlighted there, which is the row the user is looking at.
+        if railOwnsFocus {
+            closeConnection(sender)
+            return
+        }
         guard let actions = commandActions else {
             guard let connectionId = workspaces.selectedConnectionId else { return }
             WindowManager.shared.closeWindow(for: connectionId)

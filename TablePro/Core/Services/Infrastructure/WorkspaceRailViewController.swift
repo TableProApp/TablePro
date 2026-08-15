@@ -115,7 +115,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
         tableView.onMiddleClick = { [weak self] row in self?.closeConnection(atRow: row) }
         tableView.setAccessibilityIdentifier("workspace-rail")
-        tableView.setAccessibilityLabel(String(localized: "Open Workspaces"))
+        tableView.setAccessibilityLabel(String(localized: "Open Connections"))
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
@@ -415,6 +415,12 @@ internal final class WorkspaceRailViewController: NSViewController {
     }
 
     @objc
+    private func openInNewWindow(_ sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID else { return }
+        WindowManager.shared.moveToNewWindow(connectionId: workspace.connectionId)
+    }
+
+    @objc
     private func closeConnection(_ sender: NSMenuItem) {
         guard let workspace = sender.representedObject as? WorkspaceID else { return }
         close(connectionId: workspace.connectionId)
@@ -461,6 +467,16 @@ extension WorkspaceRailViewController: NSMenuDelegate {
         let row = tableView.clickedRow
         guard entries.indices.contains(row) else { return }
         let entry = entries[row]
+
+        if WindowManager.shared.canMoveToNewWindow(connectionId: entry.workspace.connectionId) {
+            addItem(
+                to: menu,
+                title: String(localized: "Open in New Window"),
+                action: #selector(openInNewWindow(_:)),
+                workspace: entry.workspace
+            )
+            menu.addItem(.separator())
+        }
 
         if ConnectionMenuPolicy.showsDisconnect(status: entry.status) {
             addItem(

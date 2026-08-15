@@ -77,7 +77,42 @@ internal final class WindowManager {
         return candidates.indices.contains(index) ? candidates[index] : nil
     }
 
-    private func openInNewWindow(payload: EditorTabPayload, activate: Bool, autoConnect: Bool) {
+    /// Moves a connection the window already hosts into a window of its own, carrying its session,
+    /// tabs and unsaved work with it. The reverse of the single-window model's default, and the
+    /// workflow it took away: `NSWindow`'s own Move Tab to New Window cannot express it, because a
+    /// connection is not a window tab here.
+    ///
+    /// Refused for a window's last connection, where it would close the window and open an
+    /// identical one. The rail hides the command in that case rather than dimming it.
+    internal func canMoveToNewWindow(connectionId: UUID) -> Bool {
+        guard let host = hosts().first(where: { $0.workspaces.contains(connectionId) }) else { return false }
+        return host.workspaces.count > 1
+    }
+
+    internal func moveToNewWindow(connectionId: UUID) {
+        guard canMoveToNewWindow(connectionId: connectionId),
+              let host = hosts().first(where: { $0.workspaces.contains(connectionId) }),
+              let workspace = host.workspaces.remove(connectionId) else { return }
+        host.applySelectedWorkspace()
+
+        let payload = EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
+        ConnectionWorkspaceHandoff.register(workspace, for: payload.id)
+        openInNewWindow(payload: payload, activate: true, autoConnect: false, isHandoff: true)
+
+        /// The new window consumes the handoff while it builds. Anything still pending means it
+        /// never got there, and the connection would otherwise be hosted by no window at all.
+        if let stranded = ConnectionWorkspaceHandoff.reclaim(for: payload.id) {
+            host.workspaces.insert(stranded)
+            host.applySelectedWorkspace()
+        }
+    }
+
+    private func openInNewWindow(
+        payload: EditorTabPayload,
+        activate: Bool,
+        autoConnect: Bool,
+        isHandoff: Bool = false
+    ) {
         let t0 = Date()
         Self.lifecycleLogger.info(
             "[open] WindowManager.openTab start payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) intent=\(String(describing: payload.intent), privacy: .public) skipAutoExecute=\(payload.skipAutoExecute) activate=\(activate)"
@@ -85,7 +120,11 @@ internal final class WindowManager {
 
         let resolvedConnection = DatabaseManager.shared.activeSessions[payload.connectionId]?.connection
         let preCreatedSessionState: SessionStateFactory.SessionState?
-        if let resolvedConnection {
+        /// A handoff brings its own state. Building a second one here would register it pending and
+        /// leave it there, holding a coordinator for a connection that already has one.
+        if isHandoff {
+            preCreatedSessionState = nil
+        } else if let resolvedConnection {
             let state = SessionStateFactory.create(connection: resolvedConnection, payload: payload)
             SessionStateFactory.registerPending(state, for: payload.id)
             preCreatedSessionState = state

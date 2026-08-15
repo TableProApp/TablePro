@@ -34,8 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Closing a connection removes it from the workspace rail, ends its session, and closes its tunnel. It stayed listed as connected, could not be clicked, and its database connection stayed open.
-- The workspace rail's close command ends the connection: every tab across every database it has open, its session, and every row it holds in the rail. It used to close only the tabs of one database and leave the row you clicked exactly where it was, which read as doing nothing. Disconnect still ends only the session and keeps the row. **File > Close Connection** does the same from the menu bar.
+- Closing a connection removes it from the connections strip, ends its session, and closes its tunnel. It stayed listed as connected, could not be clicked, and its database connection stayed open.
+- **Open in New Window** on a connection in the strip moves it out of the shared window with its tabs, its session and its unsaved work.
+- The strip's close command ends the connection: every tab across every database it has open, its session, and every row it holds in the rail. It used to close only the tabs of one database and leave the row you clicked exactly where it was, which read as doing nothing. Disconnect still ends only the session and keeps the row. **File > Close Connection** does the same from the menu bar.
 - Closing a window disconnects every connection it was showing, not just one of them.
 - Hiding a database in the sidebar's database filter takes effect straight away. The tree kept listing every database until some other change happened to rebuild it.
 - An alert opens on the window you were working in. It could attach itself to a floating panel such as the Quick Switcher, which takes the alert with it when it closes.

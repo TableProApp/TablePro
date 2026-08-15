@@ -241,9 +241,9 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .focusSidebarSearch: return String(localized: "Focus Sidebar Filter")
         case .showPreviousTab: return String(localized: "Show Previous Tab")
         case .showNextTab: return String(localized: "Show Next Tab")
-        case .toggleWorkspaceRail: return String(localized: "Toggle Workspace Rail")
-        case .showPreviousWorkspace: return String(localized: "Show Previous Workspace")
-        case .showNextWorkspace: return String(localized: "Show Next Workspace")
+        case .toggleWorkspaceRail: return String(localized: "Toggle Connections")
+        case .showPreviousWorkspace: return String(localized: "Show Previous Connection")
+        case .showNextWorkspace: return String(localized: "Show Next Connection")
         case .aiExplainQuery: return String(localized: "Explain with AI")
         case .aiOptimizeQuery: return String(localized: "Optimize with AI")
         }

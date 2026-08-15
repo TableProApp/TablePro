@@ -5,7 +5,7 @@ description: Each tab keeps its own SQL, results, sorting, and filters, and come
 
 Every open connection lives in one window, and each connection has its own set of tabs. A tab strip appears above the editor as soon as a connection holds more than one tab, and lists only that connection's tabs. With a single tab there is no strip, so a window that behaves the way it always did gains no chrome.
 
-Each tab is an independent workspace with its own SQL, results, sorting, and filter state. Tabs persist across app restarts.
+Each tab keeps its own SQL, results, sorting, and filter state. Tabs persist across app restarts.
 
 <Frame caption="Tab strip with query and table tabs">
   <img className="block dark:hidden" src="/images/tabs.png" alt="Tab strip with query and table tabs" />
@@ -73,7 +73,7 @@ Each tab keeps its full state when you switch away: SQL, cursor position, result
 
 ## Windows and Connections
 
-One window hosts every connection you have open. Picking a connection in the [workspace rail](/features/workspace-rail) switches that window to it and returns you to the tab you last used there, rather than raising a second window. Opening a table or query on a connection you already have open adds a tab to that connection instead of opening another window.
+One window hosts every connection you have open. Picking a connection in the [connections strip](/features/workspace-rail) switches that window to it and returns you to the tab you last used there, rather than raising a second window. Opening a table or query on a connection you already have open adds a tab to that connection instead of opening another window.
 
 New windows open at 1200x800; size and position are remembered across launches.
 
@@ -94,9 +94,9 @@ Both dim when the window is not part of a tab group. These are macOS window tabs
 
 Reconnecting puts the tabs back as they were.
 
-Disconnecting asks first only when there are unsaved changes or a query still running. It applies to the whole connection, so every window and workspace on it shows the same Reconnect screen. Nothing reconnects on its own afterwards: a connection you disconnected is not reopened at the next launch, and clicking back into it leaves it disconnected until you ask.
+Disconnecting asks first only when there are unsaved changes or a query still running. It applies to the whole connection, so every window and entry on it shows the same Reconnect screen. Nothing reconnects on its own afterwards: a connection you disconnected is not reopened at the next launch, and clicking back into it leaves it disconnected until you ask.
 
-You can also disconnect by right-clicking a workspace in the [workspace rail](/features/workspace-rail), or a connection in the connection list.
+You can also disconnect by right-clicking an entry in the [connections strip](/features/workspace-rail), or a connection in the connection list.
 
 ## Database Binding
 

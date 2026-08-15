@@ -242,7 +242,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(toggleInspector(_:)):
             setTitle(isInspectorVisible ? "Hide Inspector" : "Show Inspector", on: menuItem)
         case #selector(toggleWorkspaceRail(_:)):
-            setTitle(isWorkspaceRailEnabled ? "Hide Workspace Rail" : "Show Workspace Rail", on: menuItem)
+            setTitle(isWorkspaceRailEnabled ? "Hide Connections" : "Show Connections", on: menuItem)
         case #selector(undo(_:)):
             setResolvedTitle(commandActions?.resolvedUndoTitle ?? String(localized: "Undo"), on: menuItem)
         case #selector(redo(_:)):
