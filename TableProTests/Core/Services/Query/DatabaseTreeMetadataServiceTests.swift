@@ -189,3 +189,98 @@ struct DatabaseTreeMetadataServiceRefreshDatabasesTests {
         DatabaseManager.shared.removeSession(for: connection.id)
     }
 }
+
+/// The sidebar's own Refresh, reached from the database and schema contextual menus. It has to
+/// obey the same rule `refreshDatabases` does: the tree renders a container with no loaded
+/// content as a single spinner row, so clearing first empties the subtree mid-refresh.
+@Suite("DatabaseTreeMetadataService refreshObjects")
+@MainActor
+struct DatabaseTreeMetadataServiceRefreshObjectsTests {
+    private func connectedDriver() -> (DatabaseConnection, MockDatabaseDriver) {
+        let connection = TestFixtures.makeConnection(type: .pglite)
+        let driver = MockDatabaseDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        return (connection, driver)
+    }
+
+    @Test("A refresh commits the new tables over the old ones")
+    func refreshCommitsNewTables() async {
+        let (connection, driver) = connectedDriver()
+        driver.schemaTablesToReturn = ["public": [TestFixtures.makeTableInfo(name: "users")]]
+        let service = DatabaseTreeMetadataService.shared
+
+        await service.loadTables(connectionId: connection.id, database: connection.database, schema: "public")
+
+        driver.schemaTablesToReturn = [
+            "public": [TestFixtures.makeTableInfo(name: "users"), TestFixtures.makeTableInfo(name: "orders")]
+        ]
+        await service.refreshObjects(connectionId: connection.id, database: connection.database, schema: "public")
+
+        let tables = service.tables(connectionId: connection.id, database: connection.database, schema: "public")
+        #expect(tables.map(\.name) == ["users", "orders"])
+
+        await service.handleDisconnect(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
+    @Test("A refresh never leaves the subtree without loaded content")
+    func refreshKeepsContentLoaded() async {
+        let (connection, driver) = connectedDriver()
+        driver.schemaTablesToReturn = ["public": [TestFixtures.makeTableInfo(name: "users")]]
+        let service = DatabaseTreeMetadataService.shared
+
+        await service.loadTables(connectionId: connection.id, database: connection.database, schema: "public")
+        await service.refreshObjects(connectionId: connection.id, database: connection.database, schema: "public")
+
+        let state = service.tablesLoadState(
+            connectionId: connection.id, database: connection.database, schema: "public"
+        )
+        if case .loaded = state {} else {
+            Issue.record("A refresh must leave the tables loaded, never idle or loading")
+        }
+
+        await service.handleDisconnect(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
+    @Test("A failed refresh keeps the tables already on screen")
+    func failedRefreshKeepsPreviousTables() async {
+        let (connection, driver) = connectedDriver()
+        driver.schemaTablesToReturn = ["public": [TestFixtures.makeTableInfo(name: "users")]]
+        let service = DatabaseTreeMetadataService.shared
+
+        await service.loadTables(connectionId: connection.id, database: connection.database, schema: "public")
+
+        driver.fetchTablesError = DatabaseError.notConnected
+        await service.refreshObjects(connectionId: connection.id, database: connection.database, schema: "public")
+
+        let tables = service.tables(connectionId: connection.id, database: connection.database, schema: "public")
+        #expect(tables.map(\.name) == ["users"])
+        let state = service.tablesLoadState(
+            connectionId: connection.id, database: connection.database, schema: "public"
+        )
+        if case .loaded = state {} else {
+            Issue.record("A failed refresh must leave the previous tables loaded, not failed")
+        }
+
+        await service.handleDisconnect(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
+    @Test("A refresh loads a subtree that was never loaded")
+    func refreshLoadsUnloadedSubtree() async {
+        let (connection, driver) = connectedDriver()
+        driver.schemaTablesToReturn = ["public": [TestFixtures.makeTableInfo(name: "users")]]
+        let service = DatabaseTreeMetadataService.shared
+
+        await service.refreshObjects(connectionId: connection.id, database: connection.database, schema: "public")
+
+        let tables = service.tables(connectionId: connection.id, database: connection.database, schema: "public")
+        #expect(tables.map(\.name) == ["users"])
+
+        await service.handleDisconnect(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+}

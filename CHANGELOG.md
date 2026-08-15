@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plans that report a cost per node but no startup cost, such as MySQL's, now show that cost in the diagram and the tree.
 - Nodes in a plan whose root reports no cost are no longer all painted red.
 - PostgreSQL enum columns whose type lives in another schema now show their values instead of a plain text box.
+- Refreshing a database or schema from the sidebar no longer empties it. The tables and routines stayed on screen only until the refresh started, then came back when it finished, and a refresh that failed left an error where they had been.
 
 - Select several databases or schemas in the sidebar tree and act on them at once: drop, refresh, copy names, or export. Shift-click and Cmd-click extend the selection.
 - The database switcher takes a multiple selection too, with the same actions on the right-click menu.

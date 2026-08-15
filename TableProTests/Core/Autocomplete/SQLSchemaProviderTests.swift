@@ -92,6 +92,9 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
+        if let fetchTablesError {
+            throw fetchTablesError
+        }
         guard let schema else { return tablesToReturn }
         fetchSchemaTablesCalls.append(schema)
         return schemaTablesToReturn[schema] ?? tablesToReturn

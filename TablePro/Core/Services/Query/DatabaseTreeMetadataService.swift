@@ -155,14 +155,8 @@ final class DatabaseTreeMetadataService {
         case .idle, .failed: break
         }
         tablesState[key] = .loading
-        let normalizedSchema = key.schema
         do {
-            let list = try await tablesDedup.execute(key: key) { [self] in
-                try await withDriver(connectionId: connectionId, database: database) { driver in
-                    try await driver.fetchTables(schema: normalizedSchema)
-                }
-            }
-            tablesState[key] = .loaded(list)
+            tablesState[key] = .loaded(try await fetchTableList(key))
         } catch is CancellationError {
             if case .loading = tablesState[key] { tablesState[key] = .idle }
         } catch {
@@ -181,21 +175,8 @@ final class DatabaseTreeMetadataService {
         case .idle, .failed: break
         }
         routinesState[key] = .loading
-        let normalizedSchema = key.schema
         do {
-            let list = try await routinesDedup.execute(key: key) { [self] in
-                try await withDriver(
-                    connectionId: connectionId,
-                    database: database,
-                    schema: normalizedSchema,
-                    workload: .bulk
-                ) { driver in
-                    let procedures = try await driver.fetchProcedures(schema: normalizedSchema)
-                    let functions = try await driver.fetchFunctions(schema: normalizedSchema)
-                    return procedures + functions
-                }
-            }
-            routinesState[key] = .loaded(list)
+            routinesState[key] = .loaded(try await fetchRoutineList(key))
         } catch is CancellationError {
             if case .loading = routinesState[key] { routinesState[key] = .idle }
         } catch {
@@ -203,6 +184,31 @@ final class DatabaseTreeMetadataService {
             Self.logger.warning(
                 "routines load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
+        }
+    }
+
+    private func fetchTableList(_ key: ObjectsKey) async throws -> [TableInfo] {
+        let schema = key.schema
+        return try await tablesDedup.execute(key: key) { [self] in
+            try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
+                try await driver.fetchTables(schema: schema)
+            }
+        }
+    }
+
+    private func fetchRoutineList(_ key: ObjectsKey) async throws -> [RoutineInfo] {
+        let schema = key.schema
+        return try await routinesDedup.execute(key: key) { [self] in
+            try await withDriver(
+                connectionId: key.connectionId,
+                database: key.database,
+                schema: schema,
+                workload: .bulk
+            ) { driver in
+                let procedures = try await driver.fetchProcedures(schema: schema)
+                let functions = try await driver.fetchFunctions(schema: schema)
+                return procedures + functions
+            }
         }
     }
 
@@ -281,15 +287,55 @@ final class DatabaseTreeMetadataService {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
         await tablesDedup.cancel(key: key)
         await routinesDedup.cancel(key: key)
-        tablesState.removeValue(forKey: key)
-        routinesState.removeValue(forKey: key)
-        for partitionKey in partitionKeys(matching: key) {
-            await partitionsDedup.cancel(key: partitionKey)
-            partitionsState.removeValue(forKey: partitionKey)
+        async let tables: Void = refreshTables(key)
+        async let routines: Void = refreshRoutines(key)
+        async let partitions: Void = refreshPartitions(under: key)
+        _ = await (tables, routines, partitions)
+    }
+
+    private func refreshTables(_ key: ObjectsKey) async {
+        guard case .loaded = tablesState[key] ?? .idle else {
+            tablesState.removeValue(forKey: key)
+            await loadTables(connectionId: key.connectionId, database: key.database, schema: key.schema)
+            return
         }
-        async let tables = loadTables(connectionId: connectionId, database: database, schema: schema)
-        async let routines = loadRoutines(connectionId: connectionId, database: database, schema: schema)
-        _ = await (tables, routines)
+        guard isConnected(key.connectionId) else { return }
+        do {
+            tablesState[key] = .loaded(try await fetchTableList(key))
+        } catch is CancellationError {
+        } catch {
+            Self.logger.warning(
+                "tables refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    private func refreshRoutines(_ key: ObjectsKey) async {
+        guard case .loaded = routinesState[key] ?? .idle else {
+            routinesState.removeValue(forKey: key)
+            await loadRoutines(connectionId: key.connectionId, database: key.database, schema: key.schema)
+            return
+        }
+        guard isConnected(key.connectionId) else { return }
+        do {
+            routinesState[key] = .loaded(try await fetchRoutineList(key))
+        } catch is CancellationError {
+        } catch {
+            Self.logger.warning(
+                "routines refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    private func refreshPartitions(under key: ObjectsKey) async {
+        for partitionKey in partitionKeys(matching: key) {
+            guard case .loaded = partitionsState[partitionKey] ?? .idle else {
+                await partitionsDedup.cancel(key: partitionKey)
+                partitionsState.removeValue(forKey: partitionKey)
+                continue
+            }
+            await reloadPartitionsInPlace(partitionKey)
+        }
     }
 
     func refreshLoadedTables(connectionId: UUID, database: String? = nil) async {
