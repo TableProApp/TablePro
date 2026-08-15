@@ -371,13 +371,12 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     /// was built for. Switching connection rebuilds it instead.
     func installToolbar(coordinator: MainContentCoordinator) {
         guard let window = view.window else { return }
-        if let owner = toolbarOwner, owner.coordinator !== coordinator {
-            invalidateToolbar()
-        }
-        if toolbarOwner == nil {
-            toolbarOwner = MainWindowToolbar(coordinator: coordinator)
-        }
-        if let owner = toolbarOwner, window.toolbar !== owner.managedToolbar {
+        let owner = toolbarOwner ?? MainWindowToolbar()
+        toolbarOwner = owner
+        /// Pointed at the connection before the toolbar reaches the window, so the delegate builds
+        /// its items with a subject already in place and nothing has to be rebuilt afterwards.
+        owner.repoint(to: coordinator)
+        if window.toolbar !== owner.managedToolbar {
             window.toolbar = owner.managedToolbar
         }
     }
@@ -473,7 +472,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         workspace.sessionState = nil
         workspace.session = nil
         if let releasedCoordinator, toolbarOwner?.coordinator === releasedCoordinator {
-            invalidateToolbar()
+            toolbarOwner?.repoint(to: nil)
         }
         /// The panes are rebuilt rather than dropped: the workspace stays in the registry so it can
         /// render its own phase, and its content view is now the not-connected pane. Leaving the
@@ -508,7 +507,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             coordinator.splitViewController = self
             installToolbar(coordinator: coordinator)
         } else {
-            invalidateToolbar()
+            /// Pointed at nothing rather than torn off the window. Every item validates to disabled
+            /// with no subject, and leaving the toolbar in place keeps AppKit from rebuilding the
+            /// titlebar twice for a switch the user experiences as one.
+            toolbarOwner?.repoint(to: nil)
         }
 
         showSelectedPanes()

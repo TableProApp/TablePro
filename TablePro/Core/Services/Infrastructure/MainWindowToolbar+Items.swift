@@ -31,10 +31,16 @@ extension MainWindowToolbar {
         )
     }
 
-    func subitemDatabase() -> NSToolbarItem {
-        let containerName = coordinator.map {
+    /// What this driver calls the thing a connection browses, so the item reads "Open Keyspace" on
+    /// Cassandra rather than a word that does not exist there.
+    var containerEntityName: String {
+        coordinator.map {
             PluginManager.shared.containerEntityName(for: $0.toolbarState.databaseType)
         } ?? String(localized: "Database")
+    }
+
+    func subitemDatabase() -> NSToolbarItem {
+        let containerName = containerEntityName
         return menuOnlyItem(
             id: Self.database,
             label: containerName,
@@ -109,7 +115,7 @@ extension MainWindowToolbar {
         return item
     }
 
-    private func buildImportSubmenu() -> NSMenu {
+    func buildImportSubmenu() -> NSMenu {
         let menu = NSMenu()
         guard let databaseType = coordinator?.connection.type else { return menu }
         for format in PluginManager.shared.importFormatOptions(for: databaseType) {

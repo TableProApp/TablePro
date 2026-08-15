@@ -83,3 +83,52 @@ struct SessionContextToolbarButton: View {
         }
     }
 }
+
+/// Thin wrappers so the toolbar's hosted content follows the window's subject instead of capturing
+/// one connection. Reading `subject.coordinator` inside `body` is what registers the observation.
+internal struct ConnectionToolbarSubjectButton: View {
+    internal let subject: ToolbarSubject
+
+    internal var body: some View {
+        if let coordinator = subject.coordinator {
+            ConnectionToolbarButton(coordinator: coordinator)
+        }
+    }
+}
+
+internal struct DatabaseToolbarSubjectButton: View {
+    internal let subject: ToolbarSubject
+
+    internal var body: some View {
+        if let coordinator = subject.coordinator {
+            DatabaseToolbarButton(coordinator: coordinator)
+        }
+    }
+}
+
+internal struct SessionContextToolbarSubjectButton: View {
+    internal let subject: ToolbarSubject
+
+    internal var body: some View {
+        if let coordinator = subject.coordinator {
+            SessionContextToolbarButton(coordinator: coordinator)
+        }
+    }
+}
+
+/// The centred status item. `ConnectionToolbarState` is a reference type, so this reads it from the
+/// subject each time rather than being handed one connection's instance at build time.
+internal struct ToolbarPrincipalSubjectContent: View {
+    internal let subject: ToolbarSubject
+
+    internal var body: some View {
+        if let coordinator = subject.coordinator {
+            ToolbarPrincipalContent(
+                state: coordinator.toolbarState,
+                onSwitchDatabase: { [weak coordinator] in coordinator?.commandActions?.openDatabaseSwitcher() },
+                onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() },
+                onSafeModeChange: { [weak coordinator] level in coordinator?.setSafeModeLevel(level) }
+            )
+        }
+    }
+}

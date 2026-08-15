@@ -16,8 +16,6 @@ extension MainWindowToolbar {
         Self.lifecycleLogger.info(
             "[open] toolbar delegate buildItem id=\(itemIdentifier.rawValue, privacy: .public) hasCoordinator=\(self.coordinator != nil)"
         )
-        guard let coordinator else { return nil }
-
         switch itemIdentifier {
         case Self.sidebarToggle:
             return makeSidebarToggleItem()
@@ -28,9 +26,9 @@ extension MainWindowToolbar {
                 subitems: [subitemConnection(), subitemDatabase()],
                 retainsController: Self.retainsHostingController(willBeInsertedIntoToolbar: flag),
                 content: HStack(spacing: 4) {
-                    ConnectionToolbarButton(coordinator: coordinator)
-                    DatabaseToolbarButton(coordinator: coordinator)
-                    SessionContextToolbarButton(coordinator: coordinator)
+                    ConnectionToolbarSubjectButton(subject: subject)
+                    DatabaseToolbarSubjectButton(subject: subject)
+                    SessionContextToolbarSubjectButton(subject: subject)
                 }
             )
             group.isNavigational = true
@@ -44,12 +42,7 @@ extension MainWindowToolbar {
                 keyEquivalent: "",
                 modifiers: [],
                 retainsController: Self.retainsHostingController(willBeInsertedIntoToolbar: flag),
-                content: ToolbarPrincipalContent(
-                    state: coordinator.toolbarState,
-                    onSwitchDatabase: { [weak coordinator] in coordinator?.commandActions?.openDatabaseSwitcher() },
-                    onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() },
-                    onSafeModeChange: { [weak coordinator] level in coordinator?.setSafeModeLevel(level) }
-                )
+                content: ToolbarPrincipalSubjectContent(subject: subject)
             )
             item.visibilityPriority = .high
             item.toolTip = String(localized: "Connection status")

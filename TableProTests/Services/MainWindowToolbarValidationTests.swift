@@ -209,7 +209,8 @@ struct MainWindowToolbarValidationTests {
     func validateToolbarItemFollowsLiveSession() {
         let coordinator = makeCoordinator()
         defer { coordinator.teardown() }
-        let owner = MainWindowToolbar(coordinator: coordinator)
+        let owner = MainWindowToolbar()
+        owner.repoint(to: coordinator)
         let refresh = NSToolbarItem(itemIdentifier: MainWindowToolbar.refresh)
 
         coordinator.toolbarState.connectionState = .connected
@@ -232,7 +233,8 @@ struct MainWindowToolbarValidationTests {
     func toolbarConfigurationEnablesAutosave() {
         let coordinator = makeCoordinator()
         defer { coordinator.teardown() }
-        let owner = MainWindowToolbar(coordinator: coordinator)
+        let owner = MainWindowToolbar()
+        owner.repoint(to: coordinator)
         #expect(owner.managedToolbar.identifier == MainWindowToolbar.toolbarIdentifier)
         #expect(owner.managedToolbar.allowsUserCustomization == true)
         #expect(owner.managedToolbar.autosavesConfiguration == true)
@@ -242,7 +244,8 @@ struct MainWindowToolbarValidationTests {
     func allowedItemIdentifiersAreSupersetOfDefaults() {
         let coordinator = makeCoordinator()
         defer { coordinator.teardown() }
-        let owner = MainWindowToolbar(coordinator: coordinator)
+        let owner = MainWindowToolbar()
+        owner.repoint(to: coordinator)
         let toolbar = owner.managedToolbar
         let defaults = Set(owner.toolbarDefaultItemIdentifiers(toolbar))
         let allowed = Set(owner.toolbarAllowedItemIdentifiers(toolbar))
@@ -256,5 +259,72 @@ struct MainWindowToolbarValidationTests {
             changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
+    }
+}
+
+@MainActor
+struct MainWindowToolbarRepointTests {
+    private func makeCoordinator() -> MainContentCoordinator {
+        MainContentCoordinator(
+            connection: TestFixtures.makeConnection(database: "db_a"),
+            tabManager: QueryTabManager(),
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+    }
+
+    /// The window keeps one toolbar and points it at whichever connection it is showing, so a
+    /// switch has to change what the items are about without rebuilding them.
+    @Test("Repointing changes the subject the items read")
+    func repointChangesTheSubject() {
+        let first = makeCoordinator()
+        let second = makeCoordinator()
+        defer {
+            first.teardown()
+            second.teardown()
+        }
+        let owner = MainWindowToolbar()
+
+        owner.repoint(to: first)
+        #expect(owner.coordinator === first)
+
+        owner.repoint(to: second)
+        #expect(owner.coordinator === second)
+
+        owner.repoint(to: nil)
+        #expect(owner.coordinator == nil)
+    }
+
+    /// `windowDidBecomeKey` runs on every activation with the connection unchanged, and
+    /// `@Observable` generates no equality check, so a repoint to the same coordinator would
+    /// otherwise invalidate the hosted items every time the window came forward.
+    @Test("Repointing to the same coordinator is a no-op")
+    func repointToSameCoordinatorIsIgnored() {
+        let coordinator = makeCoordinator()
+        defer { coordinator.teardown() }
+        let owner = MainWindowToolbar()
+
+        owner.repoint(to: coordinator)
+        let subjectBefore = owner.subject.coordinator
+        owner.repoint(to: coordinator)
+        #expect(owner.subject.coordinator === subjectBefore)
+    }
+
+    /// The delegate used to answer nil for every identifier when it had no coordinator. With
+    /// `autosavesConfiguration` on, a vend in that state pruned the user's saved arrangement for
+    /// good, which this project has already paid for once.
+    @Test("The delegate builds every advertised item with no subject")
+    func delegateNeverAnswersNil() {
+        let owner = MainWindowToolbar()
+        let buildable = MainWindowToolbar.allowedItemIdentifiers.filter { !$0.rawValue.hasPrefix("NSToolbar") }
+
+        for identifier in buildable {
+            let item = owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: identifier,
+                willBeInsertedIntoToolbar: true
+            )
+            #expect(item != nil, "\(identifier.rawValue) must still build with no connection")
+        }
     }
 }
