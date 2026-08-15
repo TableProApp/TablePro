@@ -109,7 +109,7 @@ final class DamengPluginDriverTests: XCTestCase {
             try await driver.dropSchema(name: schema)
         } catch {
             try? await driver.switchSchema(to: "SYSDBA")
-            try? await driver.execute(query: "DROP SCHEMA \(driver.quoteIdentifier(schema)) CASCADE")
+            _ = try? await driver.execute(query: "DROP SCHEMA \(driver.quoteIdentifier(schema)) CASCADE")
             throw error
         }
     }

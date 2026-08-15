@@ -12,6 +12,12 @@ struct DamengRawResult: Sendable {
 }
 
 final class DamengConnection: @unchecked Sendable {
+    private enum TransactionCommand: Sendable {
+        case begin
+        case commit
+        case rollback
+    }
+
     private let queue = DispatchQueue(label: "com.TablePro.dameng.connection")
     private var rawConnection: OpaquePointer?
 
@@ -92,24 +98,30 @@ final class DamengConnection: @unchecked Sendable {
     }
 
     func beginTransaction() async throws {
-        try await transactionOperation(tp_dm_begin)
+        try await transactionOperation(.begin)
     }
 
     func commitTransaction() async throws {
-        try await transactionOperation(tp_dm_commit)
+        try await transactionOperation(.commit)
     }
 
     func rollbackTransaction() async throws {
-        try await transactionOperation(tp_dm_rollback)
+        try await transactionOperation(.rollback)
     }
 
-    private func transactionOperation(
-        _ operation: @escaping @Sendable (OpaquePointer?, UnsafeMutablePointer<OpaquePointer?>?) -> Bool
-    ) async throws {
+    private func transactionOperation(_ command: TransactionCommand) async throws {
         try await run {
             let connection = try self.connectedPointer()
             var rawError: OpaquePointer?
-            guard operation(connection, &rawError) else {
+            let succeeded = switch command {
+            case .begin:
+                tp_dm_begin(connection, &rawError)
+            case .commit:
+                tp_dm_commit(connection, &rawError)
+            case .rollback:
+                tp_dm_rollback(connection, &rawError)
+            }
+            guard succeeded else {
                 throw Self.error(from: rawError)
             }
         }
