@@ -7,7 +7,8 @@ description: >-
   scope, no quick patches. It runs three investigators in parallel (codebase tracing, Apple
   platform research, competitor/UX research), synthesizes a refactor-aware implementation
   blueprint, gets the user's approval through the plan gate, implements to TablePro's
-  standards, then builds, tests, and lints the result. Trigger on things like "fix issue
+  standards, builds and tests and lints the result, then commits and opens the pull
+  request. Trigger on things like "fix issue
   #1234", "fix this bug", "this should behave like a native app", "do this properly /
   natively", or any non-trivial defect or behaviour gap in the app. Prefer this over an ad-hoc
   fix when the change touches UI behaviour, architecture, or anything the user expects to
@@ -19,6 +20,8 @@ description: >-
 A disciplined way to fix a TablePro problem so the result is correct, native, and complete, not a patch over a symptom. The core idea: understand before you build, build the version Apple would ship, and prove it compiles and passes before handing it back.
 
 Low-quality fixes fail for four reasons: the author did not trace how the code actually behaves, did not check what the platform documents as correct, stopped at the first change that made the symptom disappear, or never built the result. This workflow attacks all four.
+
+It has one approval gate, at the plan in Phase 3. Everything after it runs to completion: implement, verify, commit, and open the pull request.
 
 ## When to use this
 
@@ -120,15 +123,26 @@ Non-obvious rules that decide whether the result means anything: run only the su
 
 UI tests have their own trap list, including an accessibility tree that differs between this machine and the CI runner, and a SwiftUI container identifier that silently erases every child's. Read `references/verification.md` before writing one.
 
-## Phase 6: Review and hand off
+## Phase 6: Review, commit, and open the PR
 
-- **Self-review the diff.** Run `Skill(code-review)` on the change. Fix what it finds, or say why a finding does not apply.
-- **Writing-style gate.** Before committing anything user-facing, run the grep from `CLAUDE.md` over the staged diff for em dashes and banned filler words, and rewrite every hit.
-- **Verify the branch again, in its own call, immediately before committing.** `git branch --show-current`. The checkout can move between turns, and chaining `commit && push` has already pushed straight to `main` once. Never chain them.
-- **Commit** with a Conventional Commits message: single line, no body, canonical scope from `CLAUDE.md`. Never pass `-c user.email` or `-c user.name`; the repo identity is already correct and overriding it has shipped unattributed commits.
-- **Open the PR.** `gh pr create --repo TableProApp/TablePro --base main`. The body states the root cause, the fix, and what you built and tested, and it closes the issue (`Fixes #<number>`). If a UI flow could not get deterministic automation, say so here, since that is the only place the exemption is recorded. Run the writing-style grep over the PR body too.
-- **If the push fails over SSH** (port 22 is blocked here), push over HTTPS with the `gh` credential helper: `git -c credential.helper='!gh auth git-credential' push https://github.com/TableProApp/TablePro.git <branch>`.
-- **Summarize** what changed and why, mapped back to the root cause, and state plainly what you built and tested. Link the PR.
+**This workflow ends at an open pull request, not at a summary asking for permission.** Invoking the skill is the authorization to commit, push, and open the PR once Phase 5 is green. Do not stop after the last edit and ask whether to commit; the answer is already yes. Stop only if verification did not pass, and say what failed.
+
+1. **Self-review the diff.** Run `Skill(code-review)` on the change. Fix what it finds, or say why a finding does not apply.
+2. **Writing-style gate.** Stage the change, then run the grep from `CLAUDE.md` over the staged diff for em dashes and banned filler words. Rewrite every hit that is on an added line.
+3. **Verify the branch, in its own call, immediately before committing.** `git branch --show-current`. The checkout can move between turns, and chaining `commit && push` has already pushed straight to `main` once. Never chain them.
+4. **Commit.** Conventional Commits: single line, no body, canonical scope from `CLAUDE.md`. Never pass `-c user.email` or `-c user.name`; the repo identity is already correct and overriding it has shipped unattributed commits.
+5. **Push.** `git push -u origin <branch>`. If SSH fails, port 22 is blocked here; push over HTTPS with the `gh` credential helper instead:
+   ```bash
+   git -c credential.helper='!gh auth git-credential' push https://github.com/TableProApp/TablePro.git <branch>
+   ```
+6. **Open the PR.**
+   ```bash
+   gh pr create --repo TableProApp/TablePro --base main --head <branch> --title "<commit subject>" --body-file <file>
+   ```
+   Write the body to a file rather than passing it inline, so the writing-style grep can run over it first. The body states the root cause, the fix, and what you built and tested, and it closes the issue with `Fixes #<number>`. If a UI flow could not get deterministic automation, say so here: the PR description is the only place that exemption is recorded.
+7. **Report back** with the PR link, what changed and why mapped to the root cause, and plainly what you built and tested.
+
+If the fix is stacked on another in-flight branch, base the PR on that branch instead of `main` and say so, rather than dragging the other work into this PR.
 
 ## Reference files
 

@@ -116,8 +116,9 @@ The checkout can move between turns, and uncommitted edits to tracked files are 
 ## Before the commit
 
 - Run `Skill(code-review)` over the diff and act on what it finds.
-- Run the writing-style grep from `CLAUDE.md` on the staged diff and rewrite every hit:
+- Run the writing-style grep from `CLAUDE.md` on the staged diff and rewrite every hit that lands on an added line:
   ```bash
   git diff --cached -U0 | grep -nE '—|seamless|robust|comprehensive|intuitive|effortless|streamlined|leverage|elevate|delve|utilize|facilitate'
   ```
+  Run the same grep over the PR body file before `gh pr create`. Writing the body to a file rather than passing it inline is what makes that possible.
 - Confirm the CHANGELOG entry, the localization calls, the `docs/` update, and the tests are all in the diff, not on a mental to-do list.

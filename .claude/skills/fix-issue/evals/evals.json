@@ -1,6 +1,6 @@
 {
   "skill_name": "fix-issue",
-  "notes": "Plan-first skill. The graded output is the implementation blueprint each run produces, not committed code. with_skill runs follow SKILL.md and stop at the Phase 3 plan gate; baseline runs get the same prompt with no skill. Two prompts are symptom-only (no file or invariant named) to test whether the workflow rediscovers the cause; one is a bare GitHub issue number to test the fetch path. The orchestration expectations check the current Claude Code mechanics: three concurrent Agent calls in one message, no team tools, no Workflow tool.",
+  "notes": "Plan-first skill. The graded output is the implementation blueprint each run produces, not committed code, so Phases 4 to 6 (implementation, verification, and the PR) are out of scope for these evals. with_skill runs follow SKILL.md and stop at the Phase 3 plan gate; baseline runs get the same prompt with no skill. Two prompts are symptom-only (no file or invariant named) to test whether the workflow rediscovers the cause; one is a bare GitHub issue number to test the fetch path. The orchestration expectations check the current Claude Code mechanics: three concurrent Agent calls in one message, no team tools, no Workflow tool.",
   "evals": [
     {
       "id": 1,
