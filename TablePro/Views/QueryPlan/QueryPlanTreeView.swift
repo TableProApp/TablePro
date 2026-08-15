@@ -49,14 +49,17 @@ struct QueryPlanTreeView: View {
 // MARK: - Row View
 
 private struct QueryPlanRowView: View {
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+
     let node: QueryPlanNode
 
     var body: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(costColor)
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
+            Image(systemName: node.severity.symbolName)
+                .font(.system(size: 8))
+                .foregroundStyle(node.severity.tint(differentiateWithoutColor: differentiateWithoutColor))
+                .frame(width: 10)
+                .accessibilityLabel(node.severity.accessibilityLabel)
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
@@ -93,7 +96,7 @@ private struct QueryPlanRowView: View {
             }
 
             if let rows = node.estimatedRows {
-                Text("\(rows.formatted(.number.grouping(.automatic))) rows")
+                Text("\(rows.formatted(.number.grouping(.automatic))) ^[rows](inflect: true)")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .frame(width: 80, alignment: .trailing)
@@ -101,20 +104,13 @@ private struct QueryPlanRowView: View {
 
             // Actual time (EXPLAIN ANALYZE)
             if let time = node.actualTotalTime {
-                Text(String(format: "%.3fms", time))
+                Text(QueryPlanLabels.milliseconds(time))
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .frame(width: 80, alignment: .trailing)
             }
         }
         .padding(.vertical, 2)
-    }
-
-    private var costColor: Color {
-        if node.costFraction > 0.5 { return .red }
-        if node.costFraction > 0.2 { return .orange }
-        if node.costFraction > 0.05 { return .yellow }
-        return .green
     }
 }
 
@@ -123,16 +119,8 @@ private struct QueryPlanRowView: View {
 private struct QueryPlanDetailView: View {
     let node: QueryPlanNode
 
-    /// Properties to hide (boolean flags and zero-value noise from PostgreSQL EXPLAIN).
-    private static let hiddenKeys: Set<String> = [
-        "Parallel Aware", "Async Capable", "Disabled", "Inner Unique",
-    ]
-
     private var filteredProperties: [(key: String, value: String)] {
-        node.properties
-            .filter { !Self.hiddenKeys.contains($0.key) }
-            .filter { $0.value != "false" && $0.value != "0" }
-            .sorted { $0.key < $1.key }
+        QueryPlanLabels.visibleProperties(of: node)
     }
 
     var body: some View {
@@ -142,28 +130,34 @@ private struct QueryPlanDetailView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(node.operation)
                             .font(.caption.weight(.semibold))
-                        if let relation = node.relation { detailRow("Table", relation) }
-                        if let cost = node.costRangeText(fractionDigits: 2) { detailRow("Cost", cost) }
-                        if let rows = node.estimatedRows { detailRow("Rows", "\(rows)") }
-                        if let width = node.estimatedWidth, width > 0 { detailRow("Width", "\(width)") }
+                        if let relation = node.relation { detailRow(QueryPlanLabels.table, relation) }
+                        if let cost = node.costRangeText(fractionDigits: 2) {
+                            detailRow(QueryPlanLabels.cost, cost)
+                        }
+                        if let rows = node.estimatedRows { detailRow(QueryPlanLabels.rows, "\(rows)") }
+                        if let width = node.estimatedWidth, width > 0 {
+                            detailRow(QueryPlanLabels.width, "\(width)")
+                        }
                     }
 
                     // Actuals (EXPLAIN ANALYZE)
                     if node.actualTotalTime != nil {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Actual")
+                            Text(QueryPlanLabels.actual)
                                 .font(.caption.weight(.semibold))
                             if let time = node.actualTotalTime {
-                                detailRow("Time", String(format: "%.3fms", time))
+                                detailRow(QueryPlanLabels.actualTime, QueryPlanLabels.milliseconds(time))
                             }
-                            if let rows = node.actualRows { detailRow("Rows", "\(rows)") }
-                            if let loops = node.actualLoops, loops > 1 { detailRow("Loops", "\(loops)") }
+                            if let rows = node.actualRows { detailRow(QueryPlanLabels.rows, "\(rows)") }
+                            if let loops = node.actualLoops, loops > 1 {
+                                detailRow(QueryPlanLabels.loops, "\(loops)")
+                            }
                         }
                     }
 
                     if !filteredProperties.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Details")
+                            Text(QueryPlanLabels.details)
                                 .font(.caption.weight(.semibold))
                             ForEach(filteredProperties, id: \.key) { key, value in
                                 detailRow(key, value)

@@ -10,6 +10,8 @@ import SwiftUI
 // MARK: - Diagram View
 
 struct QueryPlanDiagramView: View {
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+
     @State private var magnification: CGFloat = 1.0
     @State private var selectedNodeId: UUID?
     @GestureState private var pinchMagnification: CGFloat = 1.0
@@ -90,14 +92,14 @@ struct QueryPlanDiagramView: View {
                         .foregroundStyle(.tertiary)
                 }
                 if let rows = node.estimatedRows {
-                    Text("\(rows) rows")
+                    Text("\(rows) ^[rows](inflect: true)")
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundStyle(.tertiary)
                 }
             }
 
             if let time = node.actualTotalTime {
-                Text(String(format: "%.3fms", time))
+                Text(QueryPlanLabels.milliseconds(time))
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(.quaternary)
             }
@@ -106,12 +108,14 @@ struct QueryPlanDiagramView: View {
         .frame(width: QueryPlanDiagramMetrics.nodeWidth, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: QueryPlanDiagramMetrics.cornerRadius)
-                .fill(nodeColor(fraction: node.costFraction).opacity(0.12))
+                .fill(node.severity.tint(differentiateWithoutColor: differentiateWithoutColor).opacity(0.12))
         )
         .overlay(
             RoundedRectangle(cornerRadius: QueryPlanDiagramMetrics.cornerRadius)
                 .stroke(
-                    isSelected ? Color.accentColor : nodeColor(fraction: node.costFraction),
+                    isSelected
+                        ? Color.accentColor
+                        : node.severity.tint(differentiateWithoutColor: differentiateWithoutColor),
                     lineWidth: isSelected ? 2 : 1
                 )
         )
@@ -160,15 +164,6 @@ struct QueryPlanDiagramView: View {
         .controlSize(.small)
     }
 
-    // MARK: - Color
-
-    private func nodeColor(fraction: Double) -> Color {
-        if fraction > 0.5 { return .red }
-        if fraction > 0.2 { return .orange }
-        if fraction > 0.05 { return .yellow }
-        return .green
-    }
-
     // MARK: - Arrows
 
     private func drawArrows(context: GraphicsContext) {
@@ -198,10 +193,6 @@ struct QueryPlanDiagramView: View {
 
     // MARK: - Popover
 
-    private static let hiddenKeys: Set<String> = [
-        "Parallel Aware", "Async Capable", "Disabled", "Inner Unique",
-    ]
-
     private func detailBinding(for nodeId: UUID) -> Binding<Bool> {
         Binding(
             get: { selectedNodeId == nodeId },
@@ -210,25 +201,22 @@ struct QueryPlanDiagramView: View {
     }
 
     private func nodeDetailPopover(_ node: QueryPlanNode) -> some View {
-        let filtered = node.properties
-            .filter { !Self.hiddenKeys.contains($0.key) }
-            .filter { $0.value != "false" && $0.value != "0" }
-            .sorted { $0.key < $1.key }
+        let filtered = QueryPlanLabels.visibleProperties(of: node)
 
         return VStack(alignment: .leading, spacing: 6) {
             Text(node.operation)
                 .font(.headline)
 
-            if let relation = node.relation { detailRow("Table", relation) }
-            if let cost = node.costRangeText(fractionDigits: 2) { detailRow("Cost", cost) }
-            if let rows = node.estimatedRows { detailRow("Rows", "\(rows)") }
-            if let width = node.estimatedWidth, width > 0 { detailRow("Width", "\(width)") }
+            if let relation = node.relation { detailRow(QueryPlanLabels.table, relation) }
+            if let cost = node.costRangeText(fractionDigits: 2) { detailRow(QueryPlanLabels.cost, cost) }
+            if let rows = node.estimatedRows { detailRow(QueryPlanLabels.rows, "\(rows)") }
+            if let width = node.estimatedWidth, width > 0 { detailRow(QueryPlanLabels.width, "\(width)") }
 
             if let time = node.actualTotalTime {
                 Divider()
-                detailRow("Actual Time", String(format: "%.3fms", time))
-                if let rows = node.actualRows { detailRow("Actual Rows", "\(rows)") }
-                if let loops = node.actualLoops, loops > 1 { detailRow("Loops", "\(loops)") }
+                detailRow(QueryPlanLabels.actualTime, QueryPlanLabels.milliseconds(time))
+                if let rows = node.actualRows { detailRow(QueryPlanLabels.actualRows, "\(rows)") }
+                if let loops = node.actualLoops, loops > 1 { detailRow(QueryPlanLabels.loops, "\(loops)") }
             }
 
             if !filtered.isEmpty {
