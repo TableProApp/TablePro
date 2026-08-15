@@ -134,6 +134,7 @@ extension MainWindowToolbar {
         action: Selector?,
         keyEquivalent: String,
         modifiers: NSEvent.ModifierFlags,
+        retainsController: Bool = true,
         content: Content
     ) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: id)
@@ -144,7 +145,7 @@ extension MainWindowToolbar {
         // focusable(false) stops SwiftUI from claiming scene focus on click, which would break menu shortcuts.
         let controller = NSHostingController(rootView: AnyView(content.focusable(false)))
         controller.sizingOptions = .intrinsicContentSize
-        hostingControllers[id] = controller
+        retain(controller, for: id, when: retainsController)
         item.view = controller.view
 
         if let symbol {
@@ -221,6 +222,7 @@ extension MainWindowToolbar {
         id: NSToolbarItem.Identifier,
         label: String,
         subitems: [NSToolbarItem],
+        retainsController: Bool = true,
         content: Content
     ) -> NSToolbarItemGroup {
         let group = NSToolbarItemGroup(itemIdentifier: id)
@@ -230,10 +232,28 @@ extension MainWindowToolbar {
         // Same retention requirement as hostingItem: group.view comes from this controller.
         let controller = NSHostingController(rootView: AnyView(content.focusable(false)))
         controller.sizingOptions = .intrinsicContentSize
-        hostingControllers[id] = controller
+        retain(controller, for: id, when: retainsController)
         group.view = controller.view
 
         group.subitems = subitems
         return group
+    }
+
+    /// One slot per identifier, and the slot belongs to the item that is actually in the toolbar.
+    /// AppKit asks the delegate again with `willBeInsertedIntoToolbar: false` to build the palette
+    /// copies shown by Customize Toolbar, and letting those overwrite the slot released the
+    /// controllers whose views were on screen. `NSToolbarItem` does not retain its controller, so
+    /// the live items collapsed to zero width the moment the panel opened.
+    static func retainsHostingController(willBeInsertedIntoToolbar: Bool) -> Bool {
+        willBeInsertedIntoToolbar
+    }
+
+    private func retain(
+        _ controller: NSHostingController<AnyView>,
+        for id: NSToolbarItem.Identifier,
+        when retains: Bool
+    ) {
+        guard retains else { return }
+        hostingControllers[id] = controller
     }
 }

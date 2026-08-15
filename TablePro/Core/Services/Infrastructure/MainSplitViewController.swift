@@ -461,9 +461,20 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         )
         workspace.rightPanelState?.teardown()
         workspace.rightPanelState = nil
+        /// The toolbar goes with the coordinator it was built for. `MainWindowToolbar.coordinator`
+        /// is weak, so tearing the coordinator down while the toolbar stayed installed left the
+        /// delegate answering nil for every identifier it advertises. `autosavesConfiguration` is
+        /// on, so the next vend AppKit asks for, opening Customize Toolbar or dragging an item,
+        /// would have pruned those items from the user's saved configuration for good. Comparing
+        /// the coordinator itself rather than which workspace is on screen keeps this exact when a
+        /// background workspace loses its session.
+        let releasedCoordinator = workspace.sessionState?.coordinator
         workspace.sessionState?.coordinator.teardown()
         workspace.sessionState = nil
         workspace.session = nil
+        if let releasedCoordinator, toolbarOwner?.coordinator === releasedCoordinator {
+            invalidateToolbar()
+        }
         /// The panes are rebuilt rather than dropped: the workspace stays in the registry so it can
         /// render its own phase, and its content view is now the not-connected pane. Leaving the
         /// old tree mounted would keep the torn-down coordinator alive through it.

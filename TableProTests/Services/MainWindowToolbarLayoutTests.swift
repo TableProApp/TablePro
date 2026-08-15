@@ -32,3 +32,22 @@ struct MainWindowToolbarLayoutTests {
         #expect(group.subitems.count == 2)
     }
 }
+
+@MainActor
+struct MainWindowToolbarCustomizationTests {
+    /// Opening Customize Toolbar makes AppKit ask the delegate again, with the flag off, for the
+    /// palette copies. Those used to overwrite the retained hosting controllers, releasing the ones
+    /// whose views were on screen, and the connection group and status item collapsed to nothing.
+    @Test("Only the item going into the toolbar claims the retained controller")
+    func paletteCopiesDoNotClaimTheSlot() {
+        #expect(MainWindowToolbar.retainsHostingController(willBeInsertedIntoToolbar: true))
+        #expect(!MainWindowToolbar.retainsHostingController(willBeInsertedIntoToolbar: false))
+    }
+
+    /// The identifier is the autosave name. Changing it silently discards every user's arrangement,
+    /// which is what the v1 to v2 move already cost once.
+    @Test("The toolbar identifier is stable")
+    func identifierIsStable() {
+        #expect(MainWindowToolbar.toolbarIdentifier == "com.TablePro.main.toolbar.v2")
+    }
+}

@@ -26,6 +26,7 @@ extension MainWindowToolbar {
                 id: itemIdentifier,
                 label: String(localized: "Connection"),
                 subitems: [subitemConnection(), subitemDatabase()],
+                retainsController: Self.retainsHostingController(willBeInsertedIntoToolbar: flag),
                 content: HStack(spacing: 4) {
                     ConnectionToolbarButton(coordinator: coordinator)
                     DatabaseToolbarButton(coordinator: coordinator)
@@ -42,6 +43,7 @@ extension MainWindowToolbar {
                 action: nil,
                 keyEquivalent: "",
                 modifiers: [],
+                retainsController: Self.retainsHostingController(willBeInsertedIntoToolbar: flag),
                 content: ToolbarPrincipalContent(
                     state: coordinator.toolbarState,
                     onSwitchDatabase: { [weak coordinator] in coordinator?.commandActions?.openDatabaseSwitcher() },

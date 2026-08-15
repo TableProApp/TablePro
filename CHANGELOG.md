@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Cmd+W closes the welcome window. The shortcut was bound to Close Tab, which the welcome window has no answer for, so it did nothing there.
+- Customize Toolbar no longer blanks the connection and status controls. Opening it rebuilt those two items and released the ones already on screen, so they shrank to nothing until the window switched connection.
+- A connection that loses its session no longer puts your toolbar arrangement at risk. The toolbar stayed in place with nothing behind it, and the next time macOS asked it what to show, the items you had customized could be dropped for good.
 - Running EXPLAIN from the toolbar now asks for confirmation when Safe Mode requires it. It previously skipped that check on every database that offers an EXPLAIN variant, even though `EXPLAIN ANALYZE` runs the query.
 - The Stop button can now cancel a running `EXPLAIN ANALYZE`.
 - An EXPLAIN that fails now reports the error in the usual place instead of showing it where the plan should be.
