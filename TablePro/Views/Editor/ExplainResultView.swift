@@ -18,10 +18,13 @@ struct ExplainResultView: View {
     let executionTime: TimeInterval?
     let plan: QueryPlan?
 
-    @State private var fontSize: Double = 13
+    @AppStorage("explainRawFontSize") private var fontSize: Double = 13
     @State private var showCopyConfirmation = false
     @State private var copyResetTask: Task<Void, Never>?
     @State private var viewMode: ExplainViewMode = .diagram
+
+    /// Shared by the diagram and the tree, so switching view mode keeps the selected step.
+    @State private var selectedNodeId: UUID?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,7 +33,7 @@ struct ExplainResultView: View {
             switch viewMode {
             case .diagram:
                 if let plan {
-                    QueryPlanDiagramView(plan: plan)
+                    QueryPlanDiagramView(plan: plan, selectedNodeId: $selectedNodeId)
                 } else {
                     DDLTextView(ddl: text, fontSize: $fontSize)
                 }
