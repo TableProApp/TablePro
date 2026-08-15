@@ -141,4 +141,21 @@ struct FavoritesRenameCellTests {
 
         #expect(cell.endRename() == "Quarterly Reports")
     }
+
+    /// A pooled cell coming back still in rename mode would put the edit field over whichever row it
+    /// was handed to next. AppKit keeps a cell with a live edit out of the pool only while its field
+    /// holds the keyboard, and losing focus is how an edit gets abandoned rather than finished.
+    @Test("A cell taken out of rename mode gives its row back")
+    func endingRenameRestoresTheRow() throws {
+        let cell = makeCell()
+        let hosting = try #require(cell.subviews.first { $0 is NSHostingView<Text> })
+        cell.beginRename(text: "Reports", delegate: Delegate())
+
+        cell.endRename()
+        cell.update(rootView: Text("A different row"))
+
+        #expect(hosting.isHidden == false)
+        #expect(cell.editor?.isHidden == true)
+        #expect(cell.isRenaming == false)
+    }
 }

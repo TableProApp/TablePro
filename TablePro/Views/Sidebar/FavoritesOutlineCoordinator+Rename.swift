@@ -67,10 +67,11 @@ extension FavoritesOutlineCoordinator {
     internal func endRename(commit: Bool) {
         guard let session = renameSession else { return }
         renameSession = nil
+        /// The field is the authority while it exists. `pendingName` is the fallback for the case
+        /// where the row has already gone, which is the only way there is no field left to ask.
         var value = session.pendingName ?? ""
         if let outlineView, let cell = cell(forNodeId: session.nodeId, in: outlineView) {
-            let typed = cell.endRename()
-            if cell.isRenaming == false, !typed.isEmpty { value = typed }
+            value = cell.endRename()
             outlineView.window?.makeFirstResponder(outlineView)
         }
         guard commit,

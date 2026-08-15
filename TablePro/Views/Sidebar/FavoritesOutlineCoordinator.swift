@@ -353,6 +353,13 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
         guard let node = item as? FavoritesOutlineNode else { return nil }
         let cell = outlineView.makeView(withIdentifier: Self.cellIdentifier, owner: self)
             as? FavoritesOutlineCellView<Row> ?? makeCell()
+        /// A pooled cell can come back still in rename mode, which would put the edit field over
+        /// whichever row it was handed to next. AppKit keeps a cell with a live edit session out of
+        /// the pool, but only while its field holds the keyboard, and losing focus is exactly how an
+        /// edit ends up abandoned rather than finished.
+        if cell.isRenaming, node.id != renameSession?.nodeId {
+            cell.endRename()
+        }
         cell.update(rootView: owner.row(node))
         return cell
     }
