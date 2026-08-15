@@ -36,7 +36,7 @@ internal final class WindowOpener {
 
     internal func openSettings(tab: SettingsPane? = nil) {
         if let tab {
-            UserDefaults.standard.set(tab.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
+            AppStorageEnvironment.shared.defaults.set(tab.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
         }
         perform { opener in
             guard let present = opener.openSettingsAction else { return false }

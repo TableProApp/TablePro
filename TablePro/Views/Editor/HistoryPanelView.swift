@@ -391,14 +391,14 @@ private extension HistoryPanelView {
     // MARK: - Filter State Persistence
 
     func restoreFilterState() {
-        let savedFilter = UserDefaults.standard.integer(forKey: Self.dateFilterKey)
+        let savedFilter = AppStorageEnvironment.shared.defaults.integer(forKey: Self.dateFilterKey)
         if let filter = UIDateFilter(rawValue: savedFilter) {
             dateFilter = filter
         }
     }
 
     func saveFilterState() {
-        UserDefaults.standard.set(dateFilter.rawValue, forKey: Self.dateFilterKey)
+        AppStorageEnvironment.shared.defaults.set(dateFilter.rawValue, forKey: Self.dateFilterKey)
     }
 }
 

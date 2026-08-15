@@ -12,7 +12,7 @@ final class SSHProfileStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHProfileStorage")
 
     private let profilesKey = "com.TablePro.sshProfiles"
-    private let defaults = UserDefaults.standard
+    private let defaults = AppStorageEnvironment.shared.defaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let keychain: KeychainHelper

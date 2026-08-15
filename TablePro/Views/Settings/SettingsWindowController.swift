@@ -62,7 +62,7 @@ private final class SettingsPaneTabViewController: NSTabViewController {
     ]
 
     private var persistedPane: SettingsPane {
-        let stored = UserDefaults.standard.string(forKey: PreferenceKeys.selectedSettingsPane.name)
+        let stored = AppStorageEnvironment.shared.defaults.string(forKey: PreferenceKeys.selectedSettingsPane.name)
         guard let stored, let pane = SettingsPane(rawValue: stored) else { return .general }
         return pane
     }
@@ -88,7 +88,7 @@ private final class SettingsPaneTabViewController: NSTabViewController {
         super.tabView(tabView, didSelect: tabViewItem)
         guard let identifier = tabViewItem?.identifier as? String,
               let pane = SettingsPane(rawValue: identifier) else { return }
-        UserDefaults.standard.set(pane.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
+        AppStorageEnvironment.shared.defaults.set(pane.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
         view.window?.title = pane.title
     }
 

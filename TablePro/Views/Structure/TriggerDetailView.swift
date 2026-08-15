@@ -253,7 +253,7 @@ private struct TriggerDetailPane: View {
     let databaseType: DatabaseType
     let onOpenInEditor: (TriggerInfo) -> Void
 
-    @AppStorage("structureCodeFontSize") private var fontSize: Double = 13
+    @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) private var fontSize: Double = 13
 
     var body: some View {
         if let trigger = state.selectedTrigger(triggers) {

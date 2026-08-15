@@ -40,7 +40,7 @@ struct TableStructureView: View {
     @State var foreignKeys: [ForeignKeyInfo] = []
     @State var triggers: [TriggerInfo] = []
     @State var ddlStatement: String = ""
-    @AppStorage("structureCodeFontSize") var ddlFontSize: Double = 13
+    @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) var ddlFontSize: Double = 13
     @State var showCopyConfirmation = false
     @State var copyResetTask: Task<Void, Never>?
     @State var isLoading = true
@@ -50,7 +50,7 @@ struct TableStructureView: View {
     @State var partsReloadToken = 0
     @State var isReloadingAfterSave = false  // Prevent onChange loops during save reload
     @State var lastSaveTime: Date?
-    @AppStorage("skipSchemaPreview") var skipSchemaPreview = false
+    @AppStorage("skipSchemaPreview", store: AppStorageEnvironment.shared.defaults) var skipSchemaPreview = false
 
     // Search and sort state
     @State var searchText = ""

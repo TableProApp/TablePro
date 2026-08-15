@@ -16,7 +16,7 @@ final class TagStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TagStorage")
 
     private let tagsKey = "com.TablePro.tags"
-    private let defaults = UserDefaults.standard
+    private let defaults = AppStorageEnvironment.shared.defaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var cachedTags: [ConnectionTag]?

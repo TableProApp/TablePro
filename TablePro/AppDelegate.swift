@@ -82,7 +82,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         KeyRepeatFilter.shared.install()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
-        UserDefaults.standard.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
+        AppStorageEnvironment.shared.defaults.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
         DatabaseManager.shared.startObservingSystemEvents()
         DatabaseManager.shared.tabStatePersister = SessionTabStatePersister()
 

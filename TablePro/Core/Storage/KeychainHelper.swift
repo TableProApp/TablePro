@@ -55,7 +55,7 @@ final class KeychainHelper: KeychainStoring {
     }
 
     private var isPasswordSyncEnabled: Bool {
-        UserDefaults.standard.bool(forKey: Self.passwordSyncEnabledKey)
+        AppStorageEnvironment.shared.defaults.bool(forKey: Self.passwordSyncEnabledKey)
     }
 
     private init() {}

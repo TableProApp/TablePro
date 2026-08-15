@@ -31,7 +31,7 @@ struct ExportDialog: View {
 
     // MARK: - User Preferences
 
-    @AppStorage("hideExportSuccessDialog") private var hideSuccessDialog = false
+    @AppStorage("hideExportSuccessDialog", store: AppStorageEnvironment.shared.defaults) private var hideSuccessDialog = false
 
     // MARK: - Export Service
 

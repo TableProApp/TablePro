@@ -14,7 +14,7 @@ struct GeneralSettingsView: View {
 
     @State private var initialLanguage: AppLanguage?
     @State private var showResetConfirmation = false
-    @AppStorage(SidebarPersistenceKey.defaultLayout) private var defaultSidebarLayout: SidebarLayout = .flat
+    @AppStorage(SidebarPersistenceKey.defaultLayout, store: AppStorageEnvironment.shared.defaults) private var defaultSidebarLayout: SidebarLayout = .flat
 
     private static let standardTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
 

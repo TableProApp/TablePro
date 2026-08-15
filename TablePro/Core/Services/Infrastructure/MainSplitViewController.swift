@@ -1019,7 +1019,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     private func applyDefaultCollapseStateIfNoAutosave() {
         let key = "NSSplitView Subview Frames \(splitAutosaveName)"
-        guard UserDefaults.standard.object(forKey: key) == nil else { return }
+        guard AppStorageEnvironment.shared.defaults.object(forKey: key) == nil else { return }
         inspectorSplitItem.isCollapsed = true
     }
 

@@ -98,7 +98,7 @@ final class SidebarViewModel {
     }
     var isRedisKeysExpanded: Bool {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 isRedisKeysExpanded,
                 forKey: SidebarPersistenceKey.redisKeysExpanded(connectionId: connectionId)
             )
@@ -106,7 +106,7 @@ final class SidebarViewModel {
     }
     var isRecentsExpanded: Bool {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 isRecentsExpanded,
                 forKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId)
             )
@@ -201,7 +201,7 @@ final class SidebarViewModel {
     }
 
     private static func loadKindExpansion(connectionId: UUID, kind: SidebarObjectKind) -> Bool {
-        let defaults = UserDefaults.standard
+        let defaults = AppStorageEnvironment.shared.defaults
         let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: kind)
         if defaults.object(forKey: perKindKey) != nil {
             return defaults.bool(forKey: perKindKey)
@@ -227,7 +227,7 @@ final class SidebarViewModel {
         legacyKey: String? = nil,
         defaultValue: Bool
     ) -> Bool {
-        let defaults = UserDefaults.standard
+        let defaults = AppStorageEnvironment.shared.defaults
         if defaults.object(forKey: perConnectionKey) != nil {
             return defaults.bool(forKey: perConnectionKey)
         }
@@ -240,7 +240,7 @@ final class SidebarViewModel {
     }
 
     private func persistExpansion(oldValue: ExpansionState) {
-        let defaults = UserDefaults.standard
+        let defaults = AppStorageEnvironment.shared.defaults
         for kind in SidebarObjectKind.allCases where oldValue[kind] != expanded[kind] {
             defaults.set(
                 expanded[kind],

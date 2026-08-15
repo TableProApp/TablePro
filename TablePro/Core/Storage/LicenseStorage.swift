@@ -15,7 +15,7 @@ final class LicenseStorage {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseStorage")
 
-    private let defaults = UserDefaults.standard
+    private let defaults = AppStorageEnvironment.shared.defaults
     private let keychain: KeychainHelper
 
     private enum Keys {
@@ -119,7 +119,7 @@ final class LicenseStorage {
 
     /// Hardware UUID from IOKit, SHA256-hashed for privacy (uncached, for migration).
     static func currentMachineId() -> String {
-        computeMachineId(defaults: UserDefaults.standard)
+        computeMachineId(defaults: AppStorageEnvironment.shared.defaults)
     }
 
     /// Human-readable machine name (e.g., "John's MacBook Pro")

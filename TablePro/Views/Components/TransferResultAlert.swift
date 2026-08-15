@@ -32,7 +32,7 @@ internal enum TransferResultAlert {
 
         let deliver: @MainActor (NSApplication.ModalResponse) -> Void = { response in
             if alert.suppressionButton?.state == .on {
-                UserDefaults.standard.set(true, forKey: exportSuppressionKey)
+                AppStorageEnvironment.shared.defaults.set(true, forKey: exportSuppressionKey)
             }
             completion(response == .alertFirstButtonReturn ? .openFolder : .close)
         }

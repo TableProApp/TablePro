@@ -13,7 +13,7 @@ enum TeamLibraryMetadataStorage {
     private static let pullInterval: TimeInterval = 7 * 24 * 60 * 60
 
     static var lastPullAt: Date? {
-        let timestamp = UserDefaults.standard.double(forKey: lastPullKey)
+        let timestamp = AppStorageEnvironment.shared.defaults.double(forKey: lastPullKey)
         return timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : nil
     }
 
@@ -23,10 +23,10 @@ enum TeamLibraryMetadataStorage {
     }
 
     static func recordPull() {
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastPullKey)
+        AppStorageEnvironment.shared.defaults.set(Date().timeIntervalSince1970, forKey: lastPullKey)
     }
 
     static func reset() {
-        UserDefaults.standard.removeObject(forKey: lastPullKey)
+        AppStorageEnvironment.shared.defaults.removeObject(forKey: lastPullKey)
     }
 }

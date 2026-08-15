@@ -143,8 +143,8 @@ actor CloudSQLProxyManager: TunnelManaging {
 
     func sweepStalePidsIfNeeded() {
         Self.purgeCredentialsFiles()
-        defer { UserDefaults.standard.removeObject(forKey: Self.stalePidsDefaultsKey) }
-        guard let data = UserDefaults.standard.data(forKey: Self.stalePidsDefaultsKey),
+        defer { AppStorageEnvironment.shared.defaults.removeObject(forKey: Self.stalePidsDefaultsKey) }
+        guard let data = AppStorageEnvironment.shared.defaults.data(forKey: Self.stalePidsDefaultsKey),
               let records = try? JSONDecoder().decode([CloudSQLProxyPidRecord].self, from: data) else {
             return
         }
@@ -298,12 +298,12 @@ actor CloudSQLProxyManager: TunnelManaging {
     private func persistPidRecords() {
         let records = Array(pidRecords.values)
         guard !records.isEmpty else {
-            UserDefaults.standard.removeObject(forKey: Self.stalePidsDefaultsKey)
+            AppStorageEnvironment.shared.defaults.removeObject(forKey: Self.stalePidsDefaultsKey)
             return
         }
         do {
             let data = try JSONEncoder().encode(records)
-            UserDefaults.standard.set(data, forKey: Self.stalePidsDefaultsKey)
+            AppStorageEnvironment.shared.defaults.set(data, forKey: Self.stalePidsDefaultsKey)
         } catch {
             Self.logger.error("Failed to persist cloud-sql-proxy PID records: \(error.localizedDescription, privacy: .public)")
         }

@@ -27,7 +27,7 @@ struct TriggerEditorView: View {
     @State private var isApplying = false
     @State private var errorMessage: String?
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage("structureCodeFontSize") private var fontSize: Double = 13
+    @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) private var fontSize: Double = 13
 
     init(connection: DatabaseConnection, tableName: String, mode: Mode, initialSQL: String, onClose: @escaping () -> Void) {
         self.connection = connection

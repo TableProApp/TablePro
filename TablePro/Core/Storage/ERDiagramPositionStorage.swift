@@ -5,7 +5,7 @@ import Foundation
 @MainActor
 final class ERDiagramPositionStorage {
     static let shared = ERDiagramPositionStorage()
-    private let defaults = UserDefaults.standard
+    private let defaults = AppStorageEnvironment.shared.defaults
 
     private init() {}
 

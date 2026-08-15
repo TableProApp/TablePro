@@ -208,7 +208,7 @@ internal actor TabDiskActor {
     // MARK: - Migration from UserDefaults
 
     private static func performMigrationIfNeeded(tabStateDirectory: URL) {
-        let defaults = UserDefaults.standard
+        let defaults = AppStorageEnvironment.shared.defaults
 
         guard !defaults.bool(forKey: migrationCompleteKey) else { return }
 

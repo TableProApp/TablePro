@@ -135,8 +135,8 @@ internal enum SampleDatabaseLauncher {
     }
 
     private static func bumpSampleOpenedCounter() {
-        let next = UserDefaults.standard.integer(forKey: sampleOpenedCountKey) + 1
-        UserDefaults.standard.set(next, forKey: sampleOpenedCountKey)
+        let next = AppStorageEnvironment.shared.defaults.integer(forKey: sampleOpenedCountKey) + 1
+        AppStorageEnvironment.shared.defaults.set(next, forKey: sampleOpenedCountKey)
     }
 
     private static func performReset(

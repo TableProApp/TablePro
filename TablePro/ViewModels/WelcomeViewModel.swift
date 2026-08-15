@@ -80,14 +80,14 @@ final class WelcomeViewModel {
     var pendingImportResultCount: Int?
 
     var expandedGroupIds: Set<UUID> = {
-        let strings = UserDefaults.standard.stringArray(forKey: "com.TablePro.expandedGroupIds") ?? []
+        let strings = AppStorageEnvironment.shared.defaults.stringArray(forKey: "com.TablePro.expandedGroupIds") ?? []
         if strings.isEmpty {
-            UserDefaults.standard.removeObject(forKey: "com.TablePro.collapsedGroupIds")
+            AppStorageEnvironment.shared.defaults.removeObject(forKey: "com.TablePro.collapsedGroupIds")
         }
         return Set(strings.compactMap { UUID(uuidString: $0) })
     }() {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 Array(expandedGroupIds.map(\.uuidString)),
                 forKey: "com.TablePro.expandedGroupIds"
             )
