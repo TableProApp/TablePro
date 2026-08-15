@@ -3,7 +3,7 @@ title: Beancount
 description: Open Beancount ledgers with TablePro
 ---
 
-TablePro opens `.beancount` ledgers as read-only, file-based connections. If the Beancount plugin is not installed yet, TablePro prompts you to download it before opening the ledger. The driver projects transactions, postings, accounts, prices, computed balances, balance assertions, and source files into SQL tables for browsing and exports.
+TablePro opens `.beancount` ledgers as read-only, file-based connections. If the Beancount plugin is not installed yet, TablePro prompts you to download it before opening the ledger. The driver projects transactions, postings, accounts, prices, computed balances, balance assertions, the remaining directives, metadata, and source files into SQL tables for browsing and exports.
 
 The plugin uses either `rledger` (the rustledger project) or Python Beancount to parse ledgers. TablePro does not bundle either one, so install one yourself before opening a ledger. When both are available, TablePro uses `rledger`; Python Beancount is the fallback for browsing projected SQL tables.
 
@@ -85,15 +85,39 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 | Table | Contents |
 |-------|----------|
-| `transactions` | Transaction date, flag, payee, and narration |
-| `postings` | Posting account, amount, commodity, and resolved cost basis (`cost_number`, `cost_currency`) |
+| `transactions` | Transaction date, flag, payee, narration, and source location |
+| `postings` | Posting account, amount, commodity, resolved cost basis (`cost_number`, `cost_currency`), and source location |
 | `accounts` | Opened accounts and declared currencies |
 | `prices` | Price directives |
 | `balances` | Computed account balances by commodity |
 | `balance_assertions` | Beancount balance directives |
+| `commodities` | Commodity directives |
+| `documents` | Document directives, their attached paths, tags, and links |
+| `notes` | Account notes |
+| `events` | Event type and description directives |
+| `closes` | Close directives |
+| `transaction_metadata` | Transaction metadata key/value pairs |
+| `posting_metadata` | Posting metadata key/value pairs |
+| `transaction_tags` | Transaction tags |
+| `transaction_links` | Transaction links |
+| `diagnostics` | Validation diagnostics from `rledger check` |
 | `source_files` | Parsed ledger and include files |
 
 Amounts come from whichever backend parsed the ledger, so thousands separators, arithmetic, cost (`{}`), and price (`@`/`@@`) annotations arrive already resolved to their booked values.
+
+Metadata values are projected as text. Booleans keep their Beancount spelling, `TRUE` and `FALSE`.
+
+## Source locations
+
+`transactions` and `postings` carry `source_file`, `line`, and `source_location`. `source_location` is formatted as `path:line`, so it can be copied, filtered, or exported directly. A posting points at its own line rather than the line of the transaction that contains it.
+
+A transaction the backend generates rather than reads, such as the one inserted for a `pad`, has whatever location that backend gives it. `rledger` leaves these columns empty; Python Beancount points them at the `pad` directive.
+
+## Diagnostics
+
+The `diagnostics` table holds structured validation output: `source_file`, `line`, `source_location`, `column_number`, `end_line`, `end_column`, `severity`, `phase`, `code`, and `message`.
+
+The table is populated by `rledger check`. A ledger opened through `rledger` is projected even when it fails validation, so the entries the projection skipped are readable here rather than only on the command line. Ledgers opened on the Python Beancount backend leave the table empty.
 
 ## Includes
 
@@ -125,4 +149,5 @@ Table browsing, row counts, and pagination work for BQL results. BQL queries do 
 
 - Beancount connections are read-only.
 - Schema editing, imports, SSH, SSL, and database switching are not available for ledgers.
+- `pad` directives are not projected as their own table. `rledger` does not expose the padded and source accounts, so the directive is only visible through the balancing transaction it inserts. The directive itself remains in the original source files.
 - The SQL projection covers common ledger directives; unsupported directives remain available in the original source files.

@@ -428,6 +428,156 @@ struct BeancountPluginDriverTests {
 
     // MARK: - Helpers
 
+    @Test(
+        "projects rich directives, metadata, and source locations through rledger",
+        .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
+    )
+    func projectsRichDirectivesThroughRustledger() async throws {
+        try await Self.withRustledger {
+            try await Self.withRichDirectiveLedger { driver, ledger in
+                try await Self.expectRichDirectives(driver, ledger: ledger)
+            }
+        }
+    }
+
+    @Test(
+        "projects rich directives, metadata, and source locations through Python Beancount",
+        .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
+    )
+    func projectsRichDirectivesThroughPythonBeancount() async throws {
+        let python = try #require(PythonBeancountLocator.path)
+        try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "python",
+            "TABLEPRO_BEANCOUNT_PYTHON": python
+        ]) {
+            try await Self.withRichDirectiveLedger { driver, ledger in
+                try await Self.expectRichDirectives(driver, ledger: ledger)
+            }
+        }
+    }
+
+    @Test(
+        "projects validation diagnostics and still opens an invalid ledger",
+        .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
+    )
+    func projectsValidationDiagnostics() async throws {
+        try await Self.withRustledger {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try """
+            2024-01-01 open Assets:Cash USD
+
+            2024-01-04 document Assets:Cash "missing.pdf"
+            """.write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            let accounts = try await driver.execute(query: "SELECT name FROM accounts")
+            #expect(accounts.rows.map { $0[0].asText } == ["Assets:Cash"])
+
+            let diagnostics = try await driver.execute(query: """
+                SELECT severity, phase, code, line, source_location FROM diagnostics ORDER BY id
+                """)
+            #expect(diagnostics.rows.count == 1)
+            let diagnostic = try #require(diagnostics.rows.first)
+            #expect(diagnostic[0].asText == "error")
+            #expect(diagnostic[1].asText == "validate")
+            #expect(diagnostic[2].asText == "E8001")
+            #expect(diagnostic[3].asText == "3")
+            #expect(diagnostic[4].asText?.hasSuffix("\(ledger.lastPathComponent):3") == true)
+        }
+    }
+
+    private static func withRichDirectiveLedger(
+        _ body: (BeancountPluginDriver, URL) async throws -> Void
+    ) async throws {
+        let directory = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try Data("pdf".utf8).write(to: directory.appendingPathComponent("receipt.pdf"))
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try """
+        2024-01-01 commodity USD
+          name: "US Dollar"
+
+        2024-01-01 open Assets:Cash USD
+        2024-01-01 open Expenses:Food USD
+
+        2024-01-02 event "location" "Taipei"
+
+        2024-01-03 note Assets:Cash "called the bank"
+
+        2024-01-04 document Assets:Cash "receipt.pdf"
+
+        2024-01-05 * "Cafe" "Coffee" #coffee #daily ^receipt-123
+          invoice: "INV-9"
+          verified: TRUE
+          Expenses:Food   3.00 USD
+            method: "card"
+          Assets:Cash
+
+        2024-06-30 close Expenses:Food
+        """.write(to: ledger, atomically: true, encoding: .utf8)
+
+        let driver = BeancountPluginDriver(config: Self.config(ledger))
+        try await driver.connect()
+        defer { driver.disconnect() }
+
+        try await body(driver, ledger)
+    }
+
+    private static func expectRichDirectives(_ driver: BeancountPluginDriver, ledger: URL) async throws {
+        let commodities = try await driver.execute(query: "SELECT date, commodity FROM commodities")
+        #expect(commodities.rows.map { $0.map(\.asText) } == [["2024-01-01", "USD"]])
+
+        let events = try await driver.execute(query: "SELECT date, type, description FROM events")
+        #expect(events.rows.map { $0.map(\.asText) } == [["2024-01-02", "location", "Taipei"]])
+
+        let notes = try await driver.execute(query: "SELECT date, account, comment FROM notes")
+        #expect(notes.rows.map { $0.map(\.asText) } == [["2024-01-03", "Assets:Cash", "called the bank"]])
+
+        let closes = try await driver.execute(query: "SELECT date, account FROM closes")
+        #expect(closes.rows.map { $0.map(\.asText) } == [["2024-06-30", "Expenses:Food"]])
+
+        let documents = try await driver.execute(query: "SELECT date, account, path FROM documents")
+        #expect(documents.rows.count == 1)
+        let document = try #require(documents.rows.first)
+        #expect(document[0].asText == "2024-01-04")
+        #expect(document[1].asText == "Assets:Cash")
+        #expect(document[2].asText?.hasSuffix("receipt.pdf") == true)
+
+        let metadata = try await driver.execute(query: """
+            SELECT key, value FROM transaction_metadata ORDER BY key
+            """)
+        #expect(metadata.rows.map { $0.map(\.asText) } == [["invoice", "INV-9"], ["verified", "TRUE"]])
+
+        let postingMetadata = try await driver.execute(query: "SELECT key, value FROM posting_metadata")
+        #expect(postingMetadata.rows.map { $0.map(\.asText) } == [["method", "card"]])
+
+        let tags = try await driver.execute(query: "SELECT tag FROM transaction_tags ORDER BY tag")
+        #expect(tags.rows.map { $0[0].asText } == ["coffee", "daily"])
+
+        let links = try await driver.execute(query: "SELECT link FROM transaction_links")
+        #expect(links.rows.map { $0[0].asText } == ["receipt-123"])
+
+        let transactions = try await driver.execute(query: """
+            SELECT source_file, line, source_location FROM transactions
+            """)
+        #expect(transactions.rows.count == 1)
+        let transaction = try #require(transactions.rows.first)
+        #expect(transaction[0].asText?.hasSuffix(ledger.lastPathComponent) == true)
+        #expect(transaction[1].asText == "13")
+        #expect(transaction[2].asText?.hasSuffix("\(ledger.lastPathComponent):13") == true)
+
+        let postings = try await driver.execute(query: "SELECT line FROM postings ORDER BY id")
+        #expect(postings.rows.map { $0[0].asText } == ["16", "18"])
+    }
+
     private static func withRustledger(_ body: () async throws -> Void) async throws {
         let rledger = try #require(RustledgerLocator.path)
         try await withRustledgerEnvironment(rledger, body)
