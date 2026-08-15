@@ -9,7 +9,6 @@ struct AIChatWalkthroughBlockView: View {
     @Bindable var block: ChatContentBlock
 
     @Environment(AIChatViewModel.self) private var viewModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.commandActions) private var actions
 
     @State private var expandedStepIDs: Set<UUID> = []
@@ -111,7 +110,7 @@ struct AIChatWalkthroughBlockView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .onChange(of: scrollTarget) { _, target in
                 guard let target else { return }
-                withMotion { proxy.scrollTo(target, anchor: .center) }
+                withMotion(.easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .center) }
             }
         }
     }
@@ -197,20 +196,35 @@ struct AIChatWalkthroughBlockView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+
     private func splitRow(_ row: SplitRow, side: SqlWalkthroughAnchor.Side) -> some View {
+        let marker = SplitDiffMarker.resolve(kind: row.kind, side: side)
         let tint: Color? = switch (row.kind, side) {
         case (.removed, .before), (.changed, .before): .red.opacity(0.16)
         case (.added, .after), (.changed, .after): .green.opacity(0.16)
         default: nil
         }
         return HStack(alignment: .top, spacing: 6) {
+            if differentiateWithoutColor, let glyph = marker?.glyph {
+                Text(verbatim: glyph)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 10, alignment: .leading)
+            }
             Text(row.text ?? " ")
                 .font(.system(.body, design: .monospaced))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 1)
-        .background(splitRowBackground(base: tint, side: side, lineNumber: row.lineNumber))
+        .background(
+            differentiateWithoutColor
+                ? splitRowBackground(base: nil, side: side, lineNumber: row.lineNumber)
+                : splitRowBackground(base: tint, side: side, lineNumber: row.lineNumber)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(marker?.label ?? SplitDiffMarker.unchangedLabel): \(row.text ?? "")"))
     }
 
     private func sourceListing(_ presentation: SqlWalkthroughPresentation) -> some View {
@@ -241,7 +255,7 @@ struct AIChatWalkthroughBlockView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .onChange(of: scrollTarget) { _, target in
                 guard let target else { return }
-                withMotion { proxy.scrollTo(target, anchor: .center) }
+                withMotion(.easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .center) }
             }
         }
     }
@@ -434,7 +448,7 @@ struct AIChatWalkthroughBlockView: View {
         highlightClearTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
-            withMotion { activeAnchor = nil }
+            withMotion(.easeInOut(duration: 0.25)) { activeAnchor = nil }
         }
     }
 
@@ -495,14 +509,6 @@ struct AIChatWalkthroughBlockView: View {
     private func autoExpandFirstStep(_ steps: [SqlWalkthroughStep]) {
         guard expandedStepIDs.isEmpty, let first = steps.first else { return }
         expandedStepIDs.insert(first.id)
-    }
-
-    private func withMotion(_ change: () -> Void) {
-        if reduceMotion {
-            change()
-        } else {
-            withAnimation(.easeInOut(duration: 0.25)) { change() }
-        }
     }
 }
 

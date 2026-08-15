@@ -20,13 +20,27 @@ final class ShortcutRecorderNSView: NSView {
 
     /// The currently displayed key combo
     var currentCombo: BoundKey? {
-        didSet { needsDisplay = true }
+        didSet {
+            needsDisplay = true
+            NSAccessibility.post(element: self, notification: .valueChanged)
+        }
     }
 
     /// Whether the view is currently in recording mode
     private var isRecording = false {
-        didSet { needsDisplay = true }
+        didSet {
+            guard isRecording != oldValue else { return }
+            if isRecording { startRecordingMonitor() } else { stopRecordingMonitor() }
+            needsDisplay = true
+            NSAccessibility.post(element: self, notification: .valueChanged)
+        }
     }
+
+    /// A menu key equivalent is consumed in `sendEvent` before the responder chain runs, so
+    /// `keyDown` never sees Command W and the menu command fires instead of being recorded. A
+    /// local monitor runs earlier than menu dispatch, which is the only place the key is still
+    /// interceptable.
+    private var recordingMonitor: Any?
 
     /// Currently held modifier flags during recording (for live display)
     private var activeModifiers: NSEvent.ModifierFlags = []
@@ -39,7 +53,6 @@ final class ShortcutRecorderNSView: NSView {
         layer?.cornerRadius = 6
         focusRingType = .exterior
         setAccessibilityRole(.button)
-        setAccessibilityLabel(String(localized: "Record Shortcut"))
     }
 
     override func drawFocusRingMask() {
@@ -87,51 +100,85 @@ final class ShortcutRecorderNSView: NSView {
     // MARK: - Keyboard Handling
 
     override func keyDown(with event: NSEvent) {
-        guard isRecording else {
-            let isActivation = event.keyCode == KeyCode.space.rawValue
-                || event.keyCode == KeyCode.return.rawValue
-            guard isActivation else {
-                super.keyDown(with: event)
-                return
-            }
-            isRecording = true
-            activeModifiers = []
+        guard !isRecording else { return }
+        let isActivation = event.keyCode == KeyCode.space.rawValue
+            || event.keyCode == KeyCode.return.rawValue
+        guard isActivation else {
+            super.keyDown(with: event)
             return
+        }
+        activeModifiers = []
+        isRecording = true
+    }
+
+    private func startRecordingMonitor() {
+        guard recordingMonitor == nil else { return }
+        recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            guard let self else { return event }
+            return self.handleRecordingEvent(event)
+        }
+    }
+
+    private func stopRecordingMonitor() {
+        guard let monitor = recordingMonitor else { return }
+        NSEvent.removeMonitor(monitor)
+        recordingMonitor = nil
+    }
+
+    /// A local monitor is app-wide, so anything arriving while this view's window is not key
+    /// belongs to another window and has to pass through untouched.
+    func handleRecordingEvent(_ event: NSEvent) -> NSEvent? {
+        guard isRecording, window?.isKeyWindow == true else { return event }
+        guard event.type != .flagsChanged else {
+            activeModifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            needsDisplay = true
+            return nil
         }
 
         let isBareKey = !event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control)
 
         if event.keyCode == KeyCode.escape.rawValue, isBareKey {
-            window?.makeFirstResponder(nil)
-            return
+            endRecording()
+            return nil
         }
-
         if event.keyCode == KeyCode.delete.rawValue, isBareKey {
             onClear?()
-            window?.makeFirstResponder(nil)
-            return
+            endRecording()
+            return nil
         }
-
-        if let combo = BoundKey(from: event) {
-            onRecord?(combo)
-            window?.makeFirstResponder(nil)
-        } else {
+        guard let combo = BoundKey(from: event) else {
             NSSound.beep()
+            return nil
         }
+        onRecord?(combo)
+        endRecording()
+        return nil
     }
 
-    override func flagsChanged(with event: NSEvent) {
-        guard isRecording else { return }
-        activeModifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        needsDisplay = true
+    private func endRecording() {
+        isRecording = false
+        activeModifiers = []
+        window?.makeFirstResponder(nil)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window == nil else { return }
+        isRecording = false
+    }
+
+    deinit {
+        guard let monitor = recordingMonitor else { return }
+        NSEvent.removeMonitor(monitor)
     }
 
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
         let bounds = self.bounds
+        let isArmed = isRecording && window?.isKeyWindow == true && NSApp.isActive
 
-        if isRecording {
+        if isArmed {
             NSColor.controlAccentColor.withAlphaComponent(0.1).setFill()
         } else {
             NSColor.controlBackgroundColor.setFill()
@@ -139,7 +186,7 @@ final class ShortcutRecorderNSView: NSView {
         let bgPath = NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6)
         bgPath.fill()
 
-        if isRecording {
+        if isArmed {
             NSColor.controlAccentColor.setStroke()
         } else {
             NSColor.separatorColor.setStroke()
@@ -149,7 +196,7 @@ final class ShortcutRecorderNSView: NSView {
             xRadius: 6,
             yRadius: 6
         )
-        borderPath.lineWidth = isRecording ? 2.0 : 1.0
+        borderPath.lineWidth = isArmed ? 2.0 : 1.0
         borderPath.stroke()
 
         let text = displayText

@@ -17,21 +17,27 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
     let pendingTruncates: Set<String>
     let pendingDeletes: Set<String>
     let searchText: String
-    let connectionToken: String
+    /// Rebuilds the tree when the session comes back, which is the one thing outside the metadata
+    /// services that invalidates every node at once.
+    let isConnected: Bool
     let activeDatabase: String?
     let activeSchema: String?
+    let selectedTables: Set<TableInfo>
+    let showRecentTables: Bool
 
     func makeCoordinator() -> DatabaseTreeOutlineCoordinator {
         DatabaseTreeOutlineCoordinator()
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let outlineView = NSOutlineView()
+        let outlineView = DatabaseTreeNSOutlineView()
         outlineView.headerView = nil
         outlineView.style = .sourceList
-        outlineView.rowSizeStyle = .default
-        outlineView.rowHeight = 24
-        outlineView.indentationPerLevel = 14
+        /// The two metrics come from AppKit rather than from taste: `.small` is the 24pt source
+        /// list row, and 13 is the indent a source list steps by. A hand-picked number here is the
+        /// difference between a sidebar that lines up with Finder and Xcode and one that nearly does.
+        outlineView.rowSizeStyle = .small
+        outlineView.indentationPerLevel = 13
         outlineView.allowsMultipleSelection = true
         outlineView.allowsEmptySelection = true
         outlineView.floatsGroupRows = false
@@ -46,8 +52,10 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
         outlineView.dataSource = context.coordinator
         outlineView.delegate = context.coordinator
         outlineView.target = context.coordinator
-        outlineView.action = #selector(DatabaseTreeOutlineCoordinator.handleSingleClick)
+        /// No `action`: it arrives on mouse up, a whole gesture after the selection the user can
+        /// already see. Opening follows the selection instead. `doubleAction` only discloses.
         outlineView.doubleAction = #selector(DatabaseTreeOutlineCoordinator.handleDoubleClick)
+        outlineView.selectionClearing = context.coordinator
 
         context.coordinator.attach(outlineView: outlineView)
         context.coordinator.update(from: self)
@@ -66,4 +74,21 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.update(from: self)
     }
+}
+
+/// Escape clears the selection, the first step of the two-step Escape every TablePro list uses.
+/// `NSTableView` implements `cancelOperation(_:)` to interrupt type-select and leaves the selection
+/// alone, so without this the Table menu stays scoped to a row the user tried to deselect.
+final class DatabaseTreeNSOutlineView: SidebarOutlineView {
+    weak var selectionClearing: (any DatabaseTreeSelectionClearing)?
+
+    override func cancelOperation(_ sender: Any?) {
+        super.cancelOperation(sender)
+        selectionClearing?.clearSelection()
+    }
+}
+
+@MainActor
+protocol DatabaseTreeSelectionClearing: AnyObject {
+    func clearSelection()
 }

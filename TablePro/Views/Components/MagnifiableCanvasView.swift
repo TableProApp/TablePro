@@ -90,7 +90,7 @@ final class DiagramViewportController {
 
         let centre = CGPoint(x: visibleDocumentRect.midX, y: visibleDocumentRect.midY)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.2
+            context.duration = MotionAccessibility.systemReduceMotion ? 0 : 0.2
             context.allowsImplicitAnimation = true
             scrollView.setMagnification(clamped, centeredAt: centre)
         }

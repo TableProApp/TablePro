@@ -10,7 +10,6 @@ import TableProPluginKit
 
 struct SidebarView: View {
     @State private var viewModel: SidebarViewModel
-    @State private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
     @State private var settingsManager = AppSettingsManager.shared
     @State private var showDatabaseFilter: Bool = false
 
@@ -21,7 +20,6 @@ struct SidebarView: View {
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
 
-    var onDoubleClick: ((TableInfo) -> Void)?
     var connectionId: UUID
     private weak var coordinator: MainContentCoordinator?
 
@@ -47,22 +45,25 @@ struct SidebarView: View {
         PluginManager.shared.databaseGroupingStrategy(for: viewModel.databaseType)
     }
 
-    private var supportsSchemaFooter: Bool {
-        guard PluginManager.shared.supportsSchemaSwitching(for: viewModel.databaseType) else { return false }
-        return groupingStrategy != .hierarchicalSchema && !usesDatabaseTree
+    /// The one derivation of the sidebar's shape. The outline's coordinator calls the same resolver
+    /// with the same inputs, so the wrapper this view picks and the root the outline builds can
+    /// never describe different sidebars.
+    private var rootShape: SidebarRootShape {
+        SidebarRootShapeResolver.resolve(
+            groupingStrategy: groupingStrategy,
+            sidebarLayout: sidebarState.sidebarLayout,
+            supportsDatabaseTree: PluginManager.shared.supportsDatabaseTree(for: viewModel.databaseType)
+        )
     }
 
-    private var selectedTablesBinding: Binding<Set<TableInfo>> {
-        Binding(
-            get: { windowState.selectedTables },
-            set: { windowState.selectedTables = $0 }
-        )
+    private var supportsSchemaFooter: Bool {
+        guard PluginManager.shared.supportsSchemaSwitching(for: viewModel.databaseType) else { return false }
+        return rootShape == .flat
     }
 
     init(
         sidebarState: SharedSidebarState,
         windowState: WindowSidebarState,
-        onDoubleClick: ((TableInfo) -> Void)? = nil,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
         tableOperationOptions: Binding<[String: TableOperationOptions]>,
@@ -72,7 +73,6 @@ struct SidebarView: View {
     ) {
         self.sidebarState = sidebarState
         self.windowState = windowState
-        self.onDoubleClick = onDoubleClick
         _pendingTruncates = pendingTruncates
         _pendingDeletes = pendingDeletes
         let selectedBinding = Binding(
@@ -122,6 +122,9 @@ struct SidebarView: View {
         .onChange(of: sidebarState.searchText) { _, newValue in
             viewModel.searchText = newValue
         }
+        .onChange(of: settingsManager.general.showRecentTables) { _, _ in
+            sidebarState.reloadRecentTablesFromStore()
+        }
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
             if let driver = DatabaseManager.shared.driver(for: connectionId),
@@ -129,21 +132,34 @@ struct SidebarView: View {
                 coordinator?.toolbarState.databaseVersion = driver.serverVersion
             }
         }
-        .sheet(isPresented: $viewModel.showOperationDialog) {
-            if let operationType = viewModel.pendingOperationType {
-                let dialogTables = viewModel.pendingOperationTables
-                if let firstTable = dialogTables.first {
-                    TableOperationDialog(
-                        isPresented: $viewModel.showOperationDialog,
-                        tableName: firstTable,
-                        tableCount: dialogTables.count,
-                        operationType: operationType,
-                        databaseType: viewModel.databaseType
-                    ) { options in
-                        viewModel.confirmOperation(options: options)
-                    }
-                }
+        .onChange(of: viewModel.showOperationDialog) { _, isPresented in
+            guard isPresented else { return }
+            presentOperationAlert()
+        }
+    }
+
+    private func presentOperationAlert() {
+        guard let operationType = viewModel.pendingOperationType,
+              let firstTable = viewModel.pendingOperationTables.first
+        else {
+            viewModel.showOperationDialog = false
+            return
+        }
+        let prompt = TableOperationPrompt(
+            operationType: operationType,
+            tableName: firstTable,
+            tableCount: viewModel.pendingOperationTables.count,
+            cascadeSupported: PluginManager.shared.supportsCascadeDrop(for: viewModel.databaseType),
+            foreignKeyDisableSupported: PluginManager.shared.supportsForeignKeyDisable(for: viewModel.databaseType)
+        )
+        let model = viewModel
+        TableOperationAlert.present(prompt: prompt, window: coordinator?.contentWindow) { options in
+            model.showOperationDialog = false
+            guard let options else {
+                model.cancelPendingOperation()
+                return
             }
+            model.confirmOperation(options: options)
         }
     }
 
@@ -151,12 +167,10 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var tablesContent: some View {
-        if groupingStrategy == .hierarchicalSchema {
-            hierarchicalContent
-        } else if usesDatabaseTree {
-            databaseTreeContent
-        } else {
-            flatContent
+        switch rootShape {
+        case .hierarchicalSchema: hierarchicalContent
+        case .databaseTree: databaseTreeContent
+        case .flat: flatContent
         }
     }
 
@@ -167,7 +181,7 @@ struct SidebarView: View {
             Divider()
             HStack(spacing: 8) {
                 createObjectMenu
-                if usesDatabaseTree {
+                if rootShape == .databaseTree {
                     databaseFilterButton
                 }
                 DelayedProgressIndicator(isActive: schemaService.isRefreshing(connectionId: connectionId))
@@ -232,11 +246,6 @@ struct SidebarView: View {
         .accessibilityIdentifier("sidebar-create-table")
     }
 
-    private var usesDatabaseTree: Bool {
-        PluginManager.shared.supportsDatabaseTree(for: viewModel.databaseType)
-            && sidebarState.sidebarLayout == .tree
-    }
-
     @ViewBuilder
     private var databaseTreeContent: some View {
         DatabaseTreeView(
@@ -266,7 +275,6 @@ struct SidebarView: View {
                 sidebarState: sidebarState,
                 pendingTruncates: $pendingTruncates,
                 pendingDeletes: $pendingDeletes,
-                onDoubleClick: onDoubleClick,
                 coordinator: coordinator
             )
         }
@@ -340,235 +348,32 @@ struct SidebarView: View {
 
     // MARK: - Table List
 
-    private var recentRows: [RecentTableRow] {
-        guard settingsManager.general.showRecentTables else { return [] }
-        let infos = sidebarState.recentEntries(inDatabase: activeDatabase).map(\.tableInfo)
-        return viewModel.filteredRecentTables(infos).map(RecentTableRow.init)
-    }
-
     private var activeDatabase: String? {
         let name = coordinator?.browseDatabaseName ?? ""
         return name.isEmpty ? nil : name
     }
 
-    private func isFavorite(_ table: TableInfo) -> Bool {
-        favoriteTables.contains(FavoriteTablesStorage.FavoriteEntry(
-            connectionId: connectionId,
-            database: activeDatabase,
-            schema: table.schema,
-            name: table.name
-        ))
-    }
-
-    private func toggleFavorite(_ table: TableInfo) {
-        FavoriteTablesStorage.shared.toggle(
-            name: table.name,
-            schema: table.schema,
-            database: activeDatabase,
-            connectionId: connectionId
-        )
-    }
-
-    @ViewBuilder
-    private func tableSelectionMenu(clicked: TableInfo?, selected: Set<TableInfo>) -> some View {
-        SidebarContextMenu(
-            clickedTable: clicked,
-            selectedTables: selected,
-            isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-            onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
-            onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-            coordinator: coordinator
-        )
-    }
-
-    @ViewBuilder
-    private var recentSection: some View {
-        let rows = recentRows
-        if !rows.isEmpty {
-            Section(isExpanded: $viewModel.isRecentsExpanded) {
-                ForEach(rows) { row in
-                    let table = row.table
-                    TableRow(
-                        table: table,
-                        isPendingTruncate: pendingTruncates.contains(table.name),
-                        isPendingDelete: pendingDeletes.contains(table.name),
-                        isFavorite: isFavorite(table),
-                        onToggleFavorite: { toggleFavorite(table) }
-                    )
-                    .selectionDisabled()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        onDoubleClick?(table)
-                    }
-                    .contextMenu {
-                        tableSelectionMenu(clicked: table, selected: [table])
-                        Divider()
-                        Button(String(localized: "Remove from Recent")) {
-                            sidebarState.removeRecentTable(
-                                database: activeDatabase, schema: table.schema, name: table.name
-                            )
-                        }
-                        Button(String(localized: "Clear Recent Tables")) {
-                            sidebarState.clearRecentTables(inDatabase: activeDatabase)
-                        }
-                        Divider()
-                        SidebarViewOptionsMenu()
-                    }
-                }
-            } header: {
-                Text(String(localized: "Recent"))
-            }
-        }
+    private var isConnected: Bool {
+        DatabaseManager.shared.session(for: connectionId)?.status == .connected
     }
 
     private var tableList: some View {
-        List(selection: selectedTablesBinding) {
-            recentSection
-
-            ForEach(SidebarObjectKind.allCases, id: \.self) { kind in
-                sectionView(for: kind)
-            }
-
-            if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
-                Section(isExpanded: $viewModel.isRedisKeysExpanded) {
-                    RedisKeyTreeView(
-                        nodes: keyTreeVM.displayNodes(searchText: viewModel.filterQuery),
-                        isLoading: keyTreeVM.isLoading,
-                        isTruncated: keyTreeVM.isTruncated,
-                        onSelectNamespace: { prefix in
-                            coordinator?.browseRedisNamespace(prefix)
-                        },
-                        onSelectKey: { key, keyType in
-                            coordinator?.openRedisKey(key, keyType: keyType)
-                        }
-                    )
-                } header: {
-                    Text(String(localized: "Keys"))
-                }
-            }
-        }
-        .sidebarListLayout()
-        .contextMenu(forSelectionType: TableInfo.self) { selection in
-            SidebarContextMenu(
-                clickedTable: selection.first,
-                selectedTables: selection,
-                isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-                onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
-                onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-                coordinator: coordinator
-            )
-            Divider()
-            SidebarViewOptionsMenu()
-        } primaryAction: { selection in
-            guard let table = selection.first else { return }
-            onDoubleClick?(table)
-        }
-        .onExitCommand {
-            windowState.selectedTables.removeAll()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .favoriteTablesDidChange)) { _ in
-            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
-        }
-        .onChange(of: settingsManager.general.showRecentTables) { _, _ in
-            sidebarState.reloadRecentTablesFromStore()
-        }
-        .onAppear {
-            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
-        }
-    }
-
-    // MARK: - Section View
-
-    @ViewBuilder
-    private func sectionView(for kind: SidebarObjectKind) -> some View {
-        let count = countFor(kind: kind)
-        if viewModel.sectionShouldRender(kind: kind, itemCount: count, capabilities: pluginCapabilities) {
-            let isExpanded = sectionExpandedBinding(kind: kind, hasMatches: count > 0)
-            Section(isExpanded: isExpanded) {
-                sectionRows(for: kind)
-            } header: {
-                sectionHeader(for: kind)
-            }
-        }
-    }
-
-    private func sectionExpandedBinding(kind: SidebarObjectKind, hasMatches: Bool) -> Binding<Bool> {
-        Binding(
-            get: { viewModel.effectiveExpanded(kind: kind, hasMatches: hasMatches) },
-            set: { viewModel.expanded[kind] = $0 }
+        DatabaseTreeOutlineView(
+            connectionId: connectionId,
+            databaseType: viewModel.databaseType,
+            coordinator: coordinator,
+            windowState: windowState,
+            sidebarState: sidebarState,
+            viewModel: viewModel,
+            pendingTruncates: pendingTruncates,
+            pendingDeletes: pendingDeletes,
+            searchText: viewModel.filterQuery,
+            isConnected: isConnected,
+            activeDatabase: activeDatabase,
+            activeSchema: coordinator?.toolbarState.currentSchema,
+            selectedTables: windowState.selectedTables,
+            showRecentTables: settingsManager.general.showRecentTables
         )
-    }
-
-    @ViewBuilder
-    private func sectionRows(for kind: SidebarObjectKind) -> some View {
-        if kind.isRoutine {
-            ForEach(viewModel.filteredRoutines(of: kind, from: routines)) { routine in
-                RoutineRowView(routine: routine)
-                    .tag(routine)
-                    .contextMenu {
-                        RoutineContextMenu(routine: routine) { selected in
-                            coordinator?.showRoutineDDL(selected)
-                        }
-                        Divider()
-                        SidebarViewOptionsMenu()
-                    }
-            }
-        } else {
-            ForEach(viewModel.filteredTables(of: kind, from: tables)) { table in
-                TableRow(
-                    table: table,
-                    isPendingTruncate: pendingTruncates.contains(table.name),
-                    isPendingDelete: pendingDeletes.contains(table.name),
-                    isFavorite: isFavorite(table),
-                    onToggleFavorite: { toggleFavorite(table) }
-                )
-                .tag(table)
-            }
-        }
-    }
-
-    private func sectionHeader(for kind: SidebarObjectKind) -> some View {
-        let title = sectionTitle(for: kind)
-        let helpLabel = String(
-            format: String(localized: "Right-click to show all %@"),
-            title.lowercased()
-        )
-        return Text(title)
-            .help(helpLabel)
-            .contextMenu {
-                sectionHeaderMenu(for: kind, title: title)
-                Divider()
-                SidebarViewOptionsMenu()
-            }
-    }
-
-    @ViewBuilder
-    private func sectionHeaderMenu(for kind: SidebarObjectKind, title: String) -> some View {
-        if !kind.isRoutine {
-            Button(String(format: String(localized: "Show All %@"), title)) {
-                if kind == .table {
-                    coordinator?.showAllTablesMetadata()
-                }
-            }
-            .disabled(kind != .table)
-        }
-        Button(String(localized: "Refresh")) {
-            switch kind {
-            case .procedure:
-                Task { await coordinator?.refreshProcedures() }
-            case .function:
-                Task { await coordinator?.refreshFunctions() }
-            default:
-                Task { await coordinator?.refreshTables() }
-            }
-        }
-    }
-
-    private func sectionTitle(for kind: SidebarObjectKind) -> String {
-        if kind == .table {
-            return PluginManager.shared.tableEntityName(for: viewModel.databaseType)
-        }
-        return kind.pluralDisplayName
     }
 
     private func countFor(kind: SidebarObjectKind) -> Int {

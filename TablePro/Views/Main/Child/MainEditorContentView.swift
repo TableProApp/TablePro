@@ -373,7 +373,7 @@ struct MainEditorContentView: View {
                         claimFocusOnAppear: claimFocus,
                         restoredCursorRange: coordinator.restoredCursorRange(for: tab.id),
                         onCloseTab: {
-                            NSApp.keyWindow?.close()
+                            coordinator.commandActions?.closeTab()
                         },
                         onExecuteQuery: { coordinator.runQuery() },
                         onExplain: { variant in coordinator.runExplain(variant: variant) },

@@ -27,7 +27,7 @@ extension MainContentCoordinator {
         showStructure: Bool = false,
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false,
-        forceNewWindowTab: Bool = false
+        forceNewTab: Bool = false
     ) -> WindowTabOpenDisposition? {
         openTableTab(
             table.name,
@@ -36,7 +36,7 @@ extension MainContentCoordinator {
             isView: !table.type.allowsRowEditing,
             forceNonPreview: forceNonPreview,
             activateGridFocus: activateGridFocus,
-            forceNewWindowTab: forceNewWindowTab
+            forceNewTab: forceNewTab
         )
     }
 
@@ -48,7 +48,7 @@ extension MainContentCoordinator {
         isView: Bool = false,
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false,
-        forceNewWindowTab: Bool = false
+        forceNewTab: Bool = false
     ) -> WindowTabOpenDisposition? {
         let navigationModel = PluginMetadataRegistry.shared.snapshot(
             forTypeId: connection.type.pluginTypeId
@@ -65,10 +65,10 @@ extension MainContentCoordinator {
         }
 
         let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(schema, for: connectionId)
-        let createAsPreview = !forceNonPreview && !forceNewWindowTab
+        let createAsPreview = !forceNonPreview && !forceNewTab
             && AppSettingsManager.shared.tabs.enablePreviewTabs
 
-        if !forceNewWindowTab, let disposition = activateIfAlreadyOpen(
+        if !forceNewTab, let disposition = activateIfAlreadyOpen(
             tableName: tableName,
             databaseName: currentDatabase,
             schemaName: resolvedSchema,
@@ -82,8 +82,12 @@ extension MainContentCoordinator {
             return disposition
         }
 
+        /// Not a bare flag. `pendingGridFocusOnOpen` is consumed only when the grid view moves into
+        /// a window, which happens for the first table tab and never again, because every later tab
+        /// reuses that same view. Setting it directly left the request pending forever and focus in
+        /// the sidebar from the second table on.
         if activateGridFocus {
-            pendingGridFocusOnOpen = true
+            requestGridFocus()
         }
 
         // During database switch, update the existing tab in-place instead of
@@ -160,7 +164,7 @@ extension MainContentCoordinator {
             }
         }
 
-        if isActiveTabReusable, !forceNewWindowTab {
+        if isActiveTabReusable, !forceNewTab {
             let didOpen = reuseActiveTab(
                 for: tableName,
                 currentDatabase: currentDatabase,
@@ -390,14 +394,6 @@ extension MainContentCoordinator {
             initialQuery: sql
         )
         WindowManager.shared.openTab(payload: payload)
-    }
-
-    private func currentSchemaName(fallback: String) -> String {
-        if let schemaDriver = DatabaseManager.shared.driver(for: connectionId) as? SchemaSwitchable,
-           let schema = schemaDriver.escapedSchema {
-            return schema
-        }
-        return fallback
     }
 
     private func allTablesMetadataSQL() -> String? {

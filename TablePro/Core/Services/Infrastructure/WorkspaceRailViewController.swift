@@ -17,6 +17,38 @@ private extension UserDefaults {
     }
 }
 
+/// The window a rail belongs to. A window hosts several connections and shows one at a time, so
+/// which row the rail highlights is a question only the window can answer, and the answer changes.
+/// The rail used to capture the connection its window was created for, which could name the right
+/// row exactly once: after the window switched to a second connection the rail kept highlighting
+/// the first, and clicking the row it was already standing on did nothing.
+@MainActor
+internal protocol WorkspaceRailHost: AnyObject {
+    var hostedConnectionIds: [UUID] { get }
+    var selectedConnectionId: UUID? { get }
+    func selectHostedConnection(_ connectionId: UUID)
+}
+
+/// Middle-click closes the row under the pointer, which is what a list of open things does
+/// everywhere it exists: browser tabs, and every database client surveyed. `NSTableView` routes no
+/// action for the tertiary button, so the row is resolved from the click point the same way
+/// `menu(for:)` resolves one.
+@MainActor
+internal final class WorkspaceRailTableView: NSTableView {
+    internal var onMiddleClick: ((Int) -> Void)?
+
+    override internal func otherMouseUp(with event: NSEvent) {
+        guard event.buttonNumber == 2 else {
+            super.otherMouseUp(with: event)
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        let clicked = row(at: point)
+        guard clicked >= 0 else { return }
+        onMiddleClick?(clicked)
+    }
+}
+
 @MainActor
 internal final class WorkspaceRailViewController: NSViewController {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WorkspaceRail")
@@ -24,10 +56,10 @@ internal final class WorkspaceRailViewController: NSViewController {
 
     internal var onLayoutChange: ((WorkspaceRailMetrics.Layout) -> Void)?
     internal var onEntryCountChange: ((Int) -> Void)?
+    internal weak var host: (any WorkspaceRailHost)?
 
-    private let connectionId: UUID?
     private let scrollView = NSScrollView()
-    private let tableView = NSTableView()
+    private let tableView = WorkspaceRailTableView()
 
     /// `rowSizeStyle` is the only route to the sidebar icon size preference, but any value
     /// other than `.custom` makes the table impose the system row height and ignore
@@ -42,14 +74,13 @@ internal final class WorkspaceRailViewController: NSViewController {
     private var sizeModeObservation: NSKeyValueObservation?
     private var contentTopConstraint: NSLayoutConstraint?
 
-    /// What the rail last put on screen as selected. A selection that differs from this came
-    /// from the user, whether by click, arrow key, type-select or VoiceOver, and is the one
-    /// signal the rail acts on. Recording the applied value rather than raising a re-entrancy
-    /// flag is what lets AppKit's own selection stand as the model.
+    /// What the rail last put on screen as selected, which after every `applySelection` is the
+    /// workspace the host is really showing. A commit for that same workspace has nothing to do,
+    /// and is the case the arrow keys hit constantly as they move the highlight across a row the
+    /// window is already on.
     private var appliedSelection: WorkspaceID?
 
-    internal init(connectionId: UUID?) {
-        self.connectionId = connectionId
+    internal init() {
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -82,8 +113,9 @@ internal final class WorkspaceRailViewController: NSViewController {
         tableView.menu = contextMenu()
         tableView.registerForDraggedTypes([Self.reorderType])
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
+        tableView.onMiddleClick = { [weak self] row in self?.closeConnection(atRow: row) }
         tableView.setAccessibilityIdentifier("workspace-rail")
-        tableView.setAccessibilityLabel(String(localized: "Open Workspaces"))
+        tableView.setAccessibilityLabel(String(localized: "Open Connections"))
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
@@ -162,7 +194,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// Which window's rail a line came from. Every rail lists every workspace, so without this
     /// a log of two connections switching back and forth cannot be attributed.
     private var railName: String {
-        guard let connectionId else { return "none" }
+        guard let connectionId = host?.selectedConnectionId else { return "none" }
         return String(connectionId.uuidString.prefix(8))
     }
 
@@ -176,17 +208,23 @@ internal final class WorkspaceRailViewController: NSViewController {
         onLayoutChange?(resolved)
     }
 
-    /// The browsed container moves, so the selected row is resolved on every reload rather
-    /// than fixed at init the way the window's connection is.
+    /// Both halves move: the window switches which connection it shows, and that connection
+    /// switches which container it browses. Neither can be captured at init.
     private var activeWorkspace: WorkspaceID? {
-        guard let connectionId else { return nil }
+        guard let connectionId = host?.selectedConnectionId else { return nil }
         return WorkspaceRailStore.browsedWorkspace(for: connectionId)
+    }
+
+    /// Called when the window changes which connection it is showing. The entry list is unchanged
+    /// by that, only which row is current, so this moves the highlight instead of reloading.
+    internal func refreshSelection() {
+        applySelection()
     }
 
     private func applySelection() {
         let browsed = activeWorkspace
         guard let row = WorkspaceRailStore.selectedRow(
-            connectionId: connectionId,
+            connectionId: host?.selectedConnectionId,
             browsed: browsed,
             in: entries.map(\.id)
         ) else {
@@ -224,6 +262,19 @@ internal final class WorkspaceRailViewController: NSViewController {
         commit(row: tableView.selectedRow)
     }
 
+    /// Close means the connection highlighted here while the strip holds the keyboard.
+    ///
+    /// The selector is the window's, deliberately: a close command reaching the responder chain
+    /// finds this implementation before `MainSplitViewController`'s whenever the strip is focused,
+    /// which is the same mechanism that gives Cut and Copy a different meaning in each view. The
+    /// window used to ask whether the strip had focus and branch on the answer, which is this rule
+    /// written out by hand.
+    @objc
+    internal func closeEditorTab(_ sender: Any?) {
+        guard let workspace = appliedSelection else { return }
+        close(connectionId: workspace.connectionId)
+    }
+
     private func commit(row: Int) {
         guard entries.indices.contains(row) else { return }
         let workspace = entries[row].workspace
@@ -249,7 +300,24 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// `ConnectionStorage` and would fail for a connection opened from a URL that was never
     /// saved. Moving between two containers of the same connection stays in one window and
     /// only moves that window's browse cursor.
+    ///
+    /// Both paths end at `applySelection`, which reads the host's own selection back. A workspace
+    /// this window hosts leaves the highlight on the row the user picked; one belonging to another
+    /// window leaves it where it was, because this window did not move. The rail needed a rule for
+    /// when to put its highlight back only while it was guessing at the answer.
     private func activate(_ workspace: WorkspaceID) {
+        /// One window hosts every connection, so switching is a selection change in that
+        /// window's own registry. Raising a different window is what made the rail read as a
+        /// window switcher rather than a workspace switcher.
+        if let host, host.hostedConnectionIds.contains(workspace.connectionId) {
+            host.selectHostedConnection(workspace.connectionId)
+            if let window = view.window {
+                moveBrowseCursor(of: window, to: workspace)
+            }
+            applySelection()
+            return
+        }
+
         let target = entries.first { $0.workspace == workspace }?.containerTarget
         let showing = MainContentCoordinator.window(showing: workspace, target: target)
         guard let window = showing
@@ -281,11 +349,6 @@ internal final class WorkspaceRailViewController: NSViewController {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
         moveBrowseCursor(of: window, to: workspace)
-
-        guard WorkspaceRailStore.shouldRestoreSelection(
-            after: workspace,
-            railConnectionId: connectionId
-        ) else { return }
         applySelection()
     }
 
@@ -301,7 +364,12 @@ internal final class WorkspaceRailViewController: NSViewController {
             )
             return
         }
-        guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else {
+        /// Resolved by connection through the window that hosts it, never by window alone.
+        /// `coordinator(forWindow:)` answers with the window's selected workspace, so a row for any
+        /// other connection moved the browse cursor of the one on screen instead: it switched the
+        /// visible connection to a database named after a different one, or failed against a
+        /// database that connection does not have.
+        guard let coordinator = WindowManager.shared.coordinator(for: workspace.connectionId) else {
             Self.logger.error(
                 """
                 moveBrowseCursor has no coordinator target=\(Self.describe(workspace), privacy: .public) \
@@ -355,11 +423,24 @@ internal final class WorkspaceRailViewController: NSViewController {
     }
 
     @objc
-    private func closeWorkspace(_ sender: NSMenuItem) {
+    private func openInNewWindow(_ sender: NSMenuItem) {
         guard let workspace = sender.representedObject as? WorkspaceID else { return }
-        guard let window = WindowLifecycleMonitor.shared.mostRecentWindow(for: workspace.connectionId),
-              let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }
-        coordinator.commandActions?.closeWorkspace(container: workspace.container)
+        WindowManager.shared.moveToNewWindow(connectionId: workspace.connectionId)
+    }
+
+    @objc
+    private func closeConnection(_ sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID else { return }
+        close(connectionId: workspace.connectionId)
+    }
+
+    private func closeConnection(atRow row: Int) {
+        guard entries.indices.contains(row) else { return }
+        close(connectionId: entries[row].workspace.connectionId)
+    }
+
+    private func close(connectionId: UUID) {
+        Task { await ConnectionCloseAction.close(connectionId: connectionId) }
     }
 
     /// Ends the session, which every workspace of the connection shares, so the other rows for it
@@ -383,32 +464,62 @@ internal final class WorkspaceRailViewController: NSViewController {
     }
 }
 
+// MARK: - NSMenuItemValidation
+
+extension WorkspaceRailViewController: NSMenuItemValidation {
+    /// A responder that claims an action also owns whether it applies. Without this AppKit enables
+    /// the item on the strip's behalf even when no row is highlighted.
+    internal func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(closeEditorTab(_:)) else { return true }
+        return appliedSelection != nil
+    }
+}
+
 // MARK: - NSMenuDelegate
 
 extension WorkspaceRailViewController: NSMenuDelegate {
+    /// Lighter action first, the one that ends the connection last, which is the order Finder uses
+    /// on a Locations row and Mail on an account. Close carries the connection's own name because
+    /// a row can be one of several a connection has open, and the command takes all of them.
     internal func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let row = tableView.clickedRow
         guard entries.indices.contains(row) else { return }
+        let entry = entries[row]
 
-        let item = NSMenuItem(
-            title: String(localized: "Close Workspace"),
-            action: #selector(closeWorkspace(_:)),
-            keyEquivalent: ""
+        if WindowManager.shared.canMoveToNewWindow(connectionId: entry.workspace.connectionId) {
+            addItem(
+                to: menu,
+                title: String(localized: "Open in New Window"),
+                action: #selector(openInNewWindow(_:)),
+                workspace: entry.workspace
+            )
+            menu.addItem(.separator())
+        }
+
+        if ConnectionMenuPolicy.showsDisconnect(status: entry.status) {
+            addItem(
+                to: menu,
+                title: String(localized: "Disconnect"),
+                action: #selector(disconnectWorkspace(_:)),
+                workspace: entry.workspace
+            )
+            menu.addItem(.separator())
+        }
+
+        addItem(
+            to: menu,
+            title: String(format: String(localized: "Close “%@”"), entry.connection.name),
+            action: #selector(closeConnection(_:)),
+            workspace: entry.workspace
         )
+    }
+
+    private func addItem(to menu: NSMenu, title: String, action: Selector, workspace: WorkspaceID) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
-        item.representedObject = entries[row].workspace
+        item.representedObject = workspace
         menu.addItem(item)
-
-        guard ConnectionMenuPolicy.showsDisconnect(status: entries[row].status) else { return }
-        let disconnectItem = NSMenuItem(
-            title: String(localized: "Disconnect"),
-            action: #selector(disconnectWorkspace(_:)),
-            keyEquivalent: ""
-        )
-        disconnectItem.target = self
-        disconnectItem.representedObject = entries[row].workspace
-        menu.addItem(disconnectItem)
     }
 }
 

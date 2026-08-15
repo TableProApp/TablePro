@@ -57,6 +57,17 @@ final class PluginInstallTracker {
         activeInstalls.removeValue(forKey: pluginId)
     }
 
+    /// A connection knows its `DatabaseType`, not the registry plugin id, so without this the
+    /// form has no way to reach the progress the installer is already publishing.
+    func state(forDatabaseType type: DatabaseType) -> InstallProgress? {
+        let pluginTypeId = type.pluginTypeId
+        guard let plugin = PluginManager.registryPlugin(
+            forTypeId: pluginTypeId,
+            in: RegistryClient.shared.manifest
+        ) else { return nil }
+        return activeInstalls[plugin.id]
+    }
+
     func state(for pluginId: String) -> InstallProgress? {
         activeInstalls[pluginId]
     }

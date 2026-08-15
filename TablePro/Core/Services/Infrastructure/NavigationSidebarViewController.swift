@@ -24,9 +24,9 @@ internal final class NavigationSidebarViewController: NSViewController {
 
     internal private(set) var isRailVisible = false
 
-    internal init(connectionId: UUID?) {
-        self.railController = WorkspaceRailViewController(connectionId: connectionId)
-        self.objectBrowser = SidebarContainerViewController(rootView: AnyView(Color.clear))
+    internal init() {
+        self.railController = WorkspaceRailViewController()
+        self.objectBrowser = SidebarContainerViewController()
         super.init(nibName: nil, bundle: nil)
     }
 

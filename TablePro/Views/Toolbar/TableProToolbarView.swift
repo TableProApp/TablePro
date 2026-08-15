@@ -95,13 +95,19 @@ struct ToolbarPrincipalContent: View {
         }
     }
 
+    /// A tag with no colour fills with `clear`, and a label derived from a transparent fill comes
+    /// back white and disappears, so an uncoloured tag takes the standard control fill instead of
+    /// a derived one.
     private func tagBadge(_ tag: ConnectionTag) -> some View {
         Text(tag.name.uppercased())
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(tag.color.isDefault ? .primary : Color.legibleForeground(on: tag.color.color))
             .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(tag.color.color, in: Capsule())
+            .background(
+                tag.color.isDefault ? Color(nsColor: .quaternarySystemFill) : tag.color.color,
+                in: Capsule()
+            )
     }
 }

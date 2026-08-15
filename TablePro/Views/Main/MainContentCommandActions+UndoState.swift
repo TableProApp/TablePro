@@ -5,9 +5,10 @@
 
 import AppKit
 
-/// One window hosts three undo domains, picked by the active tab: Users & Roles and
+/// A connection hosts three undo domains, picked by the active tab: Users & Roles and
 /// the structure editor keep their own histories, and everything else registers on
-/// the window's `UndoManager`. Availability and the menu title both have to follow
+/// the window's `UndoManager`, which `TabWindowController` resolves to the selected
+/// connection's own history. Availability and the menu title both have to follow
 /// whichever one is live, so they resolve through the same branch the commands do.
 extension MainContentCommandActions {
     private var windowUndoManager: UndoManager? {

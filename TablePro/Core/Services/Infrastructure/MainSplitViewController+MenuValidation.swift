@@ -12,6 +12,9 @@ struct MenuValidationContext: Equatable {
     /// Comes from the window's own `ConnectionWindowPhase`, never from the presence of a
     /// coordinator: the coordinator deliberately outlives a lost session so a reconnect keeps
     /// the user's tabs, which made every connection-scoped command stay lit while dialing.
+    /// True whenever the window is showing a connection, connected or not, so a pane that
+    /// failed to dial can still be dismissed.
+    var hasSelectedWorkspace = false
     var isConnected = false
     var isReadOnly = false
     var isTableTab = false
@@ -82,6 +85,16 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(saveDocument(_:)):
             return context.isConnected && !context.isReadOnly && context.hasPendingChanges
         case #selector(saveDocumentAs(_:)):
+            return context.isConnected
+
+        /// AppKit validated New Tab and Close Tab for free while they were its own selectors.
+        /// `NSWindow.validateUserInterfaceItem` only speaks to the native ones, so these are
+        /// ours to enable and disable now.
+        case #selector(newEditorTab(_:)):
+            return context.isConnected
+        case #selector(closeEditorTab(_:)), #selector(closeConnection(_:)):
+            return context.hasSelectedWorkspace
+        case #selector(selectNextEditorTab(_:)), #selector(selectPreviousEditorTab(_:)):
             return context.isConnected
 
         case #selector(closeOtherTabs(_:)):
@@ -168,8 +181,11 @@ extension MainSplitViewController: NSMenuItemValidation {
     }
 
     var menuValidationContext: MenuValidationContext {
-        guard let actions = commandActions else { return MenuValidationContext() }
+        guard let actions = commandActions else {
+            return MenuValidationContext(hasSelectedWorkspace: workspaces.selectedConnectionId != nil)
+        }
         return MenuValidationContext(
+            hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
             isConnected: isConnected,
             isReadOnly: actions.isReadOnly,
             isTableTab: actions.isTableTab,
@@ -226,7 +242,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(toggleInspector(_:)):
             setTitle(isInspectorVisible ? "Hide Inspector" : "Show Inspector", on: menuItem)
         case #selector(toggleWorkspaceRail(_:)):
-            setTitle(isWorkspaceRailEnabled ? "Hide Workspace Rail" : "Show Workspace Rail", on: menuItem)
+            setTitle(isWorkspaceRailEnabled ? "Hide Connections" : "Show Connections", on: menuItem)
         case #selector(undo(_:)):
             setResolvedTitle(commandActions?.resolvedUndoTitle ?? String(localized: "Undo"), on: menuItem)
         case #selector(redo(_:)):

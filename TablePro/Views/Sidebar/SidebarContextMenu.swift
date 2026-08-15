@@ -15,6 +15,14 @@ enum SidebarContextMenuLogic {
         clickedTable?.type == .view
     }
 
+    /// AppKit's rule for a contextual menu over a list: a click inside the selection acts on the
+    /// whole selection, a click outside it acts on the row under the pointer and nothing else.
+    static func contextTargets(clickedTable: TableInfo?, selectedTables: Set<TableInfo>) -> [String] {
+        guard let clickedTable else { return selectedTables.map(\.name).sorted() }
+        guard selectedTables.contains(clickedTable) else { return [clickedTable.name] }
+        return selectedTables.map(\.name).sorted()
+    }
+
     static func isReadOnlyKind(_ type: TableInfo.TableType?) -> Bool {
         switch type {
         case .view, .materializedView, .foreignTable, .systemTable, .externalTable:
@@ -98,6 +106,17 @@ struct SidebarContextMenu: View {
         Divider()
 
         if clickedTable != nil {
+            /// Where pinning a preview tab lives now that one click opens. Double click used to
+            /// carry it, which only worked because the click waited half a second to find out
+            /// whether a second one was coming.
+            Button("Open in New Tab") {
+                perform {
+                    if let clickedTable {
+                        coordinator?.openTableTab(clickedTable, forceNewTab: true)
+                    }
+                }
+            }
+
             if isView {
                 Button("Edit View Definition") {
                     perform {

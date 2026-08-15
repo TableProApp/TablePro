@@ -100,14 +100,71 @@ final class SortableHeaderView: NSTableHeaderView {
         return commentsByColumn[column.identifier]
     }
 
+    private var emphasisObservers: [NSObjectProtocol] = []
+    private var firstResponderObservation: NSKeyValueObservation?
+
     override init(frame frameRect: NSRect) {
         naturalHeight = frameRect.height > 0 ? frameRect.height : Self.fallbackHeight
         super.init(frame: frameRect)
     }
 
+    deinit {
+        emphasisObservers.forEach(NotificationCenter.default.removeObserver)
+    }
+
     required init?(coder: NSCoder) {
         naturalHeight = Self.fallbackHeight
         super.init(coder: coder)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        emphasisObservers.forEach(NotificationCenter.default.removeObserver)
+        emphasisObservers.removeAll()
+        firstResponderObservation = nil
+        guard let window else {
+            applyEmphasis(false)
+            return
+        }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            let observer = NotificationCenter.default.addObserver(
+                forName: name,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshEmphasis() }
+            }
+            emphasisObservers.append(observer)
+        }
+        /// The header and the row bodies are two halves of one selection, so they have to agree on
+        /// what emphasis means. `NSTableRowView.isEmphasized` is key window *and* table focus, and
+        /// keying the header on the window alone left a sorted column accent blue over a grey body.
+        /// AppKit publishes no first-responder notification but does notify KVO by hand.
+        firstResponderObservation = window.observe(\.firstResponder, options: [.initial, .new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.refreshEmphasis() }
+        }
+    }
+
+    private func refreshEmphasis() {
+        applyEmphasis(
+            SortableHeaderEmphasis.isEmphasized(
+                tableViewHoldsFocus: SortableHeaderEmphasis.holdsFocus(tableView: tableView, in: window),
+                isKeyWindow: window?.isKeyWindow ?? false
+            )
+        )
+    }
+
+    private func applyEmphasis(_ isEmphasized: Bool) {
+        guard let tableView else { return }
+        var changed = false
+        for column in tableView.tableColumns {
+            guard let cell = column.headerCell as? SortableHeaderCell,
+                  cell.isEmphasized != isEmphasized else { continue }
+            cell.isEmphasized = isEmphasized
+            changed = true
+        }
+        guard changed else { return }
+        needsDisplay = true
     }
 
     private func applyHeaderHeight() {
@@ -150,7 +207,7 @@ final class SortableHeaderView: NSTableHeaderView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        guard let tableView else {
+        guard tableView != nil else {
             super.mouseMoved(with: event)
             return
         }

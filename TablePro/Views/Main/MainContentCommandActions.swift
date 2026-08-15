@@ -117,10 +117,13 @@ final class MainContentCommandActions {
         notificationTasks.append(task)
     }
 
-    /// Returns true if this instance's window is the current key window.
-    private func isKeyWindow() -> Bool {
-        guard let window = self.window else { return false }
-        return window.isKeyWindow
+    /// The window being key is no longer enough: every connection it hosts shares that window, so
+    /// a broadcast gated on it alone ran once per connection and opened a file in all of them.
+    /// Only the connection on screen answers.
+    private func isVisibleInKeyWindow() -> Bool {
+        guard let window = self.window, window.isKeyWindow else { return false }
+        guard let host = window.contentViewController as? MainSplitViewController else { return true }
+        return host.workspaces.selected?.sessionState?.coordinator === coordinator
     }
 
     /// Like `observe(_:handler:)` but only runs the handler when this instance's window is key.
@@ -129,7 +132,7 @@ final class MainContentCommandActions {
         handler: @escaping @MainActor (Notification) -> Void
     ) {
         observe(name) { [weak self] notification in
-            guard self?.isKeyWindow() == true else { return }
+            guard self?.isVisibleInKeyWindow() == true else { return }
             handler(notification)
         }
     }
@@ -142,7 +145,7 @@ final class MainContentCommandActions {
         publisher
             .receive(on: RunLoop.main)
             .sink { [weak self] payload in
-                guard self?.isKeyWindow() == true else { return }
+                guard self?.isVisibleInKeyWindow() == true else { return }
                 handler(payload)
             }
             .store(in: &eventCancellables)
@@ -364,7 +367,21 @@ final class MainContentCommandActions {
 
     /// Scoped to the whole window, not the selected tab: closing a window closes every tab in it,
     /// so a tab the user is not looking at must still get its prompt.
-    private var hasUnsavedWorkInWindow: Bool {
+    /// Every connection the window hosts, because closing the window closes all of them. Asking
+    /// only about the one on screen let a background connection's unsaved edits go without a
+    /// prompt, which is silent data loss rather than a missing confirmation.
+    internal var hasUnsavedWorkInWindow: Bool {
+        guard let host = window?.contentViewController as? MainSplitViewController else {
+            return coordinator?.hasAnyUnsavedWork() ?? false
+        }
+        return host.workspaces.workspaces.contains { workspace in
+            workspace.sessionState?.coordinator.hasAnyUnsavedWork() == true
+        }
+    }
+
+    /// This connection only. Closing its tabs says nothing about what another connection in the
+    /// same window has pending, so prompting about that would ask the wrong question.
+    internal var hasUnsavedWorkInConnection: Bool {
         coordinator?.hasAnyUnsavedWork() ?? false
     }
 
@@ -398,25 +415,39 @@ final class MainContentCommandActions {
 
     // MARK: - Tab Operations (Group A — Called Directly)
 
+    /// A new tab joins the connection's own tab list. It used to open another window whenever
+    /// the list was not empty, which is why two tables meant two windows.
     func newTab(initialQuery: String? = nil) {
-        if let coordinator, coordinator.tabManager.tabs.isEmpty {
-            coordinator.tabManager.addTab(
-                initialQuery: initialQuery,
-                databaseName: coordinator.browseDatabaseName,
-                claimFocus: true
-            )
-            return
-        }
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
+        guard let coordinator else { return }
+        coordinator.tabManager.addTab(
             initialQuery: initialQuery,
-            intent: .newEmptyTab
+            databaseName: coordinator.browseDatabaseName,
+            claimFocus: true
         )
-        WindowManager.shared.openTab(payload: payload)
     }
 
+    /// Closing the last tab leaves the connection open on its empty state, the same state it is
+    /// in right after connecting. The window hosts every open connection now, so closing it here
+    /// would take the other connections' tabs and their unsaved edits with it.
+    func closeTab(id: UUID) {
+        coordinator?.closeTabsByUser(ids: [id])
+    }
+
+    /// Cmd+W closes the tab in front. Pressed again with no tabs left it closes the connection,
+    /// and the window itself only once that was the last connection open in it.
     func closeTab() {
-        Task { await closeWindowAwaiting() }
+        guard let coordinator else {
+            Task { await closeWindowAwaiting() }
+            return
+        }
+        if let selected = coordinator.tabManager.selectedTab {
+            closeTab(id: selected.id)
+            return
+        }
+        Task {
+            guard await confirmDiscardingUnsavedWork() else { return }
+            WindowManager.shared.closeWindow(for: connectionId)
+        }
     }
 
     /// The single close primitive. `asBatchSurvivor` is `nil` for a lone close gesture, which lets
@@ -690,25 +721,14 @@ final class MainContentCommandActions {
 
     // MARK: - Tab Navigation (Group A — Called Directly)
 
-    /// Selects the Nth native window tab. Wrapping the `selectedWindow`
-    /// assignment in `NSAnimationContext.runAnimationGroup` with `duration = 0`
-    /// suppresses AppKit's tab-transition animation, so rapid Cmd+Number
-    /// presses don't queue up CAAnimations that drain visibly after the user
-    /// releases the keys.
-    ///
-    /// Per-switch AppKit overhead (window-focus change, NSHostingView layout,
-    /// Window Server roundtrip) is platform-inherent to one-NSWindow-per-tab
-    /// and is intentionally not coalesced. See `docs/architecture/tab-subsystem-rewrite.md` D2.
+    /// Selects the Nth editor tab of the connection on screen. It used to index the window's
+    /// native tab group, which named windows rather than tabs.
     func selectTab(number: Int) {
-        guard let keyWindow = NSApp.keyWindow,
-              let tabGroup = keyWindow.tabGroup else { return }
-        let windows = tabGroup.windows
-        guard windows.indices.contains(number - 1) else { return }
-        let target = windows[number - 1]
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0
-            tabGroup.selectedWindow = target
-        }
+        coordinator?.tabManager.selectTab(at: number - 1)
+    }
+
+    func selectTab(offsetBy offset: Int) {
+        coordinator?.tabManager.selectTab(offsetBy: offset)
     }
 
     // MARK: - Filter Operations (Group A — Called Directly)

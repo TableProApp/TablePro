@@ -15,8 +15,12 @@ import Testing
 struct TabPersistenceCoordinatorTests {
     // MARK: - Helpers
 
+    /// A coordinator that has already consulted the disk, which is what every save path requires.
+    /// The refusal to write before that is covered on its own by `TabPersistenceWriteGateTests`.
     private func makeCoordinator() -> TabPersistenceCoordinator {
-        TabPersistenceCoordinator(connectionId: UUID())
+        let coordinator = TabPersistenceCoordinator(connectionId: UUID())
+        coordinator.markObservedTabs()
+        return coordinator
     }
 
     private func makeTabs(count: Int) -> [QueryTab] {
@@ -380,21 +384,4 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.source == .none)
     }
 
-    /// Which window a tab belonged to has to survive the round trip, or a reconnecting window cannot
-    /// tell its own tabs from a sibling's.
-    @Test("Window positions survive a save and restore")
-    func windowGroupIndexRoundTrip() async {
-        let coordinator = makeCoordinator()
-        let tabs = makeTabs(count: 3)
-        coordinator.saveNowSync(
-            windowedTabs: [(tabs[0], 0), (tabs[1], 1), (tabs[2], 1)],
-            selectedTabId: tabs[1].id
-        )
-
-        let result = await coordinator.restoreFromDisk()
-
-        #expect(result.windowGroupIndexByTabId[tabs[0].id] == 0)
-        #expect(result.windowGroupIndexByTabId[tabs[1].id] == 1)
-        #expect(result.windowGroupIndexByTabId[tabs[2].id] == 1)
-    }
 }

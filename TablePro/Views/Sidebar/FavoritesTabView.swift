@@ -11,7 +11,6 @@ internal struct FavoritesTabView: View {
     @State private var linkedMetadataTarget: LinkedSQLFavorite?
     @State private var linkedFolderToRemove: LinkedSQLFolder?
     @State private var showRemoveLinkedFolderAlert = false
-    @FocusState private var isRenameFocused: Bool
     let connectionId: UUID
     @Bindable private var sharedSidebarState: SharedSidebarState
     let tables: [TableInfo]
@@ -181,33 +180,6 @@ internal struct FavoritesTabView: View {
         )
     }
 
-    @ViewBuilder
-    private func teamLibrarySection() -> some View {
-        if !teamLibraryQueries.isEmpty {
-            Section(String(localized: "Team Library")) {
-                ForEach(teamLibraryQueries) { query in
-                    Button {
-                        coordinator?.runFavoriteInNewTab(teamFavorite(from: query))
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "books.vertical")
-                                .foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(query.name)
-                                if let publishedBy = query.publishedBy {
-                                    Text(publishedBy)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
     private func publishSavedQueriesToTeam() {
         Task { @MainActor in
             let favorites = await SQLFavoriteManager.shared.fetchFavorites()
@@ -246,45 +218,99 @@ internal struct FavoritesTabView: View {
         )
     }
 
+    /// The Favorites list is an `NSOutlineView`. A SwiftUI `List` here drew no emphasized selection
+    /// and answered no arrow key, because the app hosts it in a bare `NSHostingController` with no
+    /// SwiftUI scene above it. Rows, menus and actions stay exactly where they were; only the list
+    /// container changed.
     private func favoritesList(
         _ items: [FavoriteNode],
         filteredTables: [TableInfo]
     ) -> some View {
-        List(selection: $sharedSidebarState.selectedFavorite) {
-            if !filteredTables.isEmpty {
-                Section(String(localized: "Tables")) {
-                    ForEach(filteredTables) { table in
-                        favoriteTableRow(table: table)
-                    }
+        FavoritesOutlineView(
+            input: FavoritesOutlineInput(
+                connectionId: connectionId,
+                activeDatabase: activeDatabase,
+                tables: filteredTables,
+                queryNodes: items,
+                teamQueries: teamLibraryQueries.map {
+                    FavoritesOutlineTeamQuery(id: $0.id, name: $0.name, publishedBy: $0.publishedBy)
+                },
+                renamingFolderId: viewModel.renamingFolderId
+            ),
+            selection: $sharedSidebarState.selectedFavorite,
+            actions: FavoritesOutlineActions(
+                primaryAction: { handlePrimaryAction($0) },
+                deleteSelection: { deleteNode($0) },
+                commitRename: { folder, name in viewModel.commitRenameFolder(folder, to: name) },
+                cancelRename: { viewModel.renamingFolderId = nil }
+            ),
+            row: { outlineRow($0) }
+        )
+    }
+
+    /// The cell pins its hosted view to the full row width, and `NSHostingView` centers a root view
+    /// narrower than its bounds, so the row has to claim that width itself or short content drifts
+    /// to the middle and the context menu goes with it.
+    private func outlineRow(_ node: FavoritesOutlineNode) -> some View {
+        rowContent(node)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func rowContent(_ node: FavoritesOutlineNode) -> some View {
+        switch node.kind {
+        case .header(let title):
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        case .table(let table):
+            favoriteTableRow(table: table)
+                .contextMenu { favoriteTableContextMenu(table) }
+        case .query(let favoriteNode):
+            favoriteQueryRow(favoriteNode)
+        case .teamQuery(_, let name, let publishedBy):
+            teamQueryRow(name: name, publishedBy: publishedBy)
+        }
+    }
+
+    @ViewBuilder
+    private func favoriteQueryRow(_ node: FavoriteNode) -> some View {
+        switch node.content {
+        case .favorite(let favorite):
+            FavoriteRowView(favorite: favorite)
+                .contextMenu { favoriteContextMenu(favorite) }
+        case .folder(let folder):
+            Label(folder.name, systemImage: "folder")
+                .contextMenu { folderContextMenu(folder) }
+        case .linkedFolder(let folder):
+            LinkedFolderRowLabel(folder: folder)
+                .contextMenu { linkedFolderContextMenu(folder) }
+        case .linkedSubfolder(_, let displayName, _):
+            LinkedSubfolderRowLabel(displayName: displayName)
+        case .linkedFavorite(let linked):
+            LinkedFavoriteRowView(favorite: linked)
+                .contextMenu { linkedFavoriteContextMenu(linked) }
+        }
+    }
+
+    /// One line, not two. The outline draws a uniform 24pt row, and the stacked publisher caption
+    /// the SwiftUI list used would be clipped.
+    private func teamQueryRow(name: String, publishedBy: String?) -> some View {
+        Label {
+            HStack(spacing: 6) {
+                Text(name)
+                    .lineLimit(1)
+                if let publishedBy {
+                    Text(publishedBy)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
-            if !items.isEmpty {
-                Section(String(localized: "Queries")) {
-                    ForEach(items) { node in
-                        FavoriteNodeRow(
-                            node: node,
-                            connectionId: connectionId,
-                            viewModel: viewModel,
-                            isRenameFocused: $isRenameFocused
-                        )
-                    }
-                }
-            }
-            teamLibrarySection()
-        }
-        .sidebarListLayout()
-        .onDeleteCommand {
-            deleteSelectedNode()
-        }
-        .contextMenu(forSelectionType: FavoriteSelection.self) { selection in
-            if let selected = selection.first, hasContextMenuItems(for: selected) {
-                contextMenu(for: selected)
-                Divider()
-            }
-            SidebarViewOptionsMenu()
-        } primaryAction: { selection in
-            guard let selected = selection.first else { return }
-            handlePrimaryAction(selected)
+        } icon: {
+            Image(systemName: "books.vertical")
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -296,7 +322,6 @@ internal struct FavoritesTabView: View {
                 .selectionAwareTint(Color.accentColor)
         }
         .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
-        .tag(FavoriteSelection.table(database: activeDatabase, schema: table.schema, name: table.name))
         .accessibilityLabel(
             TableRowLogic.accessibilityLabel(table: table, isPendingDelete: false, isPendingTruncate: false)
         )
@@ -321,59 +346,13 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    private func favoriteTable(database: String?, schema: String?, name: String) -> TableInfo? {
-        guard database == activeDatabase else { return nil }
-        return availableFavoriteTables.first { $0.name == name && $0.schema == schema }
-    }
-
-    private func hasContextMenuItems(for selection: FavoriteSelection) -> Bool {
-        switch selection {
-        case .table(let database, let schema, let name):
-            return favoriteTable(database: database, schema: schema, name: name) != nil
-        case .node(let id):
-            guard let node = viewModel.node(forId: id) else { return false }
-            switch node.content {
-            case .favorite, .linkedFavorite, .folder, .linkedFolder:
-                return true
-            case .linkedSubfolder:
-                return false
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func contextMenu(for selection: FavoriteSelection) -> some View {
-        switch selection {
-        case .table(let database, let schema, let name):
-            if let table = favoriteTable(database: database, schema: schema, name: name) {
-                favoriteTableContextMenu(table)
-            }
-        case .node(let id):
-            if let node = viewModel.node(forId: id) {
-                switch node.content {
-                case .favorite(let favorite):
-                    favoriteContextMenu(favorite)
-                case .linkedFavorite(let linked):
-                    linkedFavoriteContextMenu(linked)
-                case .folder(let folder):
-                    folderContextMenu(folder)
-                case .linkedFolder(let folder):
-                    linkedFolderContextMenu(folder)
-                case .linkedSubfolder:
-                    EmptyView()
-                }
-            }
-        }
-    }
-
-    private func handlePrimaryAction(_ selection: FavoriteSelection) {
-        switch selection {
-        case .table(let database, let schema, let name):
-            if let table = favoriteTable(database: database, schema: schema, name: name) {
-                coordinator?.openTableTab(table, activateGridFocus: true)
-            }
-        case .node(let id):
-            guard let node = viewModel.node(forId: id) else { return }
+    private func handlePrimaryAction(_ kind: FavoritesOutlineNode.Kind) {
+        switch kind {
+        case .header:
+            break
+        case .table(let table):
+            coordinator?.openTableTab(table, activateGridFocus: true)
+        case .query(let node):
             switch node.content {
             case .favorite(let favorite):
                 coordinator?.insertFavorite(favorite)
@@ -382,20 +361,22 @@ internal struct FavoritesTabView: View {
             case .folder, .linkedFolder, .linkedSubfolder:
                 break
             }
+        case .teamQuery(let id, _, _):
+            guard let query = TeamLibrarySyncCoordinator.shared.library.queries.first(where: { $0.id == id })
+            else { return }
+            coordinator?.runFavoriteInNewTab(teamFavorite(from: query))
         }
     }
 
-    private func deleteSelectedNode() {
-        guard let selection = sharedSidebarState.selectedFavorite else { return }
-        switch selection {
-        case .table(let database, let schema, let name):
-            if let table = favoriteTable(database: database, schema: schema, name: name) {
-                FavoriteTablesStorage.shared.removeFavorite(
-                    name: table.name, schema: table.schema, database: activeDatabase, connectionId: connectionId
-                )
-            }
-        case .node(let id):
-            guard let node = viewModel.node(forId: id) else { return }
+    private func deleteNode(_ kind: FavoritesOutlineNode.Kind) {
+        switch kind {
+        case .header, .teamQuery:
+            break
+        case .table(let table):
+            FavoriteTablesStorage.shared.removeFavorite(
+                name: table.name, schema: table.schema, database: activeDatabase, connectionId: connectionId
+            )
+        case .query(let node):
             switch node.content {
             case .favorite(let favorite):
                 viewModel.deleteFavorite(favorite)
@@ -637,105 +618,24 @@ internal struct FavoritesTabView: View {
         panel.allowsMultipleSelection = false
         panel.message = String(localized: "Choose a folder containing .sql files")
 
-        guard let window = NSApp.keyWindow else { return }
+        guard let window = AlertHelper.resolveWindow(nil) else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
             let path = PathPortability.contractHome(url.path)
             let existing = LinkedSQLFolderStorage.shared.loadFolders()
-            guard !existing.contains(where: { $0.path == path }) else { return }
+            guard !existing.contains(where: { $0.path == path }) else {
+                AlertHelper.showInfoSheet(
+                    title: String(localized: "This folder is already linked"),
+                    message: String(
+                        format: String(localized: "%@ is already in the favorites list."),
+                        url.lastPathComponent
+                    ),
+                    window: window
+                )
+                return
+            }
             LinkedSQLFolderStorage.shared.addFolder(LinkedSQLFolder(path: path))
             SQLFolderWatcher.shared.reload()
-        }
-    }
-}
-
-private struct FavoriteNodeRow: View {
-    let node: FavoriteNode
-    let connectionId: UUID
-    let viewModel: FavoritesSidebarViewModel
-    @FocusState.Binding var isRenameFocused: Bool
-
-    var body: some View {
-        switch node.content {
-        case .favorite(let favorite):
-            FavoriteRowView(favorite: favorite)
-                .tag(FavoriteSelection.node(id: node.id))
-        case .folder(let folder):
-            DisclosureGroup(isExpanded: folderExpansion(folder)) {
-                childRows
-            } label: {
-                folderLabel(folder)
-            }
-            .tag(FavoriteSelection.node(id: node.id))
-        case .linkedFolder(let linkedFolder):
-            DisclosureGroup(isExpanded: linkedExpansion) {
-                childRows
-            } label: {
-                LinkedFolderRowLabel(folder: linkedFolder)
-            }
-            .tag(FavoriteSelection.node(id: node.id))
-        case .linkedSubfolder(_, let displayName, _):
-            DisclosureGroup(isExpanded: linkedExpansion) {
-                childRows
-            } label: {
-                LinkedSubfolderRowLabel(displayName: displayName)
-            }
-            .tag(FavoriteSelection.node(id: node.id))
-        case .linkedFavorite(let linked):
-            LinkedFavoriteRowView(favorite: linked)
-                .tag(FavoriteSelection.node(id: node.id))
-        }
-    }
-
-    @ViewBuilder
-    private var childRows: some View {
-        if let children = node.children {
-            ForEach(children) { child in
-                FavoriteNodeRow(
-                    node: child,
-                    connectionId: connectionId,
-                    viewModel: viewModel,
-                    isRenameFocused: $isRenameFocused
-                )
-            }
-        }
-    }
-
-    private func folderExpansion(_ folder: SQLFavoriteFolder) -> Binding<Bool> {
-        Binding(
-            get: { FavoritesExpansionState.shared.isFolderExpanded(folder.id, for: connectionId) },
-            set: { FavoritesExpansionState.shared.setFolderExpanded(folder.id, expanded: $0, for: connectionId) }
-        )
-    }
-
-    private var linkedExpansion: Binding<Bool> {
-        Binding(
-            get: { FavoritesExpansionState.shared.isLinkedNodeExpanded(node.id, for: connectionId) },
-            set: { FavoritesExpansionState.shared.setLinkedNodeExpanded(node.id, expanded: $0, for: connectionId) }
-        )
-    }
-
-    @ViewBuilder
-    private func folderLabel(_ folder: SQLFavoriteFolder) -> some View {
-        if viewModel.renamingFolderId == folder.id {
-            HStack(spacing: 4) {
-                Image(systemName: "folder")
-                TextField(
-                    "",
-                    text: Binding(
-                        get: { viewModel.renamingFolderName },
-                        set: { viewModel.renamingFolderName = $0 }
-                    )
-                )
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel(String(localized: "Folder name"))
-                .focused($isRenameFocused)
-                .onSubmit { viewModel.commitRenameFolder(folder) }
-                .onExitCommand { viewModel.renamingFolderId = nil }
-                .onAppear { isRenameFocused = true }
-            }
-        } else {
-            Label(folder.name, systemImage: "folder")
         }
     }
 }

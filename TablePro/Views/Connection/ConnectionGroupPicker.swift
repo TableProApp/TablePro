@@ -2,12 +2,9 @@
 //  ConnectionGroupPicker.swift
 //  TablePro
 //
-//  Group selector dropdown for connection form
-//
 
 import SwiftUI
 
-/// Group selection for a connection — single Menu dropdown
 struct ConnectionGroupPicker: View {
     @Binding var selectedGroupId: UUID?
     @State private var allGroups: [ConnectionGroup] = []
@@ -15,54 +12,31 @@ struct ConnectionGroupPicker: View {
 
     private let groupStorage = GroupStorage.shared
 
-    private var selectedGroup: ConnectionGroup? {
-        guard let id = selectedGroupId else { return nil }
-        return allGroups.first { $0.id == id }
-    }
-
+    /// A pop up button carries the selected value, the checkmark, the menu role and the nesting
+    /// for free. Hand-drawn checkmarks reported nothing to VoiceOver, and a SwiftUI `Picker`
+    /// lowers every option to a plain `NSMenuItem`, discarding the depth the option carried.
     var body: some View {
-        Menu {
-            Button {
-                selectedGroupId = nil
-            } label: {
-                HStack {
-                    Text("None")
-                    if selectedGroupId == nil {
-                        Spacer()
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-
-            Divider()
-
-            hierarchicalGroupItems()
-
-            Divider()
+        HStack(spacing: 6) {
+            GroupPopUpButton(
+                entries: GroupMenuEntries.forConnection(
+                    groups: allGroups,
+                    noneTitle: String(localized: "None")
+                ),
+                selection: $selectedGroupId,
+                accessibilityLabel: String(localized: "Group")
+            )
+            .fixedSize()
 
             Button {
                 showingCreateSheet = true
             } label: {
                 Label("Create New Group...", systemImage: "plus.circle")
+                    .labelStyle(.iconOnly)
             }
-        } label: {
-            HStack(spacing: 6) {
-                if let group = selectedGroup {
-                    if !group.color.isDefault {
-                        Circle()
-                            .fill(group.color.color)
-                            .frame(width: 8, height: 8)
-                    }
-                    Text(group.name)
-                        .foregroundStyle(.primary)
-                } else {
-                    Text("None")
-                        .foregroundStyle(.secondary)
-                }
-            }
+            .buttonStyle(.borderless)
+            .help(Text("Create New Group..."))
+            .accessibilityLabel(Text("Create New Group..."))
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
         .task { allGroups = groupStorage.loadGroups() }
         .sheet(isPresented: $showingCreateSheet) {
             CreateGroupSheet { groupName, groupColor, parentId in
@@ -72,38 +46,6 @@ struct ConnectionGroupPicker: View {
                 allGroups = groupStorage.loadGroups()
             }
         }
-    }
-
-    @ViewBuilder
-    private func hierarchicalGroupItems() -> some View {
-        let flatGroups = flattenGroupsForMenu(groups: allGroups)
-        ForEach(flatGroups, id: \.group.id) { entry in
-            Button {
-                selectedGroupId = entry.group.id
-            } label: {
-                HStack {
-                    if !entry.group.color.isDefault {
-                        Image(nsImage: colorDot(entry.group.color.color))
-                    }
-                    Text(String(repeating: "  ", count: entry.depth) + entry.group.name)
-                    if selectedGroupId == entry.group.id {
-                        Spacer()
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-        }
-    }
-
-    private func colorDot(_ color: Color) -> NSImage {
-        let size = NSSize(width: 10, height: 10)
-        let image = NSImage(size: size, flipped: false) { rect in
-            NSColor(color).setFill()
-            NSBezierPath(ovalIn: rect).fill()
-            return true
-        }
-        image.isTemplate = false
-        return image
     }
 }
 
@@ -183,50 +125,15 @@ private struct ParentGroupPicker: View {
     let allGroups: [ConnectionGroup]
 
     var body: some View {
-        Menu {
-            Button {
-                selectedParentId = nil
-            } label: {
-                HStack {
-                    Text("None (Top Level)")
-                    if selectedParentId == nil {
-                        Spacer()
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-
-            Divider()
-
-            ForEach(allGroups.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending })) { group in
-                let depth = depthOf(groupId: group.id, groups: allGroups)
-                Button {
-                    selectedParentId = group.id
-                } label: {
-                    HStack {
-                        Text(String(repeating: "  ", count: max(0, depth - 1)) + group.name)
-                        if selectedParentId == group.id {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-                .disabled(depth >= 3)
-            }
-        } label: {
-            Text(parentLabel)
-                .foregroundStyle(selectedParentId == nil ? .secondary : .primary)
-        }
-        .menuStyle(.borderlessButton)
+        GroupPopUpButton(
+            entries: GroupMenuEntries.forParent(
+                groups: allGroups,
+                noneTitle: String(localized: "None (Top Level)")
+            ),
+            selection: $selectedParentId,
+            accessibilityLabel: String(localized: "Parent Group")
+        )
         .fixedSize()
-    }
-
-    private var parentLabel: String {
-        guard let pid = selectedParentId,
-              let group = allGroups.first(where: { $0.id == pid }) else {
-            return String(localized: "None (Top Level)")
-        }
-        return group.name
     }
 }
 

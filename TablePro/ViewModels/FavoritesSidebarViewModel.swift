@@ -151,7 +151,6 @@ internal extension [FavoriteNode] {
 internal final class FavoritesSidebarViewModel {
     var editDialogItem: FavoriteEditItem?
     var renamingFolderId: UUID?
-    var renamingFolderName: String = ""
     var showDeleteConfirmation = false
     var favoritesToDelete: [SQLFavorite] = []
 
@@ -319,13 +318,15 @@ internal final class FavoritesSidebarViewModel {
         }
     }
 
+    /// The editor seeds itself from the folder, so there is no buffer to prime here.
     func startRenameFolder(_ folder: SQLFavoriteFolder) {
         renamingFolderId = folder.id
-        renamingFolderName = folder.name
     }
 
-    func commitRenameFolder(_ folder: SQLFavoriteFolder) {
-        let newName = renamingFolderName.trimmingCharacters(in: .whitespaces)
+    /// The name arrives from the editor rather than through observable state, so a keystroke no
+    /// longer round-trips through the view model on its way to the field.
+    func commitRenameFolder(_ folder: SQLFavoriteFolder, to proposedName: String) {
+        let newName = proposedName.trimmingCharacters(in: .whitespaces)
         renamingFolderId = nil
         guard !newName.isEmpty, newName != folder.name else { return }
         Task {
@@ -339,71 +340,6 @@ internal final class FavoritesSidebarViewModel {
     func filteredNodes(searchText: String) -> [FavoriteNode] {
         let allNodes = nodes
         guard !searchText.isEmpty else { return allNodes }
-        return filterTree(allNodes, searchText: searchText)
-    }
-
-    private func filterTree(_ items: [FavoriteNode], searchText: String) -> [FavoriteNode] {
-        items.compactMap { node in
-            switch node.content {
-            case .favorite(let fav):
-                if fav.name.localizedCaseInsensitiveContains(searchText) ||
-                    (fav.keyword?.localizedCaseInsensitiveContains(searchText) == true) ||
-                    fav.query.localizedCaseInsensitiveContains(searchText) {
-                    return node
-                }
-                return nil
-            case .folder(let folder):
-                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
-                if !filteredChildren.isEmpty ||
-                    folder.name.localizedCaseInsensitiveContains(searchText) {
-                    return .folder(folder, children: filteredChildren)
-                }
-                return nil
-            case .linkedFavorite(let linked):
-                if linked.name.localizedCaseInsensitiveContains(searchText) ||
-                    (linked.keyword?.localizedCaseInsensitiveContains(searchText) == true) ||
-                    linked.relativePath.localizedCaseInsensitiveContains(searchText) {
-                    return node
-                }
-                return nil
-            case .linkedFolder(let folder):
-                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
-                if !filteredChildren.isEmpty || folder.name.localizedCaseInsensitiveContains(searchText) {
-                    return .linkedFolder(folder, children: filteredChildren)
-                }
-                return nil
-            case .linkedSubfolder(let folderId, let displayName, let pathPrefix):
-                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
-                if !filteredChildren.isEmpty || displayName.localizedCaseInsensitiveContains(searchText) {
-                    return .linkedSubfolder(
-                        folderId: folderId,
-                        displayName: displayName,
-                        pathPrefix: pathPrefix,
-                        children: filteredChildren
-                    )
-                }
-                return nil
-            }
-        }
-    }
-
-    func node(forId id: String) -> FavoriteNode? {
-        findNode(nodes, id: id, extract: { $0 })
-    }
-
-    private func findNode<T>(
-        _ items: [FavoriteNode],
-        id: String,
-        extract: (FavoriteNode) -> T?
-    ) -> T? {
-        for node in items {
-            if node.id == id, let value = extract(node) {
-                return value
-            }
-            if let children = node.children, let found = findNode(children, id: id, extract: extract) {
-                return found
-            }
-        }
-        return nil
+        return FavoritesTreeFilter.filterTree(allNodes, searchText: searchText)
     }
 }

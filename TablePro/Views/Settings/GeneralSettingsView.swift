@@ -52,7 +52,7 @@ struct GeneralSettingsView: View {
             }
 
             Section("Sidebar") {
-                Toggle("Show workspace rail", isOn: $settings.showWorkspaceRail)
+                Toggle("Show connections", isOn: $settings.showWorkspaceRail)
                     .help("Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it.")
 
                 Toggle("Show recent tables", isOn: $settings.showRecentTables)

@@ -3,13 +3,13 @@ title: Query Tabs
 description: Each tab keeps its own SQL, results, sorting, and filters, and comes back after a restart
 ---
 
-Every tab is a native macOS window tab: each tab is an NSWindow in a tab group, managed by the system tabbing API. Standard macOS tab behavior applies. Drag tabs to reorder or move them between windows, use **Window > Merge All Windows** and **Window > Move Tab to New Window**, press `Ctrl+Tab` to cycle, and use **View > Show All Tabs** (`Cmd+Shift+\`) for the tab overview. When more tabs open than fit, the tab bar shrinks them to fit, as in Safari.
+Every open connection lives in one window, and each connection has its own set of tabs. A tab strip appears above the editor as soon as a connection holds more than one tab, and lists only that connection's tabs. With a single tab there is no strip, so a window that behaves the way it always did gains no chrome.
 
-Each tab is an independent workspace with its own SQL, results, sorting, and filter state. Tabs persist across app restarts.
+Each tab keeps its own SQL, results, sorting, and filter state. Tabs persist across app restarts.
 
-<Frame caption="Tab bar with query and table tabs">
-  <img className="block dark:hidden" src="/images/tabs.png" alt="Native tab bar with query and table tabs" />
-  <img className="hidden dark:block" src="/images/tabs-dark.png" alt="Native tab bar with query and table tabs" />
+<Frame caption="Tab strip with query and table tabs">
+  <img className="block dark:hidden" src="/images/tabs.png" alt="Tab strip with query and table tabs" />
+  <img className="hidden dark:block" src="/images/tabs-dark.png" alt="Tab strip with query and table tabs" />
 </Frame>
 
 ## Tab Types
@@ -23,7 +23,7 @@ Table tabs track cell edits as pending changes by default. Query tabs support [c
 
 ## Preview Tabs
 
-Single-clicking a table opens a preview tab that is reused when you click a different table, like VS Code's preview tabs. A tab with unsaved edits, an applied filter, or sorting is never replaced: the click opens a new tab instead. A preview tab becomes permanent when you double-click the table in the sidebar or interact with the tab (sort, filter, edit data). A preview tab still open at quit is restored as a permanent tab.
+Clicking a table opens it right away, in a preview tab that is reused when you click a different table, like VS Code's preview tabs. A tab with unsaved edits, an applied filter, or sorting is never replaced: the click opens a new tab instead. A preview tab becomes permanent when you interact with it (sort, filter, edit data), or straight away if you use **Open in New Tab** on the table's contextual menu. A preview tab still open at quit is restored as a permanent tab.
 
 Turn preview tabs off with **Settings > General > Tabs > Enable preview tabs** if you prefer every click to open a permanent tab.
 
@@ -33,23 +33,25 @@ Turn preview tabs off with **Settings > General > Tabs > Enable preview tabs** i
 
 | Action | How |
 |--------|-----|
-| New query tab | `Cmd+T` or the **+** button in the tab bar |
-| New table tab | Double-click a table in the sidebar (single-click reuses the preview tab) |
-| Close tab | `Cmd+W` or the tab's close button |
-| Close other tabs | **File > Close Other Tabs**, or Option-click the close button of the tab you want to keep |
-| Close every tab in the window | **File > Close All Tabs** |
+| New query tab | `Cmd+T` or the **+** button at the end of the tab strip |
+| New table tab | Click a table in the sidebar (the preview tab is reused), or **Open in New Tab** on its contextual menu for a permanent one |
+| Close tab | `Cmd+W`, the tab's close button, or **Close Tab** on the tab's contextual menu |
+| Close other tabs | **File > Close Other Tabs**, or **Close Other Tabs** on the tab's contextual menu |
+| Close every tab for the connection | **File > Close All Tabs**, or **Close All Tabs** on the tab's contextual menu |
 | Close tabs belonging to other databases | **File > Close Tabs for Other Databases** |
+
+Right-clicking a tab gives you the three close commands for that tab without leaving the strip.
 
 The three bulk commands have no shortcut out of the box. Bind them in **Settings > Keyboard** under Navigation.
 
-**Close All Tabs** leaves the window open and empty rather than closing it, so the connection stays live and you can carry on with `Cmd+T` or a click in the sidebar.
+Closing the last tab leaves the connection open on its empty state rather than closing anything. `Cmd+W` again closes the connection, and closes the window once that was the last connection open. So the shortcut reads the same way it does everywhere else: it closes the smallest thing in front of you first.
 
-**Close Tabs for Other Databases** closes only windows whose every tab was opened against a database other than the one the connection is on now. It never touches the tab you are looking at, and it is limited to the current connection. Tabs from different databases are meant to coexist, so switching databases never closes anything on its own. On engines that switch schemas instead of databases, such as BigQuery and Oracle, the command reads **Close Tabs for Other Schemas**.
+**Close Tabs for Other Databases** closes only tabs opened against a database other than the one the connection is on now. It never touches the tab you are looking at, and it is limited to the current connection. Tabs from different databases are meant to coexist, so switching databases never closes anything on its own. On engines that switch schemas instead of databases, such as BigQuery and Oracle, the command reads **Close Tabs for Other Schemas**.
 
-Closing a query tab keeps its SQL in Recently Closed, so an accidental close costs nothing, including when you close a whole group at once. TablePro asks before closing only when unsaved work would be lost, such as pending data edits, pending structure changes, or unsaved edits to a `.sql` file on disk. A bulk close asks once per window that has something to lose, and cancelling stops the rest.
+Closing a query tab keeps its SQL in Recently Closed, so an accidental close costs nothing, including when you close a whole group at once. TablePro asks before closing only when unsaved work would be lost, such as pending data edits, pending structure changes, or unsaved edits to a `.sql` file on disk. A bulk close asks once, and cancelling stops the rest.
 
 <Note>
-Window tabs cannot be pinned. Pinning exists for result tabs inside a query tab (`Cmd+Option+P`, see [Keyboard Shortcuts](/features/keyboard-shortcuts)).
+Tabs cannot be pinned or dragged to reorder. Pinning exists for result tabs inside a query tab (`Cmd+Option+P`, see [Keyboard Shortcuts](/features/keyboard-shortcuts)).
 </Note>
 
 ### Reopening Closed Tabs
@@ -64,25 +66,37 @@ The last 20 closed query and table tabs are kept for 30 days. A reopened tab com
 ### Switching Tabs
 
 - `Cmd+1` through `Cmd+9` jump to a tab by position
-- `Cmd+Shift+[` / `Cmd+Shift+]` for previous and next tab (`Ctrl+Tab` also works)
+- `Cmd+Shift+[` / `Cmd+Shift+]` for previous and next tab
+- **Window > Show Previous Tab** and **Window > Show Next Tab** do the same from the menu
 
-Each tab keeps its full state when you switch away: SQL, cursor position, results, scroll position, sort and filter state, and pending changes.
+Each tab keeps its full state when you switch away: SQL, cursor position, results, scroll position, sort and filter state, and pending changes. Selecting a tab that is scrolled out of sight pulls it back into view.
 
 ## Windows and Connections
 
-Each connection gets its own window with its own tab bar, so a tab bar only ever lists the tabs of the connection you are in. A new connection window opens over the one you were in, so switching reads as the window changing content until you move a window somewhere you want it. New windows open at 1200x800; size and position are remembered across launches.
+One window hosts every connection you have open. Picking a connection in the [connections strip](/features/workspace-rail) switches that window to it and returns you to the tab you last used there, rather than raising a second window. Opening a table or query on a connection you already have open adds a tab to that connection instead of opening another window.
 
-To move between open connections, use the [workspace rail](/features/workspace-rail) on the leading edge of the window.
+New windows open at 1200x800; size and position are remembered across launches.
+
+### Separate Windows
+
+You can still have more than one window, for putting two connections side by side. TablePro follows your **Prefer tabs when opening documents** setting in System Settings > Desktop & Dock rather than forcing a choice. When that setting is **Always**, new windows join a tab group and the standard commands apply:
+
+| Action | How |
+|--------|-----|
+| Move the current window out of its tab group | **Window > Move Tab to New Window** |
+| Gather every window into one tab group | **Window > Merge All Windows** |
+
+Both dim when the window is not part of a tab group. These are macOS window tabs, which is a different thing from the tab strip above the editor: window tabs hold whole windows, the strip holds one connection's editors.
 
 ### Disconnecting
 
 **Database > Disconnect** ends the session without closing the window. The window shows a Reconnect screen in place of its tabs, and the tabs are saved before the session ends. Use **Database > Reconnect**, or the Reconnect button on the screen itself.
 
-Reconnecting puts the tabs back as they were, however many windows the connection has open. Each window takes back the tabs that were its own, and a window whose tabs you had closed stays empty.
+Reconnecting puts the tabs back as they were.
 
-Disconnecting asks first only when a window has unsaved changes or a query still running. It applies to the whole connection, so every window and workspace on it shows the same Reconnect screen. Nothing reconnects on its own afterwards: a connection you disconnected is not reopened at the next launch, and clicking back into its window leaves it disconnected until you ask.
+Disconnecting asks first only when there are unsaved changes or a query still running. It applies to the whole connection, so every window and entry on it shows the same Reconnect screen. Nothing reconnects on its own afterwards: a connection you disconnected is not reopened at the next launch, and clicking back into it leaves it disconnected until you ask.
 
-You can also disconnect by right-clicking a workspace in the [workspace rail](/features/workspace-rail), or a connection in the connection list.
+You can also disconnect by right-clicking an entry in the [connections strip](/features/workspace-rail), or a connection in the connection list.
 
 ## Database Binding
 
@@ -92,9 +106,7 @@ The sidebar's database selection only controls two things: what the sidebar list
 
 To point an existing tab somewhere else, use the database picker in the query editor's toolbar. It rebinds that one tab and reruns it, and leaves the sidebar and every other tab alone.
 
-The window subtitle shows the database, and the schema on engines that have one, that the tab is bound to. Tabs in the same window can be bound to different databases, so the subtitle is how you tell them apart.
-
-Dragging a tab out of its window or choosing **Window > Move Tab to New Window** does not change any of this: the tab keeps querying the database and schema it was opened on.
+The window subtitle shows the database, and the schema on engines that have one, that the frontmost tab is bound to. Tabs for the same connection can be bound to different databases, so the subtitle is how you tell them apart.
 
 <Note>
 PostgreSQL, Redshift, and CockroachDB can only change database by reconnecting. A tab bound to a database other than the connection's active one runs its queries on a separate connection for that database, so it does not share temp tables, session variables, or an open transaction with the query editor on the main connection. See [PostgreSQL](/databases/postgresql#cross-database-tabs).
@@ -108,7 +120,7 @@ PostgreSQL, Redshift, and CockroachDB can only change database by reconnecting. 
 | Tab type, table name, database, and schema | Pending data changes |
 | Applied sort and current page | Selected rows |
 | Column widths | |
-| Window and tab order | |
+| Tab order and which tab was frontmost | |
 
 Per-table filters are stored separately per connection, database, schema, and table, and come back when the table reopens.
 
@@ -122,9 +134,9 @@ Table tabs load one page at a time. The default page size is 1,000 rows, set in 
 
 ## From External Clients
 
-Raycast, Cursor, Claude Desktop, and other MCP clients can list and focus tabs across windows:
+Raycast, Cursor, Claude Desktop, and other MCP clients can list and focus tabs:
 
-- `list_recent_tabs` enumerates open tabs across every window.
+- `list_recent_tabs` enumerates open tabs across every connection.
 - `focus_query_tab` brings an existing tab to the front by id.
 - `open_connection_window` opens a saved connection.
 - `open_table_tab` opens a specific table.

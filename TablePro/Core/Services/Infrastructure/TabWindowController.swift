@@ -7,8 +7,11 @@ import AppKit
 import os
 import SwiftUI
 
+/// The conformance is what makes the drag methods reachable. `NSWindow` does not adopt
+/// `NSDraggingDestination`, so without it Swift emits no selector for these and AppKit, which
+/// dispatches a drag by selector, runs `NSWindow`'s own refusal instead.
 @MainActor
-private final class EditorWindow: NSWindow {
+private final class EditorWindow: NSWindow, NSDraggingDestination {
     override func performClose(_ sender: Any?) {
         if let coordinator = MainContentCoordinator.coordinator(forWindow: self),
            let actions = coordinator.commandActions {
@@ -18,20 +21,19 @@ private final class EditorWindow: NSWindow {
         }
     }
 
-    override func newWindowForTab(_ sender: Any?) {
-        guard let coordinator = MainContentCoordinator.coordinator(forWindow: self),
-              let actions = coordinator.commandActions else { return }
-        actions.newTab()
+    func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        FileDropDestination.acceptedURLs(from: sender.draggingPasteboard).isEmpty ? [] : .copy
     }
 
-    /// `NSWindow` implements `newWindowForTab:`, so the responder chain stops here and
-    /// never reaches the split view controller's validation. Without this the item
-    /// stays enabled on a window that is connecting, failed, or disconnected.
-    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        guard menuItem.action == #selector(newWindowForTab(_:)) else {
-            return super.validateMenuItem(menuItem)
-        }
-        return MainContentCoordinator.coordinator(forWindow: self)?.commandActions?.isConnected == true
+    func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        draggingEntered(sender)
+    }
+
+    func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        let urls = FileDropDestination.acceptedURLs(from: sender.draggingPasteboard)
+        guard !urls.isEmpty else { return false }
+        FileDropDestination.open(urls)
+        return true
     }
 }
 
@@ -39,10 +41,6 @@ private final class EditorWindow: NSWindow {
 internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    /// Deliberately one shared slot for every connection. The rail switches workspaces, so
-    /// every connection's window must occupy the same frame: a rail click then reads as the
-    /// window changing content rather than a different window being raised. Offsetting them
-    /// per connection, or cascading, breaks that illusion.
     internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
 
     internal let payload: EditorTabPayload
@@ -51,10 +49,14 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
 
     private var activity: NSUserActivity?
 
+    /// `adopting` carries a connection that is moving here from another window, whole. Everything
+    /// the user has in it lives on that object, so the window takes it rather than building a
+    /// second one around the same connection.
     internal init(
         payload: EditorTabPayload,
         sessionState: SessionStateFactory.SessionState? = nil,
-        autoConnect: Bool = false
+        autoConnect: Bool = false,
+        adopting workspace: ConnectionWorkspace? = nil
     ) {
         self.payload = payload
         self.controllerId = UUID()
@@ -70,16 +72,21 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.isRestorable = false
         window.toolbarStyle = .unified
         window.titleVisibility = .visible
-        window.tabbingMode = .preferred
-        window.tabbingIdentifier = WindowManager.tabbingIdentifier(for: payload.connectionId)
+        /// `.automatic` is AppKit reading the user's own tabbing preference. Hard-coding
+        /// `.preferred` overrode that setting, which an app that draws its own editor tabs has no
+        /// reason to do.
+        window.tabbingMode = .automatic
+        window.tabbingIdentifier = WindowManager.mainTabbingIdentifier
         window.collectionBehavior.insert([.fullScreenPrimary, .managed])
 
         let splitVC = MainSplitViewController(
             payload: payload,
             sessionState: sessionState,
-            autoConnect: autoConnect
+            autoConnect: autoConnect,
+            adopting: workspace
         )
         window.contentViewController = splitVC
+        FileDropDestination.register(on: window)
         window.title = splitVC.windowTitle
         window.subtitle = splitVC.windowSubtitle
 
@@ -88,9 +95,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        if let sibling = NSApp.windows.first(where: { WindowManager.isMainWindow($0) && $0.isVisible }) {
-            window.setFrame(sibling.frame, display: false)
-        } else if !window.setFrameUsingName(Self.frameAutosaveName) {
+        if !window.setFrameUsingName(Self.frameAutosaveName) {
             let visibleSize = (window.screen ?? NSScreen.main)?.visibleFrame.size
                 ?? NSSize(width: 1_440, height: 900)
             window.setContentSize(NSSize(
@@ -156,6 +161,15 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
+    /// `NSWindow.undoManager` resolves through here, so every undo domain that registers on the
+    /// window (the data grid's change manager, and the query editor's text view) lands in the
+    /// selected connection's own history. One window hosts every connection now, so sharing the
+    /// window's manager let Cmd+Z in one connection roll back an edit made in another.
+    internal func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
+        guard let host = window.contentViewController as? MainSplitViewController else { return nil }
+        return host.workspaces.selected?.undoManager
+    }
+
     internal func windowDidResignKey(_ notification: Notification) {
         let seq = MainContentCoordinator.nextSwitchSeq()
         let t0 = Date()
@@ -192,25 +206,37 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
             splitVC.invalidateToolbar()
         }
 
-        MainContentCoordinator.coordinator(forWindow: window)?.handleWindowWillClose()
+        /// Every connection the window hosts closes with it, so each one saves and tears down.
+        /// Resolving a single coordinator from the window persisted whichever one happened to
+        /// answer and lost the rest since their last periodic save.
+        if let splitVC = window.contentViewController as? MainSplitViewController {
+            for workspace in splitVC.workspaces.workspaces {
+                workspace.sessionState?.coordinator.handleWindowWillClose()
+            }
+        }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) handleWindowWillClose ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         activity?.invalidate()
         activity = nil
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
+    /// Every connection the window hosts, not just the one it was opened for: a connect still
+    /// dialing in a background workspace has to be called off too, or it completes into a window
+    /// that no longer exists.
     private func cancelPendingConnectionIfNeeded() {
-        let connectionId = payload.connectionId
-        let session = DatabaseManager.shared.activeSessions[connectionId]
-        guard session?.driver == nil else { return }
-        DatabaseManager.shared.invalidateConnectionAttempt(connectionId)
-        SessionRecoveryTracker.sync()
-        Task {
-            await DatabaseManager.shared.cancelEnsureConnected(connectionId)
-            guard !WindowManager.shared.hasOpenWindow(for: connectionId) else { return }
-            guard DatabaseManager.shared.activeSessions[connectionId]?.driver != nil else { return }
-            await DatabaseManager.shared.disconnectSession(connectionId)
+        guard let splitVC = window?.contentViewController as? MainSplitViewController else { return }
+        for connectionId in splitVC.workspaces.connectionIds {
+            let session = DatabaseManager.shared.activeSessions[connectionId]
+            guard session?.driver == nil else { continue }
+            DatabaseManager.shared.invalidateConnectionAttempt(connectionId)
+            Task {
+                await DatabaseManager.shared.cancelEnsureConnected(connectionId)
+                guard !WindowManager.shared.hasOpenWindow(for: connectionId) else { return }
+                guard DatabaseManager.shared.activeSessions[connectionId]?.driver != nil else { return }
+                await DatabaseManager.shared.disconnectSession(connectionId)
+            }
         }
+        SessionRecoveryTracker.sync()
     }
 
     // MARK: - NSUserActivity

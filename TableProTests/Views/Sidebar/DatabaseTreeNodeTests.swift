@@ -29,6 +29,23 @@ struct DatabaseTreeNodeTests {
         #expect(Set([loading, empty, errored, otherParent]).count == 4)
     }
 
+    /// Only the buckets the app invented are group rows. AppKit stops indenting a group row's
+    /// children, so a real container listed here would flatten the tree under it.
+    @Test("Invented buckets are section headers, real database objects are not")
+    func sectionHeaders() {
+        func node(_ kind: DatabaseTreeNode.Kind) -> DatabaseTreeNode {
+            DatabaseTreeNode(id: "n", kind: kind)
+        }
+        #expect(node(.recentSection).isSectionHeader)
+        #expect(node(.objectKindSection(.table)).isSectionHeader)
+        #expect(node(.redisKeysSection).isSectionHeader)
+
+        #expect(node(.schema(database: "shop", schema: "public")).isSectionHeader == false)
+        #expect(node(.hierarchicalSchemaSection(schema: "analytics")).isSectionHeader == false)
+        #expect(node(.table(tableRef("users"))).isSectionHeader == false)
+        #expect(node(.status(.loading)).isSectionHeader == false)
+    }
+
     private func partitionedRef(_ name: String, schema: String? = "public") -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(
             database: "shop",

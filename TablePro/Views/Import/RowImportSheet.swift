@@ -107,14 +107,19 @@ struct RowImportSheet: View {
                     .interactiveDismissDisabled()
             }
         }
-        .sheet(isPresented: $showSuccessDialog, onDismiss: {
-            isPresented = false
-            AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
-        }) {
-            ImportSuccessView(result: importResult) { showSuccessDialog = false }
+        .onChange(of: showSuccessDialog) { _, isShowing in
+            guard isShowing else { return }
+            TransferResultAlert.presentImportSuccess(result: importResult, window: NSApp.keyWindow) {
+                showSuccessDialog = false
+                isPresented = false
+                AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+            }
         }
-        .sheet(isPresented: $showErrorDialog) {
-            ImportErrorView(error: importError) { showErrorDialog = false }
+        .onChange(of: showErrorDialog) { _, isShowing in
+            guard isShowing else { return }
+            TransferResultAlert.presentImportFailure(error: importError, window: NSApp.keyWindow) {
+                showErrorDialog = false
+            }
         }
     }
 
@@ -190,16 +195,16 @@ struct RowImportSheet: View {
     }
 
     private var footerView: some View {
-        HStack {
-            Button("Cancel") { isPresented = false }
-                .keyboardShortcut(.cancelAction)
+        DialogFooter {
             if let message = validationMessage {
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(2)
             }
-            Spacer()
+        } actions: {
+            Button("Cancel") { isPresented = false }
+                .keyboardShortcut(.cancelAction)
             Button("Import") { performImport() }
                 .buttonStyle(.borderedProminent)
                 .disabled(!canImport)
@@ -243,9 +248,10 @@ struct RowImportSheet: View {
     private var mappingTable: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Toggle("", isOn: allMappingsIncluded)
+                Toggle(String(localized: "Import all fields"), isOn: allMappingsIncluded)
                     .labelsHidden()
                     .help(String(localized: "Import all fields"))
+                    .accessibilityLabel(Text("Import all fields"))
                     .frame(width: 16)
                 Text("Field")
                     .font(.caption)
@@ -314,11 +320,11 @@ struct RowImportSheet: View {
                 Text("Key")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .frame(width: 30)
+                    .frame(minWidth: 30)
                 Text("Null")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .frame(width: 30)
+                    .frame(minWidth: 30)
                 Text("Default")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -369,11 +375,11 @@ struct RowImportSheet: View {
             .disabled(!row.include)
             Toggle("", isOn: columnBinding(row).isPrimaryKey)
                 .labelsHidden()
-                .frame(width: 30)
+                .frame(minWidth: 30)
                 .disabled(!row.include)
             Toggle("", isOn: columnBinding(row).isNullable)
                 .labelsHidden()
-                .frame(width: 30)
+                .frame(minWidth: 30)
                 .disabled(!row.include)
             TextField("", text: columnBinding(row).defaultValue)
                 .textFieldStyle(.roundedBorder)

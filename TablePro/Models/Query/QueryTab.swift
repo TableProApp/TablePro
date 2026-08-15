@@ -167,7 +167,7 @@ struct QueryTab: Identifiable, Equatable {
         sortState.isSorting && sortState.source == .user
     }
 
-    func toPersistedTab(windowGroupIndex: Int? = nil) -> PersistedTab {
+    func toPersistedTab() -> PersistedTab {
         let persistedQuery = content.query
 
         let persistedSort: [PersistedSortColumn]? = {
@@ -201,8 +201,7 @@ struct QueryTab: Identifiable, Equatable {
                 from: restoredCursorOffset,
                 in: persistedQuery
             ),
-            columnWidths: widths,
-            windowGroupIndex: windowGroupIndex
+            columnWidths: widths
         )
     }
 

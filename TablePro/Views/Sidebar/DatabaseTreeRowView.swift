@@ -22,6 +22,11 @@ struct DatabaseTreeRowActions {
     let batchToggleDelete: ([String]) -> Void
     let removeRecent: (DatabaseTreeTableRef) -> Void
     let clearRecents: () -> Void
+    let showAllTablesMetadata: () -> Void
+    let refreshObjectKind: (SidebarObjectKind) -> Void
+    let refreshHierarchicalSchema: (String) -> Void
+    let openRedisKey: (_ key: String, _ keyType: String) -> Void
+    let toggleFavorite: (DatabaseTreeTableRef) -> Void
 }
 
 struct DatabaseTreeRowContext {
@@ -32,6 +37,9 @@ struct DatabaseTreeRowContext {
     let pendingTruncates: Set<String>
     let pendingDeletes: Set<String>
     var isExternalSchema: @MainActor (String, String) -> Bool = { _, _ in false }
+    /// The plugin decides what a table is called, so a section header cannot hardcode "Tables".
+    var objectKindTitle: @MainActor (SidebarObjectKind) -> String = { $0.pluralDisplayName }
+    var isFavorite: @MainActor (DatabaseTreeTableRef) -> Bool = { _ in false }
 }
 
 struct DatabaseTreeRowView: View {
@@ -70,19 +78,9 @@ struct DatabaseTreeRowView: View {
     private var rowContent: some View {
         switch node.kind {
         case .recentSection:
-            header(
-                text: String(localized: "Recent"),
-                systemImage: "clock.arrow.circlepath",
-                isActive: false,
-                isSystem: false
-            )
+            sectionHeader(String(localized: "Recent"))
         case .recentTable(let ref):
-            TableRow(
-                table: ref.table,
-                isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
-                isPendingDelete: context.pendingDeletes.contains(ref.table.name)
-            )
-            .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            tableRow(ref)
         case .database(let metadata):
             header(
                 text: metadata.name,
@@ -99,17 +97,81 @@ struct DatabaseTreeRowView: View {
                 caption: context.isExternalSchema(database, schema) ? String(localized: "External") : nil
             )
         case .table(let ref):
-            TableRow(
-                table: ref.table,
-                isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
-                isPendingDelete: context.pendingDeletes.contains(ref.table.name)
-            )
-            .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            tableRow(ref)
         case .routine(let ref):
             RoutineRowView(routine: ref.routine)
-                .foregroundStyle(isEmphasized ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                .foregroundStyle(isEmphasized ? AnyShapeStyle(Color.emphasizedSelectionLabel) : AnyShapeStyle(.primary))
         case .status(let status):
             statusRow(status)
+        case .objectKindSection(let kind):
+            sectionHeader(context.objectKindTitle(kind))
+        case .hierarchicalSchemaSection(let schema):
+            header(
+                text: schema,
+                systemImage: "folder",
+                isActive: schema == context.activeSchema,
+                isSystem: false
+            )
+        case .redisKeysSection:
+            sectionHeader(String(localized: "Keys"))
+        case .redisNode(let redisNode):
+            redisRow(redisNode)
+        }
+    }
+
+    /// A source list section title carries no icon and no chevron of its own: AppKit draws the
+    /// group row's background and its collapse control, and an icon here would be a second glyph
+    /// competing with the one on every object below it.
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    private func tableRow(_ ref: DatabaseTreeTableRef) -> some View {
+        TableRow(
+            table: ref.table,
+            isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
+            isPendingDelete: context.pendingDeletes.contains(ref.table.name),
+            isFavorite: context.isFavorite(ref),
+            onToggleFavorite: { actions.toggleFavorite(ref) }
+        )
+        .foregroundStyle(isEmphasized ? AnyShapeStyle(Color.emphasizedSelectionLabel) : AnyShapeStyle(.primary))
+    }
+
+    /// Redis rows carry their own count and type rather than reusing `TableRow`, which is built
+    /// around a `TableInfo` a key does not have.
+    @ViewBuilder
+    private func redisRow(_ node: RedisKeyNode) -> some View {
+        switch node {
+        case .namespace(let name, _, _, let keyCount):
+            Label {
+                HStack(spacing: 6) {
+                    Text(name)
+                        .lineLimit(1)
+                    Text(verbatim: "\(keyCount)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "folder")
+            }
+            .foregroundStyle(isEmphasized ? AnyShapeStyle(Color.emphasizedSelectionLabel) : AnyShapeStyle(.primary))
+        case .key(let name, _, let keyType):
+            Label {
+                HStack(spacing: 6) {
+                    Text(name)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(keyType)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: RedisKeyNode.iconName(forKeyType: keyType))
+            }
+            .foregroundStyle(isEmphasized ? AnyShapeStyle(Color.emphasizedSelectionLabel) : AnyShapeStyle(.primary))
         }
     }
 
@@ -157,12 +219,17 @@ struct DatabaseTreeRowView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+        case .truncated(let message):
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
         }
     }
 
     private var hasContextMenu: Bool {
         switch node.kind {
-        case .status, .recentSection: return false
+        case .status, .recentSection, .redisKeysSection: return false
         default: return true
         }
     }
@@ -207,8 +274,39 @@ struct DatabaseTreeRowView: View {
             )
         case .routine(let ref):
             RoutineContextMenu(routine: ref.routine, onShowDDL: actions.showRoutineDDL)
-        case .status:
+        case .status, .redisKeysSection:
             EmptyView()
+        case .objectKindSection(let kind):
+            Button(String(format: String(localized: "Show All %@"), context.objectKindTitle(kind))) {
+                actions.showAllTablesMetadata()
+            }
+            .disabled(kind != .table)
+            Button(String(localized: "Refresh")) {
+                actions.refreshObjectKind(kind)
+            }
+        case .hierarchicalSchemaSection(let schema):
+            Button(String(localized: "Refresh")) {
+                actions.refreshHierarchicalSchema(schema)
+            }
+        case .redisNode(let redisNode):
+            redisMenuItems(redisNode)
+        }
+    }
+
+    @ViewBuilder
+    private func redisMenuItems(_ node: RedisKeyNode) -> some View {
+        switch node {
+        case .namespace(_, let fullPrefix, _, _):
+            Button(String(localized: "Copy Namespace Prefix")) {
+                ClipboardService.shared.writeText(fullPrefix)
+            }
+        case .key(_, let fullKey, let keyType):
+            Button(String(localized: "Copy Key")) {
+                ClipboardService.shared.writeText(fullKey)
+            }
+            Button(String(localized: "Open in New Tab")) {
+                actions.openRedisKey(fullKey, keyType)
+            }
         }
     }
 
@@ -307,9 +405,12 @@ struct DatabaseTreeRowView: View {
     }
 
     private func foreground(isActive: Bool, isSystem: Bool) -> AnyShapeStyle {
-        if isEmphasized { return AnyShapeStyle(.white) }
-        if isActive { return AnyShapeStyle(.tint) }
-        if isSystem { return AnyShapeStyle(.secondary) }
-        return AnyShapeStyle(.primary)
+        SidebarRowForeground.style(
+            for: SidebarRowForeground.role(
+                isEmphasized: isEmphasized,
+                isActive: isActive,
+                isSystem: isSystem
+            )
+        )
     }
 }

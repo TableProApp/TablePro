@@ -127,9 +127,9 @@ internal enum SampleDatabaseLauncher {
         connectionId: UUID,
         onError: @MainActor @escaping (Error) -> Void
     ) {
-        for window in WindowLifecycleMonitor.shared.windows(for: connectionId) {
-            window.close()
-        }
+        /// Closes this connection only. The window hosts every open connection, so closing it
+        /// would take the rest down over a sample database that failed to open.
+        WindowManager.shared.closeWindow(for: connectionId)
         onError(error)
         WindowOpener.shared.openWelcome()
     }

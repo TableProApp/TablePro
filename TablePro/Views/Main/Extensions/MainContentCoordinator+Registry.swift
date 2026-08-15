@@ -15,8 +15,15 @@ extension MainContentCoordinator {
         activeCoordinators.values.first { $0.windowId == windowId }
     }
 
+    /// The coordinator the window is currently showing. Every connection the window hosts has a
+    /// coordinator whose `contentWindow` is this window, so matching on that alone returned an
+    /// arbitrary one of them and let Cmd+W, Cmd+T and menu validation act on a connection the
+    /// user was not looking at.
     static func coordinator(forWindow window: NSWindow) -> MainContentCoordinator? {
-        activeCoordinators.values.first { $0.contentWindow === window }
+        guard let host = window.contentViewController as? MainSplitViewController else {
+            return activeCoordinators.values.first { $0.contentWindow === window }
+        }
+        return host.workspaces.selected?.sessionState?.coordinator
     }
 
     static func hasAnyUnsavedChanges() -> Bool {

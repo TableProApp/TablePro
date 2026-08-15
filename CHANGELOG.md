@@ -51,12 +51,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Closing a connection removes it from the connections strip, ends its session, and closes its tunnel. It stayed listed as connected, could not be clicked, and its database connection stayed open.
+- **Open in New Window** on a connection in the strip moves it out of the shared window with its tabs, its session and its unsaved work.
+- The strip's close command ends the connection: every tab across every database it has open, its session, and every row it holds in the strip. It used to close only the tabs of one database and leave the row you clicked exactly where it was, which read as doing nothing. Disconnect still ends only the session and keeps the row. **File > Close Connection** does the same from the menu bar.
+- Closing a window disconnects every connection it was showing, not just one of them.
+- Hiding a database in the sidebar's database filter takes effect straight away. The tree kept listing every database until some other change happened to rebuild it.
+- An alert opens on the window you were working in. It could attach itself to a floating panel such as the Quick Switcher, which takes the alert with it when it closes.
+- Holding an arrow key in the sidebar no longer opens a tab and runs a query for every object it passes. Arrowing through 20 tables fired 20 queries; it now opens only the object you stop on.
+- Clicking a row in the sidebar puts the keyboard on the list. The click moved the selection but sometimes left the keyboard in the filter field above it, so the row drew grey instead of in the accent colour and the arrow keys went to the field. Switching to the Favorites tab left the keyboard nowhere at all, so the first arrow key did nothing.
+- Opening a table from somewhere that asks for the grid, such as Favorites or Show Structure, puts the keyboard in the grid. Only the first such table of a session did; every one after it left the keyboard where it was.
 - A chained method on a MongoDB aggregation no longer goes missing. `db.orders.aggregate([...]).limit(10)` used to drop the limit and return everything the pipeline matched. Chaining a method that a query does not support now reports an error instead of ignoring it. (#2095)
+- Escape closes the drop, truncate, delete and external-link alerts again, and the risky button no longer answers Return. (#2104)
+- The line under the toolbar sits under the toolbar again. The tab strip moved back above the editor, where its colours were designed to sit, instead of into the titlebar. (#2104)
+- A selected range of cells stays visible when the grid is not the focused view, and the column header no longer stays highlighted after the body has dimmed. (#2104)
+- Dropping a SQL file on a connection window opens it. (#2104)
+- Opening Settings, Appearance no longer replaces the theme saved for the light or dark slot. A theme that does not match the slot stays listed while it is the one in use.
+- The selected tag filter is readable again on light tag colours, and the picked colour swatch keeps its ring whatever accent colour is set. (#2104)
+- Toolbar tooltips name what the button does and show the current keyboard shortcut again. Import works from the toolbar, and the Results button shows whether the pane is open. (#2104)
+- Nested connection groups show their nesting in the group menus again. (#2104)
+- The import result lists the statement that failed, not just the line number. (#2104)
+- A tag with no colour is readable in the toolbar instead of drawing white on nothing.
+- The Quick Switcher row that Return will open is highlighted from the moment the panel opens, not only after an arrow key.
+- Down arrow in the sidebar filter field moves into the object list instead of being swallowed.
+- The highlighted row in the connection switcher and the database switcher is drawn as the active selection while you type and arrow through it, the way Spotlight does, instead of looking inactive until you click.
+- Routines and Recent entries in the object tree can be selected, so arrow keys reach them and type-to-find lands on them. Clicking a Recent entry now highlights the row it opened.
+- The sidebar object list is now a native outline in every layout, so the selected row is drawn as the active selection, arrow keys move between objects, and typing jumps to a name. The flat and schema layouts were SwiftUI lists that could not do any of that.
+- Procedures, functions and Redis keys can be selected and reached with the keyboard in the sidebar.
+- The Favorites tab is a native outline too, so saved queries, folders and linked SQL files take the keyboard and show a real selection. Team Library entries can be selected for the first time; opening one is now a double-click or Return rather than a single click, and its publisher shows beside the name instead of under it.
+- Truncate, Copy Name and Delete act on the sidebar selection in tree layout. They read a selection the tree never published, so they did nothing at all.
+- Clicking a table under Recent in the sidebar highlights it. The Recent entries sit at the top of the list and were the only rows that opened a table without ever showing as selected, which read as the highlight working on some tables and not others.
 - Tables you create in an in-memory DuckDB database now show up in the sidebar. The object list was reading a second, empty in-memory database, so a refresh always came back with nothing. (#2108)
 - MongoDB again authenticates against the database the connection names when browsing another database, so credentials that only exist in one database keep working.
 
 ### Changed
 
+- Clicking a table in the sidebar opens it right away. It used to wait out the double-click interval, about half a second, to find out whether a second click was coming. Double-click no longer opens a second copy of the table; **Open in New Tab** on the table's contextual menu does that.
+- Opening a table from the sidebar leaves the keyboard in the sidebar, so you can keep clicking or arrowing through tables and watch each one load. Click into the grid when you want to work in it.
+- Sidebar section titles are real source list headers now, the way Package Dependencies reads in Xcode's navigator: a short grey title with no icon, and the objects under it sitting at the same depth as a database instead of one step in.
+- Every open connection now lives in one window. Picking a connection in the connections strip switches that window to it instead of raising a second window. Each connection keeps its own view while it waits its turn, so switching away and back leaves the grid scrolled where it was, the query editor's cursor and selection where you left them, and a half-filled sheet still filled in.
+- Opening a table or query on a connection you already have open adds a tab to that window instead of opening another window. A tab strip appears once a connection holds more than one tab.
+- Closing the last tab leaves the connection open on its empty state. Close Tab again closes the connection, and the window once that was the last one open.
+- Window tabs follow your "Prefer tabs when opening documents" setting instead of always forcing tabs, and the Window menu carries Move Tab to New Window and Merge All Windows.
 - Mobile keeps remote connections open when you switch apps.
 - MongoDB shows a standard binary UUID as `UUID("...")` everywhere, including in exports.
 - Mobile no longer copies database passwords to iCloud Keychain unless you turn on Sync Passwords. Mac already worked this way.
@@ -81,8 +116,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The MCP connection listing no longer names connections you set to AI Never.
 - Release and test workflows pin their third-party actions to an exact commit.
 
+### Added
+
+- Typing a name in the database tree jumps to the matching object.
+- Editor tabs have a right-click menu for closing tabs.
+- The Settings window can be resized.
+- Dropping a SQL file on a connection window opens it.
+- Redis key rows have a right-click menu for copying a key or namespace prefix.
+
 ### Fixed
 
+- The drop and truncate confirmation is now a standard system alert with Cancel as the default button, so pressing Return no longer drops a table.
+- The external link prompt now defaults to Cancel, and deleting a column or row from the inspector no longer runs on Return or without asking.
+- Theme, schema, and diagram exports report write failures instead of failing silently, and picking a folder that is already linked says so.
+- Selected sidebar rows, quick switcher results, and the database switcher use the system foreground colour, so labels stay readable under any accent colour and with Increase Contrast on.
+- Tag badges, the Pro badge, the Vim mode indicator, and the date cell picker pick a readable label colour instead of always using white.
+- Cell range selection and the selected column header dim when the window loses focus, matching the rest of the system.
+- Tab moves focus out of the data grid when no cell is active, and cell to cell tabbing skips hidden columns.
+- The shortcut recorder captures combinations the menu bar already uses, such as Command W, instead of running the menu command.
+- Reduce Motion suppresses the remaining animations, and Reduce Transparency now makes the Pro feature overlay fully opaque.
+- Editor tabs, quick switcher results, mention suggestions, and the Settings pickers report themselves properly to VoiceOver.
+- Moving the pointer no longer changes the highlighted mention suggestion.
+- Dialog buttons are grouped at the trailing edge in six sheets instead of splitting Cancel to the left.
+- The titlebar breaks at the inspector divider, so the inspector toggle sits over the inspector pane.
+- Removed two Window menu items that could never run.
+- Main window toolbar buttons are real toolbar items, so icon only mode, display mode customization, and the overflow menu all work.
+- The editor tab strip sits in the window titlebar instead of inside the content area.
+- Find in the Welcome window runs from the Edit menu and can be rebound in Settings.
+- The export dialog no longer asks for a file name twice, and the save panel validates it.
+- Import and export results use standard alerts that size to their content.
+- The integration pairing prompt is modal, can be closed from its title bar, and sizes to its content.
+- Installing a missing database plugin shows download progress instead of nothing.
+- A dark theme can no longer be assigned to the light appearance slot.
+- Connection tags can be removed from the chip itself and are readable by VoiceOver.
+- The connection group selector is a standard pop up button.
+- The host list add and remove buttons match the rest of the app and have accessible names.
+- VoiceOver follows the data grid cell cursor and reports the selected cell range.
+- The filter suggestion list uses the system selection colours and announces when suggestions appear.
+- Split view diffs mark added, removed, and changed lines for VoiceOver and for Differentiate Without Colour.
+- The query plan diagram redraws after a second EXPLAIN instead of showing the previous run.
+- The chat composer placeholder truncates instead of overflowing and is reported to VoiceOver.
+- Colour swatches show press, hover, and keyboard focus, and the selection ring follows the accent colour.
+- The split column alert grows to fit longer labels in other languages.
 - Option+Return in the Quick Switcher opens the selected table in a new window tab. The shortcut was documented but never fired.
 - Right-clicking a table that is not part of the current selection now acts on that table. It used to act on the selected tables instead, including for Delete.
 - Database icons and the current-database checkmark stay visible on a selected row in the database switcher. They were drawn in the accent colour, which vanished against the accent-coloured selection.

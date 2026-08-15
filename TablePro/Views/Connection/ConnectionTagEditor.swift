@@ -53,14 +53,29 @@ struct ConnectionTagEditor: View {
             Circle()
                 .fill(tag.color.color)
                 .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
             Text(tag.name)
                 .lineLimit(1)
+            Button { toggle(tag) } label: {
+                Image(systemName: "xmark")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(Text(removeLabel(for: tag)))
+            .accessibilityLabel(Text(removeLabel(for: tag)))
         }
         .padding(.leading, 7)
-        .padding(.trailing, 8)
+        .padding(.trailing, 5)
         .padding(.vertical, 2)
         .background(tag.color.color.opacity(0.14), in: Capsule())
         .overlay(Capsule().strokeBorder(tag.color.color.opacity(0.35), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(tag.name))
+    }
+
+    private func removeLabel(for tag: ConnectionTag) -> String {
+        String(format: String(localized: "Remove tag %@"), tag.name)
     }
 
     private var tagMenu: some View {
@@ -107,9 +122,11 @@ struct ConnectionTagEditor: View {
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
+        .help(Text("Add tags"))
+        .accessibilityLabel(Text("Add tags"))
     }
 
     private func toggle(_ tag: ConnectionTag) {

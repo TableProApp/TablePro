@@ -204,13 +204,11 @@ struct PairingApprovalSheet: View {
     }
 
     private var actionBar: some View {
-        HStack {
+        DialogFooter {
             Button(String(localized: "Deny"), role: .cancel) {
                 onComplete(.failure(MCPDataLayerError.userCancelled))
             }
             .keyboardShortcut(.cancelAction)
-
-            Spacer()
 
             Button(String(localized: "Approve")) {
                 let approval = PairingApproval(

@@ -83,159 +83,6 @@ extension MainContentView {
         _ = await schemaLoad
     }
 
-    private func handleRestoreOrDefault() async {
-        if let group = RestorationGroupRegistry.consume(for: payload?.id) {
-            applyRestoredGroup(
-                group.tabs,
-                selectedTabId: group.selectedTabId,
-                loadTiming: group.loadTiming,
-                consumeDeferredWhenKey: true
-            )
-            return
-        }
-
-        /// The split view controller owns the window and is wired up before this view is built, unlike
-        /// `viewWindow`, which arrives from `configureWindow` and can still be nil here.
-        guard let window = coordinator.splitViewController?.view.window else {
-            MainContentView.lifecycleLogger.error(
-                "[open] handleRestoreOrDefault has no window windowId=\(windowId, privacy: .public)"
-            )
-            return
-        }
-        let windowIndex = WindowTabGroupOrder.index(of: window)
-        let openWindowCount = WindowTabGroupOrder.size(containing: window)
-
-        let restoreStart = Date()
-        let result = await coordinator.persistence.restoreFromDisk()
-        MainContentView.lifecycleLogger.info(
-            "[open] restoreFromDisk done windowId=\(windowId, privacy: .public) tabsRestored=\(result.tabs.count) windowIndex=\(windowIndex) openWindowCount=\(openWindowCount) source=\(String(describing: result.source), privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(restoreStart) * 1_000))"
-        )
-        guard !result.tabs.isEmpty else { return }
-
-        var restoredTabs = result.tabs
-        for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
-            if let tableName = restoredTabs[i].tableContext.tableName {
-                do {
-                    restoredTabs[i].content.query = try QueryTab.buildBaseTableQuery(
-                        tableName: tableName,
-                        databaseType: connection.type,
-                        schemaName: restoredTabs[i].tableContext.schemaName
-                    )
-                } catch {
-                    MainContentView.lifecycleLogger.error(
-                        "[open] buildBaseTableQuery failed for restored tab table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                    )
-                }
-            }
-        }
-
-        let plan = WindowGroupAssignment.resolve(
-            windowIndex: windowIndex,
-            openWindowCount: openWindowCount,
-            tabs: restoredTabs,
-            windowGroupIndexByTabId: result.windowGroupIndexByTabId,
-            selectedTabId: result.selectedTabId
-        )
-
-        if openWindowCount == 1 {
-            restoreAsOnlyWindow(plan, result: result)
-        } else {
-            claimOwnTabs(plan, result: result, window: window)
-        }
-    }
-
-    /// The connection has one window, so this window restores what it kept and opens a window for every
-    /// other group. Nothing has focus yet, so the tab the user left selected is brought to the front.
-    private func restoreAsOnlyWindow(_ plan: WindowGroupAssignment.Plan, result: RestoreResult) {
-        let frontGroup = RestoreWindowPlan.resolveFrontGroup(
-            ownTabIds: plan.ownTabs.map(\.id),
-            orphanedGroups: plan.orphanedGroups.map { ($0.windowGroupIndex, $0.tabs.map(\.id)) },
-            selectedId: result.selectedTabId
-        )
-
-        applyRestoredGroup(
-            plan.ownTabs,
-            selectedTabId: plan.ownSelectedTabId ?? plan.ownTabs.first?.id,
-            activeDatabase: result.lastActiveDatabase,
-            activeSchema: result.lastActiveSchema,
-            loadTiming: frontGroup == .own ? .immediate : .deferred
-        )
-
-        for group in plan.orphanedGroups {
-            let isFront = frontGroup == .orphaned(windowGroupIndex: group.windowGroupIndex)
-            openRestoredTabWindow(
-                group.tabs,
-                selectedTabId: group.selectedTabId,
-                activate: isFront,
-                loadTiming: isFront ? .immediate : .deferred
-            )
-        }
-        if frontGroup == .own, !plan.orphanedGroups.isEmpty {
-            viewWindow?.makeKeyAndOrderFront(nil)
-        }
-    }
-
-    /// Other windows of this connection are already open and every one of them is restoring its own
-    /// tabs right now, so this window takes only what was its own and never raises itself: the user is
-    /// already looking at one of these windows. Only the window the user can see loads its data now,
-    /// which also keeps a reconnect from firing one query per window.
-    private func claimOwnTabs(_ plan: WindowGroupAssignment.Plan, result: RestoreResult, window: NSWindow) {
-        applyRestoredGroup(
-            plan.ownTabs,
-            selectedTabId: plan.ownSelectedTabId ?? plan.ownTabs.first?.id,
-            activeDatabase: result.lastActiveDatabase,
-            activeSchema: result.lastActiveSchema,
-            loadTiming: window.isKeyWindow ? .immediate : .deferred
-        )
-
-        for group in plan.orphanedGroups {
-            openRestoredTabWindow(
-                group.tabs,
-                selectedTabId: group.selectedTabId,
-                activate: false,
-                loadTiming: .deferred
-            )
-        }
-    }
-
-    private func applyRestoredGroup(
-        _ tabs: [QueryTab],
-        selectedTabId: UUID?,
-        activeDatabase: String? = nil,
-        activeSchema: String? = nil,
-        loadTiming: RestoreLoadTiming = .immediate,
-        consumeDeferredWhenKey: Bool = false
-    ) {
-        guard let firstTab = tabs.first else { return }
-        tabManager.tabs = tabs
-        tabManager.selectedTabId = tabs.contains(where: { $0.id == selectedTabId }) ? selectedTabId : firstTab.id
-
-        guard let selected = tabManager.selectedTab else { return }
-
-        if selected.tabType == .table, let tableName = selected.tableContext.tableName,
-            !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        {
-            coordinator.restoreLastHiddenColumnsForTable()
-            coordinator.restoreFiltersForTable(tableName)
-        }
-
-        restoreConnectionContext(
-            for: selected,
-            activeDatabase: activeDatabase,
-            activeSchema: activeSchema,
-            loadTiming: loadTiming,
-            consumeDeferredWhenKey: consumeDeferredWhenKey
-        )
-    }
-
-    /// Restore the connection's database and schema, then load the selected tab, in a single
-    /// sequenced task so the database and schema switches never race each other. A deferred
-    /// tab records its id and loads only when its window becomes key from a user switch.
-    ///
-    /// `consumeDeferredWhenKey` is true only for sibling windows opened by restoration, which
-    /// may already be key because the user is showing them. The initial window is transiently
-    /// key at launch before the front window activates, so it must never consume here — it loads
-    /// its deferred tab through `windowDidBecomeKey` when the user switches back to it.
     private func restoreConnectionContext(
         for selected: QueryTab,
         activeDatabase: String?,
@@ -276,34 +123,92 @@ extension MainContentView {
         }
     }
 
-    /// Opens one window for a whole saved group. The payload describes the tab the window opens on so
-    /// its native label reads right from creation; the group itself travels through the registry, which
-    /// is what carries the state a payload cannot express.
-    private func openRestoredTabWindow(
+    private func applyRestoredGroup(
         _ tabs: [QueryTab],
         selectedTabId: UUID?,
-        activate: Bool,
-        loadTiming: RestoreLoadTiming
+        activeDatabase: String? = nil,
+        activeSchema: String? = nil,
+        loadTiming: RestoreLoadTiming = .immediate,
+        consumeDeferredWhenKey: Bool = false
     ) {
-        guard let leadTab = tabs.first(where: { $0.id == selectedTabId }) ?? tabs.first else { return }
-        let restorePayload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: leadTab.tabType,
-            tableName: leadTab.tableContext.tableName,
-            databaseName: leadTab.tableContext.databaseName,
-            schemaName: leadTab.tableContext.schemaName,
-            isView: leadTab.tableContext.isView,
-            skipAutoExecute: true,
-            erDiagramSchemaKey: leadTab.display.erDiagramSchemaKey,
-            tabTitle: leadTab.title,
-            intent: .restoreOrDefault
+        guard let firstTab = tabs.first else { return }
+        tabManager.tabs = tabs
+        tabManager.selectedTabId = tabs.contains(where: { $0.id == selectedTabId }) ? selectedTabId : firstTab.id
+
+        guard let selected = tabManager.selectedTab else { return }
+
+        if selected.tabType == .table, let tableName = selected.tableContext.tableName,
+            !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            coordinator.restoreLastHiddenColumnsForTable()
+            coordinator.restoreFiltersForTable(tableName)
+        }
+
+        restoreConnectionContext(
+            for: selected,
+            activeDatabase: activeDatabase,
+            activeSchema: activeSchema,
+            loadTiming: loadTiming,
+            consumeDeferredWhenKey: consumeDeferredWhenKey
         )
-        RestorationGroupRegistry.register(
-            .init(tabs: tabs, selectedTabId: selectedTabId ?? leadTab.id, loadTiming: loadTiming),
-            for: restorePayload.id
-        )
-        WindowManager.shared.openTab(payload: restorePayload, activate: activate)
     }
+
+    private func handleRestoreOrDefault() async {
+        if let group = RestorationGroupRegistry.consume(for: payload?.id) {
+            applyRestoredGroup(
+                group.tabs,
+                selectedTabId: group.selectedTabId,
+                loadTiming: group.loadTiming,
+                consumeDeferredWhenKey: true
+            )
+            return
+        }
+
+        /// The split view controller owns the window and is wired up before this view is built, unlike
+        /// `viewWindow`, which arrives from `configureWindow` and can still be nil here.
+        guard let window = coordinator.splitViewController?.view.window else {
+            MainContentView.lifecycleLogger.error(
+                "[open] handleRestoreOrDefault has no window windowId=\(windowId, privacy: .public)"
+            )
+            return
+        }
+        let restoreStart = Date()
+        let result = await coordinator.persistence.restoreFromDisk()
+        MainContentView.lifecycleLogger.info(
+            "[open] restoreFromDisk done windowId=\(windowId, privacy: .public) tabsRestored=\(result.tabs.count) source=\(String(describing: result.source), privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(restoreStart) * 1_000))"
+        )
+        guard !result.tabs.isEmpty else { return }
+
+        var restoredTabs = result.tabs
+        for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
+            if let tableName = restoredTabs[i].tableContext.tableName {
+                do {
+                    restoredTabs[i].content.query = try QueryTab.buildBaseTableQuery(
+                        tableName: tableName,
+                        databaseType: connection.type,
+                        schemaName: restoredTabs[i].tableContext.schemaName
+                    )
+                } catch {
+                    MainContentView.lifecycleLogger.error(
+                        "[open] buildBaseTableQuery failed for restored tab table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+            }
+        }
+
+        /// One window hosts every connection, so a connection's saved tabs all belong to the one
+        /// tab list. The old shape split them across windows by a saved group index, which now
+        /// has nowhere to go: a group handed back to `openTab` restores nothing and the next
+        /// autosave erases it.
+        applyRestoredGroup(
+            restoredTabs,
+            selectedTabId: result.selectedTabId ?? restoredTabs.first?.id,
+            activeDatabase: result.lastActiveDatabase,
+            activeSchema: result.lastActiveSchema,
+            loadTiming: window.isKeyWindow ? .immediate : .deferred
+        )
+    }
+
 
     // MARK: - Command Actions Setup
 
@@ -335,7 +240,10 @@ extension MainContentView {
         )
         windowTitle = resolved.title
         windowSubtitle = resolved.subtitle
-        coordinator.splitViewController?.updateDetailMinimumThickness(for: selectedTab?.tabType)
+        coordinator.splitViewController?.updateDetailMinimumThickness(
+            for: selectedTab?.tabType,
+            connectionId: connection.id
+        )
         viewWindow?.representedURL = selectedTab?.content.sourceFileURL
         viewWindow?.isDocumentEdited = selectedTab?.showsUnsavedIndicator ?? false
     }
@@ -348,9 +256,7 @@ extension MainContentView {
         )
         let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
 
-        let resolvedId = WindowManager.tabbingIdentifier(for: connection.id)
-        window.tabbingIdentifier = resolvedId
-        window.tabbingMode = .preferred
+        window.tabbingIdentifier = WindowManager.mainTabbingIdentifier
         coordinator.windowId = windowId
 
         WindowLifecycleMonitor.shared.register(
@@ -372,7 +278,7 @@ extension MainContentView {
             splitVC.installToolbar(coordinator: coordinator)
         }
         MainContentView.lifecycleLogger.info(
-            "[open] configureWindow done windowId=\(windowId, privacy: .public) tabbingId=\(resolvedId, privacy: .public) isPreview=\(isPreview) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
+            "[open] configureWindow done windowId=\(windowId, privacy: .public) isPreview=\(isPreview) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
     }
 

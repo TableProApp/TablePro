@@ -310,41 +310,15 @@ final class MainContentCoordinator {
         _didActivate.withLock { $0 }
     }
 
-    /// Collect tabs across all of a connection's windows for persistence, tagged with
-    /// the index of the native window group they belong to so tab order restores intact.
-    /// Tabs stamped with the position of the window holding them, so a window can claim its own back.
-    /// The position is the window's place in the native tab group, not its rank among the windows that
-    /// happen to have a coordinator: a window whose session went away has no coordinator but still
-    /// occupies a tab, and numbering around it would hand every later window the wrong tabs.
-    static func aggregatedTabs(for connectionId: UUID) -> [(tab: QueryTab, windowGroupIndex: Int)] {
-        let coordinators = activeCoordinators.values
+    /// One window hosts every connection and a connection has one coordinator, so a
+    /// connection's tabs are simply that coordinator's list. Tabs used to be scattered across
+    /// a connection's windows and had to be gathered and renumbered.
+    static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
+        activeCoordinators.values
             .filter { $0.connectionId == connectionId }
-
-        guard let anyWindow = coordinators.compactMap({ $0.contentWindow }).first else {
-            return coordinators.enumerated().flatMap { groupIndex, coordinator in
-                coordinator.tabManager.tabs
-                    .map { (tab: coordinator.enrichedForPersistence($0), windowGroupIndex: groupIndex) }
-            }
-        }
-
-        let groupOrder = Dictionary(uniqueKeysWithValues:
-            WindowTabGroupOrder.windows(containing: anyWindow)
-                .enumerated()
-                .map { (ObjectIdentifier($0.element), $0.offset) }
-        )
-        return coordinators
-            .sorted { lhs, rhs in
-                lhs.tabGroupPosition(in: groupOrder) < rhs.tabGroupPosition(in: groupOrder)
-            }
             .flatMap { coordinator in
-                let groupIndex = coordinator.tabGroupPosition(in: groupOrder)
-                return coordinator.tabManager.tabs
-                    .map { (tab: coordinator.enrichedForPersistence($0), windowGroupIndex: groupIndex) }
+                coordinator.tabManager.tabs.map(coordinator.enrichedForPersistence)
             }
-    }
-
-    private func tabGroupPosition(in groupOrder: [ObjectIdentifier: Int]) -> Int {
-        contentWindow.flatMap { groupOrder[ObjectIdentifier($0)] } ?? Int.max
     }
 
     /// Resolve transient view state that only the live coordinator knows about
@@ -539,13 +513,9 @@ final class MainContentCoordinator {
                 // Skip isTearingDown check: during Cmd+Q, onDisappear fires
                 // markTeardownScheduled() before willTerminate, and we still
                 // need to save here.
-                guard self.isFirstCoordinatorForConnection() else { return }
                 let allTabs = Self.aggregatedTabs(for: self.connectionId)
                 let selectedId = Self.aggregatedSelectedTabId(for: self.connectionId)
-                self.persistence.saveNowSync(
-                    windowedTabs: allTabs,
-                    selectedTabId: selectedId
-                )
+                self.persistence.saveNowSync(tabs: allTabs, selectedTabId: selectedId)
             }
         }
 
@@ -1001,10 +971,10 @@ final class MainContentCoordinator {
     func loadQueryIntoEditor(
         _ query: String,
         databaseName: String? = nil,
-        forceNewWindowTab: Bool = false
+        forceNewTab: Bool = false
     ) -> WindowTabOpenDisposition {
         let targetDatabaseName = databaseName ?? browseDatabaseName
-        if !forceNewWindowTab,
+        if !forceNewTab,
            let (tab, tabIndex) = tabManager.selectedTabAndIndex,
            tab.tabType == .query,
            databaseName == nil
@@ -1016,7 +986,7 @@ final class MainContentCoordinator {
             return .currentCoordinator
         }
 
-        if !forceNewWindowTab, tabManager.tabs.isEmpty {
+        if !forceNewTab, tabManager.tabs.isEmpty {
             tabManager.addTab(initialQuery: query, databaseName: targetDatabaseName)
             return .currentCoordinator
         }

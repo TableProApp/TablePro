@@ -314,11 +314,6 @@ struct MainContentView: View {
                 coordinator.aiViewModel = rightPanelState.aiViewModel
                 coordinator.rightPanelState = rightPanelState
 
-                // (NSToolbar install moved to `configureWindow(_:)` — at onAppear
-                // time `viewWindow` is still nil because WindowAccessor fires its
-                // callback on viewDidMoveToWindow, which runs AFTER SwiftUI's
-                // onAppear in NSHostingView-hosted content.)
-
                 Self.lifecycleLogger.info(
                     "[open] MainContentView.onAppear done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
                 )
@@ -329,14 +324,7 @@ struct MainContentView: View {
     }
 
     private var bodyContentCore: some View {
-        mainContentView
-            // Phase 3: SwiftUI `.toolbar { ... }` removed — NSToolbar is now
-            // installed directly on NSWindow by TabWindowController (see
-            // `MainWindowToolbar`). Reuses every existing SwiftUI subview
-            // (ConnectionStatusView, SafeModeBadgeView, popovers, etc.) via
-            // `NSHostingView` inside `NSToolbarItem.view`. Connection color
-            // tint is not yet ported; `ToolbarTintModifier` no-ops under
-            // NSHostingView so leaving the modifier off has no visible loss.
+        editorTabStripAndContent
             .task {
                 let start = Date()
                 Self.lifecycleLogger.info(
@@ -400,6 +388,28 @@ struct MainContentView: View {
     }
 
     // MARK: - Main Content
+
+    /// These tabs belong to one connection's editor pane, not to the window, so they sit above the
+    /// pane the way Xcode places its editor tabs. The titlebar is where a window's own document
+    /// tabs go, and putting a pane-level strip there moves the window's base line below it and
+    /// paints the strip on titlebar material instead of the content background.
+    ///
+    /// The strip is hidden while a connection holds a single tab, so a window that behaves the
+    /// way it always did gains no chrome. It appears the moment a second tab exists.
+    private var editorTabStripAndContent: some View {
+        VStack(spacing: 0) {
+            if tabManager.tabs.count > 1 {
+                EditorTabStrip(
+                    tabManager: tabManager,
+                    onClose: { coordinator.commandActions?.closeTab(id: $0) },
+                    onCloseOthers: { coordinator.commandActions?.closeOtherTabs(anchoredOn: $0) },
+                    onCloseAll: { coordinator.commandActions?.closeAllTabs() },
+                    onNewTab: { coordinator.commandActions?.newTab() }
+                )
+            }
+            mainContentView
+        }
+    }
 
     @ViewBuilder
     private var mainContentView: some View {

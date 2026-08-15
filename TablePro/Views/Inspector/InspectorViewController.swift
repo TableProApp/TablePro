@@ -450,6 +450,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             action: nil
         )
         mode.selectedSegment = 0
+        mode.setAccessibilityLabel(String(localized: "Split mode"))
         let stack = accessoryStack(with: [field, mode])
         alert.accessoryView = stack
         alert.window.initialFirstResponder = field
@@ -513,6 +514,8 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         alert.beginSheetModal(for: window)
     }
 
+    /// A fixed width truncates a longer localized segment label, and a row count times a guessed
+    /// row height is not the height the stack actually lays out to.
     private func accessoryStack(with views: [NSView]) -> NSStackView {
         let stack = NSStackView(views: views)
         stack.orientation = .vertical
@@ -520,9 +523,10 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         for view in views {
-            view.widthAnchor.constraint(equalToConstant: 260).isActive = true
+            view.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
         }
-        stack.frame = NSRect(x: 0, y: 0, width: 260, height: CGFloat(views.count) * 32)
+        stack.layoutSubtreeIfNeeded()
+        stack.frame = NSRect(origin: .zero, size: stack.fittingSize)
         return stack
     }
 

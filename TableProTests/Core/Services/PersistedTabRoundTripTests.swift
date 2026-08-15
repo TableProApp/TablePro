@@ -171,7 +171,8 @@ struct PersistedTabRoundTripTests {
 
     @Test("windowGroupIndex encodes and decodes")
     func windowGroupIndexRoundTrip() throws {
-        let tab = tableTab().toPersistedTab(windowGroupIndex: 2)
+        var tab = tableTab().toPersistedTab()
+        tab.windowGroupIndex = 2
         let data = try JSONEncoder().encode(tab)
         let decoded = try JSONDecoder().decode(PersistedTab.self, from: data)
         #expect(decoded.windowGroupIndex == 2)

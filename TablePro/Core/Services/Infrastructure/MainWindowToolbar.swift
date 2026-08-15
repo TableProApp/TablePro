@@ -76,6 +76,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         quickSwitcher,
         newTab,
         previewSQL,
+        .inspectorTrackingSeparator,
         inspector,
     ]
 

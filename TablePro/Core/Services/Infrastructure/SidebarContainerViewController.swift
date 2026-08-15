@@ -9,17 +9,18 @@ import SwiftUI
 @MainActor
 internal final class SidebarContainerViewController: NSViewController {
     private let searchField = NSSearchField()
-    private var hostingController: NSHostingController<AnyView>
+    /// The filter field is window chrome and stays put; only the object list below it belongs to a
+    /// connection, so that is the part the window swaps.
+    private let listHost = WorkspacePaneHost()
     private var sidebarState: SharedSidebarState?
     private var observationTask: Task<Void, Never>?
 
-    var rootView: AnyView {
-        get { hostingController.rootView }
-        set { hostingController.rootView = newValue }
+    internal func show(_ controller: NSViewController?) {
+        listHost.show(controller)
+        searchField.nextKeyView = controller?.view ?? listHost.view
     }
 
-    init(rootView: AnyView) {
-        self.hostingController = NSHostingController(rootView: rootView)
+    init() {
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -41,8 +42,8 @@ internal final class SidebarContainerViewController: NSViewController {
         searchField.setAccessibilityLabel(String(localized: "Filter"))
         view.addSubview(searchField)
 
-        addChild(hostingController)
-        let hostingView = hostingController.view
+        addChild(listHost)
+        let hostingView = listHost.view
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hostingView)
         searchField.nextKeyView = hostingView
@@ -133,10 +134,18 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
         writeSearchText("")
     }
 
+    /// Down from the filter field hands focus to the list. The handoff goes through the key view loop,
+    /// which only ever lands on a view that answers `acceptsFirstResponder`; naming the hosting view
+    /// directly parked focus on a view that does not, so the selection never moved, the list never drew
+    /// as focused, and returning true swallowed the key. Returning false when nothing took focus leaves
+    /// AppKit's own handling in place.
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        guard commandSelector == #selector(NSResponder.moveDown(_:)) else { return false }
-        view.window?.makeFirstResponder(hostingController.view)
-        return true
+        guard commandSelector == #selector(NSResponder.moveDown(_:)), let window = view.window else {
+            return false
+        }
+        let previous = window.firstResponder
+        window.selectKeyView(following: searchField)
+        return window.firstResponder !== previous
     }
 
     private func writeSearchText(_ text: String) {

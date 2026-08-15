@@ -59,6 +59,30 @@ struct WorkspaceRailStoreTests {
         #expect(entries.isEmpty)
     }
 
+    /// Close acts on the connection, so every row it owns has to go in one pass. A connection with
+    /// tabs in two databases has two rows, and leaving either behind is what made the old
+    /// container-scoped close read as doing nothing.
+    @Test("Closing a connection removes every row it owns, not just one")
+    func closingAConnectionDropsAllOfItsRows() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let session = makeSession(connection, browseDatabase: "app")
+        let tabs = [connection.id: [tableTab(database: "app"), tableTab(database: "logs")]]
+
+        let before = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: session],
+            tabs: tabs
+        )
+        #expect(Set(before.map(\.container)) == ["app", "logs"])
+
+        let after = resolve(
+            openConnectionIds: [],
+            sessions: [connection.id: session],
+            tabs: tabs
+        )
+        #expect(after.isEmpty)
+    }
+
     @Test("An entry shows the database being browsed, not the connection's saved default")
     func entryShowsBrowsedContainer() throws {
         let connection = TestFixtures.makeConnection(database: "saved_default")
@@ -193,24 +217,30 @@ struct WorkspaceRailStoreTests {
         #expect(row == 1)
     }
 
-    @Test("Sending the user to another connection returns this rail's selection to its own workspace")
-    func dispatchingToAnotherConnectionRestoresSelection() {
-        let mine = UUID()
-        let theirs = WorkspaceID(connectionId: UUID(), container: "app")
-        #expect(WorkspaceRailStore.shouldRestoreSelection(after: theirs, railConnectionId: mine))
+    /// The connection passed in is the one the window is showing now, not the one it was opened
+    /// with. A window hosts several and switches between them, so the same entry list has to
+    /// resolve to a different row as the window moves.
+    @Test("The selected row follows the connection the window switched to")
+    func selectionFollowsTheWindowsCurrentConnection() {
+        let first = UUID()
+        let second = UUID()
+        let opened = WorkspaceID(connectionId: first, container: "app")
+        let switchedTo = WorkspaceID(connectionId: second, container: "logs")
+        let entries = [opened, switchedTo]
+
+        #expect(WorkspaceRailStore.selectedRow(connectionId: first, browsed: opened, in: entries) == 0)
+        #expect(WorkspaceRailStore.selectedRow(connectionId: second, browsed: switchedTo, in: entries) == 1)
     }
 
-    @Test("Switching container inside this connection leaves the selection where the user put it")
-    func dispatchingWithinOneConnectionKeepsSelection() {
-        let mine = UUID()
-        let sibling = WorkspaceID(connectionId: mine, container: "logs")
-        #expect(!WorkspaceRailStore.shouldRestoreSelection(after: sibling, railConnectionId: mine))
-    }
+    /// A connection that failed and has not been retried yet has no session, so nothing is browsed.
+    /// The window is still on it, and the rail has to say so.
+    @Test("A connection with no session still selects its own row")
+    func selectionHoldsWhileTheSessionIsAbsent() {
+        let failed = UUID()
+        let other = WorkspaceID(connectionId: UUID(), container: "app")
+        let mine = WorkspaceID(connectionId: failed, container: "")
 
-    @Test("A rail with no connection of its own restores nothing")
-    func railWithoutConnectionRestoresNothing() {
-        let target = WorkspaceID(connectionId: UUID(), container: "app")
-        #expect(!WorkspaceRailStore.shouldRestoreSelection(after: target, railConnectionId: nil))
+        #expect(WorkspaceRailStore.selectedRow(connectionId: failed, browsed: nil, in: [other, mine]) == 1)
     }
 
     @Test("A window with no connection selects nothing")

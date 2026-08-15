@@ -5,9 +5,12 @@
 
 import AppKit
 
-/// AppKit appends the open-window list to whichever menu is assigned to
-/// `NSApp.windowsMenu`, and adds the native tab items itself for windows that take
-/// part in tabbing. Only the items it does not provide are built here.
+/// AppKit appends the open-window list to whichever menu is assigned to `NSApp.windowsMenu`, and
+/// that is all it appends. It does not contribute the window-tabbing commands: a menu built in code
+/// gets the window list and nothing else, measured with two windows actually in one tab group. The
+/// app still opts into window tabbing through `NSWindow.tabbingMode`, so the commands that go with
+/// it are built here. `NSWindow` implements both and validates them itself, so they dim when the
+/// window is not part of a tab group.
 @MainActor
 enum WindowMenuBuilder {
     static let tabNumberRange = 1...9
@@ -27,19 +30,23 @@ enum WindowMenuBuilder {
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Show Previous Tab"),
-                action: #selector(NSWindow.selectPreviousTab(_:)),
+                action: #selector(MainSplitViewController.selectPreviousEditorTab(_:)),
                 shortcut: .showPreviousTab,
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
                 String(localized: "Show Next Tab"),
-                action: #selector(NSWindow.selectNextTab(_:)),
+                action: #selector(MainSplitViewController.selectNextEditorTab(_:)),
                 shortcut: .showNextTab,
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
                 String(localized: "Move Tab to New Window"),
                 action: #selector(NSWindow.moveTabToNewWindow(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Merge All Windows"),
+                action: #selector(NSWindow.mergeAllWindows(_:))
             ),
             MenuItemFactory.separator
         ]

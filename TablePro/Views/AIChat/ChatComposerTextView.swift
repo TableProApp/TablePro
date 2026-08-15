@@ -75,6 +75,7 @@ struct ChatComposerTextView: NSViewRepresentable {
 
         if textView.placeholder != placeholder {
             textView.placeholder = placeholder
+            textView.setAccessibilityPlaceholderValue(placeholder)
             textView.needsDisplay = true
         }
 
@@ -233,8 +234,23 @@ final class ChatComposerNSTextView: NSTextView {
             .font: font,
             .foregroundColor: placeholderColor
         ]
-        let origin = NSPoint(x: textContainerInset.width, y: textContainerInset.height)
-        (placeholder as NSString).draw(at: origin, withAttributes: attributes)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byTruncatingTail
+        var truncating = attributes
+        truncating[.paragraphStyle] = paragraph
+        let available = NSRect(
+            x: textContainerInset.width,
+            y: textContainerInset.height,
+            width: max(bounds.width - textContainerInset.width * 2, 0),
+            height: font.boundingRectForFont.height
+        )
+        (placeholder as NSString).draw(
+            with: available,
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+            attributes: truncating,
+            context: nil
+        )
     }
 
     override func paste(_ sender: Any?) {

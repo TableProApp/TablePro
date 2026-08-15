@@ -2,15 +2,8 @@
 //  WindowTabGroupingTests.swift
 //  TableProTests
 //
-//  Tests for `WindowManager.tabbingIdentifier(for:)` — the static helper that
-//  drives macOS native window tab grouping for main editor windows.
-//
-//  The earlier `WindowOpener.pendingPayloads` / `acknowledgePayload` /
-//  `consumeOldestPendingConnectionId` queue was removed when
-//  `WindowManager.openTab` started performing tab-group merge synchronously
-//  at window-creation time. The corresponding tests have been removed.
-//
 
+import AppKit
 import Foundation
 import TableProPluginKit
 import Testing
@@ -20,37 +13,24 @@ import Testing
 @Suite("WindowTabGrouping")
 @MainActor
 struct WindowTabGroupingTests {
-    @Test("tabbingIdentifier produces a connection-specific identifier")
-    func tabbingIdentifierUsesConnectionId() {
-        let connectionId = UUID()
-        let expected = "com.TablePro.main.\(connectionId.uuidString)"
-
-        let result = WindowManager.tabbingIdentifier(for: connectionId)
-
-        #expect(result == expected)
+    /// Every app window shares one identifier. A per-connection identifier is what stopped two
+    /// connections from ever sharing a window, and it is what left Merge All Windows unable to
+    /// fold two connection windows together.
+    @Test("Every main window shares one tabbing identifier")
+    func mainWindowsShareOneIdentifier() {
+        #expect(WindowManager.mainTabbingIdentifier == "com.TablePro.main")
     }
 
-    @Test("Two connections produce different tabbingIdentifiers")
-    func twoConnectionsProduceDifferentIdentifiers() {
-        let connectionA = UUID()
-        let connectionB = UUID()
+    @Test("A main window is recognised by its identifier prefix")
+    func mainWindowIdentification() {
+        let window = NSWindow()
+        window.identifier = NSUserInterfaceItemIdentifier("main")
+        #expect(WindowManager.isMainWindow(window))
 
-        let idA = WindowManager.tabbingIdentifier(for: connectionA)
-        let idB = WindowManager.tabbingIdentifier(for: connectionB)
+        window.identifier = NSUserInterfaceItemIdentifier("main-inspector")
+        #expect(WindowManager.isMainWindow(window))
 
-        #expect(idA != idB)
-        #expect(idA.contains(connectionA.uuidString))
-        #expect(idB.contains(connectionB.uuidString))
+        window.identifier = NSUserInterfaceItemIdentifier("welcome")
+        #expect(WindowManager.isMainWindow(window) == false)
     }
-
-    @Test("Same connection produces same tabbingIdentifier")
-    func sameConnectionProducesSameIdentifier() {
-        let connectionId = UUID()
-
-        let id1 = WindowManager.tabbingIdentifier(for: connectionId)
-        let id2 = WindowManager.tabbingIdentifier(for: connectionId)
-
-        #expect(id1 == id2)
-    }
-
 }

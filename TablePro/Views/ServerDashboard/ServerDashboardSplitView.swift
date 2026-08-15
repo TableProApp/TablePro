@@ -22,6 +22,23 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         return splitViewController
     }
 
+    /// `NSSplitViewItem.minimumThickness` is a required constraint, so this controller reports
+    /// the summed minimums as its fitting size. SwiftUI turns that into a `minWidth` that outranks
+    /// a divider drag, which kills the window's own dividers.
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        nsViewController: NSSplitViewController,
+        context: Context
+    ) -> CGSize? {
+        let resolved = proposal.replacingUnspecifiedDimensions(
+            by: CGSize(width: Self.naturalSize, height: Self.naturalSize)
+        )
+        guard resolved.width.isFinite, resolved.height.isFinite else { return nil }
+        return resolved
+    }
+
+    private static let naturalSize: CGFloat = 480
+
     func updateNSViewController(_ splitViewController: NSSplitViewController, context: Context) {
         context.coordinator.sessionsController?.rootView = SessionsTableView(viewModel: viewModel)
         context.coordinator.metricsController?.rootView = MetricsBarView(
@@ -44,6 +61,7 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         switch panel {
         case .activeSessions:
             let controller = NSHostingController(rootView: SessionsTableView(viewModel: viewModel))
+            controller.sizingOptions = []
             let item = NSSplitViewItem(viewController: controller)
             item.minimumThickness = 120
             item.holdingPriority = .defaultLow
@@ -57,6 +75,7 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
                     error: viewModel.panelErrors[.serverMetrics]
                 )
             )
+            controller.sizingOptions = []
             let item = NSSplitViewItem(viewController: controller)
             item.minimumThickness = 76
             item.maximumThickness = 200
@@ -71,6 +90,7 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
                     error: viewModel.panelErrors[.slowQueries]
                 )
             )
+            controller.sizingOptions = []
             let item = NSSplitViewItem(viewController: controller)
             item.minimumThickness = 100
             item.canCollapse = true

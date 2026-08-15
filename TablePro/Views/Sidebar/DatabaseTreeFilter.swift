@@ -21,6 +21,26 @@ enum DatabaseTreeFilter {
         return deduplicated(matched, by: \.id)
     }
 
+    /// A schema whose tables have not loaded yet cannot be judged, so it stays visible. Reading an
+    /// unloaded schema as an empty one hides it for the whole life of the filter and blanks the
+    /// pane while the search-driven load is still running.
+    static func hierarchicalSchemaIsVisible(
+        _ schema: String,
+        searchText: String,
+        isLoaded: Bool,
+        tables: [TableInfo]
+    ) -> Bool {
+        if matches(searchText, schema) { return true }
+        guard isLoaded else { return true }
+        return !filteredTables(tables, searchText: searchText).isEmpty
+    }
+
+    /// A schema the search matched by name shows everything inside it. Filtering its tables by the
+    /// same query leaves the matched schema reporting no items.
+    static func hierarchicalTables(_ tables: [TableInfo], schema: String, searchText: String) -> [TableInfo] {
+        matches(searchText, schema) ? tables : filteredTables(tables, searchText: searchText)
+    }
+
     static func visibleSchemas(
         _ schemas: [String],
         systemSchemas: Set<String>,

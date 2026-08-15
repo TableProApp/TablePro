@@ -50,8 +50,14 @@ internal final class WindowLifecycleMonitor {
         /// window whose content is rebuilt registers again under a new id. Reconnecting rebuilds it.
         /// Leaving the superseded entry behind makes one window count as two, and everything asking
         /// this registry how many windows a connection has would believe it.
+        ///
+        /// The connection has to match. One window hosts every open connection now, and each one's
+        /// content registers that same window under its own id, so matching on the window alone made
+        /// every new connection evict the previous one: the registry held a single connection per
+        /// window, named whichever mounted last. `hasWindows`, `findWindow` and `mostRecentWindow`
+        /// then answered nothing for connections that were open and on screen.
         let supersededIds = entries.compactMap { key, value -> UUID? in
-            key != windowId && value.window === window ? key : nil
+            key != windowId && value.window === window && value.connectionId == connectionId ? key : nil
         }
         for supersededId in supersededIds {
             guard let superseded = entries.removeValue(forKey: supersededId) else { continue }
@@ -97,6 +103,29 @@ internal final class WindowLifecycleMonitor {
             window: window,
             observers: [closeObserver, focusObserver]
         )
+        AppEvents.shared.connectionWindowsChanged.send()
+    }
+
+    /// Forgets every window entry for a connection the app no longer hosts.
+    ///
+    /// Cleanup used to ride on `NSWindow.willCloseNotification`, which was enough while closing a
+    /// connection meant closing its window. A connection can now be closed out of a window that
+    /// stays open for the others, and nothing told this registry: the entry survived, the workspace
+    /// rail kept listing a connection with no workspace, and clicking that row reached a window
+    /// that could not host it.
+    internal func unregisterWindows(for connectionId: UUID) {
+        let staleIds = entries.compactMap { key, value -> UUID? in
+            value.connectionId == connectionId ? key : nil
+        }
+        guard !staleIds.isEmpty else { return }
+        for windowId in staleIds {
+            unregisterSourceFiles(for: windowId)
+            guard let entry = entries.removeValue(forKey: windowId) else { continue }
+            for observer in entry.observers {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            forgetFocus(windowId: windowId, connectionId: entry.connectionId)
+        }
         AppEvents.shared.connectionWindowsChanged.send()
     }
 
@@ -286,39 +315,48 @@ internal final class WindowLifecycleMonitor {
         lastFocusedWindowIds.removeValue(forKey: connectionId)
     }
 
+    /// Every connection the closing window presented, not the first one found.
+    ///
+    /// A window hosts all of them now, so taking one entry left the rest registered against a window
+    /// that was going away, and left their sessions connected: drivers, SSH tunnels and health
+    /// monitors running with no window and no workspace behind them until the app quit.
     private func handleWindowClose(_ closedWindow: NSWindow) {
-        guard let (windowId, entry) = entries.first(where: { $0.value.window === closedWindow }) else {
+        let closing = entries.compactMap { key, value -> (UUID, Entry)? in
+            value.window === closedWindow ? (key, value) : nil
+        }
+        guard !closing.isEmpty else {
             Self.lifecycleLogger.info(
                 "[close] handleWindowClose: unknown window (not in registry)"
             )
             return
         }
 
-        let closedConnectionId = entry.connectionId
-        Self.lifecycleLogger.info(
-            "[close] willCloseNotification -> handleWindowClose windowId=\(windowId, privacy: .public) connId=\(closedConnectionId, privacy: .public)"
-        )
-
-        for observer in entry.observers {
-            NotificationCenter.default.removeObserver(observer)
+        for (windowId, entry) in closing {
+            Self.lifecycleLogger.info(
+                "[close] willCloseNotification -> handleWindowClose windowId=\(windowId, privacy: .public) connId=\(entry.connectionId, privacy: .public)"
+            )
+            for observer in entry.observers {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            unregisterSourceFiles(for: windowId)
+            entries.removeValue(forKey: windowId)
+            forgetFocus(windowId: windowId, connectionId: entry.connectionId)
         }
-        unregisterSourceFiles(for: windowId)
-        entries.removeValue(forKey: windowId)
-        forgetFocus(windowId: windowId, connectionId: closedConnectionId)
         AppEvents.shared.connectionWindowsChanged.send()
 
-        let hasRemainingWindows = entries.values.contains {
-            $0.connectionId == closedConnectionId && $0.window != nil
-        }
-        Self.lifecycleLogger.info(
-            "[close] handleWindowClose post-remove windowId=\(windowId, privacy: .public) remainingForConn=\(hasRemainingWindows) totalEntries=\(self.entries.count)"
-        )
-        if !hasRemainingWindows {
+        for connectionId in Set(closing.map(\.1.connectionId)) {
+            let hasRemainingWindows = entries.values.contains {
+                $0.connectionId == connectionId && $0.window != nil
+            }
+            guard !hasRemainingWindows else { continue }
+            Self.lifecycleLogger.info(
+                "[close] handleWindowClose disconnecting connId=\(connectionId, privacy: .public) totalEntries=\(self.entries.count)"
+            )
             Task {
                 let t0 = Date()
-                await DatabaseManager.shared.disconnectSession(closedConnectionId)
+                await DatabaseManager.shared.disconnectSession(connectionId)
                 Self.lifecycleLogger.info(
-                    "[close] (from handleWindowClose) disconnectSession done connId=\(closedConnectionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
+                    "[close] (from handleWindowClose) disconnectSession done connId=\(connectionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
                 )
             }
         }

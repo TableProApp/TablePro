@@ -87,7 +87,6 @@ struct QuickSwitcherPanelContent: View {
     @Bindable var viewModel: QuickSwitcherViewModel
     let onCommit: (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void
 
-    @State private var isNavigating = false
     @State private var keyMonitor: Any?
 
     var body: some View {
@@ -101,8 +100,6 @@ struct QuickSwitcherPanelContent: View {
             }
         }
         .frame(width: PanelMetrics.width)
-        .onChange(of: viewModel.searchText) { _, _ in isNavigating = false }
-        .onChange(of: viewModel.scope) { _, _ in isNavigating = false }
         .onAppear { installKeyMonitor() }
         .onDisappear { removeKeyMonitor() }
     }
@@ -184,20 +181,15 @@ struct QuickSwitcherPanelContent: View {
     private var inputFields: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 19, weight: .medium))
+                .font(.title2)
+            .imageScale(.large)
                 .foregroundStyle(.secondary)
 
             QuickSwitcherSearchField(
                 text: $viewModel.searchText,
                 placeholder: String(localized: "Search tables, views, databases, queries..."),
-                onMoveUp: {
-                    isNavigating = true
-                    viewModel.moveSelection(by: -1)
-                },
-                onMoveDown: {
-                    isNavigating = true
-                    viewModel.moveSelection(by: 1)
-                },
+                onMoveUp: { viewModel.moveSelection(by: -1) },
+                onMoveDown: { viewModel.moveSelection(by: 1) },
                 onSubmit: { openSelectedItem() }
             )
         }
@@ -257,7 +249,7 @@ struct QuickSwitcherPanelContent: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 24)
@@ -266,15 +258,18 @@ struct QuickSwitcherPanelContent: View {
     }
 
     private func itemRow(_ item: QuickSwitcherItem) -> some View {
+        /// The panel closes as soon as it stops being key, so "unfocused" is a state it cannot be in
+        /// and must not depict. Gating this on whether an arrow key had fired painted the row Return
+        /// commits as inactive until the user pressed one.
         let isSelected = item.id == viewModel.selectedItemId
-        let isEmphasized = isSelected && isNavigating
+        let isEmphasized = isSelected
 
         return HStack(spacing: 12) {
             iconView(for: item, isEmphasized: isEmphasized)
 
             Text(highlightedName(for: item))
-                .font(.system(size: 15))
-                .foregroundStyle(isEmphasized ? Color.white : Color.primary)
+                .font(.title3)
+                .foregroundStyle(isEmphasized ? Color.emphasizedSelectionLabel : Color.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
@@ -296,27 +291,31 @@ struct QuickSwitcherPanelContent: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            isNavigating = true
+        .onTapGesture(count: 2) {
             viewModel.selectedItemId = item.id
-            if NSApp.currentEvent?.clickCount == 2 {
-                onCommit(item, .open)
-            }
+            onCommit(item, .open)
         }
+        .simultaneousGesture(
+            TapGesture().onEnded { viewModel.selectedItemId = item.id }
+        )
         .contextMenu { contextMenuActions(for: item) }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(item.name))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { onCommit(item, .open) }
         .id(item.id)
     }
 
     private func iconView(for item: QuickSwitcherItem, isEmphasized: Bool) -> some View {
         Image(systemName: item.iconName)
             .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(isEmphasized ? Color.white : Color.secondary)
+            .foregroundStyle(isEmphasized ? Color.emphasizedSelectionLabel : Color.secondary)
             .frame(width: PanelMetrics.iconContainerSize, height: PanelMetrics.iconContainerSize)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(
                         isEmphasized
-                            ? Color.white.opacity(0.2)
+                            ? Color.emphasizedSelectionLabel.opacity(0.2)
                             : Color(nsColor: .quaternarySystemFill)
                     )
             )
@@ -324,11 +323,11 @@ struct QuickSwitcherPanelContent: View {
 
     @ViewBuilder
     private func trailingAccessories(for item: QuickSwitcherItem, isSelected: Bool, isEmphasized: Bool) -> some View {
-        let secondaryColor = isEmphasized ? Color.white.opacity(0.85) : Color.secondary
+        let secondaryColor = isEmphasized ? Color.emphasizedSelectionLabel.opacity(0.85) : Color.secondary
 
         if item.isOpenInTab, !isSelected {
             Text(String(localized: "Open"))
-                .font(.system(size: 10, weight: .medium))
+                .font(.caption2.weight(.medium))
                 .foregroundStyle(secondaryColor)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
@@ -337,7 +336,7 @@ struct QuickSwitcherPanelContent: View {
 
         if showsSubtitle(for: item, isSelected: isSelected) {
             Text(item.subtitle)
-                .font(.system(size: 12))
+                .font(.callout)
                 .foregroundStyle(secondaryColor)
                 .lineLimit(1)
         }
@@ -360,11 +359,11 @@ struct QuickSwitcherPanelContent: View {
     private func keycap(_ label: String, isEmphasized: Bool) -> some View {
         Text(label)
             .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(isEmphasized ? Color.white : Color.secondary)
+            .foregroundStyle(isEmphasized ? Color.emphasizedSelectionLabel : Color.secondary)
             .frame(width: 24, height: 18)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(isEmphasized ? Color.white.opacity(0.25) : Color(nsColor: .quaternarySystemFill))
+                    .fill(isEmphasized ? Color.emphasizedSelectionLabel.opacity(0.25) : Color(nsColor: .quaternarySystemFill))
             )
     }
 
@@ -450,11 +449,9 @@ struct QuickSwitcherPanelContent: View {
             if modifiers == .control {
                 switch characters {
                 case "j", "n":
-                    isNavigating = true
                     viewModel.moveSelection(by: 1)
                     return nil
                 case "k", "p":
-                    isNavigating = true
                     viewModel.moveSelection(by: -1)
                     return nil
                 default:

@@ -306,15 +306,6 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        if key == .tab {
-            if event.modifierFlags.contains(.shift) {
-                handleShiftTabKey()
-            } else {
-                handleTabKey()
-            }
-            return
-        }
-
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let row = selectedRow
 
@@ -494,50 +485,89 @@ final class KeyHandlingTableView: NSTableView {
         return !column.isHidden && column.identifier != ColumnIdentitySchema.rowNumberIdentifier
     }
 
-    private func handleTabKey() {
-        let row = selectedRow
-        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
-
-        var nextColumn = focusedColumn + 1
-        var nextRow = row
-
-        if nextColumn >= numberOfColumns {
-            nextColumn = DataGridView.firstDataTableColumnIndex
-            nextRow += 1
-        }
-        if nextRow >= numberOfRows {
-            nextRow = numberOfRows - 1
-            nextColumn = numberOfColumns - 1
-        }
-
-        selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
-        focusedRow = nextRow
-        focusedColumn = nextColumn
-        scrollRowToVisible(nextRow)
-        scrollColumnToVisible(nextColumn)
+    /// `NSResponder` declares these two but does not implement them, so calling `super` raises
+    /// `doesNotRecognizeSelector`. With no cell cursor to move, Tab has to leave the grid the way
+    /// it leaves any other view, or focus is trapped here for the rest of the session.
+    /// VoiceOver follows the focused element, and a table view reports itself rather than the
+    /// cell the grid's own cursor is on, so the cursor was invisible to it. The selected-cells
+    /// override is clamped to the visible rows: AppKit will happily ask for every cell in a
+    /// million-row selection otherwise.
+    /// The cursor moved, so assistive technology is told to re-read where focus now is. The
+    /// element itself stays the table: `NSTableView`'s own focused-element resolution already
+    /// walks to the cell, and overriding it in Swift is not available on this type.
+    internal func postCellCursorMoved() {
+        guard selectedRow >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
+        guard let cell = view(atColumn: focusedColumn, row: selectedRow, makeIfNecessary: false) else { return }
+        NSAccessibility.post(element: cell, notification: .focusedUIElementChanged)
     }
 
-    private func handleShiftTabKey() {
+    override func accessibilitySelectedCells() -> [Any]? {
+        guard let controller = gridSelection, !controller.isEmpty else {
+            return super.accessibilitySelectedCells()
+        }
+        let visible = rows(in: visibleRect)
+        guard visible.length > 0 else { return [] }
+        var cells: [Any] = []
+        for rectangle in controller.selection.rectangles {
+            for row in rectangle.rows where NSLocationInRange(row, visible) {
+                for column in rectangle.columns {
+                    guard let cell = view(atColumn: column, row: row, makeIfNecessary: false) else { continue }
+                    cells.append(cell)
+                }
+            }
+        }
+        return cells
+    }
+
+    override func insertTab(_ sender: Any?) {
+        guard !moveFocusToNextCell() else { return }
+        window?.selectKeyView(following: self)
+    }
+
+    override func insertBacktab(_ sender: Any?) {
+        guard !moveFocusToPreviousCell() else { return }
+        window?.selectKeyView(preceding: self)
+    }
+
+    private func moveFocusToNextCell() -> Bool {
         let row = selectedRow
-        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
+        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return false }
 
-        var prevColumn = focusedColumn - 1
-        var prevRow = row
-
-        if !DataGridView.isDataTableColumn(prevColumn) {
-            prevColumn = numberOfColumns - 1
-            prevRow -= 1
+        var nextColumn = nextVisibleDataColumn(after: focusedColumn)
+        var nextRow = row
+        if nextColumn < 0 {
+            let wrapped = firstVisibleDataColumn()
+            guard wrapped >= 0, row + 1 < numberOfRows else { return true }
+            nextColumn = wrapped
+            nextRow = row + 1
         }
-        if prevRow < 0 {
-            prevRow = 0
-            prevColumn = DataGridView.firstDataTableColumnIndex
-        }
+        focusCell(row: nextRow, column: nextColumn)
+        return true
+    }
 
-        selectRowIndexes(IndexSet(integer: prevRow), byExtendingSelection: false)
-        focusedRow = prevRow
-        focusedColumn = prevColumn
-        scrollRowToVisible(prevRow)
-        scrollColumnToVisible(prevColumn)
+    private func moveFocusToPreviousCell() -> Bool {
+        let row = selectedRow
+        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return false }
+
+        var previousColumn = previousVisibleDataColumn(before: focusedColumn)
+        var previousRow = row
+        if previousColumn < 0 {
+            let wrapped = lastVisibleDataColumn()
+            guard wrapped >= 0, row > 0 else { return true }
+            previousColumn = wrapped
+            previousRow = row - 1
+        }
+        focusCell(row: previousRow, column: previousColumn)
+        return true
+    }
+
+    private func focusCell(row: Int, column: Int) {
+        selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        focusedRow = row
+        focusedColumn = column
+        scrollRowToVisible(row)
+        scrollColumnToVisible(column)
+        postCellCursorMoved()
     }
 
     override func rightMouseDown(with event: NSEvent) {

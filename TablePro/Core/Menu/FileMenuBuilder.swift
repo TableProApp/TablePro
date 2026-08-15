@@ -17,7 +17,7 @@ enum FileMenuBuilder {
             ),
             MenuItemFactory.item(
                 String(localized: "New Tab"),
-                action: #selector(NSWindow.newWindowForTab(_:)),
+                action: #selector(MainSplitViewController.newEditorTab(_:)),
                 shortcut: .newTab,
                 keyboard: keyboard
             ),
@@ -50,7 +50,7 @@ enum FileMenuBuilder {
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Close Tab"),
-                action: #selector(NSWindow.performClose(_:)),
+                action: #selector(MainSplitViewController.closeEditorTab(_:)),
                 shortcut: .closeTab,
                 keyboard: keyboard
             ),
@@ -71,6 +71,10 @@ enum FileMenuBuilder {
                 action: #selector(MainSplitViewController.closeAllTabs(_:)),
                 shortcut: .closeAllTabs,
                 keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Close Connection"),
+                action: #selector(MainSplitViewController.closeConnection(_:))
             ),
             MenuItemFactory.item(
                 String(localized: "Reopen Closed Tab"),

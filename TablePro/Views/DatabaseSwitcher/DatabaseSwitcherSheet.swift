@@ -130,7 +130,7 @@ struct DatabaseSwitcherSheet: View {
             .focused($focus, equals: .list)
             .onChange(of: viewModel.selectedDatabase) { _, newValue in
                 guard let item = newValue else { return }
-                withAnimation(.easeInOut(duration: 0.15)) {
+                withMotion(.easeInOut(duration: 0.15)) {
                     proxy.scrollTo(item, anchor: .center)
                 }
             }
@@ -146,14 +146,17 @@ struct DatabaseSwitcherSheet: View {
         return HStack(spacing: 8) {
             Image(systemName: "checkmark")
                 .font(.body.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .selectionAwareTint(Color.accentColor)
                 .opacity(isCurrent ? 1 : 0)
                 .frame(width: 14)
+                .accessibilityLabel(Text("Current database"))
+                .accessibilityHidden(!isCurrent)
 
             Image(systemName: database.icon)
                 .font(.body)
-                .foregroundStyle(database.isSystemDatabase ? Color.secondary : Color.accentColor)
+                .selectionAwareTint(database.isSystemDatabase ? Color.secondary : Color.accentColor)
                 .frame(width: 16)
+                .accessibilityHidden(true)
 
             Text(database.name)
                 .font(.body)
