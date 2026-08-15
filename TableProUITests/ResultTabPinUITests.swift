@@ -24,9 +24,11 @@ final class ResultTabPinUITests: UITestCase {
         XCTAssertTrue(resultTab.waitForExistence(timeout: 20), "The query must produce a result tab")
         resultTab.rightClick()
 
-        /// The app has a menu per menu-bar item, so firstMatch is not the menu that just opened.
-        /// The result tab's contextual menu carries the tab's own identifier.
-        let contextMenu = app.menus.matching(identifier: "result-tab").firstMatch
+        /// A contextual menu opens inside the window; the menu-bar menus hang off `MenuBar`, so
+        /// scoping to the window isolates the one that just opened. Matching on the menu's
+        /// accessibility identifier instead worked here but not on the CI runner, whose macOS
+        /// build exposes the menu without it.
+        let contextMenu = app.windows.firstMatch.menus.firstMatch
         XCTAssertTrue(
             contextMenu.menuItems["Close Others"].waitForExistence(timeout: 5),
             "Right-clicking a result tab must open the result menu, not the editor menu"

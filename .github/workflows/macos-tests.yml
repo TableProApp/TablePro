@@ -170,11 +170,19 @@ jobs:
       - name: Run UI tests
         run: |
           set -o pipefail
+          SKIP_ARGS=()
+          while IFS= read -r line; do
+            entry="${line%%#*}"
+            entry="$(echo "$entry" | xargs)"
+            [ -z "$entry" ] && continue
+            SKIP_ARGS+=("-skip-testing:TableProUITests/$entry")
+          done < .github/macos-ui-test-quarantine.txt
           xcodebuild test \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -destination "$TEST_DESTINATION" \
             -only-testing:TableProUITests \
+            "${SKIP_ARGS[@]}" \
             -parallel-testing-enabled NO \
             -test-iterations 2 \
             -retry-tests-on-failure \
