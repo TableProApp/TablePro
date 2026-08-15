@@ -306,11 +306,6 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// window leaves it where it was, because this window did not move. The rail needed a rule for
     /// when to put its highlight back only while it was guessing at the answer.
     private func activate(_ workspace: WorkspaceID) {
-        WorkspaceSwitchTrace.recordActivation(
-            connectionId: workspace.connectionId,
-            isHostedByThisWindow: host?.hostedConnectionIds.contains(workspace.connectionId) ?? false
-        )
-
         /// One window hosts every connection, so switching is a selection change in that
         /// window's own registry. Raising a different window is what made the rail read as a
         /// window switcher rather than a workspace switcher.
