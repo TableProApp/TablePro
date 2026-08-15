@@ -421,7 +421,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             let alreadyRendered = workspace.session?.isContentViewEquivalent(to: session) ?? false
             if alreadyRendered, workspace.phase == nextPhase { return }
             adoptSession(session, into: workspace)
-            if workspace.phase == nextPhase { refreshPanes(of: workspace) }
+            /// Repainted whether or not this workspace is the one on screen, and whether or not it
+            /// already had this phase. The equality guard can never hold on the first `.connecting`
+            /// to `.connected` step, and `transition(to:for:)` repaints only the selected workspace,
+            /// so a connection that finished connecting while the user was looking at another one
+            /// kept whatever placeholder it last rendered: its `MainContentView` never mounted, its
+            /// `commandActions` stayed nil, and every command aimed at it did nothing.
+            refreshPanes(of: workspace)
         } else if workspace.phase == .connected, nextPhase != .connected, !snapshot.exists {
             releaseSession(workspace)
         }
