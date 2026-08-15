@@ -66,6 +66,8 @@ internal final class QuickSwitcherViewModel {
         didSet { scheduleFilter(debounced: false) }
     }
     @ObservationIgnored private var filterTask: Task<Void, Never>?
+    @ObservationIgnored private var selectionQuery: String?
+    @ObservationIgnored private var selectionScope: QuickSwitcherScope?
     @ObservationIgnored private var activeLoadId = UUID()
     @ObservationIgnored private var activeCrossConnectionLoadId = UUID()
     @ObservationIgnored private var activeCrossConnectionQueryLoadId = UUID()
@@ -625,7 +627,7 @@ internal final class QuickSwitcherViewModel {
                 : await Self.filteredGroups(items: items, query: query, frecencyScores: frecencyScores)
             guard !Task.isCancelled, let self else { return }
             self.groups = groups
-            self.reconcileSelection()
+            self.reconcileSelection(query: query, scope: scope)
         }
     }
 
@@ -638,9 +640,18 @@ internal final class QuickSwitcherViewModel {
         await filterTask?.value
     }
 
-    private func reconcileSelection() {
+    /// A refilter the user did not ask for keeps their selection; a new query moves it to the best
+    /// match. Surviving the refilter is not evidence that the old row is still what the user wants:
+    /// `bestMatch` falls back to the subtitle, and every Connections-scope subtitle carries the
+    /// connection path, so a query matches most of the catalog through that path alone. The old row
+    /// therefore almost always survived, the highlight stayed on it while the ranked list moved
+    /// underneath, and Return opened something the user had stopped searching for.
+    private func reconcileSelection(query: String, scope: QuickSwitcherScope) {
         let items = flatItems
-        if let current = selectedItemId, items.contains(where: { $0.id == current }) {
+        let isSameSearch = query == selectionQuery && scope == selectionScope
+        selectionQuery = query
+        selectionScope = scope
+        if isSameSearch, let current = selectedItemId, items.contains(where: { $0.id == current }) {
             return
         }
         selectedItemId = items.first?.id

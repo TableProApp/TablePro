@@ -7,20 +7,24 @@ final class QueryHistoryFocusUITests: UITestCase {
         let app = try launchWithSampleDatabase()
         runQueries(in: app, ["SELECT * FROM Genre;", "SELECT * FROM Album;", "SELECT * FROM Artist;"])
 
-        // The editor is the window's first text view; the drawer's preview is added below it.
         let editor = app.windows.firstMatch.textViews.firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
         let editorBeforeClick = editor.value as? String ?? ""
 
         let list = showHistoryDrawer(in: app)
 
+        /// The drawer animates open, and a row frame read while it is still laying out puts the
+        /// click somewhere the row has left. Both panes existing is what says the drawer is up.
+        let detail = app.windows.firstMatch.descendants(matching: .any)
+            .matching(identifier: "query-history-detail").firstMatch
+        XCTAssertTrue(detail.waitForExistence(timeout: 10))
+
         // Row 0 is the "Today" section header, so the first entry is row 1.
         let rows = list.tableRows
         XCTAssertTrue(rows.element(boundBy: 1).waitForExistence(timeout: 10), "The drawer must list the queries just run")
         rows.element(boundBy: 1).click()
 
-        // The drawer's preview is the window's second text view, so it reports which row is selected.
-        let preview = app.windows.firstMatch.textViews.element(boundBy: 1)
+        let preview = app.textViews["query-history-detail-query"]
         XCTAssertTrue(preview.waitForExistence(timeout: 5))
         let previewAfterClick = preview.value as? String ?? ""
         XCTAssertFalse(previewAfterClick.isEmpty, "Clicking a row must show that row in the preview")

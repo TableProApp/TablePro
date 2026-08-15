@@ -36,17 +36,29 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         searchField.typeText("track")
         searchField.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
+        /// Every open connection lives in one window, so opening an object adds a tab rather than a
+        /// window, and the window retitles to the tab it selected. The strip stays hidden while the
+        /// connection holds a single tab, so the title is all there is to assert on here.
         let trackWindow = app.windows.matching(NSPredicate(format: "title BEGINSWITH %@", "Track")).firstMatch
         XCTAssertTrue(trackWindow.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.windows.count, 1)
 
         app.typeKey("o", modifierFlags: [.command, .shift])
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
         app.typeKey("5", modifierFlags: .command)
         searchField.typeText("invoice")
+        /// The panel has to have ranked Invoice before Return is sent. A new query used to leave the
+        /// previously highlighted row selected whenever it still matched, and in this scope every
+        /// subtitle carries the connection path, so Return committed the row typed before it.
+        XCTAssertTrue(app.buttons["Invoice"].waitForExistence(timeout: 10))
         searchField.typeKey(.return, modifierFlags: .option)
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
-        let invoiceWindow = app.windows.matching(NSPredicate(format: "title BEGINSWITH %@", "Invoice")).firstMatch
-        XCTAssertTrue(invoiceWindow.waitForExistence(timeout: 10))
+        /// Option+Return opens beside the tab you were on instead of replacing it, which is the one
+        /// thing that separates it from a plain Return. The second tab is also what brings the strip
+        /// out of hiding, so both tabs are assertable from here and neither was before.
+        XCTAssertTrue(tab(in: app, named: "Invoice").waitForExistence(timeout: 10))
+        XCTAssertTrue(tab(in: app, named: "Track").exists)
+        XCTAssertEqual(app.windows.count, 1)
 
         app.typeKey("o", modifierFlags: [.command, .shift])
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
@@ -58,7 +70,7 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
     }
 
-    func testQueriesScopeSearchesHistoryAndOpensANewWindowTab() throws {
+    func testQueriesScopeSearchesHistoryAndOpensANewTab() throws {
         let app = try launchWithSampleDatabase()
 
         app.typeKey("t", modifierFlags: .command)
@@ -96,6 +108,12 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
             .matching(NSPredicate(format: "value CONTAINS %@", "cross_connection_probe"))
             .firstMatch
         XCTAssertTrue(openedEditor.waitForExistence(timeout: 10))
+    }
+
+    private func tab(in app: XCUIApplication, named name: String) -> XCUIElement {
+        app.buttons.matching(
+            NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", "editor-tab", name)
+        ).firstMatch
     }
 
     private func editorTextView(in app: XCUIApplication) -> XCUIElement {

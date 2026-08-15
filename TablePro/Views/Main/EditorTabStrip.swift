@@ -171,6 +171,7 @@ private struct EditorTabStripItem: View {
             Button(String(localized: "Close All Tabs"), action: onCloseAll)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("editor-tab")
         .accessibilityLabel(Text(tab.title))
         .accessibilityValue(Text(positionDescription))
         .accessibilityAddTraits(isSelected ? .isSelected : [])

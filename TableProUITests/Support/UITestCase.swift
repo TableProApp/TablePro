@@ -14,10 +14,12 @@ import XCTest
 internal class UITestCase: XCTestCase {
     private var sandboxRoot: URL?
     private var launchedApps: [XCUIApplication] = []
+    private var privacyAlertMonitor: (any NSObjectProtocol)?
 
     override internal func setUpWithError() throws {
         try super.setUpWithError()
         continueAfterFailure = false
+        privacyAlertMonitor = addPrivacyAlertMonitor()
 
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("TableProUITests", isDirectory: true)
@@ -43,7 +45,27 @@ internal class UITestCase: XCTestCase {
             removeDefaultsSuite(forSandboxAt: sandboxRoot)
         }
         sandboxRoot = nil
+        if let privacyAlertMonitor {
+            removeUIInterruptionMonitor(privacyAlertMonitor)
+        }
+        privacyAlertMonitor = nil
         try super.tearDownWithError()
+    }
+
+    /// macOS raises its local-network privacy alert over the app under test, and XCTest's built-in
+    /// handler misses it: that matcher keys on the wording "would like to find", which macOS 26
+    /// rewrote to "Allow ... to find devices on local networks?". Nothing dismissed it, so every
+    /// element lookup for the rest of the test paid a full interruption sweep, which cost one suite
+    /// ten minutes of a forty minute job. Matching on the buttons rather than the title keeps this
+    /// working through the next rewording. Nothing under test needs the local network.
+    private func addPrivacyAlertMonitor() -> any NSObjectProtocol {
+        addUIInterruptionMonitor(withDescription: "System privacy alert") { alert in
+            for label in ["Don't Allow", "Deny", "Allow"] where alert.buttons[label].exists {
+                alert.buttons[label].click()
+                return true
+            }
+            return false
+        }
     }
 
     /// A UI test that fails only on CI is undiagnosable from a log line: the assertion says what
@@ -72,14 +94,18 @@ internal class UITestCase: XCTestCase {
 
     /// The sample database is opened from the Help menu. Three suites used to reach for File, which
     /// has never carried this item, so they failed on any machine rather than flakily.
+    ///
+    /// Never click the parent menu first. `click()` on a menu item runs its own menu traversal and
+    /// opens the parent as part of it, so an already-open menu makes that traversal fail with "open
+    /// menu during menu traversal"; XCUITest then falls back to hovering and resolves the item to an
+    /// unhittable zero-size frame. That failed every suite this helper serves.
     @discardableResult
     internal func launchWithSampleDatabase() throws -> XCUIApplication {
         let app = try launchApp()
         let menuBar = app.menuBars.firstMatch
         XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
-        menuBar.menuBarItems["Help"].click()
         let openSample = menuBar.menuItems["Open Sample Database"]
-        XCTAssertTrue(openSample.waitForExistence(timeout: 5))
+        XCTAssertTrue(openSample.waitForExistence(timeout: 10))
         openSample.click()
         return app
     }

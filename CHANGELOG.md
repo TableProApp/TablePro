@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Quick Switcher opens what you searched for. Typing a new search kept the row you had highlighted selected whenever it still matched anything, and searching across connections matches the connection path in every row, so almost any row stayed highlighted while the list reordered under it. `Return` then opened something you had stopped searching for.
 - A query that fails shows the database's error again and is recorded in query history. A syntax error, or selecting from a table that does not exist, left the results area blank with no message at all, and opening a table that failed to load was silent the same way. The error also opens the results pane if you had it collapsed. (#2120)
 - Running a query with parameters, or several statements at once, no longer stops the tab from accepting any later run.
 - Query History no longer mixes every connection's queries together with no way to tell them apart. Loading one could put another connection's SQL into the editor in front of you.

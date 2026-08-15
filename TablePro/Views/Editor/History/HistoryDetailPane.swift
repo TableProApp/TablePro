@@ -24,11 +24,18 @@ struct HistoryDetailPane: View {
         .accessibilityIdentifier("query-history-detail")
     }
 
+    /// The preview is named on the `NSTextView` itself rather than through a SwiftUI modifier, which
+    /// is both because a modifier cannot reach the view behind an `NSViewRepresentable` and because
+    /// the identifier on the enclosing container would overwrite a SwiftUI one.
     private func detail(for entry: QueryHistoryEntry) -> some View {
         VStack(spacing: 0) {
-            HighlightedSQLTextView(sql: entry.query, databaseType: entry.databaseType)
-                .background(Color(nsColor: ThemeEngine.shared.colors.editor.background))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            HighlightedSQLTextView(
+                sql: entry.query,
+                databaseType: entry.databaseType,
+                accessibilityIdentifier: "query-history-detail-query"
+            )
+            .background(Color(nsColor: ThemeEngine.shared.colors.editor.background))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
 

@@ -456,6 +456,68 @@ struct QuickSwitcherViewModelTests {
         #expect(vm.selectedItem()?.name == "Track")
     }
 
+    /// The previous selection surviving the refilter is not evidence that it is still wanted. Here
+    /// it survives on its own name, and in the Connections scope it survives on the connection path
+    /// every subtitle carries, which is what shipped: the list ranked Invoice first while the
+    /// highlight stayed on the row typed before it, and Return opened that one.
+    @Test("A new query moves the selection off a row that still matches")
+    func newQueryMovesSelectionOffAStillMatchingRow() async throws {
+        let target = QuickSwitcherTarget(
+            connectionId: UUID(),
+            connectionName: "Chinook",
+            databaseName: "sample.sqlite",
+            schemaName: nil
+        )
+        let items = QuickSwitcherViewModel.makeCrossConnectionItems(
+            tables: [
+                TableInfo(name: "Invoice", type: .table, rowCount: nil),
+                TableInfo(name: "InvoiceLine", type: .table, rowCount: nil)
+            ],
+            target: target
+        )
+        let vm = makeViewModel(items: [])
+        vm.crossConnectionItems = items
+        vm.scope = .connections
+        let stale = try #require(items.first { $0.name == "InvoiceLine" })
+        vm.selectedItemId = stale.id
+
+        vm.searchText = "invoice"
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        #expect(vm.flatItems.contains { $0.id == stale.id })
+        #expect(vm.flatItems.first?.name == "Invoice")
+        #expect(vm.selectedItem()?.name == "Invoice")
+    }
+
+    /// The counterpart guard. A catalog that reloads underneath an open panel refilters with the
+    /// same query, and taking the user's arrow keys back to the top of the list on every reload
+    /// would make the panel unusable while connections are still loading.
+    @Test("A refilter with the same query keeps the selection")
+    func refilterWithSameQueryKeepsSelection() async throws {
+        let target = QuickSwitcherTarget(
+            connectionId: UUID(),
+            connectionName: "Chinook",
+            databaseName: "sample.sqlite",
+            schemaName: nil
+        )
+        let tables = [
+            TableInfo(name: "Invoice", type: .table, rowCount: nil),
+            TableInfo(name: "InvoiceLine", type: .table, rowCount: nil)
+        ]
+        let vm = makeViewModel(items: [])
+        vm.crossConnectionItems = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
+        vm.scope = .connections
+        vm.searchText = "invoice"
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let chosen = try #require(vm.flatItems.first { $0.name == "InvoiceLine" })
+        vm.selectedItemId = chosen.id
+        vm.crossConnectionItems = QuickSwitcherViewModel.makeCrossConnectionItems(tables: tables, target: target)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        #expect(vm.selectedItem()?.name == "InvoiceLine")
+    }
+
     @Test("Cross-connection catalog keeps object location")
     func crossConnectionCatalogKeepsLocation() {
         let connectionId = UUID()
