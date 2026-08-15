@@ -190,6 +190,65 @@ struct QueryHistoryMigrationTests {
         #expect(entries.count == 1)
     }
 
+    @Test("a fresh database never grows the plaintext parameter values column")
+    func freshDatabaseHasNoParameterValues() async {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent("fresh_history_\(UUID().uuidString).db")
+
+        let storage = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+        _ = await storage.count(scope: .all)
+
+        let columns = columnNames(in: url, table: "history")
+        #expect(columns.contains("parameter_values") == false)
+        #expect(columns.contains("source"))
+        #expect(columns.contains("database_type"))
+    }
+
+    @Test("a version 1 database, which never had parameter values, still migrates")
+    func versionOneDatabaseMigrates() async {
+        let connId = UUID()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent("v1_history_\(UUID().uuidString).db")
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        var db: OpaquePointer?
+        if sqlite3_open(url.path(percentEncoded: false), &db) == SQLITE_OK {
+            sqlite3_exec(db, """
+                CREATE TABLE history (
+                    id TEXT PRIMARY KEY,
+                    query TEXT NOT NULL,
+                    connection_id TEXT NOT NULL,
+                    database_name TEXT NOT NULL,
+                    executed_at REAL NOT NULL,
+                    execution_time REAL NOT NULL,
+                    row_count INTEGER NOT NULL,
+                    was_successful INTEGER NOT NULL,
+                    error_message TEXT
+                );
+                """, nil, nil, nil)
+            sqlite3_exec(db, "PRAGMA user_version = 1;", nil, nil, nil)
+            let insert = """
+                INSERT INTO history VALUES ('\(UUID().uuidString)', 'SELECT * FROM ancient',
+                '\(connId.uuidString)', 'olddb', \(Date().timeIntervalSince1970), 0.1, 3, 1, NULL);
+                """
+            sqlite3_exec(db, insert, nil, nil, nil)
+            sqlite3_close_v2(db)
+        }
+
+        let storage = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+        let entries = await storage.fetch(QueryHistoryFilter(scope: .connection(connId)), after: nil, limit: 10).entries
+
+        #expect(entries.count == 1)
+        #expect(entries.first?.query == "SELECT * FROM ancient")
+        #expect(entries.first?.source == .editor)
+        #expect(entries.first?.statementType == .select)
+    }
+
     @Test("migration runs once and is idempotent across reopens")
     func migrationIsIdempotent() async {
         let connId = UUID()

@@ -125,15 +125,13 @@ actor QueryHistoryStorage {
 
     // MARK: - Migration
 
+    /// `createTables` already builds the current shape, so a fresh database needs no migration at
+    /// all. Only a table left over from an older release is missing `source`, and the rebuild below
+    /// copies it forward by name, so every earlier version reaches v3 through the same path.
     private func migrateIfNeeded() {
         guard db != nil else { return }
-        let currentVersion = userVersion()
 
-        if currentVersion < 2, hasColumn("parameter_values", inTable: "history") == false {
-            execute("ALTER TABLE history ADD COLUMN parameter_values TEXT;")
-        }
-
-        if currentVersion < 3 {
+        if hasColumn("source", inTable: "history") == false {
             migrateToVersion3()
         }
 
@@ -141,8 +139,6 @@ actor QueryHistoryStorage {
     }
 
     private func migrateToVersion3() {
-        guard hasColumn("source", inTable: "history") == false else { return }
-
         beginTransaction()
         execute("ALTER TABLE history RENAME TO history_legacy;")
         execute(Self.historyTableSql)
