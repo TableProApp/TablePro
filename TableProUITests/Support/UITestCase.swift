@@ -119,19 +119,14 @@ internal class UITestCase: XCTestCase {
         return condition()
     }
 
-    /// A list that is still filling holds a different entry at a given index before and after the
-    /// last row arrives, so `waitForExistence` on one row proves nothing: the row is there either
-    /// way. The count holding across two samples is what says the list is done arriving.
-    internal func waitForStableCount(of query: XCUIElementQuery, timeout: TimeInterval) -> Int {
-        let deadline = Date(timeIntervalSinceNow: timeout)
-        var previous = query.count
-        while Date() < deadline {
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
-            let current = query.count
-            if current > 0, current == previous { return current }
-            previous = current
-        }
-        return previous
+    /// The precondition a click actually has. `waitForExistence` only says the element is in the
+    /// tree, which a row inside a pane that is still animating open already is; the click then
+    /// lands on a moving target, the app hit-tests the point to nothing, and the event goes
+    /// nowhere with no failure of its own. `isHittable` is the question AppKit can answer: does
+    /// this point come back to this element. Nothing in the app can defend against the early
+    /// click, because animating a pane into place is what AppKit does.
+    internal func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        waitForPredicate(timeout: timeout) { element.exists && element.isHittable }
     }
 
     /// A defaults suite is a file in the user's preferences directory, so removing the sandbox
