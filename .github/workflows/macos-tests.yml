@@ -76,10 +76,13 @@ jobs:
       - name: Run editor package tests
         run: swift test --package-path LocalPackages/CodeEditTextView
 
+  # Budget on a macos-26 runner: ~7 min to generate and compile every plugin, ~14 min to build
+  # and run the unit suite, ~17 min for the UI suite. A slow runner stretches all three, and one
+  # UI retry costs another minute or two, so 40 left no headroom and killed the job mid-suite.
   app-tests:
     name: macOS App Tests
     runs-on: macos-26
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 

@@ -98,13 +98,4 @@ final class QueryHistoryPanelUITests: UITestCase {
         }
         return window.textViews.firstMatch
     }
-
-    private func waitForPredicate(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
-        let deadline = Date(timeIntervalSinceNow: timeout)
-        while Date() < deadline {
-            if condition() { return true }
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-        }
-        return condition()
-    }
 }

@@ -13,19 +13,28 @@ final class QueryHistoryFocusUITests: UITestCase {
 
         let list = showHistoryDrawer(in: app)
 
-        /// The drawer animates open, and a row frame read while it is still laying out puts the
-        /// click somewhere the row has left. Both panes existing is what says the drawer is up.
-        let detail = app.windows.firstMatch.descendants(matching: .any)
-            .matching(identifier: "query-history-detail").firstMatch
-        XCTAssertTrue(detail.waitForExistence(timeout: 10))
+        /// The guard here used to be the detail pane existing, which proves nothing: that pane
+        /// publishes its identifier in the empty state too, so it was up before a single row was.
+        /// The list is still filling as the drawer opens, and the entry at a given index changes
+        /// as rows arrive, so a settled row count is what says there is a row worth clicking.
+        let rows = list.tableRows
+        let rowCount = waitForStableCount(of: rows, timeout: 10)
+        XCTAssertGreaterThan(rowCount, 1, "The drawer must list the queries just run")
 
         // Row 0 is the "Today" section header, so the first entry is row 1.
-        let rows = list.tableRows
-        XCTAssertTrue(rows.element(boundBy: 1).waitForExistence(timeout: 10), "The drawer must list the queries just run")
-        rows.element(boundBy: 1).click()
+        let row = rows.element(boundBy: 1)
+        row.click()
+
+        /// The selection is asserted before the preview so a failure says which half broke. The
+        /// preview is the detail pane rendering a selected row, so a missing preview on its own
+        /// cannot tell a click that never landed from a pane that never drew.
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { row.isSelected },
+            "Clicking a row must select it"
+        )
 
         let preview = app.textViews["query-history-detail-query"]
-        XCTAssertTrue(preview.waitForExistence(timeout: 5))
+        XCTAssertTrue(preview.waitForExistence(timeout: 10), "A selected row must show in the preview")
         let previewAfterClick = preview.value as? String ?? ""
         XCTAssertFalse(previewAfterClick.isEmpty, "Clicking a row must show that row in the preview")
 
@@ -62,14 +71,5 @@ final class QueryHistoryFocusUITests: UITestCase {
             _ = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
                 .waitForExistence(timeout: 15)
         }
-    }
-
-    private func waitForPredicate(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
-        let deadline = Date(timeIntervalSinceNow: timeout)
-        while Date() < deadline {
-            if condition() { return true }
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-        }
-        return condition()
     }
 }

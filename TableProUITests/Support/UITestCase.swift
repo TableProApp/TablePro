@@ -110,6 +110,30 @@ internal class UITestCase: XCTestCase {
         return app
     }
 
+    internal func waitForPredicate(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        }
+        return condition()
+    }
+
+    /// A list that is still filling holds a different entry at a given index before and after the
+    /// last row arrives, so `waitForExistence` on one row proves nothing: the row is there either
+    /// way. The count holding across two samples is what says the list is done arriving.
+    internal func waitForStableCount(of query: XCUIElementQuery, timeout: TimeInterval) -> Int {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        var previous = query.count
+        while Date() < deadline {
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
+            let current = query.count
+            if current > 0, current == previous { return current }
+            previous = current
+        }
+        return previous
+    }
+
     /// A defaults suite is a file in the user's preferences directory, so removing the sandbox
     /// directory alone would leave one behind for every test that ever ran.
     private func removeDefaultsSuite(forSandboxAt root: URL) {
