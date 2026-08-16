@@ -15,7 +15,7 @@ final class QueryExecutionCoordinator {
 
     // MARK: - Run All Statements
 
-    func runAllStatements() {
+    func runAllStatements(extraCapabilities: CallerCapabilities = []) {
         guard let (tab, index) = parent.tabManager.selectedTabAndIndex,
               !parent.tabExecution.isExecuting(tab.id),
               tab.tabType == .query else { return }
@@ -42,18 +42,28 @@ final class QueryExecutionCoordinator {
                     return
                 }
 
-                dispatchParameterizedStatements(statements, parameters: reconciled, tabIndex: index)
+                dispatchParameterizedStatements(
+                    statements,
+                    parameters: reconciled,
+                    tabIndex: index,
+                    extraCapabilities: extraCapabilities
+                )
                 return
             }
         }
 
-        dispatchStatements(statements, tabIndex: index)
+        dispatchStatements(statements, tabIndex: index, extraCapabilities: extraCapabilities)
     }
 
-    func dispatchStatements(_ statements: [String], tabIndex index: Int, bypassRowLimit: Bool = false) {
+    func dispatchStatements(
+        _ statements: [String],
+        tabIndex index: Int,
+        bypassRowLimit: Bool = false,
+        extraCapabilities: CallerCapabilities = []
+    ) {
         guard !parent.isShowingSafeModePrompt else { return }
         parent.isShowingSafeModePrompt = true
-        let request = makeExecuteRequest(statements: statements)
+        let request = makeExecuteRequest(statements: statements, extraCapabilities: extraCapabilities)
         Task { [parent] in
             defer { parent.isShowingSafeModePrompt = false }
             switch await ExecutionGateProvider.shared.authorize(request) {
@@ -69,14 +79,17 @@ final class QueryExecutionCoordinator {
         }
     }
 
-    private func makeExecuteRequest(statements: [String]) -> OperationRequest {
+    private func makeExecuteRequest(
+        statements: [String],
+        extraCapabilities: CallerCapabilities = []
+    ) -> OperationRequest {
         OperationRequest(
             connectionId: parent.connectionId,
             databaseType: parent.connection.type,
             sql: statements.joined(separator: "\n"),
             kind: OperationKind.worst(of: statements, databaseType: parent.connection.type),
             caller: .userInterface,
-            capabilities: .interactiveUser,
+            capabilities: CallerCapabilities.interactiveUser.union(extraCapabilities),
             operationDescription: String(localized: "Execute Query")
         )
     }
@@ -85,12 +98,13 @@ final class QueryExecutionCoordinator {
         _ statements: [String],
         parameters: [QueryParameter],
         tabIndex index: Int,
-        bypassRowLimit: Bool = false
+        bypassRowLimit: Bool = false,
+        extraCapabilities: CallerCapabilities = []
     ) {
         guard !parent.isShowingSafeModePrompt else { return }
         parent.isShowingSafeModePrompt = true
         let tabId = parent.tabManager.tabs[index].id
-        let request = makeExecuteRequest(statements: statements)
+        let request = makeExecuteRequest(statements: statements, extraCapabilities: extraCapabilities)
         Task { [parent] in
             defer { parent.isShowingSafeModePrompt = false }
             switch await ExecutionGateProvider.shared.authorize(request) {

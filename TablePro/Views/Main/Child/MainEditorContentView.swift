@@ -104,7 +104,7 @@ struct MainEditorContentView: View {
                 }
             },
             bottomContent: {
-                HistoryPanelView(connectionId: connectionId)
+                HistoryPanelView(coordinator: coordinator)
             }
         )
         .background(.background)
