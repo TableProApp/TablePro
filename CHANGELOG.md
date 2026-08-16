@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB tables outside the `main` schema are visible again. The sidebar lists every schema of the connected database, Tree layout shows database, schema and tables, and `ATTACH`ed databases appear alongside the one you opened. (#2131)
 - DuckDB metadata no longer mixes up databases that share a schema name, so an `ATTACH`ed file's tables stay out of the database you opened.
 - A DuckDB table in the default schema is titled `orders` again rather than `main.orders`, and exports preselect the schema you are browsing.
+- Clearing query history from the drawer promised to delete the connection's history while the source filter was quietly sparing table browsing, row edits, imports and AI queries. The confirmation now says what it will actually delete, and clearing itself is unchanged.
 
 ### Changed
 
