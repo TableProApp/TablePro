@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Query History's "Load in Editor" and "Run in New Tab" did nothing when clicked. Both work again, from the buttons, the right-click menu, and `Return` or a double-click on a row.
+- "Run in New Tab" runs the query it opens, and asks first when that query writes, even with safe mode set to Silent.
+- A history entry recorded against another connection opens in that connection's window, and one recorded against another database opens in its own tab bound to that database, instead of loading into whatever is in front of you.
 - DuckDB `TIMESTAMP_S`, `TIMESTAMP_MS` and `TIMESTAMP_NS` columns showed `1970-01-01 00:00:00` on every row instead of the stored value. They now read exactly as the DuckDB CLI prints them, keeping sub-second digits. (#2130)
 - DuckDB `UUID`, `ENUM`, `BIT`, `LIST`, `STRUCT`, `MAP`, `ARRAY` and `UNION` columns showed an empty cell instead of their value. (#2130)
 - Querying two DuckDB tables that share a column name could repeat one table's value in both columns. (#2130)

@@ -26,7 +26,7 @@ Recent queries also appear in the [Quick Switcher](/features/quick-switcher).
 
 History is scoped to the connection you are looking at. Switch the first popup to **All Connections** to search across every connection you have; rows then show which connection each query came from, so you can tell two databases named `app` apart.
 
-Loading a query that belongs to another connection opens it in a new tab rather than running it against the connection in front of you.
+Loading a query that belongs to another connection opens it in a new tab in that connection's own window, rather than running it against the connection in front of you. **Run in New Tab** is dimmed for those entries, because only the connection that recorded a query can run it. Load it there and run it from that window.
 
 ## Filtering
 
@@ -65,13 +65,15 @@ Turn on **Table Browsing** to see exactly what the app sent while you clicked ar
 | Action | How |
 |--------|-----|
 | Load into the editor | Select an entry and click **Load in Editor**, or press `Return` |
-| Run again | **Run in New Tab**, or right-click > **Run in New Tab** |
+| Run it again | **Run in New Tab**, or right-click > **Run in New Tab**. It opens a new tab and runs the query there |
 | Copy the query | `Cmd+C`, the **Copy** button, or right-click > **Copy Query** |
 | Save as favorite | Right-click > **Save as Favorite…** (see [Favorites](/features/favorites)) |
 | Delete one entry | `Delete` key or right-click > **Delete** |
 | Load older entries | **Load More** at the bottom of the list |
 
-Click a row to select it and the details appear beside it; the keyboard stays in the list, so arrow keys keep moving through entries. Loading a query into the editor is a separate, deliberate step: press `Return`, double-click the row, or click **Load in Editor**.
+Click a row to select it and the details appear beside it; the keyboard stays in the list, so arrow keys keep moving through entries. Loading a query into the editor is a separate, deliberate step: press `Return` with the list focused, double-click the row, or click **Load in Editor**.
+
+**Run in New Tab** sends the query to the server, so an entry that writes (INSERT, UPDATE, DELETE, or a schema change) asks for confirmation first, whatever the connection's [safe mode](/features/safe-mode) is set to. Reads run straight away. An entry that uses [query parameters](/features/query-parameters) opens the parameter panel instead of running, because parameter values are never recorded.
 
 ## Clearing History
 

@@ -6,8 +6,8 @@
 import Foundation
 
 extension MainContentCoordinator {
-    func runAllStatements() {
-        queryExecutionCoordinator.runAllStatements()
+    func runAllStatements(extraCapabilities: CallerCapabilities = []) {
+        queryExecutionCoordinator.runAllStatements(extraCapabilities: extraCapabilities)
     }
 
     internal func dispatchStatements(_ statements: [String], tabIndex index: Int, bypassRowLimit: Bool = false) {

@@ -21,17 +21,20 @@ internal struct FieldDrivenListSection<Item: Identifiable>: Identifiable {
 internal struct FieldDrivenMenuItem {
     internal let title: String
     internal let isSeparator: Bool
+    internal let isEnabled: Bool
     internal let action: () -> Void
 
-    internal init(title: String, action: @escaping () -> Void) {
+    internal init(title: String, isEnabled: Bool = true, action: @escaping () -> Void) {
         self.title = title
         self.isSeparator = false
+        self.isEnabled = isEnabled
         self.action = action
     }
 
     private init() {
         self.title = ""
         self.isSeparator = true
+        self.isEnabled = false
         self.action = {}
     }
 
@@ -244,6 +247,8 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
             (sender.representedObject as? MenuAction)?.perform()
         }
 
+        /// Auto-enabling asks the target whether it responds to the item's selector, which it
+        /// always does, so a descriptor's own `isEnabled` would be overwritten on display.
         internal func menu(forRow row: Int) -> NSMenu? {
             guard let build = owner.menuItems, row >= 0, row < entries.count,
                   let id = entries[row].itemId else { return nil }
@@ -251,6 +256,7 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
             let descriptors = build(targets)
             guard !descriptors.isEmpty else { return nil }
             let menu = NSMenu()
+            menu.autoenablesItems = false
             for descriptor in descriptors {
                 if descriptor.isSeparator {
                     menu.addItem(.separator())
@@ -258,6 +264,7 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
                 }
                 let item = NSMenuItem(title: descriptor.title, action: #selector(performMenuItem(_:)), keyEquivalent: "")
                 item.target = self
+                item.isEnabled = descriptor.isEnabled
                 item.representedObject = MenuAction(descriptor.action)
                 menu.addItem(item)
             }
