@@ -168,7 +168,8 @@ final class MainContentCoordinator {
     @ObservationIgnored weak var contentWindow: NSWindow?
 
     /// Back-reference to this coordinator's command actions, enabling window → coordinator → actions
-    /// lookup when `@FocusedValue(\.commandActions)` has not resolved (e.g. focus in an AppKit subview).
+    /// lookup. The app runs the AppKit lifecycle with no SwiftUI `Scene`, so a focused value has
+    /// nothing to resolve against; this reference reaches every caller, AppKit and SwiftUI alike.
     @ObservationIgnored weak var commandActions: MainContentCommandActions?
 
     /// Presents the quick switcher as a floating panel anchored over this coordinator's window.
@@ -197,6 +198,10 @@ final class MainContentCoordinator {
 
     @ObservationIgnored var openTabInNewWindow: (EditorTabPayload) -> Void = {
         WindowManager.shared.openTab(payload: $0)
+    }
+
+    @ObservationIgnored var connectionExists: (UUID) -> Bool = { id in
+        ConnectionStorage.shared.loadConnections().contains { $0.id == id }
     }
 
     // MARK: - Internal State

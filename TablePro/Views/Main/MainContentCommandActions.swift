@@ -2,7 +2,7 @@
 //  MainContentCommandActions.swift
 //  TablePro
 //
-//  Provides command actions for MainContentView, accessible via @FocusedValue.
+//  Provides command actions for MainContentView, reached through MainContentCoordinator.
 //  Menu commands and toolbar buttons call methods directly instead of posting notifications.
 //  Retains NotificationCenter subscribers only for legitimate multi-listener broadcasts.
 //
@@ -16,7 +16,7 @@ import SwiftUI
 import TableProPluginKit
 import UniformTypeIdentifiers
 
-/// Provides command actions for MainContentView, accessible via @FocusedValue
+/// Provides command actions for MainContentView, reached through `MainContentCoordinator.commandActions`.
 @MainActor
 @Observable
 final class MainContentCommandActions {
@@ -177,7 +177,6 @@ final class MainContentCommandActions {
     private func setupObservers() {
         setupNonMenuNotificationObservers()
         setupDataBroadcastObservers()
-        setupTabBroadcastObservers()
         setupDatabaseBroadcastObservers()
         setupWindowObservers()
         setupFileOpenObservers()
@@ -339,6 +338,18 @@ final class MainContentCommandActions {
 
     var isTableTab: Bool {
         coordinator?.toolbarState.isTableTab ?? false
+    }
+
+    /// The two facts Save As and Export Results actually turn on. Their menu items used to be
+    /// validated on `isConnected` alone, so both stayed lit in states where the handler returns at
+    /// its first guard and the click does nothing at all.
+    var isQueryTab: Bool {
+        coordinator?.tabManager.selectedTab?.tabType == .query
+    }
+
+    var hasResultRows: Bool {
+        guard let coordinator, let tab = coordinator.tabManager.selectedTab else { return false }
+        return !coordinator.tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
     }
 
     var hasRowSelection: Bool {
@@ -1136,13 +1147,6 @@ final class MainContentCommandActions {
             .store(in: &eventCancellables)
     }
 
-    // MARK: Tab Broadcasts
-
-    private func setupTabBroadcastObservers() {
-        // All tab notifications (newQueryTab, loadQueryIntoEditor, insertQueryFromAI)
-        // have been replaced with direct method calls via @FocusedValue.
-    }
-
     // MARK: Database Broadcasts
 
     private func setupDatabaseBroadcastObservers() {
@@ -1199,18 +1203,5 @@ final class MainContentCommandActions {
                 try? await TabRouter.shared.route(.openSQLFile(url))
             }
         }
-    }
-}
-
-// MARK: - Focused Value Key
-
-private struct CommandActionsKey: FocusedValueKey {
-    typealias Value = MainContentCommandActions
-}
-
-extension FocusedValues {
-    var commandActions: MainContentCommandActions? {
-        get { self[CommandActionsKey.self] }
-        set { self[CommandActionsKey.self] = newValue }
     }
 }
