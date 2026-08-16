@@ -219,7 +219,7 @@ struct ConnectionSwitcherPopover: View {
         )
         return HStack(spacing: 8) {
             Circle()
-                .fill(connection.displayColor)
+                .selectionAwareTint(connection.displayColor)
                 .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -246,11 +246,11 @@ struct ConnectionSwitcherPopover: View {
 
             if isActive {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .selectionAwareTint(.green)
                     .font(.body)
             } else if isConnected {
                 Circle()
-                    .fill(.green)
+                    .selectionAwareTint(.green)
                     .frame(width: 6, height: 6)
             }
 

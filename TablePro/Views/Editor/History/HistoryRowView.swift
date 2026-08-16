@@ -6,8 +6,7 @@ struct HistoryRowView: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: entry.wasSuccessful ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .foregroundStyle(entry.wasSuccessful ? Color.secondary : Color.red)
+            statusIcon
                 .accessibilityLabel(
                     entry.wasSuccessful
                         ? String(localized: "Succeeded")
@@ -25,9 +24,7 @@ struct HistoryRowView: View {
                         Label {
                             Text(connectionLabel.name)
                         } icon: {
-                            Image(systemName: "circle.fill")
-                                .font(.system(size: 6))
-                                .foregroundStyle(connectionLabel.color?.color ?? .secondary)
+                            connectionDot(connectionLabel.color?.color)
                         }
                         .labelStyle(.titleAndIcon)
                         Text(verbatim: "·")
@@ -63,5 +60,30 @@ struct HistoryRowView: View {
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .combine)
+    }
+
+    /// `Color.secondary` already switches to the selected-content colour on a prominent fill, so it
+    /// is left alone. A fixed red does not, and stayed unreadable on the accent selection.
+    @ViewBuilder
+    private var statusIcon: some View {
+        if entry.wasSuccessful {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Color.secondary)
+        } else {
+            Image(systemName: "exclamationmark.circle.fill")
+                .selectionAwareTint(.red)
+        }
+    }
+
+    /// A connection's own colour is a fixed value, so it disappears into the accent fill unless it
+    /// switches with the background. The unnamed case is secondary content and adapts by itself.
+    @ViewBuilder
+    private func connectionDot(_ color: Color?) -> some View {
+        let dot = Image(systemName: "circle.fill").font(.system(size: 6))
+        if let color {
+            dot.selectionAwareTint(color)
+        } else {
+            dot.foregroundStyle(Color.secondary)
+        }
     }
 }
