@@ -17,20 +17,21 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         /// the key goes out, which is the one difference between here and a developer's machine.
         app.activate()
         app.typeKey("o", modifierFlags: [.command, .shift])
-        let searchField = app.textFields["quick-switcher-search-field"]
+        let panel = switcherPanel(in: app)
+        let searchField = panel.textFields["quick-switcher-search-field"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 15))
 
         app.typeKey("5", modifierFlags: .command)
-        XCTAssertTrue(app.buttons["Connections"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Chinook (Sample)"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["Track"].waitForExistence(timeout: 5))
+        XCTAssertTrue(panel.buttons["Connections"].waitForExistence(timeout: 5))
+        XCTAssertTrue(panel.staticTexts["Chinook (Sample)"].waitForExistence(timeout: 15))
+        XCTAssertTrue(panel.buttons["Track"].waitForExistence(timeout: 5))
 
         searchField.typeText("track")
-        XCTAssertTrue(app.buttons["Track"].waitForExistence(timeout: 5))
+        XCTAssertTrue(panel.buttons["Track"].waitForExistence(timeout: 5))
 
         searchField.typeKey("a", modifierFlags: .command)
         searchField.typeText("missing-object-name")
-        XCTAssertTrue(app.staticTexts["No results for \"missing-object-name\""].waitForExistence(timeout: 5))
+        XCTAssertTrue(panel.staticTexts["No results for \"missing-object-name\""].waitForExistence(timeout: 5))
 
         searchField.typeKey("a", modifierFlags: .command)
         searchField.typeText("track")
@@ -39,9 +40,10 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         /// Every open connection lives in one window, so opening an object adds a tab rather than a
         /// window, and the window retitles to the tab it selected. The strip stays hidden while the
         /// connection holds a single tab, so the title is all there is to assert on here.
-        let trackWindow = app.windows.matching(NSPredicate(format: "title BEGINSWITH %@", "Track")).firstMatch
+        let trackWindow = app.children(matching: .window)
+            .matching(NSPredicate(format: "title BEGINSWITH %@", "Track")).firstMatch
         XCTAssertTrue(trackWindow.waitForExistence(timeout: 10))
-        XCTAssertEqual(app.windows.count, 1)
+        XCTAssertEqual(app.children(matching: .window).count, 1)
 
         app.typeKey("o", modifierFlags: [.command, .shift])
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
@@ -50,7 +52,7 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         /// The panel has to have ranked Invoice before Return is sent. A new query used to leave the
         /// previously highlighted row selected whenever it still matched, and in this scope every
         /// subtitle carries the connection path, so Return committed the row typed before it.
-        XCTAssertTrue(app.buttons["Invoice"].waitForExistence(timeout: 10))
+        XCTAssertTrue(panel.buttons["Invoice"].waitForExistence(timeout: 10))
         searchField.typeKey(.return, modifierFlags: .option)
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
         /// Option+Return opens beside the tab you were on instead of replacing it, which is the one
@@ -58,7 +60,7 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         /// out of hiding, so both tabs are assertable from here and neither was before.
         XCTAssertTrue(tab(in: app, named: "Invoice").waitForExistence(timeout: 10))
         XCTAssertTrue(tab(in: app, named: "Track").exists)
-        XCTAssertEqual(app.windows.count, 1)
+        XCTAssertEqual(app.children(matching: .window).count, 1)
 
         app.typeKey("o", modifierFlags: [.command, .shift])
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
@@ -89,13 +91,14 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         queryEditor.typeText("SELECT 0;")
 
         app.typeKey("o", modifierFlags: [.command, .shift])
-        let searchField = app.textFields["quick-switcher-search-field"]
+        let panel = switcherPanel(in: app)
+        let searchField = panel.textFields["quick-switcher-search-field"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 10))
         app.typeKey("4", modifierFlags: .command)
-        XCTAssertTrue(app.buttons["Queries"].waitForExistence(timeout: 5))
+        XCTAssertTrue(panel.buttons["Queries"].waitForExistence(timeout: 5))
 
         searchField.typeText("cross_connection_probe")
-        let historyResult = app.buttons.matching(
+        let historyResult = panel.buttons.matching(
             NSPredicate(format: "label CONTAINS %@", "cross_connection_probe")
         ).firstMatch
         XCTAssertTrue(historyResult.waitForExistence(timeout: 10))
@@ -108,6 +111,19 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
             .matching(NSPredicate(format: "value CONTAINS %@", "cross_connection_probe"))
             .firstMatch
         XCTAssertTrue(openedEditor.waitForExistence(timeout: 10))
+    }
+
+    /// Every lookup inside the switcher goes through here. Rooted at the application the same
+    /// queries walk the whole accessibility tree, and with a data grid loaded in the main window
+    /// one existence check overran XCTest's own four second evaluation watchdog and had to be
+    /// retried: this test alone spent seven minutes of the job's budget on that.
+    ///
+    /// `children` rather than `descendants` keeps resolving the panel shallow, because the panel is
+    /// a direct child of the application element and searching the descendants for it costs the
+    /// walk all over again. The type stays `.any` because AppKit gives a floating panel the
+    /// `AXDialog` subrole, which XCUITest reports as `Dialog` and not as `Window`.
+    private func switcherPanel(in app: XCUIApplication) -> XCUIElement {
+        app.children(matching: .any).matching(identifier: "quick-switcher-panel").firstMatch
     }
 
     private func tab(in app: XCUIApplication, named name: String) -> XCUIElement {

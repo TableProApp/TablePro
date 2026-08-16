@@ -132,13 +132,4 @@ final class QueryHistoryActionsUITests: UITestCase {
         let results = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
         XCTAssertTrue(results.waitForExistence(timeout: 15), "The query must produce a result grid")
     }
-
-    private func waitForPredicate(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
-        let deadline = Date(timeIntervalSinceNow: timeout)
-        while Date() < deadline {
-            if condition() { return true }
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-        }
-        return condition()
-    }
 }

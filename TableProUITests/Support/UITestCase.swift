@@ -110,6 +110,25 @@ internal class UITestCase: XCTestCase {
         return app
     }
 
+    internal func waitForPredicate(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        }
+        return condition()
+    }
+
+    /// The precondition a click actually has. `waitForExistence` only says the element is in the
+    /// tree, which a row inside a pane that is still animating open already is; the click then
+    /// lands on a moving target, the app hit-tests the point to nothing, and the event goes
+    /// nowhere with no failure of its own. `isHittable` is the question AppKit can answer: does
+    /// this point come back to this element. Nothing in the app can defend against the early
+    /// click, because animating a pane into place is what AppKit does.
+    internal func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        waitForPredicate(timeout: timeout) { element.exists && element.isHittable }
+    }
+
     /// A defaults suite is a file in the user's preferences directory, so removing the sandbox
     /// directory alone would leave one behind for every test that ever ran.
     private func removeDefaultsSuite(forSandboxAt root: URL) {

@@ -19,6 +19,11 @@ internal final class QuickSwitcherPanel: NSPanel {
             backing: .buffered,
             defer: false
         )
+        /// Named on the window, the same way the main window is: AppKit publishes `identifier` as
+        /// the window's accessibility identifier, so a client can scope a search to this panel
+        /// instead of walking the whole application. A SwiftUI modifier could not do it, because an
+        /// identifier on the content view overwrites the one every control inside it publishes.
+        identifier = NSUserInterfaceItemIdentifier("quick-switcher-panel")
         isFloatingPanel = true
         level = .floating
         collectionBehavior.insert(.fullScreenAuxiliary)
