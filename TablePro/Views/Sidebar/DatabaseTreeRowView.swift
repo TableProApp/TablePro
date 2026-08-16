@@ -26,11 +26,11 @@ struct DatabaseTreeRowContext {
     var isExternalSchema: @MainActor (String, String) -> Bool = { _, _ in false }
     /// The plugin decides what a table is called, so a section header cannot hardcode "Tables".
     var objectKindTitle: @MainActor (SidebarObjectKind) -> String = { $0.pluralDisplayName }
-    var isFavorite: @MainActor (DatabaseTreeTableRef) -> Bool = { _ in false }
 }
 
 struct DatabaseTreeRowView: View {
     let node: DatabaseTreeNode
+    let isFavorite: Bool
     let context: DatabaseTreeRowContext
     let actions: DatabaseTreeRowActions
 
@@ -109,7 +109,7 @@ struct DatabaseTreeRowView: View {
             table: ref.table,
             isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
             isPendingDelete: context.pendingDeletes.contains(ref.table.name),
-            isFavorite: context.isFavorite(ref),
+            isFavorite: isFavorite,
             onToggleFavorite: { actions.toggleFavorite(ref) }
         )
     }

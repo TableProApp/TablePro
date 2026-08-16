@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Adding or removing a favorite table updates its sidebar star immediately instead of waiting for the sidebar to reopen.
 - The failure marker and the connection dot in the query history drawer, and the connection colour and status marks in the connection switcher, kept their own colour on the blue selection fill and were hard to make out. They now switch with the background like the rest of the row.
 - Refreshing the database switcher replaced the list with a spinner, and a refresh that failed hid the databases you were already looking at.
 - The database switcher reset your highlighted database when the rest of its details finished loading, and it could highlight a database the search filter hides, which left Return doing nothing.
