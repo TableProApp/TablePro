@@ -3,6 +3,7 @@ import SwiftUI
 struct HistoryDetailPane: View {
     let entry: QueryHistoryEntry?
     let connectionLabel: HistoryConnectionLabel?
+    let canRunInNewTab: Bool
 
     let onLoadInEditor: (QueryHistoryEntry) -> Void
     let onRunInNewTab: (QueryHistoryEntry) -> Void
@@ -21,6 +22,7 @@ struct HistoryDetailPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("query-history-detail")
     }
 
@@ -89,6 +91,10 @@ struct HistoryDetailPane: View {
         return "\(entry.databaseDisplayName).\(schemaName)"
     }
 
+    /// Return already belongs to the list, which activates the row the user is standing on. This is
+    /// a persistent pane rather than a dialog, so the primary action is marked by prominence alone
+    /// and never takes the window's default action, which would fire on any responder that ignores
+    /// Return.
     private func actions(for entry: QueryHistoryEntry) -> some View {
         HStack {
             Button(String(localized: "Copy")) { onCopy(entry) }
@@ -99,11 +105,15 @@ struct HistoryDetailPane: View {
 
             Button(String(localized: "Run in New Tab")) { onRunInNewTab(entry) }
                 .controlSize(.small)
+                .disabled(!canRunInNewTab)
+                .help(canRunInNewTab
+                    ? String(localized: "Open this query in a new tab and run it")
+                    : String(localized: "This query belongs to another connection. Load it in the editor to run it there."))
                 .accessibilityIdentifier("query-history-run-in-new-tab")
 
             Button(String(localized: "Load in Editor")) { onLoadInEditor(entry) }
                 .controlSize(.small)
-                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier("query-history-load-in-editor")
         }
         .padding(10)
