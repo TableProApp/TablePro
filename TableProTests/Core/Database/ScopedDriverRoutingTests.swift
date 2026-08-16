@@ -29,6 +29,32 @@ struct ScopedDriverRoutingTests {
         DatabaseScope(connectionId: connection.id, database: database, schema: nil)
     }
 
+    /// A schema name only means something inside its own database. Inheriting the browsed
+    /// schema into a scope naming another database made the sidebar ask a newly attached
+    /// DuckDB catalog for a schema that lives in a different one, and DuckDB rejected the
+    /// whole read, so the attached database never listed its schemas.
+    @Test("A scope on another database does not inherit the browsed schema")
+    func foreignDatabaseScopeDoesNotInheritSchema() throws {
+        let connection = Self.makeSession(type: .duckdb, browseDatabase: "analytics")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        DatabaseManager.shared.updateSession(connection.id) { $0.browseSchema = "sales" }
+
+        let own = DatabaseManager.shared.resolvedScope(
+            database: "analytics", schema: nil, for: connection.id
+        )
+        #expect(own?.schema == "sales", "The browsed database still inherits the browsed schema")
+
+        let attached = DatabaseManager.shared.resolvedScope(
+            database: "warehouse", schema: nil, for: connection.id
+        )
+        #expect(attached?.schema == nil, "A different database must not inherit 'sales'")
+
+        let explicit = DatabaseManager.shared.resolvedScope(
+            database: "warehouse", schema: "staging", for: connection.id
+        )
+        #expect(explicit?.schema == "staging", "An explicit schema still passes through")
+    }
+
     @Test("A pin-capable engine keeps the user's SQL on the session driver")
     func pinCapableEngineUsesTheSessionDriver() throws {
         let connection = Self.makeSession(type: .mysql, browseDatabase: "inventory")

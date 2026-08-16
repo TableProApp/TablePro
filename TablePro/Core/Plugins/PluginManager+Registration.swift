@@ -527,14 +527,30 @@ extension PluginManager {
 
     /// A file holds exactly one database, so a file-based engine never has a tree to draw.
     /// Every other mode can: a server hosts several databases, and an embedded engine can
-    /// attach them. `supportsDatabaseSwitching` defaults to true on `DriverPlugin`, so the
-    /// grouping strategy is what keeps an engine that never declared one out of the tree.
+    /// attach them.
+    ///
+    /// Both remaining terms are permissive by default (`supportsDatabaseSwitching` is true
+    /// and the grouping strategy is `.byDatabase` on `DriverPlugin`), so a plugin that
+    /// declares neither gets a tree its default `fetchDatabases()` returns nothing for.
+    /// That was true of networked plugins before this guard was widened and is why the
+    /// list stays a declaration rather than an inference; `DatabaseTreeCapabilityTests`
+    /// pins it for both modes.
     func supportsDatabaseTree(for databaseType: DatabaseType) -> Bool {
-        guard connectionMode(for: databaseType) != .fileBased,
-              supportsDatabaseSwitching(for: databaseType) else {
-            return false
-        }
-        let grouping = databaseGroupingStrategy(for: databaseType)
+        Self.supportsDatabaseTree(
+            connectionMode: connectionMode(for: databaseType),
+            supportsDatabaseSwitching: supportsDatabaseSwitching(for: databaseType),
+            grouping: databaseGroupingStrategy(for: databaseType)
+        )
+    }
+
+    /// The rule itself, as a pure function of the three inputs, so it can be exercised for
+    /// combinations no registered type declares today.
+    static func supportsDatabaseTree(
+        connectionMode: ConnectionMode,
+        supportsDatabaseSwitching: Bool,
+        grouping: GroupingStrategy
+    ) -> Bool {
+        guard connectionMode != .fileBased, supportsDatabaseSwitching else { return false }
         return grouping == .byDatabase || grouping == .bySchema
     }
 

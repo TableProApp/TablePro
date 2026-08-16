@@ -707,13 +707,16 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Database Operations
 
-    /// `USE` on a catalog also moves the connection onto that catalog's default schema,
-    /// so the tracked schema follows or the next `pin` would skip a switch it still needs.
+    /// `USE` on a catalog also moves the connection onto that catalog's default schema, so
+    /// the tracked schema has to follow or the next `pin` skips a switch it still needs.
+    /// The new schema is read back rather than assumed to be `main`: a catalog attached
+    /// through the postgres or mysql scanner defaults to that engine's own schema.
     func switchDatabase(to database: String) async throws {
         _ = try await execute(query: DuckDBSchemaQueries.useDatabase(database))
+        let landedSchema = try? await execute(query: DuckDBSchemaQueries.currentSchema)
         stateLock.lock()
         _currentDatabase = database
-        _currentSchema = "main"
+        _currentSchema = landedSchema?.rows.first?[safe: 0]?.asText?.nilIfEmpty ?? "main"
         stateLock.unlock()
     }
 

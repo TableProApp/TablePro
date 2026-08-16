@@ -65,7 +65,9 @@ enum DuckDBSchemaQueries {
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu
           ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_catalog = kcu.table_catalog
           AND tc.table_schema = kcu.table_schema
+          AND tc.table_name = kcu.table_name
         WHERE tc.constraint_type = 'PRIMARY KEY'
           AND tc.table_catalog = current_database()
           AND tc.table_schema = $1
@@ -76,7 +78,9 @@ enum DuckDBSchemaQueries {
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu
           ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_catalog = kcu.table_catalog
           AND tc.table_schema = kcu.table_schema
+          AND tc.table_name = kcu.table_name
         WHERE tc.constraint_type = 'PRIMARY KEY'
           AND tc.table_catalog = current_database()
           AND tc.table_schema = $1
@@ -102,12 +106,16 @@ enum DuckDBSchemaQueries {
         FROM information_schema.referential_constraints rc
         JOIN information_schema.key_column_usage kcu
             ON rc.constraint_name = kcu.constraint_name
+            AND rc.constraint_catalog = kcu.constraint_catalog
             AND rc.constraint_schema = kcu.constraint_schema
         JOIN information_schema.key_column_usage kcu2
             ON rc.unique_constraint_name = kcu2.constraint_name
+            AND rc.unique_constraint_catalog = kcu2.constraint_catalog
             AND rc.unique_constraint_schema = kcu2.constraint_schema
             AND kcu.ordinal_position = kcu2.ordinal_position
-        WHERE kcu.table_catalog = current_database()
+        WHERE rc.constraint_catalog = current_database()
+          AND kcu.table_catalog = current_database()
+          AND kcu2.table_catalog = current_database()
           AND kcu.table_schema = $1
           AND kcu.table_name = $2
         """
@@ -137,6 +145,8 @@ enum DuckDBSchemaQueries {
         """
 
     static let currentCatalog = "SELECT current_database()"
+
+    static let currentSchema = "SELECT current_schema()"
 
     static func allTablesMetadata(schema: String) -> String {
         """

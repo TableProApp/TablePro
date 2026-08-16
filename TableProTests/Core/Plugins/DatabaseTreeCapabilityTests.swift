@@ -71,6 +71,33 @@ struct DatabaseTreeCapabilityTests {
         #expect(PluginManager.shared.supportsDatabaseTree(for: unknown) == true)
     }
 
+    /// Both non-mode terms of the guard are permissive by default, so a plugin that
+    /// declares only `.apiOnly` and nothing else now qualifies where it previously did
+    /// not. Recorded rather than asserted as desirable: widening the guard widened this.
+    @Test("An apiOnly plugin that declares no grouping qualifies for a tree")
+    func apiOnlyWithDefaultsQualifies() {
+        #expect(
+            PluginManager.supportsDatabaseTree(
+                connectionMode: .apiOnly, supportsDatabaseSwitching: true, grouping: .byDatabase
+            ) == true
+        )
+        #expect(
+            PluginManager.supportsDatabaseTree(
+                connectionMode: .fileBased, supportsDatabaseSwitching: true, grouping: .byDatabase
+            ) == false
+        )
+        #expect(
+            PluginManager.supportsDatabaseTree(
+                connectionMode: .apiOnly, supportsDatabaseSwitching: false, grouping: .byDatabase
+            ) == false
+        )
+        #expect(
+            PluginManager.supportsDatabaseTree(
+                connectionMode: .apiOnly, supportsDatabaseSwitching: true, grouping: .flat
+            ) == false
+        )
+    }
+
     /// The relaxed guard swapped `== .network` for `!= .fileBased`, so this walks every
     /// registered type rather than a sample: a file is one database, always.
     @Test("No file-based type anywhere in the registry gains a tree")

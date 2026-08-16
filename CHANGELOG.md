@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The sidebar tree opens on the database and schema you are connected to the first time you see it, instead of every container being closed. After that it remembers what you left open.
+- A connection you open in Tree layout for the first time shows its current database and schema already expanded, instead of every container being closed. Connections that already remember what you left open are untouched.
 - DuckDB connections reset their saved column widths, per-table filters, favourites and recent tables once, because those are stored per database and DuckDB connections now report a database name.
 
 ## [0.65.0] - 2026-08-16
