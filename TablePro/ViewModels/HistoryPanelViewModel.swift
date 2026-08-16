@@ -66,6 +66,20 @@ final class HistoryPanelViewModel {
 
     // MARK: - Lifecycle
 
+    /// The drawer is collapsed rather than removed, so the view never disappears and its lifecycle
+    /// cannot say when the panel stops mattering. Visibility is the signal that actually changes,
+    /// and a panel nobody can see has no reason to hold a subscription or refetch behind them.
+    var isObserving: Bool { updateSubscription != nil }
+
+    func activate() async {
+        startObserving()
+        await reload()
+    }
+
+    func deactivate() {
+        stopObserving()
+    }
+
     func startObserving() {
         guard updateSubscription == nil else { return }
         updateSubscription = AppEvents.shared.queryHistoryDidUpdate

@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import Testing
@@ -87,6 +88,8 @@ private actor RecordingHistoryReader: QueryHistoryReading {
     }
 
     func lastFilter() -> QueryHistoryFilter? { receivedFilters.last }
+
+    func fetchCount() -> Int { receivedFilters.count }
 }
 
 @Suite("HistoryPanelViewModel", .serialized)
@@ -145,6 +148,47 @@ struct HistoryPanelViewModelTests {
 
         #expect(viewModel.isStoreUnavailable)
         #expect(viewModel.isEmpty)
+    }
+
+    /// The drawer is collapsed rather than removed, so `onDisappear` never fires and nothing was
+    /// left to stop the live refresh. Every recorded statement then woke a panel nobody could see.
+    @Test("a deactivated panel stops refetching when history changes")
+    func deactivatedPanelStopsRefetching() async throws {
+        let connectionId = UUID()
+        let (viewModel, reader) = makeViewModel(
+            connectionId: connectionId,
+            entries: [Self.makeEntry(connectionId: connectionId, query: "SELECT 1")]
+        )
+
+        await viewModel.activate()
+        #expect(viewModel.isObserving)
+        let afterActivate = await reader.fetchCount()
+
+        AppEvents.shared.queryHistoryDidUpdate.send(connectionId)
+        let refetched = await Self.waitForFetchCount(above: afterActivate, in: reader)
+        #expect(refetched, "A visible panel refreshes when a query is recorded")
+        let whileVisible = await reader.fetchCount()
+
+        viewModel.deactivate()
+        #expect(!viewModel.isObserving)
+
+        AppEvents.shared.queryHistoryDidUpdate.send(connectionId)
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(
+            await reader.fetchCount() == whileVisible,
+            "A panel nobody can see must not go back to the store"
+        )
+    }
+
+    private static func waitForFetchCount(
+        above baseline: Int,
+        in reader: RecordingHistoryReader
+    ) async -> Bool {
+        for _ in 0..<40 {
+            if await reader.fetchCount() > baseline { return true }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return false
     }
 
     @Test("the panel scopes to its own connection by default")

@@ -18,6 +18,10 @@ struct MenuValidationContext: Equatable {
     var isConnected = false
     var isReadOnly = false
     var isTableTab = false
+    /// Save As writes the selected tab's SQL, so it needs a query tab and not merely a connection.
+    var isQueryTab = false
+    /// Export Results exports the selected tab's rows, so an empty grid has nothing to offer.
+    var hasResultRows = false
     var isCurrentTabEditable = false
     var isQueryExecuting = false
     var hasQueryText = false
@@ -66,7 +70,6 @@ extension MainSplitViewController: NSMenuItemValidation {
         switch selector {
         case #selector(openSQLFile(_:)),
              #selector(exportTables(_:)),
-             #selector(exportQueryResults(_:)),
              #selector(refreshDatabase(_:)),
              #selector(openQuickSwitcher(_:)),
              #selector(switchConnection(_:)),
@@ -88,7 +91,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(saveDocument(_:)):
             return context.isConnected && !context.isReadOnly && context.hasPendingChanges
         case #selector(saveDocumentAs(_:)):
-            return context.isConnected
+            return context.isConnected && context.isQueryTab
+        case #selector(exportQueryResults(_:)):
+            return context.isConnected && context.hasResultRows
 
         /// AppKit validated New Tab and Close Tab for free while they were its own selectors.
         /// `NSWindow.validateUserInterfaceItem` only speaks to the native ones, so these are
@@ -198,6 +203,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             isConnected: isConnected,
             isReadOnly: actions.isReadOnly,
             isTableTab: actions.isTableTab,
+            isQueryTab: actions.isQueryTab,
+            hasResultRows: actions.hasResultRows,
             isCurrentTabEditable: actions.isCurrentTabEditable,
             isQueryExecuting: actions.isQueryExecuting,
             hasQueryText: actions.hasQueryText,

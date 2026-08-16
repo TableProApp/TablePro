@@ -194,15 +194,12 @@ struct HistoryPanelToolbar: View {
     }
 
     private var clearMessage: String {
-        let range = state.dateRange
-        if range == .all {
-            return state.showsAllConnections
-                ? String(localized: "This deletes the query history of every connection. You cannot undo this.")
-                : String(localized: "This deletes this connection's query history. You cannot undo this.")
-        }
-        return String(
-            format: String(localized: "This deletes the query history from %@. You cannot undo this."),
-            range.title.lowercased()
+        HistoryClearSummary.message(
+            showsAllConnections: state.showsAllConnections,
+            sources: state.sources,
+            outcome: state.outcome,
+            dateRange: state.dateRange,
+            searchText: state.searchText
         )
     }
 

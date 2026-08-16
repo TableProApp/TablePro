@@ -21,17 +21,20 @@ internal struct FieldDrivenListSection<Item: Identifiable>: Identifiable {
 internal struct FieldDrivenMenuItem {
     internal let title: String
     internal let isSeparator: Bool
+    internal let isEnabled: Bool
     internal let action: () -> Void
 
-    internal init(title: String, action: @escaping () -> Void) {
+    internal init(title: String, isEnabled: Bool = true, action: @escaping () -> Void) {
         self.title = title
         self.isSeparator = false
+        self.isEnabled = isEnabled
         self.action = action
     }
 
     private init() {
         self.title = ""
         self.isSeparator = true
+        self.isEnabled = false
         self.action = {}
     }
 
@@ -200,9 +203,14 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
             }
         }
 
+        /// The emphasis rule is pushed onto the row here rather than read back off the view
+        /// hierarchy, because AppKit installs a row's cell views before the row itself reaches the
+        /// table. See `FieldDrivenRowView`.
         internal func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-            tableView.makeView(withIdentifier: FieldDrivenRowView.reuseIdentifier, owner: self) as? FieldDrivenRowView
-                ?? FieldDrivenRowView.make()
+            let rowView = tableView.makeView(withIdentifier: FieldDrivenRowView.reuseIdentifier, owner: self)
+                as? FieldDrivenRowView ?? FieldDrivenRowView.make()
+            rowView.followsWindowKeyState = !owner.acceptsFocus
+            return rowView
         }
 
         internal func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
@@ -244,6 +252,8 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
             (sender.representedObject as? MenuAction)?.perform()
         }
 
+        /// Auto-enabling asks the target whether it responds to the item's selector, which it
+        /// always does, so a descriptor's own `isEnabled` would be overwritten on display.
         internal func menu(forRow row: Int) -> NSMenu? {
             guard let build = owner.menuItems, row >= 0, row < entries.count,
                   let id = entries[row].itemId else { return nil }
@@ -251,6 +261,7 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
             let descriptors = build(targets)
             guard !descriptors.isEmpty else { return nil }
             let menu = NSMenu()
+            menu.autoenablesItems = false
             for descriptor in descriptors {
                 if descriptor.isSeparator {
                     menu.addItem(.separator())
@@ -258,6 +269,7 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
                 }
                 let item = NSMenuItem(title: descriptor.title, action: #selector(performMenuItem(_:)), keyEquivalent: "")
                 item.target = self
+                item.isEnabled = descriptor.isEnabled
                 item.representedObject = MenuAction(descriptor.action)
                 menu.addItem(item)
             }
@@ -273,10 +285,13 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
 }
 
 /// A chooser's highlight stands for the search field's selection, so it draws emphasized whenever
-/// the window is key: the field is the thing holding focus. A browser owns its own focus, so its
-/// highlight follows first responder the way every other list on the system does.
+/// the window is key: the field is the thing holding focus. A browser owns its own focus, so AppKit
+/// already emphasizes it exactly right and this row leaves the property alone.
 internal final class FieldDrivenRowView: NSTableRowView {
     internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("FieldDrivenRow")
+
+    /// Set from `tableView(_:rowViewForRow:)`, which runs before AppKit installs any cell view.
+    internal var followsWindowKeyState = false
 
     internal static func make() -> FieldDrivenRowView {
         let view = FieldDrivenRowView()
@@ -284,16 +299,26 @@ internal final class FieldDrivenRowView: NSTableRowView {
         return view
     }
 
-    /// `NSTableRowView` declares this settable, so an override has to supply a setter. AppKit is
-    /// the only caller and it has nothing to tell this row that the window does not.
+    /// The setter has to forward, because AppKit's own stored value is what a browser row draws
+    /// from and swallowing the write would leave every browser row permanently unemphasized.
     override internal var isEmphasized: Bool {
-        get {
-            guard let table = superview as? FieldDrivenTableView, table.acceptsFocus else {
-                return window?.isKeyWindow ?? false
-            }
-            return window?.firstResponder === table
+        get { followsWindowKeyState ? window?.isKeyWindow ?? false : super.isEmphasized }
+        set { super.isEmphasized = newValue }
+    }
+
+    /// AppKit copies `interiorBackgroundStyle` into the cell views from `didAddSubview`, and a row
+    /// is populated before it is added to the table, so at that moment `window` is still nil and a
+    /// key-state-derived emphasis reads false. The row then paints its accent fill from the live
+    /// value while the cells keep the unemphasized foreground: blue fill, dark text, until some
+    /// later selection change happens to re-run the copy. Repeating it here is the first point the
+    /// derived value is true, and AppKit keeps the two in step from then on.
+    override internal func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard followsWindowKeyState else { return }
+        let style = interiorBackgroundStyle
+        for case let cell as NSTableCellView in subviews where cell.backgroundStyle != style {
+            cell.backgroundStyle = style
         }
-        set {}
     }
 }
 
@@ -328,14 +353,21 @@ internal final class FieldDrivenTableView: NSTableView {
         onCopy?()
     }
 
+    /// The menu is resolved before the selection moves, because `selectRowIndexes` does not consult
+    /// `tableView(_:shouldSelectRow:)`: a right-click on a section header would otherwise select a
+    /// row that carries no item, which reads back as an empty selection. Resolving first also keeps
+    /// a right-click that produces no menu from moving the selection behind it. The targets a menu
+    /// is built for are unaffected, since a click outside the selection always acts on its own row.
     override internal func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
-        guard row >= 0 else { return nil }
+        guard row >= 0,
+              let provider = delegate as? (any FieldDrivenMenuProviding),
+              let menu = provider.menu(forRow: row) else { return nil }
         if !selectedRowIndexes.contains(row) {
             selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         }
-        return (delegate as? (any FieldDrivenMenuProviding))?.menu(forRow: row)
+        return menu
     }
 }
 

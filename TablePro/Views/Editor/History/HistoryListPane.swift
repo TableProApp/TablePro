@@ -3,6 +3,7 @@ import SwiftUI
 struct HistoryListPane: View {
     @Bindable var viewModel: HistoryPanelViewModel
 
+    let canRunInNewTab: (QueryHistoryEntry) -> Bool
     let onLoadInEditor: (QueryHistoryEntry) -> Void
     let onRunInNewTab: (QueryHistoryEntry) -> Void
     let onCopy: (QueryHistoryEntry) -> Void
@@ -131,7 +132,10 @@ struct HistoryListPane: View {
         guard let id = ids.first, let entry = entry(id) else { return [] }
         return [
             FieldDrivenMenuItem(title: String(localized: "Load in Editor")) { onLoadInEditor(entry) },
-            FieldDrivenMenuItem(title: String(localized: "Run in New Tab")) { onRunInNewTab(entry) },
+            FieldDrivenMenuItem(
+                title: String(localized: "Run in New Tab"),
+                isEnabled: canRunInNewTab(entry)
+            ) { onRunInNewTab(entry) },
             .separator,
             FieldDrivenMenuItem(title: String(localized: "Copy Query")) { onCopy(entry) },
             FieldDrivenMenuItem(title: String(localized: "Save as Favorite…")) { onSaveAsFavorite(entry) },

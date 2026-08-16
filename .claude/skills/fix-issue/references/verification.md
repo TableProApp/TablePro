@@ -83,7 +83,9 @@ xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginV
 - The Chinook sample has no `users` table. Use `Track`.
 - "Open Sample Database" lives only in the **Help** menu.
 
-**Never put `.accessibilityIdentifier` on a SwiftUI container.** It replaces the identifier of every descendant control in the same hosting tree, so a whole panel's buttons, search field, and popups all report the container's identifier and their own is gone. The symptom is a test that cannot find a control you can plainly see, and the obvious diagnoses (wrong query, wrong element type, timing) are all wrong. Identify the leaf controls only, and detect a container through one of them. Children behind an `NSViewRepresentable` boundary keep their own identifiers, since that is a separate hosting tree.
+**Never put `.accessibilityIdentifier` on a SwiftUI container by itself.** It replaces the identifier of every descendant control in the same hosting tree, so a whole panel's buttons, search field, and popups all report the container's identifier and their own is gone. The symptom is a test that cannot find a control you can plainly see, and the obvious diagnoses (wrong query, wrong element type, timing) are all wrong. Children behind an `NSViewRepresentable` boundary keep their own identifiers, since that is a separate hosting tree.
+
+When a container genuinely needs its own identifier, pair it with `.accessibilityElement(children: .contain)`, which makes the view an accessibility container instead of one merged element, so every leaf keeps its identifier and the container keeps its own. Measured on the query history detail pane from a dumped tree: before, all three action buttons reported `query-history-detail`; after, they reported `query-history-copy`, `query-history-run-in-new-tab` and `query-history-load-in-editor` with the container still addressable. Order matters, `children: .contain` before the identifier.
 
 **Diagnose by dumping the real tree, not by guessing:** `print(app.windows.firstMatch.debugDescription)` inside a `UITestCase`, run the suite, read the output.
 

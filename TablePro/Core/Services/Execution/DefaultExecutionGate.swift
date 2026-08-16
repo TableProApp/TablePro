@@ -50,9 +50,16 @@ internal actor DefaultExecutionGate: ExecutionGate {
             ))
         }
 
+        /// Narrower than `effectiveWrite`, which is true for every statement on a driver that
+        /// cannot be opened read-only. A caller asking to confirm its writes means the ones that
+        /// actually write, not every `GET` sent to Redis.
+        let isWriteStatement = request.kind.declaresWrite || tier == .write || tier == .destructive
+
         let isMetadataRead = request.kind == .metadataRead
         let needsConfirmation = !isMetadataRead
-            && (isDestructive || (level.requiresConfirmation && (effectiveWrite || level.appliesToAllQueries)))
+            && (isDestructive
+                || (isWriteStatement && caps.contains(.confirmsWrites))
+                || (level.requiresConfirmation && (effectiveWrite || level.appliesToAllQueries)))
         if needsConfirmation, !caps.contains(.preCleared), !caps.contains(.confirmationPreCleared) {
             if caps.contains(.cannotPrompt) {
                 return .denied(reason: String(localized: "Confirmation is required for this operation"))
