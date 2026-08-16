@@ -719,6 +719,19 @@ mod tests {
             );
             tp_dm_result_free(select_result);
 
+            let precise_decimal = "1234567890123456789012345678.1234567890";
+            let decimal_result = execute(
+                connection,
+                "SELECT CAST('1234567890123456789012345678.1234567890' AS DECIMAL(38, 10)) FROM DUAL",
+                true,
+            );
+            let bytes = tp_dm_result_cell_bytes(decimal_result, 0, 0, &mut length);
+            assert_eq!(
+                slice::from_raw_parts(bytes, length),
+                precise_decimal.as_bytes()
+            );
+            tp_dm_result_free(decimal_result);
+
             let browse_result = execute(
                 connection,
                 "SELECT ID, NAME, STATUS, TOTAL, CREATED_AT \

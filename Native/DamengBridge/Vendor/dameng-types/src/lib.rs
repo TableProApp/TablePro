@@ -3,7 +3,6 @@
 //! This crate provides type mappings between Dameng database types
 //! and Rust native types, along with encoding/decoding utilities.
 
-use std::str::FromStr;
 
 pub mod encoding;
 pub use encoding::{decode_from_server, encode_to_server, ServerEncoding};
@@ -1018,6 +1017,48 @@ fn decode_dm_binary_decimal(data: &[u8]) -> Option<rust_decimal::Decimal> {
     ))
 }
 
+fn is_decimal_text(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.is_empty() {
+        return false;
+    }
+
+    let mut index = usize::from(matches!(bytes[0], b'+' | b'-'));
+    let mut integer_digits = 0;
+    while index < bytes.len() && bytes[index].is_ascii_digit() {
+        integer_digits += 1;
+        index += 1;
+    }
+
+    let mut fractional_digits = 0;
+    if index < bytes.len() && bytes[index] == b'.' {
+        index += 1;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            fractional_digits += 1;
+            index += 1;
+        }
+    }
+    if integer_digits + fractional_digits == 0 {
+        return false;
+    }
+
+    if index < bytes.len() && matches!(bytes[index], b'e' | b'E') {
+        index += 1;
+        if index < bytes.len() && matches!(bytes[index], b'+' | b'-') {
+            index += 1;
+        }
+        let exponent_start = index;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            index += 1;
+        }
+        if exponent_start == index {
+            return false;
+        }
+    }
+
+    index == bytes.len()
+}
+
 /// Decode DM protocol bytes to a Rust value.
 ///
 /// # Arguments
@@ -1154,10 +1195,18 @@ pub fn decode_value(ty: DmValueType, data: &[u8], lob_meta: Option<(i32, i16)>) 
             }
         }
         DmValueType::DECIMAL | DmValueType::NUMERIC => {
-            // Try text format first (ASCII digits)
+            // DM commonly returns decimal text. Keep values that exceed rust_decimal's
+            // 96-bit representation as text so callers do not mistake them for SQL NULL.
             if let Ok(s) = std::str::from_utf8(data) {
-                if let Ok(d) = rust_decimal::Decimal::from_str(s.trim()) {
+                let trimmed = s.trim();
+                if let Ok(d) = rust_decimal::Decimal::from_str_exact(trimmed) {
                     return Some(DmValue::Decimal(d));
+                }
+                if is_decimal_text(trimmed) {
+                    return Some(DmValue::Text(trimmed.to_string()));
+                }
+                if s.is_ascii() {
+                    return None;
                 }
             }
             // Try DM binary DECIMAL format (matches Go driver o.go)
@@ -1447,6 +1496,19 @@ mod tests {
         assert_eq!(encoded, b"42");
         let decoded = decode_value(DmValueType::NUMERIC, &encoded, None).unwrap();
         assert_eq!(decoded, val);
+    }
+
+    #[test]
+    fn test_decode_high_precision_numeric_as_text() {
+        let value = "1234567890123456789012345678.1234567890";
+        let decoded = decode_value(DmValueType::NUMERIC, value.as_bytes(), None).unwrap();
+        assert_eq!(decoded, DmValue::Text(value.to_string()));
+    }
+
+    #[test]
+    fn test_reject_invalid_numeric_text() {
+        assert_eq!(decode_value(DmValueType::NUMERIC, b"12.3.4", None), None);
+        assert_eq!(decode_value(DmValueType::NUMERIC, b"1e+", None), None);
     }
 
     #[test]

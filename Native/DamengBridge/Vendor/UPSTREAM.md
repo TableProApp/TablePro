@@ -6,7 +6,8 @@ The `dameng`, `dameng-protocol`, and `dameng-types` directories originate from
 license included in each directory.
 
 TablePro carries compatibility changes for DM8 multi-column responses, binary
-DECIMAL values, text EXPLAIN responses, bounded frame allocation, and exact
-message-boundary reads. Response bodies and LOB content are capped at 64 MiB.
-Review and retest these changes against an OrbStack DM8 instance whenever the
-upstream snapshot changes.
+and high-precision DECIMAL values, transaction and session-handle preservation,
+text EXPLAIN responses, bounded frame allocation, and exact message-boundary
+reads. Response bodies and LOB content are capped at 64 MiB. Review and retest
+these changes against an OrbStack DM8 instance whenever the upstream snapshot
+changes.

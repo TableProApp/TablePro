@@ -217,6 +217,14 @@ final class DamengPluginDriverTests: XCTestCase {
         XCTAssertEqual(valueResult.rows.first?[0], .text(hostileText))
         XCTAssertEqual(valueResult.rows.first?[1], .text("00017FFF"))
 
+        let preciseDecimal = "1234567890123456789012345678.1234567890"
+        let decimalResult = try await checked("read high-precision decimal") {
+            try await driver.execute(
+                query: "SELECT CAST('\(preciseDecimal)' AS DECIMAL(38, 10)) FROM DUAL"
+            )
+        }
+        XCTAssertEqual(decimalResult.rows.first?.first, .text(preciseDecimal))
+
         let capped = try await driver.executeUserQuery(
             query: "SELECT \"ID\" FROM \"PARENT\" ORDER BY \"ID\"",
             rowCap: 2,
