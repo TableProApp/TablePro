@@ -200,9 +200,14 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
             }
         }
 
+        /// The emphasis rule is pushed onto the row here rather than read back off the view
+        /// hierarchy, because AppKit installs a row's cell views before the row itself reaches the
+        /// table. See `FieldDrivenRowView`.
         internal func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-            tableView.makeView(withIdentifier: FieldDrivenRowView.reuseIdentifier, owner: self) as? FieldDrivenRowView
-                ?? FieldDrivenRowView.make()
+            let rowView = tableView.makeView(withIdentifier: FieldDrivenRowView.reuseIdentifier, owner: self)
+                as? FieldDrivenRowView ?? FieldDrivenRowView.make()
+            rowView.followsWindowKeyState = !owner.acceptsFocus
+            return rowView
         }
 
         internal func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
@@ -273,10 +278,13 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
 }
 
 /// A chooser's highlight stands for the search field's selection, so it draws emphasized whenever
-/// the window is key: the field is the thing holding focus. A browser owns its own focus, so its
-/// highlight follows first responder the way every other list on the system does.
+/// the window is key: the field is the thing holding focus. A browser owns its own focus, so AppKit
+/// already emphasizes it exactly right and this row leaves the property alone.
 internal final class FieldDrivenRowView: NSTableRowView {
     internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("FieldDrivenRow")
+
+    /// Set from `tableView(_:rowViewForRow:)`, which runs before AppKit installs any cell view.
+    internal var followsWindowKeyState = false
 
     internal static func make() -> FieldDrivenRowView {
         let view = FieldDrivenRowView()
@@ -284,16 +292,26 @@ internal final class FieldDrivenRowView: NSTableRowView {
         return view
     }
 
-    /// `NSTableRowView` declares this settable, so an override has to supply a setter. AppKit is
-    /// the only caller and it has nothing to tell this row that the window does not.
+    /// The setter has to forward, because AppKit's own stored value is what a browser row draws
+    /// from and swallowing the write would leave every browser row permanently unemphasized.
     override internal var isEmphasized: Bool {
-        get {
-            guard let table = superview as? FieldDrivenTableView, table.acceptsFocus else {
-                return window?.isKeyWindow ?? false
-            }
-            return window?.firstResponder === table
+        get { followsWindowKeyState ? window?.isKeyWindow ?? false : super.isEmphasized }
+        set { super.isEmphasized = newValue }
+    }
+
+    /// AppKit copies `interiorBackgroundStyle` into the cell views from `didAddSubview`, and a row
+    /// is populated before it is added to the table, so at that moment `window` is still nil and a
+    /// key-state-derived emphasis reads false. The row then paints its accent fill from the live
+    /// value while the cells keep the unemphasized foreground: blue fill, dark text, until some
+    /// later selection change happens to re-run the copy. Repeating it here is the first point the
+    /// derived value is true, and AppKit keeps the two in step from then on.
+    override internal func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard followsWindowKeyState else { return }
+        let style = interiorBackgroundStyle
+        for case let cell as NSTableCellView in subviews where cell.backgroundStyle != style {
+            cell.backgroundStyle = style
         }
-        set {}
     }
 }
 
