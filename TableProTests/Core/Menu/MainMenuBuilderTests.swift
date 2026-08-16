@@ -167,6 +167,35 @@ struct MainMenuValidationTests {
         #expect(!enabled(#selector(MainSplitViewController.saveDocument(_:)), context))
     }
 
+    /// Both handlers return at their first guard in states the old validation called enabled, so
+    /// the item stayed lit and the click did nothing at all.
+    @Test("Save As needs a query tab, not just a connection")
+    func saveAsNeedsAQueryTab() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.saveDocumentAs(_:)), context))
+        context.isQueryTab = true
+        #expect(enabled(#selector(MainSplitViewController.saveDocumentAs(_:)), context))
+    }
+
+    @Test("Export Results needs rows to export")
+    func exportResultsNeedsRows() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.exportQueryResults(_:)), context))
+        context.hasResultRows = true
+        #expect(enabled(#selector(MainSplitViewController.exportQueryResults(_:)), context))
+    }
+
+    @Test("Neither survives losing the connection")
+    func bothStillNeedAConnection() {
+        var context = MenuValidationContext()
+        context.isQueryTab = true
+        context.hasResultRows = true
+        #expect(!enabled(#selector(MainSplitViewController.saveDocumentAs(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.exportQueryResults(_:)), context))
+    }
+
     @Test("Read-only connections block destructive commands")
     func readOnlyBlocksMutations() {
         var context = MenuValidationContext()
@@ -222,6 +251,8 @@ struct MainMenuValidationTests {
     private func capableContext() -> MenuValidationContext {
         var context = MenuValidationContext()
         context.isTableTab = true
+        context.isQueryTab = true
+        context.hasResultRows = true
         context.hasQueryText = true
         context.hasPendingChanges = true
         context.hasDataPendingChanges = true

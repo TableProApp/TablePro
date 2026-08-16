@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB tables outside the `main` schema are visible again. The sidebar lists every schema of the connected database, Tree layout shows database, schema and tables, and `ATTACH`ed databases appear alongside the one you opened. (#2131)
 - DuckDB metadata no longer mixes up databases that share a schema name, so an `ATTACH`ed file's tables stay out of the database you opened.
 - A DuckDB table in the default schema is titled `orders` again rather than `main.orders`, and exports preselect the schema you are browsing.
+- **File > Save As...** stayed available on a table, structure or diagram tab, and **File > Export > Export Results...** stayed available with no rows to export. Both did nothing when chosen. They are dimmed now until they can run.
 
 ### Changed
 

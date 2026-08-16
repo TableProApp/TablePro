@@ -341,6 +341,18 @@ final class MainContentCommandActions {
         coordinator?.toolbarState.isTableTab ?? false
     }
 
+    /// The two facts Save As and Export Results actually turn on. Their menu items used to be
+    /// validated on `isConnected` alone, so both stayed lit in states where the handler returns at
+    /// its first guard and the click does nothing at all.
+    var isQueryTab: Bool {
+        coordinator?.tabManager.selectedTab?.tabType == .query
+    }
+
+    var hasResultRows: Bool {
+        guard let coordinator, let tab = coordinator.tabManager.selectedTab else { return false }
+        return !coordinator.tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
+    }
+
     var hasRowSelection: Bool {
         !resolvedRowSelection().isEmpty
     }
