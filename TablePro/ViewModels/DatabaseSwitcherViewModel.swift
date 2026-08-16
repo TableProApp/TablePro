@@ -35,6 +35,8 @@ final class DatabaseSwitcherViewModel {
     private let databaseType: DatabaseType
     @ObservationIgnored private let services: AppServices
     private let sidebarState: SharedSidebarState?
+    @ObservationIgnored private var hasLoadedOnce = false
+    @ObservationIgnored private var loadToken: UUID?
 
     private var treeVisibleDatabases: [DatabaseMetadata] {
         guard switchTarget == .database else { return databases }
@@ -76,9 +78,14 @@ final class DatabaseSwitcherViewModel {
         self.switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType) ?? .database
     }
 
+    /// A refresh never blanks the list it is refreshing, and a failed one never replaces data the
+    /// popover is still showing. Only a load that has nothing to fall back on reports either state.
     func fetchDatabases() async {
-        isLoading = true
-        errorMessage = nil
+        let token = UUID()
+        loadToken = token
+        if !hasLoadedOnce {
+            isLoading = true
+        }
 
         do {
             let target = switchTarget
@@ -88,27 +95,36 @@ final class DatabaseSwitcherViewModel {
                 case .schema: try await driver.fetchSchemas()
                 }
             }
-            databases = names.sorted().map { name in
-                DatabaseMetadata.minimal(name: name, isSystem: isSystemItem(name))
-            }
+            guard loadToken == token else { return }
+            applyFetched(names.sorted().map { DatabaseMetadata.minimal(name: $0, isSystem: isSystemItem($0)) })
 
-            preselectDatabase()
-
-            isLoading = false
             guard switchTarget == .database else { return }
             do {
                 let metadataList = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId, workload: .bulk) { driver in
                     try await driver.fetchAllDatabaseMetadata()
                 }
-                databases = metadataList.sorted { $0.name < $1.name }
-                preselectDatabase()
+                guard loadToken == token else { return }
+                applyFetched(metadataList.sorted { $0.name < $1.name })
             } catch {
                 Self.logger.error("Failed to fetch database metadata: \(error)")
             }
         } catch {
-            errorMessage = error.localizedDescription
+            guard loadToken == token else { return }
             isLoading = false
+            guard !hasLoadedOnce else {
+                Self.logger.error("Failed to refresh databases: \(error)")
+                return
+            }
+            errorMessage = error.localizedDescription
         }
+    }
+
+    func applyFetched(_ metadata: [DatabaseMetadata]) {
+        databases = metadata
+        hasLoadedOnce = true
+        errorMessage = nil
+        isLoading = false
+        reconcileSelection()
     }
 
     func refreshDatabases() async {
@@ -162,11 +178,23 @@ final class DatabaseSwitcherViewModel {
         }
     }
 
+    /// A selection the user made outlives a refresh. The slow bulk metadata pass lands well after
+    /// the list is interactive, so resetting the selection there took the row out from under them.
+    private func reconcileSelection() {
+        selectedDatabases.formIntersection(Set(filteredDatabases.map(\.name)))
+        guard selectedDatabases.isEmpty else { return }
+        preselectDatabase()
+    }
+
+    /// The selection has to be a row the list actually shows, because `primarySelection` and the
+    /// arrow keys all resolve it through `filteredDatabases`. Preselecting a hidden row left Return
+    /// doing nothing at all.
     private func preselectDatabase() {
-        if let current = currentDatabase, databases.contains(where: { $0.name == current }) {
+        let items = filteredDatabases
+        if let current = currentDatabase, items.contains(where: { $0.name == current }) {
             selectedDatabase = current
         } else {
-            selectedDatabase = databases.first?.name
+            selectedDatabase = items.first?.name
         }
     }
 
