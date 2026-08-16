@@ -328,14 +328,21 @@ internal final class FieldDrivenTableView: NSTableView {
         onCopy?()
     }
 
+    /// The menu is resolved before the selection moves, because `selectRowIndexes` does not consult
+    /// `tableView(_:shouldSelectRow:)`: a right-click on a section header would otherwise select a
+    /// row that carries no item, which reads back as an empty selection. Resolving first also keeps
+    /// a right-click that produces no menu from moving the selection behind it. The targets a menu
+    /// is built for are unaffected, since a click outside the selection always acts on its own row.
     override internal func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point)
-        guard row >= 0 else { return nil }
+        guard row >= 0,
+              let provider = delegate as? (any FieldDrivenMenuProviding),
+              let menu = provider.menu(forRow: row) else { return nil }
         if !selectedRowIndexes.contains(row) {
             selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         }
-        return (delegate as? (any FieldDrivenMenuProviding))?.menu(forRow: row)
+        return menu
     }
 }
 

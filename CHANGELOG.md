@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Right-clicking a day heading in the query history drawer cleared the selected entry and showed no menu. Right-clicking a row in the connection switcher moved the highlight without showing a menu.
 - DuckDB `TIMESTAMP_S`, `TIMESTAMP_MS` and `TIMESTAMP_NS` columns showed `1970-01-01 00:00:00` on every row instead of the stored value. They now read exactly as the DuckDB CLI prints them, keeping sub-second digits. (#2130)
 - DuckDB `UUID`, `ENUM`, `BIT`, `LIST`, `STRUCT`, `MAP`, `ARRAY` and `UNION` columns showed an empty cell instead of their value. (#2130)
 - Querying two DuckDB tables that share a column name could repeat one table's value in both columns. (#2130)
