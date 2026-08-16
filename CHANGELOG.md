@@ -42,8 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dropping a SQL file on a connection window opens it. (#2104)
 - The Settings window can be resized.
 - SSL settings on mobile for MySQL, PostgreSQL and Redis: a mode picker plus CA, client certificate and client key. Import a PEM file, paste one, or use a PKCS#12 file. (#2083)
-- A Beancount ledger projects the directives it used to leave in the source file: commodities, documents, notes, events and closes, plus transaction and posting metadata, tags and links. Transactions and postings carry the file and line they were read from.
-- A Beancount ledger opened through `rledger` lists what validation found in a `diagnostics` table, with the severity, phase, code and source location of each problem.
+- A Beancount ledger projects the directives it used to leave in the source file: commodities, documents, notes, events and closes, plus transaction and posting metadata, tags and links. Transactions remain visible with these details when they have no postings. Transactions and postings carry the file and line they were read from.
+- A Beancount ledger opened through `rledger` lists what validation found in a `diagnostics` table, with the severity, phase, code and source location of each problem. Document diagnostics refresh when a referenced file is created or removed.
 
 ### Changed
 

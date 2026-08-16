@@ -8,6 +8,7 @@ import Foundation
 struct BeancountSourceGraph: Sendable {
     let sourceFiles: [URL]
     let watchedDirectories: [URL]
+    let reloadDependencies: [URL]
 }
 
 enum BeancountResolverError: LocalizedError {
@@ -24,23 +25,44 @@ enum BeancountResolverError: LocalizedError {
     }
 }
 
+private struct BeancountDocumentDeclaration {
+    let path: String
+    let sourceDirectory: URL
+}
+
 final class BeancountIncludeResolver {
+    private static let maximumSymbolicLinkDepth = 32
+
     private var visited: Set<URL> = []
     private var activeStack: Set<URL> = []
     private var sourceFiles: [URL] = []
     private var watchedDirectories: Set<URL> = []
+    private var documentDeclarations: [BeancountDocumentDeclaration] = []
+    private var documentRootPaths: [String] = []
+    private var mainDirectory = URL(fileURLWithPath: "/")
 
     func resolve(fileURL: URL) throws -> BeancountSourceGraph {
         visited.removeAll()
         activeStack.removeAll()
         sourceFiles.removeAll()
         watchedDirectories.removeAll()
+        documentDeclarations.removeAll()
+        documentRootPaths.removeAll()
 
-        try resolveFile(fileURL.standardizedFileURL)
+        let mainFile = fileURL.standardizedFileURL
+        mainDirectory = mainFile.deletingLastPathComponent()
+        try resolveFile(mainFile)
+
+        let documentRoots = resolvedDocumentRoots()
+        let documentFiles = resolvedDocumentFiles(documentRoots: documentRoots)
+        let dependencies = Set(sourceFiles)
+            .union(watchedDirectories)
+            .union(documentFiles)
 
         return BeancountSourceGraph(
             sourceFiles: sourceFiles,
-            watchedDirectories: watchedDirectories.sorted { $0.path < $1.path }
+            watchedDirectories: watchedDirectories.sorted { $0.path < $1.path },
+            reloadDependencies: dependencies.sorted { $0.path < $1.path }
         )
     }
 
@@ -65,24 +87,109 @@ final class BeancountIncludeResolver {
         sourceFiles.append(normalized)
 
         for rawLine in contents.components(separatedBy: .newlines) {
-            let trimmed = stripComment(rawLine).trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("include "), let includePath = quotedString(in: trimmed) else { continue }
-            let includeURLs = try resolveIncludeURLs(
-                includePath,
-                relativeTo: normalized.deletingLastPathComponent()
-            )
-            for includeURL in includeURLs {
-                try resolveFile(includeURL)
+            let line = stripComment(rawLine).trimmingCharacters(in: .whitespaces)
+            let quotedValues = quotedStrings(in: line)
+            let directive = line.split(maxSplits: 1, whereSeparator: { $0.isWhitespace }).first
+
+            if directive == "include", let includePath = quotedValues.first {
+                let includeURLs = try resolveIncludeURLs(
+                    includePath,
+                    relativeTo: normalized.deletingLastPathComponent()
+                )
+                for includeURL in includeURLs {
+                    try resolveFile(includeURL)
+                }
+            } else if directive == "option",
+                      quotedValues.count >= 2,
+                      quotedValues[0] == "documents" {
+                documentRootPaths.append(quotedValues[1])
+            } else if isDocumentDirective(line), let documentPath = quotedValues.first {
+                documentDeclarations.append(
+                    BeancountDocumentDeclaration(
+                        path: documentPath,
+                        sourceDirectory: normalized.deletingLastPathComponent()
+                    )
+                )
             }
         }
     }
 
-    private func resolveIncludeURLs(_ includePath: String, relativeTo directory: URL) throws -> [URL] {
-        guard containsGlobPattern(includePath) else {
-            return [resolveIncludeURL(includePath, relativeTo: directory)]
+    private func resolvedDocumentRoots() -> [URL] {
+        Set(documentRootPaths.map { path in
+            resolvePath(path, relativeTo: mainDirectory)
+        }).sorted { $0.path < $1.path }
+    }
+
+    private func resolvedDocumentFiles(documentRoots: [URL]) -> Set<URL> {
+        documentDeclarations.reduce(into: Set<URL>()) { files, declaration in
+            if NSString(string: declaration.path).isAbsolutePath {
+                files.formUnion(
+                    documentFileDependencies(
+                        for: URL(fileURLWithPath: declaration.path).standardizedFileURL
+                    )
+                )
+            } else {
+                files.formUnion(
+                    documentFileDependencies(
+                        for: resolvePath(declaration.path, relativeTo: declaration.sourceDirectory)
+                    )
+                )
+                for root in documentRoots {
+                    files.formUnion(
+                        documentFileDependencies(for: resolvePath(declaration.path, relativeTo: root))
+                    )
+                }
+            }
+        }
+    }
+
+    private func documentFileDependencies(for file: URL) -> Set<URL> {
+        var dependencies: Set<URL> = [file.standardizedFileURL]
+        var candidate = file.standardizedFileURL
+
+        for _ in 0..<Self.maximumSymbolicLinkDepth {
+            guard let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: candidate.path) else {
+                break
+            }
+            let destinationURL: URL
+            if NSString(string: destination).isAbsolutePath {
+                destinationURL = URL(fileURLWithPath: destination).standardizedFileURL
+            } else {
+                destinationURL = candidate.deletingLastPathComponent()
+                    .appendingPathComponent(destination)
+                    .standardizedFileURL
+            }
+            guard dependencies.insert(destinationURL).inserted else { break }
+            candidate = destinationURL
         }
 
-        let patternURL = resolveIncludeURL(includePath, relativeTo: directory)
+        dependencies.insert(file.resolvingSymlinksInPath().standardizedFileURL)
+        return dependencies
+    }
+
+    private func isDocumentDirective(_ line: String) -> Bool {
+        let fields = line.split(maxSplits: 2, whereSeparator: { $0.isWhitespace })
+        guard fields.count >= 2, fields[1] == "document" else { return false }
+
+        let dateParts = fields[0].split(
+            omittingEmptySubsequences: false,
+            whereSeparator: { $0 == "-" || $0 == "/" }
+        )
+        guard dateParts.count == 3,
+              dateParts[0].count == 4,
+              (1...2).contains(dateParts[1].count),
+              (1...2).contains(dateParts[2].count) else {
+            return false
+        }
+        return dateParts.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isNumber) }
+    }
+
+    private func resolveIncludeURLs(_ includePath: String, relativeTo directory: URL) throws -> [URL] {
+        guard containsGlobPattern(includePath) else {
+            return [resolvePath(includePath, relativeTo: directory)]
+        }
+
+        let patternURL = resolvePath(includePath, relativeTo: directory)
         let patternPath = patternURL.path
         let searchRoot = globSearchRoot(for: patternPath)
         guard searchRoot.path != "/" else { return [] }
@@ -120,11 +227,11 @@ final class BeancountIncludeResolver {
         return matches.sorted { $0.path < $1.path }
     }
 
-    private func resolveIncludeURL(_ includePath: String, relativeTo directory: URL) -> URL {
-        if includePath.hasPrefix("/") {
-            return URL(fileURLWithPath: includePath).standardizedFileURL
+    private func resolvePath(_ path: String, relativeTo directory: URL) -> URL {
+        if NSString(string: path).isAbsolutePath {
+            return URL(fileURLWithPath: path).standardizedFileURL
         }
-        return directory.appendingPathComponent(includePath).standardizedFileURL
+        return directory.appendingPathComponent(path).standardizedFileURL
     }
 
     private func containsGlobPattern(_ path: String) -> Bool {
@@ -198,14 +305,22 @@ final class BeancountIncludeResolver {
         return regex + "$"
     }
 
-    private func quotedString(in line: String) -> String? {
+    private func quotedStrings(in line: String) -> [String] {
+        var values: [String] = []
         var inQuote = false
         var isEscaped = false
         var current = ""
 
         for character in line {
             if isEscaped {
-                current.append(character)
+                switch character {
+                case "b": current.append("\u{08}")
+                case "f": current.append("\u{0C}")
+                case "n": current.append("\n")
+                case "r": current.append("\r")
+                case "t": current.append("\t")
+                default: current.append(character)
+                }
                 isEscaped = false
                 continue
             }
@@ -215,9 +330,10 @@ final class BeancountIncludeResolver {
             }
             if character == "\"" {
                 if inQuote {
-                    return current
+                    values.append(current)
+                    current = ""
                 }
-                inQuote = true
+                inQuote.toggle()
                 continue
             }
             if inQuote {
@@ -225,7 +341,7 @@ final class BeancountIncludeResolver {
             }
         }
 
-        return nil
+        return values
     }
 
     private func stripComment(_ line: String) -> String {

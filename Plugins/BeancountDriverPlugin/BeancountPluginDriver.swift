@@ -48,73 +48,6 @@ private struct BeancountProjection {
     let signatures: [String: BeancountSourceSignature]
 }
 
-private struct BeancountSourcePosition {
-    let file: String?
-    let line: Int?
-    let formatted: String?
-}
-
-private final class BeancountProjectionWriter {
-    private let db: OpaquePointer
-    private var statements: [String: OpaquePointer] = [:]
-
-    init(db: OpaquePointer) {
-        self.db = db
-    }
-
-    deinit {
-        for statement in statements.values {
-            sqlite3_finalize(statement)
-        }
-    }
-
-    func insert(sql: String, values: [String?]) throws {
-        let statement = try preparedStatement(sql)
-        sqlite3_reset(statement)
-        sqlite3_clear_bindings(statement)
-
-        for (index, value) in values.enumerated() {
-            let position = Int32(index + 1)
-            if let value {
-                sqlite3_bind_text(statement, position, value, -1, SQLITE_TRANSIENT)
-            } else {
-                sqlite3_bind_null(statement, position)
-            }
-        }
-
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw BeancountDriverError.queryFailed(String(cString: sqlite3_errmsg(db)))
-        }
-    }
-
-    private func preparedStatement(_ sql: String) throws -> OpaquePointer {
-        if let cached = statements[sql] {
-            return cached
-        }
-        var prepared: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &prepared, nil) == SQLITE_OK, let prepared else {
-            throw BeancountDriverError.queryFailed(String(cString: sqlite3_errmsg(db)))
-        }
-        statements[sql] = prepared
-        return prepared
-    }
-}
-
-struct BeancountProjectionRows {
-    var transactionsAndPostings: [[String: Any]] = []
-    var accounts: [[String: Any]] = []
-    var prices: [[String: Any]] = []
-    var balances: [[String: Any]] = []
-    var balanceAssertions: [[String: Any]] = []
-    var transactionLocations: [[String: Any]] = []
-    var commodities: [[String: Any]] = []
-    var documents: [[String: Any]] = []
-    var notes: [[String: Any]] = []
-    var events: [[String: Any]] = []
-    var closes: [[String: Any]] = []
-    var diagnostics: [[String: Any]] = []
-}
-
 private enum BeancountBackend {
     case rledger
     case python(String)
@@ -127,6 +60,17 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var ledgerURL: URL?
     private var watchedURLs: [URL] = []
     private var sourceSignatures: [String: BeancountSourceSignature] = [:]
+    private var projectionGeneration: UInt64 = 0
+    private var pendingConnectionGeneration: UInt64?
+
+    private static let transactionsCoreColumns =
+        "id, date, flag, payee, narration, filename, lineno"
+    private static let transactionsDetailColumns = "tags, links, _entry_meta"
+    private static let transactionsQuery =
+        "SELECT \(transactionsCoreColumns), \(transactionsDetailColumns) "
+            + "FROM #entries WHERE type = 'transaction' ORDER BY id"
+    private static let transactionsCoreQuery =
+        "SELECT \(transactionsCoreColumns) FROM #entries WHERE type = 'transaction' ORDER BY id"
 
     private static let postingsCoreColumns =
         "id, date, flag, payee, narration, account, number, currency, cost_number, cost_currency"
@@ -140,8 +84,6 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let balancesQuery =
         "SELECT account, sum(position) AS balance FROM #postings GROUP BY account ORDER BY account"
     private static let balanceAssertionsQuery = "SELECT date, account, amount FROM #balances ORDER BY date, account"
-    private static let transactionLocationsQuery =
-        "SELECT id, filename, lineno FROM #entries WHERE type = 'transaction' ORDER BY id"
     private static let commoditiesQuery = "SELECT date, name FROM #commodities ORDER BY date, name"
     private static let documentsQuery =
         "SELECT date, account, filename, tags, links FROM #documents ORDER BY date, account"
@@ -186,18 +128,46 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
 
-        let projection = try await perform { try Self.buildProjection(ledgerURL: fileURL) }
+        let generation = lock.withLock { () -> UInt64 in
+            projectionGeneration &+= 1
+            pendingConnectionGeneration = projectionGeneration
+            return projectionGeneration
+        }
+        let projection: BeancountProjection
+        do {
+            projection = try await perform { try Self.buildProjection(ledgerURL: fileURL) }
+        } catch {
+            lock.withLock {
+                if pendingConnectionGeneration == generation {
+                    pendingConnectionGeneration = nil
+                }
+            }
+            throw error
+        }
 
-        lock.withLock {
+        let installed = lock.withLock { () -> Bool in
+            guard projectionGeneration == generation,
+                  pendingConnectionGeneration == generation else {
+                sqlite3_close(projection.handle)
+                return false
+            }
+            pendingConnectionGeneration = nil
+            if let db {
+                sqlite3_close(db)
+            }
             db = projection.handle
             ledgerURL = fileURL
             watchedURLs = projection.watchedURLs
             sourceSignatures = projection.signatures
+            return true
         }
+        guard installed else { throw CancellationError() }
     }
 
     func installProjection(_ handle: OpaquePointer, ledgerURL: URL) {
         lock.withLock {
+            projectionGeneration &+= 1
+            pendingConnectionGeneration = nil
             if let db {
                 sqlite3_close(db)
             }
@@ -210,6 +180,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func disconnect() {
         lock.withLock {
+            projectionGeneration &+= 1
+            pendingConnectionGeneration = nil
             if db != nil {
                 sqlite3_close(db)
                 db = nil
@@ -490,9 +462,14 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func reloadProjectionIfNeeded() throws {
-        let snapshot: (url: URL, watched: [URL], signatures: [String: BeancountSourceSignature])? = lock.withLock {
-            guard let ledgerURL else { return nil }
-            return (ledgerURL, watchedURLs, sourceSignatures)
+        let snapshot: (
+            url: URL,
+            watched: [URL],
+            signatures: [String: BeancountSourceSignature],
+            generation: UInt64
+        )? = lock.withLock {
+            guard pendingConnectionGeneration == nil, let ledgerURL else { return nil }
+            return (ledgerURL, watchedURLs, sourceSignatures, projectionGeneration)
         }
         guard let snapshot else { return }
 
@@ -502,7 +479,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let projection = try Self.buildProjection(ledgerURL: snapshot.url)
 
         lock.withLock {
-            guard ledgerURL == snapshot.url else {
+            guard ledgerURL == snapshot.url,
+                  projectionGeneration == snapshot.generation else {
                 sqlite3_close(projection.handle)
                 return
             }
@@ -512,6 +490,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             db = projection.handle
             watchedURLs = projection.watchedURLs
             sourceSignatures = projection.signatures
+            projectionGeneration &+= 1
         }
     }
 
@@ -531,28 +510,48 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static func buildProjection(ledgerURL: URL) throws -> BeancountProjection {
-        let graph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
-        let watched = Array(Set(graph.sourceFiles + graph.watchedDirectories)).sorted { $0.path < $1.path }
-        let fileSignatures = signatures(for: watched)
+        for _ in 0..<2 {
+            let initialGraph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
+            let initialSignatures = signatures(for: initialGraph.reloadDependencies)
+            let rows = try projectionRows(ledgerPath: ledgerURL.path)
+            let finalGraph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
+            guard initialGraph.sourceFiles == finalGraph.sourceFiles,
+                  initialGraph.reloadDependencies == finalGraph.reloadDependencies else {
+                continue
+            }
 
-        let rows = try projectionRows(ledgerPath: ledgerURL.path)
-        let handle = try loadProjection(rows: rows, sourceFiles: graph.sourceFiles)
+            let finalSignatures = signatures(for: finalGraph.reloadDependencies)
+            guard initialSignatures == finalSignatures else { continue }
 
-        return BeancountProjection(handle: handle, watchedURLs: watched, signatures: fileSignatures)
+            let handle = try loadProjection(rows: rows, sourceFiles: finalGraph.sourceFiles)
+            guard signatures(for: finalGraph.reloadDependencies) == finalSignatures else {
+                sqlite3_close(handle)
+                continue
+            }
+            return BeancountProjection(
+                handle: handle,
+                watchedURLs: finalGraph.reloadDependencies,
+                signatures: finalSignatures
+            )
+        }
+
+        throw BeancountDriverError.connectionFailed(
+            String(localized: "Beancount ledger changed while building its SQL projection")
+        )
     }
 
     private static func projectionRows(ledgerPath: String) throws -> BeancountProjectionRows {
         switch try resolveProjectionBackend() {
         case .rledger:
+            let transactions = try transactionRows(ledgerPath: ledgerPath)
+            let postings = try postingRows(ledgerPath: ledgerPath)
             return BeancountProjectionRows(
-                transactionsAndPostings: try postingRows(ledgerPath: ledgerPath),
+                transactions: transactionRowsByAddingPostingDetails(transactions, postings: postings),
+                postings: postings,
                 accounts: try query(ledgerPath: ledgerPath, bql: accountsQuery),
                 prices: try query(ledgerPath: ledgerPath, bql: pricesQuery),
                 balances: try query(ledgerPath: ledgerPath, bql: balancesQuery),
                 balanceAssertions: try query(ledgerPath: ledgerPath, bql: balanceAssertionsQuery),
-                transactionLocations: directiveRows(
-                    ledgerPath: ledgerPath, bql: transactionLocationsQuery, table: "transaction locations"
-                ),
                 commodities: directiveRows(ledgerPath: ledgerPath, bql: commoditiesQuery, table: "commodities"),
                 documents: directiveRows(ledgerPath: ledgerPath, bql: documentsQuery, table: "documents"),
                 notes: directiveRows(ledgerPath: ledgerPath, bql: notesQuery, table: "notes"),
@@ -563,12 +562,12 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         case .python(let executablePath):
             let rows = try pythonProjectionRows(ledgerPath: ledgerPath, executablePath: executablePath)
             return BeancountProjectionRows(
-                transactionsAndPostings: rows["transactions_and_postings"] ?? [],
+                transactions: rows["transactions"] ?? [],
+                postings: rows["postings"] ?? [],
                 accounts: rows["accounts"] ?? [],
                 prices: rows["prices"] ?? [],
                 balances: rows["balances"] ?? [],
                 balanceAssertions: rows["balance_assertions"] ?? [],
-                transactionLocations: rows["transaction_locations"] ?? [],
                 commodities: rows["commodities"] ?? [],
                 documents: rows["documents"] ?? [],
                 notes: rows["notes"] ?? [],
@@ -578,54 +577,65 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    static func loadProjection(rows: BeancountProjectionRows, sourceFiles: [URL]) throws -> OpaquePointer {
-        var handle: OpaquePointer?
-        guard sqlite3_open(":memory:", &handle) == SQLITE_OK, let handle else {
-            throw BeancountDriverError.connectionFailed(
-                String(localized: "Could not initialize SQL projection")
-            )
-        }
-
-        do {
-            try createSchema(handle)
-            let writer = BeancountProjectionWriter(db: handle)
-            try loadTransactionsAndPostings(
-                rows.transactionsAndPostings,
-                locations: transactionLocations(rows.transactionLocations),
-                into: writer
-            )
-            try loadAccounts(rows.accounts, into: writer)
-            try loadPrices(rows.prices, into: writer)
-            try loadBalances(rows.balances, into: writer)
-            try loadBalanceAssertions(rows.balanceAssertions, into: writer)
-            try loadCommodities(rows.commodities, into: writer)
-            try loadDocuments(rows.documents, into: writer)
-            try loadNotes(rows.notes, into: writer)
-            try loadEvents(rows.events, into: writer)
-            try loadCloses(rows.closes, into: writer)
-            try loadDiagnostics(rows.diagnostics, into: writer)
-            try loadSourceFiles(sourceFiles, into: writer)
-            try exec(handle, "PRAGMA query_only = ON")
-        } catch {
-            sqlite3_close(handle)
-            throw error
-        }
-
-        return handle
-    }
-
     private static func query(ledgerPath: String, bql: String) throws -> [[String: Any]] {
         let data = try runRledger(arguments: rledgerQueryArguments(ledgerPath: ledgerPath, query: bql))
         return try decodeRledgerRows(data)
     }
 
-    private static func postingRows(ledgerPath: String) throws -> [[String: Any]] {
+    private static func transactionRows(ledgerPath: String) throws -> [[String: Any]] {
         do {
-            return try query(ledgerPath: ledgerPath, bql: postingsQuery)
+            return try query(ledgerPath: ledgerPath, bql: transactionsQuery)
+        } catch {
+            logger.warning("Beancount transaction details unavailable, projecting core columns: \(error)")
+            return try query(ledgerPath: ledgerPath, bql: transactionsCoreQuery)
+        }
+    }
+
+    private static func postingRows(ledgerPath: String) throws -> [[String: Any]] {
+        let rows: [[String: Any]]
+        do {
+            rows = try query(ledgerPath: ledgerPath, bql: postingsQuery)
         } catch {
             logger.warning("Beancount postings detail unavailable, projecting core columns: \(error)")
-            return try query(ledgerPath: ledgerPath, bql: postingsCoreQuery)
+            rows = try query(ledgerPath: ledgerPath, bql: postingsCoreQuery)
         }
+        return rows.map { row in
+            var normalized = row
+            normalized["transaction_id"] = row["id"]
+            return normalized
+        }
+    }
+
+    static func transactionRowsByAddingPostingDetails(
+        _ transactions: [[String: Any]],
+        postings: [[String: Any]]
+    ) -> [[String: Any]] {
+        let detailKeys = ["tags", "links", "_entry_meta"]
+        let postingDetails = Dictionary(postings.compactMap { posting -> (String, [String: Any])? in
+            guard let identifier = rowIdentifier(posting["transaction_id"]) else { return nil }
+            return (identifier, posting)
+        }, uniquingKeysWith: { first, _ in first })
+
+        return transactions.map { transaction in
+            guard let identifier = rowIdentifier(transaction["id"]),
+                  let details = postingDetails[identifier] else {
+                return transaction
+            }
+            var enriched = transaction
+            for key in detailKeys where enriched[key] == nil || enriched[key] is NSNull {
+                if let value = details[key] {
+                    enriched[key] = value
+                }
+            }
+            return enriched
+        }
+    }
+
+    private static func rowIdentifier(_ value: Any?) -> String? {
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        return value as? String
     }
 
     private static func directiveRows(ledgerPath: String, bql: String, table: String) -> [[String: Any]] {
@@ -641,7 +651,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             let data = try runProcess(
                 executablePath: try rustledgerExecutablePath(),
-                arguments: ["check", "-f", "json", ledgerPath],
+                arguments: ["check", "--no-cache", "-f", "json", ledgerPath],
                 failureMessage: String(localized: "rustledger validation failed"),
                 allowsNonZeroExit: true
             )
@@ -654,381 +664,6 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         } catch {
             logger.warning("Beancount validation did not run, leaving the diagnostics table empty: \(error)")
             return []
-        }
-    }
-
-    private static func createSchema(_ db: OpaquePointer) throws {
-        try exec(db, """
-            CREATE TABLE transactions (
-                id INTEGER PRIMARY KEY,
-                date DATE NOT NULL,
-                flag TEXT NOT NULL,
-                payee TEXT,
-                narration TEXT,
-                source_file TEXT,
-                line INTEGER,
-                source_location TEXT
-            );
-            CREATE TABLE postings (
-                id INTEGER PRIMARY KEY,
-                transaction_id INTEGER NOT NULL,
-                date DATE NOT NULL,
-                account TEXT NOT NULL,
-                amount TEXT,
-                commodity TEXT,
-                cost_number TEXT,
-                cost_currency TEXT,
-                source_file TEXT,
-                line INTEGER,
-                source_location TEXT
-            );
-            CREATE TABLE accounts (
-                name TEXT PRIMARY KEY,
-                open_date DATE,
-                currencies TEXT
-            );
-            CREATE TABLE prices (
-                id INTEGER PRIMARY KEY,
-                date DATE NOT NULL,
-                commodity TEXT NOT NULL,
-                amount TEXT NOT NULL,
-                currency TEXT NOT NULL
-            );
-            CREATE TABLE balances (
-                id INTEGER PRIMARY KEY,
-                account TEXT NOT NULL,
-                amount TEXT NOT NULL,
-                commodity TEXT NOT NULL
-            );
-            CREATE TABLE balance_assertions (
-                id INTEGER PRIMARY KEY,
-                date DATE NOT NULL,
-                account TEXT NOT NULL,
-                amount TEXT NOT NULL,
-                commodity TEXT NOT NULL
-            );
-            CREATE TABLE commodities (
-                id INTEGER PRIMARY KEY,
-                date DATE NOT NULL,
-                commodity TEXT NOT NULL
-            );
-            CREATE TABLE documents (
-                id INTEGER PRIMARY KEY,
-                date DATE NOT NULL,
-                account TEXT NOT NULL,
-                path TEXT NOT NULL,
-                tags TEXT,
-                links TEXT
-            );
-            CREATE TABLE notes (
-                id INTEGER PRIMARY KEY,
-                date DATE NOT NULL,
-                account TEXT NOT NULL,
-                comment TEXT
-            );
-            CREATE TABLE events (
-                id INTEGER PRIMARY KEY,
-                date DATE NOT NULL,
-                type TEXT NOT NULL,
-                description TEXT
-            );
-            CREATE TABLE closes (
-                id INTEGER PRIMARY KEY,
-                date DATE NOT NULL,
-                account TEXT NOT NULL
-            );
-            CREATE TABLE transaction_metadata (
-                id INTEGER PRIMARY KEY,
-                transaction_id INTEGER NOT NULL,
-                key TEXT NOT NULL,
-                value TEXT
-            );
-            CREATE TABLE posting_metadata (
-                id INTEGER PRIMARY KEY,
-                posting_id INTEGER NOT NULL,
-                key TEXT NOT NULL,
-                value TEXT
-            );
-            CREATE TABLE transaction_tags (
-                id INTEGER PRIMARY KEY,
-                transaction_id INTEGER NOT NULL,
-                tag TEXT NOT NULL
-            );
-            CREATE TABLE transaction_links (
-                id INTEGER PRIMARY KEY,
-                transaction_id INTEGER NOT NULL,
-                link TEXT NOT NULL
-            );
-            CREATE TABLE diagnostics (
-                id INTEGER PRIMARY KEY,
-                source_file TEXT,
-                line INTEGER,
-                source_location TEXT,
-                column_number INTEGER,
-                end_line INTEGER,
-                end_column INTEGER,
-                severity TEXT,
-                phase TEXT,
-                code TEXT,
-                message TEXT
-            );
-            CREATE TABLE source_files (
-                path TEXT PRIMARY KEY
-            );
-            """)
-    }
-
-    private static func loadTransactionsAndPostings(
-        _ rows: [[String: Any]],
-        locations: [Int: BeancountSourcePosition],
-        into writer: BeancountProjectionWriter
-    ) throws {
-        var seenTransactions: Set<Int> = []
-        var postingId = 0
-        var metadataId = 0
-        var postingMetadataId = 0
-        var tagId = 0
-        var linkId = 0
-
-        for row in rows {
-            guard let transactionId = intValue(row["id"]),
-                  let date = stringValue(row["date"]) else {
-                continue
-            }
-            let flag = stringValue(row["flag"]) ?? "*"
-
-            if seenTransactions.insert(transactionId).inserted {
-                let location = locations[transactionId]
-                try writer.insert(sql: """
-                    INSERT INTO transactions (id, date, flag, payee, narration, source_file, line, source_location)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, values: [
-                        String(transactionId),
-                        date,
-                        flag,
-                        stringValue(row["payee"]),
-                        stringValue(row["narration"]),
-                        location?.file,
-                        location?.line.map(String.init),
-                        location?.formatted
-                    ])
-
-                for entry in metadataPairs(row["_entry_meta"]) {
-                    metadataId += 1
-                    try writer.insert(sql: """
-                        INSERT INTO transaction_metadata (id, transaction_id, key, value)
-                        VALUES (?, ?, ?, ?)
-                        """, values: [String(metadataId), String(transactionId), entry.key, entry.value])
-                }
-
-                for tag in stringList(row["tags"]) {
-                    tagId += 1
-                    try writer.insert(sql: """
-                        INSERT INTO transaction_tags (id, transaction_id, tag) VALUES (?, ?, ?)
-                        """, values: [String(tagId), String(transactionId), tag])
-                }
-
-                for link in stringList(row["links"]) {
-                    linkId += 1
-                    try writer.insert(sql: """
-                        INSERT INTO transaction_links (id, transaction_id, link) VALUES (?, ?, ?)
-                        """, values: [String(linkId), String(transactionId), link])
-                }
-            }
-
-            guard let account = stringValue(row["account"]) else { continue }
-            postingId += 1
-            let position = sourcePosition(file: row["filename"], line: row["lineno"], formatted: row["location"])
-            try writer.insert(sql: """
-                INSERT INTO postings
-                (id, transaction_id, date, account, amount, commodity, cost_number, cost_currency,
-                 source_file, line, source_location)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, values: [
-                    String(postingId),
-                    String(transactionId),
-                    date,
-                    account,
-                    stringValue(row["number"]),
-                    stringValue(row["currency"]),
-                    stringValue(row["cost_number"]),
-                    stringValue(row["cost_currency"]),
-                    position?.file,
-                    position?.line.map(String.init),
-                    position?.formatted
-                ])
-
-            for entry in metadataPairs(row["_posting_meta"]) {
-                postingMetadataId += 1
-                try writer.insert(sql: """
-                    INSERT INTO posting_metadata (id, posting_id, key, value)
-                    VALUES (?, ?, ?, ?)
-                    """, values: [String(postingMetadataId), String(postingId), entry.key, entry.value])
-            }
-        }
-    }
-
-    private static func loadCommodities(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
-        var commodityId = 0
-        for row in rows {
-            guard let date = stringValue(row["date"]),
-                  let commodity = stringValue(row["name"]) ?? stringValue(row["commodity"]) else {
-                continue
-            }
-            commodityId += 1
-            try writer.insert(sql: """
-                INSERT INTO commodities (id, date, commodity) VALUES (?, ?, ?)
-                """, values: [String(commodityId), date, commodity])
-        }
-    }
-
-    private static func loadDocuments(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
-        var documentId = 0
-        for row in rows {
-            guard let date = stringValue(row["date"]),
-                  let account = stringValue(row["account"]),
-                  let path = stringValue(row["filename"]) ?? stringValue(row["path"]) else {
-                continue
-            }
-            documentId += 1
-            try writer.insert(sql: """
-                INSERT INTO documents (id, date, account, path, tags, links) VALUES (?, ?, ?, ?, ?, ?)
-                """, values: [
-                    String(documentId),
-                    date,
-                    account,
-                    path,
-                    joinedList(row["tags"]),
-                    joinedList(row["links"])
-                ])
-        }
-    }
-
-    private static func loadNotes(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
-        var noteId = 0
-        for row in rows {
-            guard let date = stringValue(row["date"]),
-                  let account = stringValue(row["account"]) else { continue }
-            noteId += 1
-            try writer.insert(sql: """
-                INSERT INTO notes (id, date, account, comment) VALUES (?, ?, ?, ?)
-                """, values: [String(noteId), date, account, stringValue(row["comment"])])
-        }
-    }
-
-    private static func loadEvents(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
-        var eventId = 0
-        for row in rows {
-            guard let date = stringValue(row["date"]),
-                  let type = stringValue(row["type"]) else { continue }
-            eventId += 1
-            try writer.insert(sql: """
-                INSERT INTO events (id, date, type, description) VALUES (?, ?, ?, ?)
-                """, values: [String(eventId), date, type, stringValue(row["description"])])
-        }
-    }
-
-    private static func loadCloses(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
-        var closeId = 0
-        for row in rows {
-            guard let account = stringValue(row["account"]),
-                  let date = stringValue(row["close"]) ?? stringValue(row["date"]) else { continue }
-            closeId += 1
-            try writer.insert(sql: """
-                INSERT INTO closes (id, date, account) VALUES (?, ?, ?)
-                """, values: [String(closeId), date, account])
-        }
-    }
-
-    private static func loadDiagnostics(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
-        var diagnosticId = 0
-        for row in rows {
-            diagnosticId += 1
-            let position = sourcePosition(file: row["file"], line: row["line"], formatted: nil)
-            try writer.insert(sql: """
-                INSERT INTO diagnostics
-                (id, source_file, line, source_location, column_number, end_line, end_column,
-                 severity, phase, code, message)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, values: [
-                    String(diagnosticId),
-                    position?.file,
-                    position?.line.map(String.init),
-                    position?.formatted,
-                    intValue(row["column"]).map(String.init),
-                    intValue(row["end_line"]).map(String.init),
-                    intValue(row["end_column"]).map(String.init),
-                    stringValue(row["severity"]),
-                    stringValue(row["phase"]),
-                    stringValue(row["code"]),
-                    stringValue(row["message"])
-                ])
-        }
-    }
-
-    private static func loadAccounts(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
-        for row in rows {
-            guard let name = stringValue(row["account"]) else { continue }
-            try writer.insert(sql: """
-                INSERT OR REPLACE INTO accounts (name, open_date, currencies)
-                VALUES (?, ?, ?)
-                """, values: [
-                    name,
-                    stringValue(row["open"]),
-                    joinedList(row["currencies"])
-                ])
-        }
-    }
-
-    private static func loadPrices(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
-        var priceId = 0
-        for row in rows {
-            guard let commodity = stringValue(row["currency"]),
-                  let date = stringValue(row["date"]) else {
-                continue
-            }
-            let amount = amountFields(row["amount"])
-            guard let number = amount.number, let currency = amount.currency else { continue }
-            priceId += 1
-            try writer.insert(sql: """
-                INSERT INTO prices (id, date, commodity, amount, currency)
-                VALUES (?, ?, ?, ?, ?)
-                """, values: [String(priceId), date, commodity, number, currency])
-        }
-    }
-
-    private static func loadBalances(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
-        var balanceId = 0
-        for row in rows {
-            guard let account = stringValue(row["account"]) else { continue }
-            for position in inventoryPositions(row["balance"]) {
-                balanceId += 1
-                try writer.insert(sql: """
-                    INSERT INTO balances (id, account, amount, commodity)
-                    VALUES (?, ?, ?, ?)
-                    """, values: [String(balanceId), account, position.number, position.currency])
-            }
-        }
-    }
-
-    private static func loadBalanceAssertions(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
-        var balanceId = 0
-        for row in rows {
-            guard let account = stringValue(row["account"]),
-                  let date = stringValue(row["date"]) else { continue }
-            let amount = amountFields(row["amount"])
-            guard let number = amount.number, let commodity = amount.currency else { continue }
-            balanceId += 1
-            try writer.insert(sql: """
-                INSERT INTO balance_assertions (id, date, account, amount, commodity)
-                VALUES (?, ?, ?, ?, ?)
-                """, values: [String(balanceId), date, account, number, commodity])
-        }
-    }
-
-    private static func loadSourceFiles(_ files: [URL], into writer: BeancountProjectionWriter) throws {
-        for file in files {
-            try writer.insert(sql: "INSERT OR IGNORE INTO source_files (path) VALUES (?)", values: [file.path])
         }
     }
 
@@ -1305,7 +940,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private static func rustledgerCellValue(_ value: Any) -> String {
+    static func rustledgerCellValue(_ value: Any) -> String {
         if let string = value as? String {
             return string
         }
@@ -1333,105 +968,6 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return string
         }
         return String(describing: value)
-    }
-
-    // MARK: - Value Decoding
-
-    private static func stringValue(_ value: Any?) -> String? {
-        switch value {
-        case let string as String:
-            return string
-        case let number as NSNumber:
-            return number.stringValue
-        default:
-            return nil
-        }
-    }
-
-    private static func intValue(_ value: Any?) -> Int? {
-        switch value {
-        case let number as NSNumber:
-            return number.intValue
-        case let string as String:
-            return Int(string)
-        default:
-            return nil
-        }
-    }
-
-    private static func amountFields(_ value: Any?) -> (number: String?, currency: String?) {
-        guard let dictionary = value as? [String: Any] else { return (nil, nil) }
-        return (stringValue(dictionary["number"]), stringValue(dictionary["currency"]))
-    }
-
-    private static func inventoryPositions(_ value: Any?) -> [(number: String, currency: String)] {
-        guard let dictionary = value as? [String: Any],
-              let positions = dictionary["positions"] as? [[String: Any]] else {
-            return []
-        }
-        return positions.compactMap { position in
-            guard let number = stringValue(position["number"]),
-                  let currency = stringValue(position["currency"]) else {
-                return nil
-            }
-            return (number: number, currency: currency)
-        }
-    }
-
-    private static func joinedList(_ value: Any?) -> String? {
-        guard let array = value as? [Any] else { return stringValue(value) }
-        let items = array.compactMap { $0 as? String }
-        return items.isEmpty ? nil : items.joined(separator: " ")
-    }
-
-    private static func stringList(_ value: Any?) -> [String] {
-        guard let array = value as? [Any] else {
-            guard let joined = stringValue(value) else { return [] }
-            return joined
-                .split(whereSeparator: { $0 == "," || $0.isWhitespace })
-                .map(String.init)
-        }
-        return array.compactMap { $0 as? String }
-    }
-
-    private static func metadataPairs(_ value: Any?) -> [(key: String, value: String?)] {
-        guard let dictionary = value as? [String: Any] else { return [] }
-        return dictionary.keys.sorted().map { key in
-            guard let raw = dictionary[key], !(raw is NSNull) else {
-                return (key: key, value: nil)
-            }
-            return (key: key, value: metadataValue(raw))
-        }
-    }
-
-    private static func metadataValue(_ raw: Any) -> String? {
-        if let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {
-            return number.boolValue ? "TRUE" : "FALSE"
-        }
-        return stringValue(raw) ?? rustledgerCellValue(raw)
-    }
-
-    private static func sourcePosition(file: Any?, line: Any?, formatted: Any?) -> BeancountSourcePosition? {
-        let path = stringValue(file).flatMap { $0.isEmpty ? nil : $0 }
-        let lineNumber = intValue(line).flatMap { $0 > 0 ? $0 : nil }
-        guard path != nil || lineNumber != nil else { return nil }
-        let rendered = stringValue(formatted).flatMap { $0.isEmpty ? nil : $0 }
-            ?? path.flatMap { path in lineNumber.map { "\(path):\($0)" } }
-        return BeancountSourcePosition(file: path, line: lineNumber, formatted: rendered)
-    }
-
-    private static func transactionLocations(_ rows: [[String: Any]]) -> [Int: BeancountSourcePosition] {
-        rows.reduce(into: [:]) { locations, row in
-            guard let id = intValue(row["id"]),
-                  let position = sourcePosition(
-                      file: row["filename"],
-                      line: row["lineno"],
-                      formatted: row["location"]
-                  ) else {
-                return
-            }
-            locations[id] = position
-        }
     }
 
     // MARK: - SQLite Helpers
@@ -1471,18 +1007,6 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard lowercased.hasPrefix("bql:") || lowercased.hasPrefix("bql ") else { return nil }
         return String(trimmed.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
-
-    private static func exec(_ db: OpaquePointer, _ sql: String) throws {
-        var error: UnsafeMutablePointer<CChar>?
-        guard sqlite3_exec(db, sql, nil, nil, &error) == SQLITE_OK else {
-            let message = error.map { String(cString: $0) } ?? String(cString: sqlite3_errmsg(db))
-            if error != nil {
-                sqlite3_free(error)
-            }
-            throw BeancountDriverError.queryFailed(message)
-        }
-    }
-
 
     private static func signatures(for sourceFiles: [URL]) -> [String: BeancountSourceSignature] {
         sourceFiles.reduce(into: [:]) { signatures, fileURL in

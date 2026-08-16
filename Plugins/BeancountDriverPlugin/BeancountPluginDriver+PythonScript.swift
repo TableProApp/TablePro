@@ -8,9 +8,15 @@ import Foundation
 extension BeancountPluginDriver {
     static let pythonProjectionScript = """
 import json
+import os
 import sys
+import tempfile
 from collections import defaultdict
 from decimal import Decimal
+
+cache_directory = tempfile.TemporaryDirectory(prefix="tablepro-beancount-")
+os.environ["BEANCOUNT_DISABLE_LOAD_CACHE"] = "1"
+os.environ["BEANCOUNT_LOAD_CACHE_FILENAME"] = os.path.join(cache_directory.name, "disabled.picklecache")
 
 from beancount import loader
 
@@ -76,12 +82,12 @@ if errors:
     sys.exit(1)
 
 rows = {
-    "transactions_and_postings": [],
+    "transactions": [],
+    "postings": [],
     "accounts": [],
     "prices": [],
     "balances": [],
     "balance_assertions": [],
-    "transaction_locations": [],
     "commodities": [],
     "documents": [],
     "notes": [],
@@ -98,11 +104,18 @@ for entry in entries:
         entry_meta = user_meta(entry.meta)
         tags = name_list(entry.tags)
         links = name_list(entry.links)
-        rows["transaction_locations"].append({
+        rows["transactions"].append({
             "id": transaction_id,
+            "date": date_value(entry.date),
+            "flag": str(entry.flag),
+            "payee": entry.payee,
+            "narration": entry.narration,
             "filename": source_file(entry.meta),
             "lineno": source_line(entry.meta),
             "location": source_location(entry.meta),
+            "tags": tags,
+            "links": links,
+            "_entry_meta": entry_meta,
         })
         for posting in entry.postings:
             units = getattr(posting, "units", None)
@@ -110,12 +123,9 @@ for entry in entries:
             posting_meta = getattr(posting, "meta", None)
             if units is not None and getattr(units, "number", None) is not None and getattr(units, "currency", None):
                 balances[(posting.account, units.currency)] += units.number
-            rows["transactions_and_postings"].append({
-                "id": transaction_id,
+            rows["postings"].append({
+                "transaction_id": transaction_id,
                 "date": date_value(entry.date),
-                "flag": str(entry.flag),
-                "payee": entry.payee,
-                "narration": entry.narration,
                 "account": posting.account,
                 "number": decimal_value(getattr(units, "number", None)) if units is not None else None,
                 "currency": getattr(units, "currency", None) if units is not None else None,
@@ -124,9 +134,6 @@ for entry in entries:
                 "filename": source_file(posting_meta) or source_file(entry.meta),
                 "lineno": source_line(posting_meta) or source_line(entry.meta),
                 "location": source_location(posting_meta) or source_location(entry.meta),
-                "tags": tags,
-                "links": links,
-                "_entry_meta": entry_meta,
                 "_posting_meta": user_meta(posting_meta),
             })
     elif entry_type == "Commodity":

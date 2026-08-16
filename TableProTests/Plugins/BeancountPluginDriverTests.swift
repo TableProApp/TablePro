@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Darwin
 import Foundation
 import TableProPluginKit
 import Testing
@@ -429,7 +430,7 @@ struct BeancountPluginDriverTests {
     // MARK: - Helpers
 
     @Test(
-        "projects rich directives, metadata, and source locations through rledger",
+        "projects rich directives and posting-free transactions through rledger",
         .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
     )
     func projectsRichDirectivesThroughRustledger() async throws {
@@ -441,7 +442,7 @@ struct BeancountPluginDriverTests {
     }
 
     @Test(
-        "projects rich directives, metadata, and source locations through Python Beancount",
+        "projects rich directives and posting-free transactions through Python Beancount",
         .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
     )
     func projectsRichDirectivesThroughPythonBeancount() async throws {
@@ -457,20 +458,26 @@ struct BeancountPluginDriverTests {
     }
 
     @Test(
-        "projects validation diagnostics and still opens an invalid ledger",
+        "refreshes document diagnostics when an included document target changes",
         .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
     )
-    func projectsValidationDiagnostics() async throws {
+    func refreshesDocumentDiagnostics() async throws {
         try await Self.withRustledger {
             let directory = try Self.makeTempDirectory()
             defer { try? FileManager.default.removeItem(at: directory) }
 
-            let ledger = directory.appendingPathComponent("main.beancount")
+            let subdirectory = directory.appendingPathComponent("sub", isDirectory: true)
+            try FileManager.default.createDirectory(at: subdirectory, withIntermediateDirectories: true)
+            let included = subdirectory.appendingPathComponent("entries.beancount")
             try """
             2024-01-01 open Assets:Cash USD
 
-            2024-01-04 document Assets:Cash "missing.pdf"
-            """.write(to: ledger, atomically: true, encoding: .utf8)
+            2024-01-04 document Assets:Cash "receipt.pdf"
+            """.write(to: included, atomically: true, encoding: .utf8)
+
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try "include \"sub/entries.beancount\"\n"
+                .write(to: ledger, atomically: true, encoding: .utf8)
 
             let driver = BeancountPluginDriver(config: Self.config(ledger))
             try await driver.connect()
@@ -479,16 +486,38 @@ struct BeancountPluginDriverTests {
             let accounts = try await driver.execute(query: "SELECT name FROM accounts")
             #expect(accounts.rows.map { $0[0].asText } == ["Assets:Cash"])
 
-            let diagnostics = try await driver.execute(query: """
-                SELECT severity, phase, code, line, source_location FROM diagnostics ORDER BY id
+            var diagnostics = try await driver.execute(query: """
+                SELECT source_file, line, source_location FROM diagnostics
+                WHERE code = 'E8001' ORDER BY id
                 """)
             #expect(diagnostics.rows.count == 1)
             let diagnostic = try #require(diagnostics.rows.first)
-            #expect(diagnostic[0].asText == "error")
-            #expect(diagnostic[1].asText == "validate")
-            #expect(diagnostic[2].asText == "E8001")
-            #expect(diagnostic[3].asText == "3")
-            #expect(diagnostic[4].asText?.hasSuffix("\(ledger.lastPathComponent):3") == true)
+            let sourceFile = try #require(diagnostic[0].asText)
+            #expect(Self.canonicalPath(URL(fileURLWithPath: sourceFile)) == Self.canonicalPath(included))
+            #expect(diagnostic[1].asText == "3")
+            #expect(diagnostic[2].asText == "\(sourceFile):3")
+
+            let document = subdirectory.appendingPathComponent("receipt.pdf")
+            try Data("pdf".utf8).write(to: document)
+
+            diagnostics = try await driver.execute(query: """
+                SELECT source_file, line, source_location FROM diagnostics
+                WHERE code = 'E8001' ORDER BY id
+                """)
+            #expect(diagnostics.rows.isEmpty)
+
+            try FileManager.default.removeItem(at: document)
+
+            diagnostics = try await driver.execute(query: """
+                SELECT source_file, line, source_location FROM diagnostics
+                WHERE code = 'E8001' ORDER BY id
+                """)
+            #expect(diagnostics.rows.count == 1)
+            let returned = try #require(diagnostics.rows.first)
+            let returnedSourceFile = try #require(returned[0].asText)
+            #expect(Self.canonicalPath(URL(fileURLWithPath: returnedSourceFile)) == Self.canonicalPath(included))
+            #expect(returned[1].asText == "3")
+            #expect(returned[2].asText == "\(returnedSourceFile):3")
         }
     }
 
@@ -521,6 +550,9 @@ struct BeancountPluginDriverTests {
             method: "card"
           Assets:Cash
 
+        2024-01-06 * "Archive" "No postings" #empty ^standalone
+          reason: "record only"
+
         2024-06-30 close Expenses:Food
         """.write(to: ledger, atomically: true, encoding: .utf8)
 
@@ -552,21 +584,42 @@ struct BeancountPluginDriverTests {
         #expect(document[2].asText?.hasSuffix("receipt.pdf") == true)
 
         let metadata = try await driver.execute(query: """
-            SELECT key, value FROM transaction_metadata ORDER BY key
+            SELECT metadata.key, metadata.value
+            FROM transaction_metadata AS metadata
+            JOIN transactions ON transactions.id = metadata.transaction_id
+            WHERE transactions.narration = 'Coffee'
+            ORDER BY metadata.key
             """)
         #expect(metadata.rows.map { $0.map(\.asText) } == [["invoice", "INV-9"], ["verified", "TRUE"]])
 
-        let postingMetadata = try await driver.execute(query: "SELECT key, value FROM posting_metadata")
+        let postingMetadata = try await driver.execute(query: """
+            SELECT metadata.key, metadata.value
+            FROM posting_metadata AS metadata
+            JOIN postings ON postings.id = metadata.posting_id
+            JOIN transactions ON transactions.id = postings.transaction_id
+            WHERE transactions.narration = 'Coffee'
+            """)
         #expect(postingMetadata.rows.map { $0.map(\.asText) } == [["method", "card"]])
 
-        let tags = try await driver.execute(query: "SELECT tag FROM transaction_tags ORDER BY tag")
+        let tags = try await driver.execute(query: """
+            SELECT tags.tag
+            FROM transaction_tags AS tags
+            JOIN transactions ON transactions.id = tags.transaction_id
+            WHERE transactions.narration = 'Coffee'
+            ORDER BY tags.tag
+            """)
         #expect(tags.rows.map { $0[0].asText } == ["coffee", "daily"])
 
-        let links = try await driver.execute(query: "SELECT link FROM transaction_links")
+        let links = try await driver.execute(query: """
+            SELECT links.link
+            FROM transaction_links AS links
+            JOIN transactions ON transactions.id = links.transaction_id
+            WHERE transactions.narration = 'Coffee'
+            """)
         #expect(links.rows.map { $0[0].asText } == ["receipt-123"])
 
         let transactions = try await driver.execute(query: """
-            SELECT source_file, line, source_location FROM transactions
+            SELECT source_file, line, source_location FROM transactions WHERE narration = 'Coffee'
             """)
         #expect(transactions.rows.count == 1)
         let transaction = try #require(transactions.rows.first)
@@ -574,8 +627,68 @@ struct BeancountPluginDriverTests {
         #expect(transaction[1].asText == "13")
         #expect(transaction[2].asText?.hasSuffix("\(ledger.lastPathComponent):13") == true)
 
-        let postings = try await driver.execute(query: "SELECT line FROM postings ORDER BY id")
+        let postings = try await driver.execute(query: """
+            SELECT postings.line
+            FROM postings
+            JOIN transactions ON transactions.id = postings.transaction_id
+            WHERE transactions.narration = 'Coffee'
+            ORDER BY postings.id
+            """)
         #expect(postings.rows.map { $0[0].asText } == ["16", "18"])
+
+        let postingFree = try await driver.execute(query: """
+            SELECT id, date, flag, payee, narration, source_file, line, source_location
+            FROM transactions WHERE narration = 'No postings'
+            """)
+        #expect(postingFree.rows.count == 1)
+        let transactionWithoutPostings = try #require(postingFree.rows.first)
+        #expect(transactionWithoutPostings[0].asText != nil)
+        #expect(transactionWithoutPostings.dropFirst().prefix(4).map(\.asText) == [
+            "2024-01-06",
+            "*",
+            "Archive",
+            "No postings"
+        ])
+        let sourceFile = try #require(transactionWithoutPostings[5].asText)
+        #expect(Self.canonicalPath(URL(fileURLWithPath: sourceFile)) == Self.canonicalPath(ledger))
+        #expect(transactionWithoutPostings[6].asText == "20")
+        #expect(transactionWithoutPostings[7].asText == "\(sourceFile):20")
+
+        let postingFreeMetadata = try await driver.execute(query: """
+            SELECT metadata.key, metadata.value
+            FROM transaction_metadata AS metadata
+            JOIN transactions ON transactions.id = metadata.transaction_id
+            WHERE transactions.narration = 'No postings'
+            ORDER BY metadata.key
+            """)
+        #expect(postingFreeMetadata.rows.map { $0.map(\.asText) } == [["reason", "record only"]])
+
+        let postingFreeTags = try await driver.execute(query: """
+            SELECT tags.tag
+            FROM transaction_tags AS tags
+            JOIN transactions ON transactions.id = tags.transaction_id
+            WHERE transactions.narration = 'No postings'
+            ORDER BY tags.tag
+            """)
+        #expect(postingFreeTags.rows.map { $0[0].asText } == ["empty"])
+
+        let postingFreeLinks = try await driver.execute(query: """
+            SELECT links.link
+            FROM transaction_links AS links
+            JOIN transactions ON transactions.id = links.transaction_id
+            WHERE transactions.narration = 'No postings'
+            ORDER BY links.link
+            """)
+        #expect(postingFreeLinks.rows.map { $0[0].asText } == ["standalone"])
+
+        let postingFreeCount = try await driver.execute(query: """
+            SELECT COUNT(postings.id)
+            FROM transactions
+            LEFT JOIN postings ON postings.transaction_id = transactions.id
+            WHERE transactions.narration = 'No postings'
+            GROUP BY transactions.id
+            """)
+        #expect(postingFreeCount.rows.first?.first?.asText == "0")
     }
 
     private static func withRustledger(_ body: () async throws -> Void) async throws {
@@ -584,7 +697,10 @@ struct BeancountPluginDriverTests {
     }
 
     private static func withRustledgerEnvironment(_ path: String, _ body: () async throws -> Void) async throws {
-        try await withEnvironment(["TABLEPRO_RUSTLEDGER_BINARY": path], body)
+        try await withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "rledger",
+            "TABLEPRO_RUSTLEDGER_BINARY": path
+        ], body)
     }
 
     private static func withEnvironment(
@@ -609,6 +725,16 @@ struct BeancountPluginDriverTests {
 
     private static func config(_ ledger: URL) -> DriverConnectionConfig {
         DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: ledger.path)
+    }
+
+    private static func canonicalPath(_ url: URL) -> String {
+        url.withUnsafeFileSystemRepresentation { fileSystemPath in
+            guard let fileSystemPath, let resolvedPath = realpath(fileSystemPath, nil) else {
+                return url.standardizedFileURL.path
+            }
+            defer { free(resolvedPath) }
+            return String(cString: resolvedPath)
+        }
     }
 
     private static func makeTempDirectory() throws -> URL {

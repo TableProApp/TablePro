@@ -85,7 +85,7 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 | Table | Contents |
 |-------|----------|
-| `transactions` | Transaction date, flag, payee, narration, and source location |
+| `transactions` | Transaction date, flag, payee, narration, and source location, including transactions with no postings |
 | `postings` | Posting account, amount, commodity, resolved cost basis (`cost_number`, `cost_currency`), and source location |
 | `accounts` | Opened accounts and declared currencies |
 | `prices` | Price directives |
@@ -111,6 +111,8 @@ Metadata values are projected as text. Booleans keep their Beancount spelling, `
 
 `transactions` and `postings` carry `source_file`, `line`, and `source_location`. `source_location` is formatted as `path:line`, so it can be copied, filtered, or exported directly. A posting points at its own line rather than the line of the transaction that contains it.
 
+Valid transactions with no postings remain in `transactions` with their metadata, tags, links, and source location.
+
 A transaction the backend generates rather than reads, such as the one inserted for a `pad`, has whatever location that backend gives it. `rledger` leaves these columns empty; Python Beancount points them at the `pad` directive.
 
 ## Diagnostics
@@ -118,6 +120,8 @@ A transaction the backend generates rather than reads, such as the one inserted 
 The `diagnostics` table holds structured validation output: `source_file`, `line`, `source_location`, `column_number`, `end_line`, `end_column`, `severity`, `phase`, `code`, and `message`.
 
 The table is populated by `rledger check`. A ledger opened through `rledger` is projected even when it fails validation, so the entries the projection skipped are readable here rather than only on the command line. Ledgers opened on the Python Beancount backend leave the table empty.
+
+TablePro refreshes the projection when a referenced document file is created or removed, so document existence diagnostics stay current without editing the ledger.
 
 ## Includes
 
