@@ -1,6 +1,13 @@
 import AppKit
 import SwiftUI
 
+/// Identity for the drawer's lazy-load `.task(id:)`. A collapsed drawer is still mounted, so
+/// visibility has to be part of what starts and stops the work.
+private struct HistoryPanelActivation: Hashable {
+    let connectionId: UUID
+    let isVisible: Bool
+}
+
 struct HistoryPanelView: View {
     /// Held directly rather than resolved from a focused value. The app runs the AppKit lifecycle
     /// with no SwiftUI `Scene`, so `focusedSceneValue` has nothing to publish into and every action
@@ -15,21 +22,26 @@ struct HistoryPanelView: View {
     private var connectionId: UUID { coordinator.connectionId }
 
     var body: some View {
-        Group {
+        @Bindable var panelState = HistoryPanelState.forConnection(connectionId)
+
+        return Group {
             if let viewModel {
                 panel(viewModel)
             } else {
                 Color.clear
             }
         }
-        .task(id: connectionId) {
+        .task(id: HistoryPanelActivation(connectionId: connectionId, isVisible: panelState.isVisible)) {
+            guard panelState.isVisible else {
+                viewModel?.deactivate()
+                return
+            }
             let model = viewModel ?? HistoryPanelViewModel(connectionId: connectionId, services: services)
             viewModel = model
-            model.startObserving()
-            await model.reload()
+            await model.activate()
         }
         .onDisappear {
-            viewModel?.stopObserving()
+            viewModel?.deactivate()
         }
         .sheet(item: $favoriteDialogQuery) { item in
             FavoriteEditDialog(
