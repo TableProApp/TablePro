@@ -116,11 +116,14 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
     /// Every lookup inside the switcher goes through here. Rooted at the application the same
     /// queries walk the whole accessibility tree, and with a data grid loaded in the main window
     /// one existence check overran XCTest's own four second evaluation watchdog and had to be
-    /// retried: this test alone spent seven minutes of the job's budget on that. `children` rather
-    /// than `descendants` keeps resolving the panel shallow, because a window is a direct child of
-    /// the application element and searching the descendants for one costs the walk all over again.
+    /// retried: this test alone spent seven minutes of the job's budget on that.
+    ///
+    /// `children` rather than `descendants` keeps resolving the panel shallow, because the panel is
+    /// a direct child of the application element and searching the descendants for it costs the
+    /// walk all over again. The type stays `.any` because AppKit gives a floating panel the
+    /// `AXDialog` subrole, which XCUITest reports as `Dialog` and not as `Window`.
     private func switcherPanel(in app: XCUIApplication) -> XCUIElement {
-        app.children(matching: .window).matching(identifier: "quick-switcher-panel").firstMatch
+        app.children(matching: .any).matching(identifier: "quick-switcher-panel").firstMatch
     }
 
     private func tab(in app: XCUIApplication, named name: String) -> XCUIElement {
