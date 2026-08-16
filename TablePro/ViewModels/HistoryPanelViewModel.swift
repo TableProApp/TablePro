@@ -14,6 +14,9 @@ final class HistoryPanelViewModel {
     private(set) var hasLoadedOnce = false
     private(set) var hasMore = false
     private(set) var totalLoaded = 0
+    /// An unreadable store returns the same empty page as a store with nothing in it, so without
+    /// this the drawer stated positively that no query had ever been recorded.
+    private(set) var isStoreUnavailable = false
 
     var selectedEntryId: UUID?
 
@@ -113,7 +116,10 @@ final class HistoryPanelViewModel {
         }
         let windowLimit = min(max(pageSize, loadedPageCount * pageSize), Self.maximumRefreshWindow)
         let page = await history.fetch(state.filter(), after: nil, limit: windowLimit)
+        let storeAvailable = await history.isStoreAvailable()
         guard loadToken == token else { return }
+
+        isStoreUnavailable = !storeAvailable
 
         entries = page.entries
         nextCursor = page.nextCursor

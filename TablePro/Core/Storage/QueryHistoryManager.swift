@@ -51,6 +51,10 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading {
 
     // MARK: - Reading
 
+    func isStoreAvailable() async -> Bool {
+        await storage.isStoreAvailable()
+    }
+
     func fetch(_ filter: QueryHistoryFilter, after cursor: QueryHistoryCursor?, limit: Int) async -> QueryHistoryPage {
         await storage.fetch(filter, after: cursor, limit: limit)
     }

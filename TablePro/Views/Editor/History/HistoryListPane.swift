@@ -99,7 +99,13 @@ struct HistoryListPane: View {
 
     private var emptyState: some View {
         Group {
-            if viewModel.state.hasNarrowingFilter {
+            if viewModel.isStoreUnavailable {
+                ContentUnavailableView {
+                    Label(String(localized: "Query History Is Unavailable"), systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text("TablePro could not open its query history database, so nothing is being recorded and nothing can be shown. Your existing history is still on disk.")
+                }
+            } else if viewModel.state.hasNarrowingFilter {
                 ContentUnavailableView {
                     Label(String(localized: "No Matching Queries"), systemImage: "magnifyingglass")
                 } description: {

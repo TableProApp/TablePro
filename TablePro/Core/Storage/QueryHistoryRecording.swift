@@ -10,6 +10,14 @@ protocol QueryHistoryReading: Sendable {
     func delete(id: UUID) async -> Bool
     func clear(matching filter: QueryHistoryFilter) async -> Bool
     func count(scope: QueryHistoryScope) async -> Int
+    /// False when the store could not be opened, which `fetch` cannot say for itself: it returns
+    /// the same empty page for "no rows" and for "could not read", and the drawer rendered that as
+    /// a positive statement that nothing had ever been recorded.
+    func isStoreAvailable() async -> Bool
+}
+
+extension QueryHistoryReading {
+    func isStoreAvailable() async -> Bool { true }
 }
 
 extension QueryHistoryReading {

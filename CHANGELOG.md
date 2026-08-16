@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB tables outside the `main` schema are visible again. The sidebar lists every schema of the connected database, Tree layout shows database, schema and tables, and `ATTACH`ed databases appear alongside the one you opened. (#2131)
 - DuckDB metadata no longer mixes up databases that share a schema name, so an `ATTACH`ed file's tables stay out of the database you opened.
 - A DuckDB table in the default schema is titled `orders` again rather than `main.orders`, and exports preselect the schema you are browsing.
+- A query history database TablePro cannot open showed as "No Query History", which reads as though nothing had ever been recorded. The drawer now says the store could not be opened and that your history is still on disk.
 
 ### Changed
 

@@ -8,6 +8,12 @@ import Foundation
 import Testing
 
 private actor RecordingHistoryReader: QueryHistoryReading {
+    var storeIsAvailable = true
+
+    func isStoreAvailable() -> Bool { storeIsAvailable }
+
+    func setStoreAvailable(_ available: Bool) { storeIsAvailable = available }
+
     private var entries: [QueryHistoryEntry]
     private(set) var receivedFilters: [QueryHistoryFilter] = []
     private(set) var clearCalls: [QueryHistoryFilter] = []
@@ -121,6 +127,24 @@ struct HistoryPanelViewModelTests {
             pageSize: pageSize
         )
         return (viewModel, reader)
+    }
+
+    /// The store returns the same empty page for "nothing recorded" and "could not read", so a
+    /// corrupt or unwritable database told the user their history was empty and kept saying so.
+    @Test("an unreadable store is reported, not shown as an empty history")
+    func unreadableStoreIsReported() async {
+        let connectionId = UUID()
+        let (viewModel, reader) = makeViewModel(connectionId: connectionId, entries: [])
+
+        await viewModel.reload()
+        #expect(!viewModel.isStoreUnavailable, "An empty but readable store is simply empty")
+        #expect(viewModel.isEmpty)
+
+        await reader.setStoreAvailable(false)
+        await viewModel.reload()
+
+        #expect(viewModel.isStoreUnavailable)
+        #expect(viewModel.isEmpty)
     }
 
     @Test("the panel scopes to its own connection by default")
