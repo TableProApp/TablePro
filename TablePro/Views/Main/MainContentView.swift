@@ -117,7 +117,6 @@ struct MainContentView: View {
             } message: { request in
                 Text(request.message)
             }
-            .modifier(FocusedCommandActionsModifier(actions: commandActions))
     }
 
     private var dropConfirmationBinding: Binding<Bool> {

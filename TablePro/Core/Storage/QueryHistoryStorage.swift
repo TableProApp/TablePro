@@ -366,6 +366,8 @@ actor QueryHistoryStorage {
 
     // MARK: - Reads
 
+    func isStoreAvailable() -> Bool { db != nil }
+
     func fetch(_ filter: QueryHistoryFilter, after cursor: QueryHistoryCursor?, limit: Int) -> QueryHistoryPage {
         guard db != nil, limit > 0, !filter.matchesNothing else { return .empty }
 

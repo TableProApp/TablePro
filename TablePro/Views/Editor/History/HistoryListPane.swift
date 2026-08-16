@@ -3,6 +3,7 @@ import SwiftUI
 struct HistoryListPane: View {
     @Bindable var viewModel: HistoryPanelViewModel
 
+    let canRunInNewTab: (QueryHistoryEntry) -> Bool
     let onLoadInEditor: (QueryHistoryEntry) -> Void
     let onRunInNewTab: (QueryHistoryEntry) -> Void
     let onCopy: (QueryHistoryEntry) -> Void
@@ -99,7 +100,13 @@ struct HistoryListPane: View {
 
     private var emptyState: some View {
         Group {
-            if viewModel.state.hasNarrowingFilter {
+            if viewModel.isStoreUnavailable {
+                ContentUnavailableView {
+                    Label(String(localized: "Query History Is Unavailable"), systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text("TablePro could not open its query history database, so nothing is being recorded and nothing can be shown. Your existing history is still on disk.")
+                }
+            } else if viewModel.state.hasNarrowingFilter {
                 ContentUnavailableView {
                     Label(String(localized: "No Matching Queries"), systemImage: "magnifyingglass")
                 } description: {
@@ -125,7 +132,10 @@ struct HistoryListPane: View {
         guard let id = ids.first, let entry = entry(id) else { return [] }
         return [
             FieldDrivenMenuItem(title: String(localized: "Load in Editor")) { onLoadInEditor(entry) },
-            FieldDrivenMenuItem(title: String(localized: "Run in New Tab")) { onRunInNewTab(entry) },
+            FieldDrivenMenuItem(
+                title: String(localized: "Run in New Tab"),
+                isEnabled: canRunInNewTab(entry)
+            ) { onRunInNewTab(entry) },
             .separator,
             FieldDrivenMenuItem(title: String(localized: "Copy Query")) { onCopy(entry) },
             FieldDrivenMenuItem(title: String(localized: "Save as Favorite…")) { onSaveAsFavorite(entry) },

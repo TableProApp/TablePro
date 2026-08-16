@@ -14,6 +14,9 @@ final class HistoryPanelViewModel {
     private(set) var hasLoadedOnce = false
     private(set) var hasMore = false
     private(set) var totalLoaded = 0
+    /// An unreadable store returns the same empty page as a store with nothing in it, so without
+    /// this the drawer stated positively that no query had ever been recorded.
+    private(set) var isStoreUnavailable = false
 
     var selectedEntryId: UUID?
 
@@ -62,6 +65,20 @@ final class HistoryPanelViewModel {
     }
 
     // MARK: - Lifecycle
+
+    /// The drawer is collapsed rather than removed, so the view never disappears and its lifecycle
+    /// cannot say when the panel stops mattering. Visibility is the signal that actually changes,
+    /// and a panel nobody can see has no reason to hold a subscription or refetch behind them.
+    var isObserving: Bool { updateSubscription != nil }
+
+    func activate() async {
+        startObserving()
+        await reload()
+    }
+
+    func deactivate() {
+        stopObserving()
+    }
 
     func startObserving() {
         guard updateSubscription == nil else { return }
@@ -113,7 +130,10 @@ final class HistoryPanelViewModel {
         }
         let windowLimit = min(max(pageSize, loadedPageCount * pageSize), Self.maximumRefreshWindow)
         let page = await history.fetch(state.filter(), after: nil, limit: windowLimit)
+        let storeAvailable = await history.isStoreAvailable()
         guard loadToken == token else { return }
+
+        isStoreUnavailable = !storeAvailable
 
         entries = page.entries
         nextCursor = page.nextCursor

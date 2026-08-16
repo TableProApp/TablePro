@@ -11,12 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Refreshing the database switcher replaced the list with a spinner, and a refresh that failed hid the databases you were already looking at.
 - The database switcher reset your highlighted database when the rest of its details finished loading, and it could highlight a database the search filter hides, which left Return doing nothing.
+- Right-clicking a day heading in the query history drawer cleared the selected entry and showed no menu. Right-clicking a row in the connection switcher moved the highlight without showing a menu.
+- The row highlighted when the connection switcher, the database switcher or the query history drawer first opens kept its dark text on the blue selection fill. It was only readable after moving the selection off the row and back. (#2140)
+- The query history drawer kept re-reading history in the background after you closed it, once for every statement recorded, for as long as the window stayed open. A closed drawer now does nothing, and one that starts closed does not load until you open it.
+- Query History's "Load in Editor" and "Run in New Tab" did nothing when clicked. Both work again, from the buttons, the right-click menu, and `Return` or a double-click on a row.
+- "Run in New Tab" runs the query it opens, and asks first when that query writes, even with safe mode set to Silent.
+- A history entry recorded against another connection opens in that connection's window, and one recorded against another database opens in its own tab bound to that database, instead of loading into whatever is in front of you.
 - DuckDB `TIMESTAMP_S`, `TIMESTAMP_MS` and `TIMESTAMP_NS` columns showed `1970-01-01 00:00:00` on every row instead of the stored value. They now read exactly as the DuckDB CLI prints them, keeping sub-second digits. (#2130)
 - DuckDB `UUID`, `ENUM`, `BIT`, `LIST`, `STRUCT`, `MAP`, `ARRAY` and `UNION` columns showed an empty cell instead of their value. (#2130)
 - Querying two DuckDB tables that share a column name could repeat one table's value in both columns. (#2130)
 - DuckDB tables outside the `main` schema are visible again. The sidebar lists every schema of the connected database, Tree layout shows database, schema and tables, and `ATTACH`ed databases appear alongside the one you opened. (#2131)
 - DuckDB metadata no longer mixes up databases that share a schema name, so an `ATTACH`ed file's tables stay out of the database you opened.
 - A DuckDB table in the default schema is titled `orders` again rather than `main.orders`, and exports preselect the schema you are browsing.
+- **File > Save As...** stayed available on a table, structure or diagram tab, and **File > Export > Export Results...** stayed available with no rows to export. Both did nothing when chosen. They are dimmed now until they can run.
+- Clearing query history from the drawer promised to delete the connection's history while the source filter was quietly sparing table browsing, row edits, imports and AI queries. The confirmation now says what it will actually delete, and clearing itself is unchanged.
+- A query history database TablePro cannot open showed as "No Query History", which reads as though nothing had ever been recorded. The drawer now says the store could not be opened and that your history is still on disk.
 
 ### Changed
 
