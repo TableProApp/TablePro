@@ -740,6 +740,19 @@ mod tests {
             tp_dm_result_free(empty_result);
 
             assert!(tp_dm_begin(connection, &mut error));
+            let failed_sql = b"INSERT INTO TABLEPRO_BRIDGE_TEST (ID, NAME) VALUES (1, 'duplicate')";
+            let failed_insert = tp_dm_execute(
+                connection,
+                failed_sql.as_ptr(),
+                failed_sql.len(),
+                false,
+                0,
+                &mut error,
+            );
+            assert!(failed_insert.is_null());
+            assert!(!error.is_null());
+            let _ = error_text(error);
+            error = ptr::null_mut();
             let transaction_insert = execute(
                 connection,
                 "INSERT INTO TABLEPRO_BRIDGE_TEST (ID, NAME) VALUES (2, 'rollback')",
@@ -747,6 +760,7 @@ mod tests {
             );
             tp_dm_result_free(transaction_insert);
             assert!(tp_dm_rollback(connection, &mut error));
+            assert!(tp_dm_ping(connection, &mut error));
             let count_result = execute(
                 connection,
                 "SELECT COUNT(*) FROM TABLEPRO_BRIDGE_TEST",
@@ -755,6 +769,16 @@ mod tests {
             let bytes = tp_dm_result_cell_bytes(count_result, 0, 0, &mut length);
             assert_eq!(slice::from_raw_parts(bytes, length), b"1");
             tp_dm_result_free(count_result);
+
+            assert!(tp_dm_begin(connection, &mut error));
+            let committed_insert = execute(
+                connection,
+                "INSERT INTO TABLEPRO_BRIDGE_TEST (ID, NAME) VALUES (3, 'commit')",
+                false,
+            );
+            tp_dm_result_free(committed_insert);
+            assert!(tp_dm_commit(connection, &mut error));
+            assert!(tp_dm_ping(connection, &mut error));
 
             let cleanup_result = execute(connection, "DROP TABLE TABLEPRO_BRIDGE_TEST", false);
             tp_dm_result_free(cleanup_result);

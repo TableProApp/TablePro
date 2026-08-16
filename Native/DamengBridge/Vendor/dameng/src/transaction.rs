@@ -50,7 +50,7 @@ impl<'a> Transaction<'a> {
 
     fn finish_inner(&mut self, command: &str) -> Result<()> {
         self.client.execute(command)?;
-        self.client.auto_commit = true;
+        self.client.complete_transaction();
         self.finished = true;
         Ok(())
     }
@@ -60,7 +60,7 @@ impl<'a> Drop for Transaction<'a> {
     fn drop(&mut self) {
         if !self.finished {
             let _ = self.client.execute("ROLLBACK");
-            self.client.auto_commit = true;
+            self.client.complete_transaction();
         }
     }
 }

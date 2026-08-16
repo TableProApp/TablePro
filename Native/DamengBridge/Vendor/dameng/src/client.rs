@@ -696,8 +696,9 @@ impl Client {
             let rs = match self.read_exec_response(has_result_set) {
                 Ok(r) => r,
                 Err(e) => {
-                    // On DML error, send ROLLBACK to clean up connection state
-                    if !has_result_set {
+                    // Auto-commit statements can clean up their implicit transaction. An
+                    // explicit transaction stays active so its caller decides whether to roll back.
+                    if self.should_rollback_failed_statement(has_result_set) {
                         let _ = self.rollback();
                     }
                     return Err(e);
@@ -722,11 +723,23 @@ impl Client {
             0,
             &exec.encode_payload(),
         ))?;
-        let rs = self.read_exec_response(has_result_set)?;
+        let rs = match self.read_exec_response(has_result_set) {
+            Ok(result) => result,
+            Err(error) => {
+                if self.should_rollback_failed_statement(has_result_set) {
+                    let _ = self.rollback();
+                }
+                return Err(error);
+            }
+        };
         if self.auto_commit && !has_result_set {
             self.do_commit()?;
         }
         return Ok(rs);
+    }
+
+    fn should_rollback_failed_statement(&self, has_result_set: bool) -> bool {
+        self.auto_commit && !has_result_set
     }
 
     /// Stream LOB data for off-row params (BLOB/CLOB > 2048 bytes).
@@ -1284,10 +1297,7 @@ impl Client {
     /// Commit the current transaction and re-enable auto-commit.
     pub fn commit(&mut self) -> Result<()> {
         self.do_commit()?;
-        self.auto_commit = true;
-        // COMMIT may also invalidate the server-side statement handle.
-        // Reset to 0 so the next execute() will allocate a fresh one.
-        self.handle = 0;
+        self.complete_transaction();
         Ok(())
     }
 
@@ -1309,11 +1319,12 @@ impl Client {
                 frame.response_code
             )));
         }
-        self.auto_commit = true;
-        // ROLLBACK invalidates the server-side statement handle (-2106).
-        // Reset to 0 so the next execute() will allocate a fresh one.
-        self.handle = 0;
+        self.complete_transaction();
         Ok(())
+    }
+
+    pub(crate) fn complete_transaction(&mut self) {
+        self.auto_commit = true;
     }
 
     /// Read a complete message (frame + payload) from the stream.
@@ -1641,6 +1652,28 @@ mod tests {
         let mut client = Client::new("test", 5236);
         let result = client.ready();
         assert!(matches!(result, Err(Error::NotConnected)));
+    }
+
+    #[test]
+    fn failed_statement_rollback_respects_explicit_transactions() {
+        let mut client = Client::new("test", 5236);
+        assert!(client.should_rollback_failed_statement(false));
+        assert!(!client.should_rollback_failed_statement(true));
+
+        client.auto_commit = false;
+        assert!(!client.should_rollback_failed_statement(false));
+    }
+
+    #[test]
+    fn completing_transaction_preserves_connection_handle() {
+        let mut client = Client::new("test", 5236);
+        client.handle = 42;
+        client.auto_commit = false;
+
+        client.complete_transaction();
+
+        assert!(client.auto_commit);
+        assert_eq!(client.handle, 42);
     }
 
     #[test]
