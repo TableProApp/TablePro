@@ -134,6 +134,10 @@ extension DatabaseManager {
             if let schemaDriver = driver as? SchemaSwitchable {
                 activeSessions[connection.id]?.browseSchema = schemaDriver.currentSchema
             }
+            if let reportingDriver = driver as? DatabaseReporting,
+               let openedDatabase = reportingDriver.currentDatabase, !openedDatabase.isEmpty {
+                activeSessions[connection.id]?.browseDatabase = openedDatabase
+            }
 
             await executePostConnectActions(
                 for: connection, resolvedConnection: resolvedConnection, driver: driver

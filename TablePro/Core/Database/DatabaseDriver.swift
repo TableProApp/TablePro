@@ -243,6 +243,13 @@ protocol SchemaSwitchable: DatabaseDriver {
     func switchSchema(to schema: String) async throws
 }
 
+/// Protocol for drivers that know which database they are on. An embedded engine names
+/// its database from the file it opened, so the session cannot derive it from the
+/// connection definition the way a networked engine can.
+protocol DatabaseReporting: DatabaseDriver {
+    var currentDatabase: String? { get }
+}
+
 /// Default implementation for common operations
 extension DatabaseDriver {
     /// Default implementation returns nil

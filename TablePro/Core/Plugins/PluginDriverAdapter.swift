@@ -7,7 +7,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
+final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseReporting {
     private struct State {
         var status: ConnectionStatus = .disconnected
         var columnTypeCache: [String: ColumnType] = [:]
@@ -557,6 +557,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     func switchDatabase(to database: String) async throws {
         try await pluginDriver.switchDatabase(to: database)
+    }
+
+    var currentDatabase: String? {
+        pluginDriver.currentDatabase
     }
 
     // MARK: - DDL Schema Generation

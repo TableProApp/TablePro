@@ -49,6 +49,32 @@ internal final class WindowSidebarState {
     var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }
     var expandedTreeTables: Set<DatabaseTableKey> = [] { didSet { persistExpansion() } }
 
+    /// An all-empty expansion set means "the user collapsed everything" just as much as it
+    /// means "the user has never opened this tree", and seeding on the former would reopen
+    /// nodes they deliberately closed. This records that the seed already happened.
+    private(set) var didSeedExpansion = false
+
+    /// Opens the tree on the connection's current location the first time it is shown, so a
+    /// database whose objects all sit under one schema is not a row of closed triangles.
+    /// The tree renders before the connection resolves, so a call with nothing to seed
+    /// must not consume the one shot: it would leave the tree closed forever.
+    func seedExpansionIfNeeded(database: String?, schema: String?) {
+        guard !didSeedExpansion else { return }
+        let database = database?.nilIfEmpty
+        let schema = schema?.nilIfEmpty
+        guard database != nil || schema != nil else { return }
+
+        didSeedExpansion = true
+        if let schema { expandedTreeSchemas.insert(schema) }
+        if let database {
+            expandedTreeDatabases.insert(database)
+            if let schema {
+                expandedTreeDatabaseSchemas.insert(DatabaseSchemaKey(database: database, schema: schema))
+            }
+        }
+        persistExpansion()
+    }
+
     init(connectionId: UUID? = nil, defaults: UserDefaults = .standard) {
         self.connectionId = connectionId
         self.defaults = defaults
@@ -61,6 +87,7 @@ internal final class WindowSidebarState {
         var databases: [String]
         var databaseSchemas: [DatabaseSchemaKey]
         var tables: [DatabaseTableKey]?
+        var seeded: Bool?
     }
 
     private var storageKey: String? {
@@ -75,13 +102,15 @@ internal final class WindowSidebarState {
         expandedTreeDatabases = Set(decoded.databases)
         expandedTreeDatabaseSchemas = Set(decoded.databaseSchemas)
         expandedTreeTables = Set(decoded.tables ?? [])
+        didSeedExpansion = decoded.seeded ?? true
     }
 
     private func persistExpansion() {
         guard isLoaded, let storageKey else { return }
 
         if expandedTreeSchemas.isEmpty, expandedTreeDatabases.isEmpty,
-           expandedTreeDatabaseSchemas.isEmpty, expandedTreeTables.isEmpty {
+           expandedTreeDatabaseSchemas.isEmpty, expandedTreeTables.isEmpty,
+           !didSeedExpansion {
             defaults.removeObject(forKey: storageKey)
             return
         }
@@ -90,7 +119,8 @@ internal final class WindowSidebarState {
             schemas: Array(expandedTreeSchemas),
             databases: Array(expandedTreeDatabases),
             databaseSchemas: Array(expandedTreeDatabaseSchemas),
-            tables: Array(expandedTreeTables)
+            tables: Array(expandedTreeTables),
+            seeded: didSeedExpansion
         )
         if let data = try? JSONEncoder().encode(snapshot) {
             defaults.set(data, forKey: storageKey)

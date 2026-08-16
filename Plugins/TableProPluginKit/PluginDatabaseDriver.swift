@@ -150,6 +150,12 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // Database switching (SQL Server USE, ClickHouse database switch, etc.)
     func switchDatabase(to database: String) async throws
 
+    /// The database the connection is currently on, when the driver rather than the
+    /// connection definition is the authority on that. An embedded engine names its
+    /// database from the file it opened, so nothing outside the driver can derive it.
+    /// Drivers whose database comes from the connection definition return nil.
+    var currentDatabase: String? { get }
+
     // DDL schema generation (optional, plugins return nil to use default fallback)
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String?
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String?
@@ -348,6 +354,8 @@ public extension PluginDatabaseDriver {
             userInfo: [NSLocalizedDescriptionKey: "This driver does not support database switching"]
         )
     }
+
+    var currentDatabase: String? { nil }
 
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }

@@ -62,9 +62,21 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 Double-click a `.duckdb` or `.ddb` file in Finder to open it directly in TablePro.
 
-## Schemas
+## Databases and schemas
 
-DuckDB supports multiple schemas per database; the default is `main`. Browse them in the sidebar. DuckDB has no toolbar schema switcher.
+A DuckDB connection opens one database, named after the file (`analytics.duckdb` becomes `analytics`). Each database holds one or more schemas, and the default is `main`.
+
+The sidebar shows both levels. Switch it to Tree layout from View > Sidebar Layout to get database > schema > tables; in the default Flat layout it lists the current schema's objects and you change schema from Database > Schema. The toolbar chip and `⌘K` switch database.
+
+`ATTACH` a second file and it appears as a sibling database after a sidebar refresh:
+
+```sql
+ATTACH 'warehouse.duckdb' AS warehouse;
+```
+
+Attachments last for the session. DuckDB does not persist them, so they are gone after a reconnect.
+
+DuckDB's built-in `system` and `temp` catalogs are hidden, and with them `information_schema` and `pg_catalog`, which live inside `system`.
 
 ## Querying files directly
 

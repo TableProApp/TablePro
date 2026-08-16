@@ -10,6 +10,7 @@ import TableProPluginKit
 extension DatabaseTreeOutlineCoordinator {
     internal func applyDesiredExpansion() {
         guard let outlineView = self.outlineView else { return }
+        seedExpansionFromSession()
         isApplyingExpansion = true
         defer { isApplyingExpansion = false }
         let searching = !searchText.isEmpty
@@ -57,6 +58,18 @@ extension DatabaseTreeOutlineCoordinator {
                 }
             }
         }
+    }
+
+    /// A connection knows where it is browsing from the moment it connects, so the tree can
+    /// open there instead of showing every container closed. Runs once per connection; after
+    /// that the user's own expansion state is the only input.
+    private func seedExpansionFromSession() {
+        guard let windowState, !windowState.didSeedExpansion else { return }
+        let session = DatabaseManager.shared.session(for: connectionId)
+        windowState.seedExpansionIfNeeded(
+            database: session?.resolvedBrowseDatabase,
+            schema: session?.browseSchema
+        )
     }
 
     private func restorePartitionExpansion(under parent: DatabaseTreeNode) {

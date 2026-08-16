@@ -174,6 +174,10 @@ struct PluginMetadataSnapshot: Sendable {
         let category: DatabaseCategory
         let tagline: String
         let hidesBuiltInPassword: Bool
+        /// An engine can switch database without the user naming one on the connection:
+        /// an embedded engine takes it from the file it opens. Showing the built-in
+        /// database field there offers a second, meaningless place to type one.
+        let hidesBuiltInDatabase: Bool
         let defaultUnixSocketPath: String?
         let defaultHost: String?
 
@@ -182,6 +186,7 @@ struct PluginMetadataSnapshot: Sendable {
             category: DatabaseCategory = .other,
             tagline: String = "",
             hidesBuiltInPassword: Bool = false,
+            hidesBuiltInDatabase: Bool = false,
             defaultUnixSocketPath: String? = nil,
             defaultHost: String? = nil
         ) {
@@ -189,6 +194,7 @@ struct PluginMetadataSnapshot: Sendable {
             self.category = category
             self.tagline = tagline
             self.hidesBuiltInPassword = hidesBuiltInPassword
+            self.hidesBuiltInDatabase = hidesBuiltInDatabase
             self.defaultUnixSocketPath = defaultUnixSocketPath
             self.defaultHost = defaultHost
         }
@@ -1162,6 +1168,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 tagline: existingSnapshot?.connection.tagline
                     ?? Self.fallbackTagline(forTypeId: driverType.databaseTypeId),
                 hidesBuiltInPassword: existingSnapshot?.connection.hidesBuiltInPassword ?? false,
+                hidesBuiltInDatabase: existingSnapshot?.connection.hidesBuiltInDatabase ?? false,
                 defaultUnixSocketPath: existingSnapshot?.connection.defaultUnixSocketPath,
                 defaultHost: existingSnapshot?.connection.defaultHost
             )

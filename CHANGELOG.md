@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB `TIMESTAMP_S`, `TIMESTAMP_MS` and `TIMESTAMP_NS` columns showed `1970-01-01 00:00:00` on every row instead of the stored value. They now read exactly as the DuckDB CLI prints them, keeping sub-second digits. (#2130)
 - DuckDB `UUID`, `ENUM`, `BIT`, `LIST`, `STRUCT`, `MAP`, `ARRAY` and `UNION` columns showed an empty cell instead of their value. (#2130)
 - Querying two DuckDB tables that share a column name could repeat one table's value in both columns. (#2130)
+- DuckDB tables outside the `main` schema are visible again. The sidebar lists every schema of the connected database, Tree layout shows database, schema and tables, and `ATTACH`ed databases appear alongside the one you opened. (#2131)
+- DuckDB metadata no longer mixes up databases that share a schema name, so an `ATTACH`ed file's tables stay out of the database you opened.
+- A DuckDB table in the default schema is titled `orders` again rather than `main.orders`, and exports preselect the schema you are browsing.
+
+### Changed
+
+- The sidebar tree opens on the database and schema you are connected to the first time you see it, instead of every container being closed. After that it remembers what you left open.
+- DuckDB connections reset their saved column widths, per-table filters, favourites and recent tables once, because those are stored per database and DuckDB connections now report a database name.
 
 ## [0.65.0] - 2026-08-16
 

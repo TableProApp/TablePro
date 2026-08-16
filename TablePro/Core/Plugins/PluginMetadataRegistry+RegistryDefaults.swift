@@ -583,13 +583,14 @@ extension PluginMetadataRegistry {
                     ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .indentedText),
                 ],
                 pathFieldRole: .database,
-                supportsHealthMonitor: false, urlSchemes: ["duckdb", "quack"], postConnectActions: [],
+                supportsHealthMonitor: false, urlSchemes: ["duckdb", "quack"],
+                postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#FFD900",
                 queryLanguageName: "SQL", editorLanguage: .sql,
-                connectionMode: .apiOnly, supportsDatabaseSwitching: false,
+                connectionMode: .apiOnly, supportsDatabaseSwitching: true,
                 supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: false,
+                    supportsSchemaSwitching: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: false,
@@ -604,16 +605,16 @@ extension PluginMetadataRegistry {
                     supportsConnectionPooling: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "public",
+                    defaultSchemaName: "main",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["information_schema", "pg_catalog"],
+                    systemDatabaseNames: ["system", "temp"],
                     systemSchemaNames: [],
                     fileExtensions: ["duckdb", "ddb"],
-                    databaseGroupingStrategy: .flat,
+                    databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
@@ -625,7 +626,8 @@ extension PluginMetadataRegistry {
                     additionalConnectionFields: Self.duckdbConnectionFields,
                     category: .analytical,
                     tagline: String(localized: "Embedded and remote analytical SQL"),
-                    hidesBuiltInPassword: true
+                    hidesBuiltInPassword: true,
+                    hidesBuiltInDatabase: true
                 )
             )),
             ("Beancount", PluginMetadataSnapshot(

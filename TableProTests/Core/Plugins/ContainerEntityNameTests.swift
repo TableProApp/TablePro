@@ -87,6 +87,16 @@ struct ContainerEntityNameTests {
         #expect(PluginManager.shared.containerSwitchTarget(for: .postgresql) == .database)
     }
 
+    /// A DuckDB catalog really is a database, so it keeps the default container name and
+    /// switches by database the way PostgreSQL does, with schemas one level below.
+    @Test("DuckDB containers are databases with a schema level")
+    func duckDBContainerIsDatabase() {
+        #expect(PluginManager.shared.containerEntityName(for: .duckdb) == "Database")
+        #expect(PluginManager.shared.containerSwitchTarget(for: .duckdb) == .database)
+        #expect(PluginManager.shared.supportsSchemaSwitching(for: .duckdb) == true)
+        #expect(PluginManager.shared.databaseGroupingStrategy(for: .duckdb) == .bySchema)
+    }
+
     @Test("Engines without switching have no target")
     func nonSwitchingEnginesHaveNoTarget() {
         #expect(PluginManager.shared.containerSwitchTarget(for: .redis) == nil)

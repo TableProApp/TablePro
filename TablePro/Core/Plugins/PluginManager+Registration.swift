@@ -525,8 +525,12 @@ extension PluginManager {
             .schema.databaseGroupingStrategy ?? .byDatabase
     }
 
+    /// A file holds exactly one database, so a file-based engine never has a tree to draw.
+    /// Every other mode can: a server hosts several databases, and an embedded engine can
+    /// attach them. `supportsDatabaseSwitching` defaults to true on `DriverPlugin`, so the
+    /// grouping strategy is what keeps an engine that never declared one out of the tree.
     func supportsDatabaseTree(for databaseType: DatabaseType) -> Bool {
-        guard connectionMode(for: databaseType) == .network,
+        guard connectionMode(for: databaseType) != .fileBased,
               supportsDatabaseSwitching(for: databaseType) else {
             return false
         }

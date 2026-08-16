@@ -64,6 +64,41 @@ struct PluginMetadataRegistrySchemaSwitchingTests {
         #expect(snap.postConnectActions.contains(.selectSchemaFromLastSession))
     }
 
+    // MARK: - DuckDB
+
+    @Test("DuckDB supports schema switching")
+    func duckDBSupportsSchemaSwitching() {
+        guard let snap = snapshot(forTypeId: "DuckDB") else {
+            Issue.record("Registry default for DuckDB missing")
+            return
+        }
+        #expect(snap.capabilities.supportsSchemaSwitching == true)
+    }
+
+    @Test("DuckDB post-connect actions restore last schema")
+    func duckDBRestoresLastSchema() {
+        guard let snap = snapshot(forTypeId: "DuckDB") else {
+            Issue.record("Registry default for DuckDB missing")
+            return
+        }
+        #expect(snap.postConnectActions.contains(.selectSchemaFromLastSession))
+    }
+
+    /// DuckDB's default schema is `main`. Inheriting PostgreSQL's `public` made every
+    /// table in the default schema render as `main.name` and broke export preselection.
+    @Test("DuckDB's default schema is main")
+    func duckDBDefaultSchemaIsMain() {
+        #expect(snapshot(forTypeId: "DuckDB")?.schema.defaultSchemaName == "main")
+    }
+
+    /// `information_schema` and `pg_catalog` are schemas of DuckDB's `system` catalog,
+    /// not databases. The system databases are `system` and `temp`.
+    @Test("DuckDB's system databases are its built-in catalogs")
+    func duckDBSystemDatabases() {
+        let names = snapshot(forTypeId: "DuckDB")?.schema.systemDatabaseNames ?? []
+        #expect(Set(names) == ["system", "temp"])
+    }
+
     // MARK: - PostgreSQL (regression for the working reference)
 
     @Test("PostgreSQL supports schema switching")
@@ -99,7 +134,7 @@ struct PluginMetadataRegistrySchemaSwitchingTests {
 
     @Test("Quick Switcher allowlist agrees with registry capability flag")
     func quickSwitcherAllowlistMatchesRegistry() {
-        let typesThatShouldSupportSchemas = ["PostgreSQL", "Redshift", "Oracle", "SQL Server"]
+        let typesThatShouldSupportSchemas = ["PostgreSQL", "Redshift", "Oracle", "SQL Server", "DuckDB"]
         for typeId in typesThatShouldSupportSchemas {
             guard let snap = snapshot(forTypeId: typeId) else {
                 Issue.record("Registry default for \(typeId) missing")

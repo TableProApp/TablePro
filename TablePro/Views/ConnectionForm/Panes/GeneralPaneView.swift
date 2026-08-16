@@ -18,6 +18,12 @@ struct GeneralPaneView: View {
         PluginManager.shared.connectionMode(for: type)
     }
 
+    private var showsBuiltInDatabaseField: Bool {
+        guard PluginManager.shared.supportsDatabaseSwitching(for: type) else { return false }
+        return PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)?
+            .connection.hidesBuiltInDatabase != true
+    }
+
     var body: some View {
         Form {
             if let parsed = coordinator.clipboardCandidate {
@@ -79,7 +85,7 @@ struct GeneralPaneView: View {
                 }
             }
         case .apiOnly:
-            if PluginManager.shared.supportsDatabaseSwitching(for: type) {
+            if showsBuiltInDatabaseField {
                 Section(String(localized: "Connection")) {
                     TextField(
                         containerEntityName,
