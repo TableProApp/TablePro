@@ -377,36 +377,6 @@ final class FilterSettingsStorage {
         }
     }
 
-    func clearAllLastFilters() {
-        lastFiltersCache.removeAll()
-        browseSearchCache.removeAll()
-
-        let directory = filterStateDirectory
-        ioQueue.async {
-            let fm = FileManager.default
-            do {
-                let files = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-                for file in files where file.pathExtension == "json" {
-                    try? fm.removeItem(at: file)
-                }
-            } catch {
-                Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    func customizedStorageKeys() -> [String] {
-        guard let files = try? FileManager.default.contentsOfDirectory(
-            at: filterStateDirectory,
-            includingPropertiesForKeys: nil
-        ) else { return [] }
-
-        return files
-            .filter { $0.pathExtension == "json" }
-            .map { $0.deletingPathExtension().lastPathComponent }
-            .filter { !$0.hasSuffix(".browse") }
-    }
-
     private func fileURL(forKey key: String) -> URL {
         filterStateDirectory.appendingPathComponent("\(key).json")
     }
