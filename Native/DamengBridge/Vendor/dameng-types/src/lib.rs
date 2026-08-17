@@ -974,8 +974,117 @@ pub fn parse_output_param_value(bytes: &[u8], type_code: i32) -> Option<DmValue>
     decode_value(ty, bytes, None)
 }
 
-/// Decode DM binary DECIMAL format (matches Go driver dm_go/o.go decodeDecimal).
-fn decode_dm_binary_decimal(data: &[u8]) -> Option<rust_decimal::Decimal> {
+/// Decode the DM packed DATE part: a 15-bit little-endian year, a 4-bit month split across two
+/// bytes, and a 5-bit day (matches Go driver dm_go/h.go).
+fn dm_date_part(b: &[u8]) -> Option<chrono::NaiveDate> {
+    let raw = u16::from_le_bytes([b[0], b[1]]);
+    let year = if (raw & 0x7FFF) > 9999 {
+        i32::from((raw | 0x8000) as i16)
+    } else {
+        i32::from(raw & 0x7FFF)
+    };
+    let month = u32::from((b[1] >> 7) & 0x01) | (u32::from(b[2] & 0x07) << 1);
+    let day = u32::from((b[2] >> 3) & 0x1F);
+    chrono::NaiveDate::from_ymd_opt(year, month, day)
+}
+
+/// Decode the DM packed TIME part: 5-bit hour, 6-bit minute and 6-bit second, each split across
+/// byte boundaries. Ranges are validated because these bytes are also the discriminator that tells
+/// a packed payload from ASCII text.
+fn dm_time_part(b: &[u8]) -> Option<(u32, u32, u32)> {
+    let hour = u32::from(b[0] & 0x1F);
+    let minute = u32::from((b[0] >> 5) & 0x07) | (u32::from(b[1] & 0x07) << 3);
+    let second = u32::from((b[1] >> 3) & 0x1F) | (u32::from(b[2] & 0x01) << 5);
+    if hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    Some((hour, minute, second))
+}
+
+/// 20-bit microsecond fraction, starting in the byte that carries the second's high bit.
+fn dm_fraction_micros(b: &[u8]) -> Option<u32> {
+    let micros = u32::from((b[0] >> 1) & 0x7F) | (u32::from(b[1]) << 7) | (u32::from(b[2] & 0x1F) << 15);
+    (micros < 1_000_000).then_some(micros * 1_000)
+}
+
+/// 30-bit nanosecond fraction used by the DATETIME2 widths.
+fn dm_fraction_nanos(b: &[u8]) -> Option<u32> {
+    let nanos = u32::from((b[0] >> 1) & 0x7F)
+        | (u32::from(b[1]) << 7)
+        | (u32::from(b[2]) << 15)
+        | (u32::from(b[3] & 0x7F) << 23);
+    (nanos < 1_000_000_000).then_some(nanos)
+}
+
+/// Decode a DM temporal payload. The wire length alone identifies the type, exactly as the vendor
+/// driver dispatches it: DATE 3, TIME 5, TIME_TZ 7, DATETIME 8, DATETIME2 9, DATETIME_TZ 10,
+/// DATETIME2_TZ 11. The trailing time zone offset is validated but not yet represented.
+fn decode_dm_temporal(data: &[u8]) -> Option<DmValue> {
+    fn time_of(b: &[u8], nanos: u32) -> Option<chrono::NaiveTime> {
+        let (hour, minute, second) = dm_time_part(b)?;
+        chrono::NaiveTime::from_hms_nano_opt(hour, minute, second, nanos)
+    }
+    fn timestamp(data: &[u8], nanos: u32) -> Option<DmValue> {
+        let date = dm_date_part(&data[0..3])?;
+        let time = time_of(&data[3..6], nanos)?;
+        Some(DmValue::Timestamp(date.and_time(time)))
+    }
+    fn zone_is_valid(offset: &[u8]) -> bool {
+        let minutes = i32::from(i16::from_le_bytes([offset[0], offset[1]]));
+        (-12 * 60..=14 * 60).contains(&minutes)
+    }
+
+    match data.len() {
+        3 => dm_date_part(data).map(DmValue::Date),
+        5 => time_of(&data[0..3], dm_fraction_micros(&data[2..5])?).map(DmValue::Time),
+        7 => {
+            if !zone_is_valid(&data[5..7]) {
+                return None;
+            }
+            time_of(&data[0..3], dm_fraction_micros(&data[2..5])?).map(DmValue::Time)
+        }
+        8 => timestamp(data, dm_fraction_micros(&data[5..8])?),
+        9 => timestamp(data, dm_fraction_nanos(&data[5..9])?),
+        10 => {
+            if !zone_is_valid(&data[8..10]) {
+                return None;
+            }
+            timestamp(data, dm_fraction_micros(&data[5..8])?)
+        }
+        11 => {
+            if !zone_is_valid(&data[9..11]) {
+                return None;
+            }
+            timestamp(data, dm_fraction_nanos(&data[5..9])?)
+        }
+        _ => None,
+    }
+}
+
+/// Accept a temporal value that arrived as text only when it actually parses as one, so an
+/// undecodable payload reaches the caller as bytes rather than as mojibake.
+fn decode_temporal_text(data: &[u8]) -> Option<DmValue> {
+    let text = std::str::from_utf8(data).ok()?.trim();
+    for format in ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%d %H:%M:%S"] {
+        if let Ok(value) = chrono::NaiveDateTime::parse_from_str(text, format) {
+            return Some(DmValue::Timestamp(value));
+        }
+    }
+    if let Ok(value) = chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d") {
+        return Some(DmValue::Date(value));
+    }
+    for format in ["%H:%M:%S%.f", "%H:%M:%S"] {
+        if let Ok(value) = chrono::NaiveTime::parse_from_str(text, format) {
+            return Some(DmValue::Time(value));
+        }
+    }
+    None
+}
+
+/// Decode DM binary DECIMAL to its exact decimal text (matches Go driver dm_go/o.go decodeDecimal).
+/// Text is the intermediate form because a DM DECIMAL carries up to 38 significant digits, which
+/// exceeds rust_decimal's 96-bit mantissa.
+fn decode_dm_binary_decimal_text(data: &[u8]) -> Option<String> {
     const FLAG_ZERO: u8 = 0x80;
     const FLAG_POSITIVE: i32 = 0xC1;
     const FLAG_NEGTIVE: i32 = 0x3E;
@@ -986,35 +1095,91 @@ fn decode_dm_binary_decimal(data: &[u8]) -> Option<rust_decimal::Decimal> {
         return None;
     }
     if data[0] == FLAG_ZERO || data.len() == 1 {
-        return Some(rust_decimal::Decimal::ZERO);
+        return Some("0".to_string());
     }
-    let sign: i32 = if data[0] & FLAG_ZERO != 0 { 1 } else { -1 };
+    let is_positive = data[0] & FLAG_ZERO != 0;
     let flag = data[0] as i32;
-    let _exp = if sign > 0 {
+    let exponent = if is_positive {
         flag - FLAG_POSITIVE
     } else {
         FLAG_NEGTIVE - flag
     };
-    let mut sf = String::new();
-    for &b in &data[1..] {
-        let digit = if sign > 0 {
+    const EXP_MIN: i32 = -64;
+    const EXP_MAX: i32 = 61;
+    const TERMINATOR: u8 = 0x66;
+
+    if !(EXP_MIN..=EXP_MAX).contains(&exponent) {
+        return None;
+    }
+
+    // Validate strictly rather than stopping at the first unusable byte. DECIMAL payloads share this
+    // decoder with text that failed to parse as a number, and a permissive scan turns arbitrary ASCII
+    // such as "12.3.4" into a plausible-looking value.
+    let mantissa = &data[1..];
+    let mut digits = Vec::with_capacity(mantissa.len());
+    for (index, &b) in mantissa.iter().enumerate() {
+        if !is_positive && b == TERMINATOR {
+            // The encoder emits the terminator only as the final byte of a short negative value.
+            if index + 1 != mantissa.len() {
+                return None;
+            }
+            break;
+        }
+        let digit = if is_positive {
             b as i32 - NUM_POSITIVE
         } else {
             NUM_NEGTIVE - b as i32
         };
-        if digit < 0 || digit > 99 {
-            break;
+        if !(0..=99).contains(&digit) {
+            return None;
         }
-        sf.push_str(&format!("{:02}", digit));
+        digits.push(digit);
     }
-    if sf.is_empty() {
+    // A negative value that does not fill the 21-byte slot must carry the terminator.
+    if !is_positive && data.len() < 21 && mantissa.last() != Some(&TERMINATOR) {
         return None;
     }
-    let int_val: i64 = sf.parse().ok()?;
-    Some(rust_decimal::Decimal::from_i128_with_scale(
-        int_val as i128,
-        0,
-    ))
+    if digits.is_empty() {
+        return None;
+    }
+
+    let decimal_group = exponent + 1;
+    let mut value = String::new();
+    if !is_positive {
+        value.push('-');
+    }
+    if decimal_group <= 0 {
+        value.push_str("0.");
+        for _ in 0..-decimal_group {
+            value.push_str("00");
+        }
+        for digit in &digits {
+            value.push_str(&format!("{digit:02}"));
+        }
+    } else {
+        for index in 0..decimal_group as usize {
+            match digits.get(index) {
+                Some(digit) if index == 0 => value.push_str(&digit.to_string()),
+                Some(digit) => value.push_str(&format!("{digit:02}")),
+                None => value.push_str("00"),
+            }
+        }
+        if (decimal_group as usize) < digits.len() {
+            value.push('.');
+            for digit in &digits[decimal_group as usize..] {
+                value.push_str(&format!("{digit:02}"));
+            }
+        }
+    }
+    if value.contains('.') {
+        while value.ends_with('0') {
+            value.pop();
+        }
+        if value.ends_with('.') {
+            value.pop();
+        }
+    }
+    Some(value)
 }
 
 fn is_decimal_text(value: &str) -> bool {
@@ -1205,12 +1370,14 @@ pub fn decode_value(ty: DmValueType, data: &[u8], lob_meta: Option<(i32, i16)>) 
                 if is_decimal_text(trimmed) {
                     return Some(DmValue::Text(trimmed.to_string()));
                 }
-                if s.is_ascii() {
-                    return None;
-                }
             }
-            // Try DM binary DECIMAL format (matches Go driver o.go)
-            decode_dm_binary_decimal(data).map(DmValue::Decimal)
+            // A negative binary DECIMAL is pure ASCII, so the binary decode must be reachable for
+            // text that did not parse as a number rather than short-circuited by an is_ascii check.
+            let text = decode_dm_binary_decimal_text(data)?;
+            match rust_decimal::Decimal::from_str_exact(&text) {
+                Ok(value) => Some(DmValue::Decimal(value)),
+                Err(_) => Some(DmValue::Text(text)),
+            }
         }
         DmValueType::TINYINT => Some(DmValue::TinyInt(data[0] as i8)),
         DmValueType::DATE
@@ -1224,100 +1391,18 @@ pub fn decode_value(ty: DmValueType, data: &[u8], lob_meta: Option<(i32, i16)>) 
         | DmValueType::DATETIME2_TZ
         | DmValueType::INTERVAL_YM
         | DmValueType::INTERVAL_DT => {
-            // DM stores DATE/TIME/TIMESTAMP/INTERVAL as binary:
-            // DATE: 7 bytes (year:2BE, month:1, day:1, hour:1, min:1, sec:1)
-            // TIME: 6+ bytes (hour:1, min:1, sec:1, nanosec:4BE)
-            // TIMESTAMP: 11 bytes (year:2BE, month:1, day:1, hour:1, min:1, sec:1, nanosec:4BE)
-            // If data is valid UTF-8 text, pass through as Text.
-            // Otherwise decode binary to typed chrono variants.
-            if let Ok(s) = String::from_utf8(data.to_vec()) {
-                return Some(DmValue::Text(s));
+            if matches!(
+                ty,
+                DmValueType::INTERVAL | DmValueType::INTERVAL_YM | DmValueType::INTERVAL_DT
+            ) {
+                return std::str::from_utf8(data)
+                    .ok()
+                    .map(|s| DmValue::Text(s.to_string()));
             }
-            // Binary decode for TIMESTAMP / DATETIME
-            if ty == DmValueType::TIMESTAMP
-                || ty == DmValueType::DATETIME
-                || ty == DmValueType::DATETIME2
-            {
-                // Try 11-byte OPE format
-                if data.len() >= 11 {
-                    let year = u16::from_be_bytes([data[0], data[1]]) as i32;
-                    let month = data[2] as u32;
-                    let day = data[3] as u32;
-                    let hour = data[4] as u32;
-                    let min = data[5] as u32;
-                    let sec = data[6] as u32;
-                    let nano = u32::from_be_bytes([data[7], data[8], data[9], data[10]]);
-                    if let Some(d) = chrono::NaiveDate::from_ymd_opt(year, month, day)
-                        .and_then(|d| d.and_hms_nano_opt(hour, min, sec, nano))
-                    {
-                        return Some(DmValue::Timestamp(d));
-                    }
-                }
-                // Try 8-byte DM row format
-                if data.len() >= 8 {
-                    let year = i32::from(i16::from_le_bytes([data[0], data[1]])) & 0x7FFF;
-                    let month = ((data[1] as u32 >> 7) & 0x1) + ((data[2] as u32 & 0x07) << 1);
-                    let day = ((data[2] as u32 & 0xF8) >> 3) & 0x1F;
-                    let hour = data[3] as u32 & 0x1F;
-                    let min = ((data[3] as u32 >> 5) & 0x07) + ((data[4] as u32 & 0x07) << 3);
-                    let sec = ((data[4] as u32 >> 3) & 0x1F) + ((data[5] as u32 & 0x01) << 5);
-                    let nano = (((data[5] as u32 >> 1) & 0x7F)
-                        + ((data[6] as u32 & 0xFF) << 7)
-                        + ((data[7] as u32 & 0x1F) << 15))
-                        * 1000;
-                    if let Some(d) = chrono::NaiveDate::from_ymd_opt(year, month, day)
-                        .and_then(|d| d.and_hms_nano_opt(hour, min, sec, nano))
-                    {
-                        return Some(DmValue::Timestamp(d));
-                    }
-                }
-                None
-            } else if ty == DmValueType::DATE {
-                // Try 3-byte DM row format first (DATE_PREC = 3)
-                if data.len() >= 3 && data.len() < 7 {
-                    let year = i32::from(i16::from_le_bytes([data[0], data[1]])) & 0x7FFF;
-                    let month = ((data[1] as u32 >> 7) & 0x1) + ((data[2] as u32 & 0x07) << 1);
-                    let day = ((data[2] as u32 & 0xF8) >> 3) & 0x1F;
-                    if let Some(d) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
-                        return Some(DmValue::Date(d));
-                    }
-                }
-                if data.len() >= 7 {
-                    let year = u16::from_be_bytes([data[0], data[1]]) as i32;
-                    let month = data[2] as u32;
-                    let day = data[3] as u32;
-                    if let Some(d) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
-                        return Some(DmValue::Date(d));
-                    }
-                }
-                if data.len() >= 8 {
-                    let year = i32::from(i16::from_le_bytes([data[0], data[1]])) & 0x7FFF;
-                    let month = ((data[1] as u32 >> 7) & 0x1) + ((data[2] as u32 & 0x07) << 1);
-                    let day = ((data[2] as u32 & 0xF8) >> 3) & 0x1F;
-                    if let Some(d) = chrono::NaiveDate::from_ymd_opt(year, month, day) {
-                        return Some(DmValue::Date(d));
-                    }
-                }
-                None.map(DmValue::Date)
-            } else if ty == DmValueType::TIME && data.len() >= 6 {
-                let hour = data[0] as u32;
-                let minute = data[1] as u32;
-                let second = data[2] as u32;
-                let nano = if data.len() >= 10 {
-                    u32::from_be_bytes([data[3], data[4], data[5], data[6]])
-                } else {
-                    0
-                };
-                chrono::NaiveTime::from_hms_nano_opt(hour, minute, second, nano).map(DmValue::Time)
-            } else if ty == DmValueType::INTERVAL
-                || ty == DmValueType::INTERVAL_YM
-                || ty == DmValueType::INTERVAL_DT
-            {
-                Some(DmValue::Text(String::from_utf8_lossy(data).to_string()))
-            } else {
-                // Fallback for TIME_TZ, DATETIME_TZ, DATETIME2_TZ: text
-                Some(DmValue::Text(String::from_utf8_lossy(data).to_string()))
-            }
+            // Decode the packed binary form first. A packed payload is frequently valid UTF-8
+            // (10:30:45 packs to bytes that are all below 0x80), so attempting text first returns
+            // control characters instead of a date.
+            decode_dm_temporal(data).or_else(|| decode_temporal_text(data))
         }
     }
 }
@@ -1525,7 +1610,108 @@ mod tests {
         let val = DmValue::Text("2024-01-01 12:00:00".to_string());
         let encoded = encode_value(DmValueType::DATETIME, &val);
         assert_eq!(encoded, b"2024-01-01 12:00:00");
+        // A textual DATETIME now decodes to the typed value rather than passing through as Text.
+        // Both render identically, but the typed form is what the chrono getters read.
         let decoded = decode_value(DmValueType::DATETIME, &encoded, None).unwrap();
-        assert_eq!(decoded, val);
+        assert_eq!(
+            decoded,
+            DmValue::Timestamp(
+                chrono::NaiveDate::from_ymd_opt(2024, 1, 1)
+                    .unwrap()
+                    .and_hms_opt(12, 0, 0)
+                    .unwrap()
+            )
+        );
+    }
+
+    #[test]
+    fn test_decode_packed_temporal_by_length() {
+        // Packed per the vendor layout: 15-bit LE year, 4-bit month, 5-bit day, then 5/6/6-bit
+        // time fields and a 20-bit microsecond fraction.
+        let date = decode_value(DmValueType::DATE, &[0xe8, 0x07, 0x7b], None);
+        assert_eq!(
+            date,
+            Some(DmValue::Date(
+                chrono::NaiveDate::from_ymd_opt(2024, 6, 15).unwrap()
+            ))
+        );
+
+        // Every byte of this TIME is below 0x80, so the payload is valid UTF-8. That is exactly the
+        // case the old text-first decoder returned as control characters.
+        let packed_time = [0x0a, 0x69, 0x01, 0x00, 0x00];
+        assert!(std::str::from_utf8(&packed_time).is_ok());
+        assert_eq!(
+            decode_value(DmValueType::TIME, &packed_time, None),
+            Some(DmValue::Time(
+                chrono::NaiveTime::from_hms_opt(10, 8, 45).unwrap()
+            ))
+        );
+
+        let stamp = decode_value(
+            DmValueType::TIMESTAMP,
+            &[0xe8, 0x07, 0x7b, 0x0a, 0x69, 0x01, 0x00, 0x00],
+            None,
+        );
+        assert_eq!(
+            stamp,
+            Some(DmValue::Timestamp(
+                chrono::NaiveDate::from_ymd_opt(2024, 6, 15)
+                    .unwrap()
+                    .and_hms_opt(10, 8, 45)
+                    .unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn test_undecodable_temporal_is_not_mojibake() {
+        // An unknown width must fail rather than pass raw bytes off as text.
+        assert_eq!(
+            decode_value(DmValueType::TIMESTAMP, &[0x01, 0x02, 0x03, 0x04], None),
+            None
+        );
+    }
+
+    #[test]
+    fn test_decode_binary_decimal_honors_sign_and_exponent() {
+        // Vectors captured from DM8 and already pinned for the sibling decoder in
+        // dameng-protocol response.rs test_decode_dm_decimal_to_text_honors_exponent.
+        let cases: [(&[u8], &str); 5] = [
+            (&[0x80], "0"),
+            (&[0xc2, 0x02], "100"),
+            (&[0xc2, 0x52, 0x59], "8188"),
+            (&[0xc1, 0x02, 0x18], "1.23"),
+            (&[0x3e, 0x64, 0x4e, 0x66], "-1.23"),
+        ];
+        for (bytes, expected) in cases {
+            assert_eq!(
+                decode_dm_binary_decimal_text(bytes).as_deref(),
+                Some(expected),
+                "bytes {bytes:02x?}"
+            );
+            let decoded = decode_value(DmValueType::DECIMAL, bytes, None);
+            assert_eq!(
+                decoded,
+                Some(DmValue::Decimal(
+                    rust_decimal::Decimal::from_str_exact(expected).unwrap()
+                )),
+                "decode_value for {bytes:02x?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_decode_binary_decimal_keeps_high_precision_as_text() {
+        // 20 base-100 digits exceeds rust_decimal's 96-bit mantissa, so it must survive as text
+        // rather than collapsing to SQL NULL.
+        let mut bytes = vec![0xc1 + 19];
+        bytes.extend(std::iter::repeat(0x64).take(20));
+        match decode_value(DmValueType::DECIMAL, &bytes, None) {
+            Some(DmValue::Text(text)) => {
+                assert_eq!(text.len(), 40);
+                assert!(text.chars().all(|c| c == '9'));
+            }
+            other => panic!("expected high-precision text, got {other:?}"),
+        }
     }
 }

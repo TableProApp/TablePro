@@ -110,8 +110,18 @@ jobs:
       - name: Build Dameng native bridge
         run: scripts/build-dameng.sh arm64
 
+      # The vendored crates are path dependencies, not workspace members, so testing the bridge
+      # manifest alone skips every decoder test they carry.
       - name: Test Dameng native bridge
-        run: cargo test --manifest-path Native/DamengBridge/Cargo.toml --locked
+        run: |
+          for manifest in \
+            Native/DamengBridge/Cargo.toml \
+            Native/DamengBridge/Vendor/dameng-types/Cargo.toml \
+            Native/DamengBridge/Vendor/dameng-protocol/Cargo.toml \
+            Native/DamengBridge/Vendor/dameng/Cargo.toml
+          do
+            cargo test --manifest-path "$manifest" --locked
+          done
 
       # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so an empty
       # value is enough for the project to resolve $(ANALYTICS_HMAC_SECRET).
