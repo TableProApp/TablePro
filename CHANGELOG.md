@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Viewing a very long single line with word wrap on could use enormous amounts of memory and stall or kill the app. This hit the JSON value viewer, chat code blocks and the SQL review sheet, which always wrap, and the SQL editor when Word Wrap is on. Wrapped text is now laid out once instead of once per wrapped row, so a long line stays fast no matter how long it is.
 - A strip along the right edge of the SQL editor, as wide as 140 points, took clicks and did nothing with them. Clicking there now puts the caret on the line you clicked, like any other empty part of the editor. The same strip sat in the trigger editor, the JSON view, the structure DDL, the SQL review sheet, the import preview and chat code blocks, where it swallowed text selection instead. (#2156)
 - Query results were read-only whenever the `SELECT` gave its table an alias, as in `select * from users u where u.id = 1`. Editing works on those results now, and also on queries written across several lines, preceded by a comment, or ending in `FOR UPDATE`. (#2150)
 - A `UNION`, `EXCEPT` or `INTERSECT` result could be edited as though it were a single table, and the edit was written to one of the branches rather than to the rows on screen. Those results are read-only now. So are results from a join, a subquery, a CTE, a temporal `FOR SYSTEM_TIME` read, and `FROM ONLY`.
