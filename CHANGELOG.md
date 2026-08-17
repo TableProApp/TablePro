@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Viewing a very long single line with word wrap on could use enormous amounts of memory and stall or kill the app. This hit the JSON value viewer, chat code blocks and the SQL review sheet, which always wrap, and the SQL editor when Word Wrap is on. Wrapped text is now laid out once instead of once per wrapped row, so a long line stays fast no matter how long it is.
 - An open cell overlay in the data grid kept its old border and background colour if the appearance changed while it was on screen, such as an automatic switch to dark at sunset. It repaints now.
 - Format Query crashed the app on a string literal that was still open and ended in a backslash, as in `select * from t where c like 'C:\`. It formats such a query without crashing now. Format Query also used to move the last character of an unclosed `/*` comment out of the comment and reformat it as code; the whole comment is left alone now.
 - Pasting a large block of text into the query editor could crash the app. A paste of more than about a thousand characters is parsed in the background, and the editor's syntax highlighting was updated from that background work while the editor was still applying the same paste on screen. Highlighting is now updated on the main thread again, as the rest of the editor already did. (#2158)
