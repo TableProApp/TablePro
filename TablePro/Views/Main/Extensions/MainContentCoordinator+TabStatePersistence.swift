@@ -10,9 +10,11 @@ import Foundation
 @MainActor
 internal final class SessionTabStatePersister: SessionTabStatePersisting {
     internal func persistTabState(for connectionId: UUID) {
-        MainContentCoordinator.allActiveCoordinators()
-            .first { $0.connectionId == connectionId }?
-            .persistence
-            .saveAggregatedSync()
+        let coordinators = MainContentCoordinator.allActiveCoordinators()
+            .filter { $0.connectionId == connectionId }
+        for coordinator in coordinators {
+            coordinator.dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
+        }
+        coordinators.first?.persistence.saveAggregatedSync()
     }
 }

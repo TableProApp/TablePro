@@ -9,7 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Data-grid columns now reserve space for trailing editor and foreign-key actions instead of truncating otherwise fitting values.
+- Empty Structure tabs and structured-value errors keep their toolbar at the top and center the message in the remaining content area.
 - Adding or removing a favorite table updates its sidebar star immediately instead of waiting for the sidebar to reopen.
+- Save Changes and Preview react immediately when data-grid changes are added, undone, saved or discarded, instead of waiting for a later toolbar update.
 - The failure marker and the connection dot in the query history drawer, and the connection colour and status marks in the connection switcher, kept their own colour on the blue selection fill and were hard to make out. They now switch with the background like the rest of the row.
 - Refreshing the database switcher replaced the list with a spinner, and a refresh that failed hid the databases you were already looking at.
 - The database switcher reset your highlighted database when the rest of its details finished loading, and it could highlight a database the search filter hides, which left Return doing nothing.

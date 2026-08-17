@@ -23,6 +23,7 @@ class CellOverlayBase: NSObject {
     private var appResignObserver: NSObjectProtocol?
     private var windowResignKeyObserver: NSObjectProtocol?
     private var outsideClickMonitor: Any?
+    var onRemove: (() -> Void)?
 
     private(set) var row: Int = -1
     private(set) var column: Int = -1
@@ -80,6 +81,7 @@ class CellOverlayBase: NSObject {
         if let hostTableView {
             hostTableView.window?.makeFirstResponder(hostTableView)
         }
+        onRemove?()
     }
 
     static func overlayFrame(for cellFrame: NSRect, value: String) -> NSRect {

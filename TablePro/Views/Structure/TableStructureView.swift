@@ -76,7 +76,9 @@ struct TableStructureView: View {
         schemaName: String?,
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator?,
-        selectionState: GridSelectionState
+        selectionState: GridSelectionState,
+        initialSelectedTab: StructureTab = .columns,
+        initialTabData: StructureTabDataState = StructureTabDataState()
     ) {
         self.tableName = tableName
         self.connection = connection
@@ -85,13 +87,15 @@ struct TableStructureView: View {
         self.toolbarState = toolbarState
         self.coordinator = coordinator
         self.selectionState = selectionState
+        _selectedTab = State(initialValue: initialSelectedTab)
+        _tabData = State(initialValue: initialTabData)
 
         let manager = StructureChangeManager()
         _structureChangeManager = State(wrappedValue: manager)
         _wrappedChangeManager = State(wrappedValue: AnyChangeManager(manager))
         _gridDelegate = State(wrappedValue: StructureGridDelegate(
             structureChangeManager: manager,
-            selectedTab: .columns,
+            selectedTab: initialSelectedTab,
             connection: connection,
             tableName: tableName,
             coordinator: coordinator
@@ -103,6 +107,7 @@ struct TableStructureView: View {
             toolbar
             Divider()
             contentArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task(loadInitialData)
         .onChange(of: selectedRows) { _, newRows in
@@ -200,7 +205,7 @@ struct TableStructureView: View {
         HStack {
             Spacer()
 
-            Picker("", selection: $selectedTab) {
+            Picker("Structure", selection: $selectedTab) {
                 ForEach(availableTabs, id: \.self) { tab in
                     Text(tabLabel(for: tab)).tag(tab)
                 }
@@ -208,6 +213,7 @@ struct TableStructureView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .monospacedDigit()
+            .accessibilityIdentifier("structure-tab-picker")
 
             Spacer()
         }
@@ -378,6 +384,7 @@ struct TableStructureView: View {
             }
             return { [self] fromIndex, toIndex in
                 let columnsSnapshot = structureChangeManager.workingColumns
+                let columnLayoutClearTarget = coordinator?.selectedColumnLayoutClearTarget()
                 Task { @MainActor in
                     do {
                         let executedSQL = try await StructureColumnReorderHandler.moveColumn(
@@ -403,7 +410,9 @@ struct TableStructureView: View {
                         await loadColumns()
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
-                        coordinator?.clearColumnLayoutForSelectedTable()
+                        if let columnLayoutClearTarget {
+                            coordinator?.clearColumnLayout(columnLayoutClearTarget)
+                        }
                         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
                     } catch {
                         AlertHelper.showErrorSheet(

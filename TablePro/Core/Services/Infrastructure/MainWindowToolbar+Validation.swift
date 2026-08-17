@@ -76,13 +76,22 @@ extension MainWindowToolbar: NSToolbarItemValidation {
     }
 }
 
-/// The Import item carries no action, so `validateToolbarItem(_:)` never reaches it. Its menu items
-/// do, and AppKit validates them each time the menu opens, which keeps the safe-mode gate live
-/// instead of frozen at the moment the toolbar was built.
+/// AppKit validates toolbar overflow entries as menu items rather than visible toolbar items.
+/// Keep their state aligned with the predicates used by `validateToolbarItem(_:)`.
 extension MainWindowToolbar: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        guard menuItem.action == #selector(performImportFormat(_:)) else { return true }
+        let itemIdentifier: NSToolbarItem.Identifier
+        switch menuItem.action {
+        case #selector(performSaveChanges(_:)):
+            itemIdentifier = Self.saveChanges
+        case #selector(performPreviewSQL(_:)):
+            itemIdentifier = Self.previewSQL
+        case #selector(performImportFormat(_:)):
+            itemIdentifier = Self.importTables
+        default:
+            return true
+        }
         guard let context = validationContext() else { return false }
-        return Self.isEnabled(itemIdentifier: Self.importTables, context: context)
+        return Self.isEnabled(itemIdentifier: itemIdentifier, context: context)
     }
 }

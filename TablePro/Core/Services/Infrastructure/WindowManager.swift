@@ -281,10 +281,18 @@ internal final class WindowManager {
     /// A miniaturized window still hosts its connections, so `isVisible` is not the test: closing a
     /// connection while its window was minimized left the workspace in place with no way to reach it.
     internal func closeWindow(for connectionId: UUID) {
+        let targets = controllers.values.compactMap { controller -> (NSWindow, MainSplitViewController)? in
+            guard let window = controller.window,
+                  let host = window.contentViewController as? MainSplitViewController,
+                  host.workspaces.contains(connectionId) else { return nil }
+            return (window, host)
+        }
+        guard !targets.isEmpty else { return }
+
+        SessionTabStatePersister().persistTabState(for: connectionId)
+
         var closedAnywhere = false
-        for controller in controllers.values {
-            guard let window = controller.window else { continue }
-            guard let host = window.contentViewController as? MainSplitViewController else { continue }
+        for (window, host) in targets {
             guard let removed = host.workspaces.remove(connectionId) else { continue }
             removed.teardown()
             closedAnywhere = true

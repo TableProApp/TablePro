@@ -326,6 +326,37 @@ struct DataGridColumnPoolTests {
         #expect(widthsByName["name"] == 250)
     }
 
+    @Test("A partial saved layout leaves missing columns automatic")
+    func reconcile_partialSavedLayoutUsesCalculatorForMissingColumns() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+        let schema = ColumnIdentitySchema(columns: ["id", "name"])
+        var calculatedNames: [String] = []
+
+        var layout = ColumnLayoutState()
+        layout.columnWidths = ["id": 75]
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 2),
+            savedLayout: layout,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: { name, _ in
+                calculatedNames.append(name)
+                return 200
+            }
+        )
+
+        let widthsByName = Dictionary(
+            uniqueKeysWithValues: dataColumns(in: tableView).map { ($0.headerCell.stringValue, $0.width) }
+        )
+        #expect(widthsByName["id"] == 75)
+        #expect(widthsByName["name"] == 200)
+        #expect(calculatedNames == ["name"])
+    }
+
     @Test("An oversized saved width is clamped to the column ceiling")
     func reconcile_clampsOversizedSavedWidthToColumnCeiling() {
         let pool = DataGridColumnPool()

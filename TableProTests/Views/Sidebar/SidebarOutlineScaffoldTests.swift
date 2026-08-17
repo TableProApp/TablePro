@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProSyncTransport
 import Testing
 
 @testable import TablePro
@@ -119,5 +120,112 @@ struct SidebarHostingCellViewTests {
     @Test("Both lists inset their content by the same amount")
     func sharesOneInset() {
         #expect(SidebarHostingCellView<Text>.contentInset == FavoritesOutlineCellView<Text>.contentInset)
+    }
+}
+
+@Suite("Database tree favorite refresh", .serialized)
+@MainActor
+struct DatabaseTreeFavoriteRefreshTests {
+    private static let width: CGFloat = 320
+    private static let height: CGFloat = 120
+
+    @Test("Adding and removing a favorite repaints every visible copy without replacing its host")
+    func favoriteMutationRepaintsVisibleRows() throws {
+        let favoritesSuite = "DatabaseTreeFavoriteRefreshTests.favorites.\(UUID().uuidString)"
+        let syncSuite = "DatabaseTreeFavoriteRefreshTests.sync.\(UUID().uuidString)"
+        let favoritesDefaults = try #require(UserDefaults(suiteName: favoritesSuite))
+        let syncDefaults = try #require(UserDefaults(suiteName: syncSuite))
+        favoritesDefaults.removePersistentDomain(forName: favoritesSuite)
+        syncDefaults.removePersistentDomain(forName: syncSuite)
+        defer {
+            favoritesDefaults.removePersistentDomain(forName: favoritesSuite)
+            syncDefaults.removePersistentDomain(forName: syncSuite)
+        }
+
+        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
+        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let storage = FavoriteTablesStorage(userDefaults: favoritesDefaults, syncTracker: tracker)
+        let coordinator = DatabaseTreeOutlineCoordinator(favoriteTablesStorage: storage)
+        let connectionId = UUID()
+        let table = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
+        let ref = DatabaseTreeTableRef(database: "shop", schema: "public", table: table)
+        let ordinary = DatabaseTreeNode(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
+        let recent = DatabaseTreeNode(id: DatabaseTreeNode.recentTableId(ref), kind: .recentTable(ref))
+        let outlineView = NSOutlineView()
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: outlineView,
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "FavoriteRefreshColumn",
+                allowsMultipleSelection: true,
+                rowSizePreference: .medium
+            )
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: Self.height),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.appearance = NSAppearance(named: .aqua)
+        window.contentView = scrollView
+
+        coordinator.connectionId = connectionId
+        coordinator.databaseType = .sqlite
+        coordinator.childrenCache[""] = [ordinary, recent]
+        outlineView.dataSource = coordinator
+        outlineView.delegate = coordinator
+        coordinator.attach(outlineView: outlineView)
+        outlineView.reloadData()
+        settle(window)
+
+        #expect(outlineView.numberOfRows == 2)
+        let cells = try (0..<2).map { row in
+            try #require(
+                outlineView.view(atColumn: 0, row: row, makeIfNecessary: true) as? DatabaseTreeCellView
+            )
+        }
+        settle(window)
+        let hosts = cells.map(\.hostedView)
+        let unfavoritePixels = try cells.map(trailingPixels)
+
+        coordinator.toggleFavorite(ref)
+        settle(window)
+
+        #expect(coordinator.isFavorite(ref))
+        #expect(cells.indices.allSatisfy { cells[$0].hostedView === hosts[$0] })
+        let favoritePixels = try cells.map(trailingPixels)
+        #expect(zip(unfavoritePixels, favoritePixels).allSatisfy(!=))
+
+        coordinator.toggleFavorite(ref)
+        settle(window)
+
+        #expect(!coordinator.isFavorite(ref))
+        #expect(cells.indices.allSatisfy { cells[$0].hostedView === hosts[$0] })
+        let removedPixels = try cells.map(trailingPixels)
+        #expect(zip(favoritePixels, removedPixels).allSatisfy(!=))
+    }
+
+    private func settle(_ window: NSWindow) {
+        window.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        window.layoutIfNeeded()
+    }
+
+    private func trailingPixels(of view: NSView) throws -> Data {
+        view.layoutSubtreeIfNeeded()
+        let representation = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: representation)
+        let bitmap = try #require(representation.bitmapData)
+        let bytesPerPixel = try #require(representation.bitsPerPixel / 8 > 0 ? representation.bitsPerPixel / 8 : nil)
+        let scale = CGFloat(representation.pixelsWide) / view.bounds.width
+        let trailingWidth = min(representation.pixelsWide, Int((32 * scale).rounded(.up)))
+        let startX = representation.pixelsWide - trailingWidth
+        let rowByteCount = trailingWidth * bytesPerPixel
+        var pixels = Data(capacity: rowByteCount * representation.pixelsHigh)
+        for y in 0..<representation.pixelsHigh {
+            let offset = y * representation.bytesPerRow + startX * bytesPerPixel
+            pixels.append(bitmap.advanced(by: offset), count: rowByteCount)
+        }
+        return pixels
     }
 }

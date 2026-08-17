@@ -11,6 +11,10 @@ import Testing
 
 @testable import TablePro
 
+private struct LegacyPersistedTabWidths: Decodable {
+    let columnWidths: [String: CGFloat]?
+}
+
 @Suite("PersistedTab round-trip")
 @MainActor
 struct PersistedTabRoundTripTests {
@@ -158,6 +162,23 @@ struct PersistedTabRoundTripTests {
         #expect(restored.columnLayout.columnWidths == ["id": 80, "name": 220.5])
     }
 
+    @Test("Content widths round-trip while legacy tab readers keep total widths")
+    func columnContentWidthsRoundTrip() throws {
+        var tab = tableTab()
+        tab.columnLayout.columnWidths = ["created_at": 176]
+        tab.columnLayout.columnContentWidths = ["created_at": 160]
+
+        let persisted = tab.toPersistedTab()
+        let encoded = try JSONEncoder().encode(persisted)
+        let decoded = try JSONDecoder().decode(PersistedTab.self, from: encoded)
+        let legacyDecoded = try JSONDecoder().decode(LegacyPersistedTabWidths.self, from: encoded)
+        let restored = QueryTab(from: decoded, defaultPageSize: 1_000)
+
+        #expect(restored.columnLayout.columnWidths == ["created_at": 176])
+        #expect(restored.columnLayout.columnContentWidths == ["created_at": 160])
+        #expect(legacyDecoded.columnWidths == ["created_at": 176])
+    }
+
     @Test("erDiagramSchemaKey and queryParameters persist through toPersistedTab")
     func erDiagramAndParametersRoundTrip() {
         var tab = QueryTab(id: UUID(), title: "ER", query: "", tabType: .erDiagram)
@@ -196,6 +217,7 @@ struct PersistedTabRoundTripTests {
         #expect(decoded.restoredPage == nil)
         #expect(decoded.cursorOffset == nil)
         #expect(decoded.columnWidths == nil)
+        #expect(decoded.columnContentWidths == nil)
         #expect(decoded.windowGroupIndex == nil)
         #expect(decoded.isView == false)
     }

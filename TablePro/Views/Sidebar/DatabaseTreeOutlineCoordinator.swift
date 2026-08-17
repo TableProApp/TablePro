@@ -13,6 +13,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal weak var outlineView: NSOutlineView?
     internal let service = DatabaseTreeMetadataService.shared
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("DatabaseTreeCell")
+    private let favoriteTablesStorage: FavoriteTablesStorage
 
     internal var connectionId = UUID()
     internal var databaseType: DatabaseType = .mysql
@@ -47,6 +48,11 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal let schemaService = SchemaService.shared
     private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
     private var favoritesObserver: (any NSObjectProtocol)?
+
+    init(favoriteTablesStorage: FavoriteTablesStorage = .shared) {
+        self.favoriteTablesStorage = favoriteTablesStorage
+        super.init()
+    }
 
     internal var supportsSchemaLevel: Bool {
         PluginManager.shared.databaseGroupingStrategy(for: databaseType) == .bySchema
@@ -213,12 +219,17 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             guard let node = outlineView.item(atRow: row) as? DatabaseTreeNode,
                   let cell = outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) as? DatabaseTreeCellView
             else { continue }
-            cell.configure(node: node, context: rowContext, actions: rowActions)
+            cell.configure(
+                node: node,
+                isFavorite: favoriteState(for: node),
+                context: rowContext,
+                actions: rowActions
+            )
         }
     }
 
     private func reloadFavorites() {
-        favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId)
+        favoriteTables = favoriteTablesStorage.favorites(for: connectionId)
     }
 
     private func favoriteEntry(for ref: DatabaseTreeTableRef) -> FavoriteTablesStorage.FavoriteEntry {
@@ -234,9 +245,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         favoriteTables.contains(favoriteEntry(for: ref))
     }
 
+    private func favoriteState(for node: DatabaseTreeNode) -> Bool {
+        guard let ref = DatabaseTreeSelection.tableRef(of: node) else { return false }
+        return isFavorite(ref)
+    }
+
     internal func toggleFavorite(_ ref: DatabaseTreeTableRef) {
         let entry = favoriteEntry(for: ref)
-        FavoriteTablesStorage.shared.toggle(
+        favoriteTablesStorage.toggle(
             name: entry.name, schema: entry.schema, database: entry.database, connectionId: connectionId
         )
     }
@@ -414,8 +430,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 kind == .table
                     ? PluginManager.shared.tableEntityName(for: databaseType)
                     : kind.pluralDisplayName
-            },
-            isFavorite: { [weak self] ref in self?.isFavorite(ref) ?? false }
+            }
         )
     }
 
@@ -494,7 +509,12 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         guard let node = item as? DatabaseTreeNode else { return nil }
         let cell = outlineView.makeView(withIdentifier: Self.cellIdentifier, owner: self) as? DatabaseTreeCellView
             ?? makeCell()
-        cell.configure(node: node, context: rowContext, actions: rowActions)
+        cell.configure(
+            node: node,
+            isFavorite: favoriteState(for: node),
+            context: rowContext,
+            actions: rowActions
+        )
         return cell
     }
 

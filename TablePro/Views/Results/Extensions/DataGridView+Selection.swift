@@ -8,24 +8,41 @@ import SwiftUI
 
 extension TableViewCoordinator {
     func tableViewColumnDidResize(_ notification: Notification) {
-        guard !isRebuildingColumns else { return }
+        guard !isRebuildingColumns, !isApplyingAutomaticColumnWidths else { return }
+        guard let column = notification.userInfo?["NSTableColumn"] as? NSTableColumn else { return }
+        guard markColumnWidthUserSized(column) else { return }
         scheduleLayoutPersist()
     }
 
     func tableViewColumnDidMove(_ notification: Notification) {
         guard !isRebuildingColumns else { return }
         invalidateColumnIndexCache()
+        hasUnpersistedColumnLayoutChanges = true
         layoutPersistTask?.cancel()
         persistColumnLayoutToStorage()
     }
 
     func scheduleLayoutPersist() {
         layoutPersistTask?.cancel()
+        let pending = makePendingColumnLayoutPersistence()
+        pendingColumnLayoutPersistence = nil
+        guard let pending else { return }
+        pendingColumnLayoutPersistence = pending
+        let generation = columnLayoutPersistenceGeneration
         layoutPersistTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            self?.persistColumnLayoutToStorage()
+            guard self?.columnLayoutPersistenceGeneration == generation else { return }
+            self?.flushPendingColumnLayoutPersistence()
         }
+    }
+
+    func flushPendingColumnLayoutPersistence() {
+        layoutPersistTask?.cancel()
+        layoutPersistTask = nil
+        guard let pending = pendingColumnLayoutPersistence else { return }
+        pendingColumnLayoutPersistence = nil
+        persistColumnLayout(pending)
     }
 
     func currentRowSelection(fallbackRow: Int? = nil) -> Set<Int> {

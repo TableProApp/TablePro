@@ -717,6 +717,7 @@ struct MainEditorContentView: View {
             sortState: sortStateBinding(for: tab),
             columnLayout: columnLayoutBinding(for: tab)
         )
+        .id(tabId)
         .frame(maxHeight: .infinity, alignment: .top)
     }
 

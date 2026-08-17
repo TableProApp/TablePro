@@ -33,23 +33,6 @@ final class DataGridCellRegistry {
             }
     }
 
-    func resolveKind(
-        columnIndex: Int,
-        columnType: ColumnType?,
-        isFKColumn: Bool,
-        isDropdownColumn: Bool
-    ) -> DataGridCellKind {
-        if isFKColumn { return .foreignKey }
-        if isDropdownColumn { return .dropdown }
-        if let type = columnType {
-            if type.isBooleanType { return .boolean }
-            if type.isJsonType { return .json }
-            if type.isBlobType { return .blob }
-            if type.isDateType { return .date }
-        }
-        return .text
-    }
-
     func dequeueCell(in tableView: NSTableView) -> DataGridCellView {
         if let reused = tableView.makeView(
             withIdentifier: DataGridCellView.reuseIdentifier,

@@ -505,6 +505,7 @@ final class MainContentCoordinator {
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
         tabManager.onTabRetargeted = { [weak self] tabId in
+            self?.dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
             self?.supersedeExecution(for: tabId)
         }
 
@@ -519,6 +520,7 @@ final class MainContentCoordinator {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                self.dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
                 // Only the first coordinator for this connection saves,
                 // aggregating tabs from all windows to fix last-write-wins bug.
                 // Skip isTearingDown check: during Cmd+Q, onDisappear fires

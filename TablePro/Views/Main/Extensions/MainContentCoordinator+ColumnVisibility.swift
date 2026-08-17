@@ -5,6 +5,11 @@
 
 import Foundation
 
+struct ColumnLayoutClearTarget: Equatable {
+    let tabId: UUID
+    let tableKey: ColumnLayoutTableKey
+}
+
 extension MainContentCoordinator {
     var selectedTabHiddenColumns: Set<String> {
         guard let tab = tabManager.selectedTab else { return [] }
@@ -65,12 +70,32 @@ extension MainContentCoordinator {
     }
 
     func clearColumnLayoutForSelectedTable() {
-        guard let tab = tabManager.selectedTab, let key = columnLayoutTableKey(for: tab) else { return }
-        FileColumnLayoutPersister.shared.clear(for: key)
+        guard let target = selectedColumnLayoutClearTarget() else { return }
+        clearColumnLayout(target)
+    }
+
+    func selectedColumnLayoutClearTarget() -> ColumnLayoutClearTarget? {
+        guard let tab = tabManager.selectedTab,
+              let tableKey = columnLayoutTableKey(for: tab) else { return nil }
+        return ColumnLayoutClearTarget(tabId: tab.id, tableKey: tableKey)
+    }
+
+    func clearColumnLayout(_ target: ColumnLayoutClearTarget) {
+        if tabManager.selectedTabId == target.tabId,
+           dataTabDelegate?.tableViewCoordinator?.columnLayoutKey == target.tableKey {
+            dataTabDelegate?.tableViewCoordinator?.resetColumnWidthOwnership()
+        }
+        FileColumnLayoutPersister.shared.clearGeometry(for: target.tableKey)
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == target.tabId }),
+              columnLayoutTableKey(for: tabManager.tabs[index]) == target.tableKey else { return }
+        tabManager.mutate(at: index) { tab in
+            tab.columnLayout.applyGeometry(from: ColumnLayoutState())
+        }
     }
 
     func resetColumns() {
         guard let index = tabManager.selectedTabIndex else { return }
+        dataTabDelegate?.tableViewCoordinator?.resetColumnWidthOwnership()
         let tab = tabManager.tabs[index]
         if let key = columnLayoutTableKey(for: tab) {
             FileColumnLayoutPersister.shared.clear(for: key)

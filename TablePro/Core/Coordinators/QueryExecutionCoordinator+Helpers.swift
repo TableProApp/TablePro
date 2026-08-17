@@ -372,7 +372,7 @@ extension QueryExecutionCoordinator {
         }
         parent.tabManager.mutate(tabId: tabId) { $0.metadataVersion += 1 }
         if isActiveTab(tabId) {
-            parent.dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()
+            parent.dataTabDelegate?.tableViewCoordinator?.refreshCellPresentations()
         }
     }
 
@@ -410,7 +410,7 @@ extension QueryExecutionCoordinator {
 
         let refreshed = isActiveTab(tabId)
         if refreshed {
-            parent.dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()
+            parent.dataTabDelegate?.tableViewCoordinator?.refreshCellPresentations()
         }
         helpersLogger.info(
             "[fk] phase2 applied tab=\(tabId, privacy: .public) fks=\(parsed.columnForeignKeys?.count ?? -1) defaults=\(parsed.columnDefaults.count) activeTabRefreshed=\(refreshed)"

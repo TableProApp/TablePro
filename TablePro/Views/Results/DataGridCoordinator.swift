@@ -6,6 +6,35 @@ import TableProPluginKit
 
 private let fkTraceLogger = Logger(subsystem: "com.TablePro", category: "DataGrid")
 
+struct DataGridColumnPresentationChanges {
+    var indices = IndexSet()
+    var widthDeltas: [Int: CGFloat] = [:]
+    var widthDeltasByName: [String: CGFloat] = [:]
+
+    var isEmpty: Bool { indices.isEmpty }
+
+    func widthDelta(for name: String, columns: [String]) -> CGFloat? {
+        if let delta = widthDeltasByName[name] {
+            return delta
+        }
+        guard let index = indices.first(where: { $0 < columns.count && columns[$0] == name }) else {
+            return nil
+        }
+        return widthDeltas[index]
+    }
+}
+
+struct DataGridColumnPresentationIdentity: Hashable {
+    let name: String
+    let occurrence: Int
+}
+
+struct PendingColumnLayoutPersistence: Equatable {
+    let layout: ColumnLayoutState
+    let tableKey: ColumnLayoutTableKey?
+    let writesToTableStorage: Bool
+}
+
 // MARK: - Coordinator
 
 @MainActor
@@ -97,9 +126,32 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         )
     }
 
+    func apply(configuration: DataGridConfiguration, isEditable: Bool) {
+        let identityChanged = connectionId != configuration.connectionId
+            || tableName != configuration.tableName
+            || databaseName != configuration.databaseName
+            || schemaName != configuration.schemaName
+            || tabType != configuration.tabType
+        if identityChanged {
+            flushPendingColumnLayoutPersistence()
+            columnLayoutPersistenceGeneration &+= 1
+        }
+        self.isEditable = isEditable
+        dropdownColumns = configuration.dropdownColumns
+        typePickerColumns = configuration.typePickerColumns
+        customDropdownOptions = configuration.customDropdownOptions
+        connectionId = configuration.connectionId
+        databaseType = configuration.databaseType
+        tableName = configuration.tableName
+        databaseName = configuration.databaseName
+        schemaName = configuration.schemaName
+        primaryKeyColumns = configuration.primaryKeyColumns
+        tabType = configuration.tabType
+    }
+
     func savedColumnLayout(binding: ColumnLayoutState) -> ColumnLayoutState? {
         guard tabType == .table else {
-            guard !binding.columnWidths.isEmpty else { return nil }
+            guard !binding.columnWidths.isEmpty || binding.columnContentWidths?.isEmpty == false else { return nil }
             var layout = binding
             layout.columnOrder = nil
             return layout
@@ -108,16 +160,41 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         if let columnLayoutKey, let stored = layoutPersister.load(for: columnLayoutKey) {
             return stored
         }
-        if binding.columnWidths.isEmpty && binding.columnOrder == nil {
+        if binding.columnWidths.isEmpty,
+           binding.columnContentWidths?.isEmpty != false,
+           binding.columnOrder == nil {
             return nil
         }
         return binding
     }
 
-    func resolvedColumnLayout(binding: ColumnLayoutState, liveWidths: [String: CGFloat]) -> ColumnLayoutState? {
-        let saved = savedColumnLayout(binding: binding)
-        guard let saved, !liveWidths.isEmpty else { return saved }
+    func resolvedColumnLayout(
+        binding: ColumnLayoutState,
+        liveWidths: [String: CGFloat],
+        tableRows: TableRows? = nil
+    ) -> ColumnLayoutState? {
+        let stored = savedColumnLayout(binding: binding)
+        let saved = tableRows.map { materializedColumnLayout(stored, tableRows: $0) } ?? stored
+        guard let saved else {
+            guard !liveWidths.isEmpty else { return nil }
+            return ColumnLayoutState(columnWidths: liveWidths)
+        }
+        guard !liveWidths.isEmpty else { return saved }
         return saved.mergingWidths(liveWidths)
+    }
+
+    func materializedColumnLayout(
+        _ layout: ColumnLayoutState?,
+        tableRows: TableRows
+    ) -> ColumnLayoutState? {
+        guard var layout else { return nil }
+        for (name, reservation) in accessoryReservationsByColumnName(in: tableRows) {
+            guard let contentWidth = layout.columnContentWidths?[name] ?? layout.columnWidths[name] else {
+                continue
+            }
+            layout.columnWidths[name] = contentWidth + reservation
+        }
+        return layout
     }
 
     static func liveWidthsForSameTable(
@@ -135,41 +212,128 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         where column.identifier != ColumnIdentitySchema.rowNumberIdentifier {
             guard let dataIndex = dataColumnIndex(from: column.identifier),
                   let name = identitySchema.columnName(for: dataIndex) else { continue }
-            widths[name] = column.width
+            widths[name] = max(widths[name] ?? 0, column.width)
         }
         return widths
+    }
+
+    func synchronizeUserSizedColumns(
+        with savedLayout: ColumnLayoutState?,
+        columns: [String],
+        tableIdentityChanged: Bool
+    ) {
+        let savedWidthNames = Set(savedLayout?.columnWidths.keys.map { $0 } ?? [])
+        let savedContentWidthNames = Set(savedLayout?.columnContentWidths?.keys.map { $0 } ?? [])
+        let savedNames = savedWidthNames.union(savedContentWidthNames)
+        if tableIdentityChanged || !hasUnpersistedColumnLayoutChanges {
+            userSizedColumnNames = savedNames
+        } else {
+            userSizedColumnNames.formUnion(savedNames)
+        }
+        userSizedColumnNames.formIntersection(columns)
+    }
+
+    @discardableResult
+    func markColumnWidthUserSized(_ column: NSTableColumn) -> Bool {
+        guard column.identifier != ColumnIdentitySchema.rowNumberIdentifier,
+              let dataIndex = dataColumnIndex(from: column.identifier),
+              let name = identitySchema.columnName(for: dataIndex)
+        else { return false }
+        userSizedColumnNames.insert(name)
+        hasUnpersistedColumnLayoutChanges = true
+        return true
+    }
+
+    func resetColumnWidthOwnership() {
+        userSizedColumnNames.removeAll()
+        shouldRecalculateAutomaticColumnWidths = true
+        hasUnpersistedColumnLayoutChanges = false
+        layoutPersistTask?.cancel()
+        layoutPersistTask = nil
+        pendingColumnLayoutPersistence = nil
+    }
+
+    func liveWidthsForReconciliation(
+        _ liveWidths: [String: CGFloat],
+        presentationChanges: DataGridColumnPresentationChanges,
+        columns: [String]
+    ) -> [String: CGFloat] {
+        var result = liveWidths
+        let indicesToRecalculate = shouldRecalculateAutomaticColumnWidths
+            ? IndexSet(integersIn: columns.indices)
+            : presentationChanges.indices
+        let namesToRecalculate = Set(indicesToRecalculate.compactMap { index in
+            index < columns.count ? columns[index] : nil
+        })
+
+        for name in namesToRecalculate {
+            if userSizedColumnNames.contains(name) {
+                if let width = result[name],
+                   let delta = presentationChanges.widthDelta(for: name, columns: columns) {
+                    result[name] = width + delta
+                }
+            } else {
+                result.removeValue(forKey: name)
+            }
+        }
+        shouldRecalculateAutomaticColumnWidths = false
+        return result
     }
 
     func captureColumnLayout() -> ColumnLayoutState? {
         guard let tableView else { return nil }
         let tableRows = tableRowsProvider()
         guard !tableRows.columns.isEmpty else { return nil }
+        let reservations = accessoryReservationsByColumnName(in: tableRows)
 
-        var widths: [String: CGFloat] = [:]
+        var legacyWidths: [String: CGFloat] = [:]
+        var contentWidths: [String: CGFloat] = [:]
         var order: [String] = []
         for column in tableView.tableColumns
         where column.identifier != ColumnIdentitySchema.rowNumberIdentifier {
             guard let colIndex = dataColumnIndex(from: column.identifier),
                   colIndex < tableRows.columns.count else { continue }
             let name = tableRows.columns[colIndex]
-            widths[name] = column.width
             order.append(name)
+            if userSizedColumnNames.contains(name) {
+                let contentWidth = column.width - (reservations[name] ?? 0)
+                legacyWidths[name] = max(legacyWidths[name] ?? 0, column.width)
+                contentWidths[name] = max(contentWidths[name] ?? 0, contentWidth)
+            }
         }
 
-        guard !widths.isEmpty else { return nil }
+        guard !order.isEmpty else { return nil }
         var layout = ColumnLayoutState()
-        layout.columnWidths = widths
+        layout.columnWidths = legacyWidths
+        layout.columnContentWidths = contentWidths.isEmpty ? nil : contentWidths
         layout.columnOrder = order
         return layout
     }
 
     func persistColumnLayoutToStorage() {
-        guard let layout = captureColumnLayout() else { return }
-        onColumnLayoutDidChange?(layout)
+        layoutPersistTask?.cancel()
+        layoutPersistTask = nil
+        let pending = makePendingColumnLayoutPersistence()
+        pendingColumnLayoutPersistence = nil
+        guard let pending else { return }
+        persistColumnLayout(pending)
+    }
 
-        if tabType == .table, let columnLayoutKey {
-            layoutPersister.save(layout, for: columnLayoutKey)
+    func makePendingColumnLayoutPersistence() -> PendingColumnLayoutPersistence? {
+        guard let layout = captureColumnLayout() else { return nil }
+        return PendingColumnLayoutPersistence(
+            layout: layout,
+            tableKey: columnLayoutKey,
+            writesToTableStorage: tabType == .table
+        )
+    }
+
+    func persistColumnLayout(_ pending: PendingColumnLayoutPersistence) {
+        onColumnLayoutDidChange?(pending.layout)
+        if pending.writesToTableStorage, let tableKey = pending.tableKey {
+            layoutPersister.save(pending.layout, for: tableKey)
         }
+        hasUnpersistedColumnLayoutChanges = false
     }
 
     weak var tableView: NSTableView?
@@ -190,11 +354,19 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var cachedColumnCount: Int = 0
     private(set) var enumOrSetColumns: Set<Int> = []
     private(set) var fkColumns: Set<Int> = []
+    private(set) var columnPresentations: [DataGridColumnPresentationIdentity: DataGridColumnPresentation] = [:]
+    private(set) var userSizedColumnNames: Set<String> = []
     var isApplyingProgrammaticRowSelection = false
     var isRebuildingColumns: Bool = false
+    var isApplyingAutomaticColumnWidths = false
+    var hasUnpersistedColumnLayoutChanges = false
+    var shouldRecalculateAutomaticColumnWidths = false
+    var pendingCellPresentationRefresh = false
     var isEscapeCancelling = false
     var isCommittingCellEdit = false
     var layoutPersistTask: Task<Void, Never>?
+    var pendingColumnLayoutPersistence: PendingColumnLayoutPersistence?
+    var columnLayoutPersistenceGeneration = 0
     var lastUpdateSnapshot: DataGridUpdateSnapshot?
     private var prewarmTask: Task<Void, Never>?
     private var prewarmResumeTask: Task<Void, Never>?
@@ -733,26 +905,37 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         beginCellEdit(row: displayRow, tableColumnIndex: displayCol)
     }
 
-    func refreshForeignKeyColumns() {
+    func refreshCellPresentations() {
         guard let tableView else { return }
+        guard overlayEditor?.isActive != true, overlayViewer?.isActive != true else {
+            pendingCellPresentationRefresh = true
+            return
+        }
+        pendingCellPresentationRefresh = false
         let tableRows = tableRowsProvider()
         rebuildKindSets(from: tableRows)
-        let fkColumnIndices = IndexSet(
-            tableView.tableColumns.enumerated().compactMap { displayIndex, tableColumn in
-                guard tableColumn.identifier != ColumnIdentitySchema.rowNumberIdentifier,
-                      let modelIndex = dataColumnIndex(from: tableColumn.identifier),
-                      modelIndex < tableRows.columns.count else { return nil }
-                let columnName = tableRows.columns[modelIndex]
-                return tableRows.columnForeignKeys[columnName] != nil ? displayIndex : nil
-            }
-        )
-        guard !fkColumnIndices.isEmpty else { return }
+        let presentationChanges = updateColumnPresentations(from: tableRows)
+        guard !presentationChanges.isEmpty else { return }
+
+        applyPresentationWidthChanges(presentationChanges, tableRows: tableRows)
+
+        let changedTableColumnIndices = IndexSet(presentationChanges.indices.compactMap { dataIndex in
+            guard let identifier = identitySchema.identifier(for: dataIndex) else { return nil }
+            let tableColumnIndex = tableView.column(withIdentifier: identifier)
+            return tableColumnIndex >= 0 ? tableColumnIndex : nil
+        })
+        guard !changedTableColumnIndices.isEmpty else { return }
         let visibleRange = tableView.rows(in: tableView.visibleRect)
         guard visibleRange.length > 0 else { return }
         let visibleRows = IndexSet(
             integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)
         )
-        tableView.reloadData(forRowIndexes: visibleRows, columnIndexes: fkColumnIndices)
+        tableView.reloadData(forRowIndexes: visibleRows, columnIndexes: changedTableColumnIndices)
+    }
+
+    func flushPendingCellPresentationRefresh() {
+        guard pendingCellPresentationRefresh else { return }
+        refreshCellPresentations()
     }
 
     func scrollToTop() {
@@ -773,6 +956,155 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         displayCache.removeAll()
         invalidateColumnIndexCache()
         return true
+    }
+
+    func columnPresentation(
+        for columnIndex: Int,
+        in tableRows: TableRows
+    ) -> DataGridColumnPresentation {
+        let columnType = columnIndex < tableRows.columnTypes.count
+            ? tableRows.columnTypes[columnIndex]
+            : nil
+        return DataGridColumnPresentation.resolve(
+            columnType: columnType,
+            isForeignKey: fkColumns.contains(columnIndex),
+            isDropdown: dropdownColumns?.contains(columnIndex) == true,
+            isTypePicker: typePickerColumns?.contains(columnIndex) == true,
+            isEnumOrSet: enumOrSetColumns.contains(columnIndex),
+            isEditable: isEditable
+        )
+    }
+
+    @discardableResult
+    func updateColumnPresentations(from tableRows: TableRows) -> DataGridColumnPresentationChanges {
+        let previousReservations = maximumAccessoryReservations(in: columnPresentations)
+        var next: [DataGridColumnPresentationIdentity: DataGridColumnPresentation] = [:]
+        next.reserveCapacity(tableRows.columns.count)
+        var changes = DataGridColumnPresentationChanges()
+        var occurrences: [String: Int] = [:]
+
+        for (index, name) in tableRows.columns.enumerated() {
+            let occurrence = occurrences[name, default: 0]
+            occurrences[name] = occurrence + 1
+            let identity = DataGridColumnPresentationIdentity(name: name, occurrence: occurrence)
+            let presentation = columnPresentation(for: index, in: tableRows)
+            next[identity] = presentation
+            let previous = columnPresentations[identity]
+            if previous != presentation {
+                changes.indices.insert(index)
+                changes.widthDeltas[index] = presentation.accessory.columnWidthReservation
+                    - (previous?.accessory.columnWidthReservation ?? 0)
+            }
+        }
+
+        let nextReservations = maximumAccessoryReservations(in: next)
+        for name in Set(previousReservations.keys).union(nextReservations.keys)
+        where nextReservations[name] != nil && previousReservations[name] != nextReservations[name] {
+            for index in tableRows.columns.indices where tableRows.columns[index] == name {
+                changes.indices.insert(index)
+            }
+        }
+        let changedNames = Set(changes.indices.compactMap { index in
+            index < tableRows.columns.count ? tableRows.columns[index] : nil
+        })
+        for name in changedNames {
+            changes.widthDeltasByName[name] = (nextReservations[name] ?? 0)
+                - (previousReservations[name] ?? 0)
+        }
+        columnPresentations = next
+        return changes
+    }
+
+    func applyPresentationWidthChanges(
+        _ changes: DataGridColumnPresentationChanges,
+        tableRows: TableRows
+    ) {
+        guard let tableView else { return }
+        isApplyingAutomaticColumnWidths = true
+        defer { isApplyingAutomaticColumnWidths = false }
+        var adjustedUserSizedNames = Set<String>()
+
+        for dataIndex in changes.indices {
+            guard dataIndex < tableRows.columns.count else { continue }
+            let name = tableRows.columns[dataIndex]
+            if userSizedColumnNames.contains(name) {
+                guard adjustedUserSizedNames.insert(name).inserted,
+                      let delta = changes.widthDelta(for: name, columns: tableRows.columns)
+                else { continue }
+                for matchingIndex in tableRows.columns.indices where tableRows.columns[matchingIndex] == name {
+                    guard let identifier = identitySchema.identifier(for: matchingIndex) else { continue }
+                    let tableColumnIndex = tableView.column(withIdentifier: identifier)
+                    guard tableColumnIndex >= 0 else { continue }
+                    tableView.tableColumns[tableColumnIndex].width += delta
+                }
+            } else {
+                guard let identifier = identitySchema.identifier(for: dataIndex) else { continue }
+                let tableColumnIndex = tableView.column(withIdentifier: identifier)
+                guard tableColumnIndex >= 0 else { continue }
+                let column = tableView.tableColumns[tableColumnIndex]
+                let presentation = columnPresentation(for: dataIndex, in: tableRows)
+                column.width = cellFactory.calculateOptimalColumnWidth(
+                    for: name,
+                    columnIndex: dataIndex,
+                    tableRows: tableRows,
+                    accessory: presentation.accessory,
+                    displayFormat: dataIndex < columnDisplayFormats.count
+                        ? columnDisplayFormats[dataIndex]
+                        : nil,
+                    isLargeDataset: isLargeDataset,
+                    nullDisplayString: cellRegistry.nullDisplayString
+                )
+            }
+        }
+        refreshPendingLayoutAfterPresentationChanges(changes, tableRows: tableRows)
+    }
+
+    private func accessoryReservationsByColumnName(in tableRows: TableRows) -> [String: CGFloat] {
+        var reservations: [String: CGFloat] = [:]
+        for (index, name) in tableRows.columns.enumerated() {
+            let reservation = columnPresentation(for: index, in: tableRows).accessory.columnWidthReservation
+            reservations[name] = max(reservations[name] ?? 0, reservation)
+        }
+        return reservations
+    }
+
+    private func maximumAccessoryReservations(
+        in presentations: [DataGridColumnPresentationIdentity: DataGridColumnPresentation]
+    ) -> [String: CGFloat] {
+        var reservations: [String: CGFloat] = [:]
+        for (identity, presentation) in presentations {
+            reservations[identity.name] = max(
+                reservations[identity.name] ?? 0,
+                presentation.accessory.columnWidthReservation
+            )
+        }
+        return reservations
+    }
+
+    func refreshPendingLayoutAfterPresentationChanges(
+        _ changes: DataGridColumnPresentationChanges,
+        tableRows: TableRows
+    ) {
+        let hasChangedUserSizedName = changes.indices.contains { index in
+            guard index < tableRows.columns.count else { return false }
+            let name = tableRows.columns[index]
+            guard userSizedColumnNames.contains(name),
+                  let delta = changes.widthDelta(for: name, columns: tableRows.columns),
+                  delta != 0
+            else { return false }
+            return true
+        }
+        guard hasChangedUserSizedName else { return }
+        guard let pendingColumnLayoutPersistence else {
+            scheduleLayoutPersist()
+            return
+        }
+        guard let layout = captureColumnLayout() else { return }
+        self.pendingColumnLayoutPersistence = PendingColumnLayoutPersistence(
+            layout: layout,
+            tableKey: pendingColumnLayoutPersistence.tableKey,
+            writesToTableStorage: pendingColumnLayoutPersistence.writesToTableStorage
+        )
     }
 
     private func rebuildKindSets(from tableRows: TableRows) {

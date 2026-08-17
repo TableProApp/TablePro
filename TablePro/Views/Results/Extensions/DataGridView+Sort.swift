@@ -18,6 +18,8 @@ extension TableViewCoordinator {
             return column.width
         }
 
+        markColumnWidthUserSized(column)
+        scheduleLayoutPersist()
         return fitToContentWidth(for: column, dataColumnIndex: dataColumnIndex, tableRows: tableRowsProvider())
     }
 
@@ -35,7 +37,13 @@ extension TableViewCoordinator {
             for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
             columnIndex: dataColumnIndex,
             tableRows: tableRows,
-            availableWidth: visibleGridWidth
+            availableWidth: visibleGridWidth,
+            accessory: columnPresentation(for: dataColumnIndex, in: tableRows).accessory,
+            displayFormat: dataColumnIndex < columnDisplayFormats.count
+                ? columnDisplayFormats[dataColumnIndex]
+                : nil,
+            isLargeDataset: isLargeDataset,
+            nullDisplayString: cellRegistry.nullDisplayString
         )
     }
 
@@ -317,11 +325,13 @@ extension TableViewCoordinator {
         let column = tableView.tableColumns[columnIndex]
         guard let dataColumnIndex = dataColumnIndex(from: column.identifier) else { return }
 
+        markColumnWidthUserSized(column)
         column.width = fitToContentWidth(
             for: column,
             dataColumnIndex: dataColumnIndex,
             tableRows: tableRowsProvider()
         )
+        scheduleLayoutPersist()
     }
 
     @objc func sizeAllColumnsToFit(_ sender: NSMenuItem) {
@@ -334,12 +344,14 @@ extension TableViewCoordinator {
                   let dataColumnIndex = dataColumnIndex(from: column.identifier),
                   dataColumnIndex < tableRows.columns.count else { continue }
 
+            markColumnWidthUserSized(column)
             column.width = fitToContentWidth(
                 for: column,
                 dataColumnIndex: dataColumnIndex,
                 tableRows: tableRows
             )
         }
+        scheduleLayoutPersist()
     }
 
     @objc func setDisplayFormat(_ sender: NSMenuItem) {

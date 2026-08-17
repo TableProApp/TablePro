@@ -24,7 +24,9 @@ internal struct JSONViewerView: View {
         isEditable: Bool,
         onDismiss: (() -> Void)? = nil,
         onCommit: ((String) -> Void)? = nil,
-        onPopOut: ((String) -> Void)? = nil
+        onPopOut: ((String) -> Void)? = nil,
+        initialViewMode: JSONViewMode? = nil,
+        initialParseError: JSONTreeParseError? = nil
     ) {
         self._text = text
         self.isEditable = isEditable
@@ -32,7 +34,10 @@ internal struct JSONViewerView: View {
         self.onCommit = onCommit
         self.onPopOut = onPopOut
         self._displayText = State(wrappedValue: JsonReindenter.reindent(text.wrappedValue))
-        self._viewMode = State(initialValue: AppSettingsManager.shared.editor.jsonViewerPreferredMode)
+        self._viewMode = State(
+            initialValue: initialViewMode ?? AppSettingsManager.shared.editor.jsonViewerPreferredMode
+        )
+        self._parseError = State(initialValue: initialParseError)
     }
 
     private var isLiveBinding: Bool {
@@ -44,6 +49,7 @@ internal struct JSONViewerView: View {
             viewerToolbar
             Divider()
             viewerContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             if isEditable, onCommit != nil, onDismiss != nil {
                 Divider()
                 editorFooter
@@ -67,11 +73,12 @@ internal struct JSONViewerView: View {
 
     private var viewerToolbar: some View {
         HStack(spacing: 8) {
-            Picker("", selection: $viewMode) {
+            Picker("View Mode", selection: $viewMode) {
                 Text("Text").tag(JSONViewMode.text)
                 Text("Tree").tag(JSONViewMode.tree)
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .fixedSize()
             Spacer()
             if let onPopOut {

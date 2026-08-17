@@ -63,6 +63,8 @@ internal final class TabPersistenceCoordinator {
         guard let payload = writablePayload(tabs: tabs, selectedTabId: selectedTabId, path: "saveNowSync") else {
             return
         }
+        saveTask?.cancel()
+        saveTask = nil
         TabDiskActor.saveSync(
             connectionId: connectionId,
             tabs: payload.tabs,
@@ -129,19 +131,22 @@ internal final class TabPersistenceCoordinator {
         let selectedId = selectedTabId
         let activeDatabase = lastActiveDatabase
         let activeSchema = lastActiveSchema
+        let writeToken = TabDiskActor.issueWriteToken(for: connId)
         Self.logger.debug("[persist] saveNow queued tabCount=\(tabsCopy.count) connId=\(connId, privacy: .public)")
 
         saveTask = Task {
             guard !Task.isCancelled else { return }
             let t0 = Date()
             do {
-                try await TabDiskActor.shared.save(
+                let didWrite = try await TabDiskActor.shared.save(
                     connectionId: connId,
                     tabs: tabsCopy,
                     selectedTabId: selectedId,
                     lastActiveDatabase: activeDatabase,
-                    lastActiveSchema: activeSchema
+                    lastActiveSchema: activeSchema,
+                    writeToken: writeToken
                 )
+                guard didWrite else { return }
                 Self.logger.debug("[persist] saveNow written tabCount=\(tabsCopy.count) connId=\(connId, privacy: .public) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
             } catch is CancellationError {
                 return

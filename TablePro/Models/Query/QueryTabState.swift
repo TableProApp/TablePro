@@ -39,6 +39,7 @@ struct PersistedTab: Codable {
     var cursorOffset: Int?
     var cursorLength: Int?
     var columnWidths: [String: CGFloat]?
+    var columnContentWidths: [String: CGFloat]?
     var windowGroupIndex: Int?
 
     /// Set when the query was too large for the tab-state JSON and lives in a sidecar file.
@@ -61,6 +62,7 @@ struct PersistedTab: Codable {
         cursorOffset: Int? = nil,
         cursorLength: Int? = nil,
         columnWidths: [String: CGFloat]? = nil,
+        columnContentWidths: [String: CGFloat]? = nil,
         windowGroupIndex: Int? = nil
     ) {
         self.id = id
@@ -79,13 +81,14 @@ struct PersistedTab: Codable {
         self.cursorOffset = cursorOffset
         self.cursorLength = cursorLength
         self.columnWidths = columnWidths
+        self.columnContentWidths = columnContentWidths
         self.windowGroupIndex = windowGroupIndex
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, title, query, tabType, tableName, isView, databaseName, schemaName
         case sourceFileURL, erDiagramSchemaKey, queryParameters
-        case sortColumns, restoredPage, cursorOffset, cursorLength, columnWidths, windowGroupIndex
+        case sortColumns, restoredPage, cursorOffset, cursorLength, columnWidths, columnContentWidths, windowGroupIndex
         case overflowFileName
     }
 
@@ -107,6 +110,7 @@ struct PersistedTab: Codable {
         cursorOffset = try container.decodeIfPresent(Int.self, forKey: .cursorOffset)
         cursorLength = try container.decodeIfPresent(Int.self, forKey: .cursorLength)
         columnWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnWidths)
+        columnContentWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnContentWidths)
         windowGroupIndex = try container.decodeIfPresent(Int.self, forKey: .windowGroupIndex)
         overflowFileName = try container.decodeIfPresent(String.self, forKey: .overflowFileName)
     }
@@ -330,11 +334,13 @@ struct PaginationState: Equatable {
 /// Stores column layout (widths and order) within a tab session
 struct ColumnLayoutState: Equatable {
     var columnWidths: [String: CGFloat] = [:]
+    var columnContentWidths: [String: CGFloat]?
     var columnOrder: [String]?
     var hiddenColumns: Set<String> = []
 
     mutating func applyGeometry(from other: ColumnLayoutState) {
         columnWidths = other.columnWidths
+        columnContentWidths = other.columnContentWidths
         columnOrder = other.columnOrder
     }
 

@@ -34,8 +34,6 @@ final class DataGridCellView: NSView {
 
     private var cachedLine: CTLine?
 
-    private var accessoryHitRect: NSRect = .zero
-
     private static let chevronNormal = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .secondaryLabelColor)
     private static let chevronEmphasized = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .alternateSelectedControlTextColor)
     private static let chevronDisabled = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .tertiaryLabelColor)
@@ -90,29 +88,30 @@ final class DataGridCellView: NSView {
             needsRedraw = true
         }
 
-        let nextDisplayText: String
         let nextFont: NSFont
         let nextColor: NSColor
         let deletedTextColor = state.visualState.isDeleted ? palette.deletedRowText : nil
 
         switch content.placeholder {
         case .none:
-            nextDisplayText = content.displayText
             nextFont = palette.regularFont
             nextColor = deletedTextColor ?? .labelColor
         case .null:
-            nextDisplayText = state.isLargeDataset ? "" : nullDisplayString
             nextFont = palette.italicFont
             nextColor = deletedTextColor ?? .secondaryLabelColor
         case .empty:
-            nextDisplayText = state.isLargeDataset ? "" : String(localized: "Empty")
             nextFont = palette.italicFont
             nextColor = deletedTextColor ?? .secondaryLabelColor
         case .defaultMarker:
-            nextDisplayText = state.isLargeDataset ? "" : String(localized: "DEFAULT")
             nextFont = palette.mediumFont
             nextColor = deletedTextColor ?? .systemBlue
         }
+        let nextDisplayText = DataGridCellContent.resolvedDisplayText(
+            content.displayText,
+            placeholder: content.placeholder,
+            isLargeDataset: state.isLargeDataset,
+            nullDisplayString: nullDisplayString
+        )
 
         if displayText != nextDisplayText
             || textFont != nextFont
@@ -220,13 +219,13 @@ final class DataGridCellView: NSView {
             bounds.fill()
         }
 
-        let accessoryRect = computeAccessoryRect()
-        accessoryHitRect = accessoryRect
+        let accessory = currentAccessory
+        let accessoryRect = accessory.frame(in: bounds)
 
         NSGraphicsContext.current?.saveGraphicsState()
         NSBezierPath(rect: bounds).addClip()
-        drawText(reservingTrailingWidth: accessoryRect.width)
-        drawAccessory(in: accessoryRect)
+        drawText(availableWidth: accessory.availableTextWidth(in: bounds))
+        drawAccessory(accessory, in: accessoryRect)
         NSGraphicsContext.current?.restoreGraphicsState()
 
         if isFocusedCell && onEmphasizedSelection && !hasOverlay {
@@ -234,16 +233,13 @@ final class DataGridCellView: NSView {
         }
     }
 
-    private func drawText(reservingTrailingWidth trailing: CGFloat) {
+    private func drawText(availableWidth: CGFloat) {
         guard !displayText.isEmpty else { return }
-        let totalAvailable = bounds.width - 2 * DataGridMetrics.cellHorizontalInset
-        guard totalAvailable > 0 else { return }
+        guard availableWidth > 0 else { return }
         guard let context = NSGraphicsContext.current?.cgContext else { return }
 
         let fullLine = cachedCTLine()
         let typographicWidth = CTLineGetTypographicBounds(fullLine, nil, nil, nil)
-        let trailingGap: CGFloat = trailing > 0 ? trailing + 4 : 0
-        let availableWidth = max(0, totalAvailable - trailingGap)
         let ellipsisLine = makeEllipsisLine()
         let ellipsisWidth = CTLineGetTypographicBounds(ellipsisLine, nil, nil, nil)
         guard Double(availableWidth) >= ellipsisWidth else { return }
@@ -300,29 +296,21 @@ final class DataGridCellView: NSView {
         return CTLineCreateWithAttributedString(attr as CFAttributedString)
     }
 
-    private func computeAccessoryRect() -> NSRect {
-        if kind == .foreignKey {
-            guard let raw = rawValue, !raw.isEmpty else { return .zero }
-            let size = NSSize(width: 16, height: 16)
-            let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
-            let y = (bounds.height - size.height) / 2
-            return NSRect(x: x, y: y, width: size.width, height: size.height)
-        }
-        guard kind.showsChevron, isEditableCell else { return .zero }
-        let size = NSSize(width: 12, height: 14)
-        let minRequired = size.width + 2 * DataGridMetrics.cellHorizontalInset
-        guard bounds.width >= minRequired else { return .zero }
-        let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
-        let y = (bounds.height - size.height) / 2
-        return NSRect(x: x, y: y, width: size.width, height: size.height)
+    private var currentAccessory: DataGridCellAccessory {
+        DataGridCellAccessory.visible(
+            for: kind,
+            isEditable: isEditableCell,
+            rawValue: rawValue
+        )
     }
 
-    private func drawAccessory(in rect: NSRect) {
+    private func drawAccessory(_ accessory: DataGridCellAccessory, in rect: NSRect) {
         guard !rect.isEmpty else { return }
         let image: CGImage?
-        if kind == .foreignKey {
+        switch accessory {
+        case .foreignKey:
             image = onEmphasizedSelection ? Self.fkArrowEmphasized : Self.fkArrowNormal
-        } else if kind.showsChevron {
+        case .chevron:
             if visualState.isDeleted {
                 image = Self.chevronDisabled
             } else if onEmphasizedSelection {
@@ -330,7 +318,7 @@ final class DataGridCellView: NSView {
             } else {
                 image = Self.chevronNormal
             }
-        } else {
+        case .none:
             return
         }
         guard let cgImage = image, let context = NSGraphicsContext.current?.cgContext else { return }
@@ -350,7 +338,9 @@ final class DataGridCellView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        guard !accessoryHitRect.isEmpty, accessoryHitRect.contains(point) else {
+        let accessory = currentAccessory
+        let accessoryRect = accessory.frame(in: bounds)
+        guard !accessoryRect.isEmpty, accessoryRect.contains(point) else {
             if event.clickCount == 2 {
                 accessoryDelegate?.dataGridCellDidDoubleClick(row: cellRow, columnIndex: cellColumnIndex)
                 return
@@ -358,7 +348,8 @@ final class DataGridCellView: NSView {
             super.mouseDown(with: event)
             return
         }
-        if kind == .foreignKey {
+        switch accessory {
+        case .foreignKey:
             let openInNewTab = event.modifierFlags.contains(.command)
             accessoryDelegate?.dataGridCellDidClickFKArrow(
                 row: cellRow,
@@ -366,12 +357,12 @@ final class DataGridCellView: NSView {
                 openInNewTab: openInNewTab
             )
             return
-        }
-        if kind.showsChevron, !visualState.isDeleted {
+        case .chevron where !visualState.isDeleted:
             accessoryDelegate?.dataGridCellDidClickChevron(row: cellRow, columnIndex: cellColumnIndex)
             return
+        case .none, .chevron:
+            super.mouseDown(with: event)
         }
-        super.mouseDown(with: event)
     }
 
     private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {

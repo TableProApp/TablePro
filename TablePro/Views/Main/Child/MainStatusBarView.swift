@@ -87,6 +87,7 @@ struct MainStatusBarView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 260)
                     .controlSize(.small)
+                    .accessibilityIdentifier("results-view-mode-picker")
                 } else if snapshot.hasColumns {
                     Picker(String(localized: "View Mode"), selection: $viewMode) {
                         Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
@@ -96,6 +97,7 @@ struct MainStatusBarView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 140)
                     .controlSize(.small)
+                    .accessibilityIdentifier("results-view-mode-picker")
                 }
             }
 

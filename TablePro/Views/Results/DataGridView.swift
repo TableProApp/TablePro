@@ -90,19 +90,40 @@ struct DataGridView: NSViewRepresentable {
 
         scrollView.documentView = tableView
 
-        let initialRows = tableRowsProvider()
-        context.coordinator.rebuildColumnMetadataCache(from: initialRows)
+        let coordinator = context.coordinator
+        coordinator.tableView = tableView
+        coordinator.tableRowsProvider = tableRowsProvider
+        coordinator.tableRowsMutator = tableRowsMutator
+        coordinator.paginationOffsetProvider = paginationOffsetProvider
+        coordinator.sortedIDs = sortedIDs
+        coordinator.syncDisplayFormats(displayFormats)
+        coordinator.delegate = delegate
+        coordinator.apply(configuration: configuration, isEditable: isEditable)
+        delegate?.dataGridAttach(tableViewCoordinator: coordinator)
 
-        context.coordinator.isRebuildingColumns = true
-        let initialLayout = context.coordinator.savedColumnLayout(binding: columnLayout)
+        let initialRows = tableRowsProvider()
+        coordinator.rebuildColumnMetadataCache(from: initialRows)
+
+        coordinator.isRebuildingColumns = true
+        let storedInitialLayout = coordinator.savedColumnLayout(binding: columnLayout)
+        coordinator.synchronizeUserSizedColumns(
+            with: storedInitialLayout,
+            columns: initialRows.columns,
+            tableIdentityChanged: true
+        )
+        let initialLayout = coordinator.materializedColumnLayout(
+            storedInitialLayout,
+            tableRows: initialRows
+        )
         reconcileColumnPool(
             tableView: tableView,
-            coordinator: context.coordinator,
+            coordinator: coordinator,
             tableRows: initialRows,
             columnComments: Self.effectiveColumnComments(for: initialRows),
             savedLayout: initialLayout
         )
-        context.coordinator.isRebuildingColumns = false
+        coordinator.isRebuildingColumns = false
+        coordinator.updateColumnPresentations(from: initialRows)
 
         let hasMoveRow = delegate != nil
         if hasMoveRow {
@@ -110,33 +131,14 @@ struct DataGridView: NSViewRepresentable {
             tableView.draggingDestinationFeedbackStyle = .gap
         }
 
-        context.coordinator.tableView = tableView
-        installSelectionOverlay(tableView: tableView, coordinator: context.coordinator)
-        context.coordinator.attachScrollObservers(scrollView: scrollView)
-        context.coordinator.tableRowsProvider = tableRowsProvider
-        context.coordinator.tableRowsMutator = tableRowsMutator
-        context.coordinator.paginationOffsetProvider = paginationOffsetProvider
-        context.coordinator.sortedIDs = sortedIDs
+        installSelectionOverlay(tableView: tableView, coordinator: coordinator)
+        coordinator.attachScrollObservers(scrollView: scrollView)
         // Intentionally do not prime cachedRowCount/cachedColumnCount here.
         // They represent what NSTableView has actually rendered. Leaving them
         // at 0 ensures the first `updateNSView` detects a structure change
         // and triggers `reloadData()` — without this, a recreated grid (e.g.
         // after a Structure/JSON tab toggle) finds the cache already matching
         // the registry rows and skips the reload, leaving the table empty.
-        context.coordinator.syncDisplayFormats(displayFormats)
-        context.coordinator.delegate = delegate
-        delegate?.dataGridAttach(tableViewCoordinator: context.coordinator)
-        context.coordinator.dropdownColumns = configuration.dropdownColumns
-        context.coordinator.typePickerColumns = configuration.typePickerColumns
-        context.coordinator.customDropdownOptions = configuration.customDropdownOptions
-        context.coordinator.connectionId = configuration.connectionId
-        context.coordinator.databaseType = configuration.databaseType
-        context.coordinator.tableName = configuration.tableName
-        context.coordinator.databaseName = configuration.databaseName
-        context.coordinator.schemaName = configuration.schemaName
-        context.coordinator.primaryKeyColumns = configuration.primaryKeyColumns
-        context.coordinator.tabType = configuration.tabType
-
         return scrollView
     }
 
@@ -248,8 +250,13 @@ struct DataGridView: NSViewRepresentable {
 
         let previousColumnKey = coordinator.columnLayoutKey
         let liveColumnWidths = latestRows.columns.isEmpty ? [:] : coordinator.currentColumnWidths()
+        coordinator.apply(configuration: configuration, isEditable: isEditable)
         let schemaChanged = coordinator.rebuildColumnMetadataCache(from: latestRows)
-        let needsFullReload = structureChanged || schemaChanged || contentChanged
+        let presentationChanges = coordinator.updateColumnPresentations(from: latestRows)
+        let needsFullReload = structureChanged
+            || schemaChanged
+            || contentChanged
+            || !presentationChanges.isEmpty
         if contentChanged {
             coordinator.invalidateDisplayCache()
         }
@@ -259,23 +266,11 @@ struct DataGridView: NSViewRepresentable {
             coordinator.preWarmDisplayCache(upTo: visibleRows)
         }
 
-        coordinator.isEditable = isEditable
         coordinator.sortedIDs = sortedIDs
         coordinator.updateCache()
         coordinator.syncDisplayFormats(displayFormats)
         coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
-        coordinator.dropdownColumns = configuration.dropdownColumns
-        coordinator.typePickerColumns = configuration.typePickerColumns
-        coordinator.customDropdownOptions = configuration.customDropdownOptions
-        coordinator.connectionId = configuration.connectionId
-        coordinator.databaseType = configuration.databaseType
-        coordinator.tableName = configuration.tableName
-        coordinator.databaseName = configuration.databaseName
-        coordinator.schemaName = configuration.schemaName
-        coordinator.primaryKeyColumns = configuration.primaryKeyColumns
-        coordinator.tabType = configuration.tabType
-
         coordinator.recomputeValueFilteredIDs()
         coordinator.updateCache()
         coordinator.visualIndex.rebuild(from: coordinator.changeManager, sortedIDs: coordinator.displayIDs)
@@ -287,7 +282,22 @@ struct DataGridView: NSViewRepresentable {
                 current: coordinator.columnLayoutKey,
                 liveWidths: liveColumnWidths
             )
-            let savedLayout = coordinator.resolvedColumnLayout(binding: columnLayout, liveWidths: sameTableLiveWidths)
+            let storedLayout = coordinator.savedColumnLayout(binding: columnLayout)
+            coordinator.synchronizeUserSizedColumns(
+                with: storedLayout,
+                columns: latestRows.columns,
+                tableIdentityChanged: previousColumnKey != coordinator.columnLayoutKey
+            )
+            let reconciliationWidths = coordinator.liveWidthsForReconciliation(
+                sameTableLiveWidths,
+                presentationChanges: presentationChanges,
+                columns: latestRows.columns
+            )
+            let savedLayout = coordinator.resolvedColumnLayout(
+                binding: columnLayout,
+                liveWidths: reconciliationWidths,
+                tableRows: latestRows
+            )
             reconcileColumnPool(
                 tableView: tableView,
                 coordinator: coordinator,
@@ -295,12 +305,14 @@ struct DataGridView: NSViewRepresentable {
                 columnComments: columnComments,
                 savedLayout: savedLayout
             )
+            if previousColumnKey == coordinator.columnLayoutKey {
+                coordinator.refreshPendingLayoutAfterPresentationChanges(
+                    presentationChanges,
+                    tableRows: latestRows
+                )
+            }
             coordinator.isRebuildingColumns = false
             coordinator.invalidateColumnIndexCache()
-
-            if savedLayout == nil {
-                coordinator.scheduleLayoutPersist()
-            }
         }
 
         coordinator.updateValueFilterHeaderIndicators()
@@ -345,7 +357,16 @@ struct DataGridView: NSViewRepresentable {
                 coordinator.cellFactory.calculateOptimalColumnWidth(
                     for: columnName,
                     columnIndex: slot,
-                    tableRows: tableRows
+                    tableRows: tableRows,
+                    accessory: coordinator.columnPresentation(
+                        for: slot,
+                        in: tableRows
+                    ).accessory,
+                    displayFormat: slot < coordinator.columnDisplayFormats.count
+                        ? coordinator.columnDisplayFormats[slot]
+                        : nil,
+                    isLargeDataset: coordinator.isLargeDataset,
+                    nullDisplayString: coordinator.cellRegistry.nullDisplayString
                 )
             }
         )
@@ -419,7 +440,7 @@ struct DataGridView: NSViewRepresentable {
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
         coordinator.overlayEditor?.dismiss(commit: true)
-        coordinator.persistColumnLayoutToStorage()
+        coordinator.flushPendingColumnLayoutPersistence()
         coordinator.settingsCancellable = nil
         coordinator.themeCancellable = nil
     }

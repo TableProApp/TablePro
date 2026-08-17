@@ -16,7 +16,6 @@ final class DataGridCellFactory {
     private static let sampleRowCount = 30
     private static let maxMeasureChars = 50
     private static let headerPadding: CGFloat = 48
-    private static let cellPadding: CGFloat = 16
     private static let headerCharWidthRatio: CGFloat = 0.75
 
     static func fitToContentCap(availableWidth: CGFloat) -> CGFloat {
@@ -27,12 +26,20 @@ final class DataGridCellFactory {
     func calculateOptimalColumnWidth(
         for columnName: String,
         columnIndex: Int,
-        tableRows: TableRows
+        tableRows: TableRows,
+        accessory: DataGridCellAccessory = .none,
+        displayFormat: ValueDisplayFormat? = nil,
+        isLargeDataset: Bool = false,
+        nullDisplayString: String? = nil
     ) -> CGFloat {
         measureColumnWidth(
             for: columnName,
             columnIndex: columnIndex,
             tableRows: tableRows,
+            accessory: accessory,
+            displayFormat: displayFormat,
+            isLargeDataset: isLargeDataset,
+            nullDisplayString: nullDisplayString,
             cap: Self.maxColumnWidth,
             measuredCharLimit: Self.maxMeasureChars
         )
@@ -42,7 +49,11 @@ final class DataGridCellFactory {
         for columnName: String,
         columnIndex: Int,
         tableRows: TableRows,
-        availableWidth: CGFloat
+        availableWidth: CGFloat,
+        accessory: DataGridCellAccessory = .none,
+        displayFormat: ValueDisplayFormat? = nil,
+        isLargeDataset: Bool = false,
+        nullDisplayString: String? = nil
     ) -> CGFloat {
         let cap = Self.fitToContentCap(availableWidth: availableWidth)
         let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
@@ -52,6 +63,10 @@ final class DataGridCellFactory {
             for: columnName,
             columnIndex: columnIndex,
             tableRows: tableRows,
+            accessory: accessory,
+            displayFormat: displayFormat,
+            isLargeDataset: isLargeDataset,
+            nullDisplayString: nullDisplayString,
             cap: cap,
             measuredCharLimit: measuredCharLimit
         )
@@ -61,6 +76,10 @@ final class DataGridCellFactory {
         for columnName: String,
         columnIndex: Int,
         tableRows: TableRows,
+        accessory: DataGridCellAccessory,
+        displayFormat: ValueDisplayFormat?,
+        isLargeDataset: Bool,
+        nullDisplayString: String?,
         cap: CGFloat,
         measuredCharLimit: Int
     ) -> CGFloat {
@@ -72,11 +91,28 @@ final class DataGridCellFactory {
         let effectiveSampleCount = tableRows.columns.count > 50 ? 10 : Self.sampleRowCount
         let step = max(1, totalRows / effectiveSampleCount)
 
+        let columnType = columnIndex < tableRows.columnTypes.count
+            ? tableRows.columnTypes[columnIndex]
+            : nil
+        let resolvedNullDisplayString = nullDisplayString
+            ?? AppSettingsManager.shared.dataGrid.nullDisplay
+
         for i in stride(from: 0, to: totalRows, by: step) {
-            guard let value = tableRows.value(at: i, column: columnIndex).asText else { continue }
+            let rawValue = tableRows.value(at: i, column: columnIndex)
+            let formattedValue = CellDisplayFormatter.format(
+                rawValue,
+                columnType: columnType,
+                displayFormat: displayFormat
+            ) ?? ""
+            let value = DataGridCellContent.resolvedDisplayText(
+                formattedValue,
+                placeholder: DataGridCellContent.placeholder(for: rawValue),
+                isLargeDataset: isLargeDataset,
+                nullDisplayString: resolvedNullDisplayString
+            )
 
             let charCount = min((value as NSString).length, measuredCharLimit)
-            maxWidth = max(maxWidth, CGFloat(charCount) * charWidth + Self.cellPadding)
+            maxWidth = max(maxWidth, CGFloat(charCount) * charWidth + accessory.measurementPadding)
 
             if maxWidth >= cap {
                 return cap

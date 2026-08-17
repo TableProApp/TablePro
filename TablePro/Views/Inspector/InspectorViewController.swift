@@ -562,6 +562,9 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         if let width = state.columnLayout.columnWidths.removeValue(forKey: oldName) {
             state.columnLayout.columnWidths[newName] = width
         }
+        if let width = state.columnLayout.columnContentWidths?.removeValue(forKey: oldName) {
+            state.columnLayout.columnContentWidths?[newName] = width
+        }
         if state.columnLayout.hiddenColumns.remove(oldName) != nil {
             state.columnLayout.hiddenColumns.insert(newName)
         }
@@ -572,6 +575,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             state.columnLayout.columnOrder = state.columnLayout.columnOrder?.filter { $0 != name }
         }
         state.columnLayout.columnWidths.removeValue(forKey: name)
+        state.columnLayout.columnContentWidths?.removeValue(forKey: name)
         state.columnLayout.hiddenColumns.remove(name)
     }
 
@@ -588,6 +592,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             state.columnLayout.columnOrder = order
         }
         state.columnLayout.columnWidths.removeValue(forKey: oldName)
+        state.columnLayout.columnContentWidths?.removeValue(forKey: oldName)
         state.columnLayout.hiddenColumns.remove(oldName)
     }
 

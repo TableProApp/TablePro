@@ -74,6 +74,7 @@ extension MainContentCoordinator {
         /// Never clears: a window closing says nothing about whether the user wants these tabs
         /// kept, and every connection in the window reaches here. Discarding saved state is
         /// `closeTabsByUser`'s job alone.
+        dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
         if !MainContentCoordinator.isAppTerminating, !isTearingDown {
             persistence.saveAggregatedSync()
         }

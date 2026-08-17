@@ -104,7 +104,10 @@ struct QueryTab: Identifiable, Equatable {
         self.selectedRowIndices = []
         self.sortState = SortState()
         self.filterState = TabFilterState()
-        self.columnLayout = ColumnLayoutState(columnWidths: persisted.columnWidths ?? [:])
+        self.columnLayout = ColumnLayoutState(
+            columnWidths: persisted.columnWidths ?? [:],
+            columnContentWidths: persisted.columnContentWidths
+        )
         self.pagination = PaginationState(pageSize: defaultPageSize)
         self.hasUserInteraction = false
         self.schemaVersion = 0
@@ -180,6 +183,9 @@ struct QueryTab: Identifiable, Equatable {
 
         let restoredPage = (tabType == .table && pagination.currentPage > 1) ? pagination.currentPage : nil
         let widths = columnLayout.columnWidths.isEmpty ? nil : columnLayout.columnWidths
+        let contentWidths = columnLayout.columnContentWidths?.isEmpty == false
+            ? columnLayout.columnContentWidths
+            : nil
 
         return PersistedTab(
             id: id,
@@ -201,7 +207,8 @@ struct QueryTab: Identifiable, Equatable {
                 from: restoredCursorOffset,
                 in: persistedQuery
             ),
-            columnWidths: widths
+            columnWidths: widths,
+            columnContentWidths: contentWidths
         )
     }
 

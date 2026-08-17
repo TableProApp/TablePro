@@ -14,6 +14,7 @@ extension MainContentCoordinator {
     /// Closing tabs never closes the window: the window hosts every open connection now, so the
     /// connection is simply left on its empty state.
     func closeTabsByUser(ids: [UUID]) {
+        dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
         for id in ids {
             guard let tab = tabManager.tabs.first(where: { $0.id == id }) else { continue }
             RecentlyClosedTabStore.shared.push(tab: tab, connection: connection)

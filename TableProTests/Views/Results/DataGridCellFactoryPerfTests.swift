@@ -12,6 +12,32 @@ import Testing
 @Suite("Column Width Optimization")
 @MainActor
 struct ColumnWidthOptimizationTests {
+    private func tableRows(
+        value: String,
+        columnType: ColumnType,
+        foreignKey: ForeignKeyInfo? = nil
+    ) -> TableRows {
+        TableRows.from(
+            queryRows: [[.text(value)]],
+            columns: ["x"],
+            columnTypes: [columnType],
+            columnForeignKeys: foreignKey.map { ["x": $0] } ?? [:],
+            foreignKeysFetched: foreignKey != nil
+        )
+    }
+
+    private func optimalWidth(
+        for tableRows: TableRows,
+        accessory: DataGridCellAccessory = .none
+    ) -> CGFloat {
+        DataGridCellFactory().calculateOptimalColumnWidth(
+            for: "x",
+            columnIndex: 0,
+            tableRows: tableRows,
+            accessory: accessory
+        )
+    }
+
     @Test("Column width is within min/max bounds")
     func columnWidthWithinBounds() {
         let factory = DataGridCellFactory()
@@ -126,6 +152,34 @@ struct ColumnWidthOptimizationTests {
         #expect(width >= 60)
         #expect(width <= 800)
     }
+
+    @Test("Automatic width includes the exact trailing action footprint")
+    func automaticWidthIncludesTrailingAction() {
+        let value = String(repeating: "M", count: 20)
+        let plainWidth = optimalWidth(for: tableRows(value: value, columnType: .text(rawType: "TEXT")))
+        let dateWidth = optimalWidth(
+            for: tableRows(value: value, columnType: .date(rawType: "DATE")),
+            accessory: .chevron
+        )
+        let foreignKeyWidth = optimalWidth(for: tableRows(
+            value: value,
+            columnType: .text(rawType: "TEXT"),
+            foreignKey: TestFixtures.makeForeignKeyInfo(column: "x")
+        ), accessory: .foreignKey)
+
+        #expect(dateWidth == plainWidth + 16)
+        #expect(foreignKeyWidth == plainWidth + 20)
+    }
+
+    @Test("Automatic width measures the displayed empty placeholder beside an action")
+    func automaticWidthMeasuresEmptyPlaceholder() {
+        let rows = tableRows(value: "", columnType: .date(rawType: "DATE"))
+        let width = optimalWidth(for: rows, accessory: .chevron)
+        let displayedWidth = CGFloat((String(localized: "Empty") as NSString).length)
+            * ThemeEngine.shared.dataGridFonts.monoCharWidth
+
+        #expect(width - DataGridCellAccessory.chevron.measurementPadding >= displayedWidth)
+    }
 }
 
 @Suite("Fit To Content Width")
@@ -190,6 +244,45 @@ struct FitToContentWidthTests {
         let width = fitWidth(values: [], availableWidth: 1_600, column: column)
 
         #expect(width == 800)
+    }
+
+    @Test("Fit to content includes the exact trailing action footprint")
+    func fitToContentIncludesTrailingAction() {
+        let value = String(repeating: "M", count: 20)
+        let plainRows = TableRows.from(
+            queryRows: [[.text(value)]],
+            columns: ["x"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        let dateRows = TableRows.from(
+            queryRows: [[.text(value)]],
+            columns: ["x"],
+            columnTypes: [.date(rawType: "DATE")]
+        )
+        let foreignKeyRows = TableRows.from(
+            queryRows: [[.text(value)]],
+            columns: ["x"],
+            columnTypes: [.text(rawType: "TEXT")],
+            columnForeignKeys: ["x": TestFixtures.makeForeignKeyInfo(column: "x")],
+            foreignKeysFetched: true
+        )
+        let factory = DataGridCellFactory()
+
+        func width(
+            for rows: TableRows,
+            accessory: DataGridCellAccessory = .none
+        ) -> CGFloat {
+            factory.calculateFitToContentWidth(
+                for: "x",
+                columnIndex: 0,
+                tableRows: rows,
+                availableWidth: 1_600,
+                accessory: accessory
+            )
+        }
+
+        #expect(width(for: dateRows, accessory: .chevron) == width(for: plainRows) + 16)
+        #expect(width(for: foreignKeyRows, accessory: .foreignKey) == width(for: plainRows) + 20)
     }
 }
 

@@ -80,6 +80,9 @@ extension TableViewCoordinator {
         }
         guard let editor = overlayEditor else { return }
 
+        editor.onRemove = { [weak self] in
+            self?.flushPendingCellPresentationRefresh()
+        }
         editor.onCommit = { [weak self] row, columnIndex, newValue in
             self?.commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
         }
@@ -95,6 +98,9 @@ extension TableViewCoordinator {
             overlayViewer = CellOverlayViewer()
         }
         guard let viewer = overlayViewer else { return }
+        viewer.onRemove = { [weak self] in
+            self?.flushPendingCellPresentationRefresh()
+        }
         overlayEditor?.dismiss(commit: false)
         viewer.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
     }

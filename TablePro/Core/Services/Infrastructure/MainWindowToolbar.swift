@@ -5,6 +5,7 @@
 
 import AppKit
 import Combine
+import Observation
 import os
 import SwiftUI
 import TableProPluginKit
@@ -23,6 +24,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     internal var coordinator: MainContentCoordinator? { subject.coordinator }
 
     internal let managedToolbar: NSToolbar
+    private var pendingChangeObservationGeneration = 0
 
     /// How a hosted item answers "how wide are you". `.intrinsicContentSize` only overrides the
     /// hosting view's `intrinsicContentSize`, and AppKit measures a view-backed item when it is
@@ -37,8 +39,12 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     internal var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
     private(set) var sidebarGroup: NSToolbarItemGroup?
 
-    override internal init() {
-        self.managedToolbar = NSToolbar(identifier: Self.toolbarIdentifier)
+    override internal convenience init() {
+        self.init(managedToolbar: NSToolbar(identifier: Self.toolbarIdentifier))
+    }
+
+    internal init(managedToolbar: NSToolbar) {
+        self.managedToolbar = managedToolbar
         super.init()
         self.managedToolbar.delegate = self
         self.managedToolbar.displayMode = .iconOnly
@@ -52,16 +58,37 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// without this guard the window would pay for a switch every time it came forward.
     internal func repoint(to coordinator: MainContentCoordinator?) {
         guard subject.coordinator !== coordinator else { return }
+        pendingChangeObservationGeneration += 1
         subject.coordinator = coordinator
+        observePendingChangeState()
         refreshConnectionScopedItems()
         syncSidebarSelection()
         managedToolbar.validateVisibleItems()
     }
 
     func invalidate() {
+        pendingChangeObservationGeneration += 1
         sidebarGroup = nil
         hostingControllers.removeAll()
         subject.coordinator = nil
+    }
+
+    private func observePendingChangeState() {
+        let generation = pendingChangeObservationGeneration
+        let coordinatorIdentifier = coordinator.map { ObjectIdentifier($0) }
+        withObservationTracking { [weak self] in
+            _ = self?.coordinator?.toolbarState.hasPendingChanges
+            _ = self?.coordinator?.toolbarState.hasDataPendingChanges
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      generation == self.pendingChangeObservationGeneration,
+                      coordinatorIdentifier == self.coordinator.map({ ObjectIdentifier($0) })
+                else { return }
+                self.observePendingChangeState()
+                self.managedToolbar.validateVisibleItems()
+            }
+        }
     }
 
     /// Three items carry text derived from the connection's database type, and none of them can be
