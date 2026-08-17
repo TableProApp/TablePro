@@ -190,6 +190,21 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         _ = dbsetlversion(login, UInt8(DBVERSION_74))
         _ = dbsetlogintime(Int32(options.loginTimeoutSeconds))
 
+        // Entra ID replaces the user name and password with an access token in the LOGIN7
+        // FEDAUTH feature extension. Not macOS-only: iOS links the same patched FreeTDS.
+        if options.authMethod == .entra {
+            guard let token = options.fedAuthToken, !token.isEmpty else {
+                throw MSSQLCoreError.connectionFailed(
+                    String(localized: "No Microsoft Entra ID access token was supplied.")
+                )
+            }
+            guard dbsetlfedauthtoken(login, token) == SUCCEED else {
+                throw MSSQLCoreError.connectionFailed(
+                    String(localized: "The Microsoft Entra ID access token was rejected by the driver.")
+                )
+            }
+        }
+
         #if os(macOS)
         // Windows Auth cross-realm: FreeTDS otherwise builds its own SPN and only canonicalizes a
         // short hostname (via getaddrinfo), never applying [domain_realm] to pick the realm. We

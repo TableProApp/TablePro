@@ -563,6 +563,10 @@ final class ConnectionFormCoordinator {
                     await self?.offerAWSSSOSignIn(testId: testConn.id, window: window)
                     return
                 }
+                if EntraSignInService.needsSignIn(error) {
+                    await self?.offerEntraSignIn(testId: testConn.id, window: window)
+                    return
+                }
                 await MainActor.run {
                     self?.cleanupTestSecrets(for: testConn.id)
                     self?.isTesting = false
@@ -583,6 +587,34 @@ final class ConnectionFormCoordinator {
                     }
                 }
             }
+        }
+    }
+
+    private func offerEntraSignIn(testId: UUID, window: NSWindow?) async {
+        cleanupTestSecrets(for: testId)
+        isTesting = false
+        testTask = nil
+        let fields = auth.additionalFieldValues
+        let confirmed = await AlertHelper.confirmCritical(
+            title: String(localized: "Microsoft Entra ID Sign-In Required"),
+            message: String(localized: "Sign in to Microsoft Entra ID with your browser?"),
+            confirmButton: String(localized: "Sign In"),
+            window: window
+        )
+        guard confirmed else { return }
+        do {
+            try await EntraSignInService.signIn(fields: fields, window: window)
+            AlertHelper.showInfoSheet(
+                title: String(localized: "Signed In"),
+                message: String(localized: "Microsoft Entra ID sign-in finished. Test the connection again."),
+                window: window
+            )
+        } catch {
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Microsoft Entra ID Sign-In Failed"),
+                message: error.localizedDescription,
+                window: window
+            )
         }
     }
 

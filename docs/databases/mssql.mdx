@@ -23,7 +23,7 @@ Click **New Connection**, select **SQL Server**, fill in the fields, and click *
 |-------|---------|-------|
 | **Host** | `localhost` | Named instances are not supported; use the host and TCP port |
 | **Port** | `1433` | |
-| **Authentication** | `SQL Server Authentication` | Or **Windows Authentication (Kerberos)** on macOS. See [Windows Authentication](#windows-authentication-kerberos) below |
+| **Authentication** | `SQL Server Authentication` | Or **Windows Authentication (Kerberos)** or **Microsoft Entra ID**, both macOS only. See [Windows Authentication](#windows-authentication-kerberos) and [Microsoft Entra ID](#microsoft-entra-id) below |
 | **Username** | - | SQL Server login name. Hidden when Windows Authentication is selected |
 | **Database** | - | Optional. Sent during login when set, which is required for logins scoped to one database, such as Azure SQL contained users |
 | **Schema** | `dbo` | Active schema after connecting. Clear it to use the login's default schema, which the driver reads with `SELECT SCHEMA_NAME()` |
@@ -71,6 +71,61 @@ TablePro reads that mapping and asks the KDC for a ticket in `RESOURCE.REALM.COM
 With no `[domain_realm]` entry for the host, TablePro falls back to `default_realm`, which is what a single-realm domain needs.
 
 TablePro does not run `kinit` or edit `/etc/krb5.conf` for you; those are set up once per machine.
+
+## Microsoft Entra ID
+
+Available on macOS. Set **Authentication** to **Microsoft Entra ID** to sign in with your work
+account instead of a SQL Server login. This covers Azure SQL Database, Azure SQL Managed Instance,
+and SQL Server 2022 with Entra authentication enabled.
+
+Sign-in uses the device code flow, so it honours multifactor authentication and Conditional Access:
+
+1. Fill in **Application (Client) ID**, and **Directory (Tenant) ID** if your directory is single-tenant.
+2. Click **Test Connection**. TablePro asks whether to sign in, opens your browser, and copies a
+   one-time code to the clipboard.
+3. Paste the code in the browser and approve the sign-in, then test the connection again.
+
+TablePro stores the resulting tokens in your login keychain, marked device-only so they never travel
+through iCloud Keychain. The access token is refreshed automatically in the background; you only sign
+in again when the refresh token is revoked or expires.
+
+| Field | Notes |
+|-------|-------|
+| **Application (Client) ID** | The application registration TablePro signs in as. Required |
+| **Directory (Tenant) ID** | Your directory ID or domain. Leave blank for the multi-tenant `organizations` authority |
+
+### Registering the application
+
+TablePro signs in as an application registered in Microsoft Entra ID. Register one in the Azure
+portal under **App registrations**:
+
+- Platform **Mobile and desktop applications**
+- **Allow public client flows** set to **Yes**, which the device code flow requires
+- Delegated permission **Azure SQL Database → user_impersonation**
+
+Then create the matching database user and grant it rights:
+
+```sql
+CREATE USER [you@contoso.com] FROM EXTERNAL PROVIDER;
+ALTER ROLE db_datareader ADD MEMBER [you@contoso.com];
+```
+
+Using your own registration is also what tenants that restrict application consent require, and it
+keeps TablePro identifiable in your sign-in logs and Conditional Access policies.
+
+### Troubleshooting
+
+**"Set the Microsoft Entra ID application (client) ID"**: the connection has no client ID. Fill in the
+field.
+
+**Sign-in never completes**: the code expires after about 15 minutes. Test the connection again to
+start a new one.
+
+**`AADSTS7000218`**: the registration does not allow public client flows. Turn on **Allow public
+client flows**.
+
+**Login succeeds but the database rejects you**: the token is valid but no database user matches it.
+Run the `CREATE USER ... FROM EXTERNAL PROVIDER` above.
 
 ## Connection URL
 
@@ -126,4 +181,4 @@ SQL Server connections can run through the Cloud SQL Auth Proxy; TablePro starts
 
 **Windows Authentication fails**: run `klist` to confirm you have a ticket, and `kinit user@REALM.COM` if you do not. Connect by hostname, not IP address. An SSPI or "server not found in Kerberos database" error means the server's SPN is not registered, or it is registered in a realm your Mac does not map the host to; ask your administrator to register `MSSQLSvc/host.domain.com:1433`, and if the server is in another realm add a `[domain_realm]` entry as shown in [Servers in another realm](#servers-in-another-realm). A clock-skew error means this Mac's clock is too far from the domain controller; turn on **Set time automatically** in System Settings.
 
-**Limitations**: no Microsoft Entra ID (Azure AD) authentication, Windows Authentication (Kerberos) is macOS only, named instances unsupported (use host and port), Verify CA and Verify Identity behave like Required.
+**Limitations**: Windows Authentication (Kerberos) and Microsoft Entra ID are macOS only, Entra ID signs in with the device code flow only, named instances unsupported (use host and port), Verify CA and Verify Identity behave like Required.

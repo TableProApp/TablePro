@@ -48,6 +48,29 @@ echo "$FREETDS_SHA256  $BUILD_DIR/freetds-${FREETDS_VERSION}.tar.gz" | shasum -a
 rm -rf "$SOURCE_DIR"
 tar xz -C "$BUILD_DIR" -f "$BUILD_DIR/freetds-${FREETDS_VERSION}.tar.gz"
 
+# FreeTDS has never implemented the TDS FEDAUTH login extension, so Microsoft Entra ID
+# authentication rides as a patch on the pinned release tarball. Upstream tracks the gap in
+# issues #360 and #509. Drop the patch once a release carries it.
+#
+# Patches live in scripts/patches/<library>/ so each build applies only its own. Every slice
+# builds from this one source tree, so patching once here covers macOS and iOS.
+apply_patches() {
+    local source_dir=$1
+    local library=$2
+    local patch_dir="$SCRIPT_DIR/patches/$library"
+    local patch
+
+    [ -d "$patch_dir" ] || return 0
+
+    for patch in "$patch_dir"/*.patch; do
+        [ -e "$patch" ] || continue
+        echo "==> Applying $(basename "$patch") to $library"
+        patch -p1 -d "$source_dir" -i "$patch"
+    done
+}
+
+apply_patches "$SOURCE_DIR" freetds
+
 build_slice() {
     local SLICE_LABEL="$1"
     local SDK="$2"

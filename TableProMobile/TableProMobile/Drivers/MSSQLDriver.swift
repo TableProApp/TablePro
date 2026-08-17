@@ -61,6 +61,9 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
         guard authMethod != .windows else {
             throw DatabaseError(message: String(localized: "Windows Authentication (Kerberos) isn't supported on iOS yet. Use SQL Server Authentication, or connect from the Mac app."))
         }
+        guard authMethod != .entra else {
+            throw DatabaseError(message: String(localized: "Microsoft Entra ID sign-in isn't supported on iOS yet. Use SQL Server Authentication, or connect from the Mac app."))
+        }
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         do {
             try await conn.connect()

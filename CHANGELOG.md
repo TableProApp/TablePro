@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SQL Server connections can sign in with Microsoft Entra ID on macOS, covering Azure SQL Database, Azure SQL Managed Instance, and SQL Server 2022. Sign-in runs in your browser and honours multifactor authentication and Conditional Access; tokens are kept in the login keychain and refreshed for you.
+
 ### Fixed
 
 - Data-grid columns now reserve space for trailing editor and foreign-key actions instead of truncating otherwise fitting values.

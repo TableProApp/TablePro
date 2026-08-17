@@ -116,15 +116,20 @@ build_openssl() {
 # overflow the heap before authentication. Upstream fixed it in 97acf3df with no release cut
 # since, so the fix rides as a patch on top of the pinned release tarball. Drop the patch once
 # a release contains it.
+#
+# Patches live in scripts/patches/<library>/ so each build applies only its own. A flat
+# directory would hand every patch to every library that calls this.
 apply_patches() {
     local source_dir=$1
-    local patch_dir="$SCRIPT_DIR/patches"
+    local library=$2
+    local patch_dir="$SCRIPT_DIR/patches/$library"
+    local patch
 
     [ -d "$patch_dir" ] || return 0
 
     for patch in "$patch_dir"/*.patch; do
         [ -e "$patch" ] || continue
-        echo "🩹 Applying $(basename "$patch")"
+        echo "🩹 Applying $(basename "$patch") to $library"
         patch -p1 -d "$source_dir" -i "$patch"
     done
 }
@@ -142,7 +147,7 @@ build_libssh2() {
     mkdir -p "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch"
     tar xzf "$BUILD_DIR/libssh2-$LIBSSH2_VERSION.tar.gz" -C "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch" --strip-components=1
 
-    apply_patches "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch"
+    apply_patches "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch" libssh2
 
     local build_dir="$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch/cmake-build"
     mkdir -p "$build_dir"
