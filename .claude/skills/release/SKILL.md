@@ -1,338 +1,170 @@
 ---
 name: release
-description: >
-  Prepares and ships a new TablePro release — bumps version numbers in
-  Configs/Version.xcconfig, finalizes CHANGELOG.md, commits, tags, and pushes.
-  Also handles separate plugin releases (Redis, Oracle, ClickHouse,
-  DuckDB). Use this skill whenever the user says "release", "bump
-  version", "ship version", "tag a release", "cut a release", or
-  provides a version number they want to release (e.g., "/release 0.5.0",
-  "/release plugin-oracle 1.0.0").
+description: Ships a TablePro release. Bumps Configs/Version.xcconfig, finalizes CHANGELOG.md and the docs changelog, commits, tags, and pushes, then handles registry-only plugin bundle releases. Invoke only when the user explicitly asks for a release.
+disable-model-invocation: true
 ---
 
-# Release Version
+# Release
 
-Automate the full release pipeline for TablePro. Supports two modes:
+Every step here is public and most of it cannot be undone. A pushed tag triggers a build, a
+GitHub Release, an appcast commit on `main`, and for plugins a registry push that clients read.
 
-- **App release**: `/release <version>` — bumps versions, finalizes
-  changelog, commits, tags, and pushes.
-- **Plugin release**: `/release plugin-<name> <version>` — tags and
-  pushes a separate plugin bundle release.
+## Gate
 
-## Usage
+Run this only on an explicit release request from the user, naming the version. "Release" appearing
+in conversation is not a request. If you arrived here without one, stop and ask.
 
 ```
-/release <version>              # App release (e.g., /release 0.5.0)
-/release plugin-<name> <version> # Plugin release (e.g., /release plugin-oracle 1.0.0)
+/release <version>                 # app, for example /release 0.5.0
+/release plugin-<name> <version>   # one registry plugin, for example /release plugin-oracle 1.0.1
 ```
 
-## Pre-flight Checks
+## Pre-flight, all blocking
 
-Before making any changes, verify ALL of the following. If any check
-fails, stop and tell the user what's wrong.
+Nothing below this section is reversible, so every check runs first and a failure stops the
+release. Do not "note it and continue".
 
-1. **Version argument exists** — the user must provide a semver version
-   (e.g., `0.5.0`). If missing, ask for it.
-
-2. **Version is valid semver** — must match `X.Y.Z` where X, Y, Z are
-   non-negative integers. Pre-release suffixes like `-beta.1` or `-rc.1`
-   are allowed.
-
-3. **Version is newer** — compare against the current `MARKETING_VERSION`
-   in `Configs/Version.xcconfig`. The new version must be greater. Read the
-   current value:
+1. **Version shape.** `X.Y.Z`, optionally with `-beta.N` or `-rc.N`.
+2. **Version is newer** than `MARKETING_VERSION` in `Configs/Version.xcconfig`.
+3. **Tag is free on the remote**, not just locally. A local check passes for a tag that already
+   exists on origin and then the push fails mid-release:
+   ```bash
+   git ls-remote --tags --refs origin "refs/tags/v<version>"
    ```
-   Read Configs/Version.xcconfig
+4. **Branch and tree.** `git branch --show-current` is `main`, and `git status --porcelain` is
+   understood. Other sessions work in this checkout, so anything dirty that you did not put there
+   is theirs: never sweep it into a release commit. Stage explicit paths only.
+5. **`## [Unreleased]` has entries.** An empty section ships a release whose notes are the CI
+   fallback line.
+6. **Lint and tests pass**, unscoped, because the release job depends on both:
+   ```bash
+   .claude/skills/fix-issue/scripts/verify.sh lint TablePro
+   .claude/skills/fix-issue/scripts/verify.sh test <affected suites>
    ```
-
-4. **Tag doesn't exist** — run `git tag -l "v<version>"` to confirm the
-   tag is available.
-
-5. **Working tree is clean** — run `git status --porcelain`. If there are
-   uncommitted changes, warn the user and ask whether to proceed (the
-   release commit will include those changes).
-
-6. **Unreleased section has content** — read `CHANGELOG.md` and verify
-   the `## [Unreleased]` section has entries. If empty, warn the user
-   that the release will have no changelog entries.
-
-7. **On main branch** — run `git branch --show-current`. Warn (but don't
-   block) if not on `main`.
-
-8. **SwiftLint passes** — run `swiftlint lint --strict`. If there are
-   any warnings or errors caused by the release diff, delegate a focused
-   lint investigation before continuing with the release. The investigator should run
-   `swiftlint --fix` first, then manually fix any remaining issues,
-   and verify with `swiftlint lint --strict` until clean.
-
-## Release Steps
-
-### Step 1: Bump Version in Configs/Version.xcconfig
-
-File: `Configs/Version.xcconfig`
-
-It holds exactly two lines, and they belong to the macOS app alone:
-
-- Set `MARKETING_VERSION` to the new version (e.g., `0.5.0`)
-- Increment `CURRENT_PROJECT_VERSION` by 1 from its current value
-
-No other file carries an app version. Plugin bundles, the test bundles, and
-TableProPluginKit pin `MARKETING_VERSION = 1.0` / `CURRENT_PROJECT_VERSION = 1`
-in `project.yml`; the iOS app and its widget read `Configs/Version-iOS.xcconfig`.
-Leave all of those alone.
-
-### Step 2: Finalize CHANGELOG.md
-
-Make these edits to `CHANGELOG.md`:
-
-1. **Convert Unreleased to versioned heading** — replace:
+7. **Registry readiness.** The `v*` tag is gated on it in CI, so check it before tagging rather
+   than discovering it after:
+   ```bash
+   MANAGER=TablePro/Core/Plugins/PluginManager.swift
+   CURRENT=$(grep -E 'static let currentPluginKitVersion = ' "$MANAGER" | grep -oE '[0-9]+' | head -1)
+   FLOOR=$(grep -E 'static let minimumCompatiblePluginKitVersion = ' "$MANAGER" | grep -oE '[0-9]+' | head -1)
+   python3 scripts/check-registry-readiness.py --floor "$FLOOR" --current "$CURRENT"
    ```
-   ## [Unreleased]
-   ```
-   with:
-   ```
-   ## [Unreleased]
+8. **PluginKit floor decision.** If `minimumCompatiblePluginKitVersion` rose since the last
+   release, every registry plugin needs re-publishing with `scripts/release-all-plugins.sh`
+   **before or with** this app release, never after. Shipping an app ahead of its plugin binaries
+   is what caused two registry-wide outages.
 
-   ## [<version>] - <YYYY-MM-DD>
-   ```
-   where `<YYYY-MM-DD>` is today's date.
+## App release
 
-2. **Update footer links** — at the bottom of the file:
+### 1. Version
 
-   Replace the `[Unreleased]` compare link:
-   ```
-   [Unreleased]: https://github.com/TableProApp/TablePro/compare/v<old-version>...HEAD
-   ```
-   with:
-   ```
-   [Unreleased]: https://github.com/TableProApp/TablePro/compare/v<version>...HEAD
-   [<version>]: https://github.com/TableProApp/TablePro/compare/v<old-version>...v<version>
-   ```
+`Configs/Version.xcconfig` holds the only app version, and only for the macOS app: set
+`MARKETING_VERSION`, and increment `CURRENT_PROJECT_VERSION` by one. Leave everything else alone.
+Plugin bundles, test bundles, and `TableProPluginKit` pin `1.0` / `1` in `project.yml`, and the iOS
+app reads `Configs/Version-iOS.xcconfig`.
 
-   `<old-version>` is the previous release version (the one currently in
-   the `[Unreleased]` compare link).
+### 2. CHANGELOG.md
 
-### Step 3: Commit (main repo)
+Insert a new heading under the kept `## [Unreleased]`:
 
-Stage the changed files and commit:
+```
+## [<version>] - <YYYY-MM-DD>
+```
+
+The shape is load-bearing. `scripts/ci/extract-release-notes.sh` awk-matches `## [X.Y.Z]`, and any
+other shape silently yields the fallback release note. Then update the footer links: point
+`[Unreleased]` at `v<version>...HEAD` and add `[<version>]: …/compare/v<old>...v<version>`.
+
+Confirm the released headings survived the edit, because dropping one folds a whole past release
+into `[Unreleased]` and the next release re-ships it:
+
+```bash
+grep -n '^## \[' CHANGELOG.md
+```
+
+### 3. docs/changelog.mdx
+
+Add one `<Update label="<Month Day, Year>" description="v<version>">` block at the top, directly
+after the frontmatter. Match the shape of the block already there. Rewrite the changelog entries as
+user-facing prose grouped by what a user would look for, not by Keep a Changelog categories, and
+drop internal refactors with no visible effect. There is no other locale: `docs/vi/` was deleted.
+
+This has to be written now, before the commit, because it ships in the same commit.
+
+### 4. Commit, tag, push, in that order and separately
 
 ```bash
 git add Configs/Version.xcconfig CHANGELOG.md docs/changelog.mdx
-git commit -m "$(cat <<'EOF'
-release: v<version>
-EOF
-)"
+git status --short
+git branch --show-current
+git commit -m "release: v<version>"
 ```
 
-If there were other staged/unstaged changes from the pre-flight check
-that the user agreed to include, stage those too.
-
-### Step 4: Tag
+Read that `git status --short` before committing and unstage anything that is not one of those
+three paths.
 
 ```bash
+git push origin main
 git tag v<version>
+git push origin v<version>
 ```
 
-### Step 5: Push
+Push the branch and the tag as separate commands. `git tag` creates a lightweight tag and
+`--follow-tags` pushes only annotated ones, so a combined push silently ships no tag.
 
-Push the commit and the tag **separately** — `--follow-tags` only pushes
-annotated tags, but `git tag` creates lightweight tags:
+CI then builds both architectures, signs with Sparkle EdDSA, commits `appcast.xml` to `main`, and
+creates the GitHub Release. Pull `main` afterwards, since CI has committed to it.
+
+## Recovery
+
+A failed release leaves a public tag. Delete it on both sides before retrying, and never force
+push a branch:
 
 ```bash
-git push origin main && git push origin v<version>
+git push origin :refs/tags/v<version>
+git tag -d v<version>
 ```
 
-This triggers the CI/CD pipeline (`.github/workflows/build.yml`) which
-automatically:
-- Builds arm64 and x86_64 binaries
-- Creates DMG and ZIP artifacts
-- Signs with Sparkle EdDSA
-- Generates and commits `appcast.xml`
-- Creates the GitHub Release with release notes extracted from CHANGELOG.md
+If the appcast commit already landed, the release is out. Ship a follow-up version rather than
+rewriting history.
 
-### Step 6: Update Documentation Changelogs
+## Plugin releases
 
-The documentation lives in the main repo under `docs/`. Two changelog
-files need a new `<Update>` entry:
+Only registry-only plugins are released this way. **Never publish a bundled plugin to the
+registry.** Do not maintain a list here: `scripts/release-all-plugins.sh` holds the authoritative
+`PLUGINS` and `BUNDLED_PLUGINS` arrays and hard-fails on a bundled name.
 
-- `docs/changelog.mdx` (English)
-- `docs/vi/changelog.mdx` (Vietnamese)
+The `<name>` in a tag must match a case in `.github/workflows/build-plugin.yml`. Read that case
+block for the valid names; do not derive a name by transforming a directory name. A wrong name
+still creates a permanent public tag and then fails CI with `Unknown plugin name`.
 
-**How to write the entry:**
-
-1. Read the new version's section from `CHANGELOG.md` (the entries you
-   finalized in Step 2).
-2. Rewrite them as a user-friendly `<Update>` block — group entries
-   under `### New Features`, `### Improvements`, `### Bug Fixes`, etc.
-   (not the raw Added/Changed/Fixed/Removed from Keep a Changelog).
-3. Write concise, user-facing descriptions (not developer-internal
-   details). Skip purely internal refactors unless they have visible
-   impact.
-
-**English format** (`docs/changelog.mdx`):
-
-```mdx
-<Update label="<Month Day, Year>" description="v<version>">
-  ### New Features
-
-  - **Feature Name**: Description
-
-  ### Improvements
-
-  - Description
-
-  ### Bug Fixes
-
-  - Description
-</Update>
-```
-
-Insert the new `<Update>` block at the top of the file, right after the
-frontmatter `---` closing delimiter (before the first existing `<Update>`).
-
-**Vietnamese format** (`docs/vi/changelog.mdx`):
-
-Same structure but with Vietnamese text. Use the date format
-`<Day> tháng <Month>, <Year>` (e.g., `19 tháng 2, 2026`). Translate
-feature names and descriptions to Vietnamese. Follow the style of
-existing Vietnamese entries in the file.
-
-**Important:** These changelog files are staged and committed together
-with the release in Step 3 — no separate commit needed.
-
-### Step 7: Check for Separate Plugin Changes
-
-After the app release is pushed, check if any **separate plugin bundles**
-have changes since their last release. Also check
-`Plugins/TableProPluginKit/` — changes there affect all plugins.
-
-**Important**: Do NOT use a hardcoded plugin list. Dynamically discover
-all separate plugins by scanning the `Plugins/` directory and excluding
-built-in plugins and the shared framework.
-
-**Detection**: Dynamically find all separate plugin directories and check
-each for changes:
+One plugin:
 
 ```bash
-# Built-in plugins (bundled in app) and shared framework — skip these:
-BUILTIN="MySQLDriverPlugin|PostgreSQLDriverPlugin|SQLiteDriverPlugin|CSVExportPlugin|JSONExportPlugin|SQLExportPlugin|XLSXExportPlugin|MQLExportPlugin|SQLImportPlugin|TableProPluginKit"
-
-# Discover all separate plugin directories dynamically:
-for dir in Plugins/*/; do
-  dirname=$(basename "$dir")
-  # Skip built-in plugins and PluginKit
-  echo "$dirname" | grep -qE "^($BUILTIN)$" && continue
-
-  # Derive tag name from directory (e.g., OracleDriverPlugin -> oracle,
-  # CloudflareD1DriverPlugin -> d1, EtcdDriverPlugin -> etcd)
-  # Strip "DriverPlugin" or "ExportPlugin" or "ImportPlugin" suffix,
-  # then lowercase. For "CloudflareD1", use "d1". Apply custom mappings
-  # as needed based on the CI workflow's tag-name expectations.
-  tag_name=<derived-lowercase-name>
-
-  LAST_TAG=$(git tag -l "plugin-${tag_name}-v*" --sort=-version:refname | head -1)
-  # Check for changes since that tag (include PluginKit as shared dependency):
-  if [ -z "$LAST_TAG" ]; then
-    git log --oneline -- "Plugins/${dirname}/" "Plugins/TableProPluginKit/"
-  else
-    git log --oneline "${LAST_TAG}..HEAD" -- "Plugins/${dirname}/" "Plugins/TableProPluginKit/"
-  fi
-done
+git ls-remote --tags --refs origin "refs/tags/plugin-<name>-v<version>"
+git tag plugin-<name>-v<version>
+git push origin plugin-<name>-v<version>
 ```
 
-The tag name derivation must match the CI workflow's mapping. Known
-mappings: `CloudflareD1DriverPlugin` → `d1`, `EtcdDriverPlugin` →
-`etcd`. For standard plugins, strip the suffix and lowercase (e.g.,
-`OracleDriverPlugin` → `oracle`).
+Every registry plugin, which is what a PluginKit floor bump requires:
 
-If `LAST_TAG` is empty (never released), check for changes since the
-beginning of the repo.
-
-**If changes are found**: Tell the user which plugins have changes, show
-the relevant commits, and ask if they want to release them. Suggest
-bumping the patch version from the last tag (e.g., `1.0.0` → `1.0.1`).
-If the user confirms, proceed with the plugin release steps below for
-each plugin.
-
-**If no changes**: Skip — do not release plugins unnecessarily.
-
-## Post-release Summary
-
-After all pushes, print a summary:
-
-```
-Release v<version> (build <build-number>) pushed successfully.
-
-CI will now build arm64 + x86_64, create DMG/ZIP, update appcast.xml, create GitHub Release.
-Monitor: https://github.com/TableProApp/TablePro/actions
-Release: https://github.com/TableProApp/TablePro/releases/tag/v<version>
+```bash
+scripts/release-all-plugins.sh
 ```
 
-If plugin releases were also triggered, append:
+No version bump or changelog edit: a plugin's version is the tag.
 
-```
-Plugin releases:
-- <DisplayName> v<plugin-version>: https://github.com/TableProApp/TablePro/releases/tag/plugin-<name>-v<plugin-version>
-```
+### Which plugins have changes
 
----
+To find candidates, compare each registry plugin's directory and `Plugins/TableProPluginKit/`
+against its last remote tag. Take the plugin names from the `PLUGINS` array in
+`scripts/release-all-plugins.sh` and map each to its directory, rather than scanning `Plugins/`
+and filtering, which is how bundled plugins get offered by mistake.
 
-## Plugin Releases
+Do not release a plugin with no changes since its last tag. Report the candidates and their
+commits to the user and let them choose.
 
-Separate plugin bundles (any plugin not built-in) are released
-independently from the main app via a dedicated workflow
-(`.github/workflows/build-plugin.yml`). They are also checked
-automatically during app releases (Step 7 above).
+## Report
 
-### Usage
-
-```
-/release plugin-<name> <version>
-```
-
-Example: `/release plugin-oracle 1.0.0`
-
-### Tag Format
-
-```
-plugin-<name>-v<version>
-```
-
-Examples: `plugin-oracle-v1.0.0`, `plugin-clickhouse-v1.2.0`
-
-The `<name>` must match one of the cases in the workflow's mapping.
-Check `.github/workflows/build-plugin.yml` for the current list of
-supported names. New plugins must be added to the workflow mapping.
-
-### Plugin Release Steps
-
-1. **Verify tag is available** — `git tag -l "plugin-<name>-v<version>"`
-2. **Tag** — `git tag plugin-<name>-v<version>`
-3. **Push tag** — `git push origin plugin-<name>-v<version>`
-
-No version bumps or changelog edits needed — plugin bundles keep
-`MARKETING_VERSION = 1.0` and `CURRENT_PROJECT_VERSION = 1` in `project.yml`.
-The version is embedded via the tag only.
-
-### What CI Does
-
-The `build-plugin.yml` workflow:
-
-1. Extracts plugin name and version from the tag
-2. Builds ARM64 and x86_64 via `scripts/build-plugin.sh`
-3. Strips binaries, code signs, creates ZIPs with SHA-256 checksums
-4. Optionally notarizes (if `NOTARIZE_PLUGINS` var is set)
-5. Creates a GitHub Release with both arch ZIPs
-6. Updates the plugin registry (`TableProApp/plugins` repo's
-   `plugins.json`) with download URLs, SHA-256 hashes, and
-   `minAppVersion` (read from the current `MARKETING_VERSION`)
-
-### Post-plugin-release Summary
-
-```
-Plugin <DisplayName> v<version> tag pushed.
-
-CI will build arm64 + x86_64, create ZIPs, update plugin registry.
-Monitor: https://github.com/TableProApp/TablePro/actions
-Release: https://github.com/TableProApp/TablePro/releases/tag/plugin-<name>-v<version>
-```
+State the version and build number, the tag, the CI run URL, the release URL, and any plugin tags
+pushed. Say explicitly if a check was skipped and why.

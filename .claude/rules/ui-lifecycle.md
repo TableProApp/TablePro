@@ -8,4 +8,6 @@ paths:
 
 # UI and lifecycle changes
 
-Before editing, load `/tablepro-engineering` and search the project guide for the affected view, coordinator, window, tab, split view, header, focus, selection, or issue number. Read the full matching invariant. Preserve native AppKit and SwiftUI ownership, responder-chain behavior, accessibility identifiers, actor isolation, and deterministic `UITestCase` coverage.
+Search `.agents/skills/tablepro-engineering/references/invariants-ui.md` for the affected view, coordinator, window, tab, split view, header, focus, selection, or issue number, and read the full matching invariant. `architecture.md` in the same directory holds the window-close and storage map. Preserve native AppKit and SwiftUI ownership, responder-chain behavior, accessibility identifiers, actor isolation, and deterministic `UITestCase` coverage.
+
+This rule adds domain constraints. It does not pick your workflow: `AGENTS.md` decides whether you are in `$fix-issue` or `$tablepro-engineering`, and you never load both.

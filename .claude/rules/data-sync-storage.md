@@ -9,4 +9,6 @@ paths:
 
 # Data, sync, and connection changes
 
-Before editing, load `/tablepro-engineering` and search the project guide for CloudKit production fields, delete ordering, schema loading, refresh retention, selection mapping, cancellation, attempt generations, workspace phases, pooling, and persistence teardown. Protect user data and prove late-completion behavior with tests.
+Search `.agents/skills/tablepro-engineering/references/invariants-data.md` for CloudKit production fields and delete ordering, and `.agents/skills/tablepro-engineering/references/invariants-connections.md` for schema loading, refresh retention, cancellation, attempt generations, pooling, and persistence teardown. Protect user data and prove late-completion behavior with tests.
+
+This rule adds domain constraints. It does not pick your workflow: `AGENTS.md` decides whether you are in `$fix-issue` or `$tablepro-engineering`, and you never load both.
