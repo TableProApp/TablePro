@@ -77,7 +77,7 @@ final class DamengConnection: @unchecked Sendable {
     private func adopt(_ connection: OpaquePointer) -> Bool {
         stateLock.lock()
         defer { stateLock.unlock() }
-        guard !isShuttingDown else { return false }
+        guard !isShuttingDown, rawConnection == nil else { return false }
         rawConnection = connection
         return true
     }

@@ -270,13 +270,17 @@ extension DamengPluginDriver {
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let result = try await executeParameterized(
-            query: "SELECT CAST(TEXT AS VARCHAR(8188)) FROM ALL_VIEWS WHERE OWNER = ? AND VIEW_NAME = ?",
+            query: """
+                SELECT CAST(TEXT AS VARCHAR(8188)), LENGTHB(TEXT) FROM ALL_VIEWS
+                WHERE OWNER = ? AND VIEW_NAME = ?
+                """,
             parameters: [.text(effectiveSchema(schema)), .text(view)]
         )
-        guard let definition = result.rows.first?.first?.asText else {
+        guard let row = result.rows.first, let definition = row[safe: 0]?.asText else {
             throw DamengError(message: String(localized: "Dameng did not return the view definition."))
         }
-        guard !DamengSchemaValue.isCastTruncated(definition) else {
+        let storedLength = row[safe: 1]?.asText.flatMap(Int.init)
+        guard !DamengSchemaValue.isCastTruncated(definition, storedLength: storedLength) else {
             throw DamengError(message: String(localized: """
                 Dameng returned only the first 8188 bytes of this view definition. \
                 Saving it here would replace the view with the truncated text.
@@ -326,8 +330,11 @@ extension DamengPluginDriver {
 enum DamengSchemaValue {
     static let castByteLimit = 8_188
 
-    static func isCastTruncated(_ value: String) -> Bool {
-        value.utf8.count >= castByteLimit
+    /// The server's own byte length decides truncation. Falling back to the returned length alone would
+    /// reject a definition of exactly `castByteLimit` bytes, which the cast returns complete.
+    static func isCastTruncated(_ value: String, storedLength: Int?) -> Bool {
+        guard let storedLength else { return value.utf8.count >= castByteLimit }
+        return storedLength > castByteLimit
     }
 
     static func nonEmpty(_ value: String?) -> String? {

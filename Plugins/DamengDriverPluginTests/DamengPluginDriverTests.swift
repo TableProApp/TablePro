@@ -108,9 +108,14 @@ final class DamengPluginDriverTests: XCTestCase {
     }
 
     func testCastTruncationIsDetectedAtTheDM8VarcharCeiling() {
-        XCTAssertFalse(DamengSchemaValue.isCastTruncated(String(repeating: "a", count: 8_187)))
-        XCTAssertTrue(DamengSchemaValue.isCastTruncated(String(repeating: "a", count: 8_188)))
-        XCTAssertTrue(DamengSchemaValue.isCastTruncated(String(repeating: "\u{e9}", count: 4_094)))
+        let full = String(repeating: "a", count: 8_188)
+
+        XCTAssertFalse(DamengSchemaValue.isCastTruncated(full, storedLength: 8_188))
+        XCTAssertTrue(DamengSchemaValue.isCastTruncated(full, storedLength: 8_189))
+
+        XCTAssertFalse(DamengSchemaValue.isCastTruncated(String(repeating: "a", count: 8_187), storedLength: nil))
+        XCTAssertTrue(DamengSchemaValue.isCastTruncated(full, storedLength: nil))
+        XCTAssertTrue(DamengSchemaValue.isCastTruncated(String(repeating: "\u{e9}", count: 4_094), storedLength: nil))
     }
 
     func testEffectiveSchemaPreservesQuotedIdentifierCase() {

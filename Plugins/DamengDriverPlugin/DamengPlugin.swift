@@ -225,7 +225,20 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        var quoted = String.UnicodeScalarView()
+        for scalar in name.unicodeScalars {
+            if scalar == "\"" { quoted.append(scalar) }
+            quoted.append(scalar)
+        }
+        return "\"\(String(quoted))\""
+    }
+
+    var requiresBackslashEscapingInLiterals: Bool { textEscaping == .backslashEscape }
+
+    func escapeStringLiteral(_ value: String) -> String {
+        let stripped = String(String.UnicodeScalarView(value.unicodeScalars.filter { $0 != "\0" }))
+        let escaping: DamengTextEscaping = textEscaping == .backslashLiteral ? .backslashLiteral : .backslashEscape
+        return (try? DamengParameterBinder.escapedText(stripped, escaping: escaping)) ?? stripped
     }
 
     func createViewTemplate() -> String? {
@@ -254,6 +267,13 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             : try DamengParameterBinder.bind(query: query, parameters: parameters, escaping: textEscaping)
         let expectsRows = DamengStatementClassifier.expectsRows(bound)
         let result = try await connection.execute(bound, expectsRows: expectsRows, rowCap: rowCap)
+        if rowCap == nil, result.isTruncated {
+            let format = String(localized: """
+                This Dameng query returned more than %lld rows, which is the most TablePro reads at once. \
+                Add a WHERE clause or a row limit and try again.
+                """)
+            throw DamengError(message: String(format: format, Int64(PluginRowLimits.emergencyMax)))
+        }
         return PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,

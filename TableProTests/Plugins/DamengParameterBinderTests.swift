@@ -92,6 +92,30 @@ struct DamengParameterBinderTests {
                 query: "SELECT ?", parameters: [.text("a\\b")], escaping: .unknown
             )
         }
+        #expect(throws: DamengParameterBindingError.unknownBackslashHandling) {
+            try DamengParameterBinder.escapedText("a\\\u{0301}b", escaping: .unknown)
+        }
+        #expect(DamengParameterBindingError.unknownBackslashHandling.errorDescription?.isEmpty == false)
+    }
+
+    @Test("escapes a quote that carries a combining mark")
+    func escapesQuoteWithCombiningMark() throws {
+        let sql = try DamengParameterBinder.bind(
+            query: "SELECT * FROM t WHERE a = ?",
+            parameters: [.text("x'\u{0301} OR 1=1 -- ")],
+            escaping: .backslashLiteral
+        )
+        #expect(sql == "SELECT * FROM t WHERE a = 'x''\u{0301} OR 1=1 -- '")
+    }
+
+    @Test("doubles a backslash that carries a combining mark in escape mode")
+    func escapesBackslashWithCombiningMark() throws {
+        let sql = try DamengParameterBinder.bind(
+            query: "SELECT ?",
+            parameters: [.text("a\\\u{0301}b")],
+            escaping: .backslashEscape
+        )
+        #expect(sql == "SELECT 'a\\\\\u{0301}b'")
     }
 
     @Test("tracks an escaped quote inside a literal when backslashes escape")
