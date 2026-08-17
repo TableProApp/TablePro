@@ -14,9 +14,21 @@ enum QuerySqlParser {
 
     /// The table a result grid may be edited through, or `nil` when the statement reads from
     /// anything other than exactly one table.
-    static func extractTableName(from sql: String, dialect: SqlDialect = .generic) -> String? {
-        if let table = SelectSourceTableParser.singleSourceTable(in: sql, dialect: dialect) {
-            return table
+    ///
+    /// The generated `UPDATE` and `DELETE` name the table without a qualifier and rely on the
+    /// session's own schema to resolve it. So a statement that spells a schema is only writable
+    /// when that schema is the one the session is already pointed at; `browseSchema` supplies it.
+    /// Any other schema stays read-only, because an unqualified write would land on whatever the
+    /// session resolves rather than on the table the query read.
+    static func extractTableName(
+        from sql: String,
+        dialect: SqlDialect = .generic,
+        browseSchema: String? = nil
+    ) -> String? {
+        if let source = SelectSourceTableParser.singleSourceTable(in: sql, dialect: dialect) {
+            guard let schema = source.schema else { return source.name }
+            guard let browseSchema, matchesSessionSchema(schema, browseSchema) else { return nil }
+            return source.name
         }
 
         let nsRange = NSRange(sql.startIndex..., in: sql)
@@ -34,6 +46,13 @@ enum QuerySqlParser {
         }
 
         return nil
+    }
+
+    /// Compares case-insensitively. An unquoted identifier folds case on every engine TablePro
+    /// reaches here, and a quoted one that differs only by case would still resolve to the same
+    /// schema through the session, so treating them as equal cannot widen the write target.
+    private static func matchesSessionSchema(_ parsed: String, _ session: String) -> Bool {
+        parsed.compare(session, options: .caseInsensitive) == .orderedSame
     }
 
     static func stripTrailingOrderBy(from sql: String) -> String {

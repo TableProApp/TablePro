@@ -11,8 +11,17 @@ import TableProPluginKit
 /// The result decides whether a result grid is editable, and it becomes the target of the
 /// generated `UPDATE` and `DELETE`. A wrong name would write to the wrong table, so every
 /// shape this cannot prove is single-source resolves to `nil` and leaves the grid read-only:
-/// joins, comma lists, derived tables, CTEs, set operators, and schema-qualified names.
+/// joins, comma lists, derived tables, CTEs, and set operators.
+///
+/// A `schema.table` reference resolves to both parts. Deciding whether that schema is safe to
+/// write through belongs to the caller, not here.
 enum SelectSourceTableParser {
+    struct SourceTable: Equatable {
+        /// Present only when the statement spelled a qualified reference.
+        let schema: String?
+        let name: String
+    }
+
     /// Keywords that may legally follow the single table reference. Anything else means the
     /// statement reads from more than the one table, so the whitelist is the safety property.
     private static let clauseTerminators: Set<String> = [
@@ -32,7 +41,7 @@ enum SelectSourceTableParser {
     /// column, so neither describes rows that can be written back.
     private static let rowLockingModifiers: Set<String> = ["UPDATE", "SHARE", "NO", "KEY", "READ"]
 
-    static func singleSourceTable(in sql: String, dialect: SqlDialect) -> String? {
+    static func singleSourceTable(in sql: String, dialect: SqlDialect) -> SourceTable? {
         var cursor = Cursor(sql, dialect: dialect)
         guard cursor.consumeKeyword("SELECT") else { return nil }
         guard cursor.advanceToTopLevelFrom() else { return nil }
@@ -44,7 +53,13 @@ enum SelectSourceTableParser {
     }
 
     private struct Cursor {
+        /// Scanning reads one code unit at a time. `NSString.character(at:)` leaves its fast path
+        /// as soon as the bridged string is not ASCII, so a single accented character anywhere in
+        /// the text made every later read transcode and turned a 4 ms scan of a wide select list
+        /// into 33 ms on the main actor. Transcoding once up front keeps every read a subscript.
+        /// The `NSString` stays only for `SqlDollarQuote`, which takes one.
         private let text: NSString
+        private let units: [UInt16]
         private let length: Int
         private let dialect: SqlDialect
         private var index = 0
@@ -52,12 +67,13 @@ enum SelectSourceTableParser {
 
         init(_ sql: String, dialect: SqlDialect) {
             text = sql as NSString
-            length = text.length
+            units = Array(sql.utf16)
+            length = units.count
             self.dialect = dialect
         }
 
         private func unit(at position: Int) -> UInt16? {
-            position < length ? text.character(at: position) : nil
+            position < length ? units[position] : nil
         }
 
         private static func isSpace(_ ch: UInt16) -> Bool {
@@ -82,7 +98,7 @@ enum SelectSourceTableParser {
 
         private mutating func skipTrivia() {
             while index < length {
-                let ch = text.character(at: index)
+                let ch = units[index]
                 if Self.isSpace(ch) {
                     index += 1
                 } else if ch == 0x2D, unit(at: index + 1) == 0x2D {
@@ -103,7 +119,7 @@ enum SelectSourceTableParser {
         /// endings does not swallow the rest of the statement as trivia.
         private mutating func skipToEndOfLine() {
             while index < length {
-                let ch = text.character(at: index)
+                let ch = units[index]
                 if ch == 0x0A || ch == 0x0D { return }
                 index += 1
             }
@@ -117,10 +133,10 @@ enum SelectSourceTableParser {
             var depth = 1
             let nests = dialect == .postgres
             while index < length, depth > 0 {
-                if nests, text.character(at: index) == 0x2F, unit(at: index + 1) == 0x2A {
+                if nests, units[index] == 0x2F, unit(at: index + 1) == 0x2A {
                     depth += 1
                     index += 2
-                } else if text.character(at: index) == 0x2A, unit(at: index + 1) == 0x2F {
+                } else if units[index] == 0x2A, unit(at: index + 1) == 0x2F {
                     depth -= 1
                     index += 2
                 } else {
@@ -132,9 +148,9 @@ enum SelectSourceTableParser {
         /// PostgreSQL honours backslash escapes only inside an `E'...'` literal.
         private func hasEscapeStringPrefix(at quote: Int) -> Bool {
             guard quote > 0 else { return false }
-            let previous = text.character(at: quote - 1)
+            let previous = units[quote - 1]
             guard previous == 0x45 || previous == 0x65 else { return false }
-            return quote < 2 || !Self.isIdentifierUnit(text.character(at: quote - 2))
+            return quote < 2 || !Self.isIdentifierUnit(units[quote - 2])
         }
 
         private mutating func skipStringLiteral() {
@@ -142,7 +158,7 @@ enum SelectSourceTableParser {
                 || (dialect.supportsEscapeStringPrefix && hasEscapeStringPrefix(at: index))
             index += 1
             while index < length {
-                let ch = text.character(at: index)
+                let ch = units[index]
                 if escapesWithBackslash, ch == 0x5C, index + 1 < length {
                     index += 2
                     continue
@@ -165,7 +181,7 @@ enum SelectSourceTableParser {
             let start = index
             var doubled = false
             while index < length {
-                let ch = text.character(at: index)
+                let ch = units[index]
                 if closing == 0x22, dialect.requiresBackslashEscapesInSingleQuotes,
                    ch == 0x5C, index + 1 < length {
                     index += 2
@@ -177,7 +193,7 @@ enum SelectSourceTableParser {
                         index += 2
                         continue
                     }
-                    let raw = text.substring(with: NSRange(location: start, length: index - start))
+                    let raw = String(decoding: units[start..<index], as: UTF16.self)
                     index += 1
                     guard doubled, let scalar = UnicodeScalar(closing) else { return raw }
                     let quote = String(Character(scalar))
@@ -189,10 +205,10 @@ enum SelectSourceTableParser {
         }
 
         private mutating func readWord() -> String? {
-            guard index < length, Self.isIdentifierUnit(text.character(at: index)) else { return nil }
+            guard index < length, Self.isIdentifierUnit(units[index]) else { return nil }
             let start = index
-            while index < length, Self.isIdentifierUnit(text.character(at: index)) { index += 1 }
-            return text.substring(with: NSRange(location: start, length: index - start))
+            while index < length, Self.isIdentifierUnit(units[index]) { index += 1 }
+            return String(decoding: units[start..<index], as: UTF16.self)
         }
 
         private mutating func peekWord() -> String? {
@@ -217,11 +233,11 @@ enum SelectSourceTableParser {
         /// tens of thousands of words and this runs on every execution.
         private mutating func skipWordMatchingAny(_ keywords: [[UInt16]]) -> Bool {
             let start = index
-            while index < length, Self.isIdentifierUnit(text.character(at: index)) { index += 1 }
+            while index < length, Self.isIdentifierUnit(units[index]) { index += 1 }
             let count = index - start
             candidates: for keyword in keywords where keyword.count == count {
                 for offset in 0..<count {
-                    let codeUnit = text.character(at: start + offset)
+                    let codeUnit = units[start + offset]
                     let folded = (codeUnit >= 0x61 && codeUnit <= 0x7A) ? codeUnit - 0x20 : codeUnit
                     if folded != keyword[offset] { continue candidates }
                 }
@@ -233,7 +249,7 @@ enum SelectSourceTableParser {
         private mutating func skipDollarQuotedBody(openerLength: Int, tag: String) -> Bool {
             index += openerLength
             while index < length {
-                if text.character(at: index) == SqlDollarQuote.dollar,
+                if units[index] == SqlDollarQuote.dollar,
                    SqlDollarQuote.matchesClose(at: index, tag: tag, in: text, bufLen: length) {
                     index += (tag as NSString).length + 2
                     return true
@@ -255,7 +271,7 @@ enum SelectSourceTableParser {
             while true {
                 skipTrivia()
                 guard index < length else { return false }
-                let ch = text.character(at: index)
+                let ch = units[index]
                 switch ch {
                 case 0x28:
                     depth += 1
@@ -353,27 +369,36 @@ enum SelectSourceTableParser {
         /// out. On a dialect without the modifier the same text is a table named `only` wearing an
         /// alias, and reading it as a modifier would return the alias as the write target. A table
         /// genuinely named `only` with no reference after it still resolves.
-        mutating func consumeTableReference() -> String? {
+        mutating func consumeTableReference() -> SourceTable? {
             skipTrivia()
             let saved = index
             if peekWord()?.uppercased() == "ONLY" {
                 _ = readWord()
-                if let modified = consumeUnqualifiedIdentifier(),
-                   !nonAliasKeywords.contains(modified.uppercased()) {
+                if let modified = consumeQualifiedReference(),
+                   !nonAliasKeywords.contains(modified.name.uppercased()) {
                     return nil
                 }
                 index = saved
             }
-            return consumeUnqualifiedIdentifier()
+            return consumeQualifiedReference()
         }
 
-        /// Rejects a qualified reference. The caller quotes the result as a single identifier and
-        /// takes the schema from the tab, which never carries one for a query tab, so returning
-        /// `users` for `analytics.users` would aim the write at whatever the search path resolves.
-        private mutating func consumeUnqualifiedIdentifier() -> String? {
+        /// Accepts `table` and `schema.table`. A three-part `catalog.schema.table` is rejected:
+        /// the write path can express one qualifier, and silently dropping the catalog would aim
+        /// the statement at the connected database instead of the one the query named.
+        private mutating func consumeQualifiedReference() -> SourceTable? {
+            guard let first = consumeIdentifierPart() else { return nil }
+            guard unit(at: index) == 0x2E else { return SourceTable(schema: nil, name: first) }
+            index += 1
+            guard let second = consumeIdentifierPart() else { return nil }
+            guard unit(at: index) != 0x2E else { return nil }
+            return SourceTable(schema: first, name: second)
+        }
+
+        private mutating func consumeIdentifierPart() -> String? {
             skipTrivia()
             guard index < length else { return nil }
-            let ch = text.character(at: index)
+            let ch = units[index]
             let name: String?
             if let closing = Self.closingDelimiter(for: ch) {
                 name = consumeDelimited(closing: closing)
@@ -383,14 +408,13 @@ enum SelectSourceTableParser {
                 name = nil
             }
             guard let name, !name.isEmpty else { return nil }
-            guard unit(at: index) != 0x2E else { return nil }
             return name
         }
 
         mutating func consumeOptionalAlias() -> Bool {
             skipTrivia()
             guard index < length else { return true }
-            let ch = text.character(at: index)
+            let ch = units[index]
             if let closing = Self.closingDelimiter(for: ch) {
                 return consumeDelimited(closing: closing) != nil
             }
@@ -403,7 +427,7 @@ enum SelectSourceTableParser {
             }
             skipTrivia()
             guard index < length else { return false }
-            let aliasChar = text.character(at: index)
+            let aliasChar = units[index]
             if let closing = Self.closingDelimiter(for: aliasChar) {
                 return consumeDelimited(closing: closing) != nil
             }
@@ -413,7 +437,7 @@ enum SelectSourceTableParser {
         mutating func atClauseBoundary() -> Bool {
             skipTrivia()
             guard index < length else { return true }
-            if text.character(at: index) == 0x3B { return true }
+            if units[index] == 0x3B { return true }
             guard let word = peekWord() else { return false }
             let keyword = word.uppercased()
             guard clauseTerminators.contains(keyword) else { return false }
