@@ -204,6 +204,14 @@ final class MainContentCoordinator {
         ConnectionStorage.shared.loadConnections().contains { $0.id == id }
     }
 
+    /// Routing failures report through here so a test can observe the message instead of raising a
+    /// real alert. `AlertHelper.present` runs application-modal when no window qualifies, and a
+    /// unit test host has no window, so calling it directly parks the main thread in a modal loop
+    /// that nothing can dismiss and no test time limit can interrupt.
+    @ObservationIgnored var presentError: (String, String, NSWindow?) -> Void = { title, message, window in
+        AlertHelper.showErrorSheet(title: title, message: message, window: window)
+    }
+
     // MARK: - Internal State
 
     /// Per-tab execution ownership. Replaces a per-window generation counter, a stored per-tab

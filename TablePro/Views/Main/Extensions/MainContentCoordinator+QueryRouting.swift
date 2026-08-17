@@ -57,10 +57,10 @@ extension MainContentCoordinator {
     /// is no longer there.
     private func routeToOwningConnection(_ query: String, connectionId owner: UUID, databaseName: String?) {
         guard connectionExists(owner) else {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Could Not Open Query"),
-                message: String(localized: "The connection this query was recorded against no longer exists."),
-                window: contentWindow
+            presentError(
+                String(localized: "Could Not Open Query"),
+                String(localized: "The connection this query was recorded against no longer exists."),
+                contentWindow
             )
             return
         }
