@@ -197,16 +197,27 @@ cp "$IOS_OPENSSL_CRYPTO_XCFW/ios-arm64-simulator/libcrypto.a" "$IOS_OPENSSL_SIM/
 build_slice "ios-arm64"           "iphoneos"        "arm64" "aarch64-apple-darwin" "-mios-version-min=${IOS_DEPLOYMENT_TARGET}"           "$IOS_OPENSSL_DEVICE"
 build_slice "ios-arm64-simulator" "iphonesimulator" "arm64" "aarch64-apple-darwin" "-mios-simulator-version-min=${IOS_DEPLOYMENT_TARGET}" "$IOS_OPENSSL_SIM"
 
+# The xcframework ships the hand-curated stubs, not upstream's headers. TableProMobile's
+# CBridges/CFreeTDS umbrella includes <sybdb.h> and <sybfront.h>, which resolve to these, and
+# upstream sybdb.h transitively requires generated headers (tds_sysdep_public.h and friends) that
+# are not shipped, so staging upstream's copy fails the iOS build with "file not found". The real
+# symbols come from libsybdb.a at link time, so a stub is all a consumer needs.
+#
+# For the same reason, never copy upstream headers into Plugins/MSSQLDriverPlugin/CFreeTDS/include/.
+STUB_HEADERS="$PROJECT_DIR/Plugins/MSSQLDriverPlugin/CFreeTDS/include"
 HEADERS_STAGE="$BUILD_DIR/headers-stage"
 rm -rf "$HEADERS_STAGE"
 mkdir -p "$HEADERS_STAGE"
-cp "$SOURCE_DIR/include/sybdb.h" "$HEADERS_STAGE/"
-cp "$SOURCE_DIR/include/sybfront.h" "$HEADERS_STAGE/"
+cp "$STUB_HEADERS/sybdb.h" "$HEADERS_STAGE/"
+cp "$STUB_HEADERS/sybfront.h" "$HEADERS_STAGE/"
 
-# Do NOT copy raw FreeTDS headers into Plugins/MSSQLDriverPlugin/CFreeTDS/include/. Those are
-# hand-curated Swift-compatible stubs. Upstream sybdb.h transitively requires generated headers
-# (tds_sysdep_public.h, etc.) that we don't ship. The xcframework's bundled headers are also stubs
-# for consumers; the real symbols are exported by libsybdb.a at link time.
+# A stub that has drifted from the built library is the failure this guards against: the symbol
+# links on macOS, where the plugin uses the stub directly, and goes missing only on iOS.
+if ! grep -q 'dbsetlfedauthtoken' "$HEADERS_STAGE/sybdb.h"; then
+    echo "ERROR: $STUB_HEADERS/sybdb.h does not declare dbsetlfedauthtoken." >&2
+    echo "       The FEDAUTH patch is applied to the library but the stub header is stale." >&2
+    exit 1
+fi
 
 echo "==> Assembling FreeTDS.xcframework..."
 XCFRAMEWORK_OUT="$IOS_LIBS_DIR/FreeTDS.xcframework"

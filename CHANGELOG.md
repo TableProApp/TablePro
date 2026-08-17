@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- SQL Server connections can sign in with Microsoft Entra ID on macOS, covering Azure SQL Database, Azure SQL Managed Instance, and SQL Server 2022. Sign-in runs in your browser and honours multifactor authentication and Conditional Access; tokens are kept in the login keychain and refreshed for you.
+- SQL Server connections can sign in with Microsoft Entra ID, covering Azure SQL Database, Azure SQL Managed Instance, and SQL Server 2022. Sign-in runs in your browser and honours multifactor authentication and Conditional Access; tokens are kept in the keychain and refreshed for you. Set it up on the Mac; iPhone and iPad pick the connection up through sync and prompt to sign in when you open it.
+
+### Changed
+
+- When a connection fails because a sign-in expired, TablePro now offers to sign in again and reconnects for you, instead of leaving you on an error screen whose only button repeats the same failure. This covers Microsoft Entra ID and AWS SSO, on the connection itself as well as in the connection form's Test button.
 
 ### Fixed
 

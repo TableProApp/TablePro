@@ -124,6 +124,9 @@ internal extension MainSplitViewController {
                 Self.connectionLogger.error(
                     "Connect failed for \(connection.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
                 )
+                if await self?.offerSignInAndReconnect(for: connection, error: error) == true {
+                    return
+                }
                 self?.finishAttempt(
                     token,
                     for: connection.id,
@@ -136,6 +139,29 @@ internal extension MainSplitViewController {
     /// A connect that outlives the workspace it was started for has nothing to report to. The
     /// registry entry going away is the generation check: writing a phase back here would
     /// resurrect a connection the user already closed.
+    /// A connect that failed only because a sign-in expired is recoverable, so offer it here rather
+    /// than leaving the user on an error screen whose only button repeats the same failure.
+    ///
+    /// Returns true when a sign-in succeeded and a fresh attempt has started. The caller then skips
+    /// `finishAttempt`, because `reconnectWorkspace` has already issued a new attempt token and this
+    /// one is no longer current. Declining returns false and falls through to the normal failure.
+    private func offerSignInAndReconnect(for connection: DatabaseConnection, error: Error) async -> Bool {
+        guard let provider = ConnectionSignInRegistry.provider(
+            for: error,
+            fields: connection.additionalFields
+        ) else {
+            return false
+        }
+        let signedIn = await ConnectionSignInPrompt.offer(
+            provider,
+            fields: connection.additionalFields,
+            window: view.window
+        )
+        guard signedIn else { return false }
+        reconnectWorkspace(connection.id)
+        return true
+    }
+
     private func finishAttempt(_ token: UUID, for connectionId: UUID, outcome: ConnectionAttemptOutcome?) {
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
         let isCurrentAttempt = workspace.attemptToken == token
