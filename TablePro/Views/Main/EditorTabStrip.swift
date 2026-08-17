@@ -10,10 +10,12 @@ import SwiftUI
 /// every window in it, so one window hosting several connections could only ever show all of
 /// their tabs interleaved.
 ///
-/// Glass is applied where the system applies it and nowhere else. The system's track is a private
-/// subdued glass; the public effect is full strength, and the strip sits under a unified toolbar
-/// that is itself glass, so the track is a flat fill here. Only the selected tab and the new-tab
-/// button carry glass, which is the one pane the system slides along its track.
+/// Glass is applied where the system applies it and nowhere else: the selected tab and the new-tab
+/// button, which is the one pane the system slides along its track. The track carries no fill of
+/// its own. The strip sits in the content view over plain window background rather than on toolbar
+/// material, and an alpha fill lands at very different strength on the two appearances there:
+/// `quaternarySystemFill` is a white wash over the dark chrome and a black one over the light
+/// chrome, which in dark mode reads as a raised panel no other part of the window has.
 internal struct EditorTabStrip: View {
     internal let tabManager: QueryTabManager
     internal let onClose: (UUID) -> Void
@@ -66,10 +68,6 @@ internal struct EditorTabStrip: View {
             }
             .frame(height: EditorTabStripLayout.tabHeight)
             .padding(EditorTabStripLayout.trackPadding)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color(nsColor: .quaternarySystemFill))
-            )
         }
         .frame(height: EditorTabStripLayout.trackHeight)
     }

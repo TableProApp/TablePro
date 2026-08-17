@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The connection window drew a rule under its toolbar that began at the sidebar divider and ran to the right edge, dividing two areas that are the same colour. It is gone.
+- The editor tab bar filled a capsule behind the tabs. In dark mode that fill read as a lighter panel than anything else in the window, so the tabs now sit directly on the window background.
 - Data-grid columns now reserve space for trailing editor and foreign-key actions instead of truncating otherwise fitting values.
 - Empty Structure tabs and structured-value errors keep their toolbar at the top and center the message in the remaining content area.
 - Adding or removing a favorite table updates its sidebar star immediately instead of waiting for the sidebar to reopen.
