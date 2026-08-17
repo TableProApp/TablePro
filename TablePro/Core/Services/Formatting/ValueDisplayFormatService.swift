@@ -38,6 +38,11 @@ final class ValueDisplayFormatService {
         }
     }
 
+    static func applyFormat(_ rawValue: Data, format: ValueDisplayFormat) -> String? {
+        guard format == .uuid, rawValue.count == 16 else { return nil }
+        return formatAsUuid(rawValue.hexEncoded)
+    }
+
     // MARK: - Effective Format Resolution
 
     func effectiveFormat(columnName: String, scope: TableScope?) -> ValueDisplayFormat {

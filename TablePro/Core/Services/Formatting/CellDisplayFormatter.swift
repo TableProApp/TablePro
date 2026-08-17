@@ -18,6 +18,10 @@ enum CellDisplayFormatter {
         case .null:
             return nil
         case .bytes(let data):
+            if let displayFormat,
+               let formatted = ValueDisplayFormatService.applyFormat(data, format: displayFormat) {
+                return formatted
+            }
             return BlobFormattingService.shared.format(data, for: .grid)
         case .text(let value):
             guard !value.isEmpty else { return value }

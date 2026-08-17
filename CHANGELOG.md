@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Binary UUID columns respect their Display As setting in the data grid and when copying a cell, instead of always showing or copying hex. (#2157)
 - Query results were read-only whenever the `SELECT` gave its table an alias, as in `select * from users u where u.id = 1`. Editing works on those results now, and also on queries written across several lines, preceded by a comment, or ending in `FOR UPDATE`. (#2150)
 - A `UNION`, `EXCEPT` or `INTERSECT` result could be edited as though it were a single table, and the edit was written to one of the branches rather than to the rows on screen. Those results are read-only now. So are results from a join, a subquery, a CTE, a temporal `FOR SYSTEM_TIME` read, `FROM ONLY`, and a schema-qualified name such as `public.users`.
 - The connection window drew a rule under its toolbar that began at the sidebar divider and ran to the right edge, dividing two areas that are the same colour. It is gone.

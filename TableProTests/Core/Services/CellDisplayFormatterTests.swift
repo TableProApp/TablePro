@@ -4,9 +4,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("CellDisplayFormatter")
 @MainActor
@@ -54,5 +54,53 @@ struct CellDisplayFormatterTests {
     func nilColumnType() {
         let result = CellDisplayFormatter.format(.text("2024-01-01"), columnType: nil)
         #expect(result == "2024-01-01")
+    }
+
+    @Test("UUID display format renders sixteen binary bytes")
+    func binaryUuidDisplayFormat() {
+        let data = Data([
+            0xAF, 0x49, 0x45, 0x3B, 0x7F, 0x2F, 0xFB, 0x58,
+            0xFC, 0xD3, 0x2B, 0xD3, 0x99, 0x59, 0x9F, 0xA5,
+        ])
+
+        let result = CellDisplayFormatter.format(
+            .bytes(data),
+            columnType: .blob(rawType: "BLOB"),
+            displayFormat: .uuid
+        )
+
+        #expect(result == "af49453b-7f2f-fb58-fcd3-2bd399599fa5")
+    }
+
+    @Test("raw display format keeps binary bytes as hex")
+    func rawBinaryDisplayFormat() {
+        let data = Data([0xAF, 0x49, 0x45, 0x3B])
+
+        let implicitRaw = CellDisplayFormatter.format(
+            .bytes(data),
+            columnType: .blob(rawType: "BLOB")
+        )
+        let explicitRaw = CellDisplayFormatter.format(
+            .bytes(data),
+            columnType: .blob(rawType: "BLOB"),
+            displayFormat: .raw
+        )
+
+        #expect(implicitRaw == "0xAF49453B")
+        #expect(explicitRaw == "0xAF49453B")
+    }
+
+    @Test("UUID display format does not reinterpret other binary lengths")
+    func invalidBinaryUuidLength() {
+        for count in [15, 17] {
+            let data = Data(repeating: 0xAB, count: count)
+            let result = CellDisplayFormatter.format(
+                .bytes(data),
+                columnType: .blob(rawType: "BLOB"),
+                displayFormat: .uuid
+            )
+
+            #expect(result == "0x" + String(repeating: "AB", count: count))
+        }
     }
 }

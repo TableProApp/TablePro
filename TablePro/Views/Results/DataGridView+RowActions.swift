@@ -102,7 +102,11 @@ extension TableViewCoordinator {
         let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
 
         if case .bytes(let data) = cell {
-            ClipboardService.shared.writeText(BlobFormattingService.shared.format(data, for: .copy) ?? "")
+            let format = columnIndex < columnDisplayFormats.count ? columnDisplayFormats[columnIndex] : nil
+            let value = format.flatMap { ValueDisplayFormatService.applyFormat(data, format: $0) }
+                ?? BlobFormattingService.shared.format(data, for: .copy)
+                ?? ""
+            ClipboardService.shared.writeText(value)
             return
         }
 
@@ -350,6 +354,11 @@ extension TableViewCoordinator {
 
     func copyGridSelection(_ selection: GridSelection) {
         guard let rect = selection.boundingRectangle else { return }
+        if rect.rows.count == 1, rect.columns.count == 1 {
+            copyCellValue(at: rect.rows.lowerBound, columnIndex: rect.columns.lowerBound)
+            return
+        }
+
         let tableRows = tableRowsProvider()
         let columnTypes = tableRows.columnTypes
         let rowCount = displayIDs?.count ?? tableRows.rows.count

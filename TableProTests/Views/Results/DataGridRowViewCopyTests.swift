@@ -108,6 +108,78 @@ struct DataGridRowViewCopyTests {
         #expect(clipboard.hasGridRows == false)
     }
 
+    @Test("Copy applies the UUID display format to binary cells")
+    func copyAppliesBinaryUuidDisplayFormat() {
+        let clipboard = DataGridRowViewCopyClipboard()
+        ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
+
+        let data = Data([
+            0xAF, 0x49, 0x45, 0x3B, 0x7F, 0x2F, 0xFB, 0x58,
+            0xFC, 0xD3, 0x2B, 0xD3, 0x99, 0x59, 0x9F, 0xA5,
+        ])
+        let coordinator = makeCoordinator(
+            rows: [[.text("1"), .bytes(data)]],
+            columnTypes: [.integer(rawType: "INT"), .blob(rawType: "BYTEA")]
+        )
+        coordinator.updateDisplayFormats([nil, .uuid])
+        let rowView = DataGridRowView()
+        rowView.coordinator = coordinator
+        rowView.rowIndex = 0
+
+        invokeCopy(on: rowView, target: .cell(1))
+
+        #expect(clipboard.text == "af49453b-7f2f-fb58-fcd3-2bd399599fa5")
+        #expect(clipboard.hasGridRows == false)
+    }
+
+    @Test("Copy applies the UUID display format to a command-clicked binary cell")
+    func copyAppliesBinaryUuidDisplayFormatToGridSelection() {
+        let clipboard = DataGridRowViewCopyClipboard()
+        ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
+
+        let data = Data([
+            0xAF, 0x49, 0x45, 0x3B, 0x7F, 0x2F, 0xFB, 0x58,
+            0xFC, 0xD3, 0x2B, 0xD3, 0x99, 0x59, 0x9F, 0xA5,
+        ])
+        let coordinator = makeCoordinator(
+            rows: [[.text("1"), .bytes(data)]],
+            columnTypes: [.integer(rawType: "INT"), .blob(rawType: "BYTEA")]
+        )
+        coordinator.updateDisplayFormats([nil, .uuid])
+        let tableView = makeTableView(for: coordinator)
+        let selectedCell = GridCoord(row: 0, column: 1)
+        _ = coordinator.selectionController.beginDrag(at: selectedCell, modifiers: .command)
+        coordinator.selectionController.endDrag(dragged: false, originalCoord: selectedCell)
+
+        tableView.copy(nil)
+
+        #expect(clipboard.text == "af49453b-7f2f-fb58-fcd3-2bd399599fa5")
+        #expect(clipboard.hasGridRows == false)
+    }
+
+    @Test("Copy keeps raw bytes for multi-cell grid selections")
+    func copyKeepsRawBytesForMultiCellGridSelection() {
+        let clipboard = DataGridRowViewCopyClipboard()
+        ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
+
+        let first = Data(repeating: 0xAA, count: 16)
+        let second = Data(repeating: 0xBB, count: 16)
+        let coordinator = makeCoordinator(
+            rows: [[.bytes(first), .bytes(second)]],
+            columnTypes: [.blob(rawType: "BYTEA"), .blob(rawType: "BYTEA")]
+        )
+        coordinator.updateDisplayFormats([.uuid, .uuid])
+        let tableView = makeTableView(for: coordinator)
+        coordinator.selectionController.selectAll(totalRows: 1, totalColumns: 2)
+
+        tableView.copy(nil)
+
+        #expect(clipboard.text == "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\t0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+    }
+
     @Test("Copy falls back to focused cell when no clicked column is attached")
     func copyFallsBackToFocusedCell() {
         let clipboard = DataGridRowViewCopyClipboard()
