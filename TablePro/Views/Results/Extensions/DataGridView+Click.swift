@@ -43,10 +43,9 @@ extension TableViewCoordinator {
         let columnName = tableRows.columns[columnIndex]
         let columnType = columnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[columnIndex] : nil
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        let override = ValueDisplayFormatService.shared.effectiveFormat(
-            columnName: columnName,
-            scope: tableScope
-        )
+        let override = columnIndex < columnDisplayFormats.count
+            ? columnDisplayFormats[columnIndex]
+            : nil
 
         return CellContext(
             columnType: columnType,

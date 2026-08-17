@@ -103,7 +103,10 @@ extension TableViewCoordinator {
 
         if case .bytes(let data) = cell {
             let format = columnIndex < columnDisplayFormats.count ? columnDisplayFormats[columnIndex] : nil
-            let value = format.flatMap { ValueDisplayFormatService.applyFormat(data, format: $0) }
+            let value = format.flatMap { format in
+                guard format.isApplicable(to: columnType, databaseType: databaseType) else { return nil }
+                return ValueDisplayFormatService.applyFormat(data, format: format)
+            }
                 ?? BlobFormattingService.shared.format(data, for: .copy)
                 ?? ""
             ClipboardService.shared.writeText(value)

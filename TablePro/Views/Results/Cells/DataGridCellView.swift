@@ -165,17 +165,29 @@ final class DataGridCellView: NSView {
     }
 
     override func accessibilityValue() -> Any? {
-        rawValue ?? String(localized: "NULL")
+        accessibilityText
     }
 
     override func accessibilityLabel() -> String? {
-        let value = rawValue ?? String(localized: "NULL")
-        return String(
+        String(
             format: String(localized: "Row %d, column %d: %@"),
             cellRow + 1,
             cellColumnIndex + 1,
-            value
+            accessibilityText
         )
+    }
+
+    private var accessibilityText: String {
+        switch placeholder {
+        case .none:
+            return displayText
+        case .null:
+            return displayText.isEmpty ? String(localized: "NULL") : displayText
+        case .empty:
+            return displayText.isEmpty ? String(localized: "Empty") : displayText
+        case .defaultMarker:
+            return displayText.isEmpty ? String(localized: "DEFAULT") : displayText
+        }
     }
 
     func applyEmphasizedSelection(_ value: Bool) {

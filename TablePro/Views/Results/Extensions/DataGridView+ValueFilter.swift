@@ -95,7 +95,7 @@ extension TableViewCoordinator {
         reloadAfterValueFilterChange()
     }
 
-    private func reloadAfterValueFilterChange() {
+    func reloadAfterValueFilterChange() {
         recomputeValueFilteredIDs()
         updateCache()
         visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)

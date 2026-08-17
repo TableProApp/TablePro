@@ -50,27 +50,37 @@ extension MainContentView {
 
         let service = ValueDisplayFormatService.shared
         let connId = coordinator.connection.id
+        let scope = tab.tableContext.scope(connectionId: connId)
+        let storageKeys = ValueDisplayFormatColumnKey.storageKeys(for: tableRows.columns)
+        let activeFormats = coordinator.dataTabDelegate?.tableViewCoordinator?.columnDisplayFormats
 
         for (i, col) in tableRows.columns.enumerated() {
             var value: String?
+            let columnType = i < tableRows.columnTypes.count ? tableRows.columnTypes[i] : nil
+            let format = InspectorValueDisplayFormatResolver.resolve(
+                columnIndex: i,
+                activeFormats: activeFormats,
+                storedFormat: service.effectiveFormat(columnKey: storageKeys[i], scope: scope),
+                columnType: columnType,
+                databaseType: coordinator.connection.type
+            )
             if i < row.count {
                 switch row[i] {
                 case .null:
                     value = nil
                 case .text(let s):
-                    value = s
-                case .bytes(let data):
-                    value = BlobFormattingService.shared.format(data, for: .copy)
+                    value = format == .raw
+                        ? s
+                        : ValueDisplayFormatService.applyFormat(s, format: format)
+                case .bytes(let bytes):
+                    value = format.isApplicable(
+                        to: columnType,
+                        databaseType: coordinator.connection.type
+                    ) ? ValueDisplayFormatService.applyFormat(bytes, format: format) : nil
+                    value = value ?? BlobFormattingService.shared.format(bytes, for: .copy)
                 }
             }
-            let type = i < tableRows.columnTypes.count ? tableRows.columnTypes[i].displayName : "string"
-
-            if let rawValue = value {
-                let format = service.effectiveFormat(columnName: col, scope: tab.tableContext.scope(connectionId: connId))
-                if format != .raw {
-                    value = ValueDisplayFormatService.applyFormat(rawValue, format: format)
-                }
-            }
+            let type = columnType?.displayName ?? "string"
 
             data.append((column: col, value: value, type: type))
         }
@@ -149,7 +159,8 @@ extension MainContentView {
             schemaVersion: currentTab?.schemaVersion ?? -1,
             metadataVersion: currentTab?.metadataVersion ?? -1,
             resultsViewMode: currentTab?.display.resultsViewMode ?? .data,
-            inspectorRowSourceRevision: coordinator.inspectorRowSourceRevision
+            inspectorRowSourceRevision: coordinator.inspectorRowSourceRevision,
+            gridDisplayRevision: coordinator.gridDisplayRevision
         )
     }
 }
@@ -160,6 +171,27 @@ struct InspectorTrigger: Equatable {
     let metadataVersion: Int
     let resultsViewMode: ResultsViewMode
     let inspectorRowSourceRevision: Int
+    let gridDisplayRevision: Int
+}
+
+enum InspectorValueDisplayFormatResolver {
+    static func resolve(
+        columnIndex: Int,
+        activeFormats: [ValueDisplayFormat?]?,
+        storedFormat: ValueDisplayFormat,
+        columnType: ColumnType?,
+        databaseType: DatabaseType
+    ) -> ValueDisplayFormat {
+        let candidate: ValueDisplayFormat
+        if let activeFormats {
+            candidate = activeFormats.indices.contains(columnIndex)
+                ? activeFormats[columnIndex] ?? .raw
+                : .raw
+        } else {
+            candidate = storedFormat
+        }
+        return candidate.isApplicable(to: columnType, databaseType: databaseType) ? candidate : .raw
+    }
 }
 
 /// Lightweight equatable value combining all pending-change sources

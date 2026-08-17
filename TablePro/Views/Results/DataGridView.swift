@@ -268,7 +268,8 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.sortedIDs = sortedIDs
         coordinator.updateCache()
-        coordinator.syncDisplayFormats(displayFormats)
+        let displayFormatsChanged = coordinator.columnDisplayFormats != displayFormats
+        let remappedValueFilters = coordinator.syncDisplayFormats(displayFormats)
         coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.recomputeValueFilteredIDs()
@@ -317,10 +318,12 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.updateValueFilterHeaderIndicators()
 
-        if needsFullReload {
+        if needsFullReload || remappedValueFilters {
             coordinator.selectionController.clear()
             tableView.reloadData()
             coordinator.startBackgroundPrewarm()
+        } else if displayFormatsChanged {
+            coordinator.reloadAfterDisplayFormatChange()
         }
     }
 
@@ -365,6 +368,7 @@ struct DataGridView: NSViewRepresentable {
                     displayFormat: slot < coordinator.columnDisplayFormats.count
                         ? coordinator.columnDisplayFormats[slot]
                         : nil,
+                    databaseType: coordinator.databaseType,
                     isLargeDataset: coordinator.isLargeDataset,
                     nullDisplayString: coordinator.cellRegistry.nullDisplayString
                 )

@@ -730,11 +730,15 @@ struct MainEditorContentView: View {
         let service = ValueDisplayFormatService.shared
         let smartDetectionEnabled = settings.enableSmartValueDetection
         let overridesVersion = service.overridesVersion
+        let resultSetId = tab.display.activeResultSetId
 
         if let cached = coordinator.displayFormatsCache[tab.id],
-           cached.schemaVersion == tab.schemaVersion,
-           cached.smartDetectionEnabled == smartDetectionEnabled,
-           cached.overridesVersion == overridesVersion {
+           cached.matches(
+               schemaVersion: tab.schemaVersion,
+               resultSetId: resultSetId,
+               smartDetectionEnabled: smartDetectionEnabled,
+               overridesVersion: overridesVersion
+           ) {
             return cached.formats
         }
 
@@ -742,6 +746,7 @@ struct MainEditorContentView: View {
         let columns = tableRows?.columns ?? []
         let columnTypes = tableRows?.columnTypes ?? []
         guard !columns.isEmpty else { return [] }
+        let storageKeys = ValueDisplayFormatColumnKey.storageKeys(for: columns)
 
         var detected: [ValueDisplayFormat?] = Array(repeating: nil, count: columns.count)
         if smartDetectionEnabled {
@@ -754,11 +759,19 @@ struct MainEditorContentView: View {
                 columnTypes: columnTypes,
                 sampleValues: sampleRows
             )
+            for index in detected.indices {
+                guard let format = detected[index],
+                      !format.isApplicable(
+                          to: index < columnTypes.count ? columnTypes[index] : nil,
+                          databaseType: connection.type
+                      ) else { continue }
+                detected[index] = nil
+            }
 
             var autoMap: [String: ValueDisplayFormat] = [:]
             for (i, format) in detected.enumerated() where i < columns.count {
                 if let format {
-                    autoMap[columns[i]] = format
+                    autoMap[storageKeys[i]] = format
                 }
             }
             service.setAutoDetectedFormats(autoMap, scope: tab.tableContext.scope(connectionId: connectionId))
@@ -770,8 +783,12 @@ struct MainEditorContentView: View {
 
         if let scope = tab.tableContext.scope(connectionId: connectionId),
            let overrides = ValueDisplayFormatStorage.shared.load(for: scope) {
-            for (i, colName) in columns.enumerated() {
-                if let overrideFormat = overrides[colName] {
+            for (i, storageKey) in storageKeys.enumerated() {
+                if let overrideFormat = overrides[storageKey],
+                   overrideFormat.isApplicable(
+                       to: i < columnTypes.count ? columnTypes[i] : nil,
+                       databaseType: connection.type
+                   ) {
                     while merged.count <= i { merged.append(nil) }
                     merged[i] = overrideFormat
                 }
@@ -781,6 +798,7 @@ struct MainEditorContentView: View {
         let result = merged.contains(where: { $0 != nil }) ? merged : []
         coordinator.displayFormatsCache[tab.id] = DisplayFormatsCacheEntry(
             schemaVersion: tab.schemaVersion,
+            resultSetId: resultSetId,
             smartDetectionEnabled: smartDetectionEnabled,
             overridesVersion: overridesVersion,
             formats: result

@@ -24,9 +24,22 @@ enum DiscardAction {
 
 struct DisplayFormatsCacheEntry {
     let schemaVersion: Int
+    let resultSetId: UUID?
     let smartDetectionEnabled: Bool
     let overridesVersion: Int
     let formats: [ValueDisplayFormat?]
+
+    func matches(
+        schemaVersion: Int,
+        resultSetId: UUID?,
+        smartDetectionEnabled: Bool,
+        overridesVersion: Int
+    ) -> Bool {
+        self.schemaVersion == schemaVersion
+            && self.resultSetId == resultSetId
+            && self.smartDetectionEnabled == smartDetectionEnabled
+            && self.overridesVersion == overridesVersion
+    }
 }
 
 /// Represents which sheet is currently active in MainContentView.

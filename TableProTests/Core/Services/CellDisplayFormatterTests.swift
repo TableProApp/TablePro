@@ -72,6 +72,23 @@ struct CellDisplayFormatterTests {
         #expect(result == "af49453b-7f2f-fb58-fcd3-2bd399599fa5")
     }
 
+    @Test("MongoDB binary UUIDs remain encoded until the driver decodes their subtype")
+    func mongoBinaryUuidRequiresDriverDecoding() {
+        let javaLegacyBytes = Data([
+            0x24, 0x43, 0x25, 0x4A, 0xEB, 0x03, 0xD0, 0x8C,
+            0x1A, 0x0D, 0xDA, 0xE2, 0xFC, 0x88, 0x32, 0x93,
+        ])
+
+        let result = CellDisplayFormatter.format(
+            .bytes(javaLegacyBytes),
+            columnType: .blob(rawType: "BLOB(3)"),
+            displayFormat: .uuid,
+            databaseType: .mongodb
+        )
+
+        #expect(result == "0x2443254AEB03D08C1A0DDAE2FC883293")
+    }
+
     @Test("raw display format keeps binary bytes as hex")
     func rawBinaryDisplayFormat() {
         let data = Data([0xAF, 0x49, 0x45, 0x3B])
