@@ -12,6 +12,16 @@ import Testing
 @Suite("SelectSourceTableParser")
 struct SelectSourceTableParserTests {
     private func table(_ sql: String, _ dialect: SqlDialect = .postgres) -> String? {
+        guard let source = SelectSourceTableParser.singleSourceTable(in: sql, dialect: dialect) else {
+            return nil
+        }
+        return source.schema == nil ? source.name : nil
+    }
+
+    private func source(
+        _ sql: String,
+        _ dialect: SqlDialect = .postgres
+    ) -> SelectSourceTableParser.SourceTable? {
         SelectSourceTableParser.singleSourceTable(in: sql, dialect: dialect)
     }
 
@@ -111,15 +121,36 @@ struct SelectSourceTableParserTests {
         #expect(table("SELECT * FROM LATERAL (SELECT 1) x") == nil)
     }
 
-    /// The write path quotes the result as one identifier and takes the schema from the tab, which
-    /// a query tab never carries, so a qualified source must stay read-only rather than resolve to
-    /// a bare name the search path would re-point.
-    @Test("A schema-qualified source never resolves")
-    func qualifiedSourcesAreNotSingleSource() {
-        #expect(table("SELECT * FROM public.users WHERE id = 1") == nil)
-        #expect(table("SELECT * FROM public.users u WHERE u.id = 1") == nil)
-        #expect(table("SELECT * FROM \"public\".\"users\" u") == nil)
-        #expect(table("SELECT * FROM db.public.users") == nil)
+    @Test("A schema-qualified source resolves to both parts")
+    func qualifiedSourcesReportSchema() {
+        #expect(source("SELECT * FROM public.users WHERE id = 1")
+            == .init(schema: "public", name: "users"))
+        #expect(source("SELECT * FROM public.users u WHERE u.id = 1")
+            == .init(schema: "public", name: "users"))
+        #expect(source("SELECT * FROM \"public\".\"users\" u")
+            == .init(schema: "public", name: "users"))
+        #expect(source("SELECT * FROM `db`.`orders` o WHERE 1", .mysql)
+            == .init(schema: "db", name: "orders"))
+        #expect(source("SELECT id FROM [dbo].[Users] AS [u]", .generic)
+            == .init(schema: "dbo", name: "Users"))
+        #expect(source("SELECT * FROM analytics.\"user events\" e WHERE 1")
+            == .init(schema: "analytics", name: "user events"))
+    }
+
+    @Test("An unqualified source reports no schema")
+    func unqualifiedSourcesReportNoSchema() {
+        #expect(source("SELECT * FROM users u WHERE u.id = 1")
+            == .init(schema: nil, name: "users"))
+        #expect(source("SELECT * FROM \"public.user\"")
+            == .init(schema: nil, name: "public.user"))
+    }
+
+    /// The write path can express one qualifier. Dropping the catalog would aim the statement at
+    /// the connected database rather than the one the query named.
+    @Test("A three-part catalog.schema.table never resolves")
+    func catalogQualifiedNeverResolves() {
+        #expect(source("SELECT * FROM db.public.users") == nil)
+        #expect(source("SELECT * FROM \"db\".\"public\".\"users\" u") == nil)
     }
 
     // MARK: - Row locking versus result-shaping FOR clauses

@@ -1330,7 +1330,11 @@ final class MainContentCoordinator {
     // MARK: - SQL Parsing
 
     func extractTableName(from sql: String) -> String? {
-        QuerySqlParser.extractTableName(from: sql, dialect: sqlDialect)
+        QuerySqlParser.extractTableName(
+            from: sql,
+            dialect: sqlDialect,
+            browseSchema: services.databaseManager.session(for: connectionId)?.browseSchema
+        )
     }
 
     // MARK: - Sorting

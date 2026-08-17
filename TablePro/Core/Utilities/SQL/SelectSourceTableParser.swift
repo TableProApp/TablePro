@@ -11,8 +11,17 @@ import TableProPluginKit
 /// The result decides whether a result grid is editable, and it becomes the target of the
 /// generated `UPDATE` and `DELETE`. A wrong name would write to the wrong table, so every
 /// shape this cannot prove is single-source resolves to `nil` and leaves the grid read-only:
-/// joins, comma lists, derived tables, CTEs, set operators, and schema-qualified names.
+/// joins, comma lists, derived tables, CTEs, and set operators.
+///
+/// A `schema.table` reference resolves to both parts. Deciding whether that schema is safe to
+/// write through belongs to the caller, not here.
 enum SelectSourceTableParser {
+    struct SourceTable: Equatable {
+        /// Present only when the statement spelled a qualified reference.
+        let schema: String?
+        let name: String
+    }
+
     /// Keywords that may legally follow the single table reference. Anything else means the
     /// statement reads from more than the one table, so the whitelist is the safety property.
     private static let clauseTerminators: Set<String> = [
@@ -32,7 +41,7 @@ enum SelectSourceTableParser {
     /// column, so neither describes rows that can be written back.
     private static let rowLockingModifiers: Set<String> = ["UPDATE", "SHARE", "NO", "KEY", "READ"]
 
-    static func singleSourceTable(in sql: String, dialect: SqlDialect) -> String? {
+    static func singleSourceTable(in sql: String, dialect: SqlDialect) -> SourceTable? {
         var cursor = Cursor(sql, dialect: dialect)
         guard cursor.consumeKeyword("SELECT") else { return nil }
         guard cursor.advanceToTopLevelFrom() else { return nil }
@@ -360,24 +369,33 @@ enum SelectSourceTableParser {
         /// out. On a dialect without the modifier the same text is a table named `only` wearing an
         /// alias, and reading it as a modifier would return the alias as the write target. A table
         /// genuinely named `only` with no reference after it still resolves.
-        mutating func consumeTableReference() -> String? {
+        mutating func consumeTableReference() -> SourceTable? {
             skipTrivia()
             let saved = index
             if peekWord()?.uppercased() == "ONLY" {
                 _ = readWord()
-                if let modified = consumeUnqualifiedIdentifier(),
-                   !nonAliasKeywords.contains(modified.uppercased()) {
+                if let modified = consumeQualifiedReference(),
+                   !nonAliasKeywords.contains(modified.name.uppercased()) {
                     return nil
                 }
                 index = saved
             }
-            return consumeUnqualifiedIdentifier()
+            return consumeQualifiedReference()
         }
 
-        /// Rejects a qualified reference. The caller quotes the result as a single identifier and
-        /// takes the schema from the tab, which never carries one for a query tab, so returning
-        /// `users` for `analytics.users` would aim the write at whatever the search path resolves.
-        private mutating func consumeUnqualifiedIdentifier() -> String? {
+        /// Accepts `table` and `schema.table`. A three-part `catalog.schema.table` is rejected:
+        /// the write path can express one qualifier, and silently dropping the catalog would aim
+        /// the statement at the connected database instead of the one the query named.
+        private mutating func consumeQualifiedReference() -> SourceTable? {
+            guard let first = consumeIdentifierPart() else { return nil }
+            guard unit(at: index) == 0x2E else { return SourceTable(schema: nil, name: first) }
+            index += 1
+            guard let second = consumeIdentifierPart() else { return nil }
+            guard unit(at: index) != 0x2E else { return nil }
+            return SourceTable(schema: first, name: second)
+        }
+
+        private mutating func consumeIdentifierPart() -> String? {
             skipTrivia()
             guard index < length else { return nil }
             let ch = units[index]
@@ -390,7 +408,6 @@ enum SelectSourceTableParser {
                 name = nil
             }
             guard let name, !name.isEmpty else { return nil }
-            guard unit(at: index) != 0x2E else { return nil }
             return name
         }
 
