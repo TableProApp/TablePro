@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An open cell overlay in the data grid kept its old border and background colour if the appearance changed while it was on screen, such as an automatic switch to dark at sunset. It repaints now.
 - Format Query crashed the app on a string literal that was still open and ended in a backslash, as in `select * from t where c like 'C:\`. It formats such a query without crashing now. Format Query also used to move the last character of an unclosed `/*` comment out of the comment and reformat it as code; the whole comment is left alone now.
 - Pasting a large block of text into the query editor could crash the app. A paste of more than about a thousand characters is parsed in the background, and the editor's syntax highlighting was updated from that background work while the editor was still applying the same paste on screen. Highlighting is now updated on the main thread again, as the rest of the editor already did. (#2158)
 - A strip along the right edge of the SQL editor, as wide as 140 points, took clicks and did nothing with them. Clicking there now puts the caret on the line you clicked, like any other empty part of the editor. The same strip sat in the trigger editor, the JSON view, the structure DDL, the SQL review sheet, the import preview and chat code blocks, where it swallowed text selection instead. (#2156)
