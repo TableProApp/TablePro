@@ -110,6 +110,9 @@ jobs:
       - name: Build Dameng native bridge
         run: scripts/build-dameng.sh arm64
 
+      - name: Test Dameng native bridge
+        run: cargo test --manifest-path Native/DamengBridge/Cargo.toml --locked
+
       # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so an empty
       # value is enough for the project to resolve $(ANALYTICS_HMAC_SECRET).
       - name: Create Secrets.xcconfig

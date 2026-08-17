@@ -37,6 +37,7 @@ struct TpDmColumn {
     type_name: Vec<u8>,
 }
 
+#[cfg_attr(test, derive(Debug, PartialEq))]
 enum TpDmCell {
     Null,
     Text(Vec<u8>),
@@ -153,6 +154,13 @@ fn convert_lob(
     Ok(cell)
 }
 
+fn undecoded_cell(row: &dameng::Row, index: usize) -> TpDmCell {
+    match row.values.get(index).and_then(Option::as_ref) {
+        Some(raw) if !raw.is_empty() => TpDmCell::Bytes(raw.clone()),
+        _ => TpDmCell::Null,
+    }
+}
+
 fn convert_cell(
     client: &mut Client,
     row: &dameng::Row,
@@ -160,7 +168,7 @@ fn convert_cell(
     index: usize,
 ) -> Result<TpDmCell, dameng::Error> {
     let Some(value) = row.get(index, columns) else {
-        return Ok(TpDmCell::Null);
+        return Ok(undecoded_cell(row, index));
     };
     match value {
         DmValue::Null => Ok(TpDmCell::Null),
@@ -226,10 +234,11 @@ fn query_result(
         }
         rows.push(cells);
     }
+    let delivered_row_count = u64::try_from(rows.len()).unwrap_or(u64::MAX);
     Ok(TpDmResult {
         columns,
         rows,
-        rows_affected: result.total_row_count,
+        rows_affected: delivered_row_count,
         execution_time_seconds: started.elapsed().as_secs_f64(),
         is_truncated,
     })
@@ -256,6 +265,14 @@ fn connection_client(connection: &mut TpDmConnection) -> Result<Client, String> 
 
 fn restore_client(connection: &mut TpDmConnection, client: Client) {
     connection.client = Some(client);
+}
+
+fn dispose(connection: &mut TpDmConnection, mut client: Client, keep_open: bool) {
+    if keep_open {
+        restore_client(connection, client);
+    } else {
+        let _ = client.close();
+    }
 }
 
 fn is_recoverable(error: &dameng::Error) -> bool {
@@ -367,15 +384,12 @@ pub unsafe extern "C" fn tp_dm_execute(
             Box::into_raw(Box::new(result))
         }
         Ok(Err(error)) => {
-            if is_recoverable(&error) {
-                restore_client(connection, client);
-            } else {
-                let _ = client.close();
-            }
+            dispose(connection, client, is_recoverable(&error));
             set_error(error_out, error.to_string());
             ptr::null_mut()
         }
         Err(payload) => {
+            dispose(connection, client, false);
             set_error(error_out, panic_message(payload));
             ptr::null_mut()
         }
@@ -407,15 +421,12 @@ unsafe fn transaction_operation(
             true
         }
         Ok(Err(error)) => {
-            if is_recoverable(&error) {
-                restore_client(connection, client);
-            } else {
-                let _ = client.close();
-            }
+            dispose(connection, client, is_recoverable(&error));
             set_error(error_out, error.to_string());
             false
         }
         Err(payload) => {
+            dispose(connection, client, false);
             set_error(error_out, panic_message(payload));
             false
         }
@@ -632,6 +643,64 @@ mod tests {
         assert!(error.is_null(), "{}", error_text(error));
         assert!(!result.is_null());
         result
+    }
+
+    fn unmapped_column() -> dameng::row::Column {
+        dameng::row::Column {
+            name: "VALUE".to_string(),
+            type_code: 19,
+            type_name: "UNKNOWN".to_string(),
+            precision: 0,
+            scale: 0,
+            nullable: true,
+            display_size: 0,
+            table_name: String::new(),
+            schema_name: String::new(),
+            lob_tab_id: 0,
+            lob_col_id: 0,
+        }
+    }
+
+    #[test]
+    fn an_undecodable_value_keeps_its_raw_bytes() {
+        let columns = vec![unmapped_column()];
+        let mut client = Client::new("localhost", 5_236);
+
+        let undecodable = dameng::Row {
+            row_id: 0,
+            values: vec![Some(vec![0xC1, 0x02])],
+        };
+        assert_eq!(
+            convert_cell(&mut client, &undecodable, &columns, 0).unwrap(),
+            TpDmCell::Bytes(vec![0xC1, 0x02])
+        );
+
+        let sql_null = dameng::Row {
+            row_id: 0,
+            values: vec![None],
+        };
+        assert_eq!(
+            convert_cell(&mut client, &sql_null, &columns, 0).unwrap(),
+            TpDmCell::Null
+        );
+
+        let empty = dameng::Row {
+            row_id: 0,
+            values: vec![Some(vec![])],
+        };
+        assert_eq!(
+            convert_cell(&mut client, &empty, &columns, 0).unwrap(),
+            TpDmCell::Null
+        );
+
+        let out_of_range = dameng::Row {
+            row_id: 0,
+            values: vec![],
+        };
+        assert_eq!(
+            convert_cell(&mut client, &out_of_range, &columns, 0).unwrap(),
+            TpDmCell::Null
+        );
     }
 
     #[test]
