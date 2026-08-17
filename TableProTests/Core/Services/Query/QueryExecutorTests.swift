@@ -56,6 +56,60 @@ struct QueryExecutorTests {
         #expect(QuerySqlParser.extractTableName(from: "CREATE TABLE foo (id INT)") == nil)
     }
 
+    // MARK: - Schema-qualified sources
+
+    /// A generated write names the table without a qualifier and lets the session resolve it, so a
+    /// schema the session is not pointed at must stay read-only.
+
+    @Test("A qualified source resolves when it names the session's own schema")
+    func qualifiedSourceMatchingSessionSchema() {
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM public.users u WHERE u.id = 1",
+            dialect: .postgres,
+            browseSchema: "public"
+        ) == "users")
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM \"public\".\"users\"",
+            dialect: .postgres,
+            browseSchema: "public"
+        ) == "users")
+    }
+
+    @Test("A qualified source naming another schema stays read-only")
+    func qualifiedSourceOtherSchema() {
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM analytics.users u WHERE u.id = 1",
+            dialect: .postgres,
+            browseSchema: "public"
+        ) == nil)
+    }
+
+    @Test("A qualified source stays read-only when the session schema is unknown")
+    func qualifiedSourceWithoutSessionSchema() {
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM public.users u WHERE u.id = 1",
+            dialect: .postgres
+        ) == nil)
+    }
+
+    @Test("Schema matching ignores case")
+    func qualifiedSourceCaseInsensitive() {
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM PUBLIC.users u",
+            dialect: .postgres,
+            browseSchema: "public"
+        ) == "users")
+    }
+
+    @Test("An unqualified source is unaffected by the session schema")
+    func unqualifiedSourceIgnoresSessionSchema() {
+        #expect(QuerySqlParser.extractTableName(
+            from: "SELECT * FROM users u WHERE u.id = 1",
+            dialect: .postgres,
+            browseSchema: "analytics"
+        ) == "users")
+    }
+
     @Test("stripTrailingOrderBy removes a trailing ORDER BY clause")
     func stripTrailingOrderByRemovesClause() {
         let stripped = QuerySqlParser.stripTrailingOrderBy(from: "SELECT * FROM users ORDER BY id DESC")

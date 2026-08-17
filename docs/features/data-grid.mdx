@@ -59,7 +59,9 @@ UUIDs and Unix timestamps render in a readable form when the column type and nam
 ## Editing
 
 <Warning>
-Editing works when the results come from one table, with or without an alias, as in `SELECT * FROM orders o WHERE o.id = 1`. Comments, `DISTINCT`, `ORDER BY`, `LIMIT` and `FOR UPDATE` are fine. Joins, comma joins, subqueries in `FROM`, CTEs, `UNION`, `EXCEPT`, `INTERSECT`, `FROM ONLY`, and schema-qualified names such as `public.orders` are read-only, and so is any connection set to the Read-Only [safe mode](/features/safe-mode) level.
+Editing works when the results come from one table, with or without an alias, as in `SELECT * FROM orders o WHERE o.id = 1`. Comments, `DISTINCT`, `ORDER BY`, `LIMIT` and `FOR UPDATE` are fine. Joins, comma joins, subqueries in `FROM`, CTEs, `UNION`, `EXCEPT`, `INTERSECT` and `FROM ONLY` are read-only, and so is any connection set to the Read-Only [safe mode](/features/safe-mode) level.
+
+You can write the schema in front of the table, as in `SELECT * FROM public.orders o`, as long as it is the schema you are browsing. Naming a different schema keeps the results read-only: the saved edit does not repeat the schema, so it would go to the browsed one instead of the table you queried. Switch to that schema first if you want to edit through it.
 
 Two shapes look editable but refuse to save. A column renamed with `AS` cannot be written back, though the other columns in the same row still can. A query that renames or omits the primary key blocks the whole save, because there is nothing to match the row on.
 </Warning>
