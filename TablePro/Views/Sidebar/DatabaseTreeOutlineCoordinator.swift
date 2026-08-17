@@ -41,6 +41,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var isModelSelectionAdoptionPending = false
     private var pendingOpenWork: DispatchWorkItem?
     internal var isApplyingExpansion = false
+    internal private(set) var selectionSyncTask: Task<Void, Never>?
     private var isSyncingSelection = false
     private var isReloading = false
     private var hasRenderedOnce = false
@@ -586,7 +587,16 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
             recordExpansion(node, expanded: true)
             restoreDescendantExpansion(afterExpanding: node)
         }
-        syncSelectionToModel()
+        scheduleSelectionSync()
+    }
+
+    private func scheduleSelectionSync() {
+        guard !isApplyingExpansion, selectionSyncTask == nil else { return }
+        selectionSyncTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.syncSelectionToModel()
+            self.selectionSyncTask = nil
+        }
     }
 
     func outlineViewItemDidCollapse(_ notification: Notification) {

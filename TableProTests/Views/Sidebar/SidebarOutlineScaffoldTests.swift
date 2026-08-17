@@ -105,7 +105,7 @@ struct SidebarOutlineScaffoldTests {
 @MainActor
 struct DatabaseTreeObjectGroupHierarchyTests {
     @Test("Nested groups preserve depth and partition expansion")
-    func nestedGroupsPreserveDepth() throws {
+    func nestedGroupsPreserveDepth() async throws {
         let connectionId = UUID()
         let defaults = try #require(UserDefaults(suiteName: "tree-groups-\(UUID().uuidString)"))
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
@@ -169,18 +169,30 @@ struct DatabaseTreeObjectGroupHierarchyTests {
 
         outlineView.collapseItem(parent)
         outlineView.collapseItem(group)
+        outlineView.collapseItem(schema)
         windowState.setTreeObjectGroup(groupRef, expanded: true)
         windowState.expandedTreeTables.insert(
             DatabaseTableKey(database: "shop", schema: "public", table: "orders")
         )
-        coordinator.restoreDescendantExpansion(afterExpanding: schema)
+        coordinator.activeDatabase = "shop"
+        coordinator.nodeCache = [database.id: database, schema.id: schema, group.id: group]
+        windowState.selectTables([parentRef.table])
+        coordinator.syncSelectionToModel()
+        coordinator.nodeCache[parent.id] = parent
+
+        outlineView.expandItem(schema)
 
         #expect(outlineView.isItemExpanded(group))
         #expect(outlineView.isItemExpanded(parent))
+        #expect(outlineView.selectedRow == -1)
+        let selectionSyncTask = try #require(coordinator.selectionSyncTask)
+        await selectionSyncTask.value
+        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === parent)
+        #expect(coordinator.selectionSyncTask == nil)
     }
 
     @Test("Collapsed groups keep model selection adoption pending")
-    func collapsedGroupsKeepSelectionPending() throws {
+    func collapsedGroupsKeepSelectionPending() async throws {
         let connectionId = UUID()
         let defaults = try #require(UserDefaults(suiteName: "tree-group-selection-\(UUID().uuidString)"))
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
@@ -235,11 +247,15 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         outlineView.expandItem(group)
 
         #expect(outlineView.isItemExpanded(group))
+        #expect(outlineView.selectedRow == -1)
+        let selectionSyncTask = try #require(coordinator.selectionSyncTask)
+        await selectionSyncTask.value
         #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === view)
+        #expect(coordinator.selectionSyncTask == nil)
     }
 
     @Test("Selection adoption distinguishes identical objects across databases")
-    func selectionAdoptionUsesTheActiveDatabase() throws {
+    func selectionAdoptionUsesTheActiveDatabase() async throws {
         let connectionId = UUID()
         let defaults = try #require(UserDefaults(suiteName: "tree-group-database-\(UUID().uuidString)"))
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
@@ -281,7 +297,10 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         coordinator.nodeCache[activeView.id] = activeView
         outlineView.expandItem(group)
 
+        let selectionSyncTask = try #require(coordinator.selectionSyncTask)
+        await selectionSyncTask.value
         #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === activeView)
+        #expect(coordinator.selectionSyncTask == nil)
     }
 }
 
