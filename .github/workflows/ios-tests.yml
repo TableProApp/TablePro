@@ -25,38 +25,36 @@ env:
   TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=latest"
 
 jobs:
+  # No `permissions:` block here either. See the note in macos-tests.yml: this workflow has no
+  # workflow_call caller today, but the same shape must not be copied back into one.
   changes:
     name: Detect relevant changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      pull-requests: read
     outputs:
       run: ${{ steps.decide.outputs.run }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Decide whether the iOS suite needs to run
         id: decide
         env:
           EVENT_NAME: ${{ github.event_name }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
 
-          run_all() {
+          if [ "$EVENT_NAME" != "pull_request" ]; then
               echo "run=true" >> "$GITHUB_OUTPUT"
               exit 0
-          }
+          fi
 
-          [ "$EVENT_NAME" = "pull_request" ] || run_all
+          FILES="$(git diff --name-only "$BASE_SHA" HEAD)"
 
-          FILES="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')"
-
-          # The pull request files API stops at 3000 entries, past which absence proves nothing.
-          [ "$(printf '%s\n' "$FILES" | wc -l)" -lt 3000 ] || run_all
-
-          if printf '%s\n' "$FILES" | grep -qE '^(TableProMobile/|Configs/|Packages/TableProCore/|Libs/|\.github/workflows/ios-tests\.yml$)'; then
+          # A here-string, not a pipe. See the note in macos-tests.yml about grep -q and pipefail.
+          if grep -qE '^(TableProMobile/|Configs/|Packages/TableProCore/|Libs/|\.github/workflows/ios-tests\.yml$)' <<< "$FILES"; then
               echo "run=true" >> "$GITHUB_OUTPUT"
           else
               echo "run=false" >> "$GITHUB_OUTPUT"
