@@ -1,18 +1,11 @@
 name: macOS Tests
 
 on:
+  # No paths filter here on purpose. A required status check has to report on every pull
+  # request, and a workflow skipped by a paths filter reports nothing at all, which leaves
+  # the check pending forever and blocks docs-only work. The filtering moved into the
+  # changes job below, so the gate job always runs and always reports.
   pull_request:
-    paths:
-      - "TablePro/**"
-      - "Plugins/**"
-      - "Packages/**"
-      - "LocalPackages/**"
-      - "TableProTests/**"
-      - "TableProUITests/**"
-      - "project.yml"
-      - "Configs/**"
-      - "Libs/**"
-      - ".github/workflows/macos-tests.yml"
   push:
     branches: [main]
     paths:
@@ -40,8 +33,53 @@ env:
   TEST_DESTINATION: "platform=macOS"
 
 jobs:
+  # Reproduces the paths filter this workflow used to carry on `on: pull_request`, with the
+  # same union of paths, so a pull request runs exactly the suites it ran before.
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Decide whether the macOS suites need to run
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          run_all() {
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              exit 0
+          }
+
+          # Anything that is not a pull request runs the full suite: a release calls this
+          # workflow with workflow_call, and a release that skipped its tests is the failure
+          # this guard exists to prevent.
+          [ "$EVENT_NAME" = "pull_request" ] || run_all
+
+          FILES="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')"
+
+          # The pull request files API stops at 3000 entries. Past that the list is truncated
+          # and no longer proves a path is absent, so run everything.
+          [ "$(printf '%s\n' "$FILES" | wc -l)" -lt 3000 ] || run_all
+
+          if printf '%s\n' "$FILES" | grep -qE '^(TablePro/|Plugins/|Packages/|LocalPackages/|TableProTests/|TableProUITests/|Configs/|Libs/|project\.yml$|\.github/workflows/macos-tests\.yml$)'; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   package-tests:
     name: TableProCore Package Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
     timeout-minutes: 20
     steps:
@@ -57,6 +95,8 @@ jobs:
 
   editor-tests:
     name: CodeEditTextView Package Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
     timeout-minutes: 20
     steps:
@@ -81,6 +121,8 @@ jobs:
   # UI retry costs another minute or two, so 40 left no headroom and killed the job mid-suite.
   app-tests:
     name: macOS App Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -209,3 +251,28 @@ jobs:
           name: macos-test-results
           path: TestResults.xcresult
           retention-days: 7
+
+  # The one check to mark required on main. It reports on every pull request, so a docs-only
+  # change passes on skipped suites instead of hanging, and a red suite cannot be merged past.
+  gate:
+    name: macOS Tests Gate
+    if: always()
+    needs: [changes, package-tests, editor-tests, app-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every suite to have passed or been skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "suite results: $RESULTS"
+          for result in $RESULTS; do
+              case "$result" in
+                  success|skipped) ;;
+                  *)
+                      echo "A macOS suite reported '$result'." >&2
+                      exit 1
+                      ;;
+              esac
+          done

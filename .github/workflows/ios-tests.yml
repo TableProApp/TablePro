@@ -1,13 +1,9 @@
 name: iOS Tests
 
 on:
+  # No paths filter here on purpose. See the note in macos-tests.yml: a workflow skipped by a
+  # paths filter never reports, so a required check would hang on every unrelated pull request.
   pull_request:
-    paths:
-      - "TableProMobile/**"
-      - "Configs/**"
-      - "Packages/TableProCore/**"
-      - "Libs/**"
-      - ".github/workflows/ios-tests.yml"
   push:
     branches: [main]
     paths:
@@ -29,8 +25,47 @@ env:
   TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=latest"
 
 jobs:
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Decide whether the iOS suite needs to run
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          run_all() {
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              exit 0
+          }
+
+          [ "$EVENT_NAME" = "pull_request" ] || run_all
+
+          FILES="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')"
+
+          # The pull request files API stops at 3000 entries, past which absence proves nothing.
+          [ "$(printf '%s\n' "$FILES" | wc -l)" -lt 3000 ] || run_all
+
+          if printf '%s\n' "$FILES" | grep -qE '^(TableProMobile/|Configs/|Packages/TableProCore/|Libs/|\.github/workflows/ios-tests\.yml$)'; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Run iOS Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
     timeout-minutes: 25
 
@@ -124,3 +159,27 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -skipPackagePluginValidation 2>&1 \
             | grep -E "iOS Simulator.*iPhone" || true
+
+  # The one check to mark required on main. See the note in macos-tests.yml.
+  gate:
+    name: iOS Tests Gate
+    if: always()
+    needs: [changes, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the suite to have passed or been skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "suite results: $RESULTS"
+          for result in $RESULTS; do
+              case "$result" in
+                  success|skipped) ;;
+                  *)
+                      echo "The iOS suite reported '$result'." >&2
+                      exit 1
+                      ;;
+              esac
+          done
