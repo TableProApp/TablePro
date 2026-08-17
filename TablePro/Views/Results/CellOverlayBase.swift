@@ -100,10 +100,9 @@ class CellOverlayBase: NSObject {
         let container = CellOverlayContainerView(frame: frame)
         container.wantsLayer = true
         container.layer?.borderWidth = 2
-        container.layer?.borderColor = NSColor.keyboardFocusIndicatorColor.cgColor
         container.layer?.cornerRadius = 2
         container.layer?.masksToBounds = true
-        container.layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        container.applyLayerColors()
         return container
     }
 
@@ -210,4 +209,18 @@ class CellOverlayBase: NSObject {
 
 final class CellOverlayContainerView: NSView {
     override var isFlipped: Bool { true }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyLayerColors()
+    }
+
+    /// A `CGColor` is a resolved colour and a layer never resolves it again, so the two layer
+    /// colours are reapplied whenever the appearance changes under an open overlay.
+    func applyLayerColors() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.borderColor = NSColor.keyboardFocusIndicatorColor.cgColor
+            layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        }
+    }
 }

@@ -1,13 +1,9 @@
 name: iOS Tests
 
 on:
+  # No paths filter here on purpose. See the note in macos-tests.yml: a workflow skipped by a
+  # paths filter never reports, so a required check would hang on every unrelated pull request.
   pull_request:
-    paths:
-      - "TableProMobile/**"
-      - "Configs/**"
-      - "Packages/TableProCore/**"
-      - "Libs/**"
-      - ".github/workflows/ios-tests.yml"
   push:
     branches: [main]
     paths:
@@ -29,8 +25,47 @@ env:
   TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=latest"
 
 jobs:
+  # No `permissions:` block here either. See the note in macos-tests.yml: this workflow has no
+  # workflow_call caller today, but the same shape must not be copied back into one.
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the iOS suite needs to run
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              exit 0
+          fi
+
+          # Raw NUL-separated records, read from a file. See the note in macos-tests.yml for what
+          # core.quotePath and a pipeline each break here.
+          git -c core.quotePath=false diff --no-renames --name-only -z \
+              "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-files"
+
+          if LC_ALL=C grep -zqE '^(TableProMobile/|Configs/|Packages/TableProCore/|Libs/|\.github/workflows/ios-tests\.yml$)' "$RUNNER_TEMP/changed-files"; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Run iOS Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
     timeout-minutes: 25
 
@@ -124,3 +159,27 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -skipPackagePluginValidation 2>&1 \
             | grep -E "iOS Simulator.*iPhone" || true
+
+  # The one check to mark required on main. See the note in macos-tests.yml.
+  gate:
+    name: iOS Tests Gate
+    if: always()
+    needs: [changes, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the suite to have passed or been skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "suite results: $RESULTS"
+          for result in $RESULTS; do
+              case "$result" in
+                  success|skipped) ;;
+                  *)
+                      echo "The iOS suite reported '$result'." >&2
+                      exit 1
+                      ;;
+              esac
+          done
