@@ -59,7 +59,9 @@ UUIDs and Unix timestamps render in a readable form when the column type and nam
 ## Editing
 
 <Warning>
-Editing works on simple `SELECT * FROM table` queries. Joins and aggregations are read-only, and so is any connection set to the Read-Only [safe mode](/features/safe-mode) level.
+Editing works when the results come from one table, with or without an alias, as in `SELECT * FROM orders o WHERE o.id = 1`. Comments, `DISTINCT`, `ORDER BY`, `LIMIT` and `FOR UPDATE` are fine. Joins, comma joins, subqueries in `FROM`, CTEs, `UNION`, `EXCEPT`, `INTERSECT`, `FROM ONLY`, and schema-qualified names such as `public.orders` are read-only, and so is any connection set to the Read-Only [safe mode](/features/safe-mode) level.
+
+Two shapes look editable but refuse to save. A column renamed with `AS` cannot be written back, though the other columns in the same row still can. A query that renames or omits the primary key blocks the whole save, because there is nothing to match the row on.
 </Warning>
 
 Double-click a cell to edit it. Press `Enter` to confirm or `Escape` to cancel. Some types open a dedicated editor:

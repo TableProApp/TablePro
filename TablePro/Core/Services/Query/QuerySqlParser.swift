@@ -2,11 +2,6 @@ import Foundation
 import TableProPluginKit
 
 enum QuerySqlParser {
-    private static let tableNameRegex = try? NSRegularExpression(
-        pattern: #"(?i)^\s*SELECT\s+.+?\s+FROM\s+(?:\[([^\]]+)\]|[`"]([^`"]+)[`"]|([\w$]+))\s*(?:WHERE|ORDER|LIMIT|GROUP|HAVING|OFFSET|FETCH|$|;)"#,
-        options: []
-    )
-
     private static let mongoCollectionRegex = try? NSRegularExpression(
         pattern: #"^\s*db\.(\w+)\."#,
         options: []
@@ -17,18 +12,14 @@ enum QuerySqlParser {
         options: []
     )
 
-    static func extractTableName(from sql: String) -> String? {
-        let nsRange = NSRange(sql.startIndex..., in: sql)
-
-        if let regex = tableNameRegex,
-           let match = regex.firstMatch(in: sql, options: [], range: nsRange) {
-            for group in 1...3 {
-                let r = match.range(at: group)
-                if r.location != NSNotFound, let range = Range(r, in: sql) {
-                    return String(sql[range])
-                }
-            }
+    /// The table a result grid may be edited through, or `nil` when the statement reads from
+    /// anything other than exactly one table.
+    static func extractTableName(from sql: String, dialect: SqlDialect = .generic) -> String? {
+        if let table = SelectSourceTableParser.singleSourceTable(in: sql, dialect: dialect) {
+            return table
         }
+
+        let nsRange = NSRange(sql.startIndex..., in: sql)
 
         if let regex = mongoBracketCollectionRegex,
            let match = regex.firstMatch(in: sql, options: [], range: nsRange),
