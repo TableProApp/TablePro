@@ -69,7 +69,8 @@ echo "$LIBSSH2_SHA256  $BUILD_DIR/libssh2.tar.gz" | shasum -a 256 -c - > /dev/nu
 tar xzf "$BUILD_DIR/libssh2.tar.gz" -C "$BUILD_DIR"
 LIBSSH2_SRC="$BUILD_DIR/libssh2-$LIBSSH2_VERSION"
 
-for patch in "$SCRIPT_DIR/../patches"/*.patch; do
+# Only this library's patches. A flat patch directory would apply every library's here.
+for patch in "$SCRIPT_DIR/../patches/libssh2"/*.patch; do
     [ -e "$patch" ] || continue
     echo "=> Applying $(basename "$patch")"
     patch -p1 -d "$LIBSSH2_SRC" -i "$patch"

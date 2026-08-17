@@ -7,10 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SQL Server connections can sign in with Microsoft Entra ID, covering Azure SQL Database, Azure SQL Managed Instance, and SQL Server 2022. Sign-in runs in your browser and honours multifactor authentication and Conditional Access; tokens are kept in the keychain and refreshed for you. Set it up on the Mac; iPhone and iPad pick the connection up through sync and prompt to sign in when you open it.
+
+### Changed
+
+- When a connection fails because a sign-in expired, TablePro now offers to sign in again and reconnects for you, instead of leaving you on an error screen whose only button repeats the same failure. This covers Microsoft Entra ID and AWS SSO, on the connection itself as well as in the connection form's Test button.
+
 ### Fixed
 
 - Query results were read-only whenever the `SELECT` gave its table an alias, as in `select * from users u where u.id = 1`. Editing works on those results now, and also on queries written across several lines, preceded by a comment, or ending in `FOR UPDATE`. (#2150)
 - A `UNION`, `EXCEPT` or `INTERSECT` result could be edited as though it were a single table, and the edit was written to one of the branches rather than to the rows on screen. Those results are read-only now. So are results from a join, a subquery, a CTE, a temporal `FOR SYSTEM_TIME` read, `FROM ONLY`, and a schema-qualified name such as `public.users`.
+- The connection window drew a rule under its toolbar that began at the sidebar divider and ran to the right edge, dividing two areas that are the same colour. It is gone.
+- The editor tab bar filled a capsule behind the tabs. In dark mode that fill read as a lighter panel than anything else in the window, so the tabs now sit directly on the window background.
 - Data-grid columns now reserve space for trailing editor and foreign-key actions instead of truncating otherwise fitting values.
 - Empty Structure tabs and structured-value errors keep their toolbar at the top and center the message in the remaining content area.
 - Adding or removing a favorite table updates its sidebar star immediately instead of waiting for the sidebar to reopen.

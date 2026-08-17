@@ -221,7 +221,8 @@ extension PluginMetadataRegistry {
                             defaultValue: "sql",
                             fieldType: .dropdown(options: [
                                 .init(value: "sql", label: "SQL Server Authentication"),
-                                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+                                .init(value: "windows", label: "Windows Authentication (Kerberos)"),
+                                .init(value: "entra", label: String(localized: "Microsoft Entra ID"))
                             ]),
                             section: .authentication
                         ),
@@ -243,7 +244,7 @@ extension PluginMetadataRegistry {
                         ConnectionField(
                             id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo"
                         )
-                    ],
+                    ] + EntraAuthFields.standard(gatedBy: "mssqlAuthMethod", value: "entra"),
                     category: .relational,
                     tagline: String(localized: "Microsoft's enterprise SQL database")
                 )
