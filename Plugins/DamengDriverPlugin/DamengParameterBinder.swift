@@ -5,7 +5,15 @@ enum DamengParameterBindingError: Error, Equatable {
     case embeddedNull
     case insufficientParameters
     case unusedParameters
+    case unknownBackslashHandling
 }
+
+enum DamengTextEscaping: Sendable {
+    case backslashLiteral
+    case backslashEscape
+    case unknown
+}
+
 enum DamengParameterBinder {
     private enum State: Equatable {
         case code
@@ -16,7 +24,11 @@ enum DamengParameterBinder {
         case blockComment(Int)
     }
 
-    static func bind(query: String, parameters: [PluginCellValue]) throws -> String {
+    static func bind(
+        query: String,
+        parameters: [PluginCellValue],
+        escaping: DamengTextEscaping
+    ) throws -> String {
         let input = Array(query.utf8)
         var output: [UInt8] = []
         output.reserveCapacity(input.count + parameters.count * 8)
@@ -55,7 +67,8 @@ enum DamengParameterBinder {
                     guard parameterIndex < parameters.count else {
                         throw DamengParameterBindingError.insufficientParameters
                     }
-                    output.append(contentsOf: try literal(for: parameters[parameterIndex]).utf8)
+                    let bound = try literal(for: parameters[parameterIndex], escaping: escaping)
+                    output.append(contentsOf: bound.utf8)
                     parameterIndex += 1
                     index += 1
                 } else {
@@ -63,6 +76,11 @@ enum DamengParameterBinder {
                     index += 1
                 }
             case .singleQuote:
+                if escaping == .backslashEscape, byte == 0x5C, let next {
+                    output.append(contentsOf: [byte, next])
+                    index += 2
+                    continue
+                }
                 output.append(byte)
                 if byte == 0x27, next == 0x27 {
                     output.append(0x27)
@@ -115,7 +133,7 @@ enum DamengParameterBinder {
         return String(decoding: output, as: UTF8.self)
     }
 
-    private static func literal(for value: PluginCellValue) throws -> String {
+    private static func literal(for value: PluginCellValue, escaping: DamengTextEscaping) throws -> String {
         switch value {
         case .null:
             return "NULL"
@@ -123,9 +141,25 @@ enum DamengParameterBinder {
             guard !text.contains("\0") else {
                 throw DamengParameterBindingError.embeddedNull
             }
-            return "'\(text.replacingOccurrences(of: "'", with: "''"))'"
+            return "'\(try escapedText(text, escaping: escaping))'"
         case .bytes(let data):
             return "HEXTORAW('\(data.map { String(format: "%02X", $0) }.joined())')"
+        }
+    }
+
+    static func escapedText(_ text: String, escaping: DamengTextEscaping) throws -> String {
+        switch escaping {
+        case .backslashLiteral:
+            return text.replacingOccurrences(of: "'", with: "''")
+        case .backslashEscape:
+            return text
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "'", with: "''")
+        case .unknown:
+            guard !text.contains("\\") else {
+                throw DamengParameterBindingError.unknownBackslashHandling
+            }
+            return text.replacingOccurrences(of: "'", with: "''")
         }
     }
 

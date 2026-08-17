@@ -76,6 +76,43 @@ final class DamengPluginDriverTests: XCTestCase {
         XCTAssertEqual(statements[0].parameters, [.text("new"), .text("42")])
     }
 
+    func testDropObjectStatementKeepsDM8ObjectKeywords() {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+
+        XCTAssertEqual(
+            driver.dropObjectStatement(
+                name: "SALES_MV", objectType: "MATERIALIZED VIEW", schema: "APP", cascade: false
+            ),
+            "DROP MATERIALIZED VIEW \"APP\".\"SALES_MV\""
+        )
+        XCTAssertEqual(
+            driver.dropObjectStatement(name: "ACTIVE_USERS", objectType: "view", schema: "APP", cascade: true),
+            "DROP VIEW \"APP\".\"ACTIVE_USERS\""
+        )
+        XCTAssertEqual(
+            driver.dropObjectStatement(name: "EXT_LOG", objectType: "FOREIGN TABLE", schema: "APP", cascade: false),
+            "DROP TABLE \"APP\".\"EXT_LOG\""
+        )
+        XCTAssertEqual(
+            driver.dropObjectStatement(name: "ORDERS", objectType: "TABLE", schema: "APP", cascade: true),
+            "DROP TABLE \"APP\".\"ORDERS\" CASCADE"
+        )
+    }
+
+    func testRowCapClampsToTheEmergencyMaximum() {
+        XCTAssertEqual(DamengConnection.fetchLimit(nil), PluginRowLimits.emergencyMax)
+        XCTAssertEqual(DamengConnection.fetchLimit(0), PluginRowLimits.emergencyMax)
+        XCTAssertEqual(DamengConnection.fetchLimit(-5), PluginRowLimits.emergencyMax)
+        XCTAssertEqual(DamengConnection.fetchLimit(10), 10)
+        XCTAssertEqual(DamengConnection.fetchLimit(9_000_000), PluginRowLimits.emergencyMax)
+    }
+
+    func testCastTruncationIsDetectedAtTheDM8VarcharCeiling() {
+        XCTAssertFalse(DamengSchemaValue.isCastTruncated(String(repeating: "a", count: 8_187)))
+        XCTAssertTrue(DamengSchemaValue.isCastTruncated(String(repeating: "a", count: 8_188)))
+        XCTAssertTrue(DamengSchemaValue.isCastTruncated(String(repeating: "\u{e9}", count: 4_094)))
+    }
+
     func testEffectiveSchemaPreservesQuotedIdentifierCase() {
         let configured = DamengPluginDriver(config: testConfig(database: "CamelCaseSchema"))
         XCTAssertEqual(configured.effectiveSchema(nil), "CamelCaseSchema")

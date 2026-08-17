@@ -273,7 +273,16 @@ extension DamengPluginDriver {
             query: "SELECT CAST(TEXT AS VARCHAR(8188)) FROM ALL_VIEWS WHERE OWNER = ? AND VIEW_NAME = ?",
             parameters: [.text(effectiveSchema(schema)), .text(view)]
         )
-        return result.rows.first?.first?.asText ?? ""
+        guard let definition = result.rows.first?.first?.asText else {
+            throw DamengError(message: String(localized: "Dameng did not return the view definition."))
+        }
+        guard !DamengSchemaValue.isCastTruncated(definition) else {
+            throw DamengError(message: String(localized: """
+                Dameng returned only the first 8188 bytes of this view definition. \
+                Saving it here would replace the view with the truncated text.
+                """))
+        }
+        return definition
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
@@ -315,6 +324,12 @@ extension DamengPluginDriver {
 }
 
 enum DamengSchemaValue {
+    static let castByteLimit = 8_188
+
+    static func isCastTruncated(_ value: String) -> Bool {
+        value.utf8.count >= castByteLimit
+    }
+
     static func nonEmpty(_ value: String?) -> String? {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
             return nil

@@ -108,6 +108,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let connection = DamengConnection()
     private var activeSchema: String?
     private var detectedServerVersion: String?
+    private var textEscaping: DamengTextEscaping = .unknown
 
     var capabilities: PluginCapabilities {
         [.parameterizedQueries, .transactions, .alterTableDDL, .multiSchema]
@@ -129,16 +130,29 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             username: config.username,
             password: config.password
         )
+        textEscaping = await detectTextEscaping()
         do {
             if !config.database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 try await switchSchema(to: config.database)
             } else {
                 activeSchema = try await scalarText("SELECT SF_GET_SCHEMA_NAME_BY_ID(CURRENT_SCHID)")
             }
-            detectedServerVersion = try await scalarText("SELECT BANNER FROM V$VERSION WHERE ROWNUM = 1")
         } catch {
             disconnect()
             throw error
+        }
+        detectedServerVersion = (try? await scalarText("SELECT BANNER FROM V$VERSION WHERE ROWNUM = 1"))
+            .map { String($0.prefix(60)) }
+    }
+
+    private func detectTextEscaping() async -> DamengTextEscaping {
+        guard let length = try? await scalarText("SELECT LENGTH('\\\\') FROM DUAL") else {
+            return .unknown
+        }
+        switch length.trimmingCharacters(in: .whitespaces).prefix(1) {
+        case "2": return .backslashLiteral
+        case "1": return .backslashEscape
+        default: return .unknown
         }
     }
 
@@ -146,6 +160,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         connection.disconnect()
         activeSchema = nil
         detectedServerVersion = nil
+        textEscaping = .unknown
     }
 
     func ping() async throws {
@@ -186,7 +201,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw DamengError(message: String(localized: "The Dameng schema name cannot be empty."))
         }
         let setSchema = "SET SCHEMA \(quoteIdentifier(normalized))"
-        let escaped = setSchema.replacingOccurrences(of: "'", with: "''")
+        let escaped = try DamengParameterBinder.escapedText(setSchema, escaping: textEscaping)
         _ = try await executeBound(
             query: "BEGIN EXECUTE IMMEDIATE '\(escaped)'; END;",
             parameters: [],
@@ -234,10 +249,11 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         parameters: [PluginCellValue],
         rowCap: Int?
     ) async throws -> PluginQueryResult {
-        let bound = parameters.isEmpty ? query : try DamengParameterBinder.bind(query: query, parameters: parameters)
+        let bound = parameters.isEmpty
+            ? query
+            : try DamengParameterBinder.bind(query: query, parameters: parameters, escaping: textEscaping)
         let expectsRows = DamengStatementClassifier.expectsRows(bound)
-        let capped = expectsRows ? DamengStatementClassifier.applyingRowCap(rowCap, to: bound) : bound
-        let result = try await connection.execute(capped, expectsRows: expectsRows, rowCap: rowCap)
+        let result = try await connection.execute(bound, expectsRows: expectsRows, rowCap: rowCap)
         return PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,

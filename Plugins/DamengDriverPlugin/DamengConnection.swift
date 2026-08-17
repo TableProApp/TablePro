@@ -18,12 +18,17 @@ final class DamengConnection: @unchecked Sendable {
         case rollback
     }
 
-    private let queue = DispatchQueue(label: "com.TablePro.dameng.connection")
+    private let queue = DispatchQueue(label: "com.TablePro.dameng.connection", qos: .userInitiated)
+    private let stateLock = NSLock()
     private var rawConnection: OpaquePointer?
+    private var isShuttingDown = false
 
     deinit {
-        if let rawConnection {
-            tp_dm_disconnect(rawConnection)
+        let handle = rawConnection
+        let cleanupQueue = queue
+        rawConnection = nil
+        if let handle {
+            cleanupQueue.async { tp_dm_disconnect(handle) }
         }
     }
 
@@ -31,8 +36,8 @@ final class DamengConnection: @unchecked Sendable {
         guard let port = UInt16(exactly: port), port > 0 else {
             throw DamengError(message: String(localized: "The Dameng port must be between 1 and 65535."))
         }
+        releaseHandle(shuttingDown: false)
         try await run {
-            guard self.rawConnection == nil else { return }
             var rawError: OpaquePointer?
             let connection = host.withUTF8Bytes { hostBytes in
                 username.withUTF8Bytes { usernameBytes in
@@ -53,15 +58,38 @@ final class DamengConnection: @unchecked Sendable {
             guard let connection else {
                 throw Self.error(from: rawError)
             }
-            self.rawConnection = connection
+            guard self.adopt(connection) else {
+                tp_dm_disconnect(connection)
+                throw DamengError(message: String(localized: "The Dameng connection is closed."))
+            }
         }
     }
 
     func disconnect() {
-        queue.sync {
-            guard let rawConnection else { return }
-            tp_dm_disconnect(rawConnection)
-            self.rawConnection = nil
+        releaseHandle(shuttingDown: true)
+    }
+
+    static func fetchLimit(_ rowCap: Int?) -> Int {
+        guard let rowCap, rowCap > 0 else { return PluginRowLimits.emergencyMax }
+        return min(rowCap, PluginRowLimits.emergencyMax)
+    }
+
+    private func adopt(_ connection: OpaquePointer) -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard !isShuttingDown else { return false }
+        rawConnection = connection
+        return true
+    }
+
+    private func releaseHandle(shuttingDown: Bool) {
+        stateLock.lock()
+        isShuttingDown = shuttingDown
+        let handle = rawConnection
+        rawConnection = nil
+        stateLock.unlock()
+        if let handle {
+            queue.async { tp_dm_disconnect(handle) }
         }
     }
 
@@ -85,7 +113,7 @@ final class DamengConnection: @unchecked Sendable {
                     bytes.baseAddress,
                     bytes.count,
                     expectsRows,
-                    max(rowCap ?? 0, 0),
+                    Self.fetchLimit(rowCap),
                     &rawError
                 )
             }
@@ -128,6 +156,8 @@ final class DamengConnection: @unchecked Sendable {
     }
 
     private func connectedPointer() throws -> OpaquePointer {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         guard let rawConnection else {
             throw DamengError(message: String(localized: "The Dameng connection is closed."))
         }

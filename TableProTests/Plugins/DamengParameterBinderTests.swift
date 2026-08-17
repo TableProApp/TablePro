@@ -9,7 +9,8 @@ struct DamengParameterBinderTests {
     func bindsSupportedValues() throws {
         let sql = try DamengParameterBinder.bind(
             query: "INSERT INTO sample VALUES (?, ?, ?)",
-            parameters: [.text("达梦 O'Brien"), .null, .bytes(Data([0x00, 0xAB, 0xFF]))]
+            parameters: [.text("达梦 O'Brien"), .null, .bytes(Data([0x00, 0xAB, 0xFF]))],
+            escaping: .backslashLiteral
         )
         #expect(sql == "INSERT INTO sample VALUES ('达梦 O''Brien', NULL, HEXTORAW('00ABFF'))")
     }
@@ -23,7 +24,8 @@ struct DamengParameterBinderTests {
                 -- ?
                 /* outer ? /* inner ? */ */
                 """,
-            parameters: [.text("bound")]
+            parameters: [.text("bound")],
+            escaping: .backslashLiteral
         )
         #expect(sql.contains("SELECT '?', \"?\", q'[?]', 'bound'"))
         #expect(sql.contains("-- ?"))
@@ -34,7 +36,8 @@ struct DamengParameterBinderTests {
     func escapesInjectionText() throws {
         let sql = try DamengParameterBinder.bind(
             query: "SELECT ? FROM DUAL",
-            parameters: [.text("x'; DROP SCHEMA SYSDBA CASCADE; --")]
+            parameters: [.text("x'; DROP SCHEMA SYSDBA CASCADE; --")],
+            escaping: .backslashLiteral
         )
         #expect(sql == "SELECT 'x''; DROP SCHEMA SYSDBA CASCADE; --' FROM DUAL")
     }
@@ -42,17 +45,62 @@ struct DamengParameterBinderTests {
     @Test("rejects parameter count mismatches")
     func rejectsCountMismatches() {
         #expect(throws: DamengParameterBindingError.insufficientParameters) {
-            try DamengParameterBinder.bind(query: "SELECT ?, ?", parameters: [.text("one")])
+            try DamengParameterBinder.bind(
+                query: "SELECT ?, ?", parameters: [.text("one")], escaping: .backslashLiteral
+            )
         }
         #expect(throws: DamengParameterBindingError.unusedParameters) {
-            try DamengParameterBinder.bind(query: "SELECT ?", parameters: [.text("one"), .text("two")])
+            try DamengParameterBinder.bind(
+                query: "SELECT ?", parameters: [.text("one"), .text("two")], escaping: .backslashLiteral
+            )
         }
     }
 
     @Test("rejects embedded null bytes")
     func rejectsEmbeddedNull() {
         #expect(throws: DamengParameterBindingError.embeddedNull) {
-            try DamengParameterBinder.bind(query: "SELECT ?", parameters: [.text("a\0b")])
+            try DamengParameterBinder.bind(
+                query: "SELECT ?", parameters: [.text("a\0b")], escaping: .backslashLiteral
+            )
         }
+    }
+
+    @Test("escapes backslashes when the server treats them as escapes")
+    func escapesBackslashInEscapeMode() throws {
+        let sql = try DamengParameterBinder.bind(
+            query: "SELECT * FROM t WHERE a = ? AND b = ?",
+            parameters: [.text("\\"), .text(" OR 1=1 -- ")],
+            escaping: .backslashEscape
+        )
+        #expect(sql == "SELECT * FROM t WHERE a = '\\\\' AND b = ' OR 1=1 -- '")
+    }
+
+    @Test("keeps backslashes literal when the server does not escape them")
+    func preservesBackslashInLiteralMode() throws {
+        let sql = try DamengParameterBinder.bind(
+            query: "SELECT ? FROM DUAL",
+            parameters: [.text("C:\\temp")],
+            escaping: .backslashLiteral
+        )
+        #expect(sql == "SELECT 'C:\\temp' FROM DUAL")
+    }
+
+    @Test("rejects backslashes when backslash handling is unknown")
+    func rejectsBackslashWhenUnprobed() {
+        #expect(throws: DamengParameterBindingError.unknownBackslashHandling) {
+            try DamengParameterBinder.bind(
+                query: "SELECT ?", parameters: [.text("a\\b")], escaping: .unknown
+            )
+        }
+    }
+
+    @Test("tracks an escaped quote inside a literal when backslashes escape")
+    func tracksBackslashEscapedQuoteInsideLiterals() throws {
+        let sql = try DamengParameterBinder.bind(
+            query: "SELECT '\\'', ? FROM DUAL",
+            parameters: [.text("bound")],
+            escaping: .backslashEscape
+        )
+        #expect(sql == "SELECT '\\'', 'bound' FROM DUAL")
     }
 }

@@ -180,7 +180,15 @@ extension DamengPluginDriver {
     }
 
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
-        let normalizedType = objectType.uppercased() == "VIEW" ? "VIEW" : "TABLE"
+        let normalizedType: String
+        switch objectType.uppercased() {
+        case "VIEW":
+            normalizedType = "VIEW"
+        case "MATERIALIZED VIEW":
+            normalizedType = "MATERIALIZED VIEW"
+        default:
+            normalizedType = "TABLE"
+        }
         let suffix = cascade && normalizedType == "TABLE" ? " CASCADE" : ""
         return "DROP \(normalizedType) \(qualifiedName(schema: schema, object: name))\(suffix)"
     }
