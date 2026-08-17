@@ -279,6 +279,10 @@ public class MinimapView: FlippedNSView {
     }
 
     override public func hitTest(_ point: NSPoint) -> NSView? {
+        // This override replaces `NSView`'s hit testing, which declines hidden views. Without the
+        // same check a minimap the editor was configured without still answers for its width, and
+        // `mouseDown(with:)` below then eats every click in that strip.
+        guard !isHiddenOrHasHiddenAncestor else { return nil }
         guard let point = superview?.convert(point, to: self) else { return nil }
         // For performance, don't hitTest the layout fragment views, but make sure the `documentVisibleView` is
         // hittable.
