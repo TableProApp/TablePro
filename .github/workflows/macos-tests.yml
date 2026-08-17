@@ -67,13 +67,19 @@ jobs:
               exit 0
           fi
 
-          FILES="$(git diff --name-only "$BASE_SHA" HEAD)"
+          # core.quotePath defaults to true, which wraps any path holding a non-ASCII byte or a
+          # control character in double quotes and C-escapes it, so `TablePro/Café.swift` arrives
+          # as `"TablePro/Caf\303\251.swift"` and the leading quote defeats the `^` anchor. This
+          # detector fails open, so a misread means every suite skips behind a green gate. Reading
+          # raw NUL-separated records removes both that and any embedded-newline trick.
+          #
+          # A file, not a variable: bash drops NUL bytes from "$(...)", which would run every path
+          # together into one record. It also keeps grep out of a pipeline, so the SIGPIPE that
+          # scripts/check-freetds-fedauth.sh:69 warns about cannot come back.
+          git -c core.quotePath=false diff --no-renames --name-only -z \
+              "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-files"
 
-          # A here-string, not a pipe. `grep -q` closes the pipe on its first match, which kills
-          # the writer with SIGPIPE, and under `set -o pipefail` that turns a match into exit 141
-          # and silently inverts the answer. scripts/check-freetds-fedauth.sh:69 carries the same
-          # warning for the same reason.
-          if grep -qE '^(TablePro/|Plugins/|Packages/|LocalPackages/|TableProTests/|TableProUITests/|Configs/|Libs/|project\.yml$|\.github/workflows/macos-tests\.yml$)' <<< "$FILES"; then
+          if LC_ALL=C grep -zqE '^(TablePro/|Plugins/|Packages/|LocalPackages/|TableProTests/|TableProUITests/|Configs/|Libs/|project\.yml$|\.github/workflows/macos-tests\.yml$)' "$RUNNER_TEMP/changed-files"; then
               echo "run=true" >> "$GITHUB_OUTPUT"
           else
               echo "run=false" >> "$GITHUB_OUTPUT"
