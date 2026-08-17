@@ -10,9 +10,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @MainActor
 struct WindowSidebarStateTests {
@@ -86,6 +86,26 @@ struct WindowSidebarStateTests {
         #expect(restored.expandedTreeTables == [orders])
     }
 
+    @Test("Object group expansion defaults by kind and persists per scope")
+    func objectGroupExpansionPersistsPerScope() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let publicTables = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .table)
+        let auditTables = DatabaseTreeObjectGroup(database: "shop", schema: "audit", kind: .table)
+        let publicViews = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .view)
+
+        let state = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        #expect(state.isTreeObjectGroupExpanded(publicTables))
+        #expect(state.isTreeObjectGroupExpanded(publicViews) == false)
+        state.setTreeObjectGroup(publicTables, expanded: false)
+        state.setTreeObjectGroup(publicViews, expanded: true)
+
+        let restored = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        #expect(restored.isTreeObjectGroupExpanded(publicTables) == false)
+        #expect(restored.isTreeObjectGroupExpanded(auditTables))
+        #expect(restored.isTreeObjectGroupExpanded(publicViews))
+    }
+
     @Test("A schema-less table key stays distinct from a schema-qualified one")
     func partitionedTableKeysDistinguishSchema() throws {
         let defaults = try makeDefaults()
@@ -115,6 +135,7 @@ struct WindowSidebarStateTests {
         #expect(restored.expandedTreeDatabases == ["shop"])
         #expect(restored.expandedTreeSchemas == ["public"])
         #expect(restored.expandedTreeTables.isEmpty)
+        #expect(restored.treeObjectGroupExpansion.isEmpty)
     }
 
     @Test("Collapsing every partitioned table clears storage alongside the rest")

@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 import TableProSyncTransport
 import Testing
 
@@ -97,6 +98,190 @@ struct SidebarOutlineScaffoldTests {
         SidebarOutlineScaffold.applyRowSize(.large, to: scrollView)
 
         #expect(try outline(scrollView).rowSizeStyle == .large)
+    }
+}
+
+@Suite("Database tree object group hierarchy")
+@MainActor
+struct DatabaseTreeObjectGroupHierarchyTests {
+    @Test("Nested groups preserve depth and partition expansion")
+    func nestedGroupsPreserveDepth() throws {
+        let connectionId = UUID()
+        let defaults = try #require(UserDefaults(suiteName: "tree-groups-\(UUID().uuidString)"))
+        let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        let database = DatabaseTreeNode(id: "database", kind: .database(.minimal(name: "shop")))
+        let schema = DatabaseTreeNode(id: "schema", kind: .schema(database: "shop", schema: "public"))
+        let groupRef = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .table)
+        let group = DatabaseTreeNode(id: "group", kind: .containerObjectKindSection(groupRef))
+        let parentRef = DatabaseTreeTableRef(
+            database: "shop",
+            schema: "public",
+            table: TableInfo(name: "orders", type: .partitionedTable, rowCount: nil, schema: "public")
+        )
+        let childRef = DatabaseTreeTableRef(
+            database: "shop",
+            schema: "public",
+            table: TableInfo(name: "orders_2026", type: .table, rowCount: nil, schema: "public")
+        )
+        let parent = DatabaseTreeNode(id: "parent", kind: .table(parentRef))
+        let child = DatabaseTreeNode(id: "child", kind: .table(childRef))
+        windowState.expandedTreeDatabases = ["shop"]
+        windowState.expandedTreeDatabaseSchemas = [DatabaseSchemaKey(database: "shop", schema: "public")]
+        windowState.expandedTreeTables = [
+            DatabaseTableKey(database: "shop", schema: "public", table: "orders")
+        ]
+
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: NSOutlineView(),
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "TreeGroupColumn",
+                allowsMultipleSelection: true,
+                rowSizePreference: .medium
+            )
+        )
+        let outlineView = try #require(scrollView.documentView as? NSOutlineView)
+        let coordinator = DatabaseTreeOutlineCoordinator()
+        coordinator.connectionId = connectionId
+        coordinator.databaseType = .postgresql
+        coordinator.windowState = windowState
+        coordinator.childrenCache = [
+            "": [database],
+            database.id: [schema],
+            schema.id: [group],
+            group.id: [parent],
+            parent.id: [child]
+        ]
+        outlineView.dataSource = coordinator
+        outlineView.delegate = coordinator
+        coordinator.attach(outlineView: outlineView)
+        outlineView.reloadData()
+
+        coordinator.applyDesiredExpansion()
+
+        #expect(outlineView.numberOfRows == 5)
+        #expect(outlineView.level(forItem: group) == 2)
+        #expect(outlineView.level(forItem: parent) == 3)
+        #expect(outlineView.level(forItem: child) == 4)
+        #expect(outlineView.isItemExpanded(group))
+        #expect(outlineView.isItemExpanded(parent))
+        #expect(coordinator.outlineView(outlineView, isGroupItem: group) == false)
+        #expect(coordinator.outlineView(outlineView, shouldSelectItem: group))
+
+        outlineView.collapseItem(parent)
+        outlineView.collapseItem(group)
+        windowState.setTreeObjectGroup(groupRef, expanded: true)
+        windowState.expandedTreeTables.insert(
+            DatabaseTableKey(database: "shop", schema: "public", table: "orders")
+        )
+        coordinator.restoreDescendantExpansion(afterExpanding: schema)
+
+        #expect(outlineView.isItemExpanded(group))
+        #expect(outlineView.isItemExpanded(parent))
+    }
+
+    @Test("Collapsed groups keep model selection adoption pending")
+    func collapsedGroupsKeepSelectionPending() throws {
+        let connectionId = UUID()
+        let defaults = try #require(UserDefaults(suiteName: "tree-group-selection-\(UUID().uuidString)"))
+        let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        let tableRef = DatabaseTreeTableRef(
+            database: "shop",
+            schema: "public",
+            table: TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
+        )
+        let viewRef = DatabaseTreeTableRef(
+            database: "shop",
+            schema: "public",
+            table: TableInfo(name: "order_totals", type: .view, rowCount: nil, schema: "public")
+        )
+        let table = DatabaseTreeNode(id: "table", kind: .table(tableRef))
+        let groupRef = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .view)
+        let group = DatabaseTreeNode(id: "views", kind: .containerObjectKindSection(groupRef))
+        let view = DatabaseTreeNode(id: "view", kind: .table(viewRef))
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: NSOutlineView(),
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "TreeGroupSelectionColumn",
+                allowsMultipleSelection: true,
+                rowSizePreference: .medium
+            )
+        )
+        let outlineView = try #require(scrollView.documentView as? NSOutlineView)
+        let coordinator = DatabaseTreeOutlineCoordinator()
+        coordinator.connectionId = connectionId
+        coordinator.windowState = windowState
+        coordinator.childrenCache = ["": [table, group], group.id: [view]]
+        coordinator.nodeCache = [table.id: table, group.id: group]
+        outlineView.dataSource = coordinator
+        outlineView.delegate = coordinator
+        coordinator.attach(outlineView: outlineView)
+        outlineView.reloadData()
+
+        windowState.selectTables([tableRef.table])
+        coordinator.syncSelectionToModel()
+        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === table)
+
+        windowState.selectTables([viewRef.table])
+        coordinator.syncSelectionToModel()
+        #expect(outlineView.selectedRow == -1)
+
+        windowState.selectTables([tableRef.table])
+        coordinator.syncSelectionToModel()
+        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === table)
+
+        windowState.selectTables([viewRef.table])
+        coordinator.syncSelectionToModel()
+        coordinator.nodeCache[view.id] = view
+        outlineView.expandItem(group)
+
+        #expect(outlineView.isItemExpanded(group))
+        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === view)
+    }
+
+    @Test("Selection adoption distinguishes identical objects across databases")
+    func selectionAdoptionUsesTheActiveDatabase() throws {
+        let connectionId = UUID()
+        let defaults = try #require(UserDefaults(suiteName: "tree-group-database-\(UUID().uuidString)"))
+        let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        let table = TableInfo(name: "report", type: .view, rowCount: nil, schema: "public")
+        let oldRef = DatabaseTreeTableRef(database: "archive", schema: "public", table: table)
+        let activeRef = DatabaseTreeTableRef(database: "shop", schema: "public", table: table)
+        let oldView = DatabaseTreeNode(id: "archive-view", kind: .table(oldRef))
+        let groupRef = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .view)
+        let group = DatabaseTreeNode(id: "shop-views", kind: .containerObjectKindSection(groupRef))
+        let activeView = DatabaseTreeNode(id: "shop-view", kind: .table(activeRef))
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: NSOutlineView(),
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "TreeGroupDatabaseColumn",
+                allowsMultipleSelection: true,
+                rowSizePreference: .medium
+            )
+        )
+        let outlineView = try #require(scrollView.documentView as? NSOutlineView)
+        let coordinator = DatabaseTreeOutlineCoordinator()
+        coordinator.connectionId = connectionId
+        coordinator.windowState = windowState
+        coordinator.activeDatabase = "archive"
+        coordinator.childrenCache = ["": [oldView, group], group.id: [activeView]]
+        coordinator.nodeCache = [oldView.id: oldView, group.id: group]
+        outlineView.dataSource = coordinator
+        outlineView.delegate = coordinator
+        coordinator.attach(outlineView: outlineView)
+        outlineView.reloadData()
+
+        windowState.selectTables([table])
+        coordinator.syncSelectionToModel()
+        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === oldView)
+
+        coordinator.activeDatabase = "shop"
+        coordinator.syncSelectionToModel()
+        #expect(outlineView.selectedRow == -1)
+
+        coordinator.nodeCache[activeView.id] = activeView
+        outlineView.expandItem(group)
+
+        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === activeView)
     }
 }
 

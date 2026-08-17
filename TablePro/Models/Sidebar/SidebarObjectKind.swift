@@ -1,7 +1,13 @@
 import Foundation
 import TableProPluginKit
 
-enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
+struct DatabaseTreeObjectGroup: Codable, Hashable, Sendable {
+    let database: String
+    let schema: String?
+    let kind: SidebarObjectKind
+}
+
+enum SidebarObjectKind: String, CaseIterable, Codable, Sendable, Hashable {
     case table
     case view
     case materializedView
@@ -54,5 +60,24 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
 
     var isRoutine: Bool {
         self == .procedure || self == .function
+    }
+
+    static func resolve(tableType: TableInfo.TableType) -> SidebarObjectKind {
+        switch tableType.rawValue {
+        case "VIEW":              return .view
+        case "MATERIALIZED VIEW": return .materializedView
+        case "FOREIGN TABLE":     return .foreignTable
+        default:                  return .table
+        }
+    }
+
+    var isExpandedByDefault: Bool {
+        self == .table
+    }
+
+    func shouldRender(itemCount: Int, capabilities: PluginCapabilities) -> Bool {
+        if self == .table { return true }
+        if let capabilityFlag, !capabilities.contains(capabilityFlag) { return false }
+        return itemCount > 0
     }
 }

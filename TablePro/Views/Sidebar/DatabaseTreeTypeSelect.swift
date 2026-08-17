@@ -45,7 +45,7 @@ internal enum DatabaseTreeTypeSelect {
     /// keeping the selection off a dead row.
     internal static func matchString(for kind: DatabaseTreeNode.Kind) -> String? {
         switch kind {
-        case .recentSection, .status, .objectKindSection, .redisKeysSection:
+        case .recentSection, .status, .objectKindSection, .containerObjectKindSection, .redisKeysSection:
             return nil
         case .recentTable(let ref), .table(let ref):
             return ref.table.name

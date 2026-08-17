@@ -119,6 +119,17 @@ struct DatabaseTreeMenuSpecTests {
         #expect(!issued.contains(.createView))
     }
 
+    @Test("A nested object group refresh carries its database and schema")
+    func nestedObjectGroupRefreshIsScoped() {
+        let group = DatabaseTreeObjectGroup(database: "archive", schema: "audit", kind: .view)
+        let issued = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .containerObjectKindSection(group))
+        ))
+
+        #expect(issued.contains(.refreshContainerObjectKind(group)))
+        #expect(!issued.contains(.refreshObjectKind(.view)))
+    }
+
     @Test("The database filter is offered only where a database list exists")
     func filterOnlyWhereADatabaseListExists() {
         let tree = commands(DatabaseTreeMenuSpec.items(for: context(clicked: nil, canFilterDatabases: true)))

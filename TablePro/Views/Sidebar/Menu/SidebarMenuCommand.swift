@@ -41,6 +41,7 @@ internal enum SidebarMenuCommand: Equatable {
     case dropContainers([DatabaseContainerRef])
     case showAllTablesMetadata
     case refreshObjectKind(SidebarObjectKind)
+    case refreshContainerObjectKind(DatabaseTreeObjectGroup)
     case refreshHierarchicalSchema(String)
     case copyText(String)
     case showRoutineDDL(DatabaseTreeRoutineRef)

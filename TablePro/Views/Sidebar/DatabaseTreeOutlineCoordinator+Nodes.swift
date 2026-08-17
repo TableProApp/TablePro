@@ -44,6 +44,8 @@ extension DatabaseTreeOutlineCoordinator {
             return ref.table.type == .partitionedTable ? partitionNodes(of: ref) : []
         case .objectKindSection(let kind):
             return flatObjectNodes(for: kind)
+        case .containerObjectKindSection(let group):
+            return containerObjectNodes(for: group)
         case .hierarchicalSchemaSection(let schema):
             return hierarchicalTableNodes(schema: schema)
         case .redisKeysSection:
@@ -302,18 +304,60 @@ extension DatabaseTreeOutlineCoordinator {
             }
         }
 
-        var nodes: [DatabaseTreeNode] = tables.map { table in
-            let ref = DatabaseTreeTableRef(database: database, schema: schema, table: table)
-            return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
+        var itemCounts: [SidebarObjectKind: Int] = [:]
+        for table in tables {
+            itemCounts[SidebarObjectKind.resolve(tableType: table.type), default: 0] += 1
         }
-        nodes += routines.map { routine in
-            let ref = DatabaseTreeRoutineRef(database: database, schema: schema, routine: routine)
-            return node(id: DatabaseTreeNode.routineId(ref), kind: .routine(ref))
+        for routine in routines {
+            itemCounts[routine.kind.sidebarObjectKind, default: 0] += 1
+        }
+        let groups = DatabaseTreeObjectGroupResolver.groups(
+            database: database,
+            schema: schema,
+            itemCounts: itemCounts,
+            capabilities: viewModel?.capabilities(for: connectionId) ?? [],
+            isFiltering: !searchText.isEmpty
+        )
+        var nodes = groups.map { group in
+            node(
+                id: DatabaseTreeNode.containerObjectKindSectionId(group),
+                kind: .containerObjectKindSection(group)
+            )
         }
         if case .failed(let message) = routinesState {
             nodes.append(statusNode(parentId: parentId, status: .error(message)))
         }
         return nodes
+    }
+
+    private func containerObjectNodes(for group: DatabaseTreeObjectGroup) -> [DatabaseTreeNode] {
+        if group.kind.isRoutine {
+            let routines = DatabaseTreeFilter.filteredRoutines(
+                service.routines(connectionId: connectionId, database: group.database, schema: group.schema),
+                searchText: searchText
+            ).filter { $0.kind.sidebarObjectKind == group.kind }
+            guard !routines.isEmpty else {
+                return [statusNode(parentId: DatabaseTreeNode.containerObjectKindSectionId(group), status: .empty)]
+            }
+            return routines.map { routine in
+                let ref = DatabaseTreeRoutineRef(
+                    database: group.database, schema: group.schema, routine: routine
+                )
+                return node(id: DatabaseTreeNode.routineId(ref), kind: .routine(ref))
+            }
+        }
+
+        let tables = DatabaseTreeFilter.filteredTables(
+            service.tables(connectionId: connectionId, database: group.database, schema: group.schema),
+            searchText: searchText
+        ).filter { SidebarObjectKind.resolve(tableType: $0.type) == group.kind }
+        guard !tables.isEmpty else {
+            return [statusNode(parentId: DatabaseTreeNode.containerObjectKindSectionId(group), status: .empty)]
+        }
+        return tables.map { table in
+            let ref = DatabaseTreeTableRef(database: group.database, schema: group.schema, table: table)
+            return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
+        }
     }
 
     private func statusNode(parentId: String, status: DatabaseTreeNode.Status) -> DatabaseTreeNode {

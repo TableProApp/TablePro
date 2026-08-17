@@ -72,7 +72,7 @@ final class SidebarViewModel {
         }
 
         static func defaultValue(for kind: SidebarObjectKind) -> Bool {
-            kind == .table
+            kind.isExpandedByDefault
         }
     }
 
@@ -285,10 +285,7 @@ final class SidebarViewModel {
         itemCount: Int,
         capabilities: PluginCapabilities
     ) -> Bool {
-        if kind == .table { return true }
-        if let flag = kind.capabilityFlag, !capabilities.contains(flag) { return false }
-        if itemCount > 0 { return true }
-        return false
+        kind.shouldRender(itemCount: itemCount, capabilities: capabilities)
     }
 
     // MARK: - Batch Operations
@@ -455,19 +452,10 @@ final class SidebarViewModel {
             buckets[kind] = []
         }
         for table in tables {
-            let kind = Self.sidebarObjectKind(for: table.type)
+            let kind = SidebarObjectKind.resolve(tableType: table.type)
             buckets[kind, default: []].append(table)
         }
         cachedKindBuckets = buckets
-    }
-
-    private static func sidebarObjectKind(for tableType: TableInfo.TableType) -> SidebarObjectKind {
-        switch tableType.rawValue {
-        case "VIEW":               return .view
-        case "MATERIALIZED VIEW":  return .materializedView
-        case "FOREIGN TABLE":      return .foreignTable
-        default:                   return .table
-        }
     }
 
     private func invalidateFilterCaches() {

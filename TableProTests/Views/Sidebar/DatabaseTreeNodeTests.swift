@@ -9,14 +9,24 @@ struct DatabaseTreeNodeTests {
         DatabaseTreeTableRef(database: "shop", schema: schema, table: TableInfo(name: name, type: .table, rowCount: 0))
     }
 
+    private func objectGroup(
+        database: String = "shop",
+        schema: String? = "public",
+        kind: SidebarObjectKind = .table
+    ) -> DatabaseTreeObjectGroup {
+        DatabaseTreeObjectGroup(database: database, schema: schema, kind: kind)
+    }
+
     @Test("identity helpers are unique across kinds and stable")
     func identityHelpers() {
         let databaseId = DatabaseTreeNode.databaseId("shop")
         let schemaId = DatabaseTreeNode.schemaId(database: "shop", schema: "public")
         let tableId = DatabaseTreeNode.tableId(tableRef("users"))
+        let tableGroupId = DatabaseTreeNode.containerObjectKindSectionId(objectGroup())
+        let otherSchemaGroupId = DatabaseTreeNode.containerObjectKindSectionId(objectGroup(schema: "audit"))
 
         #expect(databaseId == DatabaseTreeNode.databaseId("shop"))
-        #expect(Set([databaseId, schemaId, tableId]).count == 3)
+        #expect(Set([databaseId, schemaId, tableId, tableGroupId, otherSchemaGroupId]).count == 5)
     }
 
     @Test("status ids are unique per parent and per status")
@@ -40,6 +50,7 @@ struct DatabaseTreeNodeTests {
         #expect(node(.objectKindSection(.table)).isGroupRow)
         #expect(node(.redisKeysSection).isGroupRow)
 
+        #expect(node(.containerObjectKindSection(objectGroup())).isGroupRow == false)
         #expect(node(.schema(database: "shop", schema: "public")).isGroupRow == false)
         #expect(node(.hierarchicalSchemaSection(schema: "analytics")).isGroupRow == false)
         #expect(node(.table(tableRef("users"))).isGroupRow == false)
@@ -60,9 +71,11 @@ struct DatabaseTreeNodeTests {
         let schema = DatabaseTreeNode(id: "s", kind: .schema(database: "shop", schema: "public"))
         let table = DatabaseTreeNode(id: "t", kind: .table(tableRef("users")))
         let status = DatabaseTreeNode(id: "x", kind: .status(.loading))
+        let objectGroup = DatabaseTreeNode(id: "g", kind: .containerObjectKindSection(objectGroup()))
 
         #expect(database.isExpandable)
         #expect(schema.isExpandable)
+        #expect(objectGroup.isExpandable)
         #expect(!table.isExpandable)
         #expect(!status.isExpandable)
     }
@@ -95,5 +108,33 @@ struct DatabaseTreeNodeTests {
 
         #expect(table.tableRef == ref)
         #expect(schema.tableRef == nil)
+    }
+
+    @Test("Tree object groups follow kind order and capability gating")
+    func objectGroupResolution() {
+        let groups = DatabaseTreeObjectGroupResolver.groups(
+            database: "shop",
+            schema: "public",
+            itemCounts: [.table: 2, .view: 1, .materializedView: 1, .procedure: 1, .function: 1],
+            capabilities: [.materializedViews, .storedProcedures],
+            isFiltering: false
+        )
+
+        #expect(groups.map(\.kind) == [.table, .view, .materializedView, .procedure])
+        #expect(groups.allSatisfy { $0.database == "shop" && $0.schema == "public" })
+    }
+
+    @Test("Filtering omits empty groups including Tables")
+    func filteredObjectGroupResolution() {
+        let groups = DatabaseTreeObjectGroupResolver.groups(
+            database: "shop",
+            schema: nil,
+            itemCounts: [.view: 1],
+            capabilities: [],
+            isFiltering: true
+        )
+
+        #expect(groups.map(\.kind) == [.view])
+        #expect(groups.first?.schema == nil)
     }
 }

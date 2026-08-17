@@ -79,6 +79,8 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.showAllTablesMetadata()
         case .refreshObjectKind(let kind):
             refreshObjectKind(kind)
+        case .refreshContainerObjectKind(let group):
+            refreshContainerObjectKind(group)
         case .refreshHierarchicalSchema(let schema):
             reloadHierarchicalSchemaTables(schema)
         case .copyText(let text):

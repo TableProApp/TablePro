@@ -22,6 +22,7 @@ extension DatabaseTreeOutlineCoordinator {
             case .objectKindSection(let kind):
                 let hasMatches = flatItemCount(for: kind) > 0
                 setExpanded(sectionNode, viewModel?.effectiveExpanded(kind: kind, hasMatches: hasMatches) ?? true)
+                if outlineView.isItemExpanded(sectionNode) { restorePartitionExpansion(under: sectionNode) }
             case .redisKeysSection:
                 setExpanded(sectionNode, searching || (viewModel?.isRedisKeysExpanded ?? true))
             case .hierarchicalSchemaSection(let schema):
@@ -43,7 +44,7 @@ extension DatabaseTreeOutlineCoordinator {
             guard outlineView.isItemExpanded(databaseNode) else { continue }
             triggerLoad(for: databaseNode)
             guard supportsSchemaLevel else {
-                restorePartitionExpansion(under: databaseNode)
+                restoreObjectGroupExpansion(under: databaseNode)
                 continue
             }
             for schemaNode in resolvedChildren(of: databaseNode) {
@@ -54,7 +55,7 @@ extension DatabaseTreeOutlineCoordinator {
                 setExpanded(schemaNode, wantSchema)
                 if outlineView.isItemExpanded(schemaNode) {
                     triggerLoad(for: schemaNode)
-                    restorePartitionExpansion(under: schemaNode)
+                    restoreObjectGroupExpansion(under: schemaNode)
                 }
             }
         }
@@ -85,6 +86,31 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
+    private func restoreObjectGroupExpansion(under parent: DatabaseTreeNode) {
+        guard let outlineView = self.outlineView else { return }
+        let searching = !searchText.isEmpty
+        for groupNode in resolvedChildren(of: parent) {
+            guard case .containerObjectKindSection(let group) = groupNode.kind else { continue }
+            let expanded = searching || (windowState?.isTreeObjectGroupExpanded(group) ?? group.kind.isExpandedByDefault)
+            setExpanded(groupNode, expanded)
+            if outlineView.isItemExpanded(groupNode) { restorePartitionExpansion(under: groupNode) }
+        }
+    }
+
+    internal func restoreDescendantExpansion(afterExpanding node: DatabaseTreeNode) {
+        switch node.kind {
+        case .database where !supportsSchemaLevel:
+            restoreObjectGroupExpansion(under: node)
+        case .schema:
+            restoreObjectGroupExpansion(under: node)
+        case .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection:
+            restorePartitionExpansion(under: node)
+        case .recentSection, .recentTable, .database, .table, .routine, .status,
+             .redisKeysSection, .redisNode:
+            break
+        }
+    }
+
     private func setExpanded(_ node: DatabaseTreeNode, _ expanded: Bool) {
         guard let outlineView = self.outlineView else { return }
         if expanded, !outlineView.isItemExpanded(node) {
@@ -100,6 +126,8 @@ extension DatabaseTreeOutlineCoordinator {
             viewModel?.isRecentsExpanded = expanded
         case .objectKindSection(let kind):
             viewModel?.expanded[kind] = expanded
+        case .containerObjectKindSection(let group):
+            windowState?.setTreeObjectGroup(group, expanded: expanded)
         case .redisKeysSection:
             viewModel?.isRedisKeysExpanded = expanded
         case .hierarchicalSchemaSection(let schema):
@@ -151,7 +179,8 @@ extension DatabaseTreeOutlineCoordinator {
         case .hierarchicalSchemaSection(let schema):
             loadHierarchicalSchemaTables(schema)
         case .recentSection, .recentTable, .routine, .status,
-             .objectKindSection, .redisKeysSection, .redisNode:
+             .objectKindSection, .containerObjectKindSection,
+             .redisKeysSection, .redisNode:
             break
         }
     }

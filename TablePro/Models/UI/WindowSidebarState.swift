@@ -48,6 +48,21 @@ internal final class WindowSidebarState {
     var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
     var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }
     var expandedTreeTables: Set<DatabaseTableKey> = [] { didSet { persistExpansion() } }
+    private(set) var treeObjectGroupExpansion: [DatabaseTreeObjectGroup: Bool] = [:] {
+        didSet { persistExpansion() }
+    }
+
+    func isTreeObjectGroupExpanded(_ group: DatabaseTreeObjectGroup) -> Bool {
+        treeObjectGroupExpansion[group] ?? group.kind.isExpandedByDefault
+    }
+
+    func setTreeObjectGroup(_ group: DatabaseTreeObjectGroup, expanded: Bool) {
+        if expanded == group.kind.isExpandedByDefault {
+            treeObjectGroupExpansion.removeValue(forKey: group)
+        } else {
+            treeObjectGroupExpansion[group] = expanded
+        }
+    }
 
     /// An all-empty expansion set means "the user collapsed everything" just as much as it
     /// means "the user has never opened this tree", and seeding on the former would reopen
@@ -87,6 +102,7 @@ internal final class WindowSidebarState {
         var databases: [String]
         var databaseSchemas: [DatabaseSchemaKey]
         var tables: [DatabaseTableKey]?
+        var objectGroups: [DatabaseTreeObjectGroup: Bool]?
         var seeded: Bool?
     }
 
@@ -102,6 +118,7 @@ internal final class WindowSidebarState {
         expandedTreeDatabases = Set(decoded.databases)
         expandedTreeDatabaseSchemas = Set(decoded.databaseSchemas)
         expandedTreeTables = Set(decoded.tables ?? [])
+        treeObjectGroupExpansion = decoded.objectGroups ?? [:]
         didSeedExpansion = decoded.seeded ?? true
     }
 
@@ -110,6 +127,7 @@ internal final class WindowSidebarState {
 
         if expandedTreeSchemas.isEmpty, expandedTreeDatabases.isEmpty,
            expandedTreeDatabaseSchemas.isEmpty, expandedTreeTables.isEmpty,
+           treeObjectGroupExpansion.isEmpty,
            !didSeedExpansion {
             defaults.removeObject(forKey: storageKey)
             return
@@ -120,6 +138,7 @@ internal final class WindowSidebarState {
             databases: Array(expandedTreeDatabases),
             databaseSchemas: Array(expandedTreeDatabaseSchemas),
             tables: Array(expandedTreeTables),
+            objectGroups: treeObjectGroupExpansion,
             seeded: didSeedExpansion
         )
         if let data = try? JSONEncoder().encode(snapshot) {

@@ -42,9 +42,11 @@ struct DatabaseTreeSelectionPolicyTests {
     /// The two rows that stand for nothing: a loading or error placeholder, and the Recent title.
     @Test("Rows that are not objects refuse selection")
     func placeholdersRefuseSelection() {
+        let group = DatabaseTreeObjectGroup(database: "app", schema: "public", kind: .table)
         #expect(DatabaseTreeSelection.isSelectable(.status(.loading)) == false)
         #expect(DatabaseTreeSelection.isSelectable(.status(.error("boom"))) == false)
         #expect(DatabaseTreeSelection.isSelectable(.recentSection) == false)
+        #expect(DatabaseTreeSelection.isSelectable(.containerObjectKindSection(group)))
     }
 
     @Test("A table row resolves to its own reference")

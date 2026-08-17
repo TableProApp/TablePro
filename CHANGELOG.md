@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Tree sidebar layouts group tables, views, materialized views, foreign tables, procedures and functions into collapsible folders inside each database or schema. (#1590)
+
 ### Fixed
 
 - Data-grid columns now reserve space for trailing editor and foreign-key actions instead of truncating otherwise fitting values.

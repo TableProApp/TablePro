@@ -72,6 +72,8 @@ internal enum DatabaseTreeMenuSpec {
             return routineItems(ref)
         case .objectKindSection(let kind):
             return objectKindItems(kind, context: context)
+        case .containerObjectKindSection(let group):
+            return [.command(String(localized: "Refresh"), .refreshContainerObjectKind(group))]
         case .hierarchicalSchemaSection(let schema):
             return [.command(String(localized: "Refresh"), .refreshHierarchicalSchema(schema))]
         case .redisNode(let node):

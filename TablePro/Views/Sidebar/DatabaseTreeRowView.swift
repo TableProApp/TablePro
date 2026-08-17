@@ -80,6 +80,8 @@ struct DatabaseTreeRowView: View {
             statusRow(status)
         case .objectKindSection(let kind):
             sectionHeader(context.objectKindTitle(kind))
+        case .containerObjectKindSection(let group):
+            objectGroupRow(group.kind)
         case .hierarchicalSchemaSection(let schema):
             header(
                 text: schema,
@@ -101,6 +103,12 @@ struct DatabaseTreeRowView: View {
         Text(text)
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    private func objectGroupRow(_ kind: SidebarObjectKind) -> some View {
+        Label(context.objectKindTitle(kind), systemImage: kind.iconName)
+            .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
             .lineLimit(1)
     }
 

@@ -72,8 +72,10 @@ struct DatabaseTreeTypeSelectTests {
 
     @Test("Group and status rows have no type select string")
     func groupRowsHaveNoMatchString() {
+        let group = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .table)
         #expect(DatabaseTreeTypeSelect.matchString(for: .recentSection) == nil)
         #expect(DatabaseTreeTypeSelect.matchString(for: .status(.loading)) == nil)
+        #expect(DatabaseTreeTypeSelect.matchString(for: .containerObjectKindSection(group)) == nil)
     }
 
     @Test("A schema row matches on its schema name")

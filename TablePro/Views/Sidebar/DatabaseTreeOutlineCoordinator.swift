@@ -37,6 +37,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var lastSelection: Set<DatabaseTreeTableRef> = []
     private var lastSelectedNodeIds: [String] = []
     private var publishedTables: Set<TableInfo> = []
+    private var publishedSelectionDatabase: String?
+    private var isModelSelectionAdoptionPending = false
     private var pendingOpenWork: DispatchWorkItem?
     internal var isApplyingExpansion = false
     private var isSyncingSelection = false
@@ -193,7 +195,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                     connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
                 )
             case .recentSection, .recentTable, .table, .routine, .status,
-                 .objectKindSection, .redisKeysSection, .redisNode:
+                 .objectKindSection, .containerObjectKindSection,
+                 .redisKeysSection, .redisNode:
                 break
             }
         }
@@ -275,7 +278,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         }
     }
 
-    private func syncSelectionToModel() {
+    internal func syncSelectionToModel() {
         guard let outlineView else { return }
         adoptModelSelection()
         let rows = lastSelectedNodeIds.compactMap { nodeId -> Int? in
@@ -298,14 +301,29 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     /// A table can be drawn twice, once under Recent and once in its own section. Only the section
     /// row is adopted, because that is the row the model's `TableInfo` stands for.
     private func adoptModelSelection() {
-        guard let windowState, windowState.selectedTables != publishedTables else { return }
-        publishedTables = windowState.selectedTables
+        guard let windowState else { return }
+        let selectedTables = windowState.selectedTables
+        let selectionDatabase = modelSelectionDatabase
+        guard selectedTables != publishedTables
+            || selectionDatabase != publishedSelectionDatabase
+            || isModelSelectionAdoptionPending
+        else { return }
+        publishedTables = selectedTables
+        publishedSelectionDatabase = selectionDatabase
         let nodes = nodeCache.values.filter { node in
             guard case .table(let ref) = node.kind else { return false }
-            return publishedTables.contains(ref.table)
+            guard selectedTables.contains(ref.table) else { return false }
+            return selectedTables.count != 1 || selectionDatabase == nil || ref.database == selectionDatabase
         }
         lastSelectedNodeIds = nodes.map(\.id)
         lastSelection = Set(DatabaseTreeSelection.tableRefs(of: Array(nodes)))
+        isModelSelectionAdoptionPending = Set(lastSelection.map(\.table)) != selectedTables
+    }
+
+    private var modelSelectionDatabase: String? {
+        if let browseDatabase = mainCoordinator?.browseDatabaseName, !browseDatabase.isEmpty { return browseDatabase }
+        guard let activeDatabase, !activeDatabase.isEmpty else { return nil }
+        return activeDatabase
     }
 
     private func open(_ ref: DatabaseTreeTableRef, activateGridFocus: Bool) {
@@ -328,6 +346,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         let nodes = selectedNodes()
         let tables = DatabaseTreeSelection.tableInfos(of: nodes)
         publishedTables = tables
+        publishedSelectionDatabase = modelSelectionDatabase
+        isModelSelectionAdoptionPending = false
         /// The row count goes with the tables, because this is the one list that can select a row
         /// which is not a table. One table selected beside a schema must not read as a pick.
         windowState.select(tables: tables, rowCount: nodes.count)
@@ -460,6 +480,17 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         }
     }
 
+    internal func refreshContainerObjectKind(_ group: DatabaseTreeObjectGroup) {
+        let connectionId = connectionId
+        Task {
+            await service.refreshObjects(
+                connectionId: connectionId,
+                database: group.database,
+                schema: group.schema
+            )
+        }
+    }
+
     internal func reloadHierarchicalSchemaTables(_ schema: String) {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
         let connectionId = connectionId
@@ -551,7 +582,11 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
 
     func outlineViewItemDidExpand(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode else { return }
-        if isRecordingExpansion { recordExpansion(node, expanded: true) }
+        if isRecordingExpansion {
+            recordExpansion(node, expanded: true)
+            restoreDescendantExpansion(afterExpanding: node)
+        }
+        syncSelectionToModel()
     }
 
     func outlineViewItemDidCollapse(_ notification: Notification) {
