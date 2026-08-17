@@ -23,6 +23,8 @@ enum ExplainPlanFormatDefaults {
             return .cockroachText
         case .clickhouse, .duckdb:
             return .indentedText
+        case .dameng:
+            return .damengText
         default:
             return .plainText
         }

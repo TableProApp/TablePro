@@ -519,7 +519,7 @@ extension PluginMetadataRegistry {
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "dm", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
-                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN")
+                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .damengText)
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["dm"],

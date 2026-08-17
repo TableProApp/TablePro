@@ -27,6 +27,26 @@ struct DamengPlanParserTests {
         #expect(plan.rootNode.children.first?.children.first?.operation == "CSCN2")
     }
 
+    @Test("A widening line number keeps its depth when DM8 aligns the marker")
+    func alignsMarkerColumnPastNinetyNine() throws {
+        var lines = [
+            "1   #NSET2: [1, 1, 108]",
+            "2     #PRJT2: [1, 1, 108]",
+            "3       #SLCT2: [1, 1, 108]",
+        ]
+        for number in 4...100 {
+            let gap = String(repeating: " ", count: 10 - "\(number)".count)
+            lines.append("\(number)\(gap)#CSCN2: [1, 1, 108]; T\(number)")
+        }
+
+        let plan = try #require(parser.parse(rawText: lines.joined(separator: "\n")))
+        let projection = try #require(plan.rootNode.children.first)
+        let select = try #require(projection.children.first)
+
+        #expect(projection.children.count == 1)
+        #expect(select.children.count == 97)
+    }
+
     @Test("Ignores malformed non-plan lines")
     func ignoresMalformedLines() {
         #expect(parser.parse(rawText: "not a DM8 plan") == nil)

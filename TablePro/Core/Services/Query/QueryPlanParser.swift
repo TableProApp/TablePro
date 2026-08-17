@@ -584,7 +584,7 @@ struct IndentedTextPlanParser: QueryPlanParser {
 
 // MARK: - Dameng Text Parser
 
-/// Parses DM8 plans whose hierarchy is encoded by spaces after a numeric line prefix.
+/// Parses DM8 plans whose hierarchy is encoded by the column the `#` marker sits in.
 struct DamengPlanParser: QueryPlanParser {
     private struct ParsedLine {
         let indent: Int
@@ -652,7 +652,7 @@ struct DamengPlanParser: QueryPlanParser {
 
         let afterNumber = content[numberEnd...]
         let indentation = afterNumber.prefix(while: { $0 == " " || $0 == "\t" })
-        let text = afterNumber.dropFirst(indentation.count).trimmingCharacters(in: .whitespaces)
+        let text = afterNumber.dropFirst(indentation.count)
         guard text.first == "#" else { return nil }
 
         let planText = text.dropFirst()
@@ -662,7 +662,7 @@ struct DamengPlanParser: QueryPlanParser {
         let details = parts.count == 2 ? parts[1].trimmingCharacters(in: .whitespaces) : nil
 
         return ParsedLine(
-            indent: indentation.reduce(into: 0) { $0 += $1 == "\t" ? 4 : 1 },
+            indent: line.distance(from: line.startIndex, to: text.startIndex),
             operation: operation,
             details: details?.isEmpty == false ? details : nil
         )

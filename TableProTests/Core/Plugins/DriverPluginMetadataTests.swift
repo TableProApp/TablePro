@@ -315,4 +315,11 @@ struct RegistryAutoLimitStyleTests {
         #expect(defaults["Cloudflare D1"]?.editor.sqlDialect?.autoLimitStyle == .limit)
         #expect(defaults["libSQL"]?.editor.sqlDialect?.autoLimitStyle == .limit)
     }
+
+    @Test("Registry entries declare the plan format their parser reads")
+    func registryEntriesDeclareExplainFormat() {
+        #expect(defaults["Dameng"]?.explainVariants.first?.format == .damengText)
+        #expect(defaults["ClickHouse"]?.explainVariants.first?.format == .indentedText)
+        #expect(defaults["DuckDB"]?.explainVariants.first?.format == .indentedText)
+    }
 }
