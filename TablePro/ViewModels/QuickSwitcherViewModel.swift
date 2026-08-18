@@ -56,8 +56,14 @@ internal final class QuickSwitcherViewModel {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let frecencyStore: QuickSwitcherFrecencyStore
 
+    /// The catalog arriving is what ends the load, so this owns `isLoading` rather than the one
+    /// call site that happened to fetch it. A load that is superseded or cancelled after it has
+    /// already delivered its items cannot then strand the panel on a spinner.
     @ObservationIgnored internal var allItems: [QuickSwitcherItem] = [] {
-        didSet { scheduleFilter(debounced: false) }
+        didSet {
+            isLoading = false
+            scheduleFilter(debounced: false)
+        }
     }
     @ObservationIgnored internal var crossConnectionItems: [QuickSwitcherItem] = [] {
         didSet { scheduleFilter(debounced: false) }
@@ -76,6 +82,10 @@ internal final class QuickSwitcherViewModel {
 
     private(set) var groups: [Group] = []
     private(set) var isLoading = true
+    /// Ranking the scoped catalog runs off the main actor behind a debounce, so `groups` is empty
+    /// for a beat after the catalog arrives. Without this the panel calls that emptiness "no
+    /// results" and says so, for the whole first sort.
+    private(set) var isFiltering = false
     private(set) var isLoadingCrossConnections = false
     private(set) var isLoadingCrossConnectionQueries = false
     private(set) var crossConnectionQueryContentRevision = 0
@@ -99,11 +109,25 @@ internal final class QuickSwitcherViewModel {
         groups.flatMap(\.items)
     }
 
+    /// Whether the panel is still fetching the results it is being asked to show.
+    ///
+    /// The All scope with an empty search lists nothing but Recent, and Recent is resolved against
+    /// the catalog itself, so there is nothing to wait on there and reporting a load would open the
+    /// result surface over the compact bar that carries the scope buttons. Every other combination
+    /// is showing, or about to show, something the catalog has to arrive for.
     var isLoadingResults: Bool {
         if scope.usesCrossConnectionCatalog {
             return isLoadingCrossConnections
         }
-        return scope.usesCrossConnectionQueries && isLoadingCrossConnectionQueries
+        if scope.usesCrossConnectionQueries {
+            return isLoadingCrossConnectionQueries
+        }
+        guard scope != .all || !trimmedSearchText.isEmpty else { return false }
+        return isLoading || isFiltering
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespaces)
     }
 
     /// Nil outside the cross-connection scope, so a panel showing one connection's objects
@@ -255,7 +279,6 @@ internal final class QuickSwitcherViewModel {
 
         guard activeLoadId == loadId, !Task.isCancelled else { return }
 
-        isLoading = false
         allItems = items
     }
 
@@ -617,6 +640,7 @@ internal final class QuickSwitcherViewModel {
         let scope = scope
         let frecencyScores = frecencyStore.scores()
         let recentIds = frecencyStore.recentItemIds(limit: Self.recentLimit)
+        isFiltering = true
         filterTask = Task { @MainActor [weak self] in
             if debounced {
                 try? await Task.sleep(nanoseconds: Self.filterDebounceNanoseconds)
@@ -627,6 +651,7 @@ internal final class QuickSwitcherViewModel {
                 : await Self.filteredGroups(items: items, query: query, frecencyScores: frecencyScores)
             guard !Task.isCancelled, let self else { return }
             self.groups = groups
+            self.isFiltering = false
             self.reconcileSelection(query: query, scope: scope)
         }
     }
