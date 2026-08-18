@@ -10,11 +10,11 @@ The driver has three layers:
 - **C ABI** (`CDameng/CDameng.h`) exposes opaque connection and result handles. Swift copies returned values before releasing their Rust-owned storage.
 - **Rust** (`Native/DamengBridge/`) owns the DM8 wire connection, transaction state, encoding detection, row limits, and panic boundary. It builds as a static library for both Apple Silicon and Intel Macs.
 
-The bridge vendors a reviewed `rust-dameng` snapshot under `Native/DamengBridge/Vendor/`. TablePro's compatibility patches add multi-column results, binary DECIMAL decoding, bounded response parsing, and DM8's text EXPLAIN response. Keep `Vendor/UPSTREAM.md`, the vendored crates, and their MIT license notices in sync when updating the snapshot.
+The protocol crates come from [`TableProApp/rust-dameng`](https://github.com/TableProApp/rust-dameng), pinned by revision in `Native/DamengBridge/Cargo.toml`. TablePro's compatibility work lives on that fork's `tablepro` branch and adds multi-column results, binary DECIMAL decoding, bounded response parsing, DM8's text EXPLAIN response, and interruptible reads. Change protocol behaviour there, then bump the `rev` and commit the refreshed lockfile. See `Native/DamengBridge/README.md`.
 
 ## Build
 
-The build script installs the pinned Rust toolchain and creates `Libs/libdameng_bridge.a` as a universal archive:
+The build script installs the pinned Rust toolchain and creates `Native/DamengBridge/lib/libdameng_bridge.a` as a universal archive. It stays out of `Libs/`, which holds prebuilt slices that `download-libs.sh` checksum-verifies:
 
 ```bash
 scripts/build-dameng.sh
@@ -30,7 +30,7 @@ Use `scripts/build-dameng.sh arm64` or `x86_64` only for architecture-specific d
 Run protocol, bridge, and Swift tests before submitting a change:
 
 ```bash
-(cd Native/DamengBridge && cargo test --workspace --locked)
+(cd Native/DamengBridge && cargo test --locked)
 xcodebuild -project TablePro.xcodeproj -scheme DamengDriverTests \
   -configuration Debug build-for-testing CODE_SIGNING_ALLOWED=NO
 ```
