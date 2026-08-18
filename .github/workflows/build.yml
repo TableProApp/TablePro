@@ -2,22 +2,28 @@ name: Build TablePro
 
 on:
   workflow_dispatch:
+  # No paths filter here. GitHub does not evaluate one for a tag push, and a tag push is the
+  # only thing that triggers this workflow, so the paths-ignore list that used to sit here
+  # never excluded anything.
   push:
     tags: ["v*"]
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - ".vscode/**"
+
+# A release must never be cancelled part-way through: the build jobs hold notarization
+# submissions open with Apple, and the release job pushes a commit and publishes artifacts.
+# Re-running the same tag queues behind the run already in flight rather than racing it.
+concurrency:
+  group: build-tablepro-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   lint:
     name: SwiftLint
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 10
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install SwiftLint
         run: brew list swiftlint &>/dev/null || brew install swiftlint
@@ -37,7 +43,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
@@ -49,29 +55,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh --force
 
-      - name: Install ARM64 dependencies
-        run: |
-          echo "Installing ARM64 dependencies..."
+      # build-release.sh clones packages into ~/.spm-cache via -clonedSourcePackagesDirPath,
+      # so this restores the checkouts instead of re-cloning 30 repositories on every release.
+      # Package.resolved pins every revision and is tracked, which is why it can key the cache.
+      - name: Cache Swift package checkouts
+        uses: actions/cache@v6
+        with:
+          path: ~/.spm-cache
+          key: ${{ runner.os }}-spm-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: ${{ runner.os }}-spm-
 
-          # Check and install only if needed
-          if ! brew list mariadb-connector-c &>/dev/null; then
-            echo "📦 Installing mariadb-connector-c..."
-            brew install mariadb-connector-c
-          else
-            echo "✅ mariadb-connector-c already installed"
-          fi
-
-          # Link packages with --force and --overwrite (needed for keg-only formulas)
-          brew link --force --overwrite mariadb-connector-c 2>/dev/null || true
-
-          if ! brew list create-dmg &>/dev/null; then
-            echo "📦 Installing create-dmg..."
-            brew install create-dmg
-          else
-            echo "✅ create-dmg already installed"
-          fi
-
-          echo "✅ ARM64 dependencies installed"
+      # create-dmg is the only Homebrew formula either build job needs. The MySQL plugin
+      # links Libs/libmariadb.a, which download-libs.sh vendors and prepare-libs.sh selects
+      # per architecture, and its headers live in Plugins/MySQLDriverPlugin/CMariaDB/include.
+      # LIBRARY_SEARCH_PATHS names $(SRCROOT)/Libs and no Homebrew prefix, so nothing in the
+      # build ever read mariadb-connector-c. macos-tests.yml proves it: the app-tests job
+      # links all 31 plugin bundles with no Homebrew mariadb installed at all.
+      - name: Install create-dmg
+        run: brew list create-dmg &>/dev/null || brew install create-dmg
 
       - name: Prepare libraries
         run: scripts/ci/prepare-libs.sh arm64
@@ -138,7 +139,7 @@ jobs:
         run: scripts/ci/package-artifacts.sh arm64
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifacts-arm64
           path: |
@@ -152,7 +153,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
@@ -164,40 +165,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh --force
 
-      - name: Install Rosetta 2
-        run: softwareupdate --install-rosetta --agree-to-license || true
+      - name: Cache Swift package checkouts
+        uses: actions/cache@v6
+        with:
+          path: ~/.spm-cache
+          key: ${{ runner.os }}-spm-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: ${{ runner.os }}-spm-
 
-      - name: Install x86_64 Homebrew
-        run: |
-          if [ ! -f /usr/local/bin/brew ]; then
-            echo "Installing x86_64 Homebrew..."
-            arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          fi
-
-      - name: Install x86_64 dependencies
-        run: |
-          echo "Installing x86_64 dependencies..."
-
-          # Check and install only if needed
-          if ! arch -x86_64 /usr/local/bin/brew list mariadb-connector-c &>/dev/null; then
-            echo "📦 Installing mariadb-connector-c (x86_64)..."
-            arch -x86_64 /usr/local/bin/brew install mariadb-connector-c
-          else
-            echo "✅ mariadb-connector-c (x86_64) already installed"
-          fi
-
-          # Link packages with --force (needed for keg-only formulas)
-          arch -x86_64 /usr/local/bin/brew link --force --overwrite mariadb-connector-c 2>/dev/null || true
-
-          # create-dmg is architecture-independent, use native brew
-          if ! brew list create-dmg &>/dev/null; then
-            echo "📦 Installing create-dmg..."
-            brew install create-dmg
-          else
-            echo "✅ create-dmg already installed"
-          fi
-
-          echo "✅ x86_64 dependencies installed"
+      # No Rosetta and no x86_64 Homebrew here. This is a cross-compile on an arm64 runner:
+      # every tool that runs during the build is native, and the x86_64 slices of the static
+      # libraries are vendored in Libs. Bootstrapping a second Homebrew prefix cost five
+      # minutes a release to install a mariadb-connector-c the build never opened. create-dmg
+      # is a shell script, so the native prefix serves both jobs.
+      - name: Install create-dmg
+        run: brew list create-dmg &>/dev/null || brew install create-dmg
 
       - name: Prepare libraries
         run: scripts/ci/prepare-libs.sh x86_64
@@ -264,22 +245,24 @@ jobs:
         run: scripts/ci/package-artifacts.sh x86_64
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifacts-x86_64
           path: |
             build/Release/TablePro-*.dmg
             build/Release/TablePro-*.zip
 
+  # Reads two integers out of a Swift file and fetches a JSON manifest, so it wants nothing
+  # from macOS and does not need to spend a macOS runner minute (billed at ten times Linux).
   registry-readiness:
     name: Registry Readiness
-    runs-on: macos-26
+    runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     timeout-minutes: 5
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Verify registry has compatible plugin binaries
         run: |
@@ -300,7 +283,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -310,7 +293,7 @@ jobs:
           xcode-version: '26.4.1'
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts-raw/
           merge-multiple: true
@@ -352,42 +335,21 @@ jobs:
           echo "Final artifacts:"
           ls -lh artifacts/
 
+      # No `if: env.SPARKLE_PRIVATE_KEY != ''` on these steps. This job only runs for a v* tag,
+      # so the key is always meant to be present, and gating on it meant a missing or rotated
+      # secret published a release that no existing install could ever see. A signing key that
+      # is not there is now a red job, not a silent skip.
       - name: Sign update archives with Sparkle
-        if: env.SPARKLE_PRIVATE_KEY != ''
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: scripts/ci/sign-and-appcast.sh "${GITHUB_REF#refs/tags/v}"
 
       - name: Upload appcast artifact
-        if: env.SPARKLE_PRIVATE_KEY != ''
-        uses: actions/upload-artifact@v4
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        uses: actions/upload-artifact@v7
         with:
           name: appcast-${{ github.sha }}
           path: appcast/appcast.xml
           retention-days: 90
-
-      - name: Commit appcast.xml to repo
-        if: env.SPARKLE_PRIVATE_KEY != ''
-        continue-on-error: true
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          if [ ! -f appcast/appcast.xml ]; then
-            echo "⚠️  No appcast.xml to commit"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git checkout main
-          cp appcast/appcast.xml appcast.xml
-          git add appcast.xml
-          git diff --cached --quiet && echo "No changes to appcast.xml" && exit 0
-          git commit -m "Update appcast.xml for v${GITHUB_REF#refs/tags/v}"
-          git push origin main
 
       - name: Extract release notes from CHANGELOG.md
         run: scripts/ci/extract-release-notes.sh "${GITHUB_REF#refs/tags/v}"
@@ -403,6 +365,45 @@ jobs:
           prerelease: ${{ contains(github.ref, '-beta') || contains(github.ref, '-alpha') || contains(github.ref, '-rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publishing the feed comes after publishing the artifacts it points at, so there is no
+      # window where Sparkle advertises a download URL that still 404s.
+      #
+      # This step used to be continue-on-error, which made a failed push indistinguishable from
+      # a release that went out clean: every user's updater would keep reporting "up to date"
+      # for a version that shipped. A rejected push now rebases and retries, and a push that
+      # still will not land fails the job.
+      - name: Commit appcast.xml to repo
+        run: |
+          if [ ! -f appcast/appcast.xml ]; then
+            echo "❌ ERROR: appcast/appcast.xml is missing, the Sparkle step produced no feed" >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          cp appcast/appcast.xml appcast.xml
+          git add appcast.xml
+
+          if git diff --cached --quiet; then
+            echo "appcast.xml is already up to date"
+            exit 0
+          fi
+
+          git commit -m "Update appcast.xml for v${GITHUB_REF#refs/tags/v}"
+
+          for attempt in 1 2 3; do
+            if git push origin main; then
+              exit 0
+            fi
+            echo "Push rejected, rebasing onto origin/main (attempt ${attempt})"
+            git pull --rebase origin main
+          done
+
+          echo "❌ ERROR: could not push appcast.xml after 3 attempts" >&2
+          exit 1
 
       - name: Notify Telegram
         if: success() && env.TELEGRAM_BOT_TOKEN != ''

@@ -306,9 +306,16 @@ supported names. New plugins must be added to the workflow mapping.
 
 ### Plugin Release Steps
 
-1. **Verify tag is available** — `git tag -l "plugin-<name>-v<version>"`
-2. **Tag** — `git tag plugin-<name>-v<version>`
-3. **Push tag** — `git push origin plugin-<name>-v<version>`
+1. **Verify tag is available**: `git tag -l "plugin-<name>-v<version>"`
+2. **Tag**: `git tag plugin-<name>-v<version>`
+3. **Push tag**: `git push origin plugin-<name>-v<version>`
+
+**If an app release is already running, wait for it to finish before pushing
+plugin tags.** The account runs five macOS jobs at a time and every plugin
+build takes one of them. On v0.66.0, seven plugin tags pushed two minutes
+after the app tag left the release's own test suite queued for nine minutes
+and pushed one plugin build back by twenty. Check with
+`gh run list --workflow build.yml --limit 1` first.
 
 No version bumps or changelog edits needed — plugin bundles keep
 `MARKETING_VERSION = 1.0` and `CURRENT_PROJECT_VERSION = 1` in `project.yml`.
