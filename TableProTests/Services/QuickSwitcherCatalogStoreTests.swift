@@ -14,14 +14,18 @@ struct QuickSwitcherCatalogStoreTests {
         schemaGeneration: Int = 1,
         isRefreshing: Bool = false,
         databaseFilter: [String] = [],
-        contentRevision: Int = 0
+        contentRevision: Int = 0,
+        containerNames: [String] = ["database:app"],
+        sessionEpoch: Int = 0
     ) -> QuickSwitcherCatalogStore.Version {
         QuickSwitcherCatalogStore.Version(
             browseScope: DatabaseScope(connectionId: UUID(), database: "app", schema: "public"),
             schemaGeneration: schemaGeneration,
             isRefreshing: isRefreshing,
             databaseFilter: databaseFilter,
-            contentRevision: contentRevision
+            contentRevision: contentRevision,
+            containerNames: containerNames,
+            sessionEpoch: sessionEpoch
         )
     }
 
@@ -136,6 +140,85 @@ struct QuickSwitcherCatalogStoreTests {
         store.store([table("users")], for: id, version: key)
         store.removeConnection(id)
         #expect(store.catalog(for: id, version: key) == nil)
+    }
+
+    // MARK: - Container mutations
+
+    /// Dropping a database refreshes the metadata service and moves nothing else in the key, so
+    /// without the container names a dropped database stayed listed and committing it failed.
+    @Test("A dropped database misses")
+    func droppedDatabaseMisses() {
+        let store = QuickSwitcherCatalogStore()
+        let id = UUID()
+        store.store([table("users")], for: id, version: version(containerNames: ["database:app", "database:reporting_old"]))
+        #expect(store.catalog(for: id, version: version(containerNames: ["database:app"])) == nil)
+    }
+
+    @Test("A created database misses")
+    func createdDatabaseMisses() {
+        let store = QuickSwitcherCatalogStore()
+        let id = UUID()
+        store.store([table("users")], for: id, version: version(containerNames: ["database:app"]))
+        #expect(store.catalog(for: id, version: version(containerNames: ["database:app", "database:staging"])) == nil)
+    }
+
+    @Test("A dropped schema misses")
+    func droppedSchemaMisses() {
+        let store = QuickSwitcherCatalogStore()
+        let id = UUID()
+        store.store([table("users")], for: id, version: version(containerNames: ["database:app", "schema:public", "schema:analytics"]))
+        #expect(store.catalog(for: id, version: version(containerNames: ["database:app", "schema:public"])) == nil)
+    }
+
+    /// The names are namespaced so dropping a database and creating a schema of the same name is
+    /// not mistaken for no change at all.
+    @Test("A database and a schema of the same name are distinguishable")
+    func databaseAndSchemaNamesDoNotCollide() {
+        let store = QuickSwitcherCatalogStore()
+        let id = UUID()
+        store.store([table("users")], for: id, version: version(containerNames: ["database:reporting"]))
+        #expect(store.catalog(for: id, version: version(containerNames: ["schema:reporting"])) == nil)
+    }
+
+    // MARK: - Session epoch
+
+    /// A load still running when the session ends finishes and writes its catalog under the epoch
+    /// it started with. Disconnecting resets the schema generation and the content revision, so
+    /// without the epoch the reconnected session recomputes the same version and is served it.
+    @Test("A catalog stored after the session ended is never served to the next one")
+    func storeAfterRemoveIsNotServed() {
+        let store = QuickSwitcherCatalogStore()
+        let id = UUID()
+        let beforeDisconnect = version(sessionEpoch: store.sessionEpoch(for: id))
+
+        store.removeConnection(id)
+        store.store([table("stale")], for: id, version: beforeDisconnect)
+
+        let afterReconnect = version(sessionEpoch: store.sessionEpoch(for: id))
+        #expect(afterReconnect != beforeDisconnect)
+        #expect(store.catalog(for: id, version: afterReconnect) == nil)
+    }
+
+    @Test("The session epoch survives removal so it keeps advancing")
+    func sessionEpochSurvivesRemoval() {
+        let store = QuickSwitcherCatalogStore()
+        let id = UUID()
+        #expect(store.sessionEpoch(for: id) == 0)
+        store.removeConnection(id)
+        #expect(store.sessionEpoch(for: id) == 1)
+        store.removeConnection(id)
+        #expect(store.sessionEpoch(for: id) == 2)
+    }
+
+    @Test("One connection's disconnect does not invalidate another's catalog")
+    func epochIsPerConnection() {
+        let store = QuickSwitcherCatalogStore()
+        let kept = UUID()
+        let dropped = UUID()
+        let key = version()
+        store.store([table("users")], for: kept, version: key)
+        store.removeConnection(dropped)
+        #expect(store.catalog(for: kept, version: key)?.map(\.name) == ["users"])
     }
 
     // MARK: - Open state applied on read

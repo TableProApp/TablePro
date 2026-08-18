@@ -160,33 +160,20 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return binding
     }
 
+    /// A saved width is the width the column had, accessory or not. Nothing here re-derives it from
+    /// the accessory, because the accessory no longer contributes to column width: a layout saved
+    /// while the arrow was showing and restored before it is known has to come back the same size.
     func resolvedColumnLayout(
         binding: ColumnLayoutState,
-        liveWidths: [String: CGFloat],
-        tableRows: TableRows? = nil
+        liveWidths: [String: CGFloat]
     ) -> ColumnLayoutState? {
-        let stored = savedColumnLayout(binding: binding)
-        let saved = tableRows.map { materializedColumnLayout(stored, tableRows: $0) } ?? stored
+        let saved = savedColumnLayout(binding: binding)
         guard let saved else {
             guard !liveWidths.isEmpty else { return nil }
             return ColumnLayoutState(columnWidths: liveWidths)
         }
         guard !liveWidths.isEmpty else { return saved }
         return saved.mergingWidths(liveWidths)
-    }
-
-    func materializedColumnLayout(
-        _ layout: ColumnLayoutState?,
-        tableRows: TableRows
-    ) -> ColumnLayoutState? {
-        guard var layout else { return nil }
-        for (name, reservation) in accessoryReservationsByColumnName(in: tableRows) {
-            guard let contentWidth = layout.columnContentWidths?[name] ?? layout.columnWidths[name] else {
-                continue
-            }
-            layout.columnWidths[name] = contentWidth + reservation
-        }
-        return layout
     }
 
     static func liveWidthsForSameTable(
@@ -258,7 +245,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard let tableView else { return nil }
         let tableRows = tableRowsProvider()
         guard !tableRows.columns.isEmpty else { return nil }
-        let reservations = accessoryReservationsByColumnName(in: tableRows)
 
         var legacyWidths: [String: CGFloat] = [:]
         var contentWidths: [String: CGFloat] = [:]
@@ -270,9 +256,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             let name = tableRows.columns[colIndex]
             order.append(name)
             if userSizedColumnNames.contains(name) {
-                let contentWidth = column.width - (reservations[name] ?? 0)
                 legacyWidths[name] = max(legacyWidths[name] ?? 0, column.width)
-                contentWidths[name] = max(contentWidths[name] ?? 0, contentWidth)
+                contentWidths[name] = max(contentWidths[name] ?? 0, column.width)
             }
         }
 
@@ -332,7 +317,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var userSizedColumnNames: Set<String> = []
     var isApplyingProgrammaticRowSelection = false
     var isRebuildingColumns: Bool = false
-    var isApplyingAutomaticColumnWidths = false
     var hasUnpersistedColumnLayoutChanges = false
     var shouldRecalculateAutomaticColumnWidths = false
     var pendingCellPresentationRefresh = false
@@ -1051,15 +1035,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         columnPresentations = next
         return changes
-    }
-
-    private func accessoryReservationsByColumnName(in tableRows: TableRows) -> [String: CGFloat] {
-        var reservations: [String: CGFloat] = [:]
-        for (index, name) in tableRows.columns.enumerated() {
-            let reservation = columnPresentation(for: index, in: tableRows).accessory.columnWidthReservation
-            reservations[name] = max(reservations[name] ?? 0, reservation)
-        }
-        return reservations
     }
 
     private func rebuildKindSets(from tableRows: TableRows) {

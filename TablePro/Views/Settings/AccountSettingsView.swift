@@ -29,7 +29,7 @@ struct AccountSettingsView: View {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                Text(String(localized: "Sync paused — Pro license expired"))
+                Text(String(localized: "Sync paused, Pro license expired"))
                     .font(.callout)
                 Spacer()
                 Link(String(localized: "Renew License..."), destination: LicenseConstants.pricingURL)

@@ -111,16 +111,12 @@ struct DataGridView: NSViewRepresentable {
             columns: initialRows.columns,
             tableIdentityChanged: true
         )
-        let initialLayout = coordinator.materializedColumnLayout(
-            storedInitialLayout,
-            tableRows: initialRows
-        )
         reconcileColumnPool(
             tableView: tableView,
             coordinator: coordinator,
             tableRows: initialRows,
             columnComments: Self.effectiveColumnComments(for: initialRows),
-            savedLayout: initialLayout
+            savedLayout: storedInitialLayout
         )
         coordinator.isRebuildingColumns = false
         coordinator.updateColumnPresentations(from: initialRows)
@@ -292,8 +288,7 @@ struct DataGridView: NSViewRepresentable {
             let reconciliationWidths = coordinator.liveWidthsForReconciliation(sameTableLiveWidths)
             let savedLayout = coordinator.resolvedColumnLayout(
                 binding: columnLayout,
-                liveWidths: reconciliationWidths,
-                tableRows: latestRows
+                liveWidths: reconciliationWidths
             )
             reconcileColumnPool(
                 tableView: tableView,

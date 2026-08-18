@@ -178,7 +178,11 @@ internal final class QuickSwitcherViewModel {
         let loadId = UUID()
         activeLoadId = loadId
 
-        let catalogVersion = self.catalogVersion()
+        /// Read once and used both to key the catalog and to build it. Reading it again after the
+        /// awaits below let the two disagree: the items were filtered by whatever the sidebar held
+        /// when the fetches finished, and stored under whatever it held when they started.
+        let databaseFilter = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
+        let catalogVersion = self.catalogVersion(databaseFilter: databaseFilter)
         if let cached = catalogStore.catalog(for: connectionId, version: catalogVersion) {
             allItems = Self.applyingOpenState(to: cached, openTables: openTables, browsing: browseSchema)
             return
@@ -209,7 +213,6 @@ internal final class QuickSwitcherViewModel {
         }
 
         let switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType)
-        let databaseFilter = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
         let activeDatabase = services.databaseManager.session(for: connectionId)
             .map { services.databaseManager.browseDatabaseName(for: $0.connection) }
         let visibleDatabaseNames = switchTarget == .database
@@ -303,14 +306,29 @@ internal final class QuickSwitcherViewModel {
     /// The catalog is a function of these, so a presentation that finds them unchanged can serve
     /// the previous one instead of re-running its fetches. Favorites and query history move without
     /// any of the rest moving, which is what `contentRevision` covers.
-    private func catalogVersion() -> QuickSwitcherCatalogStore.Version {
+    private func catalogVersion(databaseFilter: Set<String>) -> QuickSwitcherCatalogStore.Version {
         QuickSwitcherCatalogStore.Version(
             browseScope: services.databaseManager.browseScope(for: connectionId),
             schemaGeneration: services.schemaService.generationToken(for: connectionId),
             isRefreshing: services.schemaService.isRefreshing(connectionId: connectionId),
-            databaseFilter: SharedSidebarState.forConnection(connectionId).databaseFilterSelected.sorted(),
-            contentRevision: catalogStore.contentRevision(for: connectionId)
+            databaseFilter: databaseFilter.sorted(),
+            contentRevision: catalogStore.contentRevision(for: connectionId),
+            containerNames: knownContainerNames(),
+            sessionEpoch: catalogStore.sessionEpoch(for: connectionId)
         )
+    }
+
+    /// Every database the connection knows about, and the schemas of the one being browsed. Dropping
+    /// or creating either refreshes `DatabaseTreeMetadataService`, which is what makes this move.
+    private func knownContainerNames() -> [String] {
+        let metadata = DatabaseTreeMetadataService.shared
+        var names = metadata.databases(for: connectionId).map { "database:\($0.name)" }.sorted()
+        guard let database = services.databaseManager.browseScope(for: connectionId)?.database else {
+            return names
+        }
+        let schemas = metadata.schemas(connectionId: connectionId, database: database)
+        names.append(contentsOf: schemas.map { "schema:\($0)" }.sorted())
+        return names
     }
 
     /// Which tables have a tab is not part of the catalog's version, so it is applied on the way

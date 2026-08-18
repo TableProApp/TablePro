@@ -260,8 +260,11 @@ struct TableViewCoordinatorLayoutTests {
         #expect(captured.columnOrder == ["id", "name"])
     }
 
-    @Test("Stored layouts keep legacy total widths and materialize content widths")
-    func storedWidthsRepresentContentWidth() throws {
+    /// The width a column had is the width it gets back. Deriving it from the accessory instead
+    /// would resize the column across sessions in exactly the cases the accessory arrives late,
+    /// which is the whole problem this area exists to avoid.
+    @Test("A captured width round-trips unchanged while an accessory is showing")
+    func capturedWidthRoundTripsWithAccessory() throws {
         let coordinator = makeCoordinator(
             tabType: .table,
             connectionId: UUID(),
@@ -283,16 +286,64 @@ struct TableViewCoordinatorLayoutTests {
         )
 
         let captured = try #require(coordinator.captureColumnLayout())
-        let materialized = try #require(coordinator.materializedColumnLayout(stored, tableRows: rows))
+        let resolved = try #require(coordinator.resolvedColumnLayout(binding: captured, liveWidths: [:]))
 
+        #expect(coordinator.columnPresentation(for: 0, in: rows).accessory == .chevron)
         #expect(columns["created_at"]?.width == 176)
         #expect(captured.columnWidths == ["created_at": 176])
-        #expect(captured.columnContentWidths == ["created_at": 160])
-        #expect(materialized.columnWidths == ["created_at": 176])
+        #expect(captured.columnContentWidths == ["created_at": 176])
+        #expect(resolved.columnWidths == ["created_at": 176])
     }
 
-    @Test("Content widths fall back per column for partial and content-only layouts")
-    func contentWidthsUsePerColumnFallback() throws {
+    /// The drift this guards against: a width saved while the arrow was showing, restored on an
+    /// open where the arrow is not known yet. Re-deriving the width from the current accessory
+    /// state returned it 20pt narrower and the next save recorded the smaller number, so a column
+    /// shrank on every visit until the metadata happened to be ready in time.
+    @Test("A width saved with an accessory restores unchanged before the accessory is known")
+    func capturedWidthRoundTripsWithoutAccessory() throws {
+        let coordinator = makeCoordinator(
+            tabType: .table,
+            connectionId: UUID(),
+            tableName: "nodes",
+            persister: FakeColumnLayoutPersister()
+        )
+        var withForeignKey = TableRows.from(
+            queryRows: [[.text("1")]],
+            columns: ["parent_id"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        _ = withForeignKey.updateDisplayMetadata(columnForeignKeys: [
+            "parent_id": TestFixtures.makeForeignKeyInfo(column: "parent_id"),
+        ])
+        let columns = attachColumns(["parent_id": 200], tableRows: withForeignKey, to: coordinator)
+        var stored = ColumnLayoutState()
+        stored.columnWidths = ["parent_id": 200]
+        coordinator.synchronizeUserSizedColumns(
+            with: stored,
+            columns: withForeignKey.columns,
+            tableIdentityChanged: true
+        )
+
+        let captured = try #require(coordinator.captureColumnLayout())
+
+        let plain = TableRows.from(
+            queryRows: [[.text("1")]],
+            columns: ["parent_id"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        coordinator.tableRowsProvider = { plain }
+        coordinator.rebuildColumnMetadataCache(from: plain)
+        _ = coordinator.updateColumnPresentations(from: plain)
+        let restored = try #require(coordinator.resolvedColumnLayout(binding: captured, liveWidths: [:]))
+
+        #expect(columns["parent_id"]?.width == 200)
+        #expect(captured.columnWidths == ["parent_id": 200])
+        #expect(coordinator.columnPresentation(for: 0, in: plain).accessory == .none)
+        #expect(restored.columnWidths == ["parent_id": 200])
+    }
+
+    @Test("A content-only layout still counts as a saved layout")
+    func contentOnlyLayoutCountsAsSaved() throws {
         let coordinator = makeCoordinator(
             tabType: .query,
             connectionId: nil,
@@ -313,17 +364,15 @@ struct TableViewCoordinatorLayoutTests {
         stored.columnWidths = ["a": 160, "b": 170]
         stored.columnContentWidths = ["a": 150, "c": 180]
 
-        let materialized = try #require(coordinator.materializedColumnLayout(stored, tableRows: rows))
-
-        #expect(materialized.columnWidths == ["a": 166, "b": 186, "c": 196])
+        #expect(coordinator.savedColumnLayout(binding: stored)?.columnWidths == ["a": 160, "b": 170])
 
         var contentOnly = ColumnLayoutState()
         contentOnly.columnContentWidths = ["c": 180]
         #expect(coordinator.savedColumnLayout(binding: contentOnly) != nil)
     }
 
-    @Test("Duplicate column names reserve accessory width once and round-trip without growth")
-    func duplicateNamesReserveAccessoryWidthOnce() throws {
+    @Test("Duplicate column names round-trip at their own width without growth")
+    func duplicateNamesRoundTripWithoutGrowth() throws {
         let coordinator = makeCoordinator(
             tabType: .query,
             connectionId: nil,
@@ -344,18 +393,17 @@ struct TableViewCoordinatorLayoutTests {
             tableIdentityChanged: true
         )
 
-        let materialized = try #require(coordinator.materializedColumnLayout(stored, tableRows: rows))
         let captured = try #require(coordinator.captureColumnLayout())
-        let restored = try #require(coordinator.materializedColumnLayout(captured, tableRows: rows))
+        let restored = try #require(coordinator.resolvedColumnLayout(binding: captured, liveWidths: [:]))
 
-        #expect(materialized.columnWidths == ["result": 176])
+        #expect(coordinator.savedColumnLayout(binding: stored)?.columnWidths == ["result": 160])
         #expect(captured.columnWidths == ["result": 176])
-        #expect(captured.columnContentWidths == ["result": 160])
+        #expect(captured.columnContentWidths == ["result": 176])
         #expect(restored.columnWidths == ["result": 176])
     }
 
-    @Test("Mixed duplicate actions use one maximum reservation and round-trip")
-    func mixedDuplicateActionsReserveWidthOnce() throws {
+    @Test("Duplicate slots with different accessories still round-trip at one width")
+    func mixedDuplicateAccessoriesRoundTrip() throws {
         let coordinator = makeCoordinator(
             tabType: .query,
             connectionId: nil,
@@ -380,15 +428,13 @@ struct TableViewCoordinatorLayoutTests {
             tableIdentityChanged: true
         )
 
-        let materialized = try #require(coordinator.materializedColumnLayout(stored, tableRows: rows))
         let captured = try #require(coordinator.captureColumnLayout())
-        let restored = try #require(coordinator.materializedColumnLayout(captured, tableRows: rows))
+        let restored = try #require(coordinator.resolvedColumnLayout(binding: captured, liveWidths: [:]))
 
         #expect(coordinator.columnPresentation(for: 0, in: rows).accessory == .chevron)
         #expect(coordinator.columnPresentation(for: 1, in: rows).accessory == .foreignKey)
-        #expect(materialized.columnWidths == ["parent_id": 180])
         #expect(captured.columnWidths == ["parent_id": 180])
-        #expect(captured.columnContentWidths == ["parent_id": 160])
+        #expect(captured.columnContentWidths == ["parent_id": 180])
         #expect(restored.columnWidths == ["parent_id": 180])
     }
 
@@ -440,11 +486,11 @@ struct TableViewCoordinatorLayoutTests {
             userInfo: ["NSTableColumn": column, "NSOldWidth": CGFloat(100)]
         )
 
-        coordinator.isApplyingAutomaticColumnWidths = true
+        coordinator.isRebuildingColumns = true
         coordinator.tableViewColumnDidResize(notification)
         #expect(coordinator.userSizedColumnNames.isEmpty)
 
-        coordinator.isApplyingAutomaticColumnWidths = false
+        coordinator.isRebuildingColumns = false
         coordinator.tableViewColumnDidResize(notification)
         #expect(coordinator.userSizedColumnNames == ["name"])
     }
@@ -590,7 +636,7 @@ struct TableViewCoordinatorLayoutTests {
         coordinator.flushPendingColumnLayoutPersistence()
 
         #expect(persister.stored["events"]?.columnWidths == ["created_at": 176])
-        #expect(persister.stored["events"]?.columnContentWidths == ["created_at": 160])
+        #expect(persister.stored["events"]?.columnContentWidths == ["created_at": 176])
     }
 
     @Test("A query-grid presentation change leaves the pending layout snapshot alone")
