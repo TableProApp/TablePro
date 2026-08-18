@@ -93,6 +93,24 @@ scripts/install-plugin-dev.sh MyDriverPlugin
 
 The script copies the bundle from DerivedData, so build from Xcode, not from a CLI `xcodebuild` (that writes to `build/Debug` instead). Do not patch the copied `Info.plist`: any edit invalidates the signature and dyld refuses to load the executable. See [Testing a Custom Plugin](/development/testing-plugins) for the **Copy Plug-Ins** build phase and the unsigned-plugin escape hatch.
 
+## Building outside this repository
+
+A plugin has to link TableProPluginKit. Until recently the only way to get it was to check out this repository and build the whole app project, which is why every driver lives under `Plugins/` here. That was a packaging limit, not a rule of the plugin system.
+
+`scripts/build-pluginkit-xcframework.sh` produces a distributable `TableProPluginKit.xcframework` covering arm64 and x86_64. Run it here, or download a published one from the `pluginkit-v<version>` release, and link it from your own Xcode project. Your plugin target then needs nothing from this repository.
+
+```bash
+scripts/build-pluginkit-xcframework.sh
+# build/pluginkit/TableProPluginKit.xcframework
+```
+
+Two things the script enforces, because getting either wrong produces a framework that links today and breaks every consumer later:
+
+- It builds with `BUILD_LIBRARY_FOR_DISTRIBUTION=YES`, so the framework is ABI-resilient and a plugin built against an older PluginKit keeps loading under a newer app.
+- It fails if the result carries no `.swiftinterface`, which is what a build without Library Evolution looks like.
+
+Link the XCFramework as **Do Not Embed**. The app supplies TableProPluginKit at runtime; a copy inside your bundle would be a second, conflicting one.
+
 ## Distribute
 
 Publishing to TablePro's registry takes two steps in this repo:
