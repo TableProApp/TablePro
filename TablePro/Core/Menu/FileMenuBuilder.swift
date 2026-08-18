@@ -34,6 +34,12 @@ enum FileMenuBuilder {
                 shortcut: .openFile,
                 keyboard: keyboard
             ),
+            MenuItemFactory.item(
+                String(localized: "Open Quickly..."),
+                action: #selector(MainSplitViewController.openQuickSwitcher(_:)),
+                shortcut: .quickSwitcher,
+                keyboard: keyboard
+            ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Save"),

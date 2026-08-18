@@ -23,6 +23,10 @@ final class AppEvents {
 
     let dataGridSettingsChanged = PassthroughSubject<Void, Never>()
 
+    /// The menu bar re-syncs itself through `MainMenuBuilder`, but a window's toolbar advertises
+    /// the same shortcuts in its tooltips and overflow menu and AppKit never revisits either.
+    let keyboardSettingsChanged = PassthroughSubject<Void, Never>()
+
     let currentSchemaChanged = PassthroughSubject<UUID, Never>()
 
     let aiSettingsChanged = PassthroughSubject<Void, Never>()

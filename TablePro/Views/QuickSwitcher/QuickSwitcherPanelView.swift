@@ -437,28 +437,22 @@ struct QuickSwitcherPanelContent: View {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard event.window is QuickSwitcherPanel else { return event }
-            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            let characters = event.charactersIgnoringModifiers ?? ""
+            let command = QuickSwitcherKeyCommand.resolve(
+                characters: event.charactersIgnoringModifiers ?? "",
+                modifiers: event.modifierFlags.intersection(.deviceIndependentFlagsMask),
+                scopeCount: QuickSwitcherScope.allCases.count
+            )
+            guard let command else { return event }
 
-            if modifiers == .command,
-               let digit = Int(characters),
-               digit >= 1, digit <= QuickSwitcherScope.allCases.count {
-                viewModel.scope = QuickSwitcherScope.allCases[digit - 1]
-                return nil
+            switch command {
+            case let .moveSelection(offset):
+                viewModel.moveSelection(by: offset)
+            case let .selectScope(index):
+                viewModel.scope = QuickSwitcherScope.allCases[index]
+            case let .commit(intent):
+                commitSelection(intent: intent)
             }
-            if modifiers == .control {
-                switch characters {
-                case "j", "n":
-                    viewModel.moveSelection(by: 1)
-                    return nil
-                case "k", "p":
-                    viewModel.moveSelection(by: -1)
-                    return nil
-                default:
-                    break
-                }
-            }
-            return event
+            return nil
         }
     }
 
@@ -487,9 +481,10 @@ struct QuickSwitcherPanelContent: View {
     }
 
     private func openSelectedItem() {
-        let intent: QuickSwitcherCommitIntent = NSEvent.modifierFlags.contains(.option)
-            ? .openInNewWindowTab
-            : .open
+        commitSelection(intent: QuickSwitcherKeyCommand.commitIntent(for: NSEvent.modifierFlags))
+    }
+
+    private func commitSelection(intent: QuickSwitcherCommitIntent) {
         Task { @MainActor in
             await viewModel.flushPendingFilter()
             guard let item = viewModel.selectedItem() else { return }

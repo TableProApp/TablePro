@@ -25,6 +25,13 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     internal let managedToolbar: NSToolbar
     private var pendingChangeObservationGeneration = 0
+    private var cancellables: Set<AnyCancellable> = []
+
+    /// Which shortcut each item advertises, and the wording it advertises it with. The item cannot
+    /// be asked: `NSToolbarItem` has no shortcut of its own, and its `menuFormRepresentation` keeps
+    /// only the resolved key, not the action that produced it. Recorded by the factory that already
+    /// receives both, so this is not a second list anyone has to keep in step by hand.
+    private var shortcutBindings: [NSToolbarItem.Identifier: ToolbarShortcutBinding] = [:]
 
     /// How a hosted item answers "how wide are you". `.intrinsicContentSize` only overrides the
     /// hosting view's `intrinsicContentSize`, and AppKit measures a view-backed item when it is
@@ -51,6 +58,50 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         self.managedToolbar.allowsUserCustomization = true
         self.managedToolbar.autosavesConfiguration = true
         self.managedToolbar.centeredItemIdentifiers = [Self.principal]
+        /// The hop off `AppSettingsManager.keyboard`'s own `didSet` matters: without it the toolbar
+        /// items are mutated re-entrantly, part way through the settings write that triggered them.
+        AppEvents.shared.keyboardSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.refreshShortcutHints() }
+            .store(in: &cancellables)
+    }
+
+    /// A toolbar item's tooltip and its overflow-menu key equivalent are written once, when the
+    /// delegate vends the item, and AppKit never revisits either. A rebind in Settings therefore
+    /// reaches the menu bar and stops there, leaving the toolbar advertising a key that no longer
+    /// runs the command.
+    private func refreshShortcutHints() {
+        for item in allItems() {
+            applyShortcutBinding(to: item)
+        }
+    }
+
+    /// Records what an item advertises and pushes it onto the item for the first time.
+    internal func bindShortcut(_ shortcut: ShortcutAction?, description: String, to item: NSToolbarItem) {
+        guard let shortcut else {
+            item.toolTip = description
+            return
+        }
+        shortcutBindings[item.itemIdentifier] = ToolbarShortcutBinding(
+            shortcut: shortcut,
+            description: description
+        )
+        applyShortcutBinding(to: item)
+    }
+
+    /// Re-words an item whose description follows the connection, keeping its shortcut hint. Setting
+    /// `toolTip` directly at those call sites is what dropped the hint on every connection switch.
+    internal func updateShortcutDescription(_ description: String, for id: NSToolbarItem.Identifier) {
+        shortcutBindings[id]?.description = description
+    }
+
+    internal func applyShortcutBinding(to item: NSToolbarItem) {
+        guard let binding = shortcutBindings[item.itemIdentifier] else { return }
+        let keyboard = AppSettingsManager.shared.keyboard
+        item.toolTip = keyboard.shortcutHint(binding.description, for: binding.shortcut)
+        /// An item that opens a submenu has no key equivalent to carry; its menu form is the menu.
+        guard let menuItem = item.menuFormRepresentation, menuItem.submenu == nil else { return }
+        MenuItemFactory.apply(shortcut: binding.shortcut, keyboard: keyboard, to: menuItem)
     }
 
     /// `@Observable` generates no equality check, so assigning the same coordinator still fires
@@ -99,9 +150,14 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             switch item.itemIdentifier {
             case Self.database:
                 apply(label: containerEntityName, to: item)
-                item.toolTip = String(format: String(localized: "Open %@"), containerEntityName)
+                updateShortcutDescription(
+                    String(format: String(localized: "Open %@"), containerEntityName),
+                    for: Self.database
+                )
+                applyShortcutBinding(to: item)
             case Self.previewSQL:
-                item.toolTip = previewDescription
+                updateShortcutDescription(previewDescription, for: Self.previewSQL)
+                applyShortcutBinding(to: item)
             case Self.importTables:
                 (item as? NSMenuToolbarItem)?.menu = buildImportSubmenu()
                 item.menuFormRepresentation?.submenu = buildImportSubmenu()

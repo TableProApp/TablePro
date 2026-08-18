@@ -20,7 +20,7 @@ internal enum QuickSwitcherItemKind: String, Hashable, Sendable {
 }
 
 /// How a quick switcher selection should be opened
-internal enum QuickSwitcherCommitIntent: Sendable {
+internal enum QuickSwitcherCommitIntent: Equatable, Sendable {
     case open
     case openInNewWindowTab
     case openStructure

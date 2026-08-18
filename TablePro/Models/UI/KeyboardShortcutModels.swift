@@ -207,7 +207,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .findPrevious: return String(localized: "Find Previous")
         case .export: return String(localized: "Export")
         case .importData: return String(localized: "Import")
-        case .quickSwitcher: return String(localized: "Quick Switcher")
+        case .quickSwitcher: return String(localized: "Open Quickly")
         case .previousPage: return String(localized: "Previous Page")
         case .nextPage: return String(localized: "Next Page")
         case .firstPage: return String(localized: "First Page")

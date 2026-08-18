@@ -24,8 +24,6 @@ extension MainWindowToolbar {
             label: String(localized: "Connection"),
             symbol: "network",
             action: #selector(performOpenConnectionSwitcher(_:)),
-            keyEquivalent: "c",
-            modifiers: [.command, .option],
             shortcut: .switchConnection,
             description: String(localized: "Switch Connection")
         )
@@ -46,8 +44,6 @@ extension MainWindowToolbar {
             label: containerName,
             symbol: "cylinder",
             action: #selector(performOpenDatabaseSwitcher(_:)),
-            keyEquivalent: "k",
-            modifiers: .command,
             shortcut: .openDatabase,
             description: String(format: String(localized: "Open %@"), containerName)
         )
@@ -59,8 +55,6 @@ extension MainWindowToolbar {
             label: String(localized: "Refresh"),
             symbol: "arrow.clockwise",
             action: #selector(performRefresh(_:)),
-            keyEquivalent: "r",
-            modifiers: .command,
             shortcut: .refresh
         )
     }
@@ -71,8 +65,6 @@ extension MainWindowToolbar {
             label: String(localized: "Save Changes"),
             symbol: "checkmark.circle.fill",
             action: #selector(performSaveChanges(_:)),
-            keyEquivalent: "s",
-            modifiers: .command,
             shortcut: .saveChanges
         )
     }
@@ -83,8 +75,6 @@ extension MainWindowToolbar {
             label: String(localized: "Export"),
             symbol: "square.and.arrow.up",
             action: #selector(performExport(_:)),
-            keyEquivalent: "e",
-            modifiers: [.command, .shift],
             shortcut: .export,
             description: String(localized: "Export Data")
         )
@@ -102,7 +92,6 @@ extension MainWindowToolbar {
         let item = NSMenuToolbarItem(itemIdentifier: Self.importTables)
         item.label = label
         item.paletteLabel = label
-        item.toolTip = toolTip(String(localized: "Import Data"), shortcut: .importData)
         item.isBordered = true
         item.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: label)
         item.menu = buildImportSubmenu()
@@ -112,6 +101,7 @@ extension MainWindowToolbar {
         menuItem.submenu = buildImportSubmenu()
         item.menuFormRepresentation = menuItem
 
+        bindShortcut(.importData, description: String(localized: "Import Data"), to: item)
         return item
     }
 
@@ -178,8 +168,6 @@ extension MainWindowToolbar {
         label: String,
         symbol: String,
         action: Selector,
-        keyEquivalent: String,
-        modifiers: NSEvent.ModifierFlags,
         shortcut: ShortcutAction? = nil,
         description: String? = nil,
         symbolProvider: (@MainActor () -> String)? = nil
@@ -193,20 +181,14 @@ extension MainWindowToolbar {
         item.isBordered = true
         item.symbolAccessibilityDescription = label
         item.symbolProvider = symbolProvider ?? { symbol }
-        item.toolTip = toolTip(description ?? label, shortcut: shortcut)
 
-        let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: keyEquivalent)
-        menuItem.keyEquivalentModifierMask = modifiers
+        let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: "")
         menuItem.target = self
         menuItem.image = item.image
         item.menuFormRepresentation = menuItem
 
+        bindShortcut(shortcut, description: description ?? label, to: item)
         return item
-    }
-
-    func toolTip(_ label: String, shortcut: ShortcutAction?) -> String {
-        guard let shortcut else { return label }
-        return AppSettingsManager.shared.keyboard.shortcutHint(label, for: shortcut)
     }
 
     /// A group with real subitems and no `view` is drawn by AppKit itself, so it answers display

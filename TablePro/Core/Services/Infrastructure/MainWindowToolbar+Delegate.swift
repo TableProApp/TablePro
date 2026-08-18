@@ -50,11 +50,9 @@ extension MainWindowToolbar {
         case Self.quickSwitcher:
             return menuOnlyItem(
                 id: itemIdentifier,
-                label: String(localized: "Quick Switcher"),
+                label: String(localized: "Open Quickly"),
                 symbol: "magnifyingglass",
                 action: #selector(performOpenQuickSwitcher(_:)),
-                keyEquivalent: "o",
-                modifiers: [.command, .shift],
                 shortcut: .quickSwitcher
             )
         case Self.newTab:
@@ -63,8 +61,6 @@ extension MainWindowToolbar {
                 label: String(localized: "New Tab"),
                 symbol: "plus.rectangle",
                 action: #selector(performNewTab(_:)),
-                keyEquivalent: "t",
-                modifiers: .command,
                 shortcut: .newTab,
                 description: String(localized: "New Query Tab")
             )
@@ -74,8 +70,6 @@ extension MainWindowToolbar {
                 label: String(localized: "Preview"),
                 symbol: "eye",
                 action: #selector(performPreviewSQL(_:)),
-                keyEquivalent: "p",
-                modifiers: [.command, .shift],
                 shortcut: .previewSQL,
                 description: previewDescription
             )
@@ -85,8 +79,6 @@ extension MainWindowToolbar {
                 label: String(localized: "Results"),
                 symbol: "rectangle.bottomhalf.inset.filled",
                 action: #selector(performToggleResults(_:)),
-                keyEquivalent: "r",
-                modifiers: [.command, .option],
                 shortcut: .toggleResults,
                 description: String(localized: "Toggle Results"),
                 symbolProvider: { [weak self] in
@@ -106,8 +98,6 @@ extension MainWindowToolbar {
                 label: String(localized: "Dashboard"),
                 symbol: "gauge.with.dots.needle.33percent",
                 action: #selector(performShowDashboard(_:)),
-                keyEquivalent: "",
-                modifiers: [],
                 description: String(localized: "Server Dashboard")
             )
         case Self.history:
@@ -116,8 +106,6 @@ extension MainWindowToolbar {
                 label: String(localized: "History"),
                 symbol: "clock",
                 action: #selector(performToggleHistory(_:)),
-                keyEquivalent: "y",
-                modifiers: .command,
                 shortcut: .toggleHistory,
                 description: String(localized: "Toggle Query History")
             )
