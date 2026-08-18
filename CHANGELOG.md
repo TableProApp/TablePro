@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - When a connection fails because a sign-in expired, TablePro now offers to sign in again and reconnects for you, instead of leaving you on an error screen whose only button repeats the same failure. This covers Microsoft Entra ID and AWS SSO, on the connection itself as well as in the connection form's Test button.
+- The editor tab bar moved into the window chrome below the toolbar, where macOS puts its own, and it lines up with the content pane instead of spanning the whole window. Its tabs sit in a filled track rather than floating on the window background, and the selected tab is drawn raised out of that track instead of ringed by a shadow. The bar still appears only once a connection has a second tab.
 
 ### Fixed
 
@@ -34,7 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A `UNION`, `EXCEPT` or `INTERSECT` result could be edited as though it were a single table, and the edit was written to one of the branches rather than to the rows on screen. Those results are read-only now. So are results from a join, a subquery, a CTE, a temporal `FOR SYSTEM_TIME` read, and `FROM ONLY`.
 - Writing the schema in front of the table, as in `select * from public.users u`, made the results read-only. They are editable now when the schema is the one the connection is already browsing. Naming a different schema stays read-only, because the saved edit would go to the browsed schema instead of the one you queried.
 - The connection window drew a rule under its toolbar that began at the sidebar divider and ran to the right edge, dividing two areas that are the same colour. It is gone.
-- The editor tab bar filled a capsule behind the tabs. In dark mode that fill read as a lighter panel than anything else in the window, so the tabs now sit directly on the window background.
 - Data-grid columns now reserve space for trailing editor and foreign-key actions instead of truncating otherwise fitting values.
 - Empty Structure tabs and structured-value errors keep their toolbar at the top and center the message in the remaining content area.
 - Adding or removing a favorite table updates its sidebar star immediately instead of waiting for the sidebar to reopen.

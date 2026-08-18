@@ -323,7 +323,7 @@ struct MainContentView: View {
     }
 
     private var bodyContentCore: some View {
-        editorTabStripAndContent
+        mainContentView
             .task {
                 let start = Date()
                 Self.lifecycleLogger.info(
@@ -387,28 +387,6 @@ struct MainContentView: View {
     }
 
     // MARK: - Main Content
-
-    /// These tabs belong to one connection's editor pane, not to the window, so they sit above the
-    /// pane the way Xcode places its editor tabs. The titlebar is where a window's own document
-    /// tabs go, and putting a pane-level strip there moves the window's base line below it and
-    /// paints the strip on titlebar material instead of the content background.
-    ///
-    /// The strip is hidden while a connection holds a single tab, so a window that behaves the
-    /// way it always did gains no chrome. It appears the moment a second tab exists.
-    private var editorTabStripAndContent: some View {
-        VStack(spacing: 0) {
-            if tabManager.tabs.count > 1 {
-                EditorTabStrip(
-                    tabManager: tabManager,
-                    onClose: { coordinator.commandActions?.closeTab(id: $0) },
-                    onCloseOthers: { coordinator.commandActions?.closeOtherTabs(anchoredOn: $0) },
-                    onCloseAll: { coordinator.commandActions?.closeAllTabs() },
-                    onNewTab: { coordinator.commandActions?.newTab() }
-                )
-            }
-            mainContentView
-        }
-    }
 
     @ViewBuilder
     private var mainContentView: some View {

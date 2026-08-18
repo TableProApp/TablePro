@@ -89,6 +89,15 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private var detailPaneHost: WorkspacePaneHost!
     private var inspectorPaneHost: WorkspacePaneHost!
 
+    /// The editor tab strip's band. It is a titlebar accessory rather than a split item, so it is
+    /// owned here but installed on the window, and it follows the selected workspace the same way
+    /// the two hosts above do.
+    let tabStripAccessory = EditorTabStripAccessoryController()
+
+    /// Re-armed each time it fires, and stale arms are dropped by comparing this against the
+    /// generation captured when they registered.
+    var tabStripObservationGeneration = 0
+
     private var chromeState: ChromeState = .unapplied
 
     // MARK: - Panel Layout State
@@ -598,6 +607,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         workspace.panes.sidebar.rootView = AnyView(buildSidebarView(for: workspace))
         workspace.panes.detail.rootView = AnyView(buildDetailView(for: workspace))
         workspace.panes.inspector.rootView = AnyView(buildInspectorView(for: workspace))
+        refreshTabStripPane(of: workspace)
         guard isShowing(workspace) else { return }
         bindSidebarChrome(to: workspace)
     }
@@ -614,6 +624,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         navigationSidebar.objectBrowser.show(selected?.panes.sidebar)
         detailPaneHost.show(selected?.panes.detail)
         inspectorPaneHost.show(selected?.panes.inspector)
+        showSelectedTabStrip()
         if let selected { bindSidebarChrome(to: selected) }
     }
 
@@ -1073,6 +1084,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         } else {
             revealWindowChrome()
         }
+        applyTabStripVisibility()
         toolbarOwner?.managedToolbar.validateVisibleItems()
         recomputeWindowMinSize()
     }
