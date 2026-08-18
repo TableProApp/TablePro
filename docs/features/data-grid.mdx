@@ -146,6 +146,23 @@ Right-click a row and choose **Copy as** for more formats:
 
 Copies follow the grid as shown: hidden columns are left out and columns keep their current order. When you select specific cells, **Copy as** (JSON, CSV, Markdown, INSERT, and UPDATE) includes only the columns you selected; select whole rows to include every column. The UPDATE format still keys its WHERE clause on the primary key, even when the primary key cell is not part of the selection. Right-click a header and choose **Copy Column Values** to copy a whole column, one value per line.
 
+## Find in Results
+
+`Cmd+F` on a table tab opens a find bar above the grid. Type a term and the matching cell is highlighted and scrolled into view. `Return` and `Cmd+G` step forward, `Cmd+Shift+G` steps back, and `Escape` clears the term, then closes the bar.
+
+Matching is case and accent insensitive, and it runs over the text you see, so a value reads the same in the find bar as it does in the cell. Binary and spatial columns are skipped, since they render as hex rather than as text.
+
+**The find bar searches the rows already loaded, not the whole table.** Results are paginated at the database, so the counter always says which it means:
+
+| What you see | What it means |
+|---|---|
+| `3 of 12` | Every row is loaded, so this is the whole table |
+| `3 of 12 on this page` | More rows exist that were never fetched |
+| `No matches` | Every row is loaded and none match |
+| `Not on this page` | None of the loaded rows match, and more rows exist |
+
+When nothing matches on the page and more rows exist, **Search All Rows** turns the term into a filter that runs on the server, so the answer covers the whole table. That button replaces the filters on the tab, so it only appears when you have none applied. With filters already set, add your search to the filter panel instead.
+
 ## Pagination and Limits
 
 **Table tabs** page through data. The status bar has a rows-per-page menu (5 to 1,000, a custom size, or **All rows**) and First / Previous / Next / Last controls. Click the page indicator (for example `3 / 12`) to type a page number and jump to it. Set the default page size in **Settings > Data**.

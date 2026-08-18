@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Cmd+F` on a table tab opens a find bar over the results. Type a term and the matching cell is highlighted and scrolled to; `Return` and `Cmd+G` step forward, `Cmd+Shift+G` steps back, `Escape` clears the term and then closes the bar. Matching ignores case and accents and runs over the text as displayed, skipping binary and spatial columns. The counter always says what it searched, reading "3 of 12 on this page" while rows remain unfetched and "3 of 12" once everything is loaded, so a result is never mistaken for an answer about the whole table. When nothing matches on the page and more rows exist, Search All Rows turns the term into a server-side filter.
+
+### Changed
+
+- `Cmd+F` on a table tab used to toggle the filter panel, which meant it closed the panel when it was already open and never searched anything. The filter panel keeps `Cmd+Option+F` and its funnel button in the status bar.
+- Find Next and Find Previous work on the data grid when its find bar is open, instead of staying dimmed on a table tab.
+
 ## [0.66.0] - 2026-08-19
 
 ### Added
