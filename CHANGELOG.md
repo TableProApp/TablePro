@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Plugins signed by other developers can be installed. TablePro used to refuse any plugin bundle it had not signed itself, so the only way to publish a driver was through the TablePro repository. A bundle signed with a Developer ID and notarized by Apple now installs after you agree to trust that developer by name, and the prompt says plainly that a database plugin runs as part of TablePro and can read the credentials of every connection you open. Trust is recorded per developer rather than per plugin, so their updates install without asking again, and you can withdraw it. Unsigned and ad-hoc signed bundles are still refused.
+
 ## [0.66.0] - 2026-08-19
 
 ### Added

@@ -25,6 +25,10 @@ extension PluginManager {
     }
 
     func verifyCodeSignature(bundle: Bundle) throws {
-        try PluginCodeSignatureVerifier.verify(bundle: bundle)
+        let trust = try PluginCodeSignatureVerifier.evaluate(bundle: bundle)
+        guard case .developerID(let identity) = trust else { return }
+        guard PluginDeveloperTrustStore.shared.isTrusted(identity) else {
+            throw PluginError.developerNotTrusted(identity: identity)
+        }
     }
 }
