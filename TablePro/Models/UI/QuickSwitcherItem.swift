@@ -112,6 +112,11 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     var payload: String?
     var isOpenInTab: Bool = false
     var isReadOnly: Bool = false
+    /// The schema of an object in the connection that opened the panel. `target` carries the schema
+    /// for a result in another connection and is nil here, so without this a local result committed
+    /// with no schema at all: the tab-reuse check compares schemas, so "Switch to Tab" opened a
+    /// duplicate of a table that was already open under an explicit schema.
+    var schemaName: String?
     var target: QuickSwitcherTarget?
 
     static func tableItemId(name: String, isView: Bool) -> String {

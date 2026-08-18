@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Open Quickly said a table was already open when a table of that name was open in a different schema. On PostgreSQL and SQL Server, with `public.users` open, `analytics.users` showed the Open badge, ranked higher for it, and offered Switch to Tab, which then opened a second tab anyway. Opening a table from Open Quickly now reuses the existing tab instead of duplicating one that was already open under a named schema.
 - A toolbar button now shows the shortcut you actually bound. Rebinding a shortcut in **Settings** > **Keyboard** reached the menu bar but not the toolbar, so a button's tooltip and its overflow menu kept advertising the original key, and the Connection button advertised a key it never had. The Database and Preview buttons also lost their shortcut hint entirely whenever you switched connection. (#2185)
 - JSON results, Copy as JSON and JSON export no longer crash on unsigned or wider-than-64-bit integer values. Large integers and high-precision decimals keep every digit, whichever spelling the database returned them in, instead of being narrowed through floating-point conversion.
 - JSON export could write a file that was not valid JSON when a numeric column held a value such as `Infinity` or digits outside 0-9. Those values are quoted as strings now.

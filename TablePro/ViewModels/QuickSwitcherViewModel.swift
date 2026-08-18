@@ -139,7 +139,8 @@ internal final class QuickSwitcherViewModel {
     func loadItems(
         schemaProvider: SQLSchemaProvider,
         databaseType: DatabaseType,
-        openTableNames: Set<String> = []
+        openTables: Set<QuickSwitcherOpenTable> = [],
+        browseSchema: String? = nil
     ) async {
         isLoading = true
 
@@ -162,8 +163,11 @@ internal final class QuickSwitcherViewModel {
                 name: table.name,
                 kind: presentation.kind,
                 subtitle: presentation.subtitle,
-                isOpenInTab: openTableNames.contains(table.name),
-                isReadOnly: !table.type.allowsRowEditing
+                isOpenInTab: openTables.contains(
+                    QuickSwitcherOpenTable(schema: table.schema, name: table.name, browsing: browseSchema)
+                ),
+                isReadOnly: !table.type.allowsRowEditing,
+                schemaName: table.schema
             ))
         }
 
