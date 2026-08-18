@@ -164,14 +164,14 @@ jobs:
       - name: Build Dameng native bridge
         run: scripts/build-dameng.sh arm64
 
-      # --workspace reaches the vendored crates and the decoder tests they carry. Testing each
-      # manifest on its own instead would need a lockfile per crate that nothing commits.
+      # Only the bridge's own FFI tests live here. The DM8 protocol crates are a pinned
+      # revision of TableProApp/rust-dameng and carry their own suite in that repository.
       # Run from the bridge directory so rustup reads its rust-toolchain.toml: rustup resolves
       # that file from the working directory, not from --manifest-path, and testing on the
       # runner's default Rust would not be the toolchain the shipped staticlib is built with.
       - name: Test Dameng native bridge
         working-directory: Native/DamengBridge
-        run: cargo test --workspace --locked
+        run: cargo test --locked
 
       # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so an empty
       # value is enough for the project to resolve $(ANALYTICS_HMAC_SECRET).
@@ -203,6 +203,21 @@ jobs:
             -project "$XCODE_PROJECT" \
             -scheme AllPlugins \
             -destination "$TEST_DESTINATION" \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      # DamengDriverTests is the one plugin-owned unit bundle: its suites import CDameng, so
+      # they cannot move into TableProTests the way pure-logic plugin tests do. Without this
+      # step nothing runs them and they rot silently.
+      - name: Run Dameng driver tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project "$XCODE_PROJECT" \
+            -scheme DamengDriverTests \
+            -destination "$TEST_DESTINATION" \
+            -parallel-testing-enabled NO \
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
