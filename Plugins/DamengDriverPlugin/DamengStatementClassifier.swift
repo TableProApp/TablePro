@@ -1,11 +1,17 @@
 import Foundation
 
+/// Picks the DM8 protocol framing path for a statement.
+///
+/// This is a hint, not a verdict. DM8 commits to a framing path before the response arrives,
+/// so something has to guess, but the guess must never decide what the user sees: the bridge
+/// converts whatever columns and rows came back either way. A statement misjudged here costs
+/// one protocol round trip shape, not its result.
 enum DamengStatementClassifier {
     private static let resultKeywords: Set<String> = [
         "DESC", "DESCRIBE", "EXPLAIN", "SELECT", "SHOW", "VALUES", "WITH"
     ]
 
-    static func expectsRows(_ query: String) -> Bool {
+    static func likelyReturnsRows(_ query: String) -> Bool {
         guard let keyword = firstKeyword(query) else { return false }
         return resultKeywords.contains(keyword)
     }

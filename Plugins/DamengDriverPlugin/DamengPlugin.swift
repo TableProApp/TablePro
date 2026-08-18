@@ -106,6 +106,7 @@ final class DamengPlugin: NSObject, TableProPlugin, DriverPlugin {
 final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     let config: DriverConnectionConfig
     private let connection = DamengConnection()
+    private let cancellationGate = PluginQueryCancellationGate()
     private var activeSchema: String?
     private var detectedServerVersion: String?
     private var textEscaping: DamengTextEscaping = .unknown
@@ -165,6 +166,17 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func ping() async throws {
         try await connection.ping()
+    }
+
+    /// DM8 has no out-of-band cancel request, so stopping abandons the reply and closes the
+    /// connection. The app reconnects on the next statement.
+    func cancelQuery() throws {
+        cancellationGate.cancel()
+        connection.cancelInFlightStatement()
+    }
+
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        connection.applyQueryTimeout(seconds: seconds)
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
@@ -265,14 +277,12 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let bound = parameters.isEmpty
             ? query
             : try DamengParameterBinder.bind(query: query, parameters: parameters, escaping: textEscaping)
-        let expectsRows = DamengStatementClassifier.expectsRows(bound)
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+        let expectsRows = DamengStatementClassifier.likelyReturnsRows(bound)
         let result = try await connection.execute(bound, expectsRows: expectsRows, rowCap: rowCap)
-        if rowCap == nil, result.isTruncated {
-            let format = String(localized: """
-                This Dameng query returned more than %lld rows, which is the most TablePro reads at once. \
-                Add a WHERE clause or a row limit and try again.
-                """)
-            throw DamengError(message: String(format: format, Int64(PluginRowLimits.emergencyMax)))
+        if cancellationGate.isCancelled(generation) {
+            throw CancellationError()
         }
         return PluginQueryResult(
             columns: result.columns,

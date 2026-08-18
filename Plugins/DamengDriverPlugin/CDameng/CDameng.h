@@ -15,6 +15,8 @@ typedef struct TpDmResult TpDmResult;
  *   the function returns.
  * - Connection handles are exclusively owned by the caller, must not be used
  *   concurrently, and must be released exactly once with tp_dm_disconnect.
+ *   tp_dm_cancel is the one exception: it is safe from another thread while a
+ *   call is in flight, which is the only time it does anything.
  * - Result and error handles must be released exactly once with their matching
  *   free function. Byte pointers borrowed from them remain valid only until the
  *   owning handle is released and must never be freed directly.
@@ -33,14 +35,30 @@ TpDmConnection *tp_dm_connect(
     TpDmError **error_out
 );
 void tp_dm_disconnect(TpDmConnection *connection);
+
+/*
+ * expects_rows selects the protocol framing path only. It does not decide what the
+ * caller receives: a statement that returns rows anyway still reports its columns
+ * and rows rather than an affected count.
+ *
+ * timeout_millis bounds the wait for the server. Zero waits indefinitely, which is
+ * only safe when the caller can cancel.
+ */
 TpDmResult *tp_dm_execute(
     TpDmConnection *connection,
     const uint8_t *sql,
     size_t sql_length,
     bool expects_rows,
     size_t row_cap,
+    uint64_t timeout_millis,
     TpDmError **error_out
 );
+
+/*
+ * Asks an in-flight statement to stop. Stopping abandons the server's reply
+ * mid-message, so the connection is closed and must be treated as disconnected.
+ */
+void tp_dm_cancel(const TpDmConnection *connection);
 bool tp_dm_begin(TpDmConnection *connection, TpDmError **error_out);
 bool tp_dm_commit(TpDmConnection *connection, TpDmError **error_out);
 bool tp_dm_rollback(TpDmConnection *connection, TpDmError **error_out);
@@ -76,5 +94,8 @@ const uint8_t *tp_dm_result_cell_bytes(
 
 void tp_dm_error_free(TpDmError *error);
 const uint8_t *tp_dm_error_message(const TpDmError *error, size_t *length_out);
+
+/* True when the caller stopped the statement, rather than the server or transport failing. */
+bool tp_dm_error_is_cancellation(const TpDmError *error);
 
 #endif /* CDameng_h */

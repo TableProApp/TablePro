@@ -22,6 +22,7 @@ final class DamengConnection: @unchecked Sendable {
     private let stateLock = NSLock()
     private var rawConnection: OpaquePointer?
     private var isShuttingDown = false
+    private var queryTimeoutSeconds = 0
 
     deinit {
         let handle = rawConnection
@@ -56,7 +57,7 @@ final class DamengConnection: @unchecked Sendable {
                 }
             }
             guard let connection else {
-                throw Self.error(from: rawError)
+                throw Self.failure(from: rawError)
             }
             guard self.adopt(connection) else {
                 tp_dm_disconnect(connection)
@@ -67,6 +68,29 @@ final class DamengConnection: @unchecked Sendable {
 
     func disconnect() {
         releaseHandle(shuttingDown: true)
+    }
+
+    /// Stops an in-flight statement. The bridge abandons the server's reply mid-message and
+    /// closes the connection, so every later call on it reports a closed connection until the
+    /// driver reconnects.
+    func cancelInFlightStatement() {
+        stateLock.lock()
+        let handle = rawConnection
+        stateLock.unlock()
+        guard let handle else { return }
+        tp_dm_cancel(handle)
+    }
+
+    func applyQueryTimeout(seconds: Int) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        queryTimeoutSeconds = max(0, seconds)
+    }
+
+    private func timeoutMilliseconds() -> UInt64 {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return UInt64(queryTimeoutSeconds) * 1_000
     }
 
     static func fetchLimit(_ rowCap: Int?) -> Int {
@@ -98,13 +122,14 @@ final class DamengConnection: @unchecked Sendable {
             let connection = try self.connectedPointer()
             var rawError: OpaquePointer?
             guard tp_dm_ping(connection, &rawError) else {
-                throw Self.error(from: rawError)
+                throw Self.failure(from: rawError)
             }
         }
     }
 
     func execute(_ query: String, expectsRows: Bool, rowCap: Int?) async throws -> DamengRawResult {
-        try await run {
+        let timeout = timeoutMilliseconds()
+        return try await run {
             let connection = try self.connectedPointer()
             var rawError: OpaquePointer?
             let rawResult = query.withUTF8Bytes { bytes in
@@ -114,11 +139,12 @@ final class DamengConnection: @unchecked Sendable {
                     bytes.count,
                     expectsRows,
                     Self.fetchLimit(rowCap),
+                    timeout,
                     &rawError
                 )
             }
             guard let rawResult else {
-                throw Self.error(from: rawError)
+                throw Self.failure(from: rawError)
             }
             defer { tp_dm_result_free(rawResult) }
             return try Self.decode(rawResult)
@@ -150,7 +176,7 @@ final class DamengConnection: @unchecked Sendable {
                 tp_dm_rollback(connection, &rawError)
             }
             guard succeeded else {
-                throw Self.error(from: rawError)
+                throw Self.failure(from: rawError)
             }
         }
     }
@@ -165,14 +191,18 @@ final class DamengConnection: @unchecked Sendable {
     }
 
     private func run<T: Sendable>(_ operation: @escaping @Sendable () throws -> T) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                do {
-                    continuation.resume(returning: try operation())
-                } catch {
-                    continuation.resume(throwing: error)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                queue.async {
+                    do {
+                        continuation.resume(returning: try operation())
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
+        } onCancel: {
+            self.cancelInFlightStatement()
         }
     }
 
@@ -239,11 +269,16 @@ final class DamengConnection: @unchecked Sendable {
         return Data(bytes: bytes, count: length)
     }
 
-    private static func error(from pointer: OpaquePointer?) -> DamengError {
+    /// A statement the caller stopped surfaces as `CancellationError`, so the app reports a
+    /// cancelled query instead of an error the user did not cause.
+    private static func failure(from pointer: OpaquePointer?) -> any Error {
         guard let pointer else {
             return DamengError(message: String(localized: "The Dameng operation failed."))
         }
         defer { tp_dm_error_free(pointer) }
+        if tp_dm_error_is_cancellation(pointer) {
+            return CancellationError()
+        }
         var length = 0
         guard let bytes = tp_dm_error_message(pointer, &length),
               let message = String(bytes: UnsafeBufferPointer(start: bytes, count: length), encoding: .utf8) else {

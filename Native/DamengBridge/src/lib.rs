@@ -6,9 +6,10 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 use std::slice;
 use std::str;
+use std::sync::Arc;
 use std::time::Instant;
 
-use dameng::Client;
+use dameng::{Client, Interrupt};
 use dameng_types::encoding::{decode_from_server, ServerEncoding};
 use dameng_types::DmValue;
 
@@ -18,10 +19,14 @@ const MAX_SQL_BYTES: usize = 16 * 1_024 * 1_024;
 
 pub struct TpDmConnection {
     client: Option<Client>,
+    /// Kept beside the client rather than inside it: an in-flight statement moves the
+    /// client out of this handle, and `tp_dm_cancel` still has to reach the read loop.
+    interrupt: Arc<Interrupt>,
 }
 
 pub struct TpDmError {
     message: Vec<u8>,
+    cancelled: bool,
 }
 
 pub struct TpDmResult {
@@ -45,11 +50,22 @@ enum TpDmCell {
 }
 
 fn set_error(error_out: *mut *mut TpDmError, message: impl Into<String>) {
+    store_error(error_out, message.into(), false);
+}
+
+/// Preserves whether the failure was a caller-requested stop, which Swift reports as a
+/// cancellation rather than as a query error.
+fn set_driver_error(error_out: *mut *mut TpDmError, error: &dameng::Error) {
+    store_error(error_out, error.to_string(), is_cancellation(error));
+}
+
+fn store_error(error_out: *mut *mut TpDmError, message: String, cancelled: bool) {
     if error_out.is_null() {
         return;
     }
     let error = Box::new(TpDmError {
-        message: message.into().into_bytes(),
+        message: message.into_bytes(),
+        cancelled,
     });
     unsafe {
         *error_out = Box::into_raw(error);
@@ -244,13 +260,44 @@ fn query_result(
     })
 }
 
+/// Runs a statement the caller did not expect to return rows.
+///
+/// The caller's expectation only selects the protocol framing path. It does not decide what
+/// the user sees: if the server answered with a result set anyway, the rows are converted and
+/// returned rather than reduced to an affected count.
 fn execute_result(client: &mut Client, sql: &str) -> Result<TpDmResult, dameng::Error> {
     let started = Instant::now();
-    let rows_affected = client.execute(sql)?;
+    let result = client.execute_statement(sql)?;
+    if result.columns.is_empty() {
+        return Ok(TpDmResult {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            rows_affected: result.total_row_count,
+            execution_time_seconds: started.elapsed().as_secs_f64(),
+            is_truncated: false,
+        });
+    }
+    let columns = result
+        .columns
+        .iter()
+        .map(|column| TpDmColumn {
+            name: column.name.as_bytes().to_vec(),
+            type_name: column.type_name.as_bytes().to_vec(),
+        })
+        .collect();
+    let mut rows = Vec::with_capacity(result.rows.len());
+    for row in &result.rows {
+        let mut cells = Vec::with_capacity(result.columns.len());
+        for index in 0..result.columns.len() {
+            cells.push(convert_cell(client, row, &result.columns, index)?);
+        }
+        rows.push(cells);
+    }
+    let delivered_row_count = u64::try_from(rows.len()).unwrap_or(u64::MAX);
     Ok(TpDmResult {
-        columns: Vec::new(),
-        rows: Vec::new(),
-        rows_affected,
+        columns,
+        rows,
+        rows_affected: delivered_row_count,
         execution_time_seconds: started.elapsed().as_secs_f64(),
         is_truncated: false,
     })
@@ -275,6 +322,10 @@ fn dispose(connection: &mut TpDmConnection, mut client: Client, keep_open: bool)
     }
 }
 
+/// Whether the connection can serve another statement after this failure.
+///
+/// Cancellation and timeout abandon the response mid-message, so the stream is desynced and
+/// the next statement would read the abandoned reply as its own. Both close the connection.
 fn is_recoverable(error: &dameng::Error) -> bool {
     !matches!(
         error,
@@ -284,7 +335,14 @@ fn is_recoverable(error: &dameng::Error) -> bool {
             | dameng::Error::AuthFailed(_)
             | dameng::Error::NotConnected
             | dameng::Error::Timeout(_)
+            | dameng::Error::Cancelled
     )
+}
+
+/// Distinguishes a caller-requested stop from a server or transport failure, so Swift can
+/// raise `CancellationError` instead of surfacing an error the user did not cause.
+fn is_cancellation(error: &dameng::Error) -> bool {
+    matches!(error, dameng::Error::Cancelled)
 }
 
 #[no_mangle]
@@ -312,8 +370,10 @@ pub unsafe extern "C" fn tp_dm_connect(
             .connect(&username, &password)
             .map_err(|error| error.to_string())?;
         detect_server_encoding(&mut client)?;
+        let interrupt = Arc::clone(&client.interrupt);
         Ok(TpDmConnection {
             client: Some(client),
+            interrupt,
         })
     }));
     match operation {
@@ -349,6 +409,7 @@ pub unsafe extern "C" fn tp_dm_execute(
     sql_length: usize,
     expects_rows: bool,
     row_cap: usize,
+    timeout_millis: u64,
     error_out: *mut *mut TpDmError,
 ) -> *mut TpDmResult {
     clear_error(error_out);
@@ -371,6 +432,8 @@ pub unsafe extern "C" fn tp_dm_execute(
             return ptr::null_mut();
         }
     };
+    connection.interrupt.reset();
+    connection.interrupt.set_timeout_millis(timeout_millis);
     let operation = catch_unwind(AssertUnwindSafe(|| {
         if expects_rows {
             query_result(&mut client, &sql, row_cap)
@@ -378,6 +441,7 @@ pub unsafe extern "C" fn tp_dm_execute(
             execute_result(&mut client, &sql)
         }
     }));
+    connection.interrupt.reset();
     match operation {
         Ok(Ok(result)) => {
             restore_client(connection, client);
@@ -385,7 +449,7 @@ pub unsafe extern "C" fn tp_dm_execute(
         }
         Ok(Err(error)) => {
             dispose(connection, client, is_recoverable(&error));
-            set_error(error_out, error.to_string());
+            set_driver_error(error_out, &error);
             ptr::null_mut()
         }
         Err(payload) => {
@@ -394,6 +458,21 @@ pub unsafe extern "C" fn tp_dm_execute(
             ptr::null_mut()
         }
     }
+}
+
+/// Asks an in-flight statement on `connection` to stop. Safe to call from any thread while
+/// another thread is inside `tp_dm_execute`, which is the only way it does anything useful.
+///
+/// Stopping abandons the server's reply mid-message, so the connection is closed rather than
+/// reused. Callers must treat a cancelled connection as disconnected.
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_cancel(connection: *const TpDmConnection) {
+    if connection.is_null() {
+        return;
+    }
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        (*connection).interrupt.cancel();
+    }));
 }
 
 unsafe fn transaction_operation(
@@ -477,6 +556,14 @@ pub unsafe extern "C" fn tp_dm_error_free(error: *mut TpDmError) {
     if !error.is_null() {
         drop(Box::from_raw(error));
     }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_error_is_cancellation(error: *const TpDmError) -> bool {
+    if error.is_null() {
+        return false;
+    }
+    (*error).cancelled
 }
 
 #[no_mangle]
@@ -638,6 +725,7 @@ mod tests {
             sql.len(),
             expects_rows,
             0,
+            0,
             &mut error,
         );
         assert!(error.is_null(), "{}", error_text(error));
@@ -720,6 +808,51 @@ mod tests {
             assert!(connection.is_null());
             assert_eq!(error_text(error), "port must be greater than zero");
         }
+    }
+
+    #[test]
+    fn cancelling_a_null_connection_is_a_no_op() {
+        unsafe {
+            tp_dm_cancel(ptr::null());
+        }
+    }
+
+    #[test]
+    fn a_null_error_is_not_a_cancellation() {
+        unsafe {
+            assert!(!tp_dm_error_is_cancellation(ptr::null()));
+        }
+    }
+
+    #[test]
+    fn a_server_failure_is_not_reported_as_a_cancellation() {
+        unsafe {
+            let mut error: *mut TpDmError = ptr::null_mut();
+            set_driver_error(&mut error, &dameng::Error::QueryFailed("boom".to_string()));
+            assert!(!error.is_null());
+            assert!(!tp_dm_error_is_cancellation(error));
+            tp_dm_error_free(error);
+        }
+    }
+
+    #[test]
+    fn a_cancellation_survives_the_c_boundary() {
+        unsafe {
+            let mut error: *mut TpDmError = ptr::null_mut();
+            set_driver_error(&mut error, &dameng::Error::Cancelled);
+            assert!(!error.is_null());
+            assert!(tp_dm_error_is_cancellation(error));
+            tp_dm_error_free(error);
+        }
+    }
+
+    #[test]
+    fn an_abandoned_response_leaves_the_connection_unusable() {
+        // Both stop mid-message, so the stream is desynced and the client must be closed
+        // rather than handed the next statement.
+        assert!(!is_recoverable(&dameng::Error::Cancelled));
+        assert!(!is_recoverable(&dameng::Error::Timeout("slow".to_string())));
+        assert!(is_recoverable(&dameng::Error::QueryFailed("bad sql".to_string())));
     }
 
     #[test]
@@ -828,6 +961,7 @@ mod tests {
                 failed_sql.as_ptr(),
                 failed_sql.len(),
                 false,
+                0,
                 0,
                 &mut error,
             );
