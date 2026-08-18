@@ -25,6 +25,16 @@ internal final class QuickSwitcherCatalogStore {
         internal let isRefreshing: Bool
         internal let databaseFilter: [String]
         internal let contentRevision: Int
+        /// The database and schema names the catalog listed, taken from the same metadata service
+        /// the sidebar tree reads. Dropping or creating a container refreshes that service and
+        /// moves nothing else in this key, so without it a dropped database stayed listed and
+        /// committing it failed. Derived from the data rather than a counter someone has to
+        /// remember to bump, so a future container mutation invalidates the catalog for free.
+        internal let containerNames: [String]
+        /// Bumped when the session ends. A load still running at that moment finishes and writes
+        /// its catalog under the epoch it started with, so the entry it leaves behind can never be
+        /// served to the reconnected session.
+        internal let sessionEpoch: Int
     }
 
     internal static let shared = QuickSwitcherCatalogStore()
@@ -32,6 +42,7 @@ internal final class QuickSwitcherCatalogStore {
     private var items: [UUID: [QuickSwitcherItem]] = [:]
     private var versions: [UUID: Version] = [:]
     private var contentRevisions: [UUID: Int] = [:]
+    private var sessionEpochs: [UUID: Int] = [:]
     private var cancellables: Set<AnyCancellable> = []
 
     #if DEBUG
@@ -71,6 +82,10 @@ internal final class QuickSwitcherCatalogStore {
         contentRevisions[connectionId] ?? 0
     }
 
+    internal func sessionEpoch(for connectionId: UUID) -> Int {
+        sessionEpochs[connectionId] ?? 0
+    }
+
     /// Nil whenever the catalog has to be rebuilt, so a caller that gets a value can skip the
     /// fetches entirely rather than racing them.
     internal func catalog(for connectionId: UUID, version: Version) -> [QuickSwitcherItem]? {
@@ -90,9 +105,13 @@ internal final class QuickSwitcherCatalogStore {
         versions[connectionId] = version
     }
 
+    /// The epoch deliberately survives removal. Disconnecting resets the schema generation and the
+    /// content revision, so a reconnected session recomputes the same version it had before, and a
+    /// catalog written by a load that outlived the disconnect would be served as if it were fresh.
     internal func removeConnection(_ connectionId: UUID) {
         items.removeValue(forKey: connectionId)
         versions.removeValue(forKey: connectionId)
         contentRevisions.removeValue(forKey: connectionId)
+        sessionEpochs[connectionId, default: 0] &+= 1
     }
 }
