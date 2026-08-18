@@ -5,7 +5,6 @@
 
 import Observation
 import SwiftUI
-import TableProPluginKit
 
 @MainActor @Observable
 final class SidebarViewModel {
@@ -271,21 +270,13 @@ final class SidebarViewModel {
         }
     }
 
-    // MARK: - Capability Gating
-
-    func capabilities(for connectionId: UUID) -> PluginCapabilities {
-        guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter else {
-            return []
-        }
-        return adapter.schemaPluginDriver.capabilities
-    }
+    // MARK: - Section Visibility
 
     func sectionShouldRender(
         kind: SidebarObjectKind,
-        itemCount: Int,
-        capabilities: PluginCapabilities
+        itemCount: Int
     ) -> Bool {
-        kind.shouldRender(itemCount: itemCount, capabilities: capabilities)
+        kind.shouldRender(itemCount: itemCount)
     }
 
     // MARK: - Batch Operations

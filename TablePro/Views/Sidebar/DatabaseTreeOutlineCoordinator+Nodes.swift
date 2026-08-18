@@ -4,7 +4,6 @@
 //
 
 import AppKit
-import TableProPluginKit
 
 /// Turning the connection's metadata into the rows the outline draws. The three sidebar shapes
 /// differ only in what this builds at the root; everything below the root is shared.
@@ -131,16 +130,12 @@ extension DatabaseTreeOutlineCoordinator {
         return nodes
     }
 
-    /// The section list is the same rule the flat list used, so a kind that was hidden before stays
-    /// hidden: Tables always shows, anything else needs both the capability and something in it.
     private func visibleObjectKinds() -> [SidebarObjectKind] {
         guard let viewModel else { return [] }
-        let capabilities = viewModel.capabilities(for: connectionId)
         return SidebarObjectKind.allCases.filter { kind in
             viewModel.sectionShouldRender(
                 kind: kind,
-                itemCount: flatItemCount(for: kind),
-                capabilities: capabilities
+                itemCount: flatItemCount(for: kind)
             )
         }
     }

@@ -1,5 +1,4 @@
 import Foundation
-import TableProPluginKit
 
 struct DatabaseTreeObjectGroup: Hashable, Sendable {
     let database: String
@@ -56,16 +55,6 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         }
     }
 
-    var capabilityFlag: PluginCapabilities? {
-        switch self {
-        case .table, .view:     return nil
-        case .materializedView: return .materializedViews
-        case .foreignTable:     return .foreignTables
-        case .procedure:        return .storedProcedures
-        case .function:         return .userFunctions
-        }
-    }
-
     var isRoutine: Bool {
         self == .procedure || self == .function
     }
@@ -83,11 +72,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         self == .table
     }
 
-    /// The flat list's rule for a fixed section, which exists as chrome before its contents do. The
-    /// tree builds its groups from what a container holds, so it does not ask this.
-    func shouldRender(itemCount: Int, capabilities: PluginCapabilities) -> Bool {
-        if self == .table { return true }
-        if let capabilityFlag, !capabilities.contains(capabilityFlag) { return false }
-        return itemCount > 0
+    func shouldRender(itemCount: Int) -> Bool {
+        self == .table || itemCount > 0
     }
 }

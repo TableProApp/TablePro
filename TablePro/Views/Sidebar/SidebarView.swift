@@ -30,10 +30,6 @@ struct SidebarView: View {
         schemaService.routines(for: connectionId)
     }
 
-    private var pluginCapabilities: PluginCapabilities {
-        viewModel.capabilities(for: connectionId)
-    }
-
     private var hasAnyMatch: Bool {
         SidebarObjectKind.allCases.contains { kind in
             countFor(kind: kind) > 0

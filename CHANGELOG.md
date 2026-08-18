@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Flat sidebar layouts show every object kind returned by the driver, matching Tree layout even when plugin capability metadata omits a kind. (#2173)
 - Sixteen-byte SQL binary columns respect their Display As setting in the grid, the row inspector, VoiceOver, and single-cell copy. Raw Value stays selected after refresh, filtered rows keep their identity when the format changes, and MongoDB binary UUIDs remain under the driver's Legacy UUID Encoding setting. (#2157)
 - Viewing a very long single line with word wrap on could use enormous amounts of memory and stall or kill the app. This hit the JSON value viewer, chat code blocks and the SQL review sheet, which always wrap, and the SQL editor when Word Wrap is on. Wrapped text is now laid out once instead of once per wrapped row, so a long line stays fast no matter how long it is.
 - An open cell overlay in the data grid kept its old border and background colour if the appearance changed while it was on screen, such as an automatic switch to dark at sunset. It repaints now.

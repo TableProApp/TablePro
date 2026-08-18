@@ -6,10 +6,9 @@
 //
 
 import Foundation
-import TableProPluginKit
 import SwiftUI
-import Testing
 @testable import TablePro
+import Testing
 
 private final class SidebarMockClipboard: ClipboardProvider {
     var lastWrittenText: String?
@@ -432,46 +431,27 @@ struct SidebarViewModelMultiSectionTests {
     @MainActor
     func tablesAlwaysShown() {
         let vm = makeViewModel()
-        let empty: PluginCapabilities = []
 
-        #expect(vm.sectionShouldRender(kind: .table, itemCount: 0, capabilities: empty))
-        #expect(vm.sectionShouldRender(kind: .table, itemCount: 5, capabilities: empty))
+        #expect(vm.sectionShouldRender(kind: .table, itemCount: 0))
+        #expect(vm.sectionShouldRender(kind: .table, itemCount: 5))
     }
 
-    @Test("sectionShouldRender hides matview when capability missing")
+    @Test("sectionShouldRender shows every populated object kind")
     @MainActor
-    func hidesMatviewWithoutCapability() {
+    func showsEveryPopulatedObjectKind() {
         let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 10,
-            capabilities: []
-        )
-        #expect(result == false)
+        for kind in SidebarObjectKind.allCases {
+            #expect(vm.sectionShouldRender(kind: kind, itemCount: 1))
+        }
     }
 
-    @Test("sectionShouldRender shows matview when capability present and items exist")
+    @Test("sectionShouldRender hides empty non-table kinds")
     @MainActor
-    func showsMatviewWithCapability() {
+    func hidesEmptyNonTableKinds() {
         let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 3,
-            capabilities: [.materializedViews]
-        )
-        #expect(result == true)
-    }
-
-    @Test("sectionShouldRender hides matview when no items even with capability")
-    @MainActor
-    func hidesEmptyMatviewWithCapability() {
-        let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 0,
-            capabilities: [.materializedViews]
-        )
-        #expect(result == false)
+        for kind in SidebarObjectKind.allCases where kind != .table {
+            #expect(!vm.sectionShouldRender(kind: kind, itemCount: 0))
+        }
     }
 
     @Test("default expansion is true for tables only")
