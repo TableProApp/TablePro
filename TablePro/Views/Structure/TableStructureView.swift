@@ -17,6 +17,14 @@ import UniformTypeIdentifiers
 struct TableStructureView: View {
     static let logger = Logger(subsystem: "com.TablePro", category: "TableStructureView")
     static let structurePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure")
+
+    /// Whether the clipboard holds structure rows this view can paste. Structure paste reads its
+    /// own pasteboard type and nothing else, so the plain text a structure copy also writes is not
+    /// enough. Menu validation and the grid delegate both ask here rather than each spelling out
+    /// the same check.
+    static var canPasteStructureRows: Bool {
+        NSPasteboard.general.data(forType: structurePasteboardType) != nil
+    }
     let tableName: String
     let connection: DatabaseConnection
     let databaseName: String

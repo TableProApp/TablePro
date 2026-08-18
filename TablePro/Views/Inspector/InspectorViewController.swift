@@ -130,7 +130,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
 
     fileprivate func handlePasteRows() {
         guard let inspectorDocument else { return }
-        guard let raw = NSPasteboard.general.string(forType: .string), !raw.isEmpty else { return }
+        guard let raw = ClipboardService.shared.readText(), !raw.isEmpty else { return }
         let lines = raw.split(omittingEmptySubsequences: false, whereSeparator: { $0 == "\n" || $0 == "\r\n" })
         var rows: [[String]] = []
         rows.reserveCapacity(lines.count)
@@ -994,6 +994,10 @@ private final class InspectorGridDelegate: DataGridViewDelegate {
 
     func dataGridPasteRows() {
         owner?.handlePasteRows()
+    }
+
+    func dataGridCanPasteRows() -> Bool {
+        ClipboardService.shared.hasText
     }
 
     func dataGridSortStateChanged(_ state: SortState) {

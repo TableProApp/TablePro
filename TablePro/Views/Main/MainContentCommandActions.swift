@@ -340,6 +340,19 @@ final class MainContentCommandActions {
         coordinator?.toolbarState.isTableTab ?? false
     }
 
+    /// What `pasteRows()` will actually do, so the Edit menu's Paste item is enabled only when it
+    /// leads somewhere. AppKit gives a disabled item its key equivalent all the same, so an item
+    /// enabled over a handler that returns at its first guard swallows Command+V in silence.
+    var canPasteRows: Bool {
+        guard !safeModeLevel.blocksAllWrites, let tab = coordinator?.tabManager.selectedTab else {
+            return false
+        }
+        guard tab.display.resultsViewMode != .structure else {
+            return coordinator?.structureActions?.pasteRows != nil && TableStructureView.canPasteStructureRows
+        }
+        return tab.tabType == .table && isCurrentTabEditable && ClipboardService.shared.hasText
+    }
+
     /// The two facts Save As and Export Results actually turn on. Their menu items used to be
     /// validated on `isConnected` alone, so both stayed lit in states where the handler returns at
     /// its first guard and the click does nothing at all.

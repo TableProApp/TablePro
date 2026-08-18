@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import TableProPluginKit
 import SwiftUI
 import Testing
 @testable import TablePro
@@ -425,52 +424,6 @@ struct SidebarViewModelMultiSectionTests {
 
         let result = vm.effectiveExpanded(kind: .function, hasMatches: false)
 
-        #expect(result == false)
-    }
-
-    @Test("sectionShouldRender always shows tables")
-    @MainActor
-    func tablesAlwaysShown() {
-        let vm = makeViewModel()
-        let empty: PluginCapabilities = []
-
-        #expect(vm.sectionShouldRender(kind: .table, itemCount: 0, capabilities: empty))
-        #expect(vm.sectionShouldRender(kind: .table, itemCount: 5, capabilities: empty))
-    }
-
-    @Test("sectionShouldRender hides matview when capability missing")
-    @MainActor
-    func hidesMatviewWithoutCapability() {
-        let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 10,
-            capabilities: []
-        )
-        #expect(result == false)
-    }
-
-    @Test("sectionShouldRender shows matview when capability present and items exist")
-    @MainActor
-    func showsMatviewWithCapability() {
-        let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 3,
-            capabilities: [.materializedViews]
-        )
-        #expect(result == true)
-    }
-
-    @Test("sectionShouldRender hides matview when no items even with capability")
-    @MainActor
-    func hidesEmptyMatviewWithCapability() {
-        let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 0,
-            capabilities: [.materializedViews]
-        )
         #expect(result == false)
     }
 

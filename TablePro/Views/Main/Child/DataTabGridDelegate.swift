@@ -63,6 +63,10 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         coordinator?.pasteRows()
     }
 
+    func dataGridCanPasteRows() -> Bool {
+        coordinator?.commandActions?.canPasteRows ?? false
+    }
+
     func dataGridDuplicateRow() {
         guard let selectionState, let firstIndex = selectionState.indices.first else { return }
         coordinator?.duplicateSelectedRow(index: firstIndex)
