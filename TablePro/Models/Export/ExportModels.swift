@@ -14,12 +14,15 @@ enum ExportPreselection: Equatable {
     case tables(Set<String>)
     case containers([DatabaseContainerRef])
 
-    func selects(table: String, inContainer container: String, isCurrentContainer: Bool) -> Bool {
+    /// `container` is the ref the dialog is listing, not its bare name. Matching on the name alone
+    /// compared a database name against schema names, so a preselected database selected nothing on
+    /// a schema-grouped engine and quietly matched an unrelated schema that happened to share a name.
+    func selects(table: String, inContainer container: DatabaseContainerRef, isCurrentContainer: Bool) -> Bool {
         switch self {
         case .tables(let names):
             return isCurrentContainer && names.contains(table)
         case .containers(let refs):
-            return refs.contains { $0.name == container }
+            return refs.contains { $0.covers(container) }
         }
     }
 
@@ -33,11 +36,28 @@ enum ExportPreselection: Equatable {
         return refs.map(\.name)
     }
 
-    /// The export dialog lists the schemas of the connected database only, so a schema
-    /// belonging to another database has nothing to preselect there.
-    static func canPreselect(containers: [DatabaseContainerRef], activeDatabase: String?) -> Bool {
+    /// The one database this preselection is about, when every ref agrees on it. The export dialog
+    /// scopes itself to that database, so exporting a database other than the active one lists and
+    /// exports that database rather than the one the sidebar happens to be browsing.
+    var scopedDatabase: String? {
+        guard case .containers(let refs) = self, let first = refs.first else { return nil }
+        guard refs.allSatisfy({ $0.database == first.database }) else { return nil }
+        return first.database
+    }
+
+    /// The dialog can open a second connection to any database on the server, so a container in
+    /// another database is preselectable. It cannot on an engine whose database lives inside the
+    /// driver instance rather than on a server it reconnects to, which is what
+    /// `canReachOtherDatabases` reports; there, only the active database has anything to list.
+    static func canPreselect(
+        containers: [DatabaseContainerRef],
+        activeDatabase: String?,
+        canReachOtherDatabases: Bool
+    ) -> Bool {
         guard !containers.isEmpty else { return false }
-        return containers.allSatisfy { $0.kind == .database || $0.database == activeDatabase }
+        guard containers.allSatisfy({ $0.database == containers[0].database }) else { return false }
+        guard !canReachOtherDatabases else { return true }
+        return containers.allSatisfy { $0.database == activeDatabase }
     }
 }
 

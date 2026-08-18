@@ -235,10 +235,19 @@ struct DatabaseSwitcherPopover: View {
             items.append(FieldDrivenMenuItem(title: copyTitle) {
                 ClipboardService.shared.writeText(targets.map(\.name).joined(separator: ","))
             })
-            items.append(FieldDrivenMenuItem(title: String(localized: "Export…")) {
-                dismiss()
-                onRequestExport(targets)
-            })
+            /// The sidebar's menu has always asked whether the dialog can reach these containers
+            /// before offering Export. This list offered it unconditionally, so the two menus for
+            /// the same command could disagree.
+            if ExportPreselection.canPreselect(
+                containers: targets,
+                activeDatabase: activeDatabase,
+                canReachOtherDatabases: databaseType.supportsConnectionPooling
+            ) {
+                items.append(FieldDrivenMenuItem(title: String(localized: "Export…")) {
+                    dismiss()
+                    onRequestExport(targets)
+                })
+            }
         }
 
         if !droppable.isEmpty {

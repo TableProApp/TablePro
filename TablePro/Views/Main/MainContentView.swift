@@ -145,6 +145,17 @@ struct MainContentView: View {
         return conn
     }
 
+    /// Exporting a container names the database that container lives in, which is not always the
+    /// one being browsed. The dialog scopes every list and the export itself to this connection's
+    /// database, so naming it here is what makes exporting another database show that database.
+    private var exportConnection: DatabaseConnection {
+        var conn = connectionWithCurrentDatabase
+        if let scoped = coordinator.exportPreselection?.scopedDatabase, !scoped.isEmpty {
+            conn.database = scoped
+        }
+        return conn
+    }
+
     /// Returns the appropriate sheet view for the given `ActiveSheet` case.
     /// Uses a dismissal binding that sets `coordinator.activeSheet = nil` when the
     /// child view sets `isPresented = false`.
@@ -175,7 +186,7 @@ struct MainContentView: View {
                 }
             )
         case .exportDialog:
-            let exportConnection = connectionWithCurrentDatabase
+            let exportConnection = exportConnection
             ExportDialog(
                 isPresented: dismissBinding,
                 mode: .tables(

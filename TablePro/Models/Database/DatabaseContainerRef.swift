@@ -38,6 +38,17 @@ struct DatabaseContainerRef: Hashable, Identifiable {
         DatabaseContainerRef(kind: .schema, database: database, schema: schema, isSystem: isSystem)
     }
 
+    /// Whether selecting this container implies selecting `other`. A database covers itself and
+    /// every schema inside it, which is what makes "export this database" select all of its schemas
+    /// on an engine that lists schemas. A schema covers only itself.
+    func covers(_ other: DatabaseContainerRef) -> Bool {
+        guard database == other.database else { return false }
+        switch kind {
+        case .database: return true
+        case .schema: return other.kind == .schema && schema == other.schema
+        }
+    }
+
     static func == (lhs: DatabaseContainerRef, rhs: DatabaseContainerRef) -> Bool {
         lhs.id == rhs.id
     }
