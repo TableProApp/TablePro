@@ -60,7 +60,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private let displayCache = RowDisplayCache()
     weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
-    weak var activeArrayEditorPopover: NSPopover?
+    weak var activeCellEditorPopover: NSPopover?
+    weak var activePoppedOutEditor: JSONViewerWindowController?
     weak var activeValueFilterPopover: NSPopover?
     var activeFKPreviewModel: FKPreviewModel?
     var activeFKPreviewColumnIndex: Int?
@@ -475,10 +476,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             tableView.reloadData()
         }
         delegate = nil
+        dismissPopoversBoundToDisplayPositions()
         activeFKPreviewPopover?.close()
-        activeValueFilterPopover?.close()
-        activeValueFilterPopover = nil
-        dismissActiveArrayEditorPopover()
         clearFKPreviewState()
     }
 
@@ -543,6 +542,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func applyFullReplace() {
+        dismissPopoversBoundToDisplayPositions()
         guard let tableView else { return }
         invalidateAllDisplayCaches()
         recomputeValueFilteredIDs()
@@ -873,20 +873,19 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             guard !indices.isEmpty else { return }
             overlayEditor?.dismiss(commit: false)
             overlayViewer?.dismiss()
-            dismissFKPreviewOnColumnChange()
+            dismissPopoversBoundToDisplayPositions()
             appendInsertedIDsToSortedIDs(at: indices)
             applyInsertedRows(indices)
         case .rowsRemoved(let indices):
             guard !indices.isEmpty else { return }
             overlayEditor?.dismiss(commit: false)
             overlayViewer?.dismiss()
-            dismissFKPreviewOnColumnChange()
+            dismissPopoversBoundToDisplayPositions()
             removeMissingIDsFromSortedIDs()
             applyRemovedRows(indices)
         case .columnsReplaced, .fullReplace:
             overlayEditor?.dismiss(commit: false)
             overlayViewer?.dismiss()
-            dismissFKPreviewOnColumnChange()
             sortedIDs = nil
             applyFullReplace()
         }

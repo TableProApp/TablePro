@@ -132,7 +132,8 @@ extension TableViewCoordinator {
         let dbType = databaseType ?? .mysql
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView
         ) { [weak self] dismiss in

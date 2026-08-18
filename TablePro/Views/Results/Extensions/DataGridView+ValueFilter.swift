@@ -118,7 +118,7 @@ extension TableViewCoordinator {
         let initialFilter = valueFilterState.filter(forColumn: dataIndex)
         let loadedRowCount = tableRows.count
 
-        activeValueFilterPopover?.close()
+        dismissActiveValueFilterPopover()
         activeValueFilterPopover = PopoverPresenter.show(
             relativeTo: rect,
             of: view,
@@ -136,5 +136,23 @@ extension TableViewCoordinator {
                 onCancel: dismiss
             )
         }
+    }
+
+    func dismissActiveValueFilterPopover() {
+        guard let popover = activeValueFilterPopover else { return }
+        activeValueFilterPopover = nil
+        popover.close()
+    }
+
+    /// A popover carries the display row and the column index it was opened from, and those are
+    /// positions rather than identities: replacing the rows moves a record somewhere else, so a
+    /// commit afterwards writes the edit to whichever record now sits at that position. The
+    /// distinct values behind the value filter go stale the same way. Closing is the only honest
+    /// answer, because there is nothing to re-anchor to once the record has moved.
+    func dismissPopoversBoundToDisplayPositions() {
+        dismissActiveCellEditorPopover()
+        dismissPoppedOutCellEditor()
+        dismissActiveValueFilterPopover()
+        dismissFKPreviewOnColumnChange()
     }
 }
