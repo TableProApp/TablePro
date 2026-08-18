@@ -174,4 +174,3 @@ Thanks to these amazing people for supporting TablePro:
 
 This project is licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE).
 
-Contributions require signing a Contributor License Agreement (CLA). See [CLA.md](CLA.md) for details.

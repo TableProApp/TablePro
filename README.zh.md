@@ -140,4 +140,3 @@ brew install --cask tablepro
 
 本项目采用 [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE) 许可。
 
-贡献者需签署贡献者许可协议(CLA)。详见 [CLA.md](CLA.md)。
