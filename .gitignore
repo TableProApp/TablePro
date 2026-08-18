@@ -174,3 +174,6 @@ Native/DamengBridge/lib/
 .analysis/
 .docs/
 /plans/reports
+
+# Working copies produced by scripts/localization.py; the catalog is the source of truth
+Localization/
