@@ -87,11 +87,7 @@ extension DamengPluginDriver {
             return "COMMENT ON COLUMN \(table).\(quoteIdentifier(column.name)) IS \(stringLiteral(comment))"
         }
         let statements = [createTable] + indexes + comments
-        guard statements.count > 1 else {
-            return createTable + ";"
-        }
-        let commands = statements.map { "    EXECUTE IMMEDIATE \(stringLiteral($0));" }
-        return "BEGIN\n" + commands.joined(separator: "\n") + "\nEND;"
+        return statements.joined(separator: ";\n") + ";"
     }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
@@ -270,9 +266,15 @@ extension DamengPluginDriver {
         parameters: inout [PluginCellValue]
     ) -> String? {
         let selectedColumns = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
+        let keyed = !primaryKeyColumns.isEmpty
         var predicates: [String] = []
         for column in selectedColumns {
-            guard let index = columns.firstIndex(of: column), index < original.count else { continue }
+            guard let index = columns.firstIndex(of: column), index < original.count else {
+                // Dropping a declared key column would leave an under-determined predicate,
+                // and ROWNUM = 1 would then write to an arbitrary matching row.
+                if keyed { return nil }
+                continue
+            }
             let value = original[index]
             if value.isNull {
                 predicates.append("\(quoteIdentifier(column)) IS NULL")
@@ -327,8 +329,11 @@ extension DamengPluginDriver {
         return stringLiteral(normalized)
     }
 
+    /// Routes through the driver's single escaping seam. `replacingOccurrences` matches whole
+    /// grapheme clusters, so a quote carrying a combining mark would not be doubled and the
+    /// value would escape its own literal.
     private func stringLiteral(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "''"))'"
+        "'\(escapeStringLiteral(value))'"
     }
 
     private func qualifiedName(schema: String?, object: String) -> String {

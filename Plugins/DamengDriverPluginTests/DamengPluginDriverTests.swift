@@ -40,12 +40,36 @@ final class DamengPluginDriverTests: XCTestCase {
 
         let sql = try XCTUnwrap(driver.generateCreateTableSQL(definition: definition))
 
-        XCTAssertTrue(sql.hasPrefix("BEGIN\n"))
-        XCTAssertTrue(sql.contains("CREATE TABLE \"APP\".\"order\""))
+        XCTAssertTrue(sql.hasPrefix("CREATE TABLE \"APP\".\"order\""))
         XCTAssertTrue(sql.contains("\"id\" INT IDENTITY(1,1) NOT NULL PRIMARY KEY"))
-        XCTAssertTrue(sql.contains("DEFAULT ''guest''''s record''"))
         XCTAssertTrue(sql.contains("CREATE INDEX \"idx display\" ON \"APP\".\"order\" (\"display name\")"))
-        XCTAssertTrue(sql.contains("IS ''customer''''s label''"))
+        XCTAssertFalse(sql.contains("EXECUTE IMMEDIATE"))
+        XCTAssertTrue(sql.contains("DEFAULT 'guest''s record'"))
+        XCTAssertTrue(sql.contains("IS 'customer''s label'"))
+    }
+
+    func testDDLGenerationDoesNotNestStatementsInAStringLiteral() throws {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+        let definition = PluginCreateTableDefinition(
+            tableName: "note",
+            columns: [
+                PluginColumnDefinition(
+                    name: "body",
+                    dataType: "varchar(100)",
+                    comment: "a quote carrying a combining mark: '\u{0301} end"
+                )
+            ],
+            indexes: [],
+            foreignKeys: []
+        )
+
+        let sql = try XCTUnwrap(driver.generateCreateTableSQL(definition: definition))
+
+        // Re-encoding statements as a PL/SQL literal doubled every quote a second time and
+        // relied on grapheme-cluster matching, which leaves a decorated quote undoubled.
+        XCTAssertFalse(sql.contains("BEGIN\n"))
+        XCTAssertFalse(sql.contains("EXECUTE IMMEDIATE"))
+        XCTAssertTrue(sql.contains("''\u{0301}"))
     }
 
     func testRowChangesUsePrimaryKeyAndBoundValues() throws {
@@ -74,6 +98,139 @@ final class DamengPluginDriverTests: XCTestCase {
             "UPDATE \"APP\".\"users\" SET \"name\" = ? WHERE \"id\" = ? AND ROWNUM = 1"
         )
         XCTAssertEqual(statements[0].parameters, [.text("new"), .text("42")])
+    }
+
+    func testDeletesBindTheWholePrimaryKey() throws {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .delete,
+            cellChanges: [],
+            originalRow: [.text("42"), .text("old")]
+        )
+
+        let statements = try XCTUnwrap(driver.generateStatements(
+            table: "users",
+            schema: "APP",
+            columns: ["id", "name"],
+            primaryKeyColumns: ["id"],
+            changes: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [0],
+            insertedRowIndices: []
+        ))
+
+        XCTAssertEqual(statements.count, 1)
+        XCTAssertEqual(
+            statements[0].statement,
+            "DELETE FROM \"APP\".\"users\" WHERE \"id\" = ? AND ROWNUM = 1"
+        )
+        XCTAssertEqual(statements[0].parameters, [.text("42")])
+    }
+
+    func testCompositePrimaryKeyConstrainsEveryKeyColumn() throws {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(2, "total", .text("1"), .text("2"))],
+            originalRow: [.text("7"), .text("EU"), .text("1")]
+        )
+
+        let statements = try XCTUnwrap(driver.generateStatements(
+            table: "orders",
+            schema: "APP",
+            columns: ["id", "region", "total"],
+            primaryKeyColumns: ["id", "region"],
+            changes: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        ))
+
+        XCTAssertEqual(statements.count, 1)
+        XCTAssertTrue(statements[0].statement.contains("\"id\" = ?"))
+        XCTAssertTrue(statements[0].statement.contains("\"region\" = ?"))
+        XCTAssertEqual(statements[0].parameters, [.text("2"), .text("7"), .text("EU")])
+    }
+
+    func testBinaryValuesAreBoundRatherThanInlined() throws {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+        let payload = Data([0x00, 0xFF, 0x10])
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(1, "blob", .null, .bytes(payload))],
+            originalRow: [.text("1"), .null]
+        )
+
+        let statements = try XCTUnwrap(driver.generateStatements(
+            table: "files",
+            schema: "APP",
+            columns: ["id", "blob"],
+            primaryKeyColumns: ["id"],
+            changes: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        ))
+
+        XCTAssertEqual(statements.count, 1)
+        XCTAssertTrue(statements[0].statement.contains("\"blob\" = ?"))
+        XCTAssertFalse(statements[0].statement.contains("HEXTORAW"))
+        XCTAssertEqual(statements[0].parameters.first, .bytes(payload))
+    }
+
+    func testWithoutAPrimaryKeyEveryColumnConstrainsTheRow() throws {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(1, "name", .text("old"), .text("new"))],
+            originalRow: [.text("42"), .text("old")]
+        )
+
+        let statements = try XCTUnwrap(driver.generateStatements(
+            table: "users",
+            schema: "APP",
+            columns: ["id", "name"],
+            primaryKeyColumns: [],
+            changes: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        ))
+
+        XCTAssertEqual(
+            statements[0].statement,
+            "UPDATE \"APP\".\"users\" SET \"name\" = ? WHERE \"id\" = ? AND \"name\" = ? AND ROWNUM = 1"
+        )
+        XCTAssertEqual(statements[0].parameters, [.text("new"), .text("42"), .text("old")])
+    }
+
+    func testAnUnresolvableKeyColumnProducesNoStatement() throws {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(1, "name", .text("old"), .text("new"))],
+            originalRow: [.text("42"), .text("old")]
+        )
+
+        // "tenant_id" is a declared key the grid is not showing. Skipping it would leave
+        // "id" alone in the predicate, and ROWNUM = 1 would pick an arbitrary matching row.
+        let statements = driver.generateStatements(
+            table: "users",
+            schema: "APP",
+            columns: ["id", "name"],
+            primaryKeyColumns: ["id", "tenant_id"],
+            changes: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        )
+
+        XCTAssertNil(statements)
     }
 
     func testDropObjectStatementKeepsDM8ObjectKeywords() {
