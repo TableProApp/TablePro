@@ -146,19 +146,33 @@ extension HighlightProviderState {
 
     func storageDidUpdate(range: NSRange, delta: Int) {
         guard let textView else { return }
+        let editedSet = Self.editedIndices(range: range, delta: delta)
         highlightProvider?.applyEdit(textView: textView, range: range, delta: delta) { [weak self] result in
             switch result {
             case .success(let invalidSet):
-                let modifiedRange = NSRange(location: range.location, length: range.length + delta)
-                self?.invalidate(invalidSet.union(IndexSet(integersIn: modifiedRange)))
+                self?.invalidate(invalidSet.union(editedSet))
             case .failure(let error):
                 if case HighlightProvidingError.operationCancelled = error {
-                    self?.invalidate(IndexSet(integersIn: range))
+                    self?.invalidate(editedSet)
                 } else {
                     self?.logger.error("Failed to apply edit. Query returned with error: \(error)")
                 }
             }
         }
+    }
+
+    /// Every index the edit touched, before and after it was applied.
+    ///
+    /// `range` is the range as it was before the edit and is empty for an insertion at a caret.
+    /// The post-edit range is empty for a deletion. Either one alone therefore misses a whole class
+    /// of edit, and `invalidate(_:)` returns without doing anything for an empty set, so the text
+    /// keeps the default typing attributes it was inserted with and is never repainted.
+    ///
+    /// The cancellation path used the pre-edit range on its own, which stranded a paste at a caret
+    /// permanently: nothing was invalidated, so nothing was ever queried again.
+    static func editedIndices(range: NSRange, delta: Int) -> IndexSet {
+        let modifiedRange = NSRange(location: range.location, length: max(range.length + delta, 0))
+        return IndexSet(integersIn: range).union(IndexSet(integersIn: modifiedRange))
     }
 }
 
