@@ -5,10 +5,15 @@
 
 import AppKit
 
-/// `undo:`, `redo:`, `copy:` and `delete:` are declared here only as the fallback a
+/// `undo:`, `redo:`, `copy:`, `paste:` and `delete:` are declared here only as the fallback a
 /// window reaches when no more specific responder claimed them. The SQL editor's
 /// text view and the data grid implement the same selectors and sit closer to the
 /// first responder, so AppKit stops there first.
+///
+/// `paste:` has to be one of them. AppKit disables a menu item that no responder in the chain
+/// implements, and a disabled item still owns its key equivalent, so with focus anywhere that
+/// does not paste (the sidebar, the workspace rail, a toolbar control) Command+V was swallowed
+/// for the whole window with nothing to explain it.
 extension MainSplitViewController {
     @objc func undo(_ sender: Any?) {
         commandActions?.undoChange()
@@ -25,6 +30,10 @@ extension MainSplitViewController {
             return
         }
         actions.copyTableNames()
+    }
+
+    @objc func paste(_ sender: Any?) {
+        commandActions?.pasteRows()
     }
 
     @objc func delete(_ sender: Any?) {

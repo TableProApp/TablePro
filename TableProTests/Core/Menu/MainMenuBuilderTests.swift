@@ -157,6 +157,38 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.executeQuery(_:)), context))
     }
 
+    /// #2172: `paste:` had no window-level implementation at all, so with focus anywhere that does
+    /// not paste, AppKit disabled the item, and a disabled item still owns its key equivalent, so
+    /// Command+V was swallowed for the whole window. Adding the handler without an explicit arm
+    /// here would have been just as wrong in the other direction: `isEnabled` ends in
+    /// `default: return true`, which would have shipped Paste permanently lit.
+    @Test("Paste needs a connection and somewhere for the rows to land")
+    func pasteNeedsSomewhereToLand() {
+        var context = MenuValidationContext()
+        context.canPasteRows = true
+        #expect(!enabled(#selector(MainSplitViewController.paste(_:)), context))
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.paste(_:)), context))
+        context.canPasteRows = false
+        #expect(!enabled(#selector(MainSplitViewController.paste(_:)), context))
+    }
+
+    /// A database view opens as a `.table` tab with `tableContext.isEditable` false, so tab type
+    /// alone would light Paste over content the row paste must never write to.
+    @Test("Paste needs the tab to be editable, not merely a table tab")
+    func pasteNeedsAnEditableTab() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.canPasteRows = false
+        #expect(!enabled(#selector(MainSplitViewController.paste(_:)), context))
+    }
+
+    @Test("Paste is answered by its own arm, never by the default that enables everything else")
+    func pasteIsNotAnsweredByTheDefaultArm() {
+        let context = MenuValidationContext(hasSelectedWorkspace: true, isConnected: true)
+        #expect(!enabled(#selector(MainSplitViewController.paste(_:)), context))
+    }
+
     @Test("Save needs pending changes and a writable connection")
     func saveNeedsPendingChanges() {
         var context = MenuValidationContext()

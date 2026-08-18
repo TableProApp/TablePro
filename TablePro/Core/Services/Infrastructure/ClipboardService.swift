@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import CodeEditTextView
 import TableProPluginKit
 import UniformTypeIdentifiers
 
@@ -38,8 +39,11 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
     /// The convention clipboard managers watch for to keep an item out of their history.
     private static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
 
+    /// Resolves through `PasteboardTextReader` so a clipboard that carries text as HTML, RTF or a
+    /// file URL still pastes. Reading `.string` alone returned nil for those and the caller had no
+    /// way to tell that apart from an empty clipboard.
     func readText() -> String? {
-        NSPasteboard.general.string(forType: .string)
+        PasteboardTextReader.plainText()
     }
 
     func readGridRows() -> GridRowsClipboardPayload? {
@@ -84,7 +88,7 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
     }
 
     var hasText: Bool {
-        NSPasteboard.general.string(forType: .string) != nil
+        PasteboardTextReader.hasText()
     }
 
     var hasGridRows: Bool {

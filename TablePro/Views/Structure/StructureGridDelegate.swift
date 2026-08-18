@@ -237,6 +237,10 @@ final class StructureGridDelegate: DataGridViewDelegate {
         pasteboard.writeObjects([item])
     }
 
+    func dataGridCanPasteRows() -> Bool {
+        TableStructureView.canPasteStructureRows
+    }
+
     func dataGridPasteRows() {
         guard let data = NSPasteboard.general.data(forType: TableStructureView.structurePasteboardType),
               let jsonString = String(data: data, encoding: .utf8) else {

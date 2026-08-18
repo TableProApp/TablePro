@@ -268,14 +268,34 @@ final class KeyHandlingTableView: NSTableView {
 
     @objc func paste(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
-        if focusedRow >= 0,
-           DataGridView.isDataTableColumn(focusedColumn),
-           let schema = coordinator?.identitySchema,
-           let dataCol = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
-           coordinator?.pasteCellsFromClipboard(anchorRow: focusedRow, anchorColumn: dataCol) == true {
+        if let anchor = pasteAnchorCell(),
+           coordinator?.pasteCellsFromClipboard(anchorRow: anchor.row, anchorColumn: anchor.column) == true {
             return
         }
         coordinator?.delegate?.dataGridPasteRows()
+    }
+
+    /// The cell a paste would land in. Deliberately looser than `focusedDataCell()`, which also
+    /// requires a single selected row: a paste anchors on the focused cell alone.
+    private func pasteAnchorCell() -> (row: Int, column: Int)? {
+        guard focusedRow >= 0,
+              DataGridView.isDataTableColumn(focusedColumn),
+              let schema = coordinator?.identitySchema,
+              let dataCol = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
+            return nil
+        }
+        return (focusedRow, dataCol)
+    }
+
+    /// Both routes `paste(_:)` can take, asked before the menu item is enabled. The item used to be
+    /// enabled whenever the grid was editable and had a delegate, which lit it over query-result
+    /// tabs where `pasteRows()` returns at its first guard. AppKit gives a disabled item its key
+    /// equivalent anyway, so an enabled-but-dead item swallows Command+V in silence.
+    private var canPaste: Bool {
+        guard let coordinator, coordinator.isEditable else { return false }
+        if coordinator.delegate?.dataGridCanPasteRows() == true { return true }
+        guard let anchor = pasteAnchorCell() else { return false }
+        return coordinator.canPasteCellsFromClipboard(anchorRow: anchor.row, anchorColumn: anchor.column)
     }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
@@ -290,7 +310,7 @@ final class KeyHandlingTableView: NSTableView {
             let hasGridSelection = gridSelection?.isEmpty == false
             return hasGridSelection || !selectedRowIndexes.isEmpty
         case #selector(paste(_:)):
-            return coordinator?.isEditable == true && coordinator?.delegate != nil
+            return canPaste
         case #selector(insertNewline(_:)):
             return selectedRow >= 0 && DataGridView.isDataTableColumn(focusedColumn)
         case #selector(selectAll(_:)):

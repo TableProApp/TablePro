@@ -29,6 +29,10 @@ struct MenuValidationContext: Equatable {
     var hasDataPendingChanges = false
     var hasRowSelection = false
     var hasTableSelection = false
+    /// Whether the window-level `paste:` fallback would actually paste. AppKit hands a disabled
+    /// item its key equivalent regardless, so an item enabled over a handler that returns at its
+    /// first guard swallows Command+V with no feedback.
+    var canPasteRows = false
     var canCloseOtherTabs = false
     var canCloseTabsForOtherDatabases = false
     var canCloseAllTabs = false
@@ -152,6 +156,8 @@ extension MainSplitViewController: NSMenuItemValidation {
              #selector(copyRowsWithHeaders(_:)),
              #selector(copyRowsAsJson(_:)):
             return context.hasRowSelection
+        case #selector(paste(_:)):
+            return context.isConnected && context.canPasteRows
         case #selector(delete(_:)):
             return context.isConnected && (context.isCurrentTabEditable || context.hasTableSelection)
 
@@ -212,6 +218,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasDataPendingChanges: actions.hasDataPendingChanges,
             hasRowSelection: actions.hasRowSelection,
             hasTableSelection: actions.hasTableSelection,
+            canPasteRows: actions.canPasteRows,
             canCloseOtherTabs: actions.canCloseOtherTabs,
             canCloseTabsForOtherDatabases: actions.canCloseTabsForOtherDatabases,
             canCloseAllTabs: actions.canCloseAllTabs,
