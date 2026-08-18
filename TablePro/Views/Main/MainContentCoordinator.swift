@@ -194,6 +194,10 @@ final class MainContentCoordinator {
     var tableMetadata: TableMetadata?
     var activeSheet: ActiveSheet?
     var isDatabaseSwitcherShown = false
+    /// Which scope the toolbar chip is showing a chooser for, so the popover opens against the
+    /// component the user clicked. Separate from `isDatabaseSwitcherShown`, which belongs to the
+    /// toolbar button, and the two are cleared together so a window never holds two of them.
+    var presentedScopeSwitcher: ContainerSwitchTarget?
     var isConnectionSwitcherShown = false
     var sessionContexts: [PluginSessionContext] = []
     var containerDropRequest: DatabaseDropRequest?

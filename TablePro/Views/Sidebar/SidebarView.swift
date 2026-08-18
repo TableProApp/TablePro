@@ -40,6 +40,13 @@ struct SidebarView: View {
         PluginManager.shared.databaseGroupingStrategy(for: viewModel.databaseType)
     }
 
+    /// Only the flat list is scoped to one schema. The tree already shows every schema as a node,
+    /// so a picker there would name a schema the list is not filtered by.
+    private var supportsSchemaFooter: Bool {
+        guard PluginManager.shared.supportsSchemaSwitching(for: viewModel.databaseType) else { return false }
+        return rootShape == .flat
+    }
+
     /// The one derivation of the sidebar's shape. The outline's coordinator calls the same resolver
     /// with the same inputs, so the wrapper this view picks and the root the outline builds can
     /// never describe different sidebars.
@@ -90,7 +97,10 @@ struct SidebarView: View {
         Group {
             switch sidebarState.selectedSidebarTab {
             case .tables:
-                tablesContent
+                VStack(spacing: 0) {
+                    tablesContent
+                    schemaFooter
+                }
             case .favorites:
                 if let coordinator {
                     FavoritesTabView(
@@ -142,6 +152,27 @@ struct SidebarView: View {
                 return
             }
             model.confirmOperation(options: options)
+        }
+    }
+
+    // MARK: - Schema Footer
+
+    @ViewBuilder
+    private var schemaFooter: some View {
+        if supportsSchemaFooter {
+            VStack(spacing: 0) {
+                Divider()
+                HStack(spacing: 8) {
+                    Spacer()
+                    SchemaPickerControl(
+                        connectionId: connectionId,
+                        databaseType: viewModel.databaseType,
+                        coordinator: coordinator
+                    )
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            }
         }
     }
 

@@ -1086,7 +1086,20 @@ final class MainContentCommandActions {
         guard PluginManager.shared.supportsContainerSwitching(for: type) else { return }
         guard PluginManager.shared.connectionMode(for: type) != .fileBased else { return }
         coordinator.contentWindow?.makeFirstResponder(nil)
+        coordinator.presentedScopeSwitcher = nil
         coordinator.isDatabaseSwitcherShown = true
+    }
+
+    /// The same chooser, opened from the toolbar chip so it appears against the scope it switches.
+    /// Clearing first responder is what lets the popover's search field take focus, which is why
+    /// the chip cannot just flip its own presentation flag.
+    func openScopeSwitcher(_ target: ContainerSwitchTarget) {
+        guard let coordinator else { return }
+        let type = coordinator.connection.type
+        guard PluginManager.shared.switchableContainers(for: type).contains(target) else { return }
+        coordinator.contentWindow?.makeFirstResponder(nil)
+        coordinator.isDatabaseSwitcherShown = false
+        coordinator.presentedScopeSwitcher = target
     }
 
     func openQuickSwitcher() {

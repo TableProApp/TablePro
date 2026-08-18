@@ -67,6 +67,7 @@ final class DatabaseSwitcherViewModel {
         connectionId: UUID,
         currentDatabase: String?,
         databaseType: DatabaseType,
+        switchTarget: ContainerSwitchTarget? = nil,
         services: AppServices = .live,
         sidebarState: SharedSidebarState? = nil
     ) {
@@ -75,7 +76,9 @@ final class DatabaseSwitcherViewModel {
         self.databaseType = databaseType
         self.services = services
         self.sidebarState = sidebarState
-        self.switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType) ?? .database
+        self.switchTarget = switchTarget
+            ?? services.pluginManager.containerSwitchTarget(for: databaseType)
+            ?? .database
     }
 
     /// A refresh never blanks the list it is refreshing, and a failed one never replaces data the

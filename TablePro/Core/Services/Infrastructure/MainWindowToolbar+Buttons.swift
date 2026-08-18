@@ -132,7 +132,7 @@ internal struct ToolbarPrincipalSubjectContent: View {
             ToolbarPrincipalContent(
                 state: coordinator.toolbarState,
                 connectionId: coordinator.connection.id,
-                onSwitchDatabase: { [weak coordinator] in coordinator?.commandActions?.openDatabaseSwitcher() },
+                coordinator: coordinator,
                 onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() },
                 onSafeModeChange: { [weak coordinator] level in coordinator?.setSafeModeLevel(level) }
             )
