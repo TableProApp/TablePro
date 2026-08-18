@@ -1,18 +1,11 @@
 name: macOS Tests
 
 on:
+  # No paths filter here on purpose. A required status check has to report on every pull
+  # request, and a workflow skipped by a paths filter reports nothing at all, which leaves
+  # the check pending forever and blocks docs-only work. The filtering moved into the
+  # changes job below, so the gate job always runs and always reports.
   pull_request:
-    paths:
-      - "TablePro/**"
-      - "Plugins/**"
-      - "Packages/**"
-      - "LocalPackages/**"
-      - "TableProTests/**"
-      - "TableProUITests/**"
-      - "project.yml"
-      - "Configs/**"
-      - "Libs/**"
-      - ".github/workflows/macos-tests.yml"
   push:
     branches: [main]
     paths:
@@ -40,8 +33,62 @@ env:
   TEST_DESTINATION: "platform=macOS"
 
 jobs:
+  # Reproduces the paths filter this workflow used to carry on `on: pull_request`, with the
+  # same union of paths, so a pull request runs exactly the suites it ran before.
+  # Never give this job a `permissions:` block. build.yml calls this workflow with
+  # workflow_call, and a called job may not request more than the caller holds. The repository
+  # default is read, which carries no pull-requests scope, so asking for one fails the whole
+  # release at run creation, before a single job starts. Reading the diff from git keeps this
+  # job inside contents:read, which every caller already grants.
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the macOS suites need to run
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          # Anything that is not a pull request runs the full suite: a release calls this
+          # workflow with workflow_call, and a release that skipped its tests is the failure
+          # this guard exists to prevent.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              exit 0
+          fi
+
+          # core.quotePath defaults to true, which wraps any path holding a non-ASCII byte or a
+          # control character in double quotes and C-escapes it, so `TablePro/Café.swift` arrives
+          # as `"TablePro/Caf\303\251.swift"` and the leading quote defeats the `^` anchor. This
+          # detector fails open, so a misread means every suite skips behind a green gate. Reading
+          # raw NUL-separated records removes both that and any embedded-newline trick.
+          #
+          # A file, not a variable: bash drops NUL bytes from "$(...)", which would run every path
+          # together into one record. It also keeps grep out of a pipeline, so the SIGPIPE that
+          # scripts/check-freetds-fedauth.sh:69 warns about cannot come back.
+          git -c core.quotePath=false diff --no-renames --name-only -z \
+              "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-files"
+
+          if LC_ALL=C grep -zqE '^(TablePro/|Plugins/|Packages/|LocalPackages/|TableProTests/|TableProUITests/|Configs/|Libs/|project\.yml$|\.github/workflows/macos-tests\.yml$)' "$RUNNER_TEMP/changed-files"; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   package-tests:
     name: TableProCore Package Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
     timeout-minutes: 20
     steps:
@@ -57,6 +104,8 @@ jobs:
 
   editor-tests:
     name: CodeEditTextView Package Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
     timeout-minutes: 20
     steps:
@@ -81,6 +130,8 @@ jobs:
   # UI retry costs another minute or two, so 40 left no headroom and killed the job mid-suite.
   app-tests:
     name: macOS App Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -227,3 +278,28 @@ jobs:
           name: macos-test-results
           path: TestResults.xcresult
           retention-days: 7
+
+  # The one check to mark required on main. It reports on every pull request, so a docs-only
+  # change passes on skipped suites instead of hanging, and a red suite cannot be merged past.
+  gate:
+    name: macOS Tests Gate
+    if: always()
+    needs: [changes, package-tests, editor-tests, app-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every suite to have passed or been skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "suite results: $RESULTS"
+          for result in $RESULTS; do
+              case "$result" in
+                  success|skipped) ;;
+                  *)
+                      echo "A macOS suite reported '$result'." >&2
+                      exit 1
+                      ;;
+              esac
+          done

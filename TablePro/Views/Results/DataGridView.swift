@@ -96,8 +96,8 @@ struct DataGridView: NSViewRepresentable {
         coordinator.tableRowsMutator = tableRowsMutator
         coordinator.paginationOffsetProvider = paginationOffsetProvider
         coordinator.sortedIDs = sortedIDs
-        coordinator.syncDisplayFormats(displayFormats)
         coordinator.delegate = delegate
+        coordinator.syncDisplayFormats(displayFormats)
         coordinator.apply(configuration: configuration, isEditable: isEditable)
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
 
@@ -268,8 +268,9 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.sortedIDs = sortedIDs
         coordinator.updateCache()
-        coordinator.syncDisplayFormats(displayFormats)
         coordinator.delegate = delegate
+        let displayFormatsChanged = coordinator.columnDisplayFormats != displayFormats
+        let remappedValueFilters = coordinator.syncDisplayFormats(displayFormats)
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.recomputeValueFilteredIDs()
         coordinator.updateCache()
@@ -317,10 +318,12 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.updateValueFilterHeaderIndicators()
 
-        if needsFullReload {
+        if needsFullReload || remappedValueFilters {
             coordinator.selectionController.clear()
             tableView.reloadData()
             coordinator.startBackgroundPrewarm()
+        } else if displayFormatsChanged {
+            coordinator.reloadAfterDisplayFormatChange()
         }
     }
 
@@ -365,6 +368,7 @@ struct DataGridView: NSViewRepresentable {
                     displayFormat: slot < coordinator.columnDisplayFormats.count
                         ? coordinator.columnDisplayFormats[slot]
                         : nil,
+                    databaseType: coordinator.databaseType,
                     isLargeDataset: coordinator.isLargeDataset,
                     nullDisplayString: coordinator.cellRegistry.nullDisplayString
                 )

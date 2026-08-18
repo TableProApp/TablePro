@@ -557,10 +557,9 @@ final class ConnectionFormCoordinator {
                     }
                 }
             } catch {
-                let usesSSO = self?.auth.additionalFieldValues["awsAuth"] == "sso"
-                    || self?.auth.additionalFieldValues["awsAuthMethod"] == "sso"
-                if usesSSO, AWSSSOLoginService.isSSOExpired(error) {
-                    await self?.offerAWSSSOSignIn(testId: testConn.id, window: window)
+                let fields = self?.auth.additionalFieldValues ?? [:]
+                if let provider = ConnectionSignInRegistry.provider(for: error, fields: fields) {
+                    await self?.offerSignIn(provider, fields: fields, testId: testConn.id, window: window)
                     return
                 }
                 await MainActor.run {
@@ -586,36 +585,23 @@ final class ConnectionFormCoordinator {
         }
     }
 
-    private func offerAWSSSOSignIn(testId: UUID, window: NSWindow?) async {
+    /// Testing tears down first so the sheet never covers a running test, and the result is left
+    /// alone rather than marked failed: the credential was the problem, not the settings.
+    private func offerSignIn(
+        _ provider: ConnectionSignInProvider,
+        fields: [String: String],
+        testId: UUID,
+        window: NSWindow?
+    ) async {
         cleanupTestSecrets(for: testId)
         isTesting = false
         testTask = nil
-        let profileName = auth.additionalFieldValues["awsProfileName"]
-            .flatMap { $0.isEmpty ? nil : $0 } ?? "default"
-        let confirmed = await AlertHelper.confirmCritical(
-            title: String(localized: "AWS SSO Sign-In Required"),
-            message: String(
-                format: String(localized: "The SSO session for profile \"%@\" has expired. Sign in with your browser?"),
-                profileName
-            ),
-            confirmButton: String(localized: "Sign In"),
+        guard await ConnectionSignInPrompt.offer(provider, fields: fields, window: window) else { return }
+        AlertHelper.showInfoSheet(
+            title: String(localized: "Signed In"),
+            message: provider.signedInMessage,
             window: window
         )
-        guard confirmed else { return }
-        do {
-            try await AWSSSOLoginService.signIn(profileName: profileName)
-            AlertHelper.showInfoSheet(
-                title: String(localized: "Signed In"),
-                message: String(localized: "AWS SSO sign-in finished. Test the connection again."),
-                window: window
-            )
-        } catch {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "AWS SSO Sign-In Failed"),
-                message: error.localizedDescription,
-                window: window
-            )
-        }
     }
 
     private struct TunnelFormStates {

@@ -19,14 +19,16 @@ struct InspectorTriggerTests {
         schemaVersion: Int = 1,
         metadataVersion: Int = 0,
         resultsViewMode: ResultsViewMode = .data,
-        inspectorRowSourceRevision: Int = 0
+        inspectorRowSourceRevision: Int = 0,
+        gridDisplayRevision: Int = 0
     ) -> InspectorTrigger {
         InspectorTrigger(
             tableName: tableName,
             schemaVersion: schemaVersion,
             metadataVersion: metadataVersion,
             resultsViewMode: resultsViewMode,
-            inspectorRowSourceRevision: inspectorRowSourceRevision
+            inspectorRowSourceRevision: inspectorRowSourceRevision,
+            gridDisplayRevision: gridDisplayRevision
         )
     }
 
@@ -72,6 +74,11 @@ struct InspectorTriggerTests {
     @Test("A changed schema row produces unequal triggers")
     func differentRowSourceRevision() {
         #expect(trigger(inspectorRowSourceRevision: 0) != trigger(inspectorRowSourceRevision: 1))
+    }
+
+    @Test("A changed grid display produces unequal triggers")
+    func differentGridDisplayRevision() {
+        #expect(trigger(gridDisplayRevision: 0) != trigger(gridDisplayRevision: 1))
     }
 }
 

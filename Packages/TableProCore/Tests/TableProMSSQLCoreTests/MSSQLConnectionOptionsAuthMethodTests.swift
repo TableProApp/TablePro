@@ -31,6 +31,24 @@ struct MSSQLConnectionOptionsAuthMethodTests {
         #expect(options.authMethod == .windows)
     }
 
+    @Test("Entra ID blanks username and password so the token carries the login")
+    func entraBlanksCredentials() {
+        var options = MSSQLConnectionOptions(
+            host: "db.example.com",
+            user: "sa",
+            password: "hunter2",
+            database: "app",
+            authMethod: .entra
+        )
+        #expect(options.user == "")
+        #expect(options.password == "")
+        #expect(options.authMethod == .entra)
+        #expect(options.fedAuthToken == nil)
+
+        options.fedAuthToken = "eyJhbGciOiJSUzI1NiJ9.payload.signature"
+        #expect(options.fedAuthToken == "eyJhbGciOiJSUzI1NiJ9.payload.signature")
+    }
+
     @Test("Default auth method is SQL Server")
     func defaultsToSqlServer() {
         let options = MSSQLConnectionOptions(host: "h", user: "u", password: "p", database: "d")
@@ -41,6 +59,7 @@ struct MSSQLConnectionOptionsAuthMethodTests {
     func resolvesFromAdditionalFields() {
         #expect(MSSQLConnectionOptions.authMethod(from: ["mssqlAuthMethod": "windows"]) == .windows)
         #expect(MSSQLConnectionOptions.authMethod(from: ["mssqlAuthMethod": "sql"]) == .sqlServer)
+        #expect(MSSQLConnectionOptions.authMethod(from: ["mssqlAuthMethod": "entra"]) == .entra)
         #expect(MSSQLConnectionOptions.authMethod(from: [:]) == .sqlServer)
         #expect(MSSQLConnectionOptions.authMethod(from: ["mssqlAuthMethod": "nonsense"]) == .sqlServer)
     }

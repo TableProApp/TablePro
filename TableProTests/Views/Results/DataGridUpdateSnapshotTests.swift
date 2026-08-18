@@ -15,6 +15,7 @@ struct DataGridUpdateSnapshotTests {
         columns: [String] = ["name", "type"],
         reloadVersion: Int = 0,
         contentRevision: Int = 0,
+        displayFormats: [ValueDisplayFormat?] = [],
         columnComments: [String: String] = [:]
     ) -> DataGridUpdateSnapshot {
         DataGridUpdateSnapshot(
@@ -23,7 +24,7 @@ struct DataGridUpdateSnapshotTests {
             columns: columns,
             sortedIDsCount: nil,
             valueFilteredIDsCount: nil,
-            displayFormats: [],
+            displayFormats: displayFormats,
             configuration: DataGridConfiguration(),
             isEditable: true,
             hasMoveDelegate: false,
@@ -69,5 +70,39 @@ struct DataGridUpdateSnapshotTests {
         let before = makeSnapshot(columnComments: ["name": "Display name"])
         let after = makeSnapshot(columnComments: ["name": "Full name"])
         #expect(before != after)
+    }
+
+    @Test("Display format changes invalidate the update snapshot")
+    func displayFormatChangesSnapshot() {
+        let raw = makeSnapshot(displayFormats: [.raw])
+        let uuid = makeSnapshot(displayFormats: [.uuid])
+
+        #expect(raw != uuid)
+    }
+
+    @Test("Display format cache entries are scoped to a pinned result set")
+    func displayFormatCacheUsesResultSetIdentity() {
+        let firstResult = UUID()
+        let secondResult = UUID()
+        let entry = DisplayFormatsCacheEntry(
+            schemaVersion: 4,
+            resultSetId: firstResult,
+            smartDetectionEnabled: true,
+            overridesVersion: 2,
+            formats: [.uuid]
+        )
+
+        #expect(entry.matches(
+            schemaVersion: 4,
+            resultSetId: firstResult,
+            smartDetectionEnabled: true,
+            overridesVersion: 2
+        ))
+        #expect(!entry.matches(
+            schemaVersion: 4,
+            resultSetId: secondResult,
+            smartDetectionEnabled: true,
+            overridesVersion: 2
+        ))
     }
 }

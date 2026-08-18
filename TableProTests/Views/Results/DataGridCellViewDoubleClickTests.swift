@@ -124,6 +124,28 @@ struct DataGridCellViewDoubleClickTests {
         #expect(delegate.chevronClicks.isEmpty)
         #expect(delegate.fkClicks.isEmpty)
     }
+
+    @Test("Accessibility exposes the formatted cell value")
+    func accessibilityUsesDisplayText() {
+        let cell = DataGridCellView(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        let uuid = "af49453b-7f2f-fb58-fcd3-2bd399599fa5"
+        cell.configure(
+            kind: .blob,
+            content: DataGridCellContent(displayText: uuid, rawValue: nil, placeholder: nil),
+            state: DataGridCellState(
+                visualState: .empty,
+                isFocused: false,
+                isEditable: false,
+                isLargeDataset: false,
+                row: 1,
+                columnIndex: 2
+            ),
+            palette: .placeholder
+        )
+
+        #expect(cell.accessibilityValue() as? String == uuid)
+        #expect(cell.accessibilityLabel()?.contains(uuid) == true)
+    }
 }
 
 @Suite("DataGridCell accessory layout")

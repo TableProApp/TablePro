@@ -54,12 +54,16 @@ Column widths, order, and which columns are hidden are remembered per table, sco
 
 ### Display Format
 
-UUIDs and Unix timestamps render in a readable form when the column type and name match (for example a `BINARY(16)` column named `uuid`). Right-click a header and choose **Display As** to set the format per column: Raw Value, UUID, Unix Timestamp (seconds or milliseconds), JSON, or PHP Serialized. See [Cell and Row Viewers](/features/json-viewer) for what each format does. Toggle the automatic detection in **Settings > Data > Smart value detection**.
+UUIDs and Unix timestamps render in a readable form when the column type and name match (for example a `BINARY(16)` column named `uuid`). Right-click a header and choose **Display As** to set the format per column: Raw Value, UUID, Unix Timestamp (seconds or milliseconds), JSON, or PHP Serialized. See [Cell and Row Viewers](/features/json-viewer) for what each format does, and for how MongoDB binary columns differ. Toggle the automatic detection in **Settings > Data > Smart value detection**.
 
 ## Editing
 
 <Warning>
-Editing works on simple `SELECT * FROM table` queries. Joins and aggregations are read-only, and so is any connection set to the Read-Only [safe mode](/features/safe-mode) level.
+Editing works when the results come from one table, with or without an alias, as in `SELECT * FROM orders o WHERE o.id = 1`. Comments, `DISTINCT`, `ORDER BY`, `LIMIT` and `FOR UPDATE` are fine. Joins, comma joins, subqueries in `FROM`, CTEs, `UNION`, `EXCEPT`, `INTERSECT` and `FROM ONLY` are read-only, and so is any connection set to the Read-Only [safe mode](/features/safe-mode) level.
+
+You can write the schema in front of the table, as in `SELECT * FROM public.orders o`, as long as it is the schema you are browsing. Naming a different schema keeps the results read-only: the saved edit does not repeat the schema, so it would go to the browsed one instead of the table you queried. Switch to that schema first if you want to edit through it.
+
+Two shapes look editable but refuse to save. A column renamed with `AS` cannot be written back, though the other columns in the same row still can. A query that renames or omits the primary key blocks the whole save, because there is nothing to match the row on.
 </Warning>
 
 Double-click a cell to edit it. Press `Enter` to confirm or `Escape` to cancel. Some types open a dedicated editor:

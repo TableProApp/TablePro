@@ -403,38 +403,37 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         settingsCancellable = AppEvents.shared.dataGridSettingsChanged
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                guard let self, let tableView = self.tableView else { return }
+                guard let self else { return }
                 let settings = AppSettingsManager.shared.dataGrid
                 let prev = self.lastDataGridSettings
                 self.lastDataGridSettings = settings
-
-                let newRowHeight = CGFloat(settings.rowHeight.rawValue)
-                if tableView.rowHeight != newRowHeight {
-                    tableView.rowHeight = newRowHeight
-                    tableView.tile()
-                }
-
-                let dataChanged = prev.dateFormat != settings.dateFormat
-                    || prev.nullDisplay != settings.nullDisplay
-                    || prev.enableSmartValueDetection != settings.enableSmartValueDetection
-
-                if prev.enableSmartValueDetection != settings.enableSmartValueDetection
-                    && !settings.enableSmartValueDetection {
-                    self.updateDisplayFormats([])
-                }
-
-                if dataChanged {
-                    self.invalidateDisplayCache()
-                    let visibleRect = tableView.visibleRect
-                    let visibleRange = tableView.rows(in: visibleRect)
-                    if visibleRange.length > 0 {
-                        tableView.reloadData(
-                            forRowIndexes: IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)),
-                            columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
-                        )
-                    }
-                }
+                self.applyDataGridSettingsChange(from: prev, to: settings)
             }
+    }
+
+    func applyDataGridSettingsChange(from previous: DataGridSettings, to settings: DataGridSettings) {
+        guard let tableView else { return }
+        let newRowHeight = CGFloat(settings.rowHeight.rawValue)
+        if tableView.rowHeight != newRowHeight {
+            tableView.rowHeight = newRowHeight
+            tableView.tile()
+        }
+
+        let dataChanged = previous.dateFormat != settings.dateFormat
+            || previous.nullDisplay != settings.nullDisplay
+            || previous.enableSmartValueDetection != settings.enableSmartValueDetection
+
+        if dataChanged {
+            invalidateDisplayCache()
+            let visibleRect = tableView.visibleRect
+            let visibleRange = tableView.rows(in: visibleRect)
+            if visibleRange.length > 0 {
+                tableView.reloadData(
+                    forRowIndexes: IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)),
+                    columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
+                )
+            }
+        }
     }
 
     func observeThemeChanges() {
@@ -582,7 +581,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             return cached
         }
         let format = column >= 0 && column < columnDisplayFormats.count ? columnDisplayFormats[column] : nil
-        let formatted = CellDisplayFormatter.format(rawValue, columnType: columnType, displayFormat: format) ?? rawValue.asText
+        let formatted = CellDisplayFormatter.format(
+            rawValue,
+            columnType: columnType,
+            displayFormat: format,
+            databaseType: databaseType
+        ) ?? rawValue.asText
 
         let neededCount = max(column + 1, columnDisplayFormats.count, cachedColumnCount)
         let box: RowDisplayBox
@@ -614,15 +618,96 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
     }
 
-    func updateDisplayFormats(_ formats: [ValueDisplayFormat?]) {
-        columnDisplayFormats = formats
-        displayCache.removeAll()
+    @discardableResult
+    func updateDisplayFormats(_ formats: [ValueDisplayFormat?]) -> Bool {
+        applyDisplayFormats(formats)
     }
 
-    func syncDisplayFormats(_ formats: [ValueDisplayFormat?]) {
-        guard formats != columnDisplayFormats else { return }
+    @discardableResult
+    func syncDisplayFormats(_ formats: [ValueDisplayFormat?]) -> Bool {
+        guard formats != columnDisplayFormats else { return false }
+        return applyDisplayFormats(formats)
+    }
+
+    private func applyDisplayFormats(_ formats: [ValueDisplayFormat?]) -> Bool {
+        let remappedValueFilters = remapValueFilters(from: columnDisplayFormats, to: formats)
         columnDisplayFormats = formats
         displayCache.removeAll()
+        delegate?.dataGridDisplayFormatChanged()
+        return remappedValueFilters
+    }
+
+    private func remapValueFilters(
+        from oldFormats: [ValueDisplayFormat?],
+        to newFormats: [ValueDisplayFormat?]
+    ) -> Bool {
+        let tableRows = tableRowsProvider()
+        var didRemap = valueFilterState.prune(againstColumns: tableRows.columns)
+
+        for column in valueFilterState.activeColumns {
+            let oldFormat = oldFormats.indices.contains(column) ? oldFormats[column] : nil
+            let newFormat = newFormats.indices.contains(column) ? newFormats[column] : nil
+            guard oldFormat != newFormat,
+                  let existing = valueFilterState.filter(forColumn: column),
+                  tableRows.columns.indices.contains(column) else { continue }
+
+            let columnType = tableRows.columnTypes.indices.contains(column)
+                ? tableRows.columnTypes[column]
+                : nil
+            var oldValuesToRemove = Set<String>()
+            var newValuesToInsert = Set<String>()
+            for row in tableRows.rows where row.values.indices.contains(column) {
+                let rawValue = row.values[column]
+                guard rawValue != .null else { continue }
+                let oldValue = filterValue(
+                    rawValue,
+                    columnType: columnType,
+                    displayFormat: oldFormat
+                )
+                guard existing.selectedValues.contains(oldValue) else { continue }
+                let newValue = filterValue(
+                    rawValue,
+                    columnType: columnType,
+                    displayFormat: newFormat
+                )
+                if oldValue != newValue {
+                    oldValuesToRemove.insert(oldValue)
+                    newValuesToInsert.insert(newValue)
+                }
+            }
+
+            var selectedValues = existing.selectedValues
+            selectedValues.subtract(oldValuesToRemove)
+            selectedValues.formUnion(newValuesToInsert)
+            guard selectedValues != existing.selectedValues else { continue }
+
+            valueFilterState.set(
+                ColumnValueFilter(selectedValues: selectedValues, includesNull: existing.includesNull),
+                columnName: tableRows.columns[column],
+                forColumn: column
+            )
+            didRemap = true
+        }
+        return didRemap
+    }
+
+    private func filterValue(
+        _ rawValue: PluginCellValue,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat?
+    ) -> String {
+        CellDisplayFormatter.format(
+            rawValue,
+            columnType: columnType,
+            displayFormat: displayFormat,
+            databaseType: databaseType
+        ) ?? rawValue.asText ?? ""
+    }
+
+    func reloadAfterDisplayFormatChange() {
+        guard let tableView else { return }
+        tableView.reloadData()
+        startBackgroundPrewarm()
     }
 
     func preWarmDisplayCache(upTo rowCount: Int) {
@@ -724,7 +809,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             values[col] = CellDisplayFormatter.format(
                 row.values[col],
                 columnType: columnType,
-                displayFormat: format
+                displayFormat: format,
+                databaseType: databaseType
             ) ?? row.values[col].asText
         }
         let box = RowDisplayBox(values)
@@ -1051,6 +1137,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                     displayFormat: dataIndex < columnDisplayFormats.count
                         ? columnDisplayFormats[dataIndex]
                         : nil,
+                    databaseType: databaseType,
                     isLargeDataset: isLargeDataset,
                     nullDisplayString: cellRegistry.nullDisplayString
                 )

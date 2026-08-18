@@ -6,10 +6,10 @@ Tool-specific files may add orchestration details, but they must not weaken thes
 ## Required context
 
 - For any code, test, build, configuration, release, or user-facing documentation change, load and follow `$tablepro-engineering` before editing.
+- In Claude Code, for any GitHub issue, defect or feature request alike, load `$fix-issue` instead. It is the specialized form of the same workflow and runs a defect track or a change track, so do not load both. It is Claude-only because its investigation and critique phases run workflow lanes; Codex stays on `$tablepro-engineering` and delegates those lanes with its own worker threads.
 - For an independent review or any high-risk change, load and follow `$cross-model-review`.
-- For bug fixes, also read `.claude/skills/fix-issue/SKILL.md`.
-- For SwiftUI or SwiftData work, read the matching skill under `.claude/skills/` and apply only rules compatible with TablePro's deployment targets and architecture.
-- Detailed project knowledge lives in `.agents/skills/tablepro-engineering/references/project-guide.md`. Search it by heading, symbol, issue number, or affected path. Do not load all 49 KB unless the task is a broad architecture audit.
+- For SwiftUI or AppKit view work, read `$swiftui` and apply only rules compatible with TablePro's deployment targets and hybrid architecture.
+- Detailed project knowledge lives in `.agents/skills/tablepro-engineering/references/`, split by domain, with `project-guide.md` as its index. Every invariant has its own `####` heading naming the subsystem and the failure it prevents, so search for the symptom or symbol and read the matching paragraph. Do not open a whole file unless the task is a broad architecture audit.
 - More specific `AGENTS.md` files and Claude path rules add local constraints for their directories.
 
 ## Product and engineering principles
@@ -26,11 +26,13 @@ Tool-specific files may add orchestration details, but they must not weaken thes
 
 Use available compute aggressively when it improves evidence or catches independent failure modes. This repository optimizes for correctness and coverage, not usage conservation.
 
+Spend it where the output can be thrown away. The main thread holds the problem, the plan, the decisions, and the diff; searching, reading, building, and reviewing belong in subagents, lanes, and log files. Verify a delegated claim at its `file:line` anchor instead of re-reading the file, and route build and test output through a wrapper that stores the log and returns a verdict. A thread that runs out of room mid-implementation loses the plan, which costs more than any lane.
+
 - In Claude Code, use `ultracode`: `xhigh` reasoning plus dynamic workflow orchestration. The workflow size is unrestricted. Scale to all useful independent lanes for broad audits, migrations, and security reviews; do not invent work merely to increase agent count.
 - In Codex, run the parent at `ultra`: maximum reasoning with automatic task delegation. Workers run at `max`. Use all 8 configured threads when a broad audit has eight genuinely independent lenses.
 - Default lenses are code-path tracing, platform or dependency research, test and failure analysis, architecture challenge, and adversarial correctness or security review.
 - The main agent owns requirements, synthesis, the implementation plan, and the final decision. Subagent reports are evidence, not truth. Verify every load-bearing claim in the repository or an authoritative source.
-- Use one writer per checkout. Parallel writers require isolated worktrees and non-overlapping file ownership. Never let two agents edit the same files concurrently.
+- Use one writer per checkout. Parallel writers require isolated worktrees and non-overlapping file ownership. Never let two agents edit the same files concurrently. When several sessions share a checkout, put the writer in a worktree so the main tree stays readable and uncontested.
 - Never run two `xcodebuild` processes concurrently. Parallelize reading and analysis, then serialize generation, builds, tests, and ABI checks.
 - Reviewers are read-only. A review leader may orchestrate read-only evidence lanes, but it does not fix findings, commit, push, open pull requests, or start another cross-vendor review.
 - Prevent review recursion. One writer may request one primary external review and, for high-risk changes, one adversarial external review. The writer validates and resolves the findings.
@@ -62,7 +64,13 @@ Use available compute aggressively when it improves evidence or catches independ
 
 ## Build and verification
 
-Use the detailed environment and failure guidance in `.claude/skills/fix-issue/references/verification.md`.
+Prefer the wrapper. It exports `DEVELOPER_DIR`, resolves the project from its own checkout, waits for a concurrent `xcodebuild`, keeps the full log on disk, and prints a verdict instead of thousands of lines:
+
+```bash
+.claude/skills/fix-issue/scripts/verify.sh <generate|build|plugins|test|uitest|abi|lint> [args]
+```
+
+The underlying commands, for a case the wrapper does not cover. Read the environment and failure guidance in `.claude/skills/fix-issue/references/verification.md` first:
 
 ```bash
 scripts/generate-project.sh
@@ -98,6 +106,7 @@ swiftlint lint --strict <changed Swift files>
 - Add unit tests for testable behavior. Add UI automation for deterministic user flows, or record why automation cannot be deterministic.
 - Keep commits atomic if the user asks for commits. Use a one-line Conventional Commit with a canonical scope.
 - Do not commit, push, open a pull request, publish artifacts, tag, or release unless the user explicitly requests that external action.
+- One standing exception: a `$fix-issue` run that passes its shipping gates branches, commits, pushes, and opens its pull request without being asked, then works its confirmed follow-up findings into their own pull requests. That authorization covers those actions only, only inside that skill, and never merging, tagging, publishing, releasing, force pushing, or rewriting history. `.claude/skills/fix-issue/references/shipping.md` holds the gates. Every other task still asks.
 
 ## Writing style
 

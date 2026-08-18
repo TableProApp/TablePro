@@ -7,20 +7,20 @@ Structured cell values open in dedicated viewers: JSON, PHP serialized data, and
 
 ## Display As formats
 
-Right-click a column header and pick **Display As**. The submenu lists the formats that fit the column type, with a checkmark on the active one.
+Right-click a column header and pick **Display As**. The submenu lists the formats that fit the column type, with a checkmark on the active one. MongoDB binary columns are the one exception: they never offer UUID, because the driver already decodes them under its own Legacy UUID Encoding setting.
 
 | Format | Column types | Effect |
 | --- | --- | --- |
-| Raw Value | all | Clears the override, shows the stored value |
+| Raw Value | all | Shows the stored value, and turns off detection for that column |
 | UUID | binary, text | Renders 16 raw bytes or a 32-digit hex string as a hyphenated UUID |
 | Unix Timestamp (seconds) | integer | Renders the number as a formatted date |
 | Unix Timestamp (milliseconds) | integer | Same, treating the number as milliseconds |
 | JSON | text | Opens the cell in the JSON viewer |
 | PHP Serialized | text | Opens the cell in the PHP serialized viewer |
 
-Formats are display only: they never change the stored value. Overrides persist per column, scoped to the connection and table.
+Formats are display only: they never change the stored value. Overrides persist per column, scoped to the connection and table. A column with a format set copies in that format when you copy a single cell; copying a block of cells or a whole row always copies the stored value.
 
-TablePro also auto-detects two cases: `BINARY(16)` columns with id-like names and `CHAR(32)`/`CHAR(36)` columns named `uuid` or `guid` render as UUIDs, and integer columns named `*_at`, `*_time`, `*_timestamp`, `created`, `updated`, `modified`, or `timestamp` render as dates when sample values fall in a plausible range. A manual Display As choice always wins over detection.
+TablePro also auto-detects two cases: `BINARY(16)` columns with id-like names and `CHAR(32)`/`CHAR(36)` columns named `uuid` or `guid` render as UUIDs, and integer columns named `*_at`, `*_time`, `*_timestamp`, `created`, `updated`, `modified`, or `timestamp` render as dates when sample values fall in a plausible range. A manual Display As choice always wins over detection, including **Raw Value**: picking it pins the column to its stored value instead of handing the column back to detection.
 
 ## JSON viewer
 

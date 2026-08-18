@@ -34,19 +34,82 @@ final class DataGridCellView: NSView {
 
     private var cachedLine: CTLine?
 
-    private static let chevronNormal = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .secondaryLabelColor)
-    private static let chevronEmphasized = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .alternateSelectedControlTextColor)
-    private static let chevronDisabled = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .tertiaryLabelColor)
-    private static let fkArrowNormal = makeAccessoryCGImage("arrow.right.circle.fill", pointSize: 14, color: .secondaryLabelColor)
-    private static let fkArrowEmphasized = makeAccessoryCGImage("arrow.right.circle.fill", pointSize: 14, color: .alternateSelectedControlTextColor)
+    private enum AccessoryRole: Hashable {
+        case foreignKeyNormal
+        case foreignKeyEmphasized
+        case chevronNormal
+        case chevronEmphasized
+        case chevronDisabled
 
-    private static func makeAccessoryCGImage(_ name: String, pointSize: CGFloat, color: NSColor) -> CGImage? {
-        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
-            .applying(.init(hierarchicalColor: color))
-        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+        var symbolName: String {
+            switch self {
+            case .foreignKeyNormal, .foreignKeyEmphasized:
+                return "arrow.right.circle"
+            case .chevronNormal, .chevronEmphasized, .chevronDisabled:
+                return "chevron.up.chevron.down"
+            }
+        }
+
+        var pointSize: CGFloat {
+            switch self {
+            case .foreignKeyNormal, .foreignKeyEmphasized:
+                return 14
+            case .chevronNormal, .chevronEmphasized, .chevronDisabled:
+                return 10
+            }
+        }
+
+        var color: NSColor {
+            switch self {
+            case .foreignKeyNormal, .chevronNormal:
+                return .secondaryLabelColor
+            case .foreignKeyEmphasized, .chevronEmphasized:
+                return .alternateSelectedControlTextColor
+            case .chevronDisabled:
+                return .tertiaryLabelColor
+            }
+        }
+    }
+
+    private struct AccessoryGlyphKey: Hashable {
+        let role: AccessoryRole
+        let appearance: NSAppearance.Name
+        let increasedContrast: Bool
+    }
+
+    private struct AccessoryGlyph {
+        let image: CGImage
+        let pointSize: NSSize
+    }
+
+    private static var accessoryGlyphs: [AccessoryGlyphKey: AccessoryGlyph] = [:]
+
+    /// Rasterizing resolves the dynamic symbol color, so a cached bitmap belongs to exactly one
+    /// appearance. Keying on the appearance is what keeps a dark window from being served the
+    /// light bitmap, and `NSAppearance.currentDrawing()` only reports the cell's own appearance
+    /// while AppKit is inside `draw(_:)`, `updateLayer` or `layout`.
+    private static func accessoryGlyph(for role: AccessoryRole) -> AccessoryGlyph? {
+        let key = AccessoryGlyphKey(
+            role: role,
+            appearance: NSAppearance.currentDrawing().name,
+            increasedContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        )
+        if let cached = accessoryGlyphs[key] {
+            return cached
+        }
+        guard let glyph = makeAccessoryGlyph(role) else { return nil }
+        accessoryGlyphs[key] = glyph
+        return glyph
+    }
+
+    private static func makeAccessoryGlyph(_ role: AccessoryRole) -> AccessoryGlyph? {
+        let config = NSImage.SymbolConfiguration(pointSize: role.pointSize, weight: .regular)
+            .applying(.init(hierarchicalColor: role.color))
+        guard let image = NSImage(systemSymbolName: role.symbolName, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return nil }
         var rect = CGRect(origin: .zero, size: image.size)
-        return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+        guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return nil }
+        return AccessoryGlyph(image: cgImage, pointSize: image.size)
     }
 
     override init(frame frameRect: NSRect) {
@@ -165,17 +228,29 @@ final class DataGridCellView: NSView {
     }
 
     override func accessibilityValue() -> Any? {
-        rawValue ?? String(localized: "NULL")
+        accessibilityText
     }
 
     override func accessibilityLabel() -> String? {
-        let value = rawValue ?? String(localized: "NULL")
-        return String(
+        String(
             format: String(localized: "Row %d, column %d: %@"),
             cellRow + 1,
             cellColumnIndex + 1,
-            value
+            accessibilityText
         )
+    }
+
+    private var accessibilityText: String {
+        switch placeholder {
+        case .none:
+            return displayText
+        case .null:
+            return displayText.isEmpty ? String(localized: "NULL") : displayText
+        case .empty:
+            return displayText.isEmpty ? String(localized: "Empty") : displayText
+        case .defaultMarker:
+            return displayText.isEmpty ? String(localized: "DEFAULT") : displayText
+        }
     }
 
     func applyEmphasizedSelection(_ value: Bool) {
@@ -306,27 +381,48 @@ final class DataGridCellView: NSView {
 
     private func drawAccessory(_ accessory: DataGridCellAccessory, in rect: NSRect) {
         guard !rect.isEmpty else { return }
-        let image: CGImage?
+        let role: AccessoryRole
         switch accessory {
         case .foreignKey:
-            image = onEmphasizedSelection ? Self.fkArrowEmphasized : Self.fkArrowNormal
+            role = onEmphasizedSelection ? .foreignKeyEmphasized : .foreignKeyNormal
         case .chevron:
             if visualState.isDeleted {
-                image = Self.chevronDisabled
+                role = .chevronDisabled
             } else if onEmphasizedSelection {
-                image = Self.chevronEmphasized
+                role = .chevronEmphasized
             } else {
-                image = Self.chevronNormal
+                role = .chevronNormal
             }
         case .none:
             return
         }
-        guard let cgImage = image, let context = NSGraphicsContext.current?.cgContext else { return }
+        guard let glyph = Self.accessoryGlyph(for: role),
+              let context = NSGraphicsContext.current?.cgContext else { return }
+        let drawRect = Self.centeredGlyphRect(pointSize: glyph.pointSize, in: rect)
         context.saveGState()
-        context.translateBy(x: rect.minX, y: rect.maxY)
+        context.translateBy(x: drawRect.minX, y: drawRect.maxY)
         context.scaleBy(x: 1, y: -1)
-        context.draw(cgImage, in: CGRect(origin: .zero, size: rect.size))
+        context.draw(glyph.image, in: CGRect(origin: .zero, size: drawRect.size))
         context.restoreGState()
+    }
+
+    /// A symbol stretched to fill the accessory rect stops looking like a system symbol, so the
+    /// glyph draws at its own point size and the rect only ever clamps it. The clamp is one factor
+    /// across both axes, because clamping each axis on its own would distort the glyph exactly the
+    /// way filling the rect did. The origin rounds to whole points so a glyph narrower than its rect
+    /// by an odd number of points does not land on a half point and blur at 1x.
+    private static func centeredGlyphRect(pointSize: NSSize, in rect: NSRect) -> NSRect {
+        let scale = min(1, rect.width / pointSize.width, rect.height / pointSize.height)
+        let size = NSSize(
+            width: pointSize.width * scale,
+            height: pointSize.height * scale
+        )
+        return NSRect(
+            x: (rect.midX - size.width / 2).rounded(),
+            y: (rect.midY - size.height / 2).rounded(),
+            width: size.width,
+            height: size.height
+        )
     }
 
     private func drawFocusBorder() {

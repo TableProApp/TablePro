@@ -10,9 +10,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Dameng DM8 connections through a downloadable native-wire plugin, with schema browsing, table editing, metadata, DDL, transactions, Unicode and binary writes, and EXPLAIN support. (#1671, #2003, #2010)
+- SQL Server connections can sign in with Microsoft Entra ID, covering Azure SQL Database, Azure SQL Managed Instance, and SQL Server 2022. Sign-in runs in your browser and honours multifactor authentication and Conditional Access; tokens are kept in the keychain and refreshed for you. Set it up on the Mac; iPhone and iPad pick the connection up through sync and prompt to sign in when you open it.
+
+### Changed
+
+- When a connection fails because a sign-in expired, TablePro now offers to sign in again and reconnects for you, instead of leaving you on an error screen whose only button repeats the same failure. This covers Microsoft Entra ID and AWS SSO, on the connection itself as well as in the connection form's Test button.
 
 ### Fixed
 
+- Sixteen-byte SQL binary columns respect their Display As setting in the grid, the row inspector, VoiceOver, and single-cell copy. Raw Value stays selected after refresh, filtered rows keep their identity when the format changes, and MongoDB binary UUIDs remain under the driver's Legacy UUID Encoding setting. (#2157)
+- Viewing a very long single line with word wrap on could use enormous amounts of memory and stall or kill the app. This hit the JSON value viewer, chat code blocks and the SQL review sheet, which always wrap, and the SQL editor when Word Wrap is on. Wrapped text is now laid out once instead of once per wrapped row, so a long line stays fast no matter how long it is.
+- An open cell overlay in the data grid kept its old border and background colour if the appearance changed while it was on screen, such as an automatic switch to dark at sunset. It repaints now.
+- A deleted or newly added row in the data grid kept the previous theme's tint after you switched theme or appearance. The row picked up the new colour only once you scrolled it away and back, or changed the row some other way. It updates straight away now, in the results grid and in the structure grid.
+- Format Query crashed the app on a string literal that was still open and ended in a backslash, as in `select * from t where c like 'C:\`. It formats such a query without crashing now. Format Query also used to move the last character of an unclosed `/*` comment out of the comment and reformat it as code; the whole comment is left alone now.
+- The foreign-key arrow and the dropdown chevron in data-grid cells kept the colour of whichever appearance drew them first. In dark mode that left the arrow almost black against the row, and switching between light and dark never corrected it. Both now follow the window's appearance. The arrow is also the unfilled circle macOS uses for following a link, instead of a filled badge, and the chevron is drawn at its own size instead of being stretched wider than it should be.
+- Pasting a large block of text into the query editor could crash the app. A paste of more than about a thousand characters is parsed in the background, and the editor's syntax highlighting was updated from that background work while the editor was still applying the same paste on screen. Highlighting is now updated on the main thread again, as the rest of the editor already did. (#2158)
+- A strip along the right edge of the SQL editor, as wide as 140 points, took clicks and did nothing with them. Clicking there now puts the caret on the line you clicked, like any other empty part of the editor. The same strip sat in the trigger editor, the JSON view, the structure DDL, the SQL review sheet, the import preview and chat code blocks, where it swallowed text selection instead. (#2156)
+- Query results were read-only whenever the `SELECT` gave its table an alias, as in `select * from users u where u.id = 1`. Editing works on those results now, and also on queries written across several lines, preceded by a comment, or ending in `FOR UPDATE`. (#2150)
+- A `UNION`, `EXCEPT` or `INTERSECT` result could be edited as though it were a single table, and the edit was written to one of the branches rather than to the rows on screen. Those results are read-only now. So are results from a join, a subquery, a CTE, a temporal `FOR SYSTEM_TIME` read, and `FROM ONLY`.
+- Writing the schema in front of the table, as in `select * from public.users u`, made the results read-only. They are editable now when the schema is the one the connection is already browsing. Naming a different schema stays read-only, because the saved edit would go to the browsed schema instead of the one you queried.
+- The connection window drew a rule under its toolbar that began at the sidebar divider and ran to the right edge, dividing two areas that are the same colour. It is gone.
+- The editor tab bar filled a capsule behind the tabs. In dark mode that fill read as a lighter panel than anything else in the window, so the tabs now sit directly on the window background.
 - Data-grid columns now reserve space for trailing editor and foreign-key actions instead of truncating otherwise fitting values.
 - Empty Structure tabs and structured-value errors keep their toolbar at the top and center the message in the remaining content area.
 - Adding or removing a favorite table updates its sidebar star immediately instead of waiting for the sidebar to reopen.

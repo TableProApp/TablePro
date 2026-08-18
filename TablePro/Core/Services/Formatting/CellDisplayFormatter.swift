@@ -13,16 +13,27 @@ import TableProPluginKit
 enum CellDisplayFormatter {
     static let maxDisplayLength = 10_000
 
-    static func format(_ rawValue: PluginCellValue, columnType: ColumnType?, displayFormat: ValueDisplayFormat? = nil) -> String? {
+    static func format(
+        _ rawValue: PluginCellValue,
+        columnType: ColumnType?,
+        displayFormat: ValueDisplayFormat? = nil,
+        databaseType: DatabaseType? = nil
+    ) -> String? {
         switch rawValue {
         case .null:
             return nil
         case .bytes(let data):
+            if let displayFormat,
+               displayFormat.isApplicable(to: columnType, databaseType: databaseType),
+               let formatted = ValueDisplayFormatService.applyFormat(data, format: displayFormat) {
+                return formatted
+            }
             return BlobFormattingService.shared.format(data, for: .grid)
         case .text(let value):
             guard !value.isEmpty else { return value }
             var displayValue = value
-            if let displayFormat, displayFormat != .raw {
+            if let displayFormat, displayFormat != .raw,
+               displayFormat.isApplicable(to: columnType, databaseType: databaseType) {
                 displayValue = ValueDisplayFormatService.applyFormat(value, format: displayFormat)
             } else if let columnType {
                 if columnType.isDateType {
