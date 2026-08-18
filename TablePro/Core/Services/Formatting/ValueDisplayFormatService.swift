@@ -15,11 +15,14 @@ final class ValueDisplayFormatService {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ValueDisplayFormat")
 
+    private let storage: ValueDisplayFormatStorage
     private var autoDetectedFormats: [String: ValueDisplayFormat] = [:]
 
     private(set) var overridesVersion: Int = 0
 
-    private init() {}
+    init(storage: ValueDisplayFormatStorage = .shared) {
+        self.storage = storage
+    }
 
     // MARK: - Format Application
 
@@ -38,16 +41,21 @@ final class ValueDisplayFormatService {
         }
     }
 
+    static func applyFormat(_ rawValue: Data, format: ValueDisplayFormat) -> String? {
+        guard format == .uuid, rawValue.count == 16 else { return nil }
+        return formatAsUuid(rawValue.hexEncoded)
+    }
+
     // MARK: - Effective Format Resolution
 
-    func effectiveFormat(columnName: String, scope: TableScope?) -> ValueDisplayFormat {
+    func effectiveFormat(columnKey: String, scope: TableScope?) -> ValueDisplayFormat {
         if let scope,
-           let overrides = ValueDisplayFormatStorage.shared.load(for: scope),
-           let format = overrides[columnName] {
+           let overrides = storage.load(for: scope),
+           let format = overrides[columnKey] {
             return format
         }
 
-        if let format = autoDetectedFormats[scopedKey(columnName: columnName, scope: scope)] {
+        if let format = autoDetectedFormats[scopedKey(columnKey: columnKey, scope: scope)] {
             return format
         }
 
@@ -58,8 +66,8 @@ final class ValueDisplayFormatService {
         let prefix = scopePrefix(scope: scope)
         autoDetectedFormats = autoDetectedFormats.filter { !$0.key.hasPrefix(prefix) }
 
-        for (columnName, format) in formats {
-            autoDetectedFormats[scopedKey(columnName: columnName, scope: scope)] = format
+        for (columnKey, format) in formats {
+            autoDetectedFormats[scopedKey(columnKey: columnKey, scope: scope)] = format
         }
     }
 
@@ -74,29 +82,29 @@ final class ValueDisplayFormatService {
         "\(scope?.storageComponent ?? "_")."
     }
 
-    private func scopedKey(columnName: String, scope: TableScope?) -> String {
-        "\(scope?.storageComponent ?? "_").\(columnName)"
+    private func scopedKey(columnKey: String, scope: TableScope?) -> String {
+        "\(scope?.storageComponent ?? "_").\(columnKey)"
     }
 
     // MARK: - Override Management
 
     func setOverride(
         _ format: ValueDisplayFormat?,
-        columnName: String,
+        columnKey: String,
         scope: TableScope
     ) {
-        var overrides = ValueDisplayFormatStorage.shared.load(for: scope) ?? [:]
+        var overrides = storage.load(for: scope) ?? [:]
 
-        if let format, format != .raw {
-            overrides[columnName] = format
+        if let format {
+            overrides[columnKey] = format
         } else {
-            overrides.removeValue(forKey: columnName)
+            overrides.removeValue(forKey: columnKey)
         }
 
         if overrides.isEmpty {
-            ValueDisplayFormatStorage.shared.clear(for: scope)
+            storage.clear(for: scope)
         } else {
-            ValueDisplayFormatStorage.shared.save(overrides, for: scope)
+            storage.save(overrides, for: scope)
         }
 
         overridesVersion &+= 1

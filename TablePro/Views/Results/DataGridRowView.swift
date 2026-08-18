@@ -45,8 +45,10 @@ class DataGridRowView: NSTableRowView {
         "hidden": NSNull(),
     ]
 
+    /// The tint derives from the row state and the active theme, so it is recomputed on every call
+    /// and the colour comparison below decides whether anything needs redrawing. Returning early on
+    /// an unchanged state would ignore the theme, which is the input a theme change moves.
     func applyVisualState(_ state: RowVisualState) {
-        guard state != visualState else { return }
         visualState = state
         let nextTint: NSColor? = if state.isDeleted {
             ThemeEngine.shared.colors.dataGrid.deleted

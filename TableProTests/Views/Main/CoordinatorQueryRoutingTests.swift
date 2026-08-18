@@ -143,6 +143,8 @@ struct CoordinatorQueryRoutingTests {
         var opened: EditorTabPayload?
         coordinator.openTabInNewWindow = { opened = $0 }
         coordinator.connectionExists = { _ in false }
+        var reportedErrors = 0
+        coordinator.presentError = { _, _, _ in reportedErrors += 1 }
 
         coordinator.openQuery(
             "SELECT * FROM Genre",
@@ -152,6 +154,7 @@ struct CoordinatorQueryRoutingTests {
         )
 
         #expect(opened == nil)
+        #expect(reportedErrors == 1)
     }
 
     @Test("A blank query opens nothing at all")

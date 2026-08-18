@@ -84,7 +84,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             defaultValue: "sql",
             fieldType: .dropdown(options: [
                 .init(value: "sql", label: "SQL Server Authentication"),
-                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+                .init(value: "windows", label: "Windows Authentication (Kerberos)"),
+                .init(value: "entra", label: String(localized: "Microsoft Entra ID"))
             ]),
             section: .authentication
         ),
@@ -110,7 +111,10 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             )
         ),
         ConnectionField(id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo")
-    ]
+    ] + EntraAuthFields.standard(
+        gatedBy: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
+        value: MSSQLAuthMethod.entra.rawValue
+    )
 
     // MARK: - UI/Capability Metadata
 
@@ -279,6 +283,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
             let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(authMethod: authMethod)
+            let fedAuthToken = try await resolveEntraTokenIfNeeded(authMethod: authMethod)
             var options = MSSQLConnectionOptions(
                 host: config.host,
                 port: config.port,
@@ -293,6 +298,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
             options.certificateVerification = MSSQLSSLMapping.certificateVerification(for: config.ssl.mode)
             options.caCertificatePath = config.ssl.caCertificatePath
+            options.fedAuthToken = fedAuthToken
             conn = FreeTDSConnection(options: options)
             try await conn.connect()
         } catch let error as MSSQLCoreError {
@@ -346,6 +352,13 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             Self.logger.warning("Kerberos realm resolution timed out; using the default service principal")
             return nil
         }
+    }
+
+    /// `EntraOAuthError` deliberately escapes unwrapped. The connection form checks for it to
+    /// offer a browser sign-in, and wrapping it in a plugin error would erase that.
+    private func resolveEntraTokenIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
+        guard authMethod == .entra else { return nil }
+        return try await EntraCredentialResolver.shared.accessToken(fields: config.additionalFields)
     }
 
     private func acquireKerberosTicketIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {

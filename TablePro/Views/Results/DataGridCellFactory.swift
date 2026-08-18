@@ -29,6 +29,7 @@ final class DataGridCellFactory {
         tableRows: TableRows,
         accessory: DataGridCellAccessory = .none,
         displayFormat: ValueDisplayFormat? = nil,
+        databaseType: DatabaseType? = nil,
         isLargeDataset: Bool = false,
         nullDisplayString: String? = nil
     ) -> CGFloat {
@@ -38,6 +39,7 @@ final class DataGridCellFactory {
             tableRows: tableRows,
             accessory: accessory,
             displayFormat: displayFormat,
+            databaseType: databaseType,
             isLargeDataset: isLargeDataset,
             nullDisplayString: nullDisplayString,
             cap: Self.maxColumnWidth,
@@ -52,6 +54,7 @@ final class DataGridCellFactory {
         availableWidth: CGFloat,
         accessory: DataGridCellAccessory = .none,
         displayFormat: ValueDisplayFormat? = nil,
+        databaseType: DatabaseType? = nil,
         isLargeDataset: Bool = false,
         nullDisplayString: String? = nil
     ) -> CGFloat {
@@ -65,6 +68,7 @@ final class DataGridCellFactory {
             tableRows: tableRows,
             accessory: accessory,
             displayFormat: displayFormat,
+            databaseType: databaseType,
             isLargeDataset: isLargeDataset,
             nullDisplayString: nullDisplayString,
             cap: cap,
@@ -78,6 +82,7 @@ final class DataGridCellFactory {
         tableRows: TableRows,
         accessory: DataGridCellAccessory,
         displayFormat: ValueDisplayFormat?,
+        databaseType: DatabaseType?,
         isLargeDataset: Bool,
         nullDisplayString: String?,
         cap: CGFloat,
@@ -102,7 +107,8 @@ final class DataGridCellFactory {
             let formattedValue = CellDisplayFormatter.format(
                 rawValue,
                 columnType: columnType,
-                displayFormat: displayFormat
+                displayFormat: displayFormat,
+                databaseType: databaseType
             ) ?? ""
             let value = DataGridCellContent.resolvedDisplayText(
                 formattedValue,

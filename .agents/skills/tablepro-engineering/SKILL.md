@@ -1,91 +1,62 @@
 ---
 name: tablepro-engineering
-description: End-to-end engineering workflow for the TablePro macOS and iOS repository. Use for any TablePro feature, bug fix, refactor, test, build, plugin, driver, AI, MCP, sync, storage, UI, documentation, or release-preparation task that reads or changes repository files. It routes agents to project invariants, coordinates high-compute investigation, enforces one-writer ownership, and requires build, test, lint, and review evidence.
+description: End-to-end engineering workflow for the TablePro macOS and iOS repository. Use for any TablePro feature, refactor, test, build, plugin, driver, AI, MCP, sync, storage, UI, or documentation task that reads or changes repository files. It routes to the project invariant that governs the subsystem, coordinates independent investigation, enforces one-writer ownership, and requires build, test, lint, and review evidence.
 ---
 
 # TablePro Engineering
 
-Follow `AGENTS.md` first. Use this workflow for every repository change.
+`AGENTS.md` is the workflow: scope, principles, work sequence, code rules, verification, and the
+change contract all live there and are not repeated here. This file does one thing AGENTS.md
+cannot: it routes you to the specific knowledge a subsystem needs, and it holds the few practices
+that differ from the general rule.
 
-## 1. Establish scope
+In Claude Code, a GitHub issue goes to `$fix-issue` instead of here. Do not load both.
 
-1. Inspect the branch and `git status --short`.
-2. Separate task files from pre-existing user changes. Never include or alter unrelated changes.
-3. State the current behavior, expected behavior, acceptance criteria, and risk level.
-4. Search the project reference before proposing a design:
+## Route to the invariant that governs your change
+
+The project reference is split by domain. Find the rule by symptom or symbol, not by reading a file:
 
 ```bash
-rg -n '^#{2,4} |<symbol>|<issue>|<subsystem>' .agents/skills/tablepro-engineering/references/project-guide.md
+rg -n '^####' .agents/skills/tablepro-engineering/references/invariants-*.md
+rg -n '<symbol>|<subsystem>|<issue>' .agents/skills/tablepro-engineering/references/
 ```
 
-Read only matching sections and nearby invariants unless the task is a broad audit.
+| Working on | Read |
+| --- | --- |
+| Views, coordinators, windows, tabs, split panes, the data grid | `references/invariants-ui.md` |
+| Connect and cancel, schema loading, caches, session state, pooling | `references/invariants-connections.md` |
+| CloudKit sync, stored records, driver read and write paths | `references/invariants-data.md` |
+| `Plugins/` or `TableProPluginKit` | `references/plugin-system.md` |
+| Adding a file or target, orienting in a subsystem | `references/architecture.md` |
+| `Libs/`, CI failures, shipping | `references/build-and-release.md` |
+| Commit scopes, docs routing, lint limits, performance pitfalls | `references/conventions.md` |
+| AI or MCP | `TablePro/Core/AI`, `TablePro/Core/MCP`, the tool policy, token scopes, connection allowlists, `docs/external-api/` |
+| A driver or dialect | the driver invariant, the vendored header, the build script, and the sibling driver that already works |
 
-## 2. Load domain guidance
+Read the full paragraph of a matching invariant. Each exists because it was violated and shipped a
+bug. If one names a symbol that no longer exists, correct it in the same change rather than working
+around it.
 
-- Project generation, commands, architecture, style, changelog, localization, and CI: search the matching heading in `references/project-guide.md`.
-- Plugin or `TableProPluginKit`: read `Plugin System`, `PluginKit ABI`, `DatabaseType`, and plugin CI sections.
-- AppKit, SwiftUI, editor, windows, tabs, split views, or grid UI: read `Editor Architecture`, relevant `Invariants`, `Main Coordinator Pattern`, and `Window Close`.
-- Sync, CloudKit, storage, connection lifecycle, schema, cancellation, or persistence: search the exact service or invariant name and read the full paragraph.
-- Driver or database behavior: read `DatabaseType`, the driver-specific invariant, the vendored header, build script, and sibling driver implementation.
-- AI or MCP: inspect `TablePro/Core/AI`, `TablePro/Core/MCP`, the provider disclosure, tool policy, token scopes, connection allowlists, and `docs/external-api/`.
-- Verification: read `.claude/skills/fix-issue/references/verification.md` before running builds or tests.
-- Platform research: read `.claude/skills/fix-issue/references/research-sources.md`.
+Verification, quarantine lists, and environment traps: `.claude/skills/fix-issue/references/verification.md`.
+Platform, SDK, and HIG sources: `.claude/skills/fix-issue/references/research-sources.md`.
 
-## 3. Investigate with independent agents
+## Delegating investigation
 
-For non-trivial work, delegate independent read-only lanes before editing:
+Give every lane the same problem statement and one narrow question. Require confirmed facts,
+inferences, and unknowns to be labeled separately. Ask for the smallest answer that supports a
+decision, anchored to `file:line`, and verify at those anchors rather than re-reading whole files.
 
-1. Trace the real code path and state transitions with file and symbol evidence.
-2. Verify Apple APIs, SDK availability, dependency headers, or shipped binary behavior.
-3. Find existing tests, missing failure coverage, and deterministic verification commands.
-4. Challenge architecture, ownership, cancellation, concurrency, security, and backwards compatibility.
-5. Add a plugin ABI or UI/HIG specialist when that domain is involved.
+Beyond the default lenses in AGENTS.md, add a UI and HIG specialist when the change is user-facing:
+native behavior, focus, the responder chain, and accessibility are decided by the HIG and by this
+app's existing interaction language, not by what is easiest to build.
 
-In Claude Code, let `ultracode` scale an unrestricted dynamic workflow to the number of genuinely independent lanes the task supports. In Codex, let the parent `ultra` profile delegate automatically and use all 8 configured threads for broad audits with eight distinct questions; workers run at `max`. Give every lane the same problem statement and a narrow question. Require confirmed facts, inferences, and unknowns to be labeled. The main agent verifies the reports and owns the plan.
+## Where this differs from the general rule
 
-## 4. Design the complete fix
-
-Write a plan that identifies:
-
-- Root cause and why it produces the symptom.
-- Correct ownership boundary and whether the shape needs a targeted fix or refactor.
-- Full caller, state, persistence, plugin, and documentation blast radius.
-- Relevant project-guide invariants.
-- Tests that fail before and pass after.
-- Exact build, lint, ABI, or UI verification.
-
-Prefer a measured fact over consensus between agents. Build a small probe when SDK, database, C library, ABI, or binary behavior remains uncertain.
-
-## 5. Implement with one writer
-
-- Keep one writer in the active checkout.
-- Use isolated worktrees for additional writers, with disjoint file ownership.
-- Preserve existing abstractions when they express the correct behavior. Refactor when they cannot.
-- Update tests, docs, localization, and changelog as part of the change, not as later cleanup.
-- Regenerate the project immediately after source-file or project-configuration changes.
-
-## 6. Verify serially
-
-1. Run the smallest relevant test suite early.
-2. Run the app build.
-3. Run affected unit and deterministic UI suites.
-4. Build `AllPlugins` for registry-only plugin changes.
-5. Run the PluginKit ABI check for shared plugin API changes.
-6. Run strict lint on changed Swift files.
-7. Inspect the diff and confirm intended tests actually executed.
-
-Never run two `xcodebuild` processes concurrently.
-
-## 7. Review across models
-
-Load `$cross-model-review` for high-risk changes and whenever the other vendor is available. The reviewer stays read-only, receives the acceptance criteria and verification evidence, and reports prioritized findings with file and line evidence. Validate findings before changing code.
-
-## 8. Hand off
-
-Report:
-
-- Root cause and implemented behavior.
-- Files and ownership boundaries changed.
-- Tests, builds, lint, probes, and reviews run with results.
-- Remaining risk and commands not run.
-- No claim beyond the evidence collected.
+- **Run the smallest relevant test suite before the app build**, not after. A wedged XCTest host or
+  a stale generated project shows up in seconds there and costs a full build cycle later.
+- **Fix the source when a test fails.** Never adjust a test to match incorrect output.
+- **No compatibility shims and no temporary workarounds left in place.** If the shape cannot express
+  the behavior, change the shape.
+- **Every verification step goes through the wrapper**, `.claude/skills/fix-issue/scripts/verify.sh`,
+  which stores the log and prints a verdict. A raw `xcodebuild` failure returns a truncated excerpt
+  with no log to read back, which is the one case where the whole output matters.

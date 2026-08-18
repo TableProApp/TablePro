@@ -35,6 +35,10 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         coordinator?.gridDisplayRevision &+= 1
     }
 
+    func dataGridDisplayFormatChanged() {
+        coordinator?.gridDisplayRevision &+= 1
+    }
+
     func dataGridAddRow() {
         onAddRow?()
     }

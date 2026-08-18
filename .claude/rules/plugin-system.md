@@ -9,4 +9,6 @@ paths:
 
 # Plugin changes
 
-Before editing, load `/tablepro-engineering` and read the `Plugin System`, `PluginKit ABI`, `DatabaseType`, and plugin CI sections of `.agents/skills/tablepro-engineering/references/project-guide.md`. Treat binary compatibility, open plugin types, bundled versus registry-only distribution, project regeneration, `AllPlugins`, and the ABI check as binding constraints.
+Read `.agents/skills/tablepro-engineering/references/plugin-system.md`. Treat binary compatibility, open plugin types, bundled versus registry-only distribution, project regeneration, `AllPlugins`, and the ABI check as binding constraints.
+
+This rule adds domain constraints. It does not pick your workflow: `AGENTS.md` decides whether you are in `$fix-issue` or `$tablepro-engineering`, and you never load both.

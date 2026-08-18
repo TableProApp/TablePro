@@ -21,6 +21,13 @@ private final class EditorWindow: NSWindow, NSDraggingDestination {
         }
     }
 
+    /// Hiding the toolbar is what drops the content pane's top safe area, so the titlebar has to be
+    /// reconsidered every time the user sends this from View > Show Toolbar.
+    override func toggleToolbarShown(_ sender: Any?) {
+        super.toggleToolbarShown(sender)
+        TabWindowController.applyTitlebarChrome(to: self)
+    }
+
     func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         FileDropDestination.acceptedURLs(from: sender.draggingPasteboard).isEmpty ? [] : .copy
     }
@@ -61,23 +68,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         self.payload = payload
         self.controllerId = UUID()
 
-        let window = EditorWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.identifier = NSUserInterfaceItemIdentifier("main")
-        window.minSize = NSSize(width: 720, height: 480)
-        window.isRestorable = false
-        window.toolbarStyle = .unified
-        window.titleVisibility = .visible
-        /// `.automatic` is AppKit reading the user's own tabbing preference. Hard-coding
-        /// `.preferred` overrode that setting, which an app that draws its own editor tabs has no
-        /// reason to do.
-        window.tabbingMode = .automatic
-        window.tabbingIdentifier = WindowManager.mainTabbingIdentifier
-        window.collectionBehavior.insert([.fullScreenPrimary, .managed])
+        let window = Self.makeEditorWindow()
 
         let splitVC = MainSplitViewController(
             payload: payload,
@@ -115,6 +106,56 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         fatalError("TabWindowController does not support NSCoder init")
     }
 
+    /// The one place an editor window's chrome is configured, so a test can hold the whole shape.
+    internal static func makeEditorWindow() -> NSWindow {
+        let window = EditorWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.identifier = NSUserInterfaceItemIdentifier("main")
+        window.minSize = NSSize(width: 720, height: 480)
+        window.isRestorable = false
+        window.toolbarStyle = .unified
+        window.titleVisibility = .visible
+        applyTitlebarChrome(to: window)
+        /// `.automatic` is AppKit reading the user's own tabbing preference. Hard-coding
+        /// `.preferred` overrode that setting, which an app that draws its own editor tabs has no
+        /// reason to do.
+        window.tabbingMode = .automatic
+        window.tabbingIdentifier = WindowManager.mainTabbingIdentifier
+        window.collectionBehavior.insert([.fullScreenPrimary, .managed])
+        return window
+    }
+
+    /// AppKit rules a line between the toolbar and the content pane, and stops it at the sidebar
+    /// divider, so a window whose toolbar and content are the same colour gets a half-width rule
+    /// separating nothing. `titlebarSeparatorStyle` is the property for that, and it stopped
+    /// reaching the rule in macOS 26: the content section's titlebar background now draws it
+    /// through a scroll pocket, and `.none`, `.line` and `.shadow` all render identically there.
+    ///
+    /// `isFullScreen` is passed in for the transition hooks, which run either side of the style
+    /// mask changing rather than at the moment it does.
+    internal static func applyTitlebarChrome(to window: NSWindow, isFullScreen: Bool? = nil) {
+        window.titlebarSeparatorStyle = .none
+        guard #available(macOS 26.0, *) else { return }
+        window.titlebarAppearsTransparent = titlebarIsTransparent(
+            isFullScreen: isFullScreen ?? window.styleMask.contains(.fullScreen),
+            toolbarVisible: window.toolbar?.isVisible ?? false
+        )
+    }
+
+    /// A transparent titlebar is what removes that rule, and it is free while the content pane is
+    /// inset below the titlebar, which it is in every state but one. A full-screen window with its
+    /// toolbar hidden has a top safe area of zero, so its content owns the whole screen, and the
+    /// titlebar AppKit slides back down over that content needs a background of its own to stay
+    /// legible. Nothing is lost by making it opaque there, because a titlebar that only appears on
+    /// demand has no rule to suppress.
+    internal static func titlebarIsTransparent(isFullScreen: Bool, toolbarVisible: Bool) -> Bool {
+        isFullScreen ? toolbarVisible : true
+    }
+
     // MARK: - NSWindowDelegate
 
     internal func windowDidResize(_ notification: Notification) {
@@ -131,6 +172,19 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     internal func windowDidMove(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         window.saveFrame(usingName: Self.frameAutosaveName)
+    }
+
+    /// Both hooks name the state they are moving to, because neither runs at the moment the style
+    /// mask flips: `willEnter` still reads windowed, and `didExit` is the first point that reads
+    /// windowed again.
+    internal func windowWillEnterFullScreen(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        Self.applyTitlebarChrome(to: window, isFullScreen: true)
+    }
+
+    internal func windowDidExitFullScreen(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        Self.applyTitlebarChrome(to: window, isFullScreen: false)
     }
 
     internal func windowDidBecomeKey(_ notification: Notification) {

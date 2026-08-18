@@ -1,6 +1,6 @@
 {
   "skill_name": "fix-issue",
-  "notes": "Autonomous root-cause skill with no approval gate. The graded artifact is the investigation and implementation blueprint each run produces because committed code and live pull requests are outside these evals. A with_skill run may continue into implementation; grade the blueprint wherever it appears. with_skill runs follow SKILL.md; baseline runs receive the same prompt without the skill. Two prompts are symptom-only to test root-cause discovery, and one is a bare GitHub issue number to test issue retrieval. Claude runs use ultracode dynamic workflow orchestration with independent evidence lanes and do not pause for routine approval.",
+  "notes": "Autonomous root-cause skill with no approval gate. The graded artifact is the investigation and implementation blueprint each run produces because committed code and live pull requests are outside these evals. A with_skill run may continue into implementation; grade the blueprint wherever it appears. with_skill runs follow SKILL.md; baseline runs receive the same prompt without the skill. Two prompts are symptom-only to test root-cause discovery, and one is a bare GitHub issue number to test issue retrieval. Claude runs use ultracode dynamic workflow orchestration with independent evidence lanes and do not pause for routine approval. The skill also claims a context property: the brief and blueprint land in a run directory, evidence gathering happens in lanes, and build output goes through the verification wrapper, so a with_skill run should reach the same or better blueprint while reading far less in the main thread than a baseline run.",
   "evals": [
     {
       "id": 1,
@@ -15,7 +15,7 @@
         "Cites a specific macOS HIG convention or native dismissal API (e.g. SwiftUI dismiss, sheet/NSPanel, Escape via cancelAction) rather than inventing an approach",
         "Addresses the full scope of dismissal, not just adding a button: visible close control AND Escape AND click-outside",
         "States the root cause (no dismissal affordance) distinctly from the symptom",
-        "Runs independent investigation lanes through ultracode dynamic workflow orchestration rather than relying only on ad-hoc searches",
+        "Writes the problem statement to a run directory and fans investigation out to independent lanes, rather than reading the subsystem in the main thread",
         "Proceeds from blueprint to implementation without pausing to ask the user for approval or confirmation",
         "Plan includes a CHANGELOG entry, a unit test, and TableProUITests automation for the dismissal flow"
       ]
@@ -35,7 +35,7 @@
         "Proposes one consistent rule (single-click reuses or replaces the preview tab; explicit action opens a new tab), referencing native preview-tab UX from Xcode, Finder, or a competitor client including TablePlus",
         "Makes an explicit refactor-vs-patch decision rather than bolting on a special case",
         "Attacks its own blueprint with a challenge pass, since the change touches a documented invariant",
-        "Keeps a register of defects found outside the reported scope and reports them separately without silently expanding the change or opening a pull request",
+        "Keeps a register of defects found outside the reported scope and queues them as separate follow-up work rather than folding them into this diff",
         "Proceeds without pausing for approval"
       ]
     },
@@ -53,6 +53,45 @@
         "States the root cause as completion firing only for the leading token or not re-running per clause, not a surface workaround",
         "Covers the full scope: column completion at every valid position including after AND and OR, not only after AND",
         "Specifies a test that exercises completion after AND and OR in the raw SQL filter",
+        "Proceeds without pausing for approval"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "saved-query-reuse-change-track",
+      "source_issue": null,
+      "input_mode": "chat-feature-request",
+      "prompt": "In TablePro I keep retyping the same few queries. I want to save a query and re-run it later with a keyboard shortcut. Add that.",
+      "expected_output": "A blueprint on the change track that finds the shipping precedents for reusable queries before designing anything, makes an explicit extend-versus-new-seam decision, specifies the discovery surface and persistence, and writes down non-goals. The run proceeds on its own rather than asking whether to implement.",
+      "files": [],
+      "expectations": [
+        "Classifies the request as a change rather than a defect and states the track before investigating",
+        "Finds the existing precedents for saved and reusable queries, such as favorites and query history, with file evidence, instead of designing from scratch",
+        "Makes an explicit extend-existing versus new-seam decision with a reason, and does not propose a parallel system that duplicates one already shipping",
+        "Specifies the user-visible surface: entry point, menu placement, keyboard shortcut, empty state, and error state",
+        "Covers persistence, settings defaults, and what happens to data existing users already have",
+        "Writes non-goals so the plan has a stated size",
+        "Names the docs page and the CHANGELOG entry the change requires, plus unit coverage and deterministic UI automation",
+        "Treats the reporter's proposed solution as a hypothesis rather than as the design",
+        "Proceeds without pausing for approval"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "new-database-type-request",
+      "source_issue": 1986,
+      "input_mode": "github-issue-number",
+      "prompt": "resolve issue #1986 in TablePro",
+      "expected_output": "A blueprint on the change track that reads the issue and its enhancement label, routes the work through the plugin architecture instead of the app target, keeps DatabaseType open, verifies what the underlying protocol actually supports, and plans the registry-only build and the PluginKit ABI check.",
+      "files": [],
+      "expectations": [
+        "Fetches the issue with gh and uses its enhancement label to pick the change track",
+        "Routes the work through the plugin system and TableProPluginKit rather than adding a case inside the app target",
+        "Keeps DatabaseType open: string-backed, unknown types round-trip, and every switch over it keeps a fallback",
+        "Identifies the closest existing driver plugin as the precedent and lists its files as the template to follow",
+        "Verifies what the client library or wire protocol actually supports rather than assuming SQL semantics",
+        "Plans the registry-only AllPlugins build and scripts/check-pluginkit-abi.sh, not just the app build",
+        "States non-goals, because a complete driver is larger than one issue",
         "Proceeds without pausing for approval"
       ]
     }
