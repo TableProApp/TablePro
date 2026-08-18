@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Filtering a JSON tree now reveals nested key and value matches instead of leaving them behind collapsed parent rows. The filtered tree keeps stable row identities and is built once per search change rather than again on every redraw.
+
 ## [0.66.0] - 2026-08-19
 
 ### Added

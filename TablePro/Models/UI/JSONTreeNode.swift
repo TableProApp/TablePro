@@ -36,13 +36,31 @@ internal enum JSONValueType {
 }
 
 internal struct JSONTreeNode: Identifiable {
-    let id = UUID()
+    let id: UUID
     let key: String?
     let keyPath: String
     let valueType: JSONValueType
     let displayValue: String
     let rawValue: String?
     let children: [JSONTreeNode]
+
+    init(
+        id: UUID = UUID(),
+        key: String?,
+        keyPath: String,
+        valueType: JSONValueType,
+        displayValue: String,
+        rawValue: String?,
+        children: [JSONTreeNode]
+    ) {
+        self.id = id
+        self.key = key
+        self.keyPath = keyPath
+        self.valueType = valueType
+        self.displayValue = displayValue
+        self.rawValue = rawValue
+        self.children = children
+    }
 
     var childrenOrNil: [JSONTreeNode]? {
         children.isEmpty ? nil : children

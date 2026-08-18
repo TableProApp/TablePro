@@ -9,7 +9,15 @@ internal struct JSONTreeView: View {
     let rootNode: JSONTreeNode
     @Binding var searchText: String
 
-    @State private var expandedNodeIDs: Set<UUID> = []
+    @State private var state: JSONTreeViewState
+
+    init(rootNode: JSONTreeNode, searchText: Binding<String>) {
+        self.rootNode = rootNode
+        self._searchText = searchText
+        self._state = State(
+            initialValue: JSONTreeViewState(rootNode: rootNode, searchText: searchText.wrappedValue)
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,16 +25,16 @@ internal struct JSONTreeView: View {
             Divider()
             List {
                 JSONTreeContentView(
-                    nodes: filteredRootNodes,
-                    expandedNodeIDs: $expandedNodeIDs,
+                    nodes: state.visibleNodes,
+                    expandedNodeIDs: $state.expandedNodeIDs,
                     onExpandAll: expandAll,
                     onCollapseAll: collapseAll
                 )
             }
             .listStyle(.inset(alternatesRowBackgrounds: true))
         }
-        .onAppear { expandRootLevel() }
-        .onChange(of: searchText) { expandMatchingNodes() }
+        .onChange(of: rootNode.id) { _, _ in state.update(rootNode: rootNode) }
+        .onChange(of: searchText) { _, newValue in state.update(searchText: newValue) }
     }
 
     // MARK: - Toolbar
@@ -38,96 +46,27 @@ internal struct JSONTreeView: View {
                 placeholder: String(localized: "Filter keys or values..."),
                 controlSize: .small
             )
-            Button(action: expandAll) {
-                Image(systemName: "rectangle.expand.vertical")
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Expand All"))
-            Button(action: collapseAll) {
-                Image(systemName: "rectangle.compress.vertical")
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Collapse All"))
+            Button(String(localized: "Expand All"), systemImage: "rectangle.expand.vertical", action: expandAll)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .help(String(localized: "Expand All"))
+            Button(String(localized: "Collapse All"), systemImage: "rectangle.compress.vertical", action: collapseAll)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .help(String(localized: "Collapse All"))
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
     }
 
-    // MARK: - Filtering
-
-    private var filteredRootNodes: [JSONTreeNode] {
-        let nodes = rootNode.children.isEmpty ? [rootNode] : rootNode.children
-        if searchText.isEmpty { return nodes }
-        return Self.filterNodes(nodes, matching: searchText)
-    }
-
-    private static func filterNodes(_ nodes: [JSONTreeNode], matching query: String) -> [JSONTreeNode] {
-        nodes.compactMap { node in
-            let keyMatches = node.key?.localizedCaseInsensitiveContains(query) ?? false
-            let valueMatches = node.displayValue.localizedCaseInsensitiveContains(query)
-            let filteredChildren = filterNodes(node.children, matching: query)
-
-            if !filteredChildren.isEmpty {
-                return JSONTreeNode(
-                    key: node.key, keyPath: node.keyPath, valueType: node.valueType,
-                    displayValue: node.displayValue, rawValue: node.rawValue,
-                    children: filteredChildren
-                )
-            }
-            if keyMatches || valueMatches {
-                return JSONTreeNode(
-                    key: node.key, keyPath: node.keyPath, valueType: node.valueType,
-                    displayValue: node.displayValue, rawValue: node.rawValue,
-                    children: []
-                )
-            }
-            return nil
-        }
-    }
-
-    private func expandMatchingNodes() {
-        if searchText.isEmpty {
-            expandedNodeIDs.removeAll()
-            expandRootLevel()
-            return
-        }
-        expandedNodeIDs.formUnion(collectMatchingContainerIDs(filteredRootNodes))
-    }
-
-    private func collectMatchingContainerIDs(_ nodes: [JSONTreeNode]) -> Set<UUID> {
-        var ids: Set<UUID> = []
-        for node in nodes where !node.children.isEmpty {
-            ids.insert(node.id)
-            ids.formUnion(collectMatchingContainerIDs(node.children))
-        }
-        return ids
-    }
-
     // MARK: - Actions
 
     private func expandAll() {
-        withAnimation(nil) { expandedNodeIDs = collectAllContainerIDs(rootNode) }
+        withAnimation(nil) { state.expandAll() }
     }
 
     private func collapseAll() {
-        withAnimation(nil) { expandedNodeIDs.removeAll() }
-    }
-
-    private func expandRootLevel() {
-        for child in rootNode.children where !child.children.isEmpty {
-            expandedNodeIDs.insert(child.id)
-        }
-    }
-
-    private func collectAllContainerIDs(_ node: JSONTreeNode) -> Set<UUID> {
-        var ids: Set<UUID> = []
-        if !node.children.isEmpty {
-            ids.insert(node.id)
-            for child in node.children {
-                ids.formUnion(collectAllContainerIDs(child))
-            }
-        }
-        return ids
+        withAnimation(nil) { state.collapseAll() }
     }
 }
 
