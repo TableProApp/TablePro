@@ -44,16 +44,20 @@ final class DataGridCellView: NSView {
         var symbolName: String {
             switch self {
             case .foreignKeyNormal, .foreignKeyEmphasized:
-                return "arrow.right.circle"
+                return "arrow.forward"
             case .chevronNormal, .chevronEmphasized, .chevronDisabled:
                 return "chevron.up.chevron.down"
             }
         }
 
+        /// The bare arrow spends its whole point size on the arrow itself, where the circled variant
+        /// spent most of it on the ring, so 14 here would draw an arrow half again as large as the
+        /// one it replaced. 12 keeps the ink at 11 x 9 in the 16 x 16 accessory rect, close to the
+        /// dropdown chevron's weight and to the 13pt cell text.
         var pointSize: CGFloat {
             switch self {
             case .foreignKeyNormal, .foreignKeyEmphasized:
-                return 14
+                return 12
             case .chevronNormal, .chevronEmphasized, .chevronDisabled:
                 return 10
             }
