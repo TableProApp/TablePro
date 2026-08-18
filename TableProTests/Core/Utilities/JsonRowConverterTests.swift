@@ -49,6 +49,82 @@ struct JsonRowConverterTests {
         #expect(result.contains("\"abc\""))
     }
 
+    @Test("Integer literals outside Int64 preserve their exact JSON number")
+    func integerOutsideInt64() {
+        let converter = makeConverter(
+            columns: ["uint64", "belowInt64", "uint128"],
+            columnTypes: Array(repeating: ColumnType.integer(rawType: nil), count: 3)
+        )
+
+        let result = converter.generateJson(rows: [[
+            "18446744073709551615",
+            "-9223372036854775809",
+            "340282366920938463463374607431768211455",
+        ]])
+
+        #expect(result == """
+        [
+          {
+            "uint64": 18446744073709551615,
+            "belowInt64": -9223372036854775809,
+            "uint128": 340282366920938463463374607431768211455
+          }
+        ]
+        """)
+    }
+
+    @Test("Integral decimal and exponent spellings still normalize")
+    func integerIntegralSpellings() {
+        let converter = makeConverter(
+            columns: [
+                "decimal", "exponent", "leadingPlus", "shiftedDecimal",
+                "negativeExponent", "trailingPoint", "leadingPoint",
+            ],
+            columnTypes: Array(repeating: ColumnType.integer(rawType: nil), count: 7)
+        )
+
+        let result = converter.generateJson(rows: [[
+            "42.0", "1e3", "+7", "1.2e1", "1000e-3", "1.", "-.0",
+        ]])
+
+        #expect(result.contains("\"decimal\": 42"))
+        #expect(result.contains("\"exponent\": 1000"))
+        #expect(result.contains("\"leadingPlus\": 7"))
+        #expect(result.contains("\"shiftedDecimal\": 12"))
+        #expect(result.contains("\"negativeExponent\": 1"))
+        #expect(result.contains("\"trailingPoint\": 1"))
+        #expect(result.contains("\"leadingPoint\": 0"))
+    }
+
+    @Test("Out-of-range non-integer spellings remain exact strings")
+    func integerOutOfRangeFallback() {
+        let converter = makeConverter(
+            columns: ["decimal", "exponent", "negative", "fraction"],
+            columnTypes: Array(repeating: ColumnType.integer(rawType: nil), count: 4)
+        )
+
+        let result = converter.generateJson(rows: [[
+            "9223372036854775808.0",
+            "9.223372036854776e18",
+            "-9223372036854775809.0",
+            "42.0000000000000000001",
+        ]])
+
+        #expect(result.contains("\"decimal\": \"9223372036854775808.0\""))
+        #expect(result.contains("\"exponent\": \"9.223372036854776e18\""))
+        #expect(result.contains("\"negative\": \"-9223372036854775809.0\""))
+        #expect(result.contains("\"fraction\": \"42.0000000000000000001\""))
+    }
+
+    @Test("Large integral decimal spellings normalize without rounding")
+    func integerLargeDecimalSpelling() {
+        let converter = makeConverter(columns: ["id"], columnTypes: [.integer(rawType: nil)])
+
+        let result = converter.generateJson(rows: [["9007199254740993.0"]])
+
+        #expect(result.contains("\"id\": 9007199254740993"))
+    }
+
     // MARK: - Decimal
 
     @Test("Decimal column produces unquoted number")
