@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Five bits of on-screen text dropped the em dash they were punctuated with: the JSON and PHP viewer window titles, the expired-license banner in **Settings** > **Account**, the empty foreign key preview, and the warning line in the connection import list. The JSON viewer title can also be translated now, which it never could before.
 - The Quick Switcher is now called **Open Quickly** and lives in the **File** menu under Open File, the name and place macOS uses for jumping straight to something by name. The keyboard shortcut is unchanged at `Cmd+Shift+O`, and it is still rebindable in **Settings** > **Keyboard**. (#2185)
 - `Cmd+Return` opens the selected item in a new tab in Open Quickly, alongside the `Option+Return` that already did. (#2185)
 - When a connection fails because a sign-in expired, TablePro now offers to sign in again and reconnects for you, instead of leaving you on an error screen whose only button repeats the same failure. This covers Microsoft Entra ID and AWS SSO, on the connection itself as well as in the connection form's Test button.
