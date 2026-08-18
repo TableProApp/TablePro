@@ -30,8 +30,7 @@ Use `scripts/build-dameng.sh arm64` or `x86_64` only for architecture-specific d
 Run protocol, bridge, and Swift tests before submitting a change:
 
 ```bash
-cargo test --manifest-path Native/DamengBridge/Vendor/dameng-protocol/Cargo.toml
-cargo test --manifest-path Native/DamengBridge/Cargo.toml
+(cd Native/DamengBridge && cargo test --workspace --locked)
 xcodebuild -project TablePro.xcodeproj -scheme DamengDriverTests \
   -configuration Debug build-for-testing CODE_SIGNING_ALLOWED=NO
 ```

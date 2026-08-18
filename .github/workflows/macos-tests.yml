@@ -15,6 +15,7 @@ on:
       - "LocalPackages/**"
       - "TableProTests/**"
       - "TableProUITests/**"
+      - "Native/**"
       - "project.yml"
       - "Configs/**"
       - "Libs/**"
@@ -33,8 +34,10 @@ env:
   TEST_DESTINATION: "platform=macOS"
 
 jobs:
-  # Reproduces the paths filter this workflow used to carry on `on: pull_request`, with the
-  # same union of paths, so a pull request runs exactly the suites it ran before.
+  # Reproduces the paths filter this workflow used to carry on `on: pull_request`. Keep this
+  # list and the `push:` paths above identical, so a pull request and a push to main run the
+  # same suites. `Native/` is on both because the Dameng steps below build and test the Rust
+  # bridge that lives there, and a bridge-only change would otherwise compile nowhere.
   # Never give this job a `permissions:` block. build.yml calls this workflow with
   # workflow_call, and a called job may not request more than the caller holds. The repository
   # default is read, which carries no pull-requests scope, so asking for one fails the whole
@@ -79,7 +82,7 @@ jobs:
           git -c core.quotePath=false diff --no-renames --name-only -z \
               "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-files"
 
-          if LC_ALL=C grep -zqE '^(TablePro/|Plugins/|Packages/|LocalPackages/|TableProTests/|TableProUITests/|Configs/|Libs/|project\.yml$|\.github/workflows/macos-tests\.yml$)' "$RUNNER_TEMP/changed-files"; then
+          if LC_ALL=C grep -zqE '^(TablePro/|Plugins/|Packages/|LocalPackages/|TableProTests/|TableProUITests/|Native/|Configs/|Libs/|project\.yml$|\.github/workflows/macos-tests\.yml$)' "$RUNNER_TEMP/changed-files"; then
               echo "run=true" >> "$GITHUB_OUTPUT"
           else
               echo "run=false" >> "$GITHUB_OUTPUT"
@@ -161,18 +164,14 @@ jobs:
       - name: Build Dameng native bridge
         run: scripts/build-dameng.sh arm64
 
-      # The vendored crates are path dependencies, not workspace members, so testing the bridge
-      # manifest alone skips every decoder test they carry.
+      # --workspace reaches the vendored crates and the decoder tests they carry. Testing each
+      # manifest on its own instead would need a lockfile per crate that nothing commits.
+      # Run from the bridge directory so rustup reads its rust-toolchain.toml: rustup resolves
+      # that file from the working directory, not from --manifest-path, and testing on the
+      # runner's default Rust would not be the toolchain the shipped staticlib is built with.
       - name: Test Dameng native bridge
-        run: |
-          for manifest in \
-            Native/DamengBridge/Cargo.toml \
-            Native/DamengBridge/Vendor/dameng-types/Cargo.toml \
-            Native/DamengBridge/Vendor/dameng-protocol/Cargo.toml \
-            Native/DamengBridge/Vendor/dameng/Cargo.toml
-          do
-            cargo test --manifest-path "$manifest" --locked
-          done
+        working-directory: Native/DamengBridge
+        run: cargo test --workspace --locked
 
       # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so an empty
       # value is enough for the project to resolve $(ANALYTICS_HMAC_SECRET).

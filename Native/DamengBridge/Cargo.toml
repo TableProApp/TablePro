@@ -1,3 +1,6 @@
+[workspace]
+members = ["Vendor/*"]
+
 [package]
 name = "tablepro-dameng-bridge"
 version = "0.1.0"
