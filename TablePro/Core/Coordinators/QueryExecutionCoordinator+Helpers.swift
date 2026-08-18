@@ -77,6 +77,17 @@ extension QueryExecutionCoordinator {
         return cached
     }
 
+    /// Deliberately does not set `foreignKeysFetched`. The prefetch answers which columns carry the
+    /// arrow, which is all the first paint needs; defaults, primary keys, nullability and comments
+    /// still come from the table's own metadata fetch, and claiming they had arrived would let
+    /// `isMetadataCached` skip it.
+    private func prefetchedForeignKeys(tabIndex: Int, tableName: String) -> [String: ForeignKeyInfo]? {
+        guard tabIndex < parent.tabManager.tabs.count,
+              let scope = parent.scope(for: parent.tabManager.tabs[tabIndex])
+        else { return nil }
+        return SchemaForeignKeyStore.shared.foreignKeysByColumn(for: scope, table: tableName)
+    }
+
     func applyPhase1Result( // swiftlint:disable:this function_parameter_count
         tabId: UUID,
         columns: [String],
@@ -149,6 +160,10 @@ extension QueryExecutionCoordinator {
             for (col, vals) in existing.columnEnumValues where columnEnumValues[col] == nil {
                 columnEnumValues[col] = vals
             }
+        }
+
+        if columnForeignKeys.isEmpty, !foreignKeysFetched, let tableName {
+            columnForeignKeys = prefetchedForeignKeys(tabIndex: idx, tableName: tableName) ?? [:]
         }
 
         let newTableRows = TableRows.from(

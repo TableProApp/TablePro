@@ -67,6 +67,29 @@ extension MainContentCoordinator {
         )
         await services.schemaRefreshService.syncAutocompleteProvider(connectionId: connectionId)
         pruneStaleSidebarState()
+        prefetchForeignKeys(scope: scope)
+    }
+
+    /// The user cannot open a table before the object list they click it in has loaded, so starting
+    /// here puts the fetch ahead of the first table open without competing with it. `.bulk` keeps it
+    /// off the connection the table's own metadata will use.
+    private func prefetchForeignKeys(scope: DatabaseScope) {
+        SchemaForeignKeyStore.shared.prefetch(scope: scope) { [services] in
+            do {
+                return try await services.databaseManager.withMetadataDriver(
+                    scope: scope,
+                    workload: .bulk
+                ) { driver in
+                    guard driver.providesBulkForeignKeyFetch else { return nil }
+                    return try await driver.fetchAllForeignKeys()
+                }
+            } catch {
+                Self.logger.info(
+                    "[fk] schema foreign key prefetch failed: \(error.localizedDescription, privacy: .public)"
+                )
+                return nil
+            }
+        }
     }
 
     func loadTableMetadata(tableName: String) async {

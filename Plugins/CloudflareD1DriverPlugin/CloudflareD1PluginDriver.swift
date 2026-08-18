@@ -317,6 +317,8 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         return allColumns
     }
 
+    var providesBulkForeignKeyFetch: Bool { true }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let query = """
             SELECT m.name AS table_name, p.id, p."table" AS referenced_table,

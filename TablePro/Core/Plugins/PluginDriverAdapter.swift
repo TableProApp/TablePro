@@ -496,6 +496,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return result
     }
 
+    var providesBulkForeignKeyFetch: Bool { pluginDriver.providesBulkForeignKeyFetch }
+
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let pluginResult = try await pluginDriver.fetchAllForeignKeys(schema: pluginDriver.currentSchema)
         var result: [String: [ForeignKeyInfo]] = [:]

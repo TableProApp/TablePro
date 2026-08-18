@@ -289,11 +289,7 @@ struct DataGridView: NSViewRepresentable {
                 columns: latestRows.columns,
                 tableIdentityChanged: previousColumnKey != coordinator.columnLayoutKey
             )
-            let reconciliationWidths = coordinator.liveWidthsForReconciliation(
-                sameTableLiveWidths,
-                presentationChanges: presentationChanges,
-                columns: latestRows.columns
-            )
+            let reconciliationWidths = coordinator.liveWidthsForReconciliation(sameTableLiveWidths)
             let savedLayout = coordinator.resolvedColumnLayout(
                 binding: columnLayout,
                 liveWidths: reconciliationWidths,
@@ -306,12 +302,6 @@ struct DataGridView: NSViewRepresentable {
                 columnComments: columnComments,
                 savedLayout: savedLayout
             )
-            if previousColumnKey == coordinator.columnLayoutKey {
-                coordinator.refreshPendingLayoutAfterPresentationChanges(
-                    presentationChanges,
-                    tableRows: latestRows
-                )
-            }
             coordinator.isRebuildingColumns = false
             coordinator.invalidateColumnIndexCache()
         }

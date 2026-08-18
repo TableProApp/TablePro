@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The foreign-key arrow in a data-grid cell arrived a moment after the rows, and widened its column as it appeared, so text you were already reading shifted sideways. The arrow is now known before the first row is drawn, because a connection reads its schema's foreign keys once when it loads the object list instead of asking again for each table you open. Where that is not possible, such as the first table on a driver that cannot answer in one query, the arrow still appears a moment later but no longer moves the column. The same applies to the dropdown chevron on enum columns.
 - A toolbar button now shows the shortcut you actually bound. Rebinding a shortcut in **Settings** > **Keyboard** reached the menu bar but not the toolbar, so a button's tooltip and its overflow menu kept advertising the original key, and the Connection button advertised a key it never had. The Database and Preview buttons also lost their shortcut hint entirely whenever you switched connection. (#2185)
 - JSON results, Copy as JSON and JSON export no longer crash on unsigned or wider-than-64-bit integer values. Large integers and high-precision decimals keep every digit, whichever spelling the database returned them in, instead of being narrowed through floating-point conversion.
 - JSON export could write a file that was not valid JSON when a numeric column held a value such as `Infinity` or digits outside 0-9. Those values are quoted as strings now.

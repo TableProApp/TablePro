@@ -513,8 +513,11 @@ struct TableViewCoordinatorLayoutTests {
         #expect(coordinator.layoutPersistTask == nil)
     }
 
-    @Test("A pending resize snapshot tracks a late accessory without changing content width")
-    func pendingResizeTracksLateAccessory() throws {
+    /// The foreign key arrow arrives with the table's metadata, one round trip after the rows are
+    /// already on screen. Widening the column then moves text the user is reading, so the arrow
+    /// takes its space from inside the cell instead and the column keeps the width it was given.
+    @Test("A late accessory never resizes the column it appears in")
+    func lateAccessoryNeverResizesItsColumn() throws {
         let persister = FakeColumnLayoutPersister()
         let coordinator = makeCoordinator(
             tabType: .table,
@@ -540,18 +543,19 @@ struct TableViewCoordinatorLayoutTests {
 
         coordinator.refreshCellPresentations()
 
-        #expect(column.width == 180)
-        #expect(coordinator.pendingColumnLayoutPersistence?.layout.columnWidths == ["parent_id": 180])
+        #expect(column.width == 160)
+        #expect(coordinator.pendingColumnLayoutPersistence?.layout.columnWidths == ["parent_id": 160])
         #expect(coordinator.pendingColumnLayoutPersistence?.layout.columnContentWidths == ["parent_id": 160])
 
         coordinator.flushPendingColumnLayoutPersistence()
 
-        #expect(persister.stored["nodes"]?.columnWidths == ["parent_id": 180])
-        #expect(persister.stored["nodes"]?.columnContentWidths == ["parent_id": 160])
+        #expect(persister.stored["nodes"]?.columnWidths == ["parent_id": 160])
     }
 
-    @Test("A pending resize snapshot tracks structural presentation changes")
-    func pendingResizeTracksStructuralPresentationChange() throws {
+    /// Losing an accessory is the same rule read backwards: the freed space goes to the text inside
+    /// the cell, not back to the window, so the column the user sized keeps the width they gave it.
+    @Test("A column that loses its accessory keeps its width")
+    func losingAnAccessoryKeepsColumnWidth() throws {
         let persister = FakeColumnLayoutPersister()
         let connectionId = UUID()
         let coordinator = makeCoordinator(
@@ -577,26 +581,20 @@ struct TableViewCoordinatorLayoutTests {
         configuration.tabType = .table
         coordinator.apply(configuration: configuration, isEditable: false)
         let changes = coordinator.updateColumnPresentations(from: rows)
-        let reconciled = coordinator.liveWidthsForReconciliation(
-            ["created_at": column.width],
-            presentationChanges: changes,
-            columns: rows.columns
-        )
-        column.width = try #require(reconciled["created_at"])
-        coordinator.refreshPendingLayoutAfterPresentationChanges(changes, tableRows: rows)
+        let reconciled = coordinator.liveWidthsForReconciliation(["created_at": column.width])
 
-        #expect(column.width == 160)
-        #expect(coordinator.pendingColumnLayoutPersistence?.layout.columnWidths == ["created_at": 160])
-        #expect(coordinator.pendingColumnLayoutPersistence?.layout.columnContentWidths == ["created_at": 160])
+        #expect(!changes.isEmpty)
+        #expect(reconciled == ["created_at": 176])
+        #expect(column.width == 176)
 
         coordinator.flushPendingColumnLayoutPersistence()
 
-        #expect(persister.stored["events"]?.columnWidths == ["created_at": 160])
+        #expect(persister.stored["events"]?.columnWidths == ["created_at": 176])
         #expect(persister.stored["events"]?.columnContentWidths == ["created_at": 160])
     }
 
-    @Test("A query-grid presentation change keeps legacy and content widths synchronized")
-    func queryPresentationChangeRefreshesPendingLayout() throws {
+    @Test("A query-grid presentation change leaves the pending layout snapshot alone")
+    func queryPresentationChangeLeavesPendingLayoutAlone() throws {
         let coordinator = makeCoordinator(
             tabType: .query,
             connectionId: nil,
@@ -623,17 +621,16 @@ struct TableViewCoordinatorLayoutTests {
 
         coordinator.rebuildColumnMetadataCache(from: dateRows)
         let changes = coordinator.updateColumnPresentations(from: dateRows)
-        column.width = 176
         coordinator.tableRowsProvider = { dateRows }
-        coordinator.refreshPendingLayoutAfterPresentationChanges(changes, tableRows: dateRows)
 
-        #expect(coordinator.pendingColumnLayoutPersistence?.layout.columnWidths == ["result": 176])
+        #expect(!changes.isEmpty)
+        #expect(column.width == 160)
+        #expect(coordinator.pendingColumnLayoutPersistence?.layout.columnWidths == ["result": 160])
         #expect(coordinator.pendingColumnLayoutPersistence?.layout.columnContentWidths == ["result": 160])
 
         coordinator.flushPendingColumnLayoutPersistence()
 
-        #expect(persistedLayout?.columnWidths == ["result": 176])
-        #expect(persistedLayout?.columnContentWidths == ["result": 160])
+        #expect(persistedLayout?.columnWidths == ["result": 160])
     }
 
     @Test("Divider fit takes ownership even when AppKit does not change the width")
@@ -718,8 +715,8 @@ struct TableViewCoordinatorLayoutTests {
         #expect(coordinator.userSizedColumnNames.isEmpty)
     }
 
-    @Test("Reconciliation preserves stable automatic widths and invalidates only changed presentations")
-    func reconciliationInvalidatesOnlyChangedAutomaticWidths() {
+    @Test("Reconciliation preserves live widths, presentation change or not")
+    func reconciliationPreservesLiveWidths() {
         let coordinator = makeCoordinator(
             tabType: .table,
             connectionId: UUID(),
@@ -734,23 +731,12 @@ struct TableViewCoordinatorLayoutTests {
             tableIdentityChanged: true
         )
         let liveWidths: [String: CGFloat] = ["id": 75, "name": 140]
-        var presentationChanges = DataGridColumnPresentationChanges()
-        presentationChanges.indices = IndexSet([0, 1])
-        presentationChanges.widthDeltas = [0: 8, 1: 8]
 
-        let stable = coordinator.liveWidthsForReconciliation(
-            liveWidths,
-            presentationChanges: DataGridColumnPresentationChanges(),
-            columns: ["id", "name"]
-        )
-        let presentationChanged = coordinator.liveWidthsForReconciliation(
-            liveWidths,
-            presentationChanges: presentationChanges,
-            columns: ["id", "name"]
-        )
+        let stable = coordinator.liveWidthsForReconciliation(liveWidths)
+        let afterPresentationChange = coordinator.liveWidthsForReconciliation(liveWidths)
 
         #expect(stable == liveWidths)
-        #expect(presentationChanged == ["id": 83])
+        #expect(afterPresentationChange == liveWidths)
     }
 
     @Test("Reordering columns does not invent accessory width changes")
@@ -806,15 +792,10 @@ struct TableViewCoordinatorLayoutTests {
         coordinator.rebuildColumnMetadataCache(from: rows)
 
         let changes = coordinator.updateColumnPresentations(from: rows)
-        let reconciled = coordinator.liveWidthsForReconciliation(
-            ["status": 160],
-            presentationChanges: changes,
-            columns: rows.columns
-        )
-        coordinator.refreshPendingLayoutAfterPresentationChanges(changes, tableRows: rows)
+        let reconciled = coordinator.liveWidthsForReconciliation(["status": 160])
 
-        #expect(changes.widthDeltasByName == ["status": 16])
-        #expect(reconciled == ["status": 176])
+        #expect(!changes.isEmpty)
+        #expect(reconciled == ["status": 160])
         #expect(coordinator.pendingColumnLayoutPersistence == nil)
     }
 
@@ -849,14 +830,9 @@ struct TableViewCoordinatorLayoutTests {
         coordinator.rebuildColumnMetadataCache(from: changed)
 
         let changes = coordinator.updateColumnPresentations(from: changed)
-        let reconciled = coordinator.liveWidthsForReconciliation(
-            ["date": 176],
-            presentationChanges: changes,
-            columns: changed.columns
-        )
+        let reconciled = coordinator.liveWidthsForReconciliation(["date": 176])
 
         #expect(changes.indices == IndexSet(integer: 0))
-        #expect(changes.widthDeltasByName == ["date": 0])
         #expect(reconciled == ["date": 176])
     }
 
@@ -891,25 +867,16 @@ struct TableViewCoordinatorLayoutTests {
 
         coordinator.rebuildColumnMetadataCache(from: withDateDuplicate)
         let added = coordinator.updateColumnPresentations(from: withDateDuplicate)
-        let expanded = coordinator.liveWidthsForReconciliation(
-            ["value": 160],
-            presentationChanges: added,
-            columns: withDateDuplicate.columns
-        )
+        let afterAdding = coordinator.liveWidthsForReconciliation(["value": 160])
 
         coordinator.rebuildColumnMetadataCache(from: plain)
         let removed = coordinator.updateColumnPresentations(from: plain)
-        let contracted = coordinator.liveWidthsForReconciliation(
-            expanded,
-            presentationChanges: removed,
-            columns: plain.columns
-        )
+        let afterRemoving = coordinator.liveWidthsForReconciliation(afterAdding)
 
-        #expect(added.widthDeltasByName == ["value": 16])
-        #expect(expanded == ["value": 176])
-        #expect(removed.indices == IndexSet(integer: 0))
-        #expect(removed.widthDeltasByName == ["value": -16])
-        #expect(contracted == ["value": 160])
+        #expect(!added.isEmpty)
+        #expect(afterAdding == ["value": 160])
+        #expect(removed.indices.isEmpty)
+        #expect(afterRemoving == ["value": 160])
     }
 
     @Test("Reset invalidates every automatic live width once")
@@ -923,16 +890,8 @@ struct TableViewCoordinatorLayoutTests {
         let liveWidths: [String: CGFloat] = ["id": 75, "name": 140]
 
         coordinator.resetColumnWidthOwnership()
-        let afterReset = coordinator.liveWidthsForReconciliation(
-            liveWidths,
-            presentationChanges: DataGridColumnPresentationChanges(),
-            columns: ["id", "name"]
-        )
-        let nextUpdate = coordinator.liveWidthsForReconciliation(
-            liveWidths,
-            presentationChanges: DataGridColumnPresentationChanges(),
-            columns: ["id", "name"]
-        )
+        let afterReset = coordinator.liveWidthsForReconciliation(liveWidths)
+        let nextUpdate = coordinator.liveWidthsForReconciliation(liveWidths)
 
         #expect(afterReset.isEmpty)
         #expect(nextUpdate == liveWidths)
@@ -966,8 +925,11 @@ struct TableViewCoordinatorLayoutTests {
         #expect(coordinator.layoutPersistTask == nil)
     }
 
-    @Test("Late accessory metadata recalculates automatic widths and preserves user content width")
-    func lateAccessoryMetadataPreservesContentWidth() throws {
+    /// Both ownership kinds, one rule. An automatic column is sized from its content when the
+    /// column is built and a user-sized one is whatever the user dragged it to; the arrow arriving
+    /// afterwards re-opens neither decision.
+    @Test("Late accessory metadata leaves automatic and user-sized widths alone")
+    func lateAccessoryMetadataLeavesWidthsAlone() throws {
         let coordinator = makeCoordinator(
             tabType: .table,
             connectionId: UUID(),
@@ -998,55 +960,21 @@ struct TableViewCoordinatorLayoutTests {
 
         let idColumn = try #require(columns["id"])
         let parentColumn = try #require(columns["parent_id"])
-        let expected = coordinator.cellFactory.calculateOptimalColumnWidth(
-            for: "parent_id",
-            columnIndex: 1,
-            tableRows: rows,
-            accessory: .foreignKey
-        )
+
         #expect(idColumn.width == 75)
-        #expect(parentColumn.width == expected)
+        #expect(parentColumn.width == 100)
         #expect(coordinator.userSizedColumnNames == ["id"])
+        #expect(coordinator.columnPresentation(for: 1, in: rows).accessory == .foreignKey)
 
         _ = rows.updateDisplayMetadata(columnForeignKeys: [:])
         coordinator.refreshCellPresentations()
-        let plainExpected = coordinator.cellFactory.calculateOptimalColumnWidth(
-            for: "parent_id",
-            columnIndex: 1,
-            tableRows: rows
-        )
-        #expect(parentColumn.width == plainExpected)
 
-        _ = rows.updateDisplayMetadata(columnForeignKeys: [
-            "parent_id": TestFixtures.makeForeignKeyInfo(column: "parent_id"),
-        ])
-        coordinator.refreshCellPresentations()
-        #expect(parentColumn.width == expected)
-
-        saved.columnWidths["parent_id"] = 228
-        coordinator.synchronizeUserSizedColumns(
-            with: saved,
-            columns: rows.columns,
-            tableIdentityChanged: false
-        )
-        parentColumn.width = 240
-        _ = rows.updateDisplayMetadata(columnForeignKeys: [:])
-        coordinator.refreshCellPresentations()
-
-        #expect(parentColumn.width == 220)
-        #expect(coordinator.pendingColumnLayoutPersistence?.layout.columnWidths == [
-            "id": 75,
-            "parent_id": 220,
-        ])
-        #expect(coordinator.pendingColumnLayoutPersistence?.layout.columnContentWidths == [
-            "id": 75,
-            "parent_id": 220,
-        ])
-        coordinator.flushPendingColumnLayoutPersistence()
+        #expect(idColumn.width == 75)
+        #expect(parentColumn.width == 100)
     }
 
-    @Test("Late enum metadata resizes an automatic column without foreign keys")
-    func lateEnumMetadataResizesAutomaticColumn() throws {
+    @Test("Late enum metadata changes the accessory without resizing the column")
+    func lateEnumMetadataDoesNotResizeItsColumn() throws {
         let coordinator = makeCoordinator(
             tabType: .table,
             connectionId: UUID(),
@@ -1071,28 +999,18 @@ struct TableViewCoordinatorLayoutTests {
         coordinator.refreshCellPresentations()
 
         let column = try #require(columns["status"])
-        let expected = coordinator.cellFactory.calculateOptimalColumnWidth(
-            for: "status",
-            columnIndex: 0,
-            tableRows: rows,
-            accessory: .chevron
-        )
-        #expect(column.width == expected)
+
+        #expect(column.width == 100)
         #expect(coordinator.columnPresentation(for: 0, in: rows).kind == .dropdown)
 
         _ = rows.updateDisplayMetadata(columnEnumValues: [:])
         coordinator.refreshCellPresentations()
 
-        let plainExpected = coordinator.cellFactory.calculateOptimalColumnWidth(
-            for: "status",
-            columnIndex: 0,
-            tableRows: rows
-        )
-        #expect(column.width == plainExpected)
+        #expect(column.width == 100)
         #expect(coordinator.columnPresentation(for: 0, in: rows).kind == .text)
     }
 
-    @Test("Late metadata waits for an active cell overlay before resizing")
+    @Test("Late metadata waits for an active cell overlay before repainting")
     func lateMetadataWaitsForActiveOverlay() throws {
         let coordinator = makeCoordinator(
             tabType: .table,
@@ -1144,15 +1062,10 @@ struct TableViewCoordinatorLayoutTests {
 
         editor.removeOverlay()
 
-        let expected = coordinator.cellFactory.calculateOptimalColumnWidth(
-            for: "parent_id",
-            columnIndex: 0,
-            tableRows: rows,
-            accessory: .foreignKey
-        )
         #expect(!editor.isActive)
         #expect(!coordinator.pendingCellPresentationRefresh)
-        #expect(column.width == expected)
+        #expect(column.width == originalWidth)
+        #expect(coordinator.columnPresentation(for: 0, in: rows).accessory == .foreignKey)
         #expect(coordinator.userSizedColumnNames.isEmpty)
     }
 }

@@ -463,6 +463,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "DROP TRIGGER \(quoteIdentifier(name))"
     }
 
+    var providesBulkForeignKeyFetch: Bool { true }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let dbName = _activeDatabase
         let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")

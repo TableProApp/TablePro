@@ -117,6 +117,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
     func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
+    var providesBulkForeignKeyFetch: Bool { get }
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])]
     func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)]
@@ -298,6 +299,13 @@ public extension PluginDatabaseDriver {
     func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
         []
     }
+
+    /// Answers whether `fetchAllForeignKeys` is a single query rather than the N+1 default below.
+    /// The app reads this before fetching a whole schema's foreign keys up front, so a driver that
+    /// has not overridden the default is never asked to make one round trip per table. It belongs
+    /// on the driver rather than on the database type, because the PostgreSQL plugin registers
+    /// CockroachDB and Redshift as variants of its own type and neither has the bulk query.
+    var providesBulkForeignKeyFetch: Bool { false }
 
     /// Default: fetches foreign keys per-table sequentially (N+1 round-trips).
     /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.KEY_COLUMN_USAGE).
