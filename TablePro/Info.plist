@@ -390,6 +390,7 @@
 				<string>scylladb</string>
 				<string>scylla</string>
 				<string>oracle</string>
+				<string>dm</string>
 				<string>clickhouse</string>
 				<string>ch</string>
 				<string>etcd</string>

@@ -56,7 +56,8 @@
                   "databases/cockroachdb",
                   "databases/pglite",
                   "databases/mssql",
-                  "databases/oracle"
+                  "databases/oracle",
+                  "databases/dameng"
                 ]
               },
               {

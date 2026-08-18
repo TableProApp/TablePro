@@ -26,6 +26,7 @@ TablePro parses standard database connection URLs for importing connections, ope
 | `sqlserver://` | Microsoft SQL Server (alias) |
 | `jdbc:sqlserver://` | Microsoft SQL Server (JDBC) |
 | `oracle://` | Oracle Database |
+| `dm://` | Dameng DM8 |
 | `jdbc:oracle:thin://` | Oracle Database (JDBC thin) |
 | `cassandra://` | Cassandra |
 | `cql://` | Cassandra (alias) |
@@ -44,7 +45,7 @@ TablePro parses standard database connection URLs for importing connections, ope
 | `libsql://` | libSQL / Turso |
 | `surrealdb://` | SurrealDB |
 
-Every scheme above works in the **Import from URL...** sheet. Only these are registered with macOS, so only these can be launched with `open` or a browser link: `postgresql`, `postgres`, `mysql`, `mariadb`, `sqlite`, `mongodb`, `mongodb+srv`, `redis`, `rediss`, `redshift`, `cockroachdb`, `cockroach`, `mssql`, `sqlserver`, `oracle`, `clickhouse`, `ch`, `cassandra`, `cql`, `scylladb`, `scylla`, `duckdb`, `etcd`, `etcds`, `d1`, `libsql`, `surrealdb`.
+Every scheme above works in the **Import from URL...** sheet. Only these are registered with macOS, so only these can be launched with `open` or a browser link: `postgresql`, `postgres`, `mysql`, `mariadb`, `sqlite`, `mongodb`, `mongodb+srv`, `redis`, `rediss`, `redshift`, `cockroachdb`, `cockroach`, `mssql`, `sqlserver`, `oracle`, `dm`, `clickhouse`, `ch`, `cassandra`, `cql`, `scylladb`, `scylla`, `duckdb`, `etcd`, `etcds`, `d1`, `libsql`, `surrealdb`.
 
 Append `+ssh` to any non-file-based scheme (not `sqlite`, `duckdb`, or `beancount`) to use an SSH tunnel:
 

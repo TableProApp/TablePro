@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Tree sidebar layouts group tables, views, materialized views, foreign tables, procedures and functions into collapsible folders inside each database or schema. (#1590)
+- Dameng DM8 connections through a downloadable native-wire plugin, with schema browsing, table editing, metadata, DDL, transactions, Unicode and binary writes, and EXPLAIN support. (#1671, #2003, #2010)
 - SQL Server connections can sign in with Microsoft Entra ID, covering Azure SQL Database, Azure SQL Managed Instance, and SQL Server 2022. Sign-in runs in your browser and honours multifactor authentication and Conditional Access; tokens are kept in the keychain and refreshed for you. Set it up on the Mac; iPhone and iPad pick the connection up through sync and prompt to sign in when you open it.
 
 ### Changed

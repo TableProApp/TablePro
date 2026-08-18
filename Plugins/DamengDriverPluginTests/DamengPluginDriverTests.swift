@@ -1,0 +1,435 @@
+import Foundation
+import TableProPluginKit
+import XCTest
+
+final class DamengPluginDriverTests: XCTestCase {
+    func testTypingSuggestionsIncludeDM8StatementsAndDialectSymbols() {
+        let completions = Set(DamengPlugin.statementCompletions.map(\.label))
+
+        XCTAssertTrue(completions.isSuperset(of: ["SET SCHEMA", "CREATE SCHEMA", "EXPLAIN", "CONNECT BY"]))
+        XCTAssertTrue(DamengPlugin.sqlDialect?.keywords.contains("ROWNUM") == true)
+        XCTAssertTrue(DamengPlugin.sqlDialect?.functions.contains("NVL") == true)
+        XCTAssertTrue(DamengPlugin.sqlDialect?.dataTypes.contains("VARCHAR2") == true)
+
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+        XCTAssertEqual(driver.buildExplainQuery("SELECT 1"), "EXPLAIN SELECT 1")
+    }
+
+    func testDDLGenerationQuotesNamesAndPreservesConstraints() throws {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+        let definition = PluginCreateTableDefinition(
+            tableName: "order",
+            columns: [
+                PluginColumnDefinition(
+                    name: "id",
+                    dataType: "int",
+                    isNullable: false,
+                    isPrimaryKey: true,
+                    autoIncrement: true
+                ),
+                PluginColumnDefinition(
+                    name: "display name",
+                    dataType: "varchar(100)",
+                    defaultValue: "guest's record",
+                    comment: "customer's label"
+                )
+            ],
+            indexes: [PluginIndexDefinition(name: "idx display", columns: ["display name"])],
+            foreignKeys: []
+        )
+
+        let sql = try XCTUnwrap(driver.generateCreateTableSQL(definition: definition))
+
+        XCTAssertTrue(sql.hasPrefix("BEGIN\n"))
+        XCTAssertTrue(sql.contains("CREATE TABLE \"APP\".\"order\""))
+        XCTAssertTrue(sql.contains("\"id\" INT IDENTITY(1,1) NOT NULL PRIMARY KEY"))
+        XCTAssertTrue(sql.contains("DEFAULT ''guest''''s record''"))
+        XCTAssertTrue(sql.contains("CREATE INDEX \"idx display\" ON \"APP\".\"order\" (\"display name\")"))
+        XCTAssertTrue(sql.contains("IS ''customer''''s label''"))
+    }
+
+    func testRowChangesUsePrimaryKeyAndBoundValues() throws {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+        let change = PluginRowChange(
+            rowIndex: 2,
+            type: .update,
+            cellChanges: [(1, "name", .text("old"), .text("new"))],
+            originalRow: [.text("42"), .text("old")]
+        )
+
+        let statements = try XCTUnwrap(driver.generateStatements(
+            table: "users",
+            schema: "APP",
+            columns: ["id", "name"],
+            primaryKeyColumns: ["id"],
+            changes: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        ))
+
+        XCTAssertEqual(statements.count, 1)
+        XCTAssertEqual(
+            statements[0].statement,
+            "UPDATE \"APP\".\"users\" SET \"name\" = ? WHERE \"id\" = ? AND ROWNUM = 1"
+        )
+        XCTAssertEqual(statements[0].parameters, [.text("new"), .text("42")])
+    }
+
+    func testDropObjectStatementKeepsDM8ObjectKeywords() {
+        let driver = DamengPluginDriver(config: testConfig(database: "APP"))
+
+        XCTAssertEqual(
+            driver.dropObjectStatement(
+                name: "SALES_MV", objectType: "MATERIALIZED VIEW", schema: "APP", cascade: false
+            ),
+            "DROP MATERIALIZED VIEW \"APP\".\"SALES_MV\""
+        )
+        XCTAssertEqual(
+            driver.dropObjectStatement(name: "ACTIVE_USERS", objectType: "view", schema: "APP", cascade: true),
+            "DROP VIEW \"APP\".\"ACTIVE_USERS\""
+        )
+        XCTAssertEqual(
+            driver.dropObjectStatement(name: "EXT_LOG", objectType: "FOREIGN TABLE", schema: "APP", cascade: false),
+            "DROP TABLE \"APP\".\"EXT_LOG\""
+        )
+        XCTAssertEqual(
+            driver.dropObjectStatement(name: "ORDERS", objectType: "TABLE", schema: "APP", cascade: true),
+            "DROP TABLE \"APP\".\"ORDERS\" CASCADE"
+        )
+    }
+
+    func testRowCapClampsToTheEmergencyMaximum() {
+        XCTAssertEqual(DamengConnection.fetchLimit(nil), PluginRowLimits.emergencyMax)
+        XCTAssertEqual(DamengConnection.fetchLimit(0), PluginRowLimits.emergencyMax)
+        XCTAssertEqual(DamengConnection.fetchLimit(-5), PluginRowLimits.emergencyMax)
+        XCTAssertEqual(DamengConnection.fetchLimit(10), 10)
+        XCTAssertEqual(DamengConnection.fetchLimit(9_000_000), PluginRowLimits.emergencyMax)
+    }
+
+    func testCastTruncationIsDetectedAtTheDM8VarcharCeiling() {
+        let full = String(repeating: "a", count: 8_188)
+
+        XCTAssertFalse(DamengSchemaValue.isCastTruncated(full, storedLength: 8_188))
+        XCTAssertTrue(DamengSchemaValue.isCastTruncated(full, storedLength: 8_189))
+
+        XCTAssertFalse(DamengSchemaValue.isCastTruncated(String(repeating: "a", count: 8_187), storedLength: nil))
+        XCTAssertTrue(DamengSchemaValue.isCastTruncated(full, storedLength: nil))
+        XCTAssertTrue(DamengSchemaValue.isCastTruncated(String(repeating: "\u{e9}", count: 4_094), storedLength: nil))
+    }
+
+    func testEffectiveSchemaPreservesQuotedIdentifierCase() {
+        let configured = DamengPluginDriver(config: testConfig(database: "CamelCaseSchema"))
+        XCTAssertEqual(configured.effectiveSchema(nil), "CamelCaseSchema")
+        XCTAssertEqual(configured.effectiveSchema("lowercase_schema"), "lowercase_schema")
+
+        let fallback = DamengPluginDriver(config: DriverConnectionConfig(
+            host: "127.0.0.1",
+            port: 5_236,
+            username: "sysdba",
+            password: "test-only",
+            database: ""
+        ))
+        XCTAssertEqual(fallback.effectiveSchema(nil), "SYSDBA")
+    }
+
+    func testLiveDM8Workflow() async throws {
+        let environment = try liveEnvironment()
+        let driver = DamengPluginDriver(config: environment.config(database: "SYSDBA"))
+        let schema = "TP_\(UUID().uuidString.prefix(12).replacingOccurrences(of: "-", with: ""))".uppercased()
+        try await checked("connect") {
+            try await driver.connect()
+        }
+        defer { driver.disconnect() }
+
+        _ = try await checked("create schema") {
+            try await driver.execute(query: "CREATE SCHEMA \(driver.quoteIdentifier(schema)) AUTHORIZATION SYSDBA")
+        }
+        do {
+            try await runLiveWorkflow(driver: driver, schema: schema)
+            try await driver.switchSchema(to: "SYSDBA")
+            try await driver.dropSchema(name: schema)
+        } catch {
+            try? await driver.switchSchema(to: "SYSDBA")
+            _ = try? await driver.execute(query: "DROP SCHEMA \(driver.quoteIdentifier(schema)) CASCADE")
+            throw error
+        }
+    }
+
+    func testLiveDM8RejectsBadCredentialsAndInvalidPort() async throws {
+        let environment = try liveEnvironment()
+        let invalidPortDriver = DamengPluginDriver(config: DriverConnectionConfig(
+            host: environment.host,
+            port: 70_000,
+            username: environment.username,
+            password: environment.password,
+            database: ""
+        ))
+        do {
+            try await invalidPortDriver.connect()
+            XCTFail("Expected an invalid port to fail")
+        } catch {
+            XCTAssertTrue(String(describing: error).contains("65535"))
+        }
+
+        let badPasswordDriver = DamengPluginDriver(config: DriverConnectionConfig(
+            host: environment.host,
+            port: environment.port,
+            username: environment.username,
+            password: "not-the-password",
+            database: ""
+        ))
+        do {
+            try await badPasswordDriver.connect()
+            XCTFail("Expected invalid credentials to fail")
+        } catch {
+            XCTAssertFalse(String(describing: error).isEmpty)
+        }
+    }
+
+    private func runLiveWorkflow(driver: DamengPluginDriver, schema: String) async throws {
+        try await checked("switch schema") {
+            try await driver.switchSchema(to: schema)
+        }
+        XCTAssertEqual(driver.currentSchema, schema)
+        XCTAssertTrue(driver.serverVersion?.contains("DM Database Server") == true)
+        try await checked("ping") {
+            try await driver.ping()
+        }
+
+        let parentDefinition = PluginCreateTableDefinition(
+            tableName: "PARENT",
+            columns: [
+                PluginColumnDefinition(
+                    name: "ID",
+                    dataType: "INT",
+                    isNullable: false,
+                    isPrimaryKey: true,
+                    autoIncrement: true
+                ),
+                PluginColumnDefinition(name: "NAME", dataType: "VARCHAR(100)", isNullable: false),
+                PluginColumnDefinition(name: "PAYLOAD", dataType: "VARBINARY(8188)")
+            ],
+            indexes: [PluginIndexDefinition(name: "IDX_PARENT_NAME", columns: ["NAME"])],
+            foreignKeys: []
+        )
+        _ = try await checked("create parent") {
+            try await driver.execute(query: try XCTUnwrap(driver.generateCreateTableSQL(definition: parentDefinition)))
+        }
+        _ = try await checked("comment parent") {
+            try await driver.execute(query: "COMMENT ON TABLE \"PARENT\" IS 'TablePro DM8 integration fixture'")
+        }
+        _ = try await checked("create child") {
+            try await driver.execute(query: """
+                CREATE TABLE "CHILD" (
+                    "ID" INT PRIMARY KEY,
+                    "PARENT_ID" INT,
+                    CONSTRAINT "FK_CHILD_PARENT" FOREIGN KEY ("PARENT_ID") REFERENCES "PARENT" ("ID") ON DELETE CASCADE
+                )
+                """)
+        }
+        _ = try await checked("create view") {
+            try await driver.execute(
+                query: "CREATE OR REPLACE VIEW \"PARENT_VIEW\" AS SELECT \"ID\", \"NAME\" FROM \"PARENT\""
+            )
+        }
+
+        let hostileText = "Robert'); DROP TABLE \"PARENT\"; -- 达梦"
+        let payload = Data([0x00, 0x01, 0x7F, 0xFF])
+        _ = try await checked("insert unicode and binary") {
+            try await driver.executeParameterized(
+                query: "INSERT INTO \"PARENT\" (\"NAME\", \"PAYLOAD\") VALUES (?, ?)",
+                parameters: [.text(hostileText), .bytes(payload)]
+            )
+        }
+        for index in 1...4 {
+            _ = try await checked("insert row \(index)") {
+                try await driver.executeParameterized(
+                    query: "INSERT INTO \"PARENT\" (\"NAME\") VALUES (?)",
+                    parameters: [.text("row-\(index)")]
+                )
+            }
+        }
+
+        let valueResult = try await checked("read unicode and binary metadata") {
+            try await driver.execute(
+                query: "SELECT \"NAME\", RAWTOHEX(\"PAYLOAD\") FROM \"PARENT\" ORDER BY \"ID\""
+            )
+        }
+        XCTAssertEqual(valueResult.rows.first?[0], .text(hostileText))
+        XCTAssertEqual(valueResult.rows.first?[1], .text("00017FFF"))
+
+        let preciseDecimal = "1234567890123456789012345678.1234567890"
+        let decimalResult = try await checked("read high-precision decimal") {
+            try await driver.execute(
+                query: "SELECT CAST('\(preciseDecimal)' AS DECIMAL(38, 10)) FROM DUAL"
+            )
+        }
+        XCTAssertEqual(decimalResult.rows.first?.first, .text(preciseDecimal))
+
+        let capped = try await driver.executeUserQuery(
+            query: "SELECT \"ID\" FROM \"PARENT\" ORDER BY \"ID\"",
+            rowCap: 2,
+            parameters: nil
+        )
+        XCTAssertEqual(capped.rows.count, 2)
+        XCTAssertTrue(capped.isTruncated)
+
+        let tables = try await driver.fetchTables(schema: schema)
+        XCTAssertTrue(tables.contains { $0.name == "PARENT" && $0.type == "TABLE" })
+        XCTAssertTrue(tables.contains { $0.name == "PARENT_VIEW" && $0.type == "VIEW" })
+        let columns = try await checked("fetch columns") {
+            try await driver.fetchColumns(table: "PARENT", schema: schema)
+        }
+        XCTAssertTrue(columns.contains { $0.name == "ID" && $0.isPrimaryKey })
+        XCTAssertTrue(columns.contains { $0.name == "NAME" && $0.dataType == "VARCHAR(100)" })
+        let allColumns = try await checked("fetch completion columns") {
+            try await driver.fetchAllColumns(schema: schema)
+        }
+        XCTAssertEqual(allColumns["PARENT"]?.map(\.name), ["ID", "NAME", "PAYLOAD"])
+        XCTAssertEqual(allColumns["PARENT_VIEW"]?.map(\.name), ["ID", "NAME"])
+        let indexes = try await checked("fetch indexes") {
+            try await driver.fetchIndexes(table: "PARENT", schema: schema)
+        }
+        XCTAssertTrue(indexes.contains { $0.name == "IDX_PARENT_NAME" && $0.columns == ["NAME"] })
+        let foreignKeys = try await checked("fetch foreign keys") {
+            try await driver.fetchForeignKeys(table: "CHILD", schema: schema)
+        }
+        XCTAssertTrue(foreignKeys.contains {
+            $0.name == "FK_CHILD_PARENT" && $0.referencedTable == "PARENT" && $0.onDelete == "CASCADE"
+        })
+        let emptyForeignKeys = try await checked("fetch empty foreign keys") {
+            try await driver.fetchForeignKeys(table: "PARENT", schema: schema)
+        }
+        XCTAssertTrue(emptyForeignKeys.isEmpty)
+        try await checked("ping after empty metadata") {
+            try await driver.ping()
+        }
+        let viewDefinition = try await checked("fetch view definition") {
+            try await driver.fetchViewDefinition(view: "PARENT_VIEW", schema: schema)
+        }
+        XCTAssertTrue(viewDefinition.contains("PARENT"))
+        let tableDDL = try await checked("fetch table DDL") {
+            try await driver.fetchTableDDL(table: "PARENT", schema: schema)
+        }
+        XCTAssertTrue(tableDDL.contains("PRIMARY KEY"))
+        let metadata = try await checked("fetch table metadata") {
+            try await driver.fetchTableMetadata(table: "PARENT", schema: schema)
+        }
+        XCTAssertEqual(metadata.engine, "DM8")
+        XCTAssertEqual(metadata.comment, "TablePro DM8 integration fixture")
+
+        let explain = try await checked("explain") {
+            try await driver.execute(query: try XCTUnwrap(driver.buildExplainQuery("SELECT * FROM \"PARENT\"")))
+        }
+        XCTAssertEqual(explain.columns, ["PLAN"])
+        XCTAssertTrue(explain.rows.first?.first?.asText?.contains("#") == true)
+        try await checked("ping after explain") {
+            try await driver.ping()
+        }
+
+        try await checked("begin transaction") {
+            try await driver.beginTransaction()
+        }
+        _ = try await checked("insert rollback row") {
+            try await driver.execute(query: "INSERT INTO \"PARENT\" (\"NAME\") VALUES ('rollback-row')")
+        }
+        try await checked("rollback transaction") {
+            try await driver.rollbackTransaction()
+        }
+        let rollbackCount = try await checked("verify rollback") {
+            try await driver.execute(query: "SELECT COUNT(*) FROM \"PARENT\" WHERE \"NAME\" = 'rollback-row'")
+        }
+        XCTAssertEqual(rollbackCount.rows.first?.first, .text("0"))
+
+        do {
+            _ = try await driver.execute(query: "SELECT * FROM \"MISSING_TABLE\"")
+            XCTFail("Expected an invalid query to fail")
+        } catch {
+            try await driver.ping()
+        }
+
+        do {
+            try await driver.switchSchema(to: "\"; DROP SCHEMA \(schema) CASCADE; --")
+            XCTFail("Expected an invalid schema to fail")
+        } catch {
+            let schemas = try await driver.fetchSchemas()
+            XCTAssertTrue(schemas.contains(schema))
+        }
+
+        do {
+            try await driver.dropSchema(name: "SYSDBA")
+            XCTFail("Expected a system schema drop to be rejected")
+        } catch {
+            XCTAssertTrue(String(describing: error).contains("system"))
+        }
+
+        try await withThrowingTaskGroup(of: PluginCellValue?.self) { group in
+            for _ in 0..<8 {
+                group.addTask {
+                    let result = try await driver.execute(query: "SELECT USER FROM DUAL")
+                    return result.rows.first?.first
+                }
+            }
+            for try await value in group {
+                XCTAssertEqual(value, .text("SYSDBA"))
+            }
+        }
+    }
+
+    private func liveEnvironment() throws -> LiveEnvironment {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["TABLEPRO_DM8_INTEGRATION"] == "1" else {
+            throw XCTSkip("Set TABLEPRO_DM8_INTEGRATION=1 to run against DM8 in OrbStack")
+        }
+        guard let host = environment["DM_HOST"],
+              let portText = environment["DM_PORT"],
+              let port = Int(portText),
+              let username = environment["DM_USER"],
+              let password = environment["DM_PASSWORD"] else {
+            XCTFail("DM_HOST, DM_PORT, DM_USER, and DM_PASSWORD are required")
+            throw XCTSkip("DM8 integration environment is incomplete")
+        }
+        return LiveEnvironment(host: host, port: port, username: username, password: password)
+    }
+
+    @discardableResult
+    private func checked<T: Sendable>(
+        _ step: String,
+        operation: () async throws -> T
+    ) async throws -> T {
+        do {
+            return try await operation()
+        } catch {
+            XCTFail("\(step): \(error)")
+            throw error
+        }
+    }
+
+    private func testConfig(database: String) -> DriverConnectionConfig {
+        DriverConnectionConfig(
+            host: "127.0.0.1",
+            port: 5_236,
+            username: "SYSDBA",
+            password: "test-only",
+            database: database
+        )
+    }
+}
+
+private struct LiveEnvironment {
+    let host: String
+    let port: Int
+    let username: String
+    let password: String
+
+    func config(database: String) -> DriverConnectionConfig {
+        DriverConnectionConfig(
+            host: host,
+            port: port,
+            username: username,
+            password: password,
+            database: database
+        )
+    }
+}

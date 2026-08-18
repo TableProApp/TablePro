@@ -53,6 +53,7 @@ actor SSHTunnelManager {
 | TableProCore | Local package in `Packages/` | Shared SwiftPM modules the macOS and iOS apps both use |
 | Sparkle | SPM, 2.9.0 | Auto-update with EdDSA signing |
 | OracleNIO | SPM, TablePro fork pinned by revision | Oracle wire protocol for OracleDriverPlugin |
+| rust-dameng | Cargo, vendored pinned snapshot | DM8 wire protocol for DamengDriverPlugin |
 | swift-certificates | SPM, 1.19.0 | Generates the MCP server's self-signed TLS certificate |
 | Yams | SPM, 5.4.0 | YAML parsing for project folder import |
 
@@ -83,12 +84,13 @@ Five driver plugins ship inside the app bundle, covering nine database types:
 
 The app bundle also carries non-driver plugins: CSVInspectorPlugin, export plugins (CSV, JSON, SQL, XLSX, MQL), and import plugins (CSV, JSON, SQL).
 
-The remaining 16 driver plugins are downloaded on demand from the [plugin registry](/development/plugin-registry):
+The remaining 17 driver plugins are downloaded on demand from the [plugin registry](/development/plugin-registry):
 
 | Plugin | Database types | Connectivity |
 |--------|---------------|--------------|
 | MongoDBDriverPlugin | MongoDB | CLibMongoc |
 | OracleDriverPlugin | Oracle | OracleNIO (SPM fork) |
+| DamengDriverPlugin | Dameng DM8 | Rust native wire bridge |
 | DuckDBDriverPlugin | DuckDB | CDuckDB |
 | MSSQLDriverPlugin | SQL Server | CFreeTDS |
 | CassandraDriverPlugin | Cassandra, ScyllaDB | CCassandra |

@@ -164,6 +164,10 @@ Libs/.downloaded
 Libs/dylibs/
 Libs/ios/
 
+# Rust driver build outputs. The vendored crates are workspace members, so the bridge
+# lockfile is the only one cargo writes.
+Native/DamengBridge/**/target/
+
 # Issue analysis blueprints (local only)
 .analysis/
 .docs/

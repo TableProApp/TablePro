@@ -34,6 +34,7 @@ struct ExplainPlanFormatResolutionTests {
         #expect(ExplainPlanParserRegistry.parser(for: .sqliteQueryPlan) is SQLitePlanParser)
         #expect(ExplainPlanParserRegistry.parser(for: .cockroachText) is CockroachDBPlanParser)
         #expect(ExplainPlanParserRegistry.parser(for: .indentedText) is IndentedTextPlanParser)
+        #expect(ExplainPlanParserRegistry.parser(for: .damengText) is DamengPlanParser)
     }
 
     @Test("Plain text and an unknown format have no parser")
@@ -53,6 +54,7 @@ struct ExplainPlanFormatResolutionTests {
         #expect(ExplainFormatResolver.resolve(declared: .plainText, databaseType: .turso) == .sqliteQueryPlan)
         #expect(ExplainFormatResolver.resolve(declared: .plainText, databaseType: .cockroachdb) == .cockroachText)
         #expect(ExplainFormatResolver.resolve(declared: .plainText, databaseType: .duckdb) == .indentedText)
+        #expect(ExplainFormatResolver.resolve(declared: .plainText, databaseType: .dameng) == .damengText)
     }
 
     @Test("A declared format always wins over the curated default")

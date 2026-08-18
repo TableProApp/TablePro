@@ -18,6 +18,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let clickhouse = DatabaseType(rawValue: "ClickHouse")
     public static let mssql = DatabaseType(rawValue: "SQL Server")
     public static let oracle = DatabaseType(rawValue: "Oracle")
+    public static let dameng = DatabaseType(rawValue: "Dameng")
     public static let duckdb = DatabaseType(rawValue: "DuckDB")
     public static let cassandra = DatabaseType(rawValue: "Cassandra")
     public static let redshift = DatabaseType(rawValue: "Redshift")
@@ -37,7 +38,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
 
     public static let allKnownTypes: [DatabaseType] = [
         .mysql, .mariadb, .postgresql, .sqlite, .redis, .mongodb,
-        .clickhouse, .mssql, .oracle, .duckdb, .cassandra, .redshift,
+        .clickhouse, .mssql, .oracle, .dameng, .duckdb, .cassandra, .redshift,
         .etcd, .cloudflareD1, .dynamodb, .bigquery, .snowflake, .libsql, .beancount,
         .surrealdb, .teradata, .trino
     ]
@@ -55,6 +56,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .clickhouse: return "clickhouse-icon"
         case .mssql: return "mssql-icon"
         case .oracle: return "oracle-icon"
+        case .dameng: return "cylinder"
         case .duckdb: return "duckdb-icon"
         case .cassandra: return "cassandra-icon"
         case .etcd: return "etcd-icon"

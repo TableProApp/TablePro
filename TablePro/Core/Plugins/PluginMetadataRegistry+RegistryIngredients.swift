@@ -15,6 +15,9 @@ extension PluginMetadataRegistry {
         mssqlColumnTypes: [String: [String]],
         oracleDialect: SQLDialectDescriptor,
         oracleColumnTypes: [String: [String]],
+        damengDialect: SQLDialectDescriptor,
+        damengCompletions: [CompletionEntry],
+        damengColumnTypes: [String: [String]],
         duckdbDialect: SQLDialectDescriptor,
         duckdbColumnTypes: [String: [String]],
         cassandraDialect: SQLDialectDescriptor,
@@ -235,6 +238,73 @@ extension PluginMetadataRegistry {
             "Other": ["ROWID", "UROWID"]
         ]
 
+        let damengColumnTypes: [String: [String]] = [
+            "Integer": ["TINYINT", "SMALLINT", "INT", "INTEGER", "BIGINT"],
+            "Float": ["REAL", "FLOAT", "DOUBLE", "DEC", "DECIMAL", "NUMERIC", "NUMBER"],
+            "String": ["CHAR", "CHARACTER", "VARCHAR", "VARCHAR2", "TEXT", "CLOB"],
+            "Date": ["DATE", "TIME", "DATETIME", "TIMESTAMP"],
+            "Binary": ["BINARY", "VARBINARY", "BLOB", "IMAGE"],
+            "Boolean": ["BIT", "BOOLEAN"],
+            "Other": ["ROWID", "INTERVAL"]
+        ]
+        let damengDialect = SQLDialectDescriptor(
+            identifierQuote: "\"",
+            keywords: [
+                "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "CROSS", "FULL",
+                "ON", "USING", "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "AS", "ORDER", "BY", "GROUP",
+                "HAVING", "LIMIT", "OFFSET", "FETCH", "FIRST", "ROWS", "ONLY", "INSERT", "INTO", "VALUES",
+                "UPDATE", "SET", "DELETE", "MERGE", "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW",
+                "SCHEMA", "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "CONSTRAINT", "ADD", "MODIFY",
+                "COLUMN", "RENAME", "NULL", "IS", "ASC", "DESC", "DISTINCT", "ALL", "ANY", "SOME",
+                "IDENTITY", "SEQUENCE", "SYNONYM", "GRANT", "REVOKE", "TRIGGER", "PROCEDURE", "CASE", "WHEN",
+                "THEN", "ELSE", "END", "UNION", "INTERSECT", "MINUS", "DECLARE", "BEGIN", "COMMIT", "ROLLBACK",
+                "SAVEPOINT", "EXECUTE", "IMMEDIATE", "OVER", "PARTITION", "ROW_NUMBER", "RANK", "DENSE_RANK",
+                "CONNECT", "LEVEL", "START", "WITH", "PRIOR", "ROWNUM", "ROWID", "DUAL"
+            ],
+            functions: [
+                "COUNT", "SUM", "AVG", "MAX", "MIN", "LISTAGG", "CONCAT", "SUBSTR", "INSTR", "LENGTH", "LOWER",
+                "UPPER", "TRIM", "LTRIM", "RTRIM", "REPLACE", "LPAD", "RPAD", "SYSDATE", "CURRENT_DATE",
+                "CURRENT_TIMESTAMP", "ADD_MONTHS", "MONTHS_BETWEEN", "LAST_DAY", "EXTRACT", "TO_DATE", "TO_CHAR",
+                "TO_NUMBER", "TO_TIMESTAMP", "TRUNC", "ROUND", "CEIL", "FLOOR", "ABS", "POWER", "SQRT", "MOD",
+                "NVL", "NVL2", "COALESCE", "NULLIF", "GREATEST", "LEAST", "CAST", "USER"
+            ],
+            dataTypes: Set(damengColumnTypes.values.flatMap { $0 }),
+            tableOptions: ["TABLESPACE", "STORAGE", "PCTFREE", "INITRANS"],
+            regexSyntax: .regexpLike,
+            booleanLiteralStyle: .numeric,
+            likeEscapeStyle: .explicit,
+            paginationStyle: .offsetFetch,
+            offsetFetchOrderBy: "ORDER BY 1",
+            autoLimitStyle: .fetchFirst,
+            caseSensitivityStyle: .caseFoldFunction
+        )
+        let damengCompletions = [
+            CompletionEntry(label: "SELECT", insertText: "SELECT"),
+            CompletionEntry(label: "SELECT DISTINCT", insertText: "SELECT DISTINCT"),
+            CompletionEntry(label: "INSERT INTO", insertText: "INSERT INTO"),
+            CompletionEntry(label: "UPDATE", insertText: "UPDATE"),
+            CompletionEntry(label: "DELETE FROM", insertText: "DELETE FROM"),
+            CompletionEntry(label: "MERGE INTO", insertText: "MERGE INTO"),
+            CompletionEntry(label: "CREATE TABLE", insertText: "CREATE TABLE"),
+            CompletionEntry(label: "CREATE OR REPLACE VIEW", insertText: "CREATE OR REPLACE VIEW"),
+            CompletionEntry(label: "CREATE SCHEMA", insertText: "CREATE SCHEMA"),
+            CompletionEntry(label: "ALTER TABLE", insertText: "ALTER TABLE"),
+            CompletionEntry(label: "DROP TABLE", insertText: "DROP TABLE"),
+            CompletionEntry(label: "DROP SCHEMA", insertText: "DROP SCHEMA"),
+            CompletionEntry(label: "SET SCHEMA", insertText: "SET SCHEMA"),
+            CompletionEntry(label: "EXPLAIN", insertText: "EXPLAIN"),
+            CompletionEntry(label: "WHERE", insertText: "WHERE"),
+            CompletionEntry(label: "GROUP BY", insertText: "GROUP BY"),
+            CompletionEntry(label: "ORDER BY", insertText: "ORDER BY"),
+            CompletionEntry(label: "FETCH FIRST", insertText: "FETCH FIRST"),
+            CompletionEntry(label: "JOIN", insertText: "JOIN"),
+            CompletionEntry(label: "LEFT JOIN", insertText: "LEFT JOIN"),
+            CompletionEntry(label: "UNION ALL", insertText: "UNION ALL"),
+            CompletionEntry(label: "WITH", insertText: "WITH"),
+            CompletionEntry(label: "CONNECT BY", insertText: "CONNECT BY"),
+            CompletionEntry(label: "START WITH", insertText: "START WITH"),
+            CompletionEntry(label: "PARTITION BY", insertText: "PARTITION BY")
+        ]
         let duckdbDialect = SQLDialectDescriptor(
             identifierQuote: "\"",
             keywords: [
@@ -532,7 +602,8 @@ extension PluginMetadataRegistry {
         ]
         return (
             clickhouseDialect, clickhouseColumnTypes, mssqlDialect, mssqlColumnTypes,
-            oracleDialect, oracleColumnTypes, duckdbDialect, duckdbColumnTypes,
+            oracleDialect, oracleColumnTypes, damengDialect, damengCompletions, damengColumnTypes,
+            duckdbDialect, duckdbColumnTypes,
             cassandraDialect, cassandraColumnTypes, mongoCompletions, mongoColumnTypes,
             etcdCompletions, redisCompletions, redisColumnTypes, d1Dialect, d1ColumnTypes
         )

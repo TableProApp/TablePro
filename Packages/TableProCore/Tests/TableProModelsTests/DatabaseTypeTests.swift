@@ -13,6 +13,7 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.redis.rawValue == "Redis")
         #expect(DatabaseType.mongodb.rawValue == "MongoDB")
         #expect(DatabaseType.mssql.rawValue == "SQL Server")
+        #expect(DatabaseType.dameng.rawValue == "Dameng")
         #expect(DatabaseType.cloudflareD1.rawValue == "Cloudflare D1")
         #expect(DatabaseType.bigquery.rawValue == "BigQuery")
         #expect(DatabaseType.snowflake.rawValue == "Snowflake")
@@ -53,7 +54,7 @@ struct DatabaseTypeTests {
 
     @Test("allKnownTypes contains all expected types")
     func allKnownTypesComplete() {
-        #expect(DatabaseType.allKnownTypes.count == 22)
+        #expect(DatabaseType.allKnownTypes.count == 23)
         #expect(DatabaseType.allKnownTypes.contains(.mysql))
         #expect(DatabaseType.allKnownTypes.contains(.bigquery))
         #expect(DatabaseType.allKnownTypes.contains(.snowflake))
@@ -62,6 +63,7 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.allKnownTypes.contains(.surrealdb))
         #expect(DatabaseType.allKnownTypes.contains(.teradata))
         #expect(DatabaseType.allKnownTypes.contains(.trino))
+        #expect(DatabaseType.allKnownTypes.contains(.dameng))
     }
 
     @Test("Hashable conformance")
