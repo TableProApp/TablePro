@@ -187,6 +187,8 @@ UI tests have their own trap list, including an accessibility tree that differs 
    ```
    Write the body to a file rather than passing it inline, so the writing-style grep can run over it first. The body states the root cause, the fix, and what you built and tested, and it closes the issue with `Fixes #<number>`. If a UI flow could not get deterministic automation, say so here: the PR description is the only place that exemption is recorded.
 
+   **A change the user can see gets before-and-after screenshots in the body.** Any change to a pane, tab, dialog, toolbar, menu, cell, row or empty state is a visual claim, and a reviewer cannot check a visual claim by reading a diff. Put the two shots side by side under a `## Before / After` heading, captioned with what to look at, so the reviewer sees the difference rather than reconstructing it. For a brand-new screen there is no before: show the after alone and say so. Capture with `scripts/export-screenshots.sh` (the `demo/` databases up, Screen Recording granted to whatever runs it), or from a running Debug build. Upload with `gh pr comment` or drag into the PR, and never link a file that only exists on your machine. When a shot is genuinely impossible, say in the body which state could not be captured and why, rather than omitting the section silently. The same shots usually belong in `docs/` too, so take them once and use them twice.
+
 If the fix is stacked on another in-flight branch, base the PR on that branch instead of `main` and say so, rather than dragging the other work into this PR.
 
 ## Phase 6: Dispose of the collateral findings

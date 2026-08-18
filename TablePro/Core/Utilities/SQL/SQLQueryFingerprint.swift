@@ -24,6 +24,18 @@ enum SQLQueryFingerprint {
     /// same concession MySQL makes at `max_digest_length`.
     static let maxSourceLength = 20_000
 
+    /// Text plus the one fact the later passes need about it. Spacing used to re-derive "is this a
+    /// keyword" from the spelling, which is the same mistake that made `TOTAL - 1` collapse.
+    private struct Part {
+        let text: String
+        let isKeyword: Bool
+
+        init(_ text: String, isKeyword: Bool = false) {
+            self.text = text
+            self.isKeyword = isKeyword
+        }
+    }
+
     private static let placeholder = "?"
     private static let collapsedList = "(...)"
     private static let noSpaceBefore: Set<String> = [",", ")", ";", ".", "]", "["]
@@ -38,10 +50,19 @@ enum SQLQueryFingerprint {
         let source = strippingDollarQuoted(truncated(sql))
         let treatsDoubleQuoteAsString = Self.treatsDoubleQuoteAsString(databaseType)
 
-        var parts: [String] = []
+        var parts: [Part] = []
         var previousWasLiteral = false
+        var previousType: SQLTokenType?
+        var previousValue = ""
 
         for token in SQLTokenizer().tokenize(source) {
+            defer {
+                if token.type != .comment, token.type != .whitespace {
+                    previousType = token.type
+                    previousValue = token.value
+                }
+            }
+
             switch token.type {
             case .comment, .whitespace:
                 continue
@@ -54,7 +75,7 @@ enum SQLQueryFingerprint {
                 // quoted identifier. Replacing it with `?` erased table and column names and
                 // merged unrelated queries into one group.
                 if isDoubleQuoted(token.value), !treatsDoubleQuoteAsString {
-                    parts.append(unquotedIdentifier(token.value))
+                    parts.append(Part(unquotedIdentifier(token.value)))
                     previousWasLiteral = false
                 } else {
                     appendLiteral(to: &parts, previousWasLiteral: &previousWasLiteral)
@@ -65,20 +86,24 @@ enum SQLQueryFingerprint {
                 if ["NULL", "TRUE", "FALSE"].contains(token.upperValue) {
                     appendLiteral(to: &parts, previousWasLiteral: &previousWasLiteral)
                 } else {
-                    parts.append(token.upperValue)
+                    parts.append(Part(token.upperValue, isKeyword: true))
                     previousWasLiteral = false
                 }
 
             case .identifier:
-                parts.append(unquotedIdentifier(token.value))
+                parts.append(Part(unquotedIdentifier(token.value)))
                 previousWasLiteral = false
 
             case .operator:
-                appendOperator(token.value, to: &parts)
+                let isSign = (token.value == "-" || token.value == "+")
+                    && signIntroducesLiteral(previousType: previousType, previousValue: previousValue)
+                if !isSign {
+                    parts.append(Part(token.value))
+                }
                 previousWasLiteral = false
 
             case .punctuation:
-                parts.append(token.value)
+                parts.append(Part(token.value))
                 previousWasLiteral = false
             }
         }
@@ -89,16 +114,16 @@ enum SQLQueryFingerprint {
     /// The tokenizer has no rule for T-SQL's `[name]`, so it arrives as three tokens and the
     /// identifier never matches its unbracketed spelling. Only a bracket wrapping exactly one
     /// identifier is merged, which leaves a PostgreSQL array subscript (`a[?]`) alone.
-    private static func mergingBracketIdentifiers(_ parts: [String]) -> [String] {
-        guard parts.contains("[") else { return parts }
+    private static func mergingBracketIdentifiers(_ parts: [Part]) -> [Part] {
+        guard parts.contains(where: { $0.text == "[" }) else { return parts }
 
-        var out: [String] = []
+        var out: [Part] = []
         out.reserveCapacity(parts.count)
         var index = 0
 
         while index < parts.count {
-            if parts[index] == "[", index + 2 < parts.count, parts[index + 2] == "]",
-               isPlainIdentifier(parts[index + 1]) {
+            if parts[index].text == "[", index + 2 < parts.count, parts[index + 2].text == "]",
+               isPlainIdentifier(parts[index + 1].text) {
                 out.append(parts[index + 1])
                 index += 3
                 continue
@@ -137,36 +162,34 @@ enum SQLQueryFingerprint {
         databaseType == .mysql || databaseType == .mariadb
     }
 
-    private static func appendLiteral(to parts: inout [String], previousWasLiteral: inout Bool) {
+    private static func appendLiteral(to parts: inout [Part], previousWasLiteral: inout Bool) {
         guard !previousWasLiteral else { return }
-        parts.append(placeholder)
+        parts.append(Part(placeholder))
         previousWasLiteral = true
     }
 
-    /// Drops a sign that belongs to the literal that follows it. The literal is already `?`, so
-    /// keeping the sign would leave `= -?` and split it from `= ?`.
-    private static func appendOperator(_ value: String, to parts: inout [String]) {
-        guard value == "-" || value == "+" else {
-            parts.append(value)
-            return
+    /// Whether a `-` or `+` is the sign on the literal that follows rather than an operator between
+    /// two operands. The literal is already `?`, so a sign left in place leaves `= -?` and splits it
+    /// from `= ?`.
+    ///
+    /// This reads the preceding token's *type*, never its text. Deciding from the emitted string
+    /// treated any all-uppercase token as a keyword, and identifier case is deliberately preserved,
+    /// so `SELECT TOTAL - 1` and `SELECT TOTAL + 1` both collapsed to `SELECT TOTAL ?`: two
+    /// different statements counted as one shape, spelled as arithmetic in neither of them.
+    private static func signIntroducesLiteral(previousType: SQLTokenType?, previousValue: String) -> Bool {
+        guard let previousType else { return true }
+        switch previousType {
+        case .keyword:
+            return true
+        case .operator:
+            // `]` reaches the tokenizer's unknown-character fallback, so it arrives typed as an
+            // operator while actually closing a subscript, which makes the next sign binary.
+            return previousValue != "]"
+        case .punctuation:
+            return signPrecedingPunctuation.contains(previousValue)
+        case .identifier, .number, .string, .placeholder, .comment, .whitespace:
+            return false
         }
-        guard let previous = parts.last else { return }
-        let startsExpression = signPrecedingPunctuation.contains(previous)
-            || isOperatorToken(previous)
-            || isBareKeyword(previous)
-        if startsExpression {
-            return
-        }
-        parts.append(value)
-    }
-
-    private static func isOperatorToken(_ value: String) -> Bool {
-        guard let first = value.unicodeScalars.first, value.count <= 3 else { return false }
-        return "=<>+-*/%&|^~!".unicodeScalars.contains(first)
-    }
-
-    private static func isBareKeyword(_ value: String) -> Bool {
-        !value.isEmpty && value.allSatisfy { $0.isUppercase || $0 == "_" }
     }
 
     private static func isDoubleQuoted(_ value: String) -> Bool {
@@ -238,14 +261,14 @@ enum SQLQueryFingerprint {
     /// Both collapse to MySQL's `(...)` spelling, which a reader of `DIGEST_TEXT` will recognise.
     /// A list holding anything other than literals is left alone, because a subquery or an
     /// expression list is part of the shape rather than its arguments.
-    private static func collapsingLists(_ parts: [String]) -> [String] {
-        var out: [String] = []
+    private static func collapsingLists(_ parts: [Part]) -> [Part] {
+        var out: [Part] = []
         out.reserveCapacity(parts.count)
         var index = 0
 
         while index < parts.count {
             let token = parts[index]
-            guard token == "IN" || token == "VALUES" else {
+            guard token.isKeyword, token.text == "IN" || token.text == "VALUES" else {
                 out.append(token)
                 index += 1
                 continue
@@ -257,7 +280,7 @@ enum SQLQueryFingerprint {
                 continue
             }
 
-            out.append(contentsOf: [token, collapsedList])
+            out.append(contentsOf: [token, Part(collapsedList)])
             index = end + 1
         }
         return out
@@ -265,16 +288,16 @@ enum SQLQueryFingerprint {
 
     /// Walks one or more consecutive parenthesised literal groups and returns the index of the
     /// final `)`, or nil when anything in them is not a literal.
-    private static func literalListEnd(in parts: [String], startingAfter keywordIndex: Int) -> Int? {
+    private static func literalListEnd(in parts: [Part], startingAfter keywordIndex: Int) -> Int? {
         var index = keywordIndex + 1
         var lastClosing: Int?
 
-        while index < parts.count, parts[index] == "(" {
+        while index < parts.count, parts[index].text == "(" {
             var scan = index + 1
             var sawLiteral = false
-            while scan < parts.count, parts[scan] != ")" {
-                guard parts[scan] == placeholder || parts[scan] == "," else { return lastClosing }
-                if parts[scan] == placeholder { sawLiteral = true }
+            while scan < parts.count, parts[scan].text != ")" {
+                guard parts[scan].text == placeholder || parts[scan].text == "," else { return lastClosing }
+                if parts[scan].text == placeholder { sawLiteral = true }
                 scan += 1
             }
             // Truncation can cut the statement inside the list, which leaves no closing paren.
@@ -285,7 +308,7 @@ enum SQLQueryFingerprint {
 
             lastClosing = scan
             index = scan + 1
-            if index < parts.count, parts[index] == "," {
+            if index < parts.count, parts[index].text == "," {
                 index += 1
             } else {
                 break
@@ -294,14 +317,29 @@ enum SQLQueryFingerprint {
         return lastClosing
     }
 
-    private static func join(_ parts: [String]) -> String {
+    /// The tokenizer classifies aggregate names as keywords, so "is this a function call" cannot be
+    /// answered by keyword-ness alone. These are the ones that take a parenthesised argument list
+    /// and therefore bind to it, the way an identifier does.
+    private static let functionKeywords: Set<String> = ["COUNT", "SUM", "AVG", "MIN", "MAX"]
+
+    /// A `(` binds to the name in front of it, so a call reads `COUNT(*)` rather than `COUNT (*)`,
+    /// while a clause keyword keeps its space and `IN (...)` reads the way MySQL spells the same
+    /// shape in `DIGEST_TEXT`.
+    private static func join(_ parts: [Part]) -> String {
         var out = ""
+        var previous: Part?
         for part in parts {
-            if out.isEmpty || noSpaceBefore.contains(part) || noSpaceAfter.contains(String(out.suffix(1))) {
-                out += part
+            let bindsToName = part.text == "("
+                && previous.map { !$0.isKeyword || functionKeywords.contains($0.text) } == true
+            let binds = noSpaceBefore.contains(part.text)
+                || noSpaceAfter.contains(String(out.suffix(1)))
+                || bindsToName
+            if out.isEmpty || binds {
+                out += part.text
             } else {
-                out += " " + part
+                out += " " + part.text
             }
+            previous = part
         }
         return out
     }

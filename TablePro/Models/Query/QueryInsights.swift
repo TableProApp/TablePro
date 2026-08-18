@@ -17,14 +17,6 @@ enum QueryInsightsGranularity: Sendable, Equatable {
         case .daily: return .day
         }
     }
-
-    /// Seconds per bucket, which is what the SQL bucketing arithmetic needs.
-    var bucketSeconds: Double {
-        switch self {
-        case .hourly: return 3_600
-        case .daily: return 86_400
-        }
-    }
 }
 
 /// What the insights tab is asking for.

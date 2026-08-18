@@ -26,6 +26,7 @@ final class QueryInsightsViewModel {
     var slowestRanking: QueryInsightsSlowestRanking { didSet { persistAndReload(oldValue != slowestRanking) } }
 
     private let history: QueryHistoryReading
+    private var isApplyingBulkChange = false
     private var loadToken = UUID()
     private var liveRefresh: Task<Void, Never>?
     private var updateSubscription: AnyCancellable?
@@ -52,10 +53,15 @@ final class QueryInsightsViewModel {
         return dateRange != defaults.dateRange || sources != defaults.sources
     }
 
+    /// Both settings change together, so the reload is suppressed until they have, or one click
+    /// persists twice and recomputes every panel twice.
     func resetFilters() {
         let defaults = QueryInsightsPreferences.default
+        isApplyingBulkChange = true
         dateRange = defaults.dateRange
         sources = defaults.sources
+        isApplyingBulkChange = false
+        persistAndReload(true)
     }
 
     // MARK: - Lifecycle
@@ -123,7 +129,7 @@ final class QueryInsightsViewModel {
     }
 
     private func persistAndReload(_ changed: Bool) {
-        guard changed else { return }
+        guard changed, !isApplyingBulkChange else { return }
         QueryInsightsPreferencesStorage.save(
             QueryInsightsPreferences(
                 showsAllConnections: showsAllConnections,

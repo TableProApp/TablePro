@@ -160,6 +160,27 @@ struct QueryHistoryInsightsTests {
         #expect(snapshot.failures.first?.latestErrorMessage == "no such table")
     }
 
+    @Test("The error shown is one from inside the range, not an older one the filter excludes")
+    func failureMessageRespectsTheDateRange() async {
+        let now = Date()
+        await record(
+            "SELECT * FROM t WHERE id = 1",
+            executedAt: now.addingTimeInterval(-40 * 86_400),
+            wasSuccessful: false,
+            errorMessage: "ancient failure"
+        )
+        await record(
+            "SELECT * FROM t WHERE id = 2",
+            executedAt: now,
+            wasSuccessful: false,
+            errorMessage: "todays failure"
+        )
+
+        let snapshot = await insights(since: now.addingTimeInterval(-86_400), referenceDate: now)
+        #expect(snapshot.failures.first?.failureCount == 1)
+        #expect(snapshot.failures.first?.latestErrorMessage == "todays failure")
+    }
+
     // MARK: - Regressions
 
     @Test("A query that got materially slower is reported")

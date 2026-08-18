@@ -11,6 +11,7 @@ actor QueryHistoryStorage {
     private var cachedMaxDays: Int = 90
     private var cachedAutoCleanup: Bool = true
     private var insertsSinceCleanup: Int = 0
+    private var didBackfillFingerprints = false
 
     private let databaseURL: URL
     private let removeDatabaseOnDeinit: Bool
@@ -142,8 +143,16 @@ actor QueryHistoryStorage {
 
     /// Kept out of `createIndexes` because that runs before the migration, when a database written
     /// by an older release still has no `fingerprint_hash` column to index.
+    /// Composite rather than `fingerprint_hash` alone, because every representative lookup is
+    /// `WHERE fingerprint_hash = ? ORDER BY executed_at DESC LIMIT 1`, which a single-column index
+    /// answers by sorting every row of that shape. The leftmost column still serves the grouping,
+    /// so the narrower index is redundant once this one exists.
     private func createFingerprintIndex() {
-        execute("CREATE INDEX IF NOT EXISTS idx_history_fingerprint ON history(fingerprint_hash);")
+        execute("""
+            CREATE INDEX IF NOT EXISTS idx_history_fingerprint_executed
+                ON history(fingerprint_hash, executed_at DESC);
+            """)
+        execute("DROP INDEX IF EXISTS idx_history_fingerprint;")
     }
 
     // MARK: - Migration
@@ -158,7 +167,12 @@ actor QueryHistoryStorage {
             migrateToVersion3()
         }
         migrateToVersion4()
-        setUserVersion(4)
+        // Stamped only once the column it describes is actually there. Stamping regardless would
+        // claim a schema a failed ALTER never produced, and `record`'s insert would then fail to
+        // prepare against the old column count, silently recording nothing.
+        if hasColumn("fingerprint_hash", inTable: "history") {
+            setUserVersion(4)
+        }
     }
 
     /// Grouping a statement by its shape needs the shape stored, because deriving it on every read
@@ -169,9 +183,20 @@ actor QueryHistoryStorage {
     /// A row the v3 rebuild carried forward arrives here with the column's `0` default, so both the
     /// upgrade-from-v3 path and the upgrade-from-v2 path are covered by the same backfill.
     private func migrateToVersion4() {
-        if hasColumn("fingerprint_hash", inTable: "history") == false {
-            execute("ALTER TABLE history ADD COLUMN fingerprint_hash INTEGER NOT NULL DEFAULT 0;")
-        }
+        guard hasColumn("fingerprint_hash", inTable: "history") == false else { return }
+        execute("ALTER TABLE history ADD COLUMN fingerprint_hash INTEGER NOT NULL DEFAULT 0;")
+    }
+
+    /// Filling the column is deliberately not part of `init`.
+    ///
+    /// An actor's initializer runs synchronously on whoever calls it, and the first caller is a
+    /// `Task` inside `applicationWillFinishLaunching`, which inherits main-actor isolation. Doing
+    /// the backfill there tokenizes every stored row on the main thread before any window appears,
+    /// for as long as the user's history is. Running it from an actor method instead puts it on the
+    /// actor's own executor, and the only caller that needs it is the one that reads groups.
+    private func ensureFingerprintsBackfilled() {
+        guard !didBackfillFingerprints else { return }
+        didBackfillFingerprints = true
         backfillFingerprints()
     }
 
@@ -616,10 +641,10 @@ actor QueryHistoryStorage {
 
         var orderBy: String {
             switch self {
-            case .callCount: return "g.call_count DESC, g.total_duration DESC"
-            case .totalDuration: return "g.total_duration DESC, g.call_count DESC"
-            case .meanDuration: return "g.total_duration / g.call_count DESC, g.call_count DESC"
-            case .failureCount: return "g.failure_count DESC, g.call_count DESC"
+            case .callCount: return "call_count DESC, total_duration DESC"
+            case .totalDuration: return "total_duration DESC, call_count DESC"
+            case .meanDuration: return "total_duration / call_count DESC, call_count DESC"
+            case .failureCount: return "failure_count DESC, call_count DESC"
             }
         }
 
@@ -640,6 +665,7 @@ actor QueryHistoryStorage {
 
     func insights(_ request: QueryInsightsRequest, slowestRanking: QueryInsightsSlowestRanking) -> QueryInsightsSnapshot {
         guard db != nil, !request.matchesNothing else { return .empty }
+        ensureFingerprintsBackfilled()
 
         return QueryInsightsSnapshot(
             totals: fetchTotals(request),
@@ -734,6 +760,9 @@ actor QueryHistoryStorage {
                    (SELECT r.error_message FROM history r
                      WHERE r.fingerprint_hash = g.fingerprint_hash
                        AND r.was_successful = 0 AND r.error_message IS NOT NULL
+            """)
+        appendErrorSubqueryBounds(request, to: &clause)
+        clause.append("""
                      ORDER BY r.executed_at DESC LIMIT 1)
             FROM (
                 SELECT fingerprint_hash,
@@ -747,7 +776,12 @@ actor QueryHistoryStorage {
             """)
         appendInsightsFilters(request, to: &clause)
         clause.append(" GROUP BY fingerprint_hash\(ranking.having)")
-        clause.append(") g ORDER BY \(ranking.orderBy) LIMIT ?;", .int(Int32(clamping: request.limit)))
+        // Ordered and limited inside the derived table, so the four correlated lookups above run
+        // once per returned row rather than once per distinct shape in the whole history.
+        clause.append(
+            " ORDER BY \(ranking.orderBy) LIMIT ?) g;",
+            .int(Int32(clamping: request.limit))
+        )
 
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -774,6 +808,24 @@ actor QueryHistoryStorage {
             ))
         }
         return groups
+    }
+
+    /// The representative `query` is the same shape whichever row it comes from, but an error
+    /// message is not. Without these bounds the Failures panel could print an error the filtered
+    /// view says does not exist, from a connection the user did not select.
+    private func appendErrorSubqueryBounds(
+        _ request: QueryInsightsRequest,
+        to clause: inout QueryHistorySqlClause
+    ) {
+        if let connectionId = request.scope.connectionId {
+            clause.append(" AND r.connection_id = ?", .text(connectionId.uuidString))
+        }
+        if let since = request.since {
+            clause.append(" AND r.executed_at >= ?", .double(since.timeIntervalSince1970))
+        }
+        if let until = request.until {
+            clause.append(" AND r.executed_at <= ?", .double(until.timeIntervalSince1970))
+        }
     }
 
     /// Compares two adjacent windows of equal length. Only successful runs count, because a query

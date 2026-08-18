@@ -43,6 +43,26 @@ struct SQLQueryFingerprintTests {
     func unarySignFolds() {
         #expect(hash("SELECT * FROM t WHERE x = -1") == hash("SELECT * FROM t WHERE x = 1"))
         #expect(normalize("SELECT b - 1 FROM t") == "SELECT b - ? FROM t")
+        #expect(normalize("SELECT f(a, -1) FROM t") == "SELECT f(a, ?) FROM t")
+        #expect(normalize("SELECT * FROM t WHERE x BETWEEN -1 AND 5") == "SELECT * FROM t WHERE x BETWEEN ? AND ?")
+    }
+
+    /// Sign detection used to read the previous token's spelling, and identifier case is preserved,
+    /// so an uppercase column name was mistaken for a keyword: subtraction and addition on it both
+    /// collapsed to `TOTAL ?`, merging two different statements into one shape.
+    @Test("An uppercase identifier is not mistaken for a keyword before a sign")
+    func uppercaseIdentifierIsNotAKeyword() {
+        #expect(normalize("SELECT TOTAL - 1 FROM t") == "SELECT TOTAL - ? FROM t")
+        #expect(hash("SELECT TOTAL - 1 FROM t") != hash("SELECT TOTAL + 1 FROM t"))
+        #expect(normalize("SELECT tags[1] - 1 FROM t") == "SELECT tags[?] - ? FROM t")
+        #expect(normalize("SELECT f(a) - 1 FROM t") == "SELECT f(a) - ? FROM t")
+    }
+
+    @Test("A call binds to its arguments while a clause keyword keeps its space")
+    func parenthesisSpacing() {
+        #expect(normalize("SELECT count(*), sum(total) FROM t") == "SELECT COUNT(*), SUM(total) FROM t")
+        #expect(normalize("SELECT (1) FROM t") == "SELECT (?) FROM t")
+        #expect(normalize("SELECT * FROM t WHERE id IN (1, 2)") == "SELECT * FROM t WHERE id IN (...)")
     }
 
     @Test("Bound parameters group with the same query typed literally")
