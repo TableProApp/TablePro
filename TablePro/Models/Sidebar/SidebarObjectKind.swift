@@ -1,5 +1,4 @@
 import Foundation
-import TableProPluginKit
 
 struct DatabaseTreeObjectGroup: Hashable, Sendable {
     let database: String
@@ -56,16 +55,6 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         }
     }
 
-    var capabilityFlag: PluginCapabilities? {
-        switch self {
-        case .table, .view:     return nil
-        case .materializedView: return .materializedViews
-        case .foreignTable:     return .foreignTables
-        case .procedure:        return .storedProcedures
-        case .function:         return .userFunctions
-        }
-    }
-
     var isRoutine: Bool {
         self == .procedure || self == .function
     }
@@ -83,11 +72,20 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         self == .table
     }
 
-    /// The flat list's rule for a fixed section, which exists as chrome before its contents do. The
-    /// tree builds its groups from what a container holds, so it does not ask this.
-    func shouldRender(itemCount: Int, capabilities: PluginCapabilities) -> Bool {
-        if self == .table { return true }
-        if let capabilityFlag, !capabilities.contains(capabilityFlag) { return false }
-        return itemCount > 0
+    /// Which kinds a container lists, in declaration order. The count is the whole rule: a plugin's
+    /// capability flag says what it declared, not what its driver returned, so gating on one hides
+    /// objects that came back with no section, no status row and no error.
+    ///
+    /// `includingEmptyTables` is the only thing the two sidebar layouts disagree on. The flat root's
+    /// sections are chrome that exists before their contents do, so it keeps Tables whatever the
+    /// count. A tree container answers for itself with its own status row instead.
+    static func visible(
+        itemCounts: [SidebarObjectKind: Int],
+        includingEmptyTables: Bool
+    ) -> [SidebarObjectKind] {
+        allCases.filter { kind in
+            if includingEmptyTables, kind == .table { return true }
+            return itemCounts[kind, default: 0] > 0
+        }
     }
 }
