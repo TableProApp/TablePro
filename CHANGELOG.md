@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The column value filter in the data grid opened over the toolbar instead of below the funnel icon in the header it filters. The date and time picker, the array editor, the type picker, the binary viewer and the sidebar's database filter were all placed the same way, above and to the left of what they point at. Each one now opens against its own control.
 - A toolbar button now shows the shortcut you actually bound. Rebinding a shortcut in **Settings** > **Keyboard** reached the menu bar but not the toolbar, so a button's tooltip and its overflow menu kept advertising the original key, and the Connection button advertised a key it never had. The Database and Preview buttons also lost their shortcut hint entirely whenever you switched connection. (#2185)
 - JSON results, Copy as JSON and JSON export no longer crash on unsigned or wider-than-64-bit integer values. Large integers and high-precision decimals keep every digit, whichever spelling the database returned them in, instead of being narrowed through floating-point conversion.
 - JSON export could write a file that was not valid JSON when a numeric column held a value such as `Infinity` or digits outside 0-9. Those values are quoted as strings now.
