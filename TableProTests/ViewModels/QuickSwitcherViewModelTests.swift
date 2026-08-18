@@ -997,8 +997,8 @@ struct QuickSwitcherViewModelTests {
     }
 
     /// The All scope with an empty search shows only Recent, which is resolved against the catalog,
-    /// so it has nothing to wait on. Reporting a load there opens the result surface over the
-    /// compact bar that carries the scope buttons.
+    /// and the user has not asked for anything yet, so a spinner there would fire on every
+    /// presentation for a list nobody is waiting on.
     @Test("An empty search in the All scope reports no loading while the catalog arrives")
     func emptySearchInAllScopeReportsNoLoading() {
         let vm = QuickSwitcherViewModel(connectionId: UUID(), services: .live, defaults: makeDefaults())
@@ -1007,11 +1007,15 @@ struct QuickSwitcherViewModelTests {
     }
 
     /// A scope other than All lists its whole contents with an empty search, so it does wait.
+    /// Every narrowed scope, not just the first one: the carve-out is All's alone, and nothing else
+    /// would catch a future change that special-cases another scope beside it.
     @Test("An empty search in a narrowed scope reports loading")
     func emptySearchInNarrowedScopeReportsLoading() {
         let vm = QuickSwitcherViewModel(connectionId: UUID(), services: .live, defaults: makeDefaults())
-        vm.scope = .tables
-        #expect(vm.isLoadingResults)
+        for scope in [QuickSwitcherScope.tables, .containers] {
+            vm.scope = scope
+            #expect(vm.isLoadingResults, "\(scope) must report the first load")
+        }
     }
 
     /// Whitespace is not a search. Trimming has to happen before the emptiness test or a stray
@@ -1035,6 +1039,9 @@ struct QuickSwitcherViewModelTests {
         await vm.flushPendingFilter()
         #expect(!vm.isFiltering)
         #expect(!vm.isLoadingResults)
+        /// Without this the assertions after the flush are the same as the genuine-miss test below,
+        /// so the case would pass vacuously if `sampleItems()` ever stopped matching "user".
+        #expect(!vm.flatItems.isEmpty, "the query this test is about does match something")
     }
 
     @Test("A search that genuinely matches nothing reports no loading once it has run")

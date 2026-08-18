@@ -22,11 +22,13 @@ Press `Cmd+Shift+O` (or **File** > **Open Quickly**) in a connection window to o
 | Clear the search text | `Escape` |
 | Dismiss | `Escape` on an empty field, `Cmd+Shift+O` again, or click outside |
 
+The footer along the bottom of the panel lists these as you go. Its `Escape` hint reads **Clear** while you have something typed and **Close** once the field is empty, so you can see which of the two the next press will do.
+
 The opening shortcut is rebindable in **Settings > Keyboard**; see [Keyboard Shortcuts](/features/keyboard-shortcuts).
 
 ## Scopes
 
-Five scopes limit what the search covers: **All** (`Cmd+1`), **Tables** (`Cmd+2`, includes views and system tables), **Databases** (`Cmd+3`, includes schemas), **Queries** (`Cmd+4`, saved queries and recent queries), and **Connections** (`Cmd+5`). Round buttons beside the field set the scope; they show while the field is empty and nothing is listed. Once the list fills, the active scope moves to a badge in the bar. Click the badge to return to All. With an empty search in a scope other than All, everything in that scope is listed under section headers. The database list follows the sidebar's database filter.
+Five scopes limit what the search covers: **All** (`Cmd+1`), **Tables** (`Cmd+2`, includes views and system tables), **Databases** (`Cmd+3`, includes schemas), **Queries** (`Cmd+4`, saved queries and recent queries), and **Connections** (`Cmd+5`). A row of chips under the search field sets the scope. The chips stay on screen the whole time, so you can change scope after typing without deleting what you typed. With an empty search in a scope other than All, everything in that scope is listed under section headers. The database list follows the sidebar's database filter.
 
 Saved queries come from your [favorites](/features/favorites) and also match on their keyword. In the **All** scope, recent queries are the last 50 entries from [query history](/features/query-history) for the current connection.
 

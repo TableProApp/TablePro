@@ -1,6 +1,101 @@
 import XCTest
 
 final class OpenQuicklyCommandUITests: UITestCase {
+    /// Escape dismisses the panel, and it has to work through a real key press rather than through
+    /// the delegate hook a unit test can call, because the whole failure lives above that hook.
+    func testEscapeDismissesTheOpenQuicklyPanel() throws {
+        let app = try launchWithSampleDatabase()
+        XCTAssertTrue(
+            app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
+                .waitForExistence(timeout: 30)
+        )
+        app.activate()
+
+        app.typeKey("o", modifierFlags: [.command, .shift])
+        let searchField = switcherPanel(in: app).textFields["quick-switcher-search-field"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(
+            searchField.waitForNonExistence(timeout: 5),
+            "Escape on an empty field must dismiss the panel"
+        )
+    }
+
+    /// The two-step Escape shipped as #1490: the first clears a typed query, the second dismisses.
+    func testEscapeClearsTheQueryThenDismissesThePanel() throws {
+        let app = try launchWithSampleDatabase()
+        XCTAssertTrue(
+            app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
+                .waitForExistence(timeout: 30)
+        )
+        app.activate()
+
+        app.typeKey("o", modifierFlags: [.command, .shift])
+        let panel = switcherPanel(in: app)
+        let searchField = panel.textFields["quick-switcher-search-field"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+
+        searchField.typeText("album")
+        XCTAssertTrue(panel.buttons["Album"].waitForExistence(timeout: 10))
+
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { (searchField.value as? String ?? "").isEmpty },
+            "The first Escape clears the query"
+        )
+        XCTAssertTrue(searchField.exists, "The first Escape must not dismiss the panel")
+
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(
+            searchField.waitForNonExistence(timeout: 5),
+            "The second Escape dismisses the panel"
+        )
+    }
+
+    /// Every scope stays pickable with the mouse at all times. The scope controls used to be
+    /// removed from the view tree by `if !showsResultSurface`, so a single Recent row, which is the
+    /// panel's first frame on any connection with history, left four of the five scopes with no
+    /// mouse affordance at all. Typing is the state that has to be asserted, because that is the
+    /// state the old panel could never show them in.
+    func testEveryScopeStaysReachableWhileTyping() throws {
+        let app = try launchWithSampleDatabase()
+        XCTAssertTrue(
+            app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
+                .waitForExistence(timeout: 30)
+        )
+        app.activate()
+
+        app.typeKey("o", modifierFlags: [.command, .shift])
+        let panel = switcherPanel(in: app)
+        let searchField = panel.textFields["quick-switcher-search-field"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+
+        for scope in ["all", "tables", "containers", "queries", "connections"] {
+            let chip = panel.buttons["quick-switcher-scope-\(scope)"]
+            XCTAssertTrue(chip.waitForExistence(timeout: 5), "\(scope) chip missing on an empty query")
+        }
+
+        /// The panel is a fresh view model every time, so it always opens in All. Anything else
+        /// means a stale scope survived a presentation, and the cross-connection scopes go and load
+        /// every other connection's catalog on open.
+        XCTAssertTrue(
+            panel.buttons["quick-switcher-scope-all"].isSelected,
+            "The panel opens in the All scope"
+        )
+
+        searchField.typeText("a")
+        XCTAssertTrue(panel.buttons["Album"].waitForExistence(timeout: 10))
+
+        for scope in ["all", "tables", "containers", "queries", "connections"] {
+            let chip = panel.buttons["quick-switcher-scope-\(scope)"]
+            XCTAssertTrue(
+                waitUntilHittable(chip, timeout: 5),
+                "\(scope) chip must stay clickable once results are listed"
+            )
+        }
+    }
+
     /// The command moved from the Database menu to the File menu and was renamed from
     /// "Quick Switcher..." to "Open Quickly...", so the menu path itself is the assertion.
     func testFileMenuOpensTheQuicklyPanel() throws {

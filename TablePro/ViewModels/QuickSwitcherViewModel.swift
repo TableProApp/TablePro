@@ -112,10 +112,16 @@ internal final class QuickSwitcherViewModel {
 
     /// Whether the panel is still fetching the results it is being asked to show.
     ///
-    /// The All scope with an empty search lists nothing but Recent, and Recent is resolved against
-    /// the catalog itself, so there is nothing to wait on there and reporting a load would open the
-    /// result surface over the compact bar that carries the scope buttons. Every other combination
-    /// is showing, or about to show, something the catalog has to arrive for.
+    /// The All scope with an empty search lists nothing but Recent, and the user has not asked for
+    /// anything yet, so a spinner there would fire on every presentation for a list nobody is
+    /// waiting on. Every other combination is showing, or about to show, something the catalog has
+    /// to arrive for, and reporting it is what keeps a search that is about to succeed from
+    /// rendering as "No results".
+    ///
+    /// `isFiltering` is the half that cannot be replaced by testing `allItems`: that property is
+    /// `@ObservationIgnored`, so nothing re-renders when it changes, and its `didSet` only
+    /// schedules the filter. `groups` is committed an await later, so between the catalog landing
+    /// and the filter committing there is a frame with nothing to show and no load in flight.
     var isLoadingResults: Bool {
         if scope.usesCrossConnectionCatalog {
             return isLoadingCrossConnections

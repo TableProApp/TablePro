@@ -119,34 +119,3 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
         ))
     }
 }
-
-internal struct QuickSwitcherPanelBackground: NSViewRepresentable {
-    let cornerRadius: CGFloat
-
-    func makeNSView(context: Context) -> NSView {
-        if #available(macOS 26.0, *) {
-            let glassView = NSGlassEffectView()
-            glassView.cornerRadius = cornerRadius
-            return glassView
-        }
-        let effectView = NSVisualEffectView()
-        effectView.material = .popover
-        effectView.blendingMode = .behindWindow
-        effectView.state = .active
-        effectView.wantsLayer = true
-        effectView.layer?.cornerRadius = cornerRadius
-        effectView.layer?.cornerCurve = .continuous
-        effectView.layer?.masksToBounds = true
-        return effectView
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        if #available(macOS 26.0, *), let glassView = nsView as? NSGlassEffectView {
-            glassView.cornerRadius = cornerRadius
-            return
-        }
-        if let effectView = nsView as? NSVisualEffectView {
-            effectView.layer?.cornerRadius = cornerRadius
-        }
-    }
-}

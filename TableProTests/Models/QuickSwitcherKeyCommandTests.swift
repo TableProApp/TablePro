@@ -108,4 +108,42 @@ struct QuickSwitcherKeyCommandTests {
     func unboundControlLetterIsNotClaimed() {
         #expect(resolve("x", .control) == nil)
     }
+
+    // MARK: - Modifiers the keyboard adds on its own
+
+    /// `.deviceIndependentFlagsMask` keeps `.capsLock`, `.numericPad` and `.function` alongside the
+    /// four a shortcut is about, so an exact match against it fails for every press made with Caps
+    /// Lock engaged. Every command below silently did nothing until the panel stopped comparing
+    /// against the whole mask. These are the real flag sets AppKit delivers, not hand-built ones.
+    /// The letters are uppercase on purpose. Caps Lock is not only a flag in the mask, it also
+    /// changes what `charactersIgnoringModifiers` delivers, so a test that types "j" while claiming
+    /// to model Caps Lock proves nothing about the four Control commands.
+    @Test("Caps Lock does not disable any command")
+    func capsLockDoesNotDisableCommands() {
+        #expect(resolve("\r", [.command, .capsLock]) == .commit(.openInNewWindowTab))
+        #expect(resolve("3", [.command, .capsLock]) == .selectScope(index: 2))
+        #expect(resolve("J", [.control, .capsLock]) == .moveSelection(by: 1))
+        #expect(resolve("N", [.control, .capsLock]) == .moveSelection(by: 1))
+        #expect(resolve("K", [.control, .capsLock]) == .moveSelection(by: -1))
+        #expect(resolve("P", [.control, .capsLock]) == .moveSelection(by: -1))
+    }
+
+    /// The keypad's Enter always carries `.numericPad`, so the `\u{3}` arm above was unreachable in
+    /// the running app even though its unit test passed.
+    @Test("The numeric keypad's own flag does not disable Command-Enter")
+    func numericPadFlagDoesNotDisableCommandEnter() {
+        #expect(resolve("\u{3}", [.command, .numericPad]) == .commit(.openInNewWindowTab))
+    }
+
+    @Test("The function-key flag does not disable a command")
+    func functionFlagDoesNotDisableCommands() {
+        #expect(resolve("\r", [.command, .function]) == .commit(.openInNewWindowTab))
+    }
+
+    /// The normalization must not swallow a modifier that changes the meaning of a press.
+    @Test("Normalizing keeps the modifiers a shortcut is about")
+    func normalizingKeepsMeaningfulModifiers() {
+        #expect(resolve("j", [.command, .control]) == nil)
+        #expect(resolve("\r", [.command, .shift]) == nil)
+    }
 }

@@ -21,8 +21,9 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         let searchField = panel.textFields["quick-switcher-search-field"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 15))
 
+        /// The scope chips are present in every scope now, so a chip's existence no longer says the
+        /// key press landed. The grouped connection header below is what proves the scope changed.
         app.typeKey("5", modifierFlags: .command)
-        XCTAssertTrue(panel.buttons["Connections"].waitForExistence(timeout: 5))
         XCTAssertTrue(panel.staticTexts["Chinook (Sample)"].waitForExistence(timeout: 15))
         XCTAssertTrue(panel.buttons["Track"].waitForExistence(timeout: 5))
 
@@ -94,8 +95,8 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         let panel = switcherPanel(in: app)
         let searchField = panel.textFields["quick-switcher-search-field"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 10))
+        /// The history result below is what proves Cmd+4 landed; the chip is always present now.
         app.typeKey("4", modifierFlags: .command)
-        XCTAssertTrue(panel.buttons["Queries"].waitForExistence(timeout: 5))
 
         searchField.typeText("cross_connection_probe")
         let historyResult = panel.buttons.matching(

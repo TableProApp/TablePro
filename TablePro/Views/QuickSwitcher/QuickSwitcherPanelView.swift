@@ -6,26 +6,6 @@
 import AppKit
 import SwiftUI
 
-private enum PanelMetrics {
-    static let width: CGFloat = 640
-    static let inputRowHeight: CGFloat = 52
-    static let rowHeight: CGFloat = 44
-    static let rowSelectionInset: CGFloat = 8
-    static let rowSelectionRadius: CGFloat = 12
-    static let iconContainerSize: CGFloat = 26
-    static let sectionHeaderHeight: CGFloat = 34
-    static let scopeButtonSize: CGFloat = 44
-    static let listVerticalPadding: CGFloat = 8
-    static let maxVisibleRows = 9
-
-    static var cornerRadius: CGFloat {
-        if #available(macOS 26.0, *) {
-            return 28
-        }
-        return 13
-    }
-}
-
 struct QuickSwitcherPanelView: View {
     let schemaProvider: SQLSchemaProvider
     let connectionId: UUID
@@ -94,100 +74,52 @@ struct QuickSwitcherPanelContent: View {
     @State private var keyMonitor: Any?
 
     var body: some View {
-        HStack(spacing: 10) {
-            mainSurface
+        QuickSwitcherGlassGroup {
+            VStack(spacing: 0) {
+                inputRow
 
-            if !showsResultSurface {
-                ForEach(QuickSwitcherScope.allCases.filter { $0 != .all }) { scope in
-                    scopeButton(scope)
+                Divider().opacity(dividerOpacity)
+
+                scopeBar
+
+                if showsResultSurface {
+                    Divider().opacity(dividerOpacity)
+                    results
                 }
+
+                Divider().opacity(dividerOpacity)
+
+                footer
             }
+            .frame(width: QuickSwitcherMetrics.width)
+            .quickSwitcherSurface(cornerRadius: QuickSwitcherMetrics.cornerRadius)
         }
-        .frame(width: PanelMetrics.width)
         .onAppear { installKeyMonitor() }
         .onDisappear { removeKeyMonitor() }
+    }
+
+    // MARK: - State
+
+    private var trimmedQuery: String {
+        viewModel.searchText.trimmingCharacters(in: .whitespaces)
     }
 
     private var showsResultSurface: Bool {
         !viewModel.flatItems.isEmpty || !trimmedQuery.isEmpty || viewModel.isLoadingResults
     }
 
-    private var trimmedQuery: String {
-        viewModel.searchText.trimmingCharacters(in: .whitespaces)
+    private var dividerOpacity: Double {
+        colorSchemeContrast == .increased ? 1 : 0.6
     }
 
-    private var surfaceCornerRadius: CGFloat {
-        showsResultSurface ? PanelMetrics.cornerRadius : PanelMetrics.inputRowHeight / 2
-    }
+    // MARK: - Input
 
-    private var surfaceStrokeColor: Color {
-        if colorSchemeContrast == .increased {
-            return Color(nsColor: .separatorColor)
-        }
-        return showsResultSurface ? .clear : barStrokeColor
-    }
-
-    private var mainSurface: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                inputFields
-                if viewModel.scope != .all {
-                    activeScopeBadge
-                }
-            }
-            .padding(.horizontal, 18)
-            .frame(height: PanelMetrics.inputRowHeight)
-
-            if showsResultSurface {
-                Divider()
-                    .padding(.horizontal, 10)
-
-                if viewModel.flatItems.isEmpty {
-                    noResultsRow
-                } else {
-                    resultsList
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .background(QuickSwitcherPanelBackground(cornerRadius: surfaceCornerRadius))
-        .clipShape(RoundedRectangle(cornerRadius: surfaceCornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: surfaceCornerRadius, style: .continuous)
-                .strokeBorder(surfaceStrokeColor, lineWidth: showsResultSurface ? 1 : 0.5)
-        )
-    }
-
-    private func scopeButton(_ scope: QuickSwitcherScope) -> some View {
-        Button {
-            viewModel.scope = scope
-        } label: {
-            Image(systemName: scope.iconName)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(viewModel.scope == scope ? Color.primary : Color.secondary)
-                .frame(width: PanelMetrics.scopeButtonSize, height: PanelMetrics.scopeButtonSize)
-                .background(QuickSwitcherPanelBackground(cornerRadius: PanelMetrics.scopeButtonSize / 2))
-                .clipShape(Circle())
-                .overlay(Circle().strokeBorder(barStrokeColor, lineWidth: 0.5))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .help(scope.title)
-        .accessibilityIdentifier("quick-switcher-scope-\(scope.rawValue)")
-    }
-
-    private var barStrokeColor: Color {
-        colorSchemeContrast == .increased
-            ? Color(nsColor: .separatorColor)
-            : Color(nsColor: .separatorColor).opacity(0.6)
-    }
-
-    private var inputFields: some View {
+    private var inputRow: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.title2)
-            .imageScale(.large)
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
 
             QuickSwitcherSearchField(
                 text: $viewModel.searchText,
@@ -197,26 +129,64 @@ struct QuickSwitcherPanelContent: View {
                 onSubmit: { openSelectedItem() }
             )
         }
+        .padding(.horizontal, 18)
+        .frame(height: QuickSwitcherMetrics.inputRowHeight)
     }
 
-    private var activeScopeBadge: some View {
-        Button {
-            viewModel.scope = .all
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: viewModel.scope.iconName)
-                    .font(.system(size: 11, weight: .medium))
-                Text(viewModel.scope.title)
-                    .font(.system(size: 12, weight: .medium))
+    // MARK: - Scopes
+
+    /// Always present. Gating the scope controls on "nothing is listed yet" removed them from the
+    /// view tree the instant a single Recent row existed, which is the panel's very first frame on
+    /// any connection with history, so four of the five scopes had no mouse affordance at all.
+    private var scopeBar: some View {
+        HStack(spacing: 6) {
+            ForEach(QuickSwitcherScope.allCases) { scope in
+                scopeChip(scope)
             }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 9)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: QuickSwitcherMetrics.scopeBarHeight)
+    }
+
+    private func scopeChip(_ scope: QuickSwitcherScope) -> some View {
+        let isActive = viewModel.scope == scope
+        return Button {
+            viewModel.scope = scope
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: scope.iconName)
+                    .font(.caption)
+                Text(scope.title)
+                    .font(.callout)
+            }
+            .foregroundStyle(isActive ? Color.emphasizedSelectionLabel : Color.secondary)
+            .padding(.horizontal, 10)
             .frame(height: 24)
-            .background(Capsule().fill(Color(nsColor: .quaternarySystemFill)))
+            .background {
+                Capsule().fill(
+                    isActive
+                        ? Color(nsColor: .selectedContentBackgroundColor)
+                        : Color(nsColor: .quaternarySystemFill)
+                )
+            }
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help(String(localized: "Show all results"))
+        .help(scope.title)
+        .accessibilityIdentifier("quick-switcher-scope-\(scope.rawValue)")
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+    }
+
+    // MARK: - Results
+
+    @ViewBuilder
+    private var results: some View {
+        if viewModel.flatItems.isEmpty {
+            statusRow
+        } else {
+            resultsList
+        }
     }
 
     private var resultsList: some View {
@@ -232,7 +202,7 @@ struct QuickSwitcherPanelContent: View {
                         }
                     }
                 }
-                .padding(.vertical, PanelMetrics.listVerticalPadding)
+                .padding(.vertical, QuickSwitcherMetrics.listVerticalPadding)
             }
             .frame(height: listHeight)
             .onChange(of: viewModel.selectedItemId) { _, newValue in
@@ -245,20 +215,48 @@ struct QuickSwitcherPanelContent: View {
 
     private var listHeight: CGFloat {
         viewModel.listHeight(
-            rowHeight: PanelMetrics.rowHeight,
-            headerHeight: PanelMetrics.sectionHeaderHeight,
-            maxVisibleRows: PanelMetrics.maxVisibleRows
-        ) + PanelMetrics.listVerticalPadding * 2
+            rowHeight: QuickSwitcherMetrics.rowHeight,
+            headerHeight: QuickSwitcherMetrics.sectionHeaderHeight,
+            maxVisibleRows: QuickSwitcherMetrics.maxVisibleRows
+        ) + QuickSwitcherMetrics.listVerticalPadding * 2
     }
 
+    /// Every bit of the header's height lives inside the one frame `listHeight` is told about.
+    /// Padding applied outside it makes the row taller than the list budgets for, and the list is
+    /// then short by that much per header, which clips the last row.
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 24)
-            .padding(.top, 18)
-            .padding(.bottom, 4)
+            .padding(.bottom, 2)
+            .frame(height: QuickSwitcherMetrics.sectionHeaderHeight, alignment: .bottom)
+    }
+
+    /// A first load can take seconds (schema introspection, the database and schema lists, favorites
+    /// and 200 history rows), and until it lands the panel has no items to show. Reporting that as
+    /// "No results" is indistinguishable from a genuine miss.
+    @ViewBuilder
+    private var statusRow: some View {
+        if viewModel.isLoadingResults {
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text("Loading...")
+            }
+            .font(.body)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .frame(height: QuickSwitcherMetrics.rowHeight + QuickSwitcherMetrics.listVerticalPadding * 2)
+        } else {
+            Text(String(format: String(localized: "No results for \"%@\""), viewModel.searchText))
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24)
+                .frame(height: QuickSwitcherMetrics.rowHeight + QuickSwitcherMetrics.listVerticalPadding * 2)
+        }
     }
 
     private func itemRow(_ item: QuickSwitcherItem) -> some View {
@@ -266,32 +264,27 @@ struct QuickSwitcherPanelContent: View {
         /// and must not depict. Gating this on whether an arrow key had fired painted the row Return
         /// commits as inactive until the user pressed one.
         let isSelected = item.id == viewModel.selectedItemId
-        let isEmphasized = isSelected
 
         return HStack(spacing: 12) {
-            iconView(for: item, isEmphasized: isEmphasized)
+            iconView(for: item, isSelected: isSelected)
 
             Text(highlightedName(for: item))
-                .font(.title3)
-                .foregroundStyle(isEmphasized ? Color.emphasizedSelectionLabel : Color.primary)
+                .font(.body)
+                .foregroundStyle(isSelected ? Color.emphasizedSelectionLabel : Color.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
             Spacer(minLength: 8)
 
-            trailingAccessories(for: item, isSelected: isSelected, isEmphasized: isEmphasized)
+            trailingAccessories(for: item, isSelected: isSelected)
         }
         .padding(.horizontal, 18)
-        .frame(height: PanelMetrics.rowHeight)
+        .frame(height: QuickSwitcherMetrics.rowHeight)
         .background {
             if isSelected {
-                RoundedRectangle(cornerRadius: PanelMetrics.rowSelectionRadius, style: .continuous)
-                    .fill(
-                        isEmphasized
-                            ? Color(nsColor: .selectedContentBackgroundColor)
-                            : Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
-                    )
-                    .padding(.horizontal, PanelMetrics.rowSelectionInset)
+                RoundedRectangle(cornerRadius: QuickSwitcherMetrics.rowCornerRadius, style: .continuous)
+                    .fill(Color(nsColor: .selectedContentBackgroundColor))
+                    .padding(.horizontal, QuickSwitcherMetrics.rowInset)
             }
         }
         .contentShape(Rectangle())
@@ -310,24 +303,25 @@ struct QuickSwitcherPanelContent: View {
         .id(item.id)
     }
 
-    private func iconView(for item: QuickSwitcherItem, isEmphasized: Bool) -> some View {
+    private func iconView(for item: QuickSwitcherItem, isSelected: Bool) -> some View {
         Image(systemName: item.iconName)
             .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(isEmphasized ? Color.emphasizedSelectionLabel : Color.secondary)
-            .frame(width: PanelMetrics.iconContainerSize, height: PanelMetrics.iconContainerSize)
+            .foregroundStyle(isSelected ? Color.emphasizedSelectionLabel : Color.secondary)
+            .frame(width: QuickSwitcherMetrics.iconContainerSize, height: QuickSwitcherMetrics.iconContainerSize)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(
-                        isEmphasized
+                        isSelected
                             ? Color.emphasizedSelectionLabel.opacity(0.2)
                             : Color(nsColor: .quaternarySystemFill)
                     )
             )
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder
-    private func trailingAccessories(for item: QuickSwitcherItem, isSelected: Bool, isEmphasized: Bool) -> some View {
-        let secondaryColor = isEmphasized ? Color.emphasizedSelectionLabel.opacity(0.85) : Color.secondary
+    private func trailingAccessories(for item: QuickSwitcherItem, isSelected: Bool) -> some View {
+        let secondaryColor = isSelected ? Color.emphasizedSelectionLabel.opacity(0.85) : Color.secondary
 
         if item.isOpenInTab, !isSelected {
             Text(String(localized: "Open"))
@@ -347,9 +341,8 @@ struct QuickSwitcherPanelContent: View {
 
         if isSelected {
             Text(commitHint(for: item))
-                .font(.system(size: 12))
+                .font(.caption)
                 .foregroundStyle(secondaryColor)
-            keycap("↩", isEmphasized: isEmphasized)
         }
     }
 
@@ -358,17 +351,6 @@ struct QuickSwitcherPanelContent: View {
     private func showsSubtitle(for item: QuickSwitcherItem, isSelected: Bool) -> Bool {
         guard !item.subtitle.isEmpty else { return false }
         return !isSelected || item.target != nil
-    }
-
-    private func keycap(_ label: String, isEmphasized: Bool) -> some View {
-        Text(label)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(isEmphasized ? Color.emphasizedSelectionLabel : Color.secondary)
-            .frame(width: 24, height: 18)
-            .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(isEmphasized ? Color.emphasizedSelectionLabel.opacity(0.25) : Color(nsColor: .quaternarySystemFill))
-            )
     }
 
     private func commitHint(for item: QuickSwitcherItem) -> String {
@@ -382,28 +364,57 @@ struct QuickSwitcherPanelContent: View {
         }
     }
 
-    @ViewBuilder
-    private var noResultsRow: some View {
-        if viewModel.isLoadingResults {
-            HStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Loading...")
-            }
-            .font(.system(size: 15))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24)
-            .frame(height: PanelMetrics.rowHeight + PanelMetrics.listVerticalPadding * 2)
-        } else {
-            Text(String(format: String(localized: "No results for \"%@\""), viewModel.searchText))
-                .font(.system(size: 15))
+    // MARK: - Footer
+
+    /// The one place the panel's whole keyboard contract is written down. It also makes the first
+    /// Escape legible: the panel clears a typed query before it dismisses (#1490), and with nothing
+    /// on screen saying so, that first press reads as a key that did nothing.
+    private var footer: some View {
+        HStack(spacing: 14) {
+            keyHint("\u{21A9}", String(localized: "Open"))
+            keyHint("\u{2318}\u{21A9}", String(localized: "New Tab"))
+
+            Spacer(minLength: 0)
+
+            keyHint("\u{2318}1\u{2013}5", String(localized: "Scope"))
+            keyHint(
+                "\u{238B}",
+                trimmedQuery.isEmpty ? String(localized: "Close") : String(localized: "Clear")
+            )
+        }
+        .padding(.horizontal, 16)
+        .frame(height: QuickSwitcherMetrics.footerHeight)
+        /// Read as one element rather than eight. The commit keys are already offered as actions on
+        /// the rows themselves, so the part worth speaking is the one the glyphs exist to
+        /// disambiguate: which of the two things the next Escape will do.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(escapeHintLabel))
+    }
+
+    private var escapeHintLabel: String {
+        trimmedQuery.isEmpty
+            ? String(localized: "Escape closes Open Quickly")
+            : String(localized: "Escape clears the search text")
+    }
+
+    private func keyHint(_ symbol: String, _ label: String) -> some View {
+        HStack(spacing: 4) {
+            Text(symbol)
+                .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-                .frame(height: PanelMetrics.rowHeight + PanelMetrics.listVerticalPadding * 2)
+                .padding(.horizontal, 5)
+                .frame(minWidth: 20, minHeight: 17)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color(nsColor: .quaternarySystemFill))
+                )
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
+
+    // MARK: - Menu
 
     @ViewBuilder
     private func contextMenuActions(for item: QuickSwitcherItem) -> some View {
@@ -437,13 +448,15 @@ struct QuickSwitcherPanelContent: View {
         }
     }
 
+    // MARK: - Keyboard
+
     private func installKeyMonitor() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard event.window is QuickSwitcherPanel else { return event }
             let command = QuickSwitcherKeyCommand.resolve(
                 characters: event.charactersIgnoringModifiers ?? "",
-                modifiers: event.modifierFlags.intersection(.deviceIndependentFlagsMask),
+                modifiers: event.modifierFlags,
                 scopeCount: QuickSwitcherScope.allCases.count
             )
             guard let command else { return event }
@@ -479,7 +492,7 @@ struct QuickSwitcherPanelContent: View {
         for index in item.matchedIndices where index < characterIndices.count {
             let start = characterIndices[index]
             let end = attributed.characters.index(after: start)
-            attributed[start..<end].font = .system(size: 15, weight: .semibold)
+            attributed[start..<end].font = .body.weight(.semibold)
         }
         return attributed
     }
@@ -513,7 +526,7 @@ struct QuickSwitcherPanelContent: View {
         .background(Color.gray.opacity(0.4))
 }
 
-#Preview("Empty bar") {
+#Preview("Empty") {
     let viewModel = QuickSwitcherViewModel(connectionId: UUID())
     return QuickSwitcherPanelContent(viewModel: viewModel) { _, _ in }
         .padding(40)

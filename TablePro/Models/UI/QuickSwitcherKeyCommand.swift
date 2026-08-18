@@ -19,6 +19,14 @@ internal enum QuickSwitcherKeyCommand: Equatable {
 
     private static let returnCharacters: Set<String> = ["\r", "\u{3}"]
 
+    /// The modifiers a shortcut can be about. `.deviceIndependentFlagsMask` is not that set: it is
+    /// 0xffff0000 and keeps `.capsLock`, `.numericPad` and `.function` alongside them, so an
+    /// equality test against it fails for every press made with Caps Lock on, from the numeric
+    /// keypad, or with Fn held. That silently disabled Command-Return, Command-1 through 5 and
+    /// Control-J/K/N/P whenever Caps Lock was engaged, and made the keypad's Enter, which
+    /// `returnCharacters` enumerates on purpose, unreachable at all times.
+    private static let meaningfulModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
+
     /// Both Option and Command mean "open somewhere new" on commit. Option-Return is what the panel
     /// has always used and what Xcode's Open Quickly uses for its alternate destination; Command
     /// is what TablePlus binds to opening an item in a new tab, and what Safari's search field
@@ -27,13 +35,20 @@ internal enum QuickSwitcherKeyCommand: Equatable {
         modifiers.intersection([.command, .option]).isEmpty ? .open : .openInNewWindowTab
     }
 
+    /// Drops every flag a shortcut is not about, so a press still resolves with Caps Lock engaged,
+    /// from the numeric keypad, or with Fn held.
+    private static func meaningful(_ modifiers: NSEvent.ModifierFlags) -> NSEvent.ModifierFlags {
+        modifiers.intersection(meaningfulModifiers)
+    }
+
     /// Resolves a key press the field editor does not consume. Returns nil when the press is not
     /// the panel's to handle, so the caller passes the event on untouched.
     internal static func resolve(
         characters: String,
-        modifiers: NSEvent.ModifierFlags,
+        modifiers rawModifiers: NSEvent.ModifierFlags,
         scopeCount: Int
     ) -> QuickSwitcherKeyCommand? {
+        let modifiers = meaningful(rawModifiers)
         if modifiers == .command {
             if returnCharacters.contains(characters) {
                 return .commit(.openInNewWindowTab)
@@ -45,7 +60,11 @@ internal enum QuickSwitcherKeyCommand: Equatable {
         }
 
         guard modifiers == .control else { return nil }
-        switch characters {
+        /// Caps Lock reaches `charactersIgnoringModifiers` as well as the modifier mask: that
+        /// property drops every modifier except the ones that pick a character, and Caps Lock picks
+        /// one. So with Caps Lock on AppKit delivers "J" here, and normalizing only the flags would
+        /// have left these four commands as dead as they were.
+        switch characters.lowercased() {
         case "j", "n": return .moveSelection(by: 1)
         case "k", "p": return .moveSelection(by: -1)
         default: return nil
