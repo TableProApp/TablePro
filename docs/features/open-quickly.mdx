@@ -1,23 +1,23 @@
 ---
-title: Quick Switcher
+title: Open Quickly
 description: Search objects and queries in one connection or across every open connection
 ---
 
-Press `Cmd+Shift+O` (or **Query** > **Quick Switcher**) in a connection window to open a floating search panel. Type a few characters and press `Return` to jump to any table, view, system table, database, schema, saved query, or recent query. Matching is fuzzy: `usr` finds `users` and `user_settings`, and matched characters are shown in bold.
+Press `Cmd+Shift+O` (or **File** > **Open Quickly**) in a connection window to open a floating search panel. Type a few characters and press `Return` to jump to any table, view, system table, database, schema, saved query, or recent query. Matching is fuzzy: `usr` finds `users` and `user_settings`, and matched characters are shown in bold.
 
-<Frame caption="The Quick Switcher with fuzzy-matched results">
-  <img className="block dark:hidden" src="/images/quick-switcher.png" alt="Quick Switcher panel" />
-  <img className="hidden dark:block" src="/images/quick-switcher-dark.png" alt="Quick Switcher panel" />
+<Frame caption="Open Quickly with fuzzy-matched results">
+  <img className="block dark:hidden" src="/images/quick-switcher.png" alt="Open Quickly panel" />
+  <img className="hidden dark:block" src="/images/quick-switcher-dark.png" alt="Open Quickly panel" />
 </Frame>
 
 ## Keys
 
 | Action | Shortcut |
 |--------|----------|
-| Open Quick Switcher | `Cmd+Shift+O` |
+| Open Quickly | `Cmd+Shift+O` |
 | Move selection | `Up` / `Down`, or `Ctrl+J`/`Ctrl+N` and `Ctrl+K`/`Ctrl+P` |
 | Open selected item | `Return` (double-click also works) |
-| Open in a new tab | `Option+Return` |
+| Open in a new tab | `Cmd+Return` or `Option+Return` |
 | Switch scope | `Cmd+1` to `Cmd+5` |
 | Clear the search text | `Escape` |
 | Dismiss | `Escape` on an empty field, `Cmd+Shift+O` again, or click outside |
@@ -40,20 +40,20 @@ TablePro loads this catalog only when you open the Connections scope. It searche
 
 ### Queries
 
-The **Queries** scope searches saved queries and up to 200 recent query-history entries drawn from every connected window. Each connection contributes its own most recent entries, so a connection you ran hundreds of queries on today cannot push another one off the list. Each row shows its connection and database. Recent queries also show their execution time. Global saved queries open in the connection where you opened Quick Switcher. The connection the panel was opened from stays listed even while it is reconnecting.
+The **Queries** scope searches saved queries and up to 200 recent query-history entries drawn from every connected window. Each connection contributes its own most recent entries, so a connection you ran hundreds of queries on today cannot push another one off the list. Each row shows its connection and database. Recent queries also show their execution time. Global saved queries open in the connection where you opened the panel. The connection the panel was opened from stays listed even while it is reconnecting.
 
 <Frame caption="Query history results from two open connections">
-  <img src="/images/quick-switcher-cross-connection-queries.png" alt="Quick Switcher showing query history from Chinook and Analytics connections" />
+  <img src="/images/quick-switcher-cross-connection-queries.png" alt="Open Quickly showing query history from Chinook and Analytics connections" />
 </Frame>
 
-Opening a query brings its connection forward and loads the SQL without running it. The tab you opened Quick Switcher from is used whenever it is on the right connection and database, so a query never replaces an editor you were not looking at. Query-history entries keep their recorded database context. If no open tab uses that database, TablePro opens a new tab instead of loading the SQL into a tab bound to another database. `Option+Return` always opens a new tab.
+Opening a query brings its connection forward and loads the SQL without running it. The tab you opened the panel from is used whenever it is on the right connection and database, so a query never replaces an editor you were not looking at. Query-history entries keep their recorded database context. If no open tab uses that database, TablePro opens a new tab instead of loading the SQL into a tab bound to another database. `Cmd+Return` and `Option+Return` always open a new tab.
 
 ## Ranking
 
-With an empty search, the panel shows a **Recent** section: the last 10 items you opened through the switcher on this connection. With a query, each result's fuzzy match score is weighted by:
+With an empty search, the panel shows a **Recent** section: the last 10 items you opened through the panel on this connection. With a query, each result's fuzzy match score is weighted by:
 
 - **Object kind**: tables rank above views, databases, schemas, and saved queries; query history ranks last.
-- **Frecency**: each item's last 10 opens through the switcher, weighted by how recent they are, tracked per connection. Opening another connection's result counts towards that connection.
+- **Frecency**: each item's last 10 opens through the panel, weighted by how recent they are, tracked per connection. Opening another connection's result counts towards that connection.
 - **Open tab boost**: tables already open in a tab rank higher.
 - **Where the match landed**: a match on the name ranks highest, then a saved query's keyword, then the connection and database path shown beside it.
 
@@ -61,7 +61,7 @@ The list shows at most 200 results.
 
 ## Open badge
 
-Tables already open in a tab show an **Open** badge, and the selected row's hint reads **Switch to Tab**. Committing switches to the existing tab instead of opening a duplicate. `Option+Return` forces a new tab.
+Tables already open in a tab show an **Open** badge, and the selected row's hint reads **Switch to Tab**. Committing switches to the existing tab instead of opening a duplicate. `Cmd+Return` and `Option+Return` force a new tab.
 
 What opening does depends on the item: tables and views open a table tab, databases and schemas switch the active database or schema, and queries load into the SQL editor.
 

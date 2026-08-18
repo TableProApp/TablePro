@@ -62371,6 +62371,62 @@
         }
       }
     },
+    "Open Quickly" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hızlı Aç"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mở nhanh"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "快速打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "快速打開"
+          }
+        }
+      }
+    },
+    "Open Quickly..." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hızlı Aç..."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mở nhanh..."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "快速打开..."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "快速打開…"
+          }
+        }
+      }
+    },
     "Open Redis CLI" : {
       "extractionState" : "stale",
       "localizations" : {

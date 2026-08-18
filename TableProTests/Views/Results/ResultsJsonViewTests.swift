@@ -114,6 +114,43 @@ struct ResultsJsonViewTests {
         #expect(result.json == "[]")
     }
 
+    @Test("wide integers stay exact in JSON text and tree output")
+    func wideIntegersStayExact() throws {
+        let value = "340282366920938463463374607431768211455"
+        let tableRows = TableRows(
+            rows: [Row(id: .existing(0), values: [.text(value)])],
+            columns: ["value"],
+            columnTypes: [.integer(rawType: "UINT128")]
+        )
+
+        let result = ResultsJsonView.computeJson(
+            tableRows: tableRows,
+            displayIDs: nil,
+            selectedIndices: [],
+            columnLayout: ColumnLayoutState()
+        )
+
+        #expect(result.json.contains("\"value\": \(value)"))
+        let reindented = try #require(result.json.prettyPrintedAsJson())
+        #expect(result.pretty == reindented)
+        #expect(reindented.contains(value))
+        guard case .success(let root) = result.parseResult else {
+            if case .failure(let error) = result.parseResult {
+                Issue.record("expected valid JSON tree, got \(error)")
+            }
+            return
+        }
+        guard let numberNode = root.children.first?.children.first else {
+            Issue.record("expected the wide integer node")
+            return
+        }
+        if case .number = numberNode.valueType {} else {
+            Issue.record("expected a JSON number node")
+        }
+        #expect(numberNode.rawValue == value)
+        #expect(numberNode.displayValue == value)
+    }
+
     @Test("a selection narrows the output to the selected rows")
     func selectionNarrowsTheOutput() {
         let result = compute(selectedIndices: [1])

@@ -152,46 +152,20 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
     }
 
     private func formatJSONTextValue(_ val: String, columnTypeName: String, preserveAsString: Bool) -> String {
-
         if preserveAsString {
             return "\"\(PluginExportUtilities.escapeJSONString(val))\""
         }
 
-        if val.lowercased() == "true" || val.lowercased() == "false" {
-            return val.lowercased()
+        let folded = val.lowercased()
+        if folded == "true" || folded == "false" {
+            return folded
         }
 
-        let isNumericCol = PluginExportUtilities.isNumericColumnType(columnTypeName)
-
-        if isNumericCol && isValidIntegerLiteral(val) {
-            if let intVal = Int(val) {
-                return String(intVal)
-            }
-            return val
-        }
-        if isNumericCol, let doubleVal = Double(val), !val.contains("e"), !val.contains("E") {
-            let jsMaxSafeInteger = 9_007_199_254_740_991.0
-
-            if doubleVal.truncatingRemainder(dividingBy: 1) == 0 && !val.contains(".") {
-                if abs(doubleVal) <= jsMaxSafeInteger,
-                   doubleVal >= Double(Int.min),
-                   doubleVal <= Double(Int.max) {
-                    return String(Int(doubleVal))
-                } else {
-                    return val
-                }
-            }
-            return String(doubleVal)
+        if PluginExportUtilities.isNumericColumnType(columnTypeName),
+           let literal = JsonNumberNormalizer.numberLiteral(from: val) {
+            return literal
         }
 
         return "\"\(PluginExportUtilities.escapeJSONString(val))\""
-    }
-
-    private func isValidIntegerLiteral(_ val: String) -> Bool {
-        guard !val.isEmpty else { return false }
-        let digits = val.hasPrefix("-") || val.hasPrefix("+") ? String(val.dropFirst()) : val
-        guard !digits.isEmpty else { return false }
-        if digits.count > 1 && digits.hasPrefix("0") { return false }
-        return digits.allSatisfy(\.isNumber)
     }
 }

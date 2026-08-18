@@ -25,6 +25,10 @@
     {
       "source": "/customization/overview",
       "destination": "/customization/settings"
+    },
+    {
+      "source": "/features/quick-switcher",
+      "destination": "/features/open-quickly"
     }
   ],
   "navigation": {
@@ -143,7 +147,7 @@
                 "pages": [
                   "features/tabs",
                   "features/workspace-rail",
-                  "features/quick-switcher",
+                  "features/open-quickly",
                   "features/query-history",
                   "features/query-insights",
                   "features/favorites",
