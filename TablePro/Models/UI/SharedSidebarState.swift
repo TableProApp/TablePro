@@ -52,7 +52,7 @@ final class SharedSidebarState {
 
     private func commitTableOpen(database: String?, schema: String?, name: String, isView: Bool) {
         QuickSwitcherFrecencyStore(connectionId: connectionId).recordAccess(
-            itemId: QuickSwitcherItem.tableItemId(name: name, isView: isView)
+            itemId: QuickSwitcherItem.tableItemId(name: name, schema: schema)
         )
         guard AppSettingsManager.shared.general.showRecentTables else { return }
         recentTables = RecentTablesStore.shared.record(

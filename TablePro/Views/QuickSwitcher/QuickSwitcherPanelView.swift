@@ -30,7 +30,8 @@ struct QuickSwitcherPanelView: View {
     let schemaProvider: SQLSchemaProvider
     let connectionId: UUID
     let databaseType: DatabaseType
-    let openTableNames: Set<String>
+    let openTables: Set<QuickSwitcherOpenTable>
+    let browseSchema: String?
     let onSelect: (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void
     let onDismiss: () -> Void
 
@@ -40,14 +41,16 @@ struct QuickSwitcherPanelView: View {
         schemaProvider: SQLSchemaProvider,
         connectionId: UUID,
         databaseType: DatabaseType,
-        openTableNames: Set<String> = [],
+        openTables: Set<QuickSwitcherOpenTable> = [],
+        browseSchema: String? = nil,
         onSelect: @escaping (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void,
         onDismiss: @escaping () -> Void
     ) {
         self.schemaProvider = schemaProvider
         self.connectionId = connectionId
         self.databaseType = databaseType
-        self.openTableNames = openTableNames
+        self.openTables = openTables
+        self.browseSchema = browseSchema
         self.onSelect = onSelect
         self.onDismiss = onDismiss
         self._viewModel = State(wrappedValue: QuickSwitcherViewModel(connectionId: connectionId))
@@ -63,7 +66,8 @@ struct QuickSwitcherPanelView: View {
             await viewModel.loadItems(
                 schemaProvider: schemaProvider,
                 databaseType: databaseType,
-                openTableNames: openTableNames
+                openTables: openTables,
+                browseSchema: browseSchema
             )
         }
         .task(id: viewModel.crossConnectionLoadVersion) {
