@@ -372,6 +372,7 @@ jobs:
           gh release create "$TAG" \
             --title "$DISPLAY_NAME v$VERSION" \
             --notes "$RELEASE_BODY" \
+            --latest=false \
             build/Plugins/${BUNDLE_NAME}-arm64.zip \
             build/Plugins/${BUNDLE_NAME}-x86_64.zip
 
