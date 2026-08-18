@@ -81,11 +81,18 @@ extension QueryExecutionCoordinator {
     /// arrow, which is all the first paint needs; defaults, primary keys, nullability and comments
     /// still come from the table's own metadata fetch, and claiming they had arrived would let
     /// `isMetadataCached` skip it.
+    ///
+    /// A miss starts the fetch for this scope, so the store refills itself after a schema refresh
+    /// or a database switch cleared it. Only this table pays the wait; the next one is answered.
     private func prefetchedForeignKeys(tabIndex: Int, tableName: String) -> [String: ForeignKeyInfo]? {
         guard tabIndex < parent.tabManager.tabs.count,
               let scope = parent.scope(for: parent.tabManager.tabs[tabIndex])
         else { return nil }
-        return SchemaForeignKeyStore.shared.foreignKeysByColumn(for: scope, table: tableName)
+        if let cached = SchemaForeignKeyStore.shared.foreignKeysByColumn(for: scope, table: tableName) {
+            return cached
+        }
+        parent.prefetchForeignKeys(scope: scope)
+        return nil
     }
 
     func applyPhase1Result( // swiftlint:disable:this function_parameter_count
