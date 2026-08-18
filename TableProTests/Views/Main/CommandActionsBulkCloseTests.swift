@@ -119,6 +119,70 @@ struct CommandActionsBulkCloseTests {
         #expect(unrelated.actions.canCloseTabsForOtherDatabases == false)
     }
 
+    // MARK: - Schema scope
+
+    /// Only `.table` tabs are given a schema, so on a schema-switching engine every query tab
+    /// named no container. Comparing that nil against the browsed name made all of them foreign,
+    /// and the command closed the user's whole editor with no prompt.
+    @Test("query tabs are never foreign on a schema-switching engine")
+    func queryTabsAreNotForeignOnASchemaSwitchingEngine() {
+        let connection = TestFixtures.makeConnection(database: "ORCL", type: .oracle)
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1 FROM dual", databaseName: "ORCL")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 2 FROM dual", databaseName: "ORCL")
+
+        #expect(PluginManager.shared.containerSwitchTarget(for: .oracle) == .schema)
+        #expect(!current.actions.canCloseTabsForOtherDatabases)
+    }
+
+    @Test("a table tab in another schema is still offered for closing")
+    func tableTabInAnotherSchemaIsStillForeign() throws {
+        let connection = TestFixtures.makeConnection(database: "ORCL", type: .oracle)
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1 FROM dual", databaseName: "ORCL")
+        try current.coordinator.tabManager.addTableTab(
+            tableName: "EMPLOYEES", databaseType: .oracle, databaseName: "ORCL", schemaName: "HR"
+        )
+
+        #expect(current.actions.canCloseTabsForOtherDatabases)
+    }
+
+    /// The same rule on a database-switching engine: a tab that never got a database is in no
+    /// database rather than in another one.
+    @Test("a tab with no database of its own is not foreign")
+    func tabWithoutADatabaseIsNotForeign() {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1")
+
+        #expect(!current.actions.canCloseTabsForOtherDatabases)
+    }
+
+    // MARK: - Container wording
+
+    /// Both titles were computed and then never used: the menu items carry hardcoded literals and
+    /// `applyDynamicTitle` had no case for either selector.
+    @Test("container commands are worded for the dimension the engine switches")
+    func containerCommandTitlesFollowTheSwitchTarget() {
+        let schemaEngine = makeWindow(connection: TestFixtures.makeConnection(database: "ORCL", type: .oracle))
+        let databaseEngine = makeWindow(connection: TestFixtures.makeConnection(database: "db_a", type: .mysql))
+        defer {
+            schemaEngine.coordinator.teardown()
+            databaseEngine.coordinator.teardown()
+        }
+
+        #expect(schemaEngine.actions.closeTabsForOtherDatabasesTitle == "Close Tabs for Other Schemas")
+        #expect(schemaEngine.actions.openContainerSwitcherTitle == "Open Schema...")
+        #expect(databaseEngine.actions.closeTabsForOtherDatabasesTitle == "Close Tabs for Other Databases")
+        #expect(databaseEngine.actions.openContainerSwitcherTitle == "Open Database...")
+    }
+
     // MARK: - Enablement
 
     @Test("closing all tabs is offered while the window still holds a tab")

@@ -286,6 +286,17 @@ extension MainSplitViewController: NSMenuItemValidation {
             setTitle(commandActions?.isResultsVisible == true ? "Hide Results" : "Show Results", on: menuItem)
         case #selector(pinResult(_:)):
             setTitle(commandActions?.isResultTabPinned == true ? "Unpin Result" : "Pin Result", on: menuItem)
+        case #selector(closeTabsForOtherContainers(_:)):
+            setResolvedTitle(
+                commandActions?.closeTabsForOtherDatabasesTitle
+                    ?? String(localized: "Close Tabs for Other Databases"),
+                on: menuItem
+            )
+        case #selector(openContainerSwitcher(_:)):
+            setResolvedTitle(
+                commandActions?.openContainerSwitcherTitle ?? String(localized: "Open Database..."),
+                on: menuItem
+            )
         case #selector(useFlatSidebarLayout(_:)):
             setState(commandActions?.sidebarLayout == .flat ? .on : .off, on: menuItem)
         case #selector(useTreeSidebarLayout(_:)):

@@ -305,6 +305,24 @@ final class MainContentCommandActions {
         PluginManager.shared.supportsContainerSwitching(for: connection.type)
     }
 
+    /// Picks between the two spellings a container command has. Each one is a whole localized
+    /// string rather than a noun dropped into a format, because System Settings binds an App
+    /// Shortcut to a menu item's exact literal title, and because the driver's own entity name
+    /// would make the set open-ended. Both callers live in other files, so this is not private.
+    func containerSwitchTitle(schema: String, database: String) -> String {
+        switch PluginManager.shared.containerSwitchTarget(for: currentDatabaseType) {
+        case .schema: return schema
+        case .database, .none: return database
+        }
+    }
+
+    var openContainerSwitcherTitle: String {
+        containerSwitchTitle(
+            schema: String(localized: "Open Schema..."),
+            database: String(localized: "Open Database...")
+        )
+    }
+
     var canSwitchSidebarLayout: Bool {
         PluginManager.shared.supportsDatabaseTree(for: connection.type)
     }
