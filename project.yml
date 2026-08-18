@@ -709,11 +709,11 @@ targets:
           - $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
         LIBRARY_SEARCH_PATHS:
           - $(inherited)
-          - $(SRCROOT)/Libs
+          - $(SRCROOT)/Native/DamengBridge/lib
         OTHER_LDFLAGS:
           - $(inherited)
           - -force_load
-          - $(SRCROOT)/Libs/libdameng_bridge.a
+          - $(SRCROOT)/Native/DamengBridge/lib/libdameng_bridge.a
           - -framework
           - Security
           - -framework
@@ -740,11 +740,11 @@ targets:
           - $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
         LIBRARY_SEARCH_PATHS:
           - $(inherited)
-          - $(SRCROOT)/Libs
+          - $(SRCROOT)/Native/DamengBridge/lib
         OTHER_LDFLAGS:
           - $(inherited)
           - -force_load
-          - $(SRCROOT)/Libs/libdameng_bridge.a
+          - $(SRCROOT)/Native/DamengBridge/lib/libdameng_bridge.a
           - -framework
           - Security
           - -framework

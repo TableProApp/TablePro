@@ -3,7 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BRIDGE_DIR="$ROOT_DIR/Native/DamengBridge"
-LIBS_DIR="$ROOT_DIR/Libs"
+# Not Libs/. That directory holds prebuilt slices downloaded and checksum-verified by
+# download-libs.sh, and publish-libs.sh treats anything unrecognised there as an error.
+# The bridge is compiled from in-tree Rust instead, so its output stays beside its source.
+LIBS_DIR="$BRIDGE_DIR/lib"
 ARCH="${1:-both}"
 MACOS_TARGET="14.0"
 RUST_TOOLCHAIN="1.91.1"
