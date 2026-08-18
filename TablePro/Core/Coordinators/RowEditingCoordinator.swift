@@ -279,21 +279,16 @@ final class RowEditingCoordinator {
 
     func copySelectedRowsAsJson(indices: Set<Int>) {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
-        let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
-        let displayIDs = parent.activeGridDisplayIDs
-        let projection = VisibleColumnProjection(
-            indices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
+        let output = ResultJsonSerializer.serialize(
+            tableRows: parent.tabSessionRegistry.tableRows(for: tab.id),
+            displayIDs: parent.activeGridDisplayIDs,
+            selectedDisplayIndices: indices,
+            columns: VisibleColumnProjection(
+                indices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
+            )
         )
-        let rows = indices.sorted().compactMap { displayIndex -> [PluginCellValue]? in
-            DisplayRowMapping.row(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows)
-                .map { projection.values(Array($0.values)) }
-        }
-        guard !rows.isEmpty else { return }
-        let converter = JsonRowConverter(
-            columns: projection.columns(tableRows.columns),
-            columnTypes: projection.columnTypes(tableRows.columnTypes)
-        )
-        ClipboardService.shared.writeText(converter.generateJson(rows: rows))
+        guard output.rowCount > 0 else { return }
+        ClipboardService.shared.writeText(output.json)
     }
 
     func pasteRows() {

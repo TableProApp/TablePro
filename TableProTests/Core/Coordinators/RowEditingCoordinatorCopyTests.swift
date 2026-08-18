@@ -34,7 +34,7 @@ private final class RowEditingCopyLayoutPersister: ColumnLayoutPersisting {
 @Suite("RowEditingCoordinator copy as JSON")
 @MainActor
 struct RowEditingCoordinatorCopyTests {
-    private func makeCoordinator() -> MainContentCoordinator {
+    private func makeCoordinator(tableRows: TableRows? = nil) -> MainContentCoordinator {
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
@@ -47,15 +47,17 @@ struct RowEditingCoordinatorCopyTests {
         tabManager.tabs.append(tab)
         tabManager.selectedTabId = tab.id
 
-        let tableRows = TableRows.from(
-            queryRows: [
-                [.text("1"), .text("Alice")],
-                [.text("2"), .text("Bob")]
-            ],
-            columns: ["id", "name"],
-            columnTypes: [.text(rawType: nil), .text(rawType: nil)]
+        coordinator.setActiveTableRows(
+            tableRows ?? TableRows.from(
+                queryRows: [
+                    [.text("1"), .text("Alice")],
+                    [.text("2"), .text("Bob")]
+                ],
+                columns: ["id", "name"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil)]
+            ),
+            for: tab.id
         )
-        coordinator.setActiveTableRows(tableRows, for: tab.id)
         return coordinator
     }
 
@@ -118,5 +120,23 @@ struct RowEditingCoordinatorCopyTests {
         coordinator.copySelectedRowsAsJson(indices: [1, 99])
 
         #expect(clipboard.text?.contains("Bob") == true)
+    }
+
+    @Test("Copy as JSON preserves wide integer values")
+    func copyAsJsonPreservesWideInteger() {
+        let clipboard = RowEditingCopyClipboard()
+        ClipboardService.shared = clipboard
+        defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
+        let value = "340282366920938463463374607431768211455"
+        let tableRows = TableRows(
+            rows: [Row(id: .existing(0), values: [.text(value)])],
+            columns: ["value"],
+            columnTypes: [.integer(rawType: "UINT128")]
+        )
+        let coordinator = makeCoordinator(tableRows: tableRows)
+
+        coordinator.copySelectedRowsAsJson(indices: [0])
+
+        #expect(clipboard.text?.contains("\"value\": \(value)") == true)
     }
 }
