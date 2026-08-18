@@ -8,10 +8,10 @@
       "source_issue": 1350,
       "input_mode": "chat-symptom-only",
       "prompt": "In TablePro, the Active Connections panel dims the background when it opens but I can't tell how to close it. There's no close button anywhere. Make it dismiss properly, the native macOS way.",
-      "expected_output": "A blueprint that locates the Active Connections sheet (ConnectionSwitcherSheet.swift), cites macOS HIG conventions for dismissing a sheet or panel, and covers all three dismissal paths from the issue: a visible close control, Escape, and click-outside. The run then presents that approach at the gate and waits, having asked for nothing else.",
+      "expected_output": "A blueprint that locates the Active Connections sheet (ConnectionSwitcherPopover.swift), cites macOS HIG conventions for dismissing a sheet or panel, and covers all three dismissal paths from the issue: a visible close control, Escape, and click-outside. The run then presents that approach at the gate and waits, having asked for nothing else.",
       "files": [],
       "expectations": [
-        "Identifies the Active Connections sheet component (ConnectionSwitcherSheet.swift or equivalent) as the place to fix",
+        "Identifies the Active Connections sheet component (ConnectionSwitcherPopover.swift) as the place to fix",
         "Cites a specific macOS HIG convention or native dismissal API (e.g. SwiftUI dismiss, sheet/NSPanel, Escape via cancelAction) rather than inventing an approach",
         "Addresses the full scope of dismissal, not just adding a button: visible close control AND Escape AND click-outside",
         "States the root cause (no dismissal affordance) distinctly from the symptom",

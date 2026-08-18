@@ -290,6 +290,38 @@ PASTE THE FULL DRAFT BLUEPRINT HERE, PLUS THE ESTABLISHED FACTS IT RESTS ON,
 SO THE CRITICS DO NOT RE-DERIVE THEM OR ARGUE WITH SETTLED MEASUREMENTS.
 `
 
+// The critics used to return free text. A subagent's final message has no length limit, so three
+// of them writing essays is exactly the context blowout DIGEST_RULES warns about in the
+// investigation script. The schema is the only thing that actually caps it.
+const OBJECTIONS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['lens', 'verdict', 'objections'],
+  properties: {
+    lens: { type: 'string', maxLength: 40 },
+    verdict: {
+      type: 'string',
+      enum: ['sound', 'needs-change', 'wrong-shape'],
+      description: 'wrong-shape means the blueprint solves the wrong problem or sits at the wrong ownership boundary.',
+    },
+    objections: {
+      type: 'array',
+      maxItems: 6,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['severity', 'claim', 'evidence'],
+        properties: {
+          severity: { type: 'string', enum: ['blocking', 'material', 'minor'] },
+          claim: { type: 'string', maxLength: 240 },
+          evidence: { type: 'string', maxLength: 240, description: 'file:line, an SDK symbol, or measured output. Reasoning alone is not evidence.' },
+          correction: { type: 'string', maxLength: 240, description: 'The smallest change to the blueprint that answers this.' },
+        },
+      },
+    },
+  },
+}
+
 const LENSES = [
   {
     key: 'patterns',
@@ -317,7 +349,7 @@ phase('Critique')
 
 const critiques = await parallel(LENSES.map(lens => () => agent(`
 You are reviewing a draft implementation blueprint for a TablePro fix. Read CLAUDE.md, paying
-particular attention to the Invariants section, and .claude/skills/fix-issue/references/quality-bar.md.
+particular attention to the Invariants section.
 
 Draft blueprint:
 ${BLUEPRINT}
@@ -330,7 +362,7 @@ I want weaknesses, not a summary. If a part of the blueprint is sound, say so in
 move on. Verify before you assert: read the files you cite, and measure rather than assume when
 the answer depends on a dependency's behaviour. A confident wrong objection costs more than a
 missed one, because it will be acted on. Report as structured text with file:line evidence.
-  `, { label: `critique:${lens.key}`, agentType: 'feature-dev:code-architect' })))
+  `, { label: `critique:${lens.key}`, agentType: 'feature-dev:code-architect', schema: OBJECTIONS_SCHEMA })))
 
 return critiques.filter(Boolean)
 ```

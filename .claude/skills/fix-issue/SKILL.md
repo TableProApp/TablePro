@@ -23,7 +23,7 @@ A disciplined way to fix a TablePro problem so the result is correct, native, an
 
 Low-quality fixes fail for five reasons: the author did not trace how the code actually behaves, did not check what the platform documents as correct, believed a plausible claim instead of measuring it, stopped at the first change that made the symptom disappear, or never built the result. This skill attacks all five.
 
-**It runs to completion with no approval gate.** Invoking it is the authorization to investigate, implement, verify, commit, push, open the pull request, and then open further pull requests for the other defects the investigation turned up. Do not stop to ask whether to proceed. Stop only when verification fails, and say exactly what failed.
+**It stops once, at one gate.** Invoking it is the authorization to investigate, design, implement, verify, commit, push and open the pull request without asking again. The single exception is the Phase 2 gate: once the blueprint has survived its critique you present the approach and wait, because the cheapest place to catch a wrong direction is before the diff rather than in review. Everything on either side of that gate proceeds on its own. Stop early only when verification fails, and then say exactly what failed.
 
 ## When to use this
 
@@ -35,12 +35,19 @@ Run at high effort. The investigation and the adversarial passes are where the q
 
 ## The standard this skill holds to
 
-Two documents define done, and neither is optional:
+`CLAUDE.md` at the repo root defines done: the principles, the mandatory rules (CHANGELOG, localization, docs, lint, tests, conventional commits, writing style), and the **Invariants** section listing the patterns that have already caused real bugs. Cite it rather than restating it; when the two disagree, `CLAUDE.md` wins.
 
-- `CLAUDE.md` at the repo root: principles, mandatory rules (CHANGELOG, localization, docs, lint, tests, conventional commits, writing style), and the **Invariants** section listing patterns that have caused real bugs.
-- `references/quality-bar.md`: the condensed "is this fix actually done" checklist, the refactor-vs-patch decision, and the native/HIG bar.
+The standing preference is the complete, Apple-correct fix grounded in documented APIs. Never pitch a phased, minimal, or quick-win version as the answer, and never implement the user's literal UI suggestion when research says a different native mechanism is correct. Say what the correct approach is, then build that. Native means documented AppKit, SwiftUI and system behaviour, with the HIG rule for the interaction quoted in the blueprint, and with keyboard access, focus, selection, undo and the responder chain still intact afterwards.
 
-Read `quality-bar.md` early. The user's standing preference is a complete, Apple-correct fix grounded in documented APIs. Never pitch a phased, minimal, or quick-win version as the answer, and never implement the user's literal UI suggestion when research says a different native mechanism is correct. Say what the correct approach is, then build that.
+### Refactor or patch: the central decision
+
+Every fix forces this call, and it is the one the gate exists to confirm. Make it explicit.
+
+**Refactor** when the current structure cannot express the correct behaviour without a special case that fights the existing shape; when the bug is a symptom of a design that is wrong for the real requirement, such as a boolean where the state is multi-valued or logic in a view that belongs in a model; or when fixing only the reported case would leave the same class of bug latent elsewhere.
+
+**Patch** when the design is sound and the bug is a genuine local mistake: an off-by-one, a missing guard, a wrong comparison, a stale mapping.
+
+The failure mode to avoid is patching a symptom so the reported case disappears while the cause stays. A minimal stopgap is never offered as an equal alternative to the real fix. That is a different thing from the gate, which does present genuine design alternatives when the investigation found more than one defensible shape: choosing between two real designs is the user's call, choosing to do less than the correct fix is not.
 
 ### Measure, do not assume
 
@@ -54,7 +61,7 @@ When the probe settles a fact that the codebase then hard-codes by hand, commit 
 
 Get a precise problem statement, and a safe place to work, before touching anything.
 
-Open a `TodoWrite` list here with the phases this run will actually use, and keep it current as you go. It is how the user follows a long run without asking, and it is what tells you where you were after a compaction.
+When the session exposes `TodoWrite`, open a list here with the phases this run will actually use and keep it current: it is how the user follows a long run without asking, and it is what tells you where you were after a compaction. The tool is not present in every session, so fall back to stating the phase in the thread at each boundary rather than planning around it.
 
 1. **Read the report.** Given an issue number or URL: `gh issue view <number> --repo TableProApp/TablePro --comments`. Read the body and every comment; reporters often clarify the real complaint in follow-ups. Given a chat description: restate it in one sentence naming the observable wrong behaviour against the expected behaviour.
 2. **Capture the specifics.** Reproduction steps, screenshots, database type, macOS version. These shape what the investigators look for.
@@ -94,7 +101,7 @@ You own the blueprint. You have every report plus the conversation context the s
 The blueprint must answer:
 
 - **Root cause**, stated plainly and separated from the symptom.
-- **Refactor vs. patch.** Can the current structure express the correct behaviour cleanly, or does the relevant code need restructuring to do this properly? This is the most important call in the skill. If the existing design cannot express the right behaviour, say "refactor X" instead of bolting a special case onto a broken shape. Criteria are in `references/quality-bar.md`.
+- **Refactor vs. patch.** Can the current structure express the correct behaviour cleanly, or does the relevant code need restructuring to do this properly? This is the most important call in the skill. If the existing design cannot express the right behaviour, say "refactor X" instead of bolting a special case onto a broken shape. The criteria are in "Refactor or patch" above.
 - **The native, HIG-correct design**, naming the specific AppKit/SwiftUI API or dependency call and the documented behaviour it follows. Prefer a documented platform API over a hand-rolled equivalent.
 - **Full scope.** Every file to create or change, in implementation order, plus the edge cases and the TablePro invariants from `CLAUDE.md` the change must respect.
 - **Blast radius.** The reported symptom is usually one instance of a class. Say how many cases the root cause actually covers, and cover all of them.
@@ -225,7 +232,6 @@ If part of the work was blocked, say which part and why, and confirm everything 
 
 ## Reference files
 
-- `references/quality-bar.md`: definition of done, refactor-vs-patch criteria, native/HIG bar, mandatory-rules checklist. Read early.
 - `references/orchestration.md`: the investigation and challenge workflow scripts, with the agent charters written out. Read before Phase 1.
 - `references/research-sources.md`: Apple documentation map, dependency headers, research tools, competitor apps, and what counts as evidence. The investigators use this.
 - `references/verification.md`: build, test, and lint playbook, including the environment setup and the failures that are not yours. Read before Phase 4.

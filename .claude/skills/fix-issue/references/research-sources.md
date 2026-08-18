@@ -11,7 +11,7 @@ There are no MCP servers configured in this repo. Everything below is a built-in
 | `Grep` over the SDK `.swiftinterface` files | Confirming a symbol exists, its exact signature, and its `@available` annotations, for the toolchain we actually build with. Authoritative and offline. Path below. |
 | `WebSearch` | Finding the right HIG page, Apple sample code, competitor docs, WWDC session notes. |
 | `WebFetch` | Reading a specific Apple doc or competitor help page once you have the URL. |
-| `LSP` | Symbol definitions, references, and hover types inside the repo (the `swift-lsp` plugin is enabled). Faster and more exact than grep for "who calls this". |
+| `LSP` | Symbol definitions, references, and hover types inside the repo, when the session exposes the tool. It is not always present, so check before planning around it and fall back to `grep` for "who calls this". |
 | `Read` over `docs/` | TablePro's own shipped documentation (Mintlify source, in-repo). Check it so a fix does not contradict what users have been told. |
 
 ### The local SDK interface files

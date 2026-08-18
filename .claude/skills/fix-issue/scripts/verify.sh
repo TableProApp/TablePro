@@ -38,18 +38,31 @@ MAX_WAIT_SECONDS=1800
 # Source: .claude/skills/fix-issue/references/verification.md ("Test", rule 3).
 KNOWN_ENV_FAILURES="StatusBarSnapshotTests RowOperationsManagerBinaryCopyTests AWSSSOFetchTests SSEEventStreamTests CopilotIdleStopControllerTests"
 
+# Asking for help is not a usage error, so -h exits 0. Anything else exits 3, which a caller
+# running under `set -e` can distinguish from a real verdict.
 usage() {
     awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"
-    exit 3
+    exit "${1:-3}"
+}
+
+need_value() {
+    [ "$1" -ge 2 ] || { echo "$2 needs a value" >&2; usage; }
 }
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --run) RUN_DIR="$2"; shift 2 ;;
-        --root) REPO_ROOT="$(cd "$2" && pwd)"; shift 2 ;;
+        --run) need_value $# "--run"; RUN_DIR="$2"; shift 2 ;;
+        --root)
+            need_value $# "--root"
+            # Without this check a bad path leaves REPO_ROOT empty, and the run then builds and
+            # reports on a tree that is not the one asked for.
+            REPO_ROOT="$(cd "$2" 2> /dev/null && pwd)" || { echo "--root: no such directory: $2" >&2; exit 3; }
+            [ -n "$REPO_ROOT" ] || { echo "--root: no such directory: $2" >&2; exit 3; }
+            shift 2
+            ;;
         --no-wait) WAIT_FOR_XCODEBUILD=0; shift ;;
         --offline) OFFLINE=1; shift ;;
-        -h|--help) usage ;;
+        -h | --help) usage 0 ;;
         --*) echo "unknown option: $1" >&2; usage ;;
         *) break ;;
     esac
@@ -63,7 +76,12 @@ if [ -z "$RUN_DIR" ]; then
     RUN_DIR="$REPO_ROOT/.analysis/${branch//\//-}"
 fi
 LOG_DIR="$RUN_DIR/logs"
-mkdir -p "$LOG_DIR"
+# Only the steps that produce a log create the directory. `parse` and `tail` read an existing
+# log and used to leave an empty logs/ tree wherever --run pointed.
+case "$STEP" in
+    parse | tail) ;;
+    *) mkdir -p "$LOG_DIR" ;;
+esac
 
 # ---------------------------------------------------------------------------- reporting helpers
 
@@ -244,6 +262,8 @@ run_logged() {
 case "$STEP" in
     tail)
         [ $# -ge 1 ] || usage
+        # A mistyped path used to print the shell's error and still exit 0, which reads as success.
+        [ -f "$1" ] || { echo "no such log: $1" >&2; exit 3; }
         tail -n "${2:-60}" "$1"
         exit 0
         ;;
@@ -254,12 +274,25 @@ case "$STEP" in
         STEP_DETAIL="$1"
         STATUS=PASS
         grep -q '^\*\* \(BUILD\|TEST\) FAILED \*\*' "$1" 2> /dev/null && STATUS=FAIL
-        diagnose_environment "$1" && STATUS=INCONCLUSIVE
-        if grep -qiE "$PASS_PATTERN|$FAIL_PATTERN" "$1" 2> /dev/null; then
+
+        # Treat anything that looks like a test run as one, not only a log that already has case
+        # lines. A wedged host prints TEST SUCCEEDED with zero cases, and keying on case lines
+        # meant report_tests never ran, so that log parsed as a pass.
+        if grep -qiE "$PASS_PATTERN|$FAIL_PATTERN|^Test Suite |-only-testing:|^\*\* TEST (SUCCEEDED|FAILED) \*\*" "$1" 2> /dev/null; then
             report_tests "$1"
         else
-            note "$(report_errors "$1")"
+            parse_errors="$(report_errors "$1")"
+            if [ -n "$parse_errors" ]; then
+                note "$parse_errors"
+                # swiftlint and other non-xcodebuild tools never print the ** BUILD FAILED **
+                # banner, so without this a lint log full of errors reported PASS and exit 0.
+                STATUS=FAIL
+            fi
         fi
+
+        # An environment cause outranks whatever the log appears to say, because the run did not
+        # get far enough to be evidence about the change. This runs last so nothing overwrites it.
+        diagnose_environment "$1" && STATUS=INCONCLUSIVE
         emit "$1" "-"
         ;;
 
@@ -315,18 +348,22 @@ case "$STEP" in
         run_logged "$log" xcodebuild -project "$REPO_ROOT/TablePro.xcodeproj" -scheme TablePro \
             test $(xcodebuild_flags) "${filters[@]}"
         code=$?
-        if grep -q '^\*\* TEST SUCCEEDED \*\*' "$log" 2> /dev/null; then
-            STATUS=PASS
-        else
+        # report_tests owns the verdict on this path, so reading the TEST SUCCEEDED banner here
+        # was dead: it was always overwritten. Keep the environment answer instead, which the
+        # build path already honours and this path used to discard.
+        env_failed=1
+        diagnose_environment "$log" && env_failed=0
+
+        if grep -qE '(^|[^a-zA-Z])error: ' "$log" 2> /dev/null && ! grep -qiE "$PASS_PATTERN|$FAIL_PATTERN" "$log" 2> /dev/null; then
             STATUS=FAIL
-        fi
-        diagnose_environment "$log"
-        if grep -qE '(^|[^a-zA-Z])error: ' "$log" 2> /dev/null && ! grep -qiE "^test case .* (passed|failed)" "$log" 2> /dev/null; then
             note "cause: the test target failed to build. The errors below are compile errors, not test failures."
             note "$(report_errors "$log")"
+            [ "$env_failed" -eq 0 ] && STATUS=INCONCLUSIVE
             emit "$log" $code
         fi
+
         report_tests "$log"
+        [ "$env_failed" -eq 0 ] && STATUS=INCONCLUSIVE
         emit "$log" $code
         ;;
 
@@ -362,6 +399,23 @@ case "$STEP" in
         else
             STATUS=FAIL
             note "$(grep -E ':[0-9]+:[0-9]+: (error|warning):' "$log" 2> /dev/null | sed 's/^/  /' | head -15)"
+        fi
+
+        # Lint the agent-facing docs in the same pass. They are instructions the next run acts on,
+        # so a stale symbol there is a defect the same way a lint violation is, and it is the one
+        # class of defect nothing else in this repo catches.
+        doc_check="$REPO_ROOT/scripts/check-doc-symbols.sh"
+        if [ -x "$doc_check" ]; then
+            doc_out="$("$doc_check" 2>&1)"
+            doc_code=$?
+            if [ "$doc_code" -ne 0 ]; then
+                [ "$STATUS" = "PASS" ] && STATUS=FAIL
+                note "docs: $(printf '%s' "$doc_out" | tail -3 | head -1)"
+                note "$(printf '%s' "$doc_out" | grep -E '^(CLAUDE|\.claude)' | sed 's/^/  /' | head -10)"
+                note "  run scripts/check-doc-symbols.sh for the full list"
+            else
+                note "docs: $(printf '%s' "$doc_out" | tail -1)"
+            fi
         fi
         emit "$log" $code
         ;;

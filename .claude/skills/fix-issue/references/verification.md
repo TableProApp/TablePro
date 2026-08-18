@@ -46,7 +46,9 @@ Run it after adding, moving, or deleting any source file, and after editing `pro
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
 ```
 
-**If the change touched a registry-only plugin, build the aggregate too.** The `TablePro` scheme depends only on the 14 bundled plugins, and nothing in PR CI compiles the 16 registry-only ones (MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL, Snowflake, Elasticsearch, Beancount, SurrealDB, Teradata, Trino). A hard compile error in one of those still produces `BUILD SUCCEEDED` under the app scheme, and green CI proves nothing about it.
+**The `TablePro` scheme only builds the 14 bundled plugins**, so a hard compile error in one of the 17 registry-only ones still produces `BUILD SUCCEEDED` under the app scheme. Build the aggregate when you want that answer locally before pushing.
+
+PR CI does cover it, contrary to what this file used to say: the `Compile every plugin` step in the `app-tests` job of `.github/workflows/macos-tests.yml` builds `-scheme AllPlugins` whenever the change touches `Plugins/` or another watched path. That step landed on 2026-08-11 in #2091. What CI still does not exercise is plugin packaging, signing and notarization, which run only from `build-plugin.yml` on a release tag, and `scripts/check-pluginkit-abi.sh`, which has no CI wiring at all.
 
 ```bash
 xcodebuild -project TablePro.xcodeproj -scheme AllPlugins -configuration Debug build -skipPackagePluginValidation
@@ -56,7 +58,7 @@ xcodebuild -project TablePro.xcodeproj -scheme AllPlugins -configuration Debug b
 
 **`Could not resolve package dependencies` means SwiftPM tried the network.** Rerun through the wrapper with `--offline`, which pins `-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile` to the revisions already in `Package.resolved`. It is an environment failure, not a change failure.
 
-**`Unable to open base configuration reference file` means `Secrets.xcconfig` is missing**, which is the normal state of a fresh worktree. A worktree also needs `Libs/*.a`, `Libs/dylibs`, and `Libs/ios`. `scripts/worktree.sh` symlinks all four when it creates one; if the tree came from somewhere else, link them by hand before blaming the toolchain.
+**`Unable to open base configuration reference file` means `Secrets.xcconfig` is missing**, which is the normal state of a fresh worktree. A worktree also needs `Libs/*.a`, `Libs/dylibs`, and `Libs/ios`. `.claude/skills/fix-issue/scripts/worktree.sh` symlinks all four when it creates one; if the tree came from somewhere else, link them by hand before blaming the toolchain.
 
 **`scripts/check-pluginkit-abi.sh` has no CI wiring at all.** It is manual only, despite guarding the hazard behind two registry-wide plugin outages. Run `verify.sh abi <merge-base>` yourself for any shared plugin API change; nothing else will.
 
@@ -129,7 +131,7 @@ Two things to know:
 
 - **SwiftLint's `included:` scope is `TablePro` only.** `Plugins/`, `LocalPackages/`, and the test targets are never linted by a bare `swiftlint lint`. Pass explicit paths to lint a change outside the app target.
 - **Local `swiftformat` is a version behind the repo `.swiftformat`** and rejects `--ifdefindent`, so it cannot run here. Rely on SwiftLint plus reading the diff.
-- **Never remove the four `force_unwrapping` disables** in the config to satisfy a local SwiftLint. The CI toolchain differs from the local one.
+- **Never remove a `swiftlint:disable force_unwrapping` comment** to satisfy a local run. There are five of them, inline in four files, not in the config: `.swiftlint.yml` enables the rule as an opt-in and sets it to `warning`. The CI toolchain differs from this one, so a disable that looks unnecessary here is load-bearing there.
 
 ## Branch safety
 

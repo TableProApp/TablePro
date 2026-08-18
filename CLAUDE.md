@@ -4,28 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Principles
 
-These govern every decision — code, architecture, tooling, and process:
+These govern every decision about code, architecture, tooling and process:
 
-1. **Security first** — never introduce vulnerabilities (injection, XSS, OWASP top 10). Validate at system boundaries.
-2. **Native only** — use native macOS/iOS components (AppKit, SwiftUI, system frameworks). No cross-platform abstractions, no web views for native UI.
-3. **Clean architecture** — proper separation of concerns, protocol-oriented design, dependency injection where appropriate. Every task must consider its impact on architecture and code quality, not just the immediate problem.
-4. **Clean code** — self-explanatory naming, early returns over nested conditionals, small focused functions. No comments in the codebase — code must be self-documenting through clear naming and structure.
-5. **Root cause fixes** — don't patch symptoms. Diagnose the underlying issue, add logging to debug if needed, then fix the actual cause.
-6. **No hacky solutions** — no backward-compatibility shims, no temporary workarounds left in place, no duct tape. If the right fix is harder, do the right fix.
-7. **Testability** — every testable code change needs unit/function tests, and UI/user-flow changes should add UI automation where they run deterministically. When tests fail, fix the source code — never adjust tests to match incorrect output.
-8. **Maintainability** — follow existing patterns but offer refactors when they improve quality. Extract into extensions when approaching size limits. Group by domain logic.
-9. **Scalability** — design for the plugin system's open-ended nature. `DatabaseType` is a struct, not an enum. All switches need `default:`.
+1. **Security first**: never introduce vulnerabilities (injection, XSS, OWASP top 10). Validate at system boundaries.
+2. **Native only**: use native macOS/iOS components (AppKit, SwiftUI, system frameworks). No cross-platform abstractions, no web views for native UI.
+3. **Clean architecture**: proper separation of concerns, protocol-oriented design, dependency injection where appropriate. Every task must consider its impact on architecture and code quality, not just the immediate problem.
+4. **Clean code**: self-explanatory naming, early returns over nested conditionals, small focused functions. No comments in the codebase, code must be self-documenting through clear naming and structure.
+5. **Root cause fixes**: don't patch symptoms. Diagnose the underlying issue, add logging to debug if needed, then fix the actual cause.
+6. **No hacky solutions**: no backward-compatibility shims, no temporary workarounds left in place, no duct tape. If the right fix is harder, do the right fix.
+7. **Testability**: every testable code change needs unit/function tests, and UI/user-flow changes should add UI automation where they run deterministically. When tests fail, fix the source code, never adjust tests to match incorrect output.
+8. **Maintainability**: follow existing patterns but offer refactors when they improve quality. Extract into extensions when approaching size limits. Group by domain logic.
+9. **Scalability**: design for the plugin system's open-ended nature. `DatabaseType` is a struct, not an enum. All switches need `default:`.
 
 ## Project Overview
 
-TablePro is a native macOS database client (SwiftUI + AppKit) — a fast, lightweight alternative to TablePlus. macOS 14.0+, Swift 5.9, Universal Binary (arm64 + x86_64).
+TablePro is a native macOS database client (SwiftUI + AppKit), a fast, lightweight alternative to TablePlus. macOS 14.0+, `SWIFT_VERSION = 5.0` (`Configs/Base.xcconfig`), Universal Binary (arm64 + x86_64).
 
-- **Source**: `TablePro/` — `Core/` (business logic, services), `Views/` (UI), `Models/` (data structures), `ViewModels/`, `Extensions/`, `Theme/`
-- **Plugins**: `Plugins/` — `.tableplugin` bundles + `TableProPluginKit` shared framework.
-    - **Bundled in app** (the 14 targets in the app's copy-to-PlugIns phase in `project.yml`): MySQL, PostgreSQL, SQLite, ClickHouse, Redis, CSV export, JSON export, SQL export, XLSX export, MQL export, SQL import, JSON import, CSV import, CSV inspector. Shipped only inside the app bundle. **Never publish bundled plugins to the registry.** Updates ride with the next app release.
-    - **Registry-only** (the other 16): MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL, Snowflake, Elasticsearch, Beancount, SurrealDB, Teradata, Trino. Distributed via [TableProApp/plugins](https://github.com/TableProApp/plugins) `plugins.json`, installed into the user plugins directory.
+- **Source**: `TablePro/` holds `Core/` (business logic, services), `Views/` (UI), `Models/` (data structures), `ViewModels/`, `Extensions/` and `Theme/`
+- **Plugins**: `Plugins/` holds the `.tableplugin` bundles plus the `TableProPluginKit` shared framework.
+    - **Bundled in app** (the 14 targets in the app's `copy: { destination: plugins }` phase in `project.yml`): MySQL, PostgreSQL, SQLite, ClickHouse, Redis, CSV export, JSON export, SQL export, XLSX export, MQL export, SQL import, JSON import, CSV import, CSV inspector. These ship inside the app bundle and their updates normally ride with the next app release. Six of them (`sqlite`, `clickhouse`, `redis`, `xlsx`, `mql`, `sqlimport`) also have registry arms in `build-plugin.yml`, so a bundled plugin can be published when users on an already-shipped app need the fix sooner. `scripts/build-plugin.sh:10` explains the flag that makes that work.
+    - **Registry-only** (the other 17): MongoDB, Oracle, DuckDB, MSSQL, Cassandra, Etcd, CloudflareD1, DynamoDB, BigQuery, LibSQL, Snowflake, Elasticsearch, Beancount, SurrealDB, Teradata, Trino, Dameng. Distributed via [TableProApp/plugins](https://github.com/TableProApp/plugins) `plugins.json`, installed into the user plugins directory.
 - **C bridges**: Each plugin contains its own C bridge module (e.g., `Plugins/MySQLDriverPlugin/CMariaDB/`, `Plugins/PostgreSQLDriverPlugin/CLibPQ/`)
-- **Static libs**: `Libs/` — pre-built `.a` files. `Libs/ios/` — xcframeworks for iOS. Both downloaded via `scripts/download-libs.sh` (not in git)
+- **Static libs**: `Libs/` holds pre-built `.a` files and `Libs/ios/` holds the iOS xcframeworks. Both are downloaded by `scripts/download-libs.sh` and are not in git.
 - **SPM deps**: declared in `project.yml`. Vendored local packages under `LocalPackages/` (CodeEditSourceEditor, CodeEditTextView, CodeEditLanguages) and `Packages/` (TableProCore, TableProOracle); remote packages are Sparkle, swift-certificates and Yams. Revisions are pinned by the tracked `Package.resolved` inside each generated `.xcodeproj`.
 
 ## Build & Development Commands
@@ -35,7 +35,7 @@ TablePro is a native macOS database client (SwiftUI + AppKit) — a fast, lightw
 scripts/download-libs.sh          # static libraries, not in git
 scripts/generate-project.sh       # generates both .xcodeproj bundles from project.yml
 
-# Build (development) — -skipPackagePluginValidation required for SwiftLint plugin in CodeEditSourceEditor
+# Build (development), -skipPackagePluginValidation required for SwiftLint plugin in CodeEditSourceEditor
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
 
 # Clean build
@@ -100,19 +100,19 @@ gh release upload libs-v1 /tmp/tablepro-libs-ios-v1.tar.gz --clobber --repo Tabl
 
 Run `scripts/generate-project.sh` after editing any of those, and after adding, moving, or deleting a source file: XcodeGen globs sources at generation time, so a new file is not in the project until you regenerate. Changing signing in the Xcode UI is pointless, because the next generate discards it; set `TABLEPRO_DEVELOPMENT_TEAM` and `TABLEPRO_APP_BUNDLE_IDENTIFIER` in `Configs/Secrets.xcconfig` instead.
 
-The 30 plugin bundles share one `DriverPlugin` target template; a plugin declares only its folder, principal class, and any C-library link flags. Every target gets a shared scheme named after it, which is what `scripts/build-plugin.sh -scheme <PluginTarget>` builds. The `AllPlugins` aggregate target compile-checks all 30, including the registry-only ones the app does not embed.
+The 31 plugin bundles share one `DriverPlugin` target template; a plugin declares only its folder, principal class, and any C-library link flags. Every target gets a shared scheme named after it, which is what `scripts/build-plugin.sh <PluginTarget> [arm64|x86_64|both] [version]` builds. The `AllPlugins` aggregate target compile-checks all 31, including the registry-only ones the app does not embed, and PR CI runs it: the `Compile every plugin` step in the `app-tests` job of `.github/workflows/macos-tests.yml` builds that scheme whenever the change touches `Plugins/` or any other watched path. What PR CI still does not cover is plugin packaging, signing and notarization, which only `build-plugin.yml` does and only on a release tag.
 
 ### Plugin System
 
 All database drivers are `.tableplugin` bundles loaded at runtime by `PluginManager` (`Core/Plugins/`):
 
-- **TableProPluginKit** (`Plugins/TableProPluginKit/`) — shared framework with `PluginDatabaseDriver`, `DriverPlugin`, `TableProPlugin` protocols and transfer types (`PluginQueryResult`, `PluginColumnInfo`, etc.). This is the single source of truth; the SwiftPM target at `Packages/TableProCore/Sources/TableProPluginKit` is a symlink to it, so edit the files under `Plugins/TableProPluginKit/` only.
-- **PluginDriverAdapter** (`Core/Plugins/PluginDriverAdapter.swift`) — bridges `PluginDatabaseDriver` → `DatabaseDriver` protocol
-- **DatabaseDriverFactory** (`Core/Database/DatabaseDriver.swift`) — looks up plugins via `DatabaseType.pluginTypeId`
-- **DatabaseManager** (`Core/Database/DatabaseManager.swift`) — connection pool, lifecycle, primary interface for views/coordinators
-- **ConnectionHealthMonitor** — 30s ping, auto-reconnect with exponential backoff
+- **TableProPluginKit** (`Plugins/TableProPluginKit/`), shared framework with `PluginDatabaseDriver`, `DriverPlugin`, `TableProPlugin` protocols and transfer types (`PluginQueryResult`, `PluginColumnInfo`, etc.). This is the single source of truth; the SwiftPM target at `Packages/TableProCore/Sources/TableProPluginKit` is a symlink to it, so edit the files under `Plugins/TableProPluginKit/` only.
+- **PluginDriverAdapter** (`Core/Plugins/PluginDriverAdapter.swift`), bridges `PluginDatabaseDriver` → `DatabaseDriver` protocol
+- **DatabaseDriverFactory** (`Core/Database/DatabaseDriver.swift`), looks up plugins via `DatabaseType.pluginTypeId`
+- **DatabaseManager** (`Core/Database/DatabaseManager.swift`), connection pool, lifecycle, primary interface for views/coordinators
+- **ConnectionHealthMonitor**: 30s ping, auto-reconnect with exponential backoff
 
-When adding a new driver: create a new plugin bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver`, add the target to `project.yml`, add `DatabaseType` static constant, add a `case` arm to the `case "$PLUGIN_NAME"` block in the `Resolve plugin info` step of `.github/workflows/build-plugin.yml`, add row to `docs/index.mdx` supported databases table, and add CHANGELOG entry. See `docs/development/plugin-system/` for details.
+When adding a new driver: create a new plugin bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver`, add the target to `project.yml`, add `DatabaseType` static constant, add a `case` arm to the `case "$PLUGIN_NAME"` block in the `Resolve plugin info` step of `.github/workflows/build-plugin.yml`, add row to `docs/index.mdx` supported databases table, and add CHANGELOG entry. See `docs/development/plugin-development.mdx` and `docs/development/plugin-registry.mdx` for details.
 
 When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (with default implementation), then update `PluginDriverAdapter` to bridge it to `DatabaseDriver`. This is an additive, ABI-safe change (see below) and needs no version bump.
 
@@ -143,16 +143,16 @@ When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (
 ### DatabaseType (String-Based Struct)
 
 `DatabaseType` is a string-based struct (not an enum):
-- All `switch` statements must include `default:` — the type is open
+- All `switch` statements must include `default:`, the type is open
 - Use static constants (`.mysql`, `.postgresql`) for known types
-- Unknown types (from future plugins) are valid — they round-trip through Codable
+- Unknown types (from future plugins) are valid, they round-trip through Codable
 - Use `DatabaseType.allKnownTypes` (not `allCases`) for the canonical list
 
 ### Editor Architecture (CodeEditSourceEditor)
 
-- **`SQLEditorTheme`** — single source of truth for editor colors/fonts
-- **`TableProEditorTheme`** — adapter to CodeEdit's `EditorTheme` protocol
-- **`CompletionEngine`** — framework-agnostic; **`SQLCompletionAdapter`** bridges to CodeEdit's `CodeSuggestionDelegate`
+- **`SQLEditorTheme`**: single source of truth for editor colors/fonts
+- **`TableProEditorTheme`**: adapter to CodeEdit's `EditorTheme` protocol
+- **`CompletionEngine`**: framework-agnostic; **`QueryCompletionAdapter`** bridges to CodeEdit's `CodeSuggestionDelegate`
 - Editor tabs are drawn by `EditorTabStrip`, not by native window tabs. A window belongs to exactly one `NSWindow` tab group and that group's bar shows every window in it, so a window hosting several connections could only ever show all of their tabs interleaved. Window tabbing itself stays on AppKit's terms: `TabWindowController` leaves `tabbingMode` at `.automatic`, which is the user's own System Settings preference, and never forces `.preferred`.
 - Cursor model: `cursorPositions: [CursorPosition]` (multi-cursor via CodeEditSourceEditor)
 
@@ -160,7 +160,7 @@ When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (
 
 1. User edits cell → `DataChangeManager` records change
 2. User clicks Save → `SQLStatementGenerator` produces INSERT/UPDATE/DELETE
-3. `DataChangeUndoManager` provides undo/redo
+3. Undo and redo come from a private `UndoManager` inside `StructureChangeManager`, plus `ConnectionWorkspace.undoManager`
 4. `AnyChangeManager` abstracts over concrete manager for protocol-based usage
 
 ### Invariants
@@ -177,7 +177,7 @@ These have caused real bugs when violated:
 
 **Window tab titles**: The native tab label follows `NSWindow.title`, and AppKit renders it for background tabs too, so the title must be correct from creation, not from first activation. Every title resolves through `WindowTitleResolver` (pure, AppKit-free): `MainSplitViewController.init` for the payload-driven initial title, `updateWindowTitleAndFileState()` in `MainContentView+Setup.swift` for ongoing tab-driven updates. The resolver treats a blank string as absent at every tier and always recomputes a `.table` tab's name from `tableName`+`schemaName` instead of trusting a carried-over title. `TabWindowController.init` pushes the resolved title onto `window.title`/`window.subtitle` right after assigning `contentViewController`, because a joined-but-never-activated tab window never runs `viewWillAppear` or its SwiftUI lifecycle. `MainSplitViewController.windowTitle`'s `didSet` is the single guarded sink and never lets an empty string reach `NSWindow.title`. Never write `window.title` or `NSApp.keyWindow?.title` directly; mutate `tab.title` and call `QueryTabManager.markTabRenamed(_:)` so the resolver re-runs. A restored tab whose persisted title decoded to "" shipped as a blank tab label that only healed on activation. Editor tabs are no longer windows, so there are now two labels with two owners: the window titlebar goes through `WindowTitleResolver` and the guarded `windowTitle` sink, while the editor tab label is `Text(tab.title)` in `EditorTabStrip` with no resolver between it and the string. Blank-title healing therefore has to hold at `QueryTab.title` itself.
 
-**Schema loading**: `SQLSchemaProvider` (actor) stores an in-flight `loadTask: Task<Void, Never>?`. Concurrent callers `await` the same Task instead of firing duplicate `fetchTables()` queries. Never use a boolean `isLoading` guard that returns without data — callers need to await the result.
+**Schema loading**: `SQLSchemaProvider` (actor) stores an in-flight `loadTask: Task<Void, Never>?`. Concurrent callers `await` the same Task instead of firing duplicate `fetchTables()` queries. Never use a boolean `isLoading` guard that returns without data, callers need to await the result.
 
 **A refresh never clears the cache it is refreshing**: fetch first, then commit over the old value. A loading flag that discards data is a blank screen: `SchemaService.runLoad` used to write `states[id] = .loading` before the network call, which made `tables(for:)` return `[]`, so `SidebarView`'s `case .loading where tables.isEmpty` matched on every refresh and the whole object list became a spinner (#1916). Only enter `.loading` when there is no loaded content (`hasLoadedContent`), signal an in-flight refresh separately (`isRefreshing`), and keep a failed refresh from replacing good data (the guard `markLoadFailed` already had). The same rule covers per-schema state and `StructureTabDataState`, where "has data" (drives the tab counts) is deliberately separate from "needs refetch" (drives the reload) so marking everything stale never blanks a count. `DatabaseTreeMetadataService.reloadTablesInPlace` is the reference shape. Use `prepareForReload` before a reload and reserve `invalidate` for genuine teardown (disconnect, database switch); invalidating to force a reload wipes the visible tree.
 
@@ -189,7 +189,7 @@ These have caused real bugs when violated:
 
 **The app runs the AppKit lifecycle, and AppKit owns the menu bar**: `main.swift` assigns the delegate before `NSApplicationMain`, and `MainMenuBuilder.install` runs in `applicationWillFinishLaunching`. Do not reintroduce a SwiftUI `App`. SwiftUI reconciles `NSApp.mainMenu` once shortly after launch and removes every item it did not build itself, and no hook can undo it: `NSApp.mainMenu` is not KVO-compliant, `didUpdateNotification`, `didBecomeKeyNotification` and the `applicationDidUpdate(_:)` delegate method never fire under `@NSApplicationDelegateAdaptor`, and `applicationDidBecomeActive` fires before the reconciliation. Only a wall-clock delay worked, which is why #2057 shipped a menu bar that vanished half a second after launch and had to be reverted (#2071). Every window is an `NSWindowController`; the Welcome window is one too, so closing it is an ordinary `close()` and the old "closed, never ordered out" rule no longer applies.
 
-**An emptied tab manager is not the same as "the user closed every tab"**: `saveOrClearAggregatedSync()` is the one persistence path where an empty aggregate means *clear*, so it deletes the connection's saved tabs from disk. A coordinator torn down by a lost session has already emptied `tabManager.tabs`, so letting the window-close path run afterwards wipes tabs the user never closed. `handleWindowWillClose` guards on `isTearingDown` for that reason.
+**An emptied tab manager is not the same as "the user closed every tab"**: a coordinator torn down by a lost session has already emptied `tabManager.tabs`, so any persistence path that reads "no tabs" as "clear the saved tabs" wipes tabs the user never closed. The fix is that the teardown path cannot clear at all: `TabPersistenceCoordinator.saveAggregatedSync()`, which disconnect and window-close call, opens with `guard !tabs.isEmpty else { return }`. Clearing requires explicit consent and happens on the `closeTabsByUser` path instead. Keep those two paths separate; the moment a teardown path can write an empty aggregate, the bug is back.
 
 **A split pane's `holdingPriority` must stay below 490**: AppKit applies a divider drag as a layout change at `dragThatCannotResizeWindow` (490). Any pane whose `holdingPriority` is at or above that outranks the drag, so its width constraint wins and the divider cannot move at all. `.defaultHigh` (750) freezes it outright, which shipped as three dead dividers (Users & Roles, Structure triggers, Server Dashboard). Use `.splitPaneHolding` (260, the value AppKit itself gives a sidebar item): high enough to outrank a `.defaultLow` (250) sibling so the pane holds its size when the window resizes, low enough that a drag still wins. `.defaultLow` is not the fix, since the pane then grows with the window instead of holding. (#1872)
 
@@ -207,11 +207,11 @@ These have caused real bugs when violated:
 
 ### Main Coordinator Pattern
 
-`MainContentCoordinator` is the central coordinator, split across 7+ extension files in `Views/Main/Extensions/` (e.g., `+Alerts`, `+Filtering`, `+Pagination`, `+RowOperations`). When adding coordinator functionality, add a new extension file rather than growing the main file.
+`MainContentCoordinator` is the central coordinator, split across 51 extension files in `Views/Main/Extensions/` (e.g., `+Alerts`, `+Filtering`, `+Pagination`, `+RowOperations`). When adding coordinator functionality, add a new extension file rather than growing the main file.
 
 ### Window Close (Cmd+W)
 
-`EditorWindow` (NSWindow subclass in `TabWindowController.swift`) overrides `performClose:` to route Cmd+W through `closeTab()`. SwiftUI's `.commands { Button(...).keyboardShortcut("w") }` does NOT replace AppKit's built-in "File > Close" — both fire, and AppKit's wins. The NSWindow subclass is the correct native pattern.
+`EditorWindow` (NSWindow subclass in `TabWindowController.swift`) overrides `performClose:` to route Cmd+W through `closeTab()`. SwiftUI's `.commands { Button(...).keyboardShortcut("w") }` does NOT replace AppKit's built-in "File > Close", both fire, and AppKit's wins. The NSWindow subclass is the correct native pattern.
 
 ### Storage Patterns
 
@@ -220,7 +220,7 @@ These have caused real bugs when violated:
 | Connection passwords | Keychain         | `ConnectionStorage`                         |
 | User preferences     | UserDefaults     | `AppSettingsStorage` / `AppSettingsManager` |
 | Query history        | SQLite FTS5      | `QueryHistoryStorage`                       |
-| Tab state            | JSON persistence | `TabPersistenceService` / `TabStateStorage` |
+| Tab state            | JSON persistence | `TabPersistenceCoordinator` / `TabDiskActor` |
 | Filter defaults      | UserDefaults     | `FilterSettingsStorage` (default column/operator, panel state) |
 | Filter presets       | UserDefaults     | `FilterPresetStorage`                       |
 | Per-table filters    | JSON files       | `FilterSettingsStorage` (one file per connection + database + schema + table; saves the valid working set, each row's enabled flag included) |
@@ -232,7 +232,7 @@ These have caused real bugs when violated:
 
 ### Logging & Debugging
 
-Use OSLog for all logging, never `print()`. When debugging issues, add structured OSLog statements to trace the problem — don't guess.
+Use OSLog for all logging, never `print()`. When debugging issues, add structured OSLog statements to trace the problem, don't guess.
 
 ```swift
 import os
@@ -241,10 +241,10 @@ private static let logger = Logger(subsystem: "com.TablePro", category: "Compone
 
 ## Code Style
 
-**Authoritative sources**: `.swiftlint.yml` and `.swiftformat` — check those files for the full rule set. Key points:
+**Authoritative sources**: `.swiftlint.yml` and `.swiftformat`, check those files for the full rule set. Key points:
 
-- **No comments** — code must be self-explanatory through naming and structure. Never add comments that describe what code does, reference tasks/tickets, or explain callers.
-- **Early returns** — use `guard` and early `return` instead of nested `if/else` blocks. Flatten control flow.
+- **No comments**: code must be self-explanatory through naming and structure. Never add comments that describe what code does, reference tasks/tickets, or explain callers.
+- **Early returns**: use `guard` and early `return` instead of nested `if/else` blocks. Flatten control flow.
 - **4 spaces** indentation (never tabs)
 - **120 char** target line length (SwiftFormat); SwiftLint warns at 180, errors at 300
 - **K&R braces**, LF line endings, no semicolons, no trailing commas
@@ -255,8 +255,7 @@ private static let logger = Logger(subsystem: "com.TablePro", category: "Compone
         var semanticKeyCode: KeyCode? { ... }
     }
     ```
-- **No force unwrapping/casting** — use `guard let`, `if let`, `as?`
-- **Acronyms as words**: `JsonEncoder` not `JSONEncoder` (except SDK types)
+- **No force unwrapping/casting**: use `guard let`, `if let`, `as?`
 
 ### SwiftLint Limits
 
@@ -271,11 +270,11 @@ When approaching limits: extract into `TypeName+Category.swift` extension files 
 
 ## Mandatory Rules
 
-These are **non-negotiable** — never skip them:
+These are **non-negotiable**, never skip them:
 
 1. **CHANGELOG.md**: Follow [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). Update under `[Unreleased]` using the canonical sections: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`. Do **not** add a "Fixed" entry for fixing something that is itself still unreleased; fold the fix into the Added or Changed entry instead. Documentation-only changes (`docs/`, `CLAUDE.md`, `CHANGELOG.md` formatting) do **not** need a CHANGELOG entry. Each entry is one line, user-facing, with no file paths, class names, or method signatures; reference IDs go in parens at the end: `(#1234)`.
 
-2. **Localization**: Use `String(localized:)` for new user-facing strings in computed properties, AppKit code, alerts, and error descriptions. SwiftUI view literals (`Text("literal")`, `Button("literal")`) auto-localize. Do NOT localize technical terms (font names, database types, SQL keywords, encoding names). Never use `String(localized:)` with string interpolation — `String(localized: "Preview \(name)")` creates a dynamic key that never matches the strings catalog. Use `String(format: String(localized: "Preview %@"), name)`.
+2. **Localization**: Use `String(localized:)` for new user-facing strings in computed properties, AppKit code, alerts, and error descriptions. SwiftUI view literals (`Text("literal")`, `Button("literal")`) auto-localize. Do NOT localize technical terms (font names, database types, SQL keywords, encoding names). Never use `String(localized:)` with string interpolation, `String(localized: "Preview \(name)")` creates a dynamic key that never matches the strings catalog. Use `String(format: String(localized: "Preview %@"), name)`.
 
 3. **Documentation**: Update docs in `docs/` (Mintlify-based) when adding/changing features:
     - New keyboard shortcuts → `docs/features/keyboard-shortcuts.mdx`
@@ -283,9 +282,9 @@ These are **non-negotiable** — never skip them:
     - Settings changes → `docs/customization/settings.mdx`
     - Database driver changes → `docs/databases/*.mdx`
 
-4. **Tests**: Every change with testable behavior must include or update unit/function tests. UI and user-flow changes should add or update `TableProUITests` UI automation where the flow runs deterministically; if it can't, note why in the PR description. When tests fail, fix the source code — never adjust tests to match incorrect output. Tests define expected behavior.
+4. **Tests**: Every change with testable behavior must include or update unit/function tests. UI and user-flow changes should add or update `TableProUITests` UI automation where the flow runs deterministically; if it can't, note why in the PR description. When tests fail, fix the source code, never adjust tests to match incorrect output. Tests define expected behavior.
 
-5. **Lint after changes**: Run `swiftlint lint --strict` to verify compliance.
+5. **Lint after changes**: Run `swiftlint lint --strict` to verify compliance. `.swiftlint.yml` sets `included: [TablePro]`, so a bare run never sees `Plugins/`, `Packages/`, `LocalPackages/` or the test targets. Pass those paths explicitly when your change is outside the app target, or the run passes while your code is broken.
 
 6. **Commit messages**: Follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). Single line only, no description body. Format: `<type>(<scope>): <description>`. Scope is optional but preferred when the change has a clear domain. Use `!` after type or scope for breaking changes (e.g. `refactor(ai-providers)!: drop OpenAI legacy completion endpoint`).
 
@@ -306,12 +305,12 @@ These are **non-negotiable** — never skip them:
 
 These have caused real production bugs:
 
-- **Never use `ForEach($bindable.array) { $item in }`** on `@Observable` arrays that can be cleared externally — index-based bindings crash with out-of-bounds when the array shrinks during SwiftUI evaluation. Use `ForEach(array) { item in` with a manual `Binding` via `binding(for: item)`.
-- **Never use `string.count`** on large strings — O(n) in Swift. Use `(string as NSString).length` for O(1).
-- **Never use `string.index(string.startIndex, offsetBy:)` in loops** on bridged NSStrings — O(n) per call. Use `(string as NSString).character(at:)` for O(1) random access.
-- **Never call `ensureLayout(forCharacterRange:)`** — defeats `allowsNonContiguousLayout`. Let layout manager queries trigger lazy local layout.
-- **SQL dumps can have single lines with millions of characters** — cap regex/highlight ranges at 10k chars.
-- **Tab persistence**: `QueryTab.toPersistedTab()` truncates queries >500KB to prevent JSON freeze. `TabStateStorage.saveLastQuery()` skips writes >500KB.
+- **Never use `ForEach($bindable.array) { $item in }`** on `@Observable` arrays that can be cleared externally, index-based bindings crash with out-of-bounds when the array shrinks during SwiftUI evaluation. Use `ForEach(array) { item in` with a manual `Binding` via `binding(for: item)`.
+- **Never use `string.count`** on large strings, O(n) in Swift. Use `(string as NSString).length` for O(1).
+- **Never use `string.index(string.startIndex, offsetBy:)` in loops** on bridged NSStrings, O(n) per call. Use `(string as NSString).character(at:)` for O(1) random access.
+- **Never call `ensureLayout(forCharacterRange:)`**: defeats `allowsNonContiguousLayout`. Let layout manager queries trigger lazy local layout.
+- **SQL dumps can have single lines with millions of characters**: cap regex/highlight ranges at 10k chars.
+- **Tab persistence**: a query longer than `TabQueryContent.maxPersistableQuerySize` (500,000 UTF-16 units) is blanked by `QueryTab.toPersistedTab()` to prevent a JSON freeze, and the full text moves to `TabQueryOverflowStore`. `RecentlyClosedTabStore` applies the same cap.
 
 ## Writing Style
 
@@ -333,7 +332,7 @@ If anything matches, rewrite before committing.
 
 ## CI/CD
 
-GitHub Actions (`.github/workflows/build.yml`) triggered by `v*` tags: lint → build arm64 → build x86_64 → release (DMG/ZIP + Sparkle signatures). Release notes auto-extracted from `CHANGELOG.md`.
+GitHub Actions (`.github/workflows/build.yml`) triggered by `v*` tags. The `release` job needs all five of `lint`, `test`, `build-arm64`, `build-x86_64` and `registry-readiness`, so a red test suite or a registry missing a compatible plugin binary blocks the tag. It produces the DMG and ZIP plus Sparkle signatures, and release notes are auto-extracted from `CHANGELOG.md`.
 
 **Plugin CI** (`.github/workflows/build-plugin.yml`): triggered by `plugin-*-v*` tags or `workflow_dispatch`. The dispatch input accepts comma-separated `tag:pluginKitVersion` pairs; if `:pluginKitVersion` is omitted, the workflow reads `currentPluginKitVersion` from `PluginManager.swift`. Registry update logic lives in `.github/scripts/update-registry.py` (atomic write, per-binary `pluginKitVersion`, prune-old policy). Use `scripts/release-all-plugins.sh <version>` for bulk re-release after an ABI bump.
 

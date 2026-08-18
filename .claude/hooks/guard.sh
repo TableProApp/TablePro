@@ -58,7 +58,11 @@ block() {
 case "$CHECK" in
     no-blanket-add)
         cmd="$(field '.tool_input.command')"
-        if printf '%s' "$cmd" | grep -qE '\bgit\b.*\badd\b[[:space:]]+(-A|-u|--all|\.)([[:space:]]|$)'; then
+        # Matched against the raw command, quoted spans included. That does fire on a command
+        # that merely quotes the pattern, which is the price of not opening the obvious bypass:
+        # stripping quotes first would wave through `bash -c '<the banned command>'`. A safety
+        # net should fail closed, and the denial message says what to do instead.
+        if printf '%s' "$cmd" | grep -qE '\bgit\b.*\b(add|stage)\b[[:space:]]+(-A|-u|--all|\.)([[:space:]]|$)'; then
             deny "Blanket git add is banned in this repository. Other sessions leave files in this tree, so -A, -u, --all, and . stage work that is not yours. Stage the explicit paths your change touches, then re-read git status --short."
         fi
         ;;
@@ -71,7 +75,10 @@ case "$CHECK" in
         ;;
 
     no-commit-push)
-        cmd="$(field '.tool_input.command')"
+        # Newlines are a command separator too, and a multi-line Bash block is the shape this
+        # actually arrives in. grep works a line at a time and `.*` never crosses a newline, so
+        # the two-line form slipped through until this flattened them into the separator class.
+        cmd="$(field '.tool_input.command' | tr '\n\r' ';;')"
         if printf '%s' "$cmd" | grep -qE '\bgit\b[^;&|]*\bcommit\b.*(&&|\|\||;).*\bgit\b[^;&|]*\bpush\b'; then
             deny "Never chain git commit into git push. That chain removed the last chance to notice a checkout sitting on main after a squash merge, and it pushed straight to the default branch. Commit first, read the result, then push as its own call."
         fi
@@ -84,6 +91,10 @@ case "$CHECK" in
             *.swift) ;;
             *) exit 0 ;;
         esac
+        # Only a file git has never seen needs a regeneration: XcodeGen globs at generation time,
+        # so an existing target member is already compiled. Without this the note fired on every
+        # edit to every Swift file, which trains you to ignore it.
+        git -C "$(dirname "$path")" ls-files --error-unmatch "$path" > /dev/null 2>&1 && exit 0
         note "New Swift file written: $path. TablePro.xcodeproj is generated and XcodeGen globs sources at generation time, so this file is not compiled until scripts/generate-project.sh runs. Run .claude/skills/fix-issue/scripts/verify.sh generate before the next build. The failure mode if you skip it is misleading: the build reports 'cannot find X in scope' from the callers, as if the code were never written."
         ;;
 
@@ -96,22 +107,33 @@ case "$CHECK" in
         [ -f "$path" ] || exit 0
         dir="$(dirname "$path")"
         base="$(basename "$path")"
-        was="$(git -C "$dir" show "HEAD:./$base" 2>/dev/null | grep -c '^## \[')" || exit 0
-        [ "${was:-0}" -gt 0 ] || exit 0
-        now="$(grep -c '^## \[' "$path")"
-        if [ "$now" -lt "$was" ]; then
-            block "A CHANGELOG version heading disappeared in that edit: HEAD has $was headings matching '^## [', the file now has $now. This is the failure where an Edit whose new_string drops the trailing context swallows a released version heading and folds that release into [Unreleased]. Release notes are extracted from [Unreleased], so the next release would re-ship it, and no build catches it. Re-read the file and restore the heading."
+        # Compare the actual set of headings, not how many there are. A count catches a deletion
+        # but not a rename, and renaming a released heading in place does the same damage.
+        was="$(git -C "$dir" show "HEAD:./$base" 2> /dev/null | grep '^## \[' | sort)" || exit 0
+        [ -n "$was" ] || exit 0
+        now="$(grep '^## \[' "$path" | sort)"
+        gone="$(comm -23 <(printf '%s\n' "$was") <(printf '%s\n' "$now"))"
+        if [ -n "$gone" ]; then
+            block "A CHANGELOG version heading from HEAD is no longer in the file after that edit:
+$gone
+This is the failure where an Edit whose new_string drops the trailing context swallows a released version heading and folds that release into [Unreleased]. Release notes are extracted from [Unreleased], so the next release would re-ship it, and no build catches it. Re-read the file and restore the heading exactly as it was."
         fi
         ;;
 
     writing-style)
         path="$(field '.tool_input.file_path')"
         in_repo "$path" || exit 0
+        # guard.sh carries the banned-word list as data and guard-test.sh carries fixtures built
+        # from it, so both always match themselves.
+        [ "$path" = "${BASH_SOURCE[0]}" ] && exit 0
+        case "$path" in */.claude/hooks/guard.sh | */.claude/hooks/guard-test.sh) exit 0 ;; esac
         written="$(printf '%s' "$PAYLOAD" | jq -r '(.tool_input.content // .tool_input.new_string // "")' 2>/dev/null)"
         [ -n "$written" ] || exit 0
+        # Word boundaries matter: without them `robustness` and `comprehensiveCheck()` in ordinary
+        # Swift tripped this on every write. The em dash stays unbounded, it is not a word.
         hits="$(printf '%s' "$written" \
-            | grep -noE '—|seamless|robust|comprehensive|intuitive|effortless|streamlined|leverage|elevate|delve|utilize|facilitate' \
-            | sort -u -t: -k2 | head -12)"
+            | grep -noE '—|\b(seamless|robust|comprehensive|intuitive|effortless|streamlined|leverage|elevate|delve|utilize|facilitate)\b' \
+            | sort -n -t: -k1 | head -12)"
         [ -n "$hits" ] || exit 0
         note "Writing-style hits in what you just wrote to $path. The repository style rule bans em dashes and promotional filler in UI text, docs, changelogs, commit subjects, PR text, and agent-authored guidance. Rewrite these on the lines you added:
 $hits"
