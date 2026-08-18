@@ -42,11 +42,20 @@ struct DatabaseTreeSelectionPolicyTests {
     /// The two rows that stand for nothing: a loading or error placeholder, and the Recent title.
     @Test("Rows that are not objects refuse selection")
     func placeholdersRefuseSelection() {
-        let group = DatabaseTreeObjectGroup(database: "app", schema: "public", kind: .table)
         #expect(DatabaseTreeSelection.isSelectable(.status(.loading)) == false)
         #expect(DatabaseTreeSelection.isSelectable(.status(.error("boom"))) == false)
         #expect(DatabaseTreeSelection.isSelectable(.recentSection) == false)
+    }
+
+    /// A kind folder under a database or schema is an ordinary row, not an AppKit group header, so
+    /// the keyboard has to reach it: arrow keys walk past a row the delegate refuses, which would
+    /// leave a collapsed Tables folder openable by mouse only. The flat shape's section title is a
+    /// real group row and still refuses.
+    @Test("A kind folder is selectable, the flat shape's section title is not")
+    func kindFoldersAreSelectable() {
+        let group = DatabaseTreeObjectGroup(database: "app", schema: "public", kind: .table)
         #expect(DatabaseTreeSelection.isSelectable(.containerObjectKindSection(group)))
+        #expect(DatabaseTreeSelection.isSelectable(.objectKindSection(.table)) == false)
     }
 
     @Test("A table row resolves to its own reference")

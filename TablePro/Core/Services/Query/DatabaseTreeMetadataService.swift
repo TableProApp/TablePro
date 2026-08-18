@@ -284,13 +284,26 @@ final class DatabaseTreeMetadataService {
     }
 
     func refreshObjects(connectionId: UUID, database: String, schema: String?) async {
+        async let tables: Void = refreshTableObjects(connectionId: connectionId, database: database, schema: schema)
+        async let routines: Void = refreshRoutineObjects(connectionId: connectionId, database: database, schema: schema)
+        _ = await (tables, routines)
+    }
+
+    /// Tables and routines are two separate fetches behind two separate states, so a row that
+    /// stands for one kind refreshes only the fetch its kind comes from. Partitions ride with the
+    /// tables, because a partition row is drawn as a child of the table it belongs to.
+    func refreshTableObjects(connectionId: UUID, database: String, schema: String?) async {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
         await tablesDedup.cancel(key: key)
-        await routinesDedup.cancel(key: key)
         async let tables: Void = refreshTables(key)
-        async let routines: Void = refreshRoutines(key)
         async let partitions: Void = refreshPartitions(under: key)
-        _ = await (tables, routines, partitions)
+        _ = await (tables, partitions)
+    }
+
+    func refreshRoutineObjects(connectionId: UUID, database: String, schema: String?) async {
+        let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        await routinesDedup.cancel(key: key)
+        await refreshRoutines(key)
     }
 
     private func refreshTables(_ key: ObjectsKey) async {

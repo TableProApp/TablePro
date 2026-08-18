@@ -97,12 +97,21 @@ internal final class WindowSidebarState {
         isLoaded = true
     }
 
+    /// The kind rides as its raw string. Decoding it as `SidebarObjectKind` throws on a value this
+    /// build does not know, and one throw inside this blob discards every other expansion set.
+    private struct PersistedObjectGroup: Codable {
+        let database: String
+        let schema: String?
+        let kind: String
+        let expanded: Bool
+    }
+
     private struct PersistedExpansion: Codable {
         var schemas: [String]
         var databases: [String]
         var databaseSchemas: [DatabaseSchemaKey]
         var tables: [DatabaseTableKey]?
-        var objectGroups: [DatabaseTreeObjectGroup: Bool]?
+        var objectGroups: [PersistedObjectGroup]?
         var seeded: Bool?
     }
 
@@ -118,7 +127,7 @@ internal final class WindowSidebarState {
         expandedTreeDatabases = Set(decoded.databases)
         expandedTreeDatabaseSchemas = Set(decoded.databaseSchemas)
         expandedTreeTables = Set(decoded.tables ?? [])
-        treeObjectGroupExpansion = decoded.objectGroups ?? [:]
+        treeObjectGroupExpansion = Self.objectGroupExpansion(from: decoded.objectGroups ?? [])
         didSeedExpansion = decoded.seeded ?? true
     }
 
@@ -138,11 +147,34 @@ internal final class WindowSidebarState {
             databases: Array(expandedTreeDatabases),
             databaseSchemas: Array(expandedTreeDatabaseSchemas),
             tables: Array(expandedTreeTables),
-            objectGroups: treeObjectGroupExpansion,
+            objectGroups: Self.persistedObjectGroups(from: treeObjectGroupExpansion),
             seeded: didSeedExpansion
         )
         if let data = try? JSONEncoder().encode(snapshot) {
             defaults.set(data, forKey: storageKey)
+        }
+    }
+
+    private static func objectGroupExpansion(
+        from persisted: [PersistedObjectGroup]
+    ) -> [DatabaseTreeObjectGroup: Bool] {
+        persisted.reduce(into: [:]) { result, entry in
+            guard let kind = SidebarObjectKind(rawValue: entry.kind) else { return }
+            let group = DatabaseTreeObjectGroup(database: entry.database, schema: entry.schema, kind: kind)
+            result[group] = entry.expanded
+        }
+    }
+
+    private static func persistedObjectGroups(
+        from expansion: [DatabaseTreeObjectGroup: Bool]
+    ) -> [PersistedObjectGroup] {
+        expansion.map { group, expanded in
+            PersistedObjectGroup(
+                database: group.database,
+                schema: group.schema,
+                kind: group.kind.rawValue,
+                expanded: expanded
+            )
         }
     }
 }

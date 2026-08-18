@@ -6,18 +6,17 @@
 import Foundation
 import TableProPluginKit
 
+/// Which groups a container shows. A group stands for objects the container holds, so the count is
+/// the whole rule: a capability flag says what a plugin declared, not what its driver returned, and
+/// a container with nothing in it answers with its own status row instead.
 internal enum DatabaseTreeObjectGroupResolver {
     internal static func groups(
         database: String,
         schema: String?,
-        itemCounts: [SidebarObjectKind: Int],
-        capabilities: PluginCapabilities,
-        isFiltering: Bool
+        itemCounts: [SidebarObjectKind: Int]
     ) -> [DatabaseTreeObjectGroup] {
         SidebarObjectKind.allCases.compactMap { kind in
-            let itemCount = itemCounts[kind] ?? 0
-            if isFiltering, itemCount == 0 { return nil }
-            guard kind.shouldRender(itemCount: itemCount, capabilities: capabilities) else { return nil }
+            guard itemCounts[kind, default: 0] > 0 else { return nil }
             return DatabaseTreeObjectGroup(database: database, schema: schema, kind: kind)
         }
     }

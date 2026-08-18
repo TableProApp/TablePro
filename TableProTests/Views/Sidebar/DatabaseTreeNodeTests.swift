@@ -110,31 +110,30 @@ struct DatabaseTreeNodeTests {
         #expect(schema.tableRef == nil)
     }
 
-    @Test("Tree object groups follow kind order and capability gating")
+    /// A driver can return an object kind its plugin never declared a capability for. The tree lists
+    /// what came back, because a folder the user cannot see is indistinguishable from a table that
+    /// does not exist.
+    @Test("Tree object groups follow kind order and never drop a returned object")
     func objectGroupResolution() {
         let groups = DatabaseTreeObjectGroupResolver.groups(
             database: "shop",
             schema: "public",
-            itemCounts: [.table: 2, .view: 1, .materializedView: 1, .procedure: 1, .function: 1],
-            capabilities: [.materializedViews, .storedProcedures],
-            isFiltering: false
+            itemCounts: [.table: 2, .view: 1, .materializedView: 1, .foreignTable: 1, .procedure: 1, .function: 1]
         )
 
-        #expect(groups.map(\.kind) == [.table, .view, .materializedView, .procedure])
+        #expect(groups.map(\.kind) == [.table, .view, .materializedView, .foreignTable, .procedure, .function])
         #expect(groups.allSatisfy { $0.database == "shop" && $0.schema == "public" })
     }
 
-    @Test("Filtering omits empty groups including Tables")
-    func filteredObjectGroupResolution() {
+    @Test("A container holding no tables gets no Tables group")
+    func emptyKindsAreOmitted() {
         let groups = DatabaseTreeObjectGroupResolver.groups(
             database: "shop",
             schema: nil,
-            itemCounts: [.view: 1],
-            capabilities: [],
-            isFiltering: true
+            itemCounts: [.function: 1]
         )
 
-        #expect(groups.map(\.kind) == [.view])
+        #expect(groups.map(\.kind) == [.function])
         #expect(groups.first?.schema == nil)
     }
 }

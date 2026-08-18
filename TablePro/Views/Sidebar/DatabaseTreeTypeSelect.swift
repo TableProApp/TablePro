@@ -43,10 +43,19 @@ internal enum DatabaseTreeTypeSelect {
     /// Type-select finds objects, and a section title or a status line is not one. AppKit already
     /// walks past a match it cannot select, so this decides what the search means rather than
     /// keeping the selection off a dead row.
-    internal static func matchString(for kind: DatabaseTreeNode.Kind) -> String? {
+    ///
+    /// A container's object group is a selectable row, so it matches on the same title its row
+    /// draws. The plugin names the table group, which is why the caller resolves that title rather
+    /// than the kind naming itself.
+    internal static func matchString(
+        for kind: DatabaseTreeNode.Kind,
+        tableEntityName: String? = nil
+    ) -> String? {
         switch kind {
-        case .recentSection, .status, .objectKindSection, .containerObjectKindSection, .redisKeysSection:
+        case .recentSection, .status, .objectKindSection, .redisKeysSection:
             return nil
+        case .containerObjectKindSection(let group):
+            return group.kind.title(tableEntityName: tableEntityName)
         case .recentTable(let ref), .table(let ref):
             return ref.table.name
         case .database(let metadata):

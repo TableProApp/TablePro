@@ -6,6 +6,32 @@
 import Foundation
 import TableProPluginKit
 
+struct DatabaseTreeContainerKey: Hashable {
+    let database: String
+    let schema: String?
+    let searchText: String
+}
+
+/// One filtered pass over a container's objects, split by kind. The container row needs the counts
+/// and each group row under it needs one bucket, so both read this rather than filtering the whole
+/// list again per group.
+struct DatabaseTreeObjectBuckets {
+    let tables: [SidebarObjectKind: [TableInfo]]
+    let routines: [SidebarObjectKind: [RoutineInfo]]
+
+    var isEmpty: Bool {
+        tables.values.allSatisfy(\.isEmpty) && routines.values.allSatisfy(\.isEmpty)
+    }
+
+    var itemCounts: [SidebarObjectKind: Int] {
+        var counts = tables.mapValues(\.count)
+        for (kind, list) in routines {
+            counts[kind, default: 0] += list.count
+        }
+        return counts
+    }
+}
+
 enum DatabaseTreeFilter {
     static func matches(_ query: String, _ candidate: String) -> Bool {
         SidebarNameFilter.matches(query: query, candidate: candidate)
@@ -19,6 +45,22 @@ enum DatabaseTreeFilter {
     static func filteredRoutines(_ routines: [RoutineInfo], searchText: String) -> [RoutineInfo] {
         let matched = SidebarNameFilter.ranked(routines, query: searchText, name: { $0.name })
         return deduplicated(matched, by: \.id)
+    }
+
+    static func objectBuckets(
+        tables: [TableInfo],
+        routines: [RoutineInfo],
+        searchText: String
+    ) -> DatabaseTreeObjectBuckets {
+        var tableBuckets: [SidebarObjectKind: [TableInfo]] = [:]
+        for table in filteredTables(tables, searchText: searchText) {
+            tableBuckets[SidebarObjectKind.resolve(tableType: table.type), default: []].append(table)
+        }
+        var routineBuckets: [SidebarObjectKind: [RoutineInfo]] = [:]
+        for routine in filteredRoutines(routines, searchText: searchText) {
+            routineBuckets[routine.kind.sidebarObjectKind, default: []].append(routine)
+        }
+        return DatabaseTreeObjectBuckets(tables: tableBuckets, routines: routineBuckets)
     }
 
     /// A schema whose tables have not loaded yet cannot be judged, so it stays visible. Reading an

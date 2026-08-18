@@ -68,11 +68,10 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
     }
 
     private func objectKindTitles() -> [SidebarObjectKind: String] {
+        let tableEntityName = PluginManager.shared.tableEntityName(for: databaseType)
         var titles: [SidebarObjectKind: String] = [:]
         for kind in SidebarObjectKind.allCases {
-            titles[kind] = kind == .table
-                ? PluginManager.shared.tableEntityName(for: databaseType)
-                : kind.pluralDisplayName
+            titles[kind] = kind.title(tableEntityName: tableEntityName)
         }
         return titles
     }

@@ -72,10 +72,31 @@ struct DatabaseTreeTypeSelectTests {
 
     @Test("Group and status rows have no type select string")
     func groupRowsHaveNoMatchString() {
-        let group = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .table)
         #expect(DatabaseTreeTypeSelect.matchString(for: .recentSection) == nil)
         #expect(DatabaseTreeTypeSelect.matchString(for: .status(.loading)) == nil)
-        #expect(DatabaseTreeTypeSelect.matchString(for: .containerObjectKindSection(group)) == nil)
+        #expect(DatabaseTreeTypeSelect.matchString(for: .objectKindSection(.table)) == nil)
+    }
+
+    /// A container's object group is selectable, so arrow keys stop on it. Type-select has to reach
+    /// the same row, on the title the row draws rather than the kind's own name.
+    @Test("A container object group matches on the title its row draws")
+    func containerObjectGroupMatchesOnItsTitle() {
+        let tables = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .table)
+        let views = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .view)
+        #expect(
+            DatabaseTreeTypeSelect.matchString(for: .containerObjectKindSection(tables))
+                == SidebarObjectKind.table.pluralDisplayName
+        )
+        #expect(
+            DatabaseTreeTypeSelect.matchString(
+                for: .containerObjectKindSection(tables), tableEntityName: "Collections"
+            ) == "Collections"
+        )
+        #expect(
+            DatabaseTreeTypeSelect.matchString(
+                for: .containerObjectKindSection(views), tableEntityName: "Collections"
+            ) == SidebarObjectKind.view.pluralDisplayName
+        )
     }
 
     @Test("A schema row matches on its schema name")

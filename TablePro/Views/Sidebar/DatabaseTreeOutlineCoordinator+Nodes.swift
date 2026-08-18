@@ -287,16 +287,23 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
+    private func objectBuckets(database: String, schema: String?) -> DatabaseTreeObjectBuckets {
+        let key = DatabaseTreeContainerKey(database: database, schema: schema, searchText: searchText)
+        if let cached = objectBucketsCache[key] { return cached }
+        let buckets = DatabaseTreeFilter.objectBuckets(
+            tables: service.tables(connectionId: connectionId, database: database, schema: schema),
+            routines: service.routines(connectionId: connectionId, database: database, schema: schema),
+            searchText: searchText
+        )
+        objectBucketsCache[key] = buckets
+        return buckets
+    }
+
     private func loadedObjectNodes(database: String, schema: String?, parentId: String) -> [DatabaseTreeNode] {
-        let tables = DatabaseTreeFilter.filteredTables(
-            service.tables(connectionId: connectionId, database: database, schema: schema), searchText: searchText
-        )
-        let routines = DatabaseTreeFilter.filteredRoutines(
-            service.routines(connectionId: connectionId, database: database, schema: schema), searchText: searchText
-        )
+        let buckets = objectBuckets(database: database, schema: schema)
         let routinesState = service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)
 
-        guard !tables.isEmpty || !routines.isEmpty else {
+        guard !buckets.isEmpty else {
             switch routinesState {
             case .failed(let message): return [statusNode(parentId: parentId, status: .error(message))]
             case .loaded: return [statusNode(parentId: parentId, status: .empty)]
@@ -304,19 +311,10 @@ extension DatabaseTreeOutlineCoordinator {
             }
         }
 
-        var itemCounts: [SidebarObjectKind: Int] = [:]
-        for table in tables {
-            itemCounts[SidebarObjectKind.resolve(tableType: table.type), default: 0] += 1
-        }
-        for routine in routines {
-            itemCounts[routine.kind.sidebarObjectKind, default: 0] += 1
-        }
         let groups = DatabaseTreeObjectGroupResolver.groups(
             database: database,
             schema: schema,
-            itemCounts: itemCounts,
-            capabilities: viewModel?.capabilities(for: connectionId) ?? [],
-            isFiltering: !searchText.isEmpty
+            itemCounts: buckets.itemCounts
         )
         var nodes = groups.map { group in
             node(
@@ -331,11 +329,9 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     private func containerObjectNodes(for group: DatabaseTreeObjectGroup) -> [DatabaseTreeNode] {
+        let buckets = objectBuckets(database: group.database, schema: group.schema)
         if group.kind.isRoutine {
-            let routines = DatabaseTreeFilter.filteredRoutines(
-                service.routines(connectionId: connectionId, database: group.database, schema: group.schema),
-                searchText: searchText
-            ).filter { $0.kind.sidebarObjectKind == group.kind }
+            let routines = buckets.routines[group.kind] ?? []
             guard !routines.isEmpty else {
                 return [statusNode(parentId: DatabaseTreeNode.containerObjectKindSectionId(group), status: .empty)]
             }
@@ -347,10 +343,7 @@ extension DatabaseTreeOutlineCoordinator {
             }
         }
 
-        let tables = DatabaseTreeFilter.filteredTables(
-            service.tables(connectionId: connectionId, database: group.database, schema: group.schema),
-            searchText: searchText
-        ).filter { SidebarObjectKind.resolve(tableType: $0.type) == group.kind }
+        let tables = buckets.tables[group.kind] ?? []
         guard !tables.isEmpty else {
             return [statusNode(parentId: DatabaseTreeNode.containerObjectKindSectionId(group), status: .empty)]
         }

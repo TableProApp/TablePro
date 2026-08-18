@@ -97,7 +97,13 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
+    /// The cascade only re-asserts disclosure the store already holds, so it runs behind the flag
+    /// `applyDesiredExpansion` uses. Recording each row it opens rewrote the whole expansion
+    /// snapshot to `UserDefaults`, and re-entered this restore once per row.
     internal func restoreDescendantExpansion(afterExpanding node: DatabaseTreeNode) {
+        let wasApplyingExpansion = isApplyingExpansion
+        isApplyingExpansion = true
+        defer { isApplyingExpansion = wasApplyingExpansion }
         switch node.kind {
         case .database where !supportsSchemaLevel:
             restoreObjectGroupExpansion(under: node)

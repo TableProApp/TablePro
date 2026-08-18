@@ -133,4 +133,29 @@ struct DatabaseTreeFilterTests {
         #expect(!DatabaseTreeFilter.matches("usr", "users"))
         #expect(!DatabaseTreeFilter.matches("zzz", "users"))
     }
+
+    /// The container row needs the counts and every folder under it needs one bucket, so both read
+    /// one pass. Filtering per folder re-ran the whole dedup once per open folder.
+    @Test("objectBuckets splits one filtered pass into per-kind buckets")
+    func objectBucketsSplitByKind() {
+        let tables = [
+            table("orders"),
+            table("orders"),
+            TableInfo(name: "order_totals", type: .view, rowCount: 0),
+            table("users")
+        ]
+        let routines = [
+            RoutineInfo(name: "order_audit", schema: "public", kind: .procedure, signature: nil),
+            routine("calc_total")
+        ]
+        let buckets = DatabaseTreeFilter.objectBuckets(tables: tables, routines: routines, searchText: "ord")
+
+        #expect(buckets.tables[.table]?.map(\.name) == ["orders"])
+        #expect(buckets.tables[.view]?.map(\.name) == ["order_totals"])
+        #expect(buckets.routines[.procedure]?.map(\.name) == ["order_audit"])
+        #expect(buckets.routines[.function] == nil)
+        #expect(buckets.itemCounts == [.table: 1, .view: 1, .procedure: 1])
+        #expect(!buckets.isEmpty)
+        #expect(DatabaseTreeFilter.objectBuckets(tables: tables, routines: routines, searchText: "zzz").isEmpty)
+    }
 }

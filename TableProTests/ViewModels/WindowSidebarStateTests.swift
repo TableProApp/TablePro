@@ -151,6 +151,33 @@ struct WindowSidebarStateTests {
         #expect(restored.expandedTreeTables.isEmpty)
     }
 
+    /// Object kinds are an open set, so a build that has never heard of one still has to read the
+    /// rest of the blob. Decoding the kind as an enum threw and took every other expansion set with
+    /// it, including the seed flag, which reopened containers the user had closed.
+    @Test("An unrecognized object kind does not discard the rest of the expansion")
+    func unknownObjectKindKeepsOtherExpansion() throws {
+        let defaults = try makeDefaults()
+        let connectionId = UUID()
+        let stored = """
+        {"schemas":["public"],"databases":["shop"],"databaseSchemas":[],"tables":[],\
+        "objectGroups":[{"database":"shop","schema":"public","kind":"sequence","expanded":true},\
+        {"database":"shop","schema":"public","kind":"view","expanded":true}],"seeded":true}
+        """
+        defaults.set(Data(stored.utf8), forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)")
+
+        let restored = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+
+        #expect(restored.expandedTreeDatabases == ["shop"])
+        #expect(restored.expandedTreeSchemas == ["public"])
+        #expect(restored.didSeedExpansion)
+        #expect(restored.treeObjectGroupExpansion.count == 1)
+        #expect(
+            restored.isTreeObjectGroupExpanded(
+                DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .view)
+            )
+        )
+    }
+
     @Test("A window without a connection does not persist")
     func nilConnectionDoesNotPersist() throws {
         let defaults = try makeDefaults()

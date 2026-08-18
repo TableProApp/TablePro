@@ -104,6 +104,20 @@ struct SidebarOutlineScaffoldTests {
 @Suite("Database tree object group hierarchy")
 @MainActor
 struct DatabaseTreeObjectGroupHierarchyTests {
+    /// The outline coalesces its selection sync onto the next main-actor hop, so the assertion waits
+    /// for the highlight rather than for the task that moves it. It waits for the row it expects,
+    /// because "no row yet" and "the wrong row" are the same reading otherwise.
+    private func selectionSettles(in outlineView: NSOutlineView, on expected: DatabaseTreeNode) async -> Bool {
+        for _ in 0 ..< 8 {
+            if outlineView.selectedRow >= 0,
+               outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === expected {
+                return true
+            }
+            await Task.yield()
+        }
+        return false
+    }
+
     @Test("Nested groups preserve depth and partition expansion")
     func nestedGroupsPreserveDepth() async throws {
         let connectionId = UUID()
@@ -185,10 +199,7 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         #expect(outlineView.isItemExpanded(group))
         #expect(outlineView.isItemExpanded(parent))
         #expect(outlineView.selectedRow == -1)
-        let selectionSyncTask = try #require(coordinator.selectionSyncTask)
-        await selectionSyncTask.value
-        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === parent)
-        #expect(coordinator.selectionSyncTask == nil)
+        #expect(await selectionSettles(in: outlineView, on: parent))
     }
 
     @Test("Collapsed groups keep model selection adoption pending")
@@ -248,10 +259,7 @@ struct DatabaseTreeObjectGroupHierarchyTests {
 
         #expect(outlineView.isItemExpanded(group))
         #expect(outlineView.selectedRow == -1)
-        let selectionSyncTask = try #require(coordinator.selectionSyncTask)
-        await selectionSyncTask.value
-        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === view)
-        #expect(coordinator.selectionSyncTask == nil)
+        #expect(await selectionSettles(in: outlineView, on: view))
     }
 
     @Test("Selection adoption distinguishes identical objects across databases")
@@ -297,10 +305,257 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         coordinator.nodeCache[activeView.id] = activeView
         outlineView.expandItem(group)
 
-        let selectionSyncTask = try #require(coordinator.selectionSyncTask)
-        await selectionSyncTask.value
-        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === activeView)
-        #expect(coordinator.selectionSyncTask == nil)
+        #expect(await selectionSettles(in: outlineView, on: activeView))
+    }
+
+    /// Two tables selected at once still belong to one database. Adopting by name alone highlighted
+    /// a same-named table in another database's folder as well, and sent the inflated row count on
+    /// to every command that reads the selection.
+    @Test("A multi-selection adopts only rows in the active database")
+    func multiTableAdoptionScopesToTheActiveDatabase() async throws {
+        let connectionId = UUID()
+        let defaults = try #require(UserDefaults(suiteName: "tree-group-multi-\(UUID().uuidString)"))
+        let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        let orders = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
+        let report = TableInfo(name: "report", type: .table, rowCount: nil, schema: "public")
+        let shopOrders = DatabaseTreeNode(
+            id: "shop-orders",
+            kind: .table(DatabaseTreeTableRef(database: "shop", schema: "public", table: orders))
+        )
+        let shopReport = DatabaseTreeNode(
+            id: "shop-report",
+            kind: .table(DatabaseTreeTableRef(database: "shop", schema: "public", table: report))
+        )
+        let archiveOrders = DatabaseTreeNode(
+            id: "archive-orders",
+            kind: .table(DatabaseTreeTableRef(database: "archive", schema: "public", table: orders))
+        )
+        let archiveReport = DatabaseTreeNode(
+            id: "archive-report",
+            kind: .table(DatabaseTreeTableRef(database: "archive", schema: "public", table: report))
+        )
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: NSOutlineView(),
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "TreeGroupMultiColumn",
+                allowsMultipleSelection: true,
+                rowSizePreference: .medium
+            )
+        )
+        let outlineView = try #require(scrollView.documentView as? NSOutlineView)
+        let coordinator = DatabaseTreeOutlineCoordinator()
+        coordinator.connectionId = connectionId
+        coordinator.windowState = windowState
+        coordinator.activeDatabase = "shop"
+        coordinator.childrenCache = ["": [shopOrders, shopReport, archiveOrders, archiveReport]]
+        coordinator.nodeCache = [
+            shopOrders.id: shopOrders,
+            shopReport.id: shopReport,
+            archiveOrders.id: archiveOrders,
+            archiveReport.id: archiveReport
+        ]
+        outlineView.dataSource = coordinator
+        outlineView.delegate = coordinator
+        coordinator.attach(outlineView: outlineView)
+        outlineView.reloadData()
+
+        windowState.selectTables([orders, report])
+        coordinator.syncSelectionToModel()
+
+        let selected = outlineView.selectedRowIndexes.compactMap {
+            outlineView.item(atRow: $0) as? DatabaseTreeNode
+        }
+        #expect(selected.count == 2)
+        #expect(selected.contains { $0 === shopOrders })
+        #expect(selected.contains { $0 === shopReport })
+        #expect(selected.allSatisfy { $0 !== archiveOrders && $0 !== archiveReport })
+    }
+
+    /// Collapsing a kind folder hides the selected row, and AppKit rewriting the outline selection is
+    /// not a pick. The model keeps the table, so the highlight comes back when the folder reopens.
+    @Test("Collapsing a kind folder keeps the model selection")
+    func collapsingAGroupKeepsTheModelSelection() async throws {
+        let connectionId = UUID()
+        let defaults = try #require(UserDefaults(suiteName: "tree-group-collapse-\(UUID().uuidString)"))
+        let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        let orders = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
+        let schema = DatabaseTreeNode(id: "schema", kind: .schema(database: "shop", schema: "public"))
+        let groupRef = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .table)
+        let group = DatabaseTreeNode(id: "group", kind: .containerObjectKindSection(groupRef))
+        let table = DatabaseTreeNode(
+            id: "table",
+            kind: .table(DatabaseTreeTableRef(database: "shop", schema: "public", table: orders))
+        )
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: NSOutlineView(),
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "TreeGroupCollapseColumn",
+                allowsMultipleSelection: true,
+                rowSizePreference: .medium
+            )
+        )
+        let outlineView = try #require(scrollView.documentView as? NSOutlineView)
+        let coordinator = DatabaseTreeOutlineCoordinator()
+        coordinator.connectionId = connectionId
+        coordinator.windowState = windowState
+        coordinator.activeDatabase = "shop"
+        coordinator.childrenCache = ["": [schema], schema.id: [group], group.id: [table]]
+        coordinator.nodeCache = [schema.id: schema, group.id: group, table.id: table]
+        outlineView.dataSource = coordinator
+        outlineView.delegate = coordinator
+        coordinator.attach(outlineView: outlineView)
+        outlineView.reloadData()
+        outlineView.expandItem(schema)
+        outlineView.expandItem(group)
+
+        windowState.selectTables([orders])
+        coordinator.syncSelectionToModel()
+        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === table)
+
+        outlineView.collapseItem(group)
+
+        #expect(windowState.selectedTables == [orders])
+
+        outlineView.expandItem(group)
+
+        #expect(await selectionSettles(in: outlineView, on: table))
+
+        /// The same mechanism hides the row when any container above it closes, so the schema level
+        /// is pinned too rather than left to work by accident.
+        outlineView.collapseItem(schema)
+
+        #expect(windowState.selectedTables == [orders])
+
+        outlineView.expandItem(schema)
+
+        #expect(await selectionSettles(in: outlineView, on: table))
+    }
+
+    /// Opening a table in another database moves the browse database first, so for one turn the model
+    /// still names the table the user navigated away from. Adopting it there deselected the row the
+    /// user had just clicked.
+    @Test("Opening a row in another database keeps that row selected")
+    func selectionSurvivesACrossDatabaseOpen() throws {
+        let connectionId = UUID()
+        let defaults = try #require(UserDefaults(suiteName: "tree-group-open-\(UUID().uuidString)"))
+        let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        let orders = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
+        let report = TableInfo(name: "report", type: .table, rowCount: nil, schema: "public")
+        let shopOrders = DatabaseTreeNode(
+            id: "shop-orders",
+            kind: .table(DatabaseTreeTableRef(database: "shop", schema: "public", table: orders))
+        )
+        let archiveReport = DatabaseTreeNode(
+            id: "archive-report",
+            kind: .table(DatabaseTreeTableRef(database: "archive", schema: "public", table: report))
+        )
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: NSOutlineView(),
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "TreeGroupOpenColumn",
+                allowsMultipleSelection: true,
+                rowSizePreference: .medium
+            )
+        )
+        let outlineView = try #require(scrollView.documentView as? NSOutlineView)
+        let coordinator = DatabaseTreeOutlineCoordinator()
+        coordinator.connectionId = connectionId
+        coordinator.windowState = windowState
+        coordinator.activeDatabase = "shop"
+        coordinator.childrenCache = ["": [shopOrders, archiveReport]]
+        coordinator.nodeCache = [shopOrders.id: shopOrders, archiveReport.id: archiveReport]
+        outlineView.dataSource = coordinator
+        outlineView.delegate = coordinator
+        coordinator.attach(outlineView: outlineView)
+        outlineView.reloadData()
+
+        windowState.selectTables([orders])
+        coordinator.syncSelectionToModel()
+        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === shopOrders)
+
+        let archiveRow = outlineView.row(forItem: archiveReport)
+        outlineView.selectRowIndexes(IndexSet(integer: archiveRow), byExtendingSelection: false)
+
+        coordinator.activeDatabase = "archive"
+        coordinator.syncSelectionToModel()
+
+        #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === archiveReport)
+    }
+
+    /// One disclosure gesture is one edit of the saved layout. Every row the cascade reopened used to
+    /// record itself too, rewriting the whole snapshot to `UserDefaults` once per row, on the main
+    /// actor, inside the AppKit notification.
+    @Test("One disclosure gesture persists the expansion snapshot once")
+    func oneGesturePersistsOnce() throws {
+        let connectionId = UUID()
+        let defaults = try #require(WriteCountingDefaults(suiteName: "tree-group-writes-\(UUID().uuidString)"))
+        let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
+        let database = DatabaseTreeNode(id: "database", kind: .database(.minimal(name: "shop")))
+        let schema = DatabaseTreeNode(id: "schema", kind: .schema(database: "shop", schema: "public"))
+        let groupRef = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .table)
+        let group = DatabaseTreeNode(id: "group", kind: .containerObjectKindSection(groupRef))
+        let parentRef = DatabaseTreeTableRef(
+            database: "shop",
+            schema: "public",
+            table: TableInfo(name: "orders", type: .partitionedTable, rowCount: nil, schema: "public")
+        )
+        let parent = DatabaseTreeNode(id: "parent", kind: .table(parentRef))
+        let child = DatabaseTreeNode(
+            id: "child",
+            kind: .table(
+                DatabaseTreeTableRef(
+                    database: "shop",
+                    schema: "public",
+                    table: TableInfo(name: "orders_2026", type: .table, rowCount: nil, schema: "public")
+                )
+            )
+        )
+        windowState.expandedTreeDatabases = ["shop"]
+        windowState.expandedTreeTables = [
+            DatabaseTableKey(database: "shop", schema: "public", table: "orders")
+        ]
+
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: NSOutlineView(),
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "TreeGroupWriteColumn",
+                allowsMultipleSelection: true,
+                rowSizePreference: .medium
+            )
+        )
+        let outlineView = try #require(scrollView.documentView as? NSOutlineView)
+        let coordinator = DatabaseTreeOutlineCoordinator()
+        coordinator.connectionId = connectionId
+        coordinator.databaseType = .postgresql
+        coordinator.windowState = windowState
+        coordinator.childrenCache = [
+            "": [database],
+            database.id: [schema],
+            schema.id: [group],
+            group.id: [parent],
+            parent.id: [child]
+        ]
+        outlineView.dataSource = coordinator
+        outlineView.delegate = coordinator
+        coordinator.attach(outlineView: outlineView)
+        outlineView.reloadData()
+        outlineView.expandItem(database)
+
+        defaults.writeCount = 0
+        outlineView.expandItem(schema)
+
+        #expect(outlineView.isItemExpanded(group))
+        #expect(outlineView.isItemExpanded(parent))
+        #expect(defaults.writeCount == 1)
+    }
+}
+
+private final class WriteCountingDefaults: UserDefaults, @unchecked Sendable {
+    var writeCount = 0
+
+    override func set(_ value: Any?, forKey defaultName: String) {
+        writeCount += 1
+        super.set(value, forKey: defaultName)
     }
 }
 
