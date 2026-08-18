@@ -154,4 +154,27 @@ struct ConnectionWindowPaneResolverTests {
             }
         }
     }
+
+    @Test("The tab strip band appears only for content with more than one tab")
+    func tabStripBandFollowsContentAndTabCount() {
+        #expect(ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 2))
+        #expect(ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 9))
+
+        /// A single tab is the window every connection opens with, and it gained no chrome
+        /// before this band existed.
+        #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 1))
+        #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 0))
+    }
+
+    @Test("A pane with no session behind it shows no tab strip, whatever the stale tab count says")
+    func tabStripBandHiddenWithoutContent() {
+        for pane in [
+            ConnectionWindowPane.connecting,
+            .unavailable(.notConnected),
+            .unavailable(.failed(Self.failure)),
+            .empty,
+        ] {
+            #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: pane, tabCount: 5))
+        }
+    }
 }

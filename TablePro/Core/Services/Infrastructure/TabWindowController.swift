@@ -80,6 +80,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         FileDropDestination.register(on: window)
         window.title = splitVC.windowTitle
         window.subtitle = splitVC.windowSubtitle
+        splitVC.installTabStripAccessory(on: window)
 
         super.init(window: window)
 

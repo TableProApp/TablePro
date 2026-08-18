@@ -43,4 +43,11 @@ internal enum ConnectionWindowPaneResolver {
             return true
         }
     }
+
+    /// The tab strip's band is a list of tabs, so it appears only when there is a list worth
+    /// showing: content behind it, and more than one tab in it. A window with a single tab keeps
+    /// the chrome it always had, which is what the system does too.
+    internal static func showsTabStrip(for pane: ConnectionWindowPane, tabCount: Int) -> Bool {
+        pane == .content && tabCount > 1
+    }
 }

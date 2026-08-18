@@ -26,18 +26,24 @@ internal final class WorkspacePanes {
     internal let detail: NSHostingController<AnyView>
     internal let inspector: NSHostingController<AnyView>
     internal let sidebar: NSHostingController<AnyView>
+    /// The editor tab strip. It is a pane like the other three, built and kept alive per
+    /// connection, even though the window shows it in the titlebar accessory rather than in a
+    /// split item. Holding it here is what gives it the same `sizingOptions` firewall and the
+    /// same teardown as everything else the connection owns.
+    internal let tabStrip: NSHostingController<AnyView>
 
     internal init() {
         detail = NSHostingController(rootView: AnyView(Color.clear))
         inspector = NSHostingController(rootView: AnyView(Color.clear))
         sidebar = NSHostingController(rootView: AnyView(Color.clear))
+        tabStrip = NSHostingController(rootView: AnyView(Color.clear))
         for pane in panes {
             pane.sizingOptions = []
         }
     }
 
     private var panes: [NSHostingController<AnyView>] {
-        [detail, inspector, sidebar]
+        [detail, inspector, sidebar, tabStrip]
     }
 
     /// Empties every pane and unparents it. A hosting controller retains its SwiftUI tree, which
