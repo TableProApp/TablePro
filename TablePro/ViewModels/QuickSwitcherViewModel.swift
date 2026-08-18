@@ -55,6 +55,7 @@ internal final class QuickSwitcherViewModel {
     @ObservationIgnored private let connectionId: UUID
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let frecencyStore: QuickSwitcherFrecencyStore
+    @ObservationIgnored private let catalogStore: QuickSwitcherCatalogStore
 
     /// The catalog arriving is what ends the load, so this owns `isLoading` rather than the one
     /// call site that happened to fetch it. A load that is superseded or cancelled after it has
@@ -149,10 +150,16 @@ internal final class QuickSwitcherViewModel {
         return min(naturalHeight, maxHeight)
     }
 
-    init(connectionId: UUID, services: AppServices, defaults: UserDefaults = .standard) {
+    init(
+        connectionId: UUID,
+        services: AppServices,
+        defaults: UserDefaults = .standard,
+        catalogStore: QuickSwitcherCatalogStore = .shared
+    ) {
         self.connectionId = connectionId
         self.services = services
         self.defaults = defaults
+        self.catalogStore = catalogStore
         self.frecencyStore = QuickSwitcherFrecencyStore(connectionId: connectionId, defaults: defaults)
     }
 
@@ -170,6 +177,12 @@ internal final class QuickSwitcherViewModel {
 
         let loadId = UUID()
         activeLoadId = loadId
+
+        let catalogVersion = self.catalogVersion()
+        if let cached = catalogStore.catalog(for: connectionId, version: catalogVersion) {
+            allItems = Self.applyingOpenState(to: cached, openTables: openTables, browsing: browseSchema)
+            return
+        }
 
         var items: [QuickSwitcherItem] = []
 
@@ -283,7 +296,38 @@ internal final class QuickSwitcherViewModel {
 
         guard activeLoadId == loadId, !Task.isCancelled else { return }
 
+        catalogStore.store(items, for: connectionId, version: catalogVersion)
         allItems = items
+    }
+
+    /// The catalog is a function of these, so a presentation that finds them unchanged can serve
+    /// the previous one instead of re-running its fetches. Favorites and query history move without
+    /// any of the rest moving, which is what `contentRevision` covers.
+    private func catalogVersion() -> QuickSwitcherCatalogStore.Version {
+        QuickSwitcherCatalogStore.Version(
+            browseScope: services.databaseManager.browseScope(for: connectionId),
+            schemaGeneration: services.schemaService.generationToken(for: connectionId),
+            isRefreshing: services.schemaService.isRefreshing(connectionId: connectionId),
+            databaseFilter: SharedSidebarState.forConnection(connectionId).databaseFilterSelected.sorted(),
+            contentRevision: catalogStore.contentRevision(for: connectionId)
+        )
+    }
+
+    /// Which tables have a tab is not part of the catalog's version, so it is applied on the way
+    /// out rather than stored. A cached flag would badge a table the user has since closed.
+    nonisolated static func applyingOpenState(
+        to catalog: [QuickSwitcherItem],
+        openTables: Set<QuickSwitcherOpenTable>,
+        browsing browseSchema: String?
+    ) -> [QuickSwitcherItem] {
+        catalog.map { item in
+            guard item.kind == .table || item.kind == .view || item.kind == .systemTable else { return item }
+            var updated = item
+            updated.isOpenInTab = openTables.contains(
+                QuickSwitcherOpenTable(schema: item.schemaName, name: item.name, browsing: browseSchema)
+            )
+            return updated
+        }
     }
 
     /// Loading is keyed on a version of the world, so it must always record the version it
