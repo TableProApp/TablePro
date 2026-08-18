@@ -55,9 +55,16 @@ internal final class QuickSwitcherViewModel {
     @ObservationIgnored private let connectionId: UUID
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let frecencyStore: QuickSwitcherFrecencyStore
+    @ObservationIgnored private let catalogStore: QuickSwitcherCatalogStore
 
+    /// The catalog arriving is what ends the load, so this owns `isLoading` rather than the one
+    /// call site that happened to fetch it. A load that is superseded or cancelled after it has
+    /// already delivered its items cannot then strand the panel on a spinner.
     @ObservationIgnored internal var allItems: [QuickSwitcherItem] = [] {
-        didSet { scheduleFilter(debounced: false) }
+        didSet {
+            isLoading = false
+            scheduleFilter(debounced: false)
+        }
     }
     @ObservationIgnored internal var crossConnectionItems: [QuickSwitcherItem] = [] {
         didSet { scheduleFilter(debounced: false) }
@@ -76,6 +83,10 @@ internal final class QuickSwitcherViewModel {
 
     private(set) var groups: [Group] = []
     private(set) var isLoading = true
+    /// Ranking the scoped catalog runs off the main actor behind a debounce, so `groups` is empty
+    /// for a beat after the catalog arrives. Without this the panel calls that emptiness "no
+    /// results" and says so, for the whole first sort.
+    private(set) var isFiltering = false
     private(set) var isLoadingCrossConnections = false
     private(set) var isLoadingCrossConnectionQueries = false
     private(set) var crossConnectionQueryContentRevision = 0
@@ -99,11 +110,25 @@ internal final class QuickSwitcherViewModel {
         groups.flatMap(\.items)
     }
 
+    /// Whether the panel is still fetching the results it is being asked to show.
+    ///
+    /// The All scope with an empty search lists nothing but Recent, and Recent is resolved against
+    /// the catalog itself, so there is nothing to wait on there and reporting a load would open the
+    /// result surface over the compact bar that carries the scope buttons. Every other combination
+    /// is showing, or about to show, something the catalog has to arrive for.
     var isLoadingResults: Bool {
         if scope.usesCrossConnectionCatalog {
             return isLoadingCrossConnections
         }
-        return scope.usesCrossConnectionQueries && isLoadingCrossConnectionQueries
+        if scope.usesCrossConnectionQueries {
+            return isLoadingCrossConnectionQueries
+        }
+        guard scope != .all || !trimmedSearchText.isEmpty else { return false }
+        return isLoading || isFiltering
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespaces)
     }
 
     /// Nil outside the cross-connection scope, so a panel showing one connection's objects
@@ -125,10 +150,16 @@ internal final class QuickSwitcherViewModel {
         return min(naturalHeight, maxHeight)
     }
 
-    init(connectionId: UUID, services: AppServices, defaults: UserDefaults = .standard) {
+    init(
+        connectionId: UUID,
+        services: AppServices,
+        defaults: UserDefaults = .standard,
+        catalogStore: QuickSwitcherCatalogStore = .shared
+    ) {
         self.connectionId = connectionId
         self.services = services
         self.defaults = defaults
+        self.catalogStore = catalogStore
         self.frecencyStore = QuickSwitcherFrecencyStore(connectionId: connectionId, defaults: defaults)
     }
 
@@ -139,12 +170,19 @@ internal final class QuickSwitcherViewModel {
     func loadItems(
         schemaProvider: SQLSchemaProvider,
         databaseType: DatabaseType,
-        openTableNames: Set<String> = []
+        openTables: Set<QuickSwitcherOpenTable> = [],
+        browseSchema: String? = nil
     ) async {
         isLoading = true
 
         let loadId = UUID()
         activeLoadId = loadId
+
+        let catalogVersion = self.catalogVersion()
+        if let cached = catalogStore.catalog(for: connectionId, version: catalogVersion) {
+            allItems = Self.applyingOpenState(to: cached, openTables: openTables, browsing: browseSchema)
+            return
+        }
 
         var items: [QuickSwitcherItem] = []
 
@@ -158,12 +196,15 @@ internal final class QuickSwitcherViewModel {
         for table in tables {
             let presentation = Self.tablePresentation(for: table.type)
             items.append(QuickSwitcherItem(
-                id: "table_\(table.name)_\(table.type.rawValue)",
+                id: QuickSwitcherItem.tableItemId(name: table.name, schema: table.schema),
                 name: table.name,
                 kind: presentation.kind,
                 subtitle: presentation.subtitle,
-                isOpenInTab: openTableNames.contains(table.name),
-                isReadOnly: !table.type.allowsRowEditing
+                isOpenInTab: openTables.contains(
+                    QuickSwitcherOpenTable(schema: table.schema, name: table.name, browsing: browseSchema)
+                ),
+                isReadOnly: !table.type.allowsRowEditing,
+                schemaName: table.schema
             ))
         }
 
@@ -255,8 +296,38 @@ internal final class QuickSwitcherViewModel {
 
         guard activeLoadId == loadId, !Task.isCancelled else { return }
 
-        isLoading = false
+        catalogStore.store(items, for: connectionId, version: catalogVersion)
         allItems = items
+    }
+
+    /// The catalog is a function of these, so a presentation that finds them unchanged can serve
+    /// the previous one instead of re-running its fetches. Favorites and query history move without
+    /// any of the rest moving, which is what `contentRevision` covers.
+    private func catalogVersion() -> QuickSwitcherCatalogStore.Version {
+        QuickSwitcherCatalogStore.Version(
+            browseScope: services.databaseManager.browseScope(for: connectionId),
+            schemaGeneration: services.schemaService.generationToken(for: connectionId),
+            isRefreshing: services.schemaService.isRefreshing(connectionId: connectionId),
+            databaseFilter: SharedSidebarState.forConnection(connectionId).databaseFilterSelected.sorted(),
+            contentRevision: catalogStore.contentRevision(for: connectionId)
+        )
+    }
+
+    /// Which tables have a tab is not part of the catalog's version, so it is applied on the way
+    /// out rather than stored. A cached flag would badge a table the user has since closed.
+    nonisolated static func applyingOpenState(
+        to catalog: [QuickSwitcherItem],
+        openTables: Set<QuickSwitcherOpenTable>,
+        browsing browseSchema: String?
+    ) -> [QuickSwitcherItem] {
+        catalog.map { item in
+            guard item.kind == .table || item.kind == .view || item.kind == .systemTable else { return item }
+            var updated = item
+            updated.isOpenInTab = openTables.contains(
+                QuickSwitcherOpenTable(schema: item.schemaName, name: item.name, browsing: browseSchema)
+            )
+            return updated
+        }
     }
 
     /// Loading is keyed on a version of the world, so it must always record the version it
@@ -617,6 +688,7 @@ internal final class QuickSwitcherViewModel {
         let scope = scope
         let frecencyScores = frecencyStore.scores()
         let recentIds = frecencyStore.recentItemIds(limit: Self.recentLimit)
+        isFiltering = true
         filterTask = Task { @MainActor [weak self] in
             if debounced {
                 try? await Task.sleep(nanoseconds: Self.filterDebounceNanoseconds)
@@ -627,6 +699,7 @@ internal final class QuickSwitcherViewModel {
                 : await Self.filteredGroups(items: items, query: query, frecencyScores: frecencyScores)
             guard !Task.isCancelled, let self else { return }
             self.groups = groups
+            self.isFiltering = false
             self.reconcileSelection(query: query, scope: scope)
         }
     }

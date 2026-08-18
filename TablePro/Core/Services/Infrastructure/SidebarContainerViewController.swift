@@ -73,19 +73,20 @@ internal final class SidebarContainerViewController: NSViewController {
     func presentDatabaseFilter(connectionId: UUID, sidebarState: SharedSidebarState) {
         guard !searchField.isHidden else { return }
         filterPopover?.close()
-        let popover = NSPopover()
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(
-            rootView: DatabaseTreeFilterPopover(
+        filterPopover = PopoverPresenter.show(
+            relativeTo: searchField.bounds,
+            of: searchField,
+            preferredEdge: .maxY,
+            behavior: .transient
+        ) { _ in
+            DatabaseTreeFilterPopover(
                 connectionId: connectionId,
                 selectedDatabases: Binding(
                     get: { sidebarState.databaseFilterSelected },
                     set: { sidebarState.databaseFilterSelected = $0 }
                 )
             )
-        )
-        popover.show(relativeTo: searchField.bounds, of: searchField, preferredEdge: .maxY)
-        filterPopover = popover
+        }
     }
 
     func updateSidebarState(_ state: SharedSidebarState?) {
