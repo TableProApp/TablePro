@@ -71,29 +71,106 @@ final class OpenQuicklyCommandUITests: UITestCase {
         let searchField = panel.textFields["quick-switcher-search-field"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 15))
 
-        for scope in ["all", "tables", "containers", "queries", "connections"] {
-            let chip = panel.buttons["quick-switcher-scope-\(scope)"]
-            XCTAssertTrue(chip.waitForExistence(timeout: 5), "\(scope) chip missing on an empty query")
+        let scopes = scopePicker(in: panel)
+        XCTAssertTrue(scopes.waitForExistence(timeout: 10))
+
+        for title in Self.scopeTitles {
+            XCTAssertTrue(
+                scopes.radioButtons[title].waitForExistence(timeout: 5),
+                "the \(title) segment is missing on an empty query"
+            )
         }
 
         /// The panel is a fresh view model every time, so it always opens in All. Anything else
         /// means a stale scope survived a presentation, and the cross-connection scopes go and load
         /// every other connection's catalog on open.
-        XCTAssertTrue(
-            panel.buttons["quick-switcher-scope-all"].isSelected,
-            "The panel opens in the All scope"
-        )
+        XCTAssertTrue(isSelected(scopes.radioButtons["All"]), "The panel opens in the All scope")
 
         searchField.typeText("a")
         XCTAssertTrue(panel.buttons["Album"].waitForExistence(timeout: 10))
 
-        for scope in ["all", "tables", "containers", "queries", "connections"] {
-            let chip = panel.buttons["quick-switcher-scope-\(scope)"]
+        for title in Self.scopeTitles {
             XCTAssertTrue(
-                waitUntilHittable(chip, timeout: 5),
-                "\(scope) chip must stay clickable once results are listed"
+                waitUntilHittable(scopes.radioButtons[title], timeout: 5),
+                "the \(title) segment must stay clickable once results are listed"
             )
         }
+
+        /// Clicking a scope must not end typing. The search field claims first responder once when
+        /// the panel opens and nothing re-claims it, so a control that took focus on click would
+        /// leave the user unable to type without clicking back into the field.
+        scopes.radioButtons["Tables"].click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { isSelected(scopes.radioButtons["Tables"]) },
+            "Clicking a segment selects it"
+        )
+        /// Application-scoped on purpose. `XCUIElement.typeText` focuses its element first, so
+        /// typing into the field would restore the focus this is trying to prove was never lost,
+        /// and the assertion could not fail. Typing at the application goes wherever focus actually
+        /// is, which is the question.
+        app.typeText("l")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { (searchField.value as? String ?? "") == "al" },
+            "The search field still has keyboard focus after a scope click"
+        )
+    }
+
+    /// A query of nothing but spaces still has something for Escape to clear, because the field
+    /// editor branches on the raw string. The footer used to branch on the trimmed one, so it
+    /// promised Close and then cleared.
+    func testAWhitespaceQueryStillPromisesEscapeWillClear() throws {
+        let app = try launchWithSampleDatabase()
+        XCTAssertTrue(
+            app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
+                .waitForExistence(timeout: 30)
+        )
+        app.activate()
+
+        app.typeKey("o", modifierFlags: [.command, .shift])
+        let panel = switcherPanel(in: app)
+        let searchField = panel.textFields["quick-switcher-search-field"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+
+        XCTAssertTrue(
+            hint(in: panel, "Escape closes Open Quickly").waitForExistence(timeout: 5),
+            "An empty field promises Escape closes the panel"
+        )
+
+        searchField.typeText(" ")
+        XCTAssertTrue(
+            hint(in: panel, "Escape clears the search text").waitForExistence(timeout: 5),
+            "A whitespace-only query still has something to clear, so the hint must say so"
+        )
+
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(searchField.exists, "That first Escape clears the space, it does not dismiss")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { (searchField.value as? String ?? "").isEmpty }
+        )
+    }
+
+    /// The footer is one accessibility element whose label is the Escape promise, so the promise is
+    /// assertable without reading pixels.
+    private func hint(in panel: XCUIElement, _ label: String) -> XCUIElement {
+        panel.descendants(matching: .any).matching(
+            NSPredicate(format: "label == %@", label)
+        ).firstMatch
+    }
+
+    /// The five scope titles as the user sees them. Segments carry no accessibility identifier of
+    /// their own, so a label is the only handle, and the `containers` case is titled "Databases".
+    private static let scopeTitles = ["All", "Tables", "Databases", "Queries", "Connections"]
+
+    private func scopePicker(in panel: XCUIElement) -> XCUIElement {
+        panel.radioGroups["quick-switcher-scope-picker"].firstMatch
+    }
+
+    /// A segment carries its selection in its accessibility VALUE, 1 or 0, not in a selected trait
+    /// and not in the group's value. Measured on the real control: every segment reports
+    /// `AXSelected` as nil, and the group's `AXValue` is a reference to the selected child rather
+    /// than its title, so both `isSelected` and `group.value` read as nothing.
+    private func isSelected(_ segment: XCUIElement) -> Bool {
+        (segment.value as? NSNumber)?.intValue == 1
     }
 
     /// The command moved from the Database menu to the File menu and was renamed from

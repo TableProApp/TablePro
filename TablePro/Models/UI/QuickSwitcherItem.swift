@@ -87,15 +87,6 @@ internal enum QuickSwitcherScope: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    var iconName: String {
-        switch self {
-        case .all: return "square.grid.2x2"
-        case .tables: return "tablecells"
-        case .containers: return "cylinder"
-        case .queries: return "doc.text"
-        case .connections: return "rectangle.3.group"
-        }
-    }
 }
 
 /// A single item in the quick switcher results list

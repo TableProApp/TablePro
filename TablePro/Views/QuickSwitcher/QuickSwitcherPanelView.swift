@@ -104,6 +104,14 @@ struct QuickSwitcherPanelContent: View {
         viewModel.searchText.trimmingCharacters(in: .whitespaces)
     }
 
+    /// What the next Escape will actually do, which is not the same question as whether there is a
+    /// meaningful query. The field editor owns the first Escape and branches on the raw string, so
+    /// a query of nothing but spaces still has something to clear. Branching the hint on the
+    /// trimmed query instead promised "Close" and then cleared.
+    private var escapeDismissesPanel: Bool {
+        viewModel.searchText.isEmpty
+    }
+
     private var showsResultSurface: Bool {
         !viewModel.flatItems.isEmpty || !trimmedQuery.isEmpty || viewModel.isLoadingResults
     }
@@ -135,47 +143,37 @@ struct QuickSwitcherPanelContent: View {
 
     // MARK: - Scopes
 
-    /// Always present. Gating the scope controls on "nothing is listed yet" removed them from the
+    /// A scope bar, which is what the HIG calls this: "a control for filtering and adjusting the
+    /// scope of a search". macOS draws one as a segmented control, and SwiftUI's own `searchScopes`
+    /// puts exactly this picker under the search field. The row it replaced was five capsule
+    /// buttons, which is an idiom macOS does not have: no HIG component, no AppKit control and no
+    /// Apple app ships one, and the selected capsule was the only opaque thing on a glass panel
+    /// (measured: its pixels did not move at all when the desktop behind the panel changed, while
+    /// every other element shifted with the material).
+    ///
+    /// Text, not icons: the HIG says to "prefer using either text or images, not a mix of both, in
+    /// a single segmented control", and macOS renders `Label(_:systemImage:)` in a segmented picker
+    /// as text anyway, so a symbol here would be written and never drawn.
+    ///
+    /// Always present: gating the scope controls on "nothing is listed yet" removed them from the
     /// view tree the instant a single Recent row existed, which is the panel's very first frame on
     /// any connection with history, so four of the five scopes had no mouse affordance at all.
     private var scopeBar: some View {
-        HStack(spacing: 6) {
+        Picker(String(localized: "Scope"), selection: $viewModel.scope) {
             ForEach(QuickSwitcherScope.allCases) { scope in
-                scopeChip(scope)
+                Text(scope.title).tag(scope)
             }
-            Spacer(minLength: 0)
         }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.large)
+        /// The search field owns first responder for the panel's whole life and only claims it
+        /// once, so anything here that could take focus on click would end typing. This is the same
+        /// guard the toolbar and the filter field use.
+        .focusable(false)
+        .accessibilityIdentifier("quick-switcher-scope-picker")
         .padding(.horizontal, 14)
         .frame(height: QuickSwitcherMetrics.scopeBarHeight)
-    }
-
-    private func scopeChip(_ scope: QuickSwitcherScope) -> some View {
-        let isActive = viewModel.scope == scope
-        return Button {
-            viewModel.scope = scope
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: scope.iconName)
-                    .font(.caption)
-                Text(scope.title)
-                    .font(.callout)
-            }
-            .foregroundStyle(isActive ? Color.emphasizedSelectionLabel : Color.secondary)
-            .padding(.horizontal, 10)
-            .frame(height: 24)
-            .background {
-                Capsule().fill(
-                    isActive
-                        ? Color(nsColor: .selectedContentBackgroundColor)
-                        : Color(nsColor: .quaternarySystemFill)
-                )
-            }
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .help(scope.title)
-        .accessibilityIdentifier("quick-switcher-scope-\(scope.rawValue)")
-        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
     }
 
     // MARK: - Results
@@ -379,7 +377,7 @@ struct QuickSwitcherPanelContent: View {
             keyHint("\u{2318}1\u{2013}5", String(localized: "Scope"))
             keyHint(
                 "\u{238B}",
-                trimmedQuery.isEmpty ? String(localized: "Close") : String(localized: "Clear")
+                escapeDismissesPanel ? String(localized: "Close") : String(localized: "Clear")
             )
         }
         .padding(.horizontal, 16)
@@ -392,7 +390,7 @@ struct QuickSwitcherPanelContent: View {
     }
 
     private var escapeHintLabel: String {
-        trimmedQuery.isEmpty
+        escapeDismissesPanel
             ? String(localized: "Escape closes Open Quickly")
             : String(localized: "Escape clears the search text")
     }
