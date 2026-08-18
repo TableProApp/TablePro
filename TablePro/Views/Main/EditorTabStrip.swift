@@ -257,6 +257,11 @@ private struct EditorTabStripItem: View {
         }
         .padding(.horizontal, EditorTabStripLayout.accessoryInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        /// The whole tab is the target, not the glyphs. A `Button` hit-tests the shape its label
+        /// draws, and this label is a short run of text between two clear spacers, so without a
+        /// shape of its own everything either side of a title like "Album" stops selecting the
+        /// tab: roughly 55pt of dead zone at each end of a 184pt tab.
+        .contentShape(Rectangle())
     }
 
     private var positionDescription: String {

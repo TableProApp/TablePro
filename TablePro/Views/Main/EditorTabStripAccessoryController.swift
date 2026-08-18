@@ -64,8 +64,22 @@ internal final class EditorTabStripAccessoryController: NSTitlebarAccessoryViewC
 
     /// `hidden` collapses the band to zero height without taking it off the window, which is what
     /// keeps a connection's strip built while the window shows a pane that has no tabs to list.
+    ///
+    /// The band collapses under whatever had keyboard focus, so focus is let go on the way down.
+    /// Closing the second-to-last tab from the strip is enough to reach this: the button that was
+    /// clicked is inside the band that is now zero points tall, and a first responder in a view
+    /// with no size leaves Full Keyboard Access tabbing out of somewhere invisible.
     internal func setBandVisible(_ isVisible: Bool) {
         guard isHidden == isVisible else { return }
+        if !isVisible { resignFirstResponderInsideBand() }
         isHidden = !isVisible
+    }
+
+    private func resignFirstResponderInsideBand() {
+        guard let window = view.window,
+              let responder = window.firstResponder as? NSView,
+              responder.isDescendant(of: view)
+        else { return }
+        window.makeFirstResponder(nil)
     }
 }

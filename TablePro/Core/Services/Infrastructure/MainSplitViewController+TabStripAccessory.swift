@@ -44,14 +44,26 @@ internal extension MainSplitViewController {
         armTabStripObservation()
     }
 
-    /// `withObservationTracking` fires once per registration, so something has to re-register.
-    /// Every arm carries the generation it was made at and the newest arm wins, so the arms left
-    /// behind by a repeated call, or by the connection that just left the window, fail their guard
-    /// and die instead of racing the live one. `workspaces.selected` is not itself observable, so a
-    /// workspace switch could never reach the closure and has to re-register from outside.
+    /// `withObservationTracking` fires once per registration and cannot be cancelled, so something
+    /// has to re-register and nothing may register twice. `applyTabStripVisibility()` runs on every
+    /// phase change and every workspace switch, which would otherwise leave a live arm behind each
+    /// time and wake all of them on the next tab change. An arm is therefore made only when there
+    /// is none, or when the connection on screen changed and the live one is watching the previous
+    /// connection's tab manager: `workspaces.selected` is not itself observable, so a switch can
+    /// never reach the closure on its own.
+    ///
+    /// The generation is still carried, because an arm that has already fired cannot be recalled
+    /// and must fail its own guard rather than act on a window that has moved on.
     private func armTabStripObservation() {
+        let manager = workspaces.selected?.sessionState?.tabManager
+        let identity = manager.map(ObjectIdentifier.init)
+        guard !tabStripObservationIsArmed || identity != tabStripObservedManager else { return }
+
         tabStripObservationGeneration += 1
+        tabStripObservationIsArmed = true
+        tabStripObservedManager = identity
         let generation = tabStripObservationGeneration
+
         withObservationTracking { [weak self] in
             _ = self?.workspaces.selected?.sessionState?.tabManager.tabs.count
         } onChange: { [weak self] in
@@ -59,6 +71,7 @@ internal extension MainSplitViewController {
             /// turn of the main actor rather than in the callback.
             Task { @MainActor [weak self] in
                 guard let self, generation == self.tabStripObservationGeneration else { return }
+                self.tabStripObservationIsArmed = false
                 self.applyTabStripVisibility()
             }
         }

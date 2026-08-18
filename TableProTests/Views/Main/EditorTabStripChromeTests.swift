@@ -112,6 +112,17 @@ struct EditorTabStripChromeTests {
         window.contentView?.layoutSubtreeIfNeeded()
     }
 
+    /// The colour the band is supposed to sit on, resolved independently of the bitmap. Every
+    /// comparison below is anchored to it so that an empty or all-black rasterisation cannot
+    /// satisfy the assertions by agreeing with itself.
+    private func windowBackgroundBrightness(for appearance: NSAppearance.Name) -> CGFloat {
+        var brightness: CGFloat = 0
+        NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
+            brightness = NSColor.windowBackgroundColor.usingColorSpace(.deviceRGB)?.brightnessComponent ?? 0
+        }
+        return brightness
+    }
+
     private func brightness(of view: NSView, rows: [CGFloat], columns: [CGFloat]) -> [CGFloat] {
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return [] }
         view.cacheDisplay(in: view.bounds, to: rep)
@@ -188,6 +199,9 @@ struct EditorTabStripChromeTests {
             Issue.record("The strip did not rasterise")
             return
         }
+        /// Without this the two comparisons below would hold on a bitmap that rendered nothing at
+        /// all, because both sides would be reading the same blank.
+        #expect(abs(reference - windowBackgroundBrightness(for: appearance)) < 0.01)
         #expect(!clearance.isEmpty)
         #expect(clearance.allSatisfy { abs($0 - reference) < 0.005 })
     }

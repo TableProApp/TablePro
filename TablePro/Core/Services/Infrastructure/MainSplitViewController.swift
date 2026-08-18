@@ -98,6 +98,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     /// generation captured when they registered.
     var tabStripObservationGeneration = 0
 
+    /// `withObservationTracking` has no way to cancel a registration, so re-registering blindly
+    /// leaves one live arm per call behind until the next change wakes them all. These two say
+    /// whether the live arm still watches the right tab manager, so a repeated call is free and
+    /// only a workspace switch or a fired arm registers again.
+    var tabStripObservationIsArmed = false
+    var tabStripObservedManager: ObjectIdentifier?
+
     private var chromeState: ChromeState = .unapplied
 
     // MARK: - Panel Layout State
