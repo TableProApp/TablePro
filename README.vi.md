@@ -64,7 +64,8 @@ TablePro là mảnh thứ tư còn thiếu: native, đa database, và mã nguồ
 |----------|-----------|
 | macOS 14+ | Ổn định |
 | iOS / iPadOS 18+ | Ổn định |
-| Linux | Đang phát triển |
+| Linux | Bản thử nghiệm, chưa có gì để cài |
+| Windows | Không |
 
 ## Database hỗ trợ
 

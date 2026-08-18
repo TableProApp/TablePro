@@ -64,7 +64,8 @@ TablePro is the missing fourth: native, multi-database, and open source.
 |----------|--------|
 | macOS 14+ | Stable |
 | iOS / iPadOS 18+ | Stable |
-| Linux | In development |
+| Linux | Prototype, nothing to install yet |
+| Windows | No |
 
 ## Supported Databases
 
