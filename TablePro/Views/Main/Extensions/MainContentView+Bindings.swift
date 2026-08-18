@@ -52,7 +52,13 @@ extension MainContentView {
         let connId = coordinator.connection.id
         let scope = tab.tableContext.scope(connectionId: connId)
         let storageKeys = ValueDisplayFormatColumnKey.storageKeys(for: tableRows.columns)
-        let activeFormats = coordinator.dataTabDelegate?.tableViewCoordinator?.columnDisplayFormats
+        let activeFormats = InspectorValueDisplayFormatResolver.activeFormats(
+            from: coordinator.dataTabDelegate?.tableViewCoordinator,
+            matching: tableRows.columns
+        )
+        let storedFormats = activeFormats == nil
+            ? storageKeys.map { service.effectiveFormat(columnKey: $0, scope: scope) }
+            : []
 
         for (i, col) in tableRows.columns.enumerated() {
             var value: String?
@@ -60,7 +66,7 @@ extension MainContentView {
             let format = InspectorValueDisplayFormatResolver.resolve(
                 columnIndex: i,
                 activeFormats: activeFormats,
-                storedFormat: service.effectiveFormat(columnKey: storageKeys[i], scope: scope),
+                storedFormat: storedFormats.indices.contains(i) ? storedFormats[i] : .raw,
                 columnType: columnType,
                 databaseType: coordinator.connection.type
             )
@@ -175,6 +181,17 @@ struct InspectorTrigger: Equatable {
 }
 
 enum InspectorValueDisplayFormatResolver {
+    /// The window keeps one grid coordinator, so it can still be pointed at the previously
+    /// selected tab. Its formats are only meaningful while it holds this tab's columns.
+    @MainActor
+    static func activeFormats(
+        from grid: TableViewCoordinator?,
+        matching columns: [String]
+    ) -> [ValueDisplayFormat?]? {
+        guard let grid, grid.tableRowsProvider().columns == columns else { return nil }
+        return grid.columnDisplayFormats
+    }
+
     static func resolve(
         columnIndex: Int,
         activeFormats: [ValueDisplayFormat?]?,

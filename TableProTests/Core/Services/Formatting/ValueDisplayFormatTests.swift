@@ -106,4 +106,23 @@ struct ValueDisplayFormatTests {
 
         #expect(format == .raw)
     }
+
+    @Test("Setting a format pads the array to the full column count")
+    func displayFormatArrayPadsToColumnCount() {
+        let formats = DisplayFormatArray.setting(.uuid, at: 0, in: [], columnCount: 3)
+
+        #expect(formats == [.uuid, nil, nil])
+    }
+
+    @Test("Setting a format keeps the other columns and never shrinks the array")
+    func displayFormatArrayPreservesOtherColumns() {
+        let formats = DisplayFormatArray.setting(
+            .unixTimestamp,
+            at: 2,
+            in: [.uuid, nil, nil, .json],
+            columnCount: 3
+        )
+
+        #expect(formats == [.uuid, nil, .unixTimestamp, .json])
+    }
 }

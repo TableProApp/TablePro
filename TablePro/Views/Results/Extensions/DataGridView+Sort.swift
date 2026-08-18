@@ -380,11 +380,12 @@ extension TableViewCoordinator {
             )
         }
 
-        var formats = columnDisplayFormats
-        while formats.count <= info.columnIndex {
-            formats.append(nil)
-        }
-        formats[info.columnIndex] = info.format
+        let formats = DisplayFormatArray.setting(
+            info.format,
+            at: info.columnIndex,
+            in: columnDisplayFormats,
+            columnCount: tableRowsProvider().columns.count
+        )
         let remappedValueFilters = updateDisplayFormats(formats)
 
         if remappedValueFilters {
@@ -393,6 +394,24 @@ extension TableViewCoordinator {
         }
 
         reloadAfterDisplayFormatChange()
+    }
+}
+
+/// Builds the format array the grid and the SwiftUI recompute must agree on.
+/// A short array reads as a change on the next update and costs a second full reload.
+enum DisplayFormatArray {
+    static func setting(
+        _ format: ValueDisplayFormat,
+        at columnIndex: Int,
+        in existing: [ValueDisplayFormat?],
+        columnCount: Int
+    ) -> [ValueDisplayFormat?] {
+        var formats = existing
+        while formats.count < max(columnCount, columnIndex + 1) {
+            formats.append(nil)
+        }
+        formats[columnIndex] = format
+        return formats
     }
 }
 

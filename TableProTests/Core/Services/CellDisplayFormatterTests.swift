@@ -23,6 +23,36 @@ struct CellDisplayFormatterTests {
         #expect(result == "")
     }
 
+    @Test("text value keeps a format the column cannot take")
+    func textRejectsInapplicableFormat() {
+        let result = CellDisplayFormatter.format(
+            .text("1000000"),
+            columnType: .text(rawType: "TEXT"),
+            displayFormat: .unixTimestamp
+        )
+
+        #expect(result == "1000000")
+    }
+
+    @Test("MongoDB binary decoded as text stays out of the UUID format")
+    func mongoTextBlobKeepsDriverEncoding() {
+        let hex = "aabbccddaabbccddaabbccddaabbccdd"
+        let withoutFormat = CellDisplayFormatter.format(
+            .text(hex),
+            columnType: .blob(rawType: "BinData"),
+            databaseType: .mongodb
+        )
+        let result = CellDisplayFormatter.format(
+            .text(hex),
+            columnType: .blob(rawType: "BinData"),
+            displayFormat: .uuid,
+            databaseType: .mongodb
+        )
+
+        #expect(result == withoutFormat)
+        #expect(result != ValueDisplayFormatService.applyFormat(hex, format: .uuid))
+    }
+
     @Test("plain text passes through unchanged")
     func plainTextPassthrough() {
         let result = CellDisplayFormatter.format(.text("hello world"), columnType: nil)

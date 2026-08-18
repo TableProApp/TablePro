@@ -96,8 +96,8 @@ struct DataGridView: NSViewRepresentable {
         coordinator.tableRowsMutator = tableRowsMutator
         coordinator.paginationOffsetProvider = paginationOffsetProvider
         coordinator.sortedIDs = sortedIDs
-        coordinator.syncDisplayFormats(displayFormats)
         coordinator.delegate = delegate
+        coordinator.syncDisplayFormats(displayFormats)
         coordinator.apply(configuration: configuration, isEditable: isEditable)
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
 
@@ -268,9 +268,9 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.sortedIDs = sortedIDs
         coordinator.updateCache()
+        coordinator.delegate = delegate
         let displayFormatsChanged = coordinator.columnDisplayFormats != displayFormats
         let remappedValueFilters = coordinator.syncDisplayFormats(displayFormats)
-        coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.recomputeValueFilteredIDs()
         coordinator.updateCache()

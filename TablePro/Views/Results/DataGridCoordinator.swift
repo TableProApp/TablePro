@@ -642,8 +642,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         to newFormats: [ValueDisplayFormat?]
     ) -> Bool {
         let tableRows = tableRowsProvider()
-        var didRemap = false
-        valueFilterState.prune(againstColumns: tableRows.columns)
+        var didRemap = valueFilterState.prune(againstColumns: tableRows.columns)
 
         for column in valueFilterState.activeColumns {
             let oldFormat = oldFormats.indices.contains(column) ? oldFormats[column] : nil
@@ -680,6 +679,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             var selectedValues = existing.selectedValues
             selectedValues.subtract(oldValuesToRemove)
             selectedValues.formUnion(newValuesToInsert)
+            guard selectedValues != existing.selectedValues else { continue }
 
             valueFilterState.set(
                 ColumnValueFilter(selectedValues: selectedValues, includesNull: existing.includesNull),

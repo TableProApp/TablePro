@@ -32,7 +32,8 @@ enum CellDisplayFormatter {
         case .text(let value):
             guard !value.isEmpty else { return value }
             var displayValue = value
-            if let displayFormat, displayFormat != .raw {
+            if let displayFormat, displayFormat != .raw,
+               displayFormat.isApplicable(to: columnType, databaseType: databaseType) {
                 displayValue = ValueDisplayFormatService.applyFormat(value, format: displayFormat)
             } else if let columnType {
                 if columnType.isDateType {

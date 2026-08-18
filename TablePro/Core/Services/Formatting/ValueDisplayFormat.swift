@@ -74,7 +74,7 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
 
 enum ValueDisplayFormatColumnKey {
     static func storageKeys(for columns: [String]) -> [String] {
-        let counts = Dictionary(grouping: columns, by: { $0 }).mapValues(\.count)
+        let counts = columns.reduce(into: [String: Int]()) { $0[$1, default: 0] += 1 }
         var occurrences: [String: Int] = [:]
 
         return columns.map { name in

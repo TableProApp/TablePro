@@ -319,7 +319,7 @@ struct TableViewCoordinatorValueFilterTests {
             columns: ["new_id"],
             columnTypes: [.blob(rawType: "BYTEA")]
         )
-        coordinator.updateDisplayFormats([.uuid])
+        #expect(coordinator.updateDisplayFormats([.uuid]))
 
         #expect(!coordinator.valueFilterState.isActive)
     }
@@ -363,6 +363,66 @@ struct TableViewCoordinatorValueFilterTests {
             coordinator.valueFilterState.filter(forColumn: 0)?.selectedValues
                 == [newFirst, newSecond]
         )
+    }
+
+    @Test("A format change that moves no selected value keeps the grid selection")
+    func displayFormatRemapReportsNoChangeWhenSelectionIsUnaffected() {
+        let loaded = Data(repeating: 0xCC, count: 16)
+        let tableRows = TableRows(
+            rows: [Row(id: .existing(0), values: [.bytes(loaded)])],
+            columns: ["id"],
+            columnTypes: [.blob(rawType: "BYTEA")]
+        )
+        let coordinator = TableViewCoordinator(
+            changeManager: AnyChangeManager(DataChangeManager()),
+            isEditable: true,
+            selectedRowIndices: .constant([]),
+            delegate: nil,
+            layoutPersister: FakeValueFilterPersister()
+        )
+        coordinator.tableRowsProvider = { tableRows }
+        coordinator.updateDisplayFormats([.raw])
+        let selection: Set<String> = ["0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+        coordinator.applyValueFilter(
+            ColumnValueFilter(selectedValues: selection, includesNull: false),
+            columnName: "id",
+            forColumn: 0
+        )
+
+        #expect(!coordinator.updateDisplayFormats([.uuid]))
+        #expect(coordinator.valueFilterState.filter(forColumn: 0)?.selectedValues == selection)
+    }
+
+    @Test("The inspector ignores grid formats left over from another tab")
+    func activeFormatsRequireMatchingColumns() {
+        let tableRows = TableRows(
+            rows: [Row(id: .existing(0), values: [.bytes(Data(repeating: 0xAA, count: 16))])],
+            columns: ["id"],
+            columnTypes: [.blob(rawType: "BYTEA")]
+        )
+        let coordinator = TableViewCoordinator(
+            changeManager: AnyChangeManager(DataChangeManager()),
+            isEditable: true,
+            selectedRowIndices: .constant([]),
+            delegate: nil,
+            layoutPersister: FakeValueFilterPersister()
+        )
+        coordinator.tableRowsProvider = { tableRows }
+        coordinator.updateDisplayFormats([.uuid])
+
+        #expect(
+            InspectorValueDisplayFormatResolver.activeFormats(
+                from: coordinator,
+                matching: ["id"]
+            ) == [.uuid]
+        )
+        #expect(
+            InspectorValueDisplayFormatResolver.activeFormats(
+                from: coordinator,
+                matching: ["payload"]
+            ) == nil
+        )
+        #expect(InspectorValueDisplayFormatResolver.activeFormats(from: nil, matching: ["id"]) == nil)
     }
 }
 
