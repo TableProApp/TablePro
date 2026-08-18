@@ -110,6 +110,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation falls back to per-table fetchForeignKeys.
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
 
+    /// Whether `fetchAllForeignKeys` is a single query. False means it degrades to one round trip
+    /// per table, which is too expensive to run ahead of the user.
+    var providesBulkForeignKeyFetch: Bool { get }
+
     /// Fetch foreign keys for a specific set of tables.
     /// Default implementation calls fetchAllForeignKeys and filters, or falls back to per-table.
     func fetchForeignKeys(forTables tableNames: [String]) async throws -> [String: [ForeignKeyInfo]]
@@ -348,6 +352,8 @@ extension DatabaseDriver {
         }
         return results
     }
+
+    var providesBulkForeignKeyFetch: Bool { false }
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let allTables = try await fetchTables()

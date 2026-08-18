@@ -55,6 +55,7 @@ final class SchemaRefreshService {
     }
 
     func refresh(connection: DatabaseConnection, database: String? = nil) async {
+        SchemaForeignKeyStore.shared.invalidate(connectionId: connection.id)
         let key = RefreshKey(connectionId: connection.id, database: database)
         if let existing = inFlight[key] {
             await existing.value

@@ -617,6 +617,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return columnsByTable
     }
 
+    var providesBulkForeignKeyFetch: Bool { true }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let escaped = effectiveSchemaEscaped(schema)
         let sql = """
