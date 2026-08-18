@@ -58,12 +58,7 @@ struct DatabaseTreeRowView: View {
         case .recentTable(let ref):
             tableRow(ref)
         case .database(let metadata):
-            header(
-                text: metadata.name,
-                systemImage: metadata.isSystemDatabase ? "gearshape" : "cylinder",
-                isActive: metadata.name == context.activeDatabase,
-                isSystem: metadata.isSystemDatabase
-            )
+            databaseRow(metadata)
         case .schema(let database, let schema):
             header(
                 text: schema,
@@ -110,6 +105,28 @@ struct DatabaseTreeRowView: View {
         Label(context.objectKindTitle(kind), systemImage: kind.iconName)
             .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
             .lineLimit(1)
+    }
+
+    private func databaseRow(_ metadata: DatabaseMetadata) -> some View {
+        HStack(spacing: 6) {
+            header(
+                text: metadata.name,
+                systemImage: metadata.isSystemDatabase ? "gearshape" : "cylinder",
+                isActive: metadata.name == context.activeDatabase,
+                isSystem: metadata.isSystemDatabase
+            )
+            Spacer(minLength: 4)
+            if isFavorite {
+                Image(systemName: "star.fill")
+                    .foregroundStyle(.yellow)
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityLabel(
+            isFavorite
+                ? String(format: String(localized: "%@, Favorite"), metadata.name)
+                : metadata.name
+        )
     }
 
     private func tableRow(_ ref: DatabaseTreeTableRef) -> some View {

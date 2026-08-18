@@ -14,6 +14,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal let service = DatabaseTreeMetadataService.shared
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("DatabaseTreeCell")
     private let favoriteTablesStorage: FavoriteTablesStorage
+    internal let favoriteDatabasesStorage: FavoriteDatabasesStorage
 
     internal var connectionId = UUID()
     internal var databaseType: DatabaseType = .mysql
@@ -53,10 +54,30 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     internal let schemaService = SchemaService.shared
     private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
-    private var favoritesObserver: (any NSObjectProtocol)?
+    private var favoriteDatabases: Set<FavoriteDatabaseEntry> = []
+    private var tableFavoritesObserver: (any NSObjectProtocol)?
+    private var databaseFavoritesObserver: (any NSObjectProtocol)?
 
-    init(favoriteTablesStorage: FavoriteTablesStorage = .shared) {
+    override convenience init() {
+        self.init(
+            favoriteTablesStorage: .shared,
+            favoriteDatabasesStorage: .shared
+        )
+    }
+
+    convenience init(favoriteTablesStorage: FavoriteTablesStorage) {
+        self.init(
+            favoriteTablesStorage: favoriteTablesStorage,
+            favoriteDatabasesStorage: .shared
+        )
+    }
+
+    init(
+        favoriteTablesStorage: FavoriteTablesStorage,
+        favoriteDatabasesStorage: FavoriteDatabasesStorage
+    ) {
         self.favoriteTablesStorage = favoriteTablesStorage
+        self.favoriteDatabasesStorage = favoriteDatabasesStorage
         super.init()
     }
 
@@ -72,8 +93,17 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     func attach(outlineView: NSOutlineView) {
         self.outlineView = outlineView
-        favoritesObserver = NotificationCenter.default.addObserver(
+        tableFavoritesObserver = NotificationCenter.default.addObserver(
             forName: .favoriteTablesDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.reloadFavorites()
+                self.refreshVisibleRows()
+            }
+        }
+        databaseFavoritesObserver = NotificationCenter.default.addObserver(
+            forName: .favoriteDatabasesDidChange, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -84,8 +114,11 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     }
 
     deinit {
-        if let favoritesObserver {
-            NotificationCenter.default.removeObserver(favoritesObserver)
+        if let tableFavoritesObserver {
+            NotificationCenter.default.removeObserver(tableFavoritesObserver)
+        }
+        if let databaseFavoritesObserver {
+            NotificationCenter.default.removeObserver(databaseFavoritesObserver)
         }
     }
 
@@ -238,6 +271,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     private func reloadFavorites() {
         favoriteTables = favoriteTablesStorage.favorites(for: connectionId)
+        favoriteDatabases = favoriteDatabasesStorage.favorites(for: connectionId)
     }
 
     private func favoriteEntry(for ref: DatabaseTreeTableRef) -> FavoriteTablesStorage.FavoriteEntry {
@@ -254,8 +288,17 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     }
 
     private func favoriteState(for node: DatabaseTreeNode) -> Bool {
-        guard let ref = DatabaseTreeSelection.tableRef(of: node) else { return false }
-        return isFavorite(ref)
+        switch node.kind {
+        case .database(let metadata):
+            return favoriteDatabaseEnvironment(for: metadata.name) != nil
+        default:
+            guard let ref = DatabaseTreeSelection.tableRef(of: node) else { return false }
+            return isFavorite(ref)
+        }
+    }
+
+    internal func favoriteDatabaseEnvironment(for database: String) -> FavoriteDatabaseEnvironment? {
+        favoriteDatabases.first { $0.database == database }?.environment
     }
 
     internal func toggleFavorite(_ ref: DatabaseTreeTableRef) {

@@ -24,6 +24,10 @@ enum SidebarPersistenceKey {
         "sidebar.selectedFavoriteNodeId.\(connectionId.uuidString)"
     }
 
+    static func favoriteDatabaseEnvironmentFilter(connectionId: UUID) -> String {
+        "sidebar.favoriteDatabaseEnvironmentFilter.\(connectionId.uuidString)"
+    }
+
     static let defaultLayout = "sidebar.defaultLayout"
 
     static func layout(connectionId: UUID) -> String {

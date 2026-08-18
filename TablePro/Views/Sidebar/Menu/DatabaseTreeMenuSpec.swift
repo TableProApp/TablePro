@@ -28,6 +28,7 @@ internal struct DatabaseTreeMenuContext {
     internal let schemaEntityNamePlural: String
     internal let objectKindTitles: [SidebarObjectKind: String]
     internal let isFavorite: Bool
+    internal let favoriteDatabaseEnvironment: FavoriteDatabaseEnvironment?
     internal let showObjectIcons: Bool
     internal let showObjectComments: Bool
     internal let rowSize: SidebarRowSizePreference
@@ -216,13 +217,42 @@ internal enum DatabaseTreeMenuSpec {
         items.append(.command(String(localized: "Refresh"), .refreshContainers(targets)))
         items.append(.command(copyNamesTitle(count: targets.count), .copyContainerNames(targets)))
 
+        if targets.count == 1, clicked.kind == .database {
+            items.append(.separator)
+            items += favoriteDatabaseItems(
+                database: clicked.database,
+                currentEnvironment: context.favoriteDatabaseEnvironment
+            )
+        }
+
         if ExportPreselection.canPreselect(containers: targets, activeDatabase: context.activeDatabase) {
+            items.append(.separator)
             items.append(.command(String(localized: "Export…"), .exportContainers(targets)))
         }
         guard !droppable.isEmpty else { return items }
         items.append(.separator)
         items.append(.command(dropTitle(for: droppable, context: context), .dropContainers(droppable)))
         return items
+    }
+
+    private static func favoriteDatabaseItems(
+        database: String,
+        currentEnvironment: FavoriteDatabaseEnvironment?
+    ) -> [DatabaseTreeMenuItem] {
+        let environmentItems: [DatabaseTreeMenuItem] = FavoriteDatabaseEnvironment.allCases.map { environment in
+            .command(SidebarMenuEntry(
+                title: environment.menuTitle,
+                command: .setFavoriteDatabase(database: database, environment: environment),
+                isOn: currentEnvironment == environment
+            ))
+        }
+        guard currentEnvironment != nil else {
+            return [.submenu(title: String(localized: "Add to Favorites"), items: environmentItems)]
+        }
+        return [
+            .submenu(title: String(localized: "Environment"), items: environmentItems),
+            .destructive(String(localized: "Remove from Favorites"), .removeFavoriteDatabase(database))
+        ]
     }
 
     private static func isActive(_ container: DatabaseContainerRef, context: DatabaseTreeMenuContext) -> Bool {

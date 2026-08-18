@@ -41,6 +41,10 @@ struct FavoritesMenuSpecTests {
         TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
     }
 
+    private func database() -> FavoriteDatabaseEntry {
+        FavoriteDatabaseEntry(connectionId: UUID(), database: "analytics", environment: .development)
+    }
+
     private func moveTargets(_ issued: [FavoritesMenuCommand]) -> [UUID?] {
         issued.compactMap { command in
             guard case .moveFavorite(_, let target) = command else { return nil }
@@ -57,6 +61,8 @@ struct FavoritesMenuSpecTests {
         let kinds: [FavoritesOutlineNode.Kind?] = [
             nil,
             .header("Queries"),
+            .databaseEnvironment(FavoriteDatabaseGroup(environment: .development, entries: [database()])),
+            .database(database()),
             .table(table()),
             .teamQuery(id: "1", name: "Shared", publishedBy: "Sam"),
             .query(.favorite(favorite())),
@@ -76,6 +82,7 @@ struct FavoritesMenuSpecTests {
     func separatorsAreCollapsed() {
         let kinds: [FavoritesOutlineNode.Kind?] = [
             nil,
+            .database(database()),
             .table(table()),
             .query(.favorite(favorite())),
             .query(.folder(SQLFavoriteFolder(name: "Reports"), children: []))
@@ -109,6 +116,32 @@ struct FavoritesMenuSpecTests {
 
         #expect(with.contains(.publishSavedQueriesToTeam))
         #expect(!without.contains(.publishSavedQueriesToTeam))
+    }
+
+    @Test("A database favorite can switch, change environment, or be removed")
+    func databaseFavoriteCommands() {
+        let entry = database()
+        let issued = commands(FavoritesMenuSpec.items(for: FavoritesMenuContext(
+            clicked: .database(entry),
+            databaseEntityName: "Database",
+            activeDatabase: "other"
+        )))
+
+        #expect(issued.contains(.useDatabase(entry)))
+        #expect(issued.contains(.setDatabaseEnvironment(entry, .production)))
+        #expect(issued.contains(.removeDatabaseFavorite(entry)))
+    }
+
+    @Test("The active database omits a redundant switch command")
+    func activeDatabaseOmitsSwitch() {
+        let entry = database()
+        let issued = commands(FavoritesMenuSpec.items(for: FavoritesMenuContext(
+            clicked: .database(entry),
+            databaseEntityName: "Database",
+            activeDatabase: entry.database
+        )))
+
+        #expect(!issued.contains(.useDatabase(entry)))
     }
 
     @Test("Move to lists every folder except the one the favourite is already in")

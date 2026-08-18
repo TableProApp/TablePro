@@ -291,6 +291,8 @@ final class ConnectionStorage {
         appSettings.saveLastSchema(nil, for: connection.id)
 
         FavoriteTablesStorage.shared.removeFavorites(for: connection.id)
+        FavoriteDatabasesStorage.shared.removeFavorites(for: connection.id)
+        FavoritesExpansionState.shared.removeConnection(connection.id)
         FilterSettingsStorage.shared.removeFilters(for: connection.id)
         DatabaseTreeFilterStorage.shared.removeFilter(for: connection.id)
         RecentlyClosedTabStore.shared.removeEntries(for: connection.id)
@@ -331,6 +333,8 @@ final class ConnectionStorage {
             appSettings.saveLastDatabase(nil, for: conn.id)
             appSettings.saveLastSchema(nil, for: conn.id)
             FavoriteTablesStorage.shared.removeFavorites(for: conn.id)
+            FavoriteDatabasesStorage.shared.removeFavorites(for: conn.id)
+            FavoritesExpansionState.shared.removeConnection(conn.id)
         }
         FilterSettingsStorage.shared.removeFilters(for: idsToDelete)
         DatabaseTreeFilterStorage.shared.removeFilters(for: idsToDelete)

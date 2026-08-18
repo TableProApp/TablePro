@@ -30,4 +30,23 @@ internal enum FavoritesExpansion {
             break
         }
     }
+
+    internal static func isDatabaseEnvironmentExpanded(
+        _ environment: FavoriteDatabaseEnvironment,
+        connectionId: UUID
+    ) -> Bool {
+        FavoritesExpansionState.shared.isDatabaseEnvironmentExpanded(environment, for: connectionId)
+    }
+
+    internal static func setDatabaseEnvironmentExpanded(
+        _ environment: FavoriteDatabaseEnvironment,
+        expanded: Bool,
+        connectionId: UUID
+    ) {
+        FavoritesExpansionState.shared.setDatabaseEnvironmentExpanded(
+            environment,
+            expanded: expanded,
+            for: connectionId
+        )
+    }
 }

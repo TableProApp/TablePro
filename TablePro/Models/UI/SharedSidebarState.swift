@@ -112,6 +112,15 @@ final class SharedSidebarState {
         }
     }
 
+    var favoriteDatabaseEnvironmentFilter: FavoriteDatabaseEnvironmentFilter {
+        didSet {
+            AppStorageEnvironment.shared.defaults.set(
+                favoriteDatabaseEnvironmentFilter.rawValue,
+                forKey: SidebarPersistenceKey.favoriteDatabaseEnvironmentFilter(connectionId: connectionId)
+            )
+        }
+    }
+
     var selectedFavorite: FavoriteSelection? {
         didSet {
             guard oldValue != selectedFavorite else { return }
@@ -156,6 +165,10 @@ final class SharedSidebarState {
             self.sidebarLayout = SharedSidebarState.defaultLayout
         }
         self.databaseFilterSelected = DatabaseTreeFilterStorage.shared.selectedDatabases(connectionId: connectionId)
+        let environmentFilterKey = SidebarPersistenceKey.favoriteDatabaseEnvironmentFilter(connectionId: connectionId)
+        self.favoriteDatabaseEnvironmentFilter = AppStorageEnvironment.shared.defaults
+            .string(forKey: environmentFilterKey)
+            .flatMap(FavoriteDatabaseEnvironmentFilter.init(rawValue:)) ?? .all
         self.selectedFavorite = AppStorageEnvironment.shared.defaults.string(
             forKey: SidebarPersistenceKey.selectedFavorite(connectionId: connectionId)
         ).flatMap(FavoriteSelection.init(rawValue:))
@@ -170,6 +183,7 @@ final class SharedSidebarState {
         self.selectedSidebarTab = .tables
         self.sidebarLayout = .flat
         self.databaseFilterSelected = []
+        self.favoriteDatabaseEnvironmentFilter = .all
         self.selectedFavorite = nil
     }
 

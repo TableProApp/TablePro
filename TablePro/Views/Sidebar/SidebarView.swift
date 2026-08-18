@@ -95,6 +95,7 @@ struct SidebarView: View {
                 if let coordinator {
                     FavoritesTabView(
                         connectionId: connectionId,
+                        databaseType: viewModel.databaseType,
                         sharedSidebarState: sidebarState,
                         tables: tables,
                         coordinator: coordinator

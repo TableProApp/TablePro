@@ -25,6 +25,7 @@ struct DatabaseTreeMenuSpecTests {
         selectedContainers: [DatabaseContainerRef] = [],
         isReadOnly: Bool = false,
         isFavorite: Bool = false,
+        favoriteDatabaseEnvironment: FavoriteDatabaseEnvironment? = nil,
         activeDatabase: String? = "app",
         activeSchema: String? = "public",
         canFilterDatabases: Bool = false,
@@ -54,6 +55,7 @@ struct DatabaseTreeMenuSpecTests {
             schemaEntityNamePlural: "Schemas",
             objectKindTitles: [.table: "Tables"],
             isFavorite: isFavorite,
+            favoriteDatabaseEnvironment: favoriteDatabaseEnvironment,
             showObjectIcons: true,
             showObjectComments: false,
             rowSize: .matchSystem,
@@ -262,6 +264,33 @@ struct DatabaseTreeMenuSpecTests {
             if case .useAsActive = command { return true }
             return false
         })
+    }
+
+    @Test("An unfavorited database offers every environment under Add to Favorites")
+    func databaseCanBeFavoritedWithEnvironment() {
+        let database = DatabaseMetadata.minimal(name: "analytics", isSystem: false)
+        let items = DatabaseTreeMenuSpec.items(for: context(clicked: .database(database)))
+        let issued = commands(items)
+
+        #expect(titles(items).contains(String(localized: "Add to Favorites")))
+        for environment in FavoriteDatabaseEnvironment.allCases {
+            #expect(issued.contains(.setFavoriteDatabase(database: "analytics", environment: environment)))
+        }
+        #expect(!issued.contains(.removeFavoriteDatabase("analytics")))
+    }
+
+    @Test("A favorite database can change environment or be removed")
+    func favoriteDatabaseMenuReflectsState() {
+        let database = DatabaseMetadata.minimal(name: "analytics", isSystem: false)
+        let items = DatabaseTreeMenuSpec.items(for: context(
+            clicked: .database(database),
+            favoriteDatabaseEnvironment: .production
+        ))
+        let issued = commands(items)
+
+        #expect(titles(items).contains(String(localized: "Environment")))
+        #expect(issued.contains(.removeFavoriteDatabase("analytics")))
+        #expect(issued.contains(.setFavoriteDatabase(database: "analytics", environment: .development)))
     }
 
     // MARK: - Shape

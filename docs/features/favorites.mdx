@@ -1,9 +1,17 @@
 ---
 title: Favorites
-description: Mark tables as favorites and save frequently used queries with optional keyword shortcuts
+description: Save databases and tables, and keep frequently used queries with optional keyword shortcuts
 ---
 
-The Favorites tab in the sidebar has two sections: **Tables** for pinned tables and **Queries** for saved SQL. The sidebar can also show a **Recent** section with the last tables you opened (off by default).
+The Favorites tab keeps pinned databases and tables beside saved SQL. The sidebar can also show a **Recent** section with the last tables you opened (off by default).
+
+## Database Favorites
+
+In Tree layout, right-click a database and choose **Add to Favorites**, then assign it to Development, Testing, Production, or Unassigned. A filled star marks the database in the tree.
+
+Favorite databases appear first in the Favorites tab, grouped by environment. Use the Environment menu to show one group, and use the sidebar search field to filter by database or environment name. Double-click a database, or select it and press Return, to make it active. Right-click it to change its environment or remove it.
+
+Database favorites are stored locally for each connection. Database names that no longer exist stay in Favorites so you can remove them; trying to activate one shows the database driver's normal switch error.
 
 ## Table Favorites
 

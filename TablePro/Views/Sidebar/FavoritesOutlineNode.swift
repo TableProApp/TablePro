@@ -13,6 +13,8 @@ import Foundation
 internal final class FavoritesOutlineNode: SidebarOutlineNode {
     internal enum Kind {
         case header(String)
+        case databaseEnvironment(FavoriteDatabaseGroup)
+        case database(FavoriteDatabaseEntry)
         case table(TableInfo)
         case query(FavoriteNode)
         case teamQuery(id: String, name: String, publishedBy: String?)
@@ -27,8 +29,14 @@ internal final class FavoritesOutlineNode: SidebarOutlineNode {
     }
 
     internal var isExpandable: Bool {
-        guard case .query(let node) = kind else { return false }
-        return node.isFolder
+        switch kind {
+        case .databaseEnvironment:
+            return true
+        case .query(let node):
+            return node.isFolder
+        case .header, .database, .table, .teamQuery:
+            return false
+        }
     }
 
     /// Tables, Queries and Team Library are buckets rather than objects, so AppKit draws them as
@@ -39,6 +47,7 @@ internal final class FavoritesOutlineNode: SidebarOutlineNode {
     }
 
     internal static let tablesHeaderId = "favorites\u{1}header\u{1}tables"
+    internal static let databasesHeaderId = "favorites\u{1}header\u{1}databases"
     internal static let queriesHeaderId = "favorites\u{1}header\u{1}queries"
     internal static let teamHeaderId = "favorites\u{1}header\u{1}team"
 
@@ -46,6 +55,14 @@ internal final class FavoritesOutlineNode: SidebarOutlineNode {
     /// restored without a live `TableInfo` to hand.
     internal static func tableId(database: String?, schema: String?, name: String) -> String {
         ["favtable", database ?? "", schema ?? "", name].joined(separator: "\u{1}")
+    }
+
+    internal static func databaseEnvironmentId(_ environment: FavoriteDatabaseEnvironment) -> String {
+        "favdatabaseenv\u{1}\(environment.rawValue)"
+    }
+
+    internal static func databaseId(_ entry: FavoriteDatabaseEntry) -> String {
+        "favdatabase\u{1}\(entry.id)"
     }
 
     internal static func teamQueryId(_ clientId: String) -> String { "favteam\u{1}\(clientId)" }

@@ -33,6 +33,12 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
     private func menuContext() -> DatabaseTreeMenuContext {
         let clicked = clickedNode()
         let clickedRef = clicked.flatMap(DatabaseTreeSelection.tableRef)
+        let favoriteDatabaseEnvironment: FavoriteDatabaseEnvironment?
+        if case .database(let metadata) = clicked?.kind {
+            favoriteDatabaseEnvironment = self.favoriteDatabaseEnvironment(for: metadata.name)
+        } else {
+            favoriteDatabaseEnvironment = nil
+        }
         let settings = AppSettingsManager.shared.general
         return DatabaseTreeMenuContext(
             clicked: clicked?.kind,
@@ -58,6 +64,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             schemaEntityNamePlural: PluginManager.shared.schemaEntityNamePlural(for: databaseType),
             objectKindTitles: objectKindTitles(),
             isFavorite: clickedRef.map { isFavorite($0) } ?? false,
+            favoriteDatabaseEnvironment: favoriteDatabaseEnvironment,
             showObjectIcons: settings.showObjectIcons,
             showObjectComments: settings.showObjectComments,
             rowSize: settings.sidebarRowSize,

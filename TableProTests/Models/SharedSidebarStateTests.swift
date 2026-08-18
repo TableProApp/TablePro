@@ -8,13 +8,12 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("SharedSidebarState")
 struct SharedSidebarStateTests {
-
     // MARK: - Registry
 
     @Test("forConnection returns same instance for same UUID")
@@ -90,6 +89,21 @@ struct SharedSidebarStateTests {
         a.favoritesSearchText = "daily"
         let b = SharedSidebarState.forConnection(id)
         #expect(b.favoritesSearchText == "daily")
+        SharedSidebarState.removeConnection(id)
+    }
+
+    @Test("favorite database environment filter persists for its connection")
+    @MainActor
+    func favoriteDatabaseEnvironmentFilterPersists() {
+        let id = UUID()
+        let first = SharedSidebarState.forConnection(id)
+        first.favoriteDatabaseEnvironmentFilter = .testing
+        SharedSidebarState.removeConnection(id)
+
+        let restored = SharedSidebarState.forConnection(id)
+        #expect(restored.favoriteDatabaseEnvironmentFilter == .testing)
+
+        restored.favoriteDatabaseEnvironmentFilter = .all
         SharedSidebarState.removeConnection(id)
     }
 
