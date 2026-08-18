@@ -131,18 +131,18 @@ extension DatabaseTreeOutlineCoordinator {
         return nodes
     }
 
-    /// The section list is the same rule the flat list used, so a kind that was hidden before stays
-    /// hidden: Tables always shows, anything else needs both the capability and something in it.
+    /// The same rule a tree container uses, so toggling the layout never changes which object kinds
+    /// are on screen. Tables is the one section that survives an empty count, because the flat root
+    /// has no container status row to say so instead.
+    ///
+    /// A torn-down sidebar has no view model and lists nothing at all, Tables included. Counting its
+    /// way to an empty root would put a lone Tables section in a pane that is on its way out.
     private func visibleObjectKinds() -> [SidebarObjectKind] {
-        guard let viewModel else { return [] }
-        let capabilities = viewModel.capabilities(for: connectionId)
-        return SidebarObjectKind.allCases.filter { kind in
-            viewModel.sectionShouldRender(
-                kind: kind,
-                itemCount: flatItemCount(for: kind),
-                capabilities: capabilities
-            )
+        guard viewModel != nil else { return [] }
+        let itemCounts = SidebarObjectKind.allCases.reduce(into: [SidebarObjectKind: Int]()) {
+            $0[$1] = flatItemCount(for: $1)
         }
+        return SidebarObjectKind.visible(itemCounts: itemCounts, includingEmptyTables: true)
     }
 
     internal func flatItemCount(for kind: SidebarObjectKind) -> Int {
