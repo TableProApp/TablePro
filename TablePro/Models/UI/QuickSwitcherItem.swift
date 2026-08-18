@@ -119,8 +119,20 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     var schemaName: String?
     var target: QuickSwitcherTarget?
 
-    static func tableItemId(name: String, isView: Bool) -> String {
-        "table_\(name)_\(isView ? "VIEW" : "TABLE")"
+    /// The frecency identity of a table, produced identically by the two places that record one:
+    /// the quick switcher, which knows the object's `TableInfo.TableType`, and the tab open
+    /// chokepoint, which only ever learns a Bool.
+    ///
+    /// The type used to be part of this. It cannot be, because the two sides spell it differently
+    /// and one of them cannot spell it at all: the switcher used the full `TableType` raw value
+    /// while the tab derived `isView` from `allowsRowEditing`, so a materialized view was recorded
+    /// as `TABLE` and looked up as `MATERIALIZED VIEW`. Five of the seven table types disagreed,
+    /// and those objects could never reach the Recent section or earn a frecency boost no matter
+    /// how often they were opened. A name and a schema identify one object in a database whatever
+    /// its type, so the type buys nothing here.
+    static func tableItemId(name: String, schema: String?) -> String {
+        guard let schema, !schema.isEmpty else { return "table_\(name)" }
+        return "table_\(schema).\(name)"
     }
 
     /// SF Symbol name for this item's icon

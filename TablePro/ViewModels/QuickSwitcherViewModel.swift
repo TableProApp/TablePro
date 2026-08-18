@@ -159,7 +159,7 @@ internal final class QuickSwitcherViewModel {
         for table in tables {
             let presentation = Self.tablePresentation(for: table.type)
             items.append(QuickSwitcherItem(
-                id: "table_\(table.name)_\(table.type.rawValue)",
+                id: QuickSwitcherItem.tableItemId(name: table.name, schema: table.schema),
                 name: table.name,
                 kind: presentation.kind,
                 subtitle: presentation.subtitle,
