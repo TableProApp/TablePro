@@ -115,7 +115,7 @@ struct ResultsJsonViewTests {
     }
 
     @Test("wide integers stay exact in JSON text and tree output")
-    func wideIntegersStayExact() {
+    func wideIntegersStayExact() throws {
         let value = "340282366920938463463374607431768211455"
         let tableRows = TableRows(
             rows: [Row(id: .existing(0), values: [.text(value)])],
@@ -131,7 +131,9 @@ struct ResultsJsonViewTests {
         )
 
         #expect(result.json.contains("\"value\": \(value)"))
-        #expect(result.pretty.contains(value))
+        let reindented = try #require(result.json.prettyPrintedAsJson())
+        #expect(result.pretty == reindented)
+        #expect(reindented.contains(value))
         guard case .success(let root) = result.parseResult else {
             if case .failure(let error) = result.parseResult {
                 Issue.record("expected valid JSON tree, got \(error)")

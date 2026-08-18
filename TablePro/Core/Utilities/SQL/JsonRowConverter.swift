@@ -100,85 +100,18 @@ internal struct JsonRowConverter {
         if let intVal = Int64(value) {
             return String(intVal)
         }
-        if isValidJsonInteger(value) {
-            return value
-        }
-        if let normalizedValue = normalizedIntegerSpelling(value) {
-            return normalizedValue
+        if let literal = JsonNumberNormalizer.integerLiteral(from: value) {
+            return literal
         }
         return quotedEscaped(value)
     }
 
-    private func isValidJsonInteger(_ value: String) -> Bool {
-        isValidJsonNumber(value)
-            && !value.contains(".")
-            && !value.contains("e")
-            && !value.contains("E")
-    }
-
-    private func normalizedIntegerSpelling(_ value: String) -> String? {
-        let exponentParts = value.split(
-            maxSplits: 1,
-            omittingEmptySubsequences: false,
-            whereSeparator: { $0 == "e" || $0 == "E" }
-        )
-        guard let mantissaPart = exponentParts.first, !mantissaPart.isEmpty else { return nil }
-
-        let exponent: Int
-        if exponentParts.count == 2 {
-            guard let parsedExponent = Int(exponentParts[1]) else { return nil }
-            exponent = parsedExponent
-        } else {
-            exponent = 0
-        }
-
-        var mantissa = mantissaPart
-        let isNegative = mantissa.first == "-"
-        if isNegative || mantissa.first == "+" {
-            mantissa = mantissa.dropFirst()
-        }
-
-        let decimalParts = mantissa.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-        guard decimalParts.count <= 2,
-              decimalParts.contains(where: { !$0.isEmpty }),
-              decimalParts.allSatisfy({ part in
-                  part.allSatisfy { $0 >= "0" && $0 <= "9" }
-              }) else {
-            return nil
-        }
-
-        let fractionCount = decimalParts.count == 2 ? decimalParts[1].count : 0
-        let digits = Array(decimalParts.joined())
-        guard let firstNonzero = digits.firstIndex(where: { $0 != "0" }) else { return "0" }
-        var significantDigits = Array(digits[firstNonzero...])
-        let scaleLimit = value.count + 20
-        guard exponent >= -scaleLimit, exponent <= scaleLimit else { return nil }
-
-        let scale = exponent - fractionCount
-        if scale >= 0 {
-            guard significantDigits.count + scale <= 19 else { return nil }
-            significantDigits.append(contentsOf: repeatElement("0", count: scale))
-        } else {
-            let removedDigitCount = -scale
-            guard removedDigitCount < significantDigits.count else { return nil }
-            let integerEnd = significantDigits.count - removedDigitCount
-            guard significantDigits[integerEnd...].allSatisfy({ $0 == "0" }) else { return nil }
-            significantDigits.removeLast(removedDigitCount)
-        }
-
-        let normalized = (isNegative ? "-" : "") + String(significantDigits)
-        guard let intVal = Int64(normalized) else { return nil }
-        return String(intVal)
-    }
-
     private func formatDecimal(_ value: String) -> String {
-        // Emit verbatim if already a valid JSON number — preserves full database precision
         if isValidJsonNumber(value) {
             return value
         }
-        // Fallback for non-standard formats (e.g., "1.0E5" with leading +)
-        if let doubleVal = Double(value), !doubleVal.isInfinite, !doubleVal.isNaN {
-            return String(doubleVal)
+        if let literal = JsonNumberNormalizer.numberLiteral(from: value) {
+            return literal
         }
         return quotedEscaped(value)
     }
