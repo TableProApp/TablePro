@@ -4,13 +4,22 @@ struct QueryInsightsView: View {
     let viewModel: QueryInsightsViewModel
     let coordinator: MainContentCoordinator
 
+    /// `requiresPro` only disables the content and lays a scrim over it, so on its own it decides
+    /// what the screen looks like and nothing about what the screen does. Activation is gated on
+    /// the same answer, or an unlicensed Mac computes every aggregate, subscribes to history for
+    /// the session, and leaves the numbers sitting in the view hierarchy for anything that reads it.
+    private var isUnlocked: Bool {
+        LicenseManager.shared.isFeatureAvailable(.queryInsights)
+    }
+
     var body: some View {
         content
             .safeAreaInset(edge: .top, spacing: 0) {
                 QueryInsightsToolbar(viewModel: viewModel)
             }
             .requiresPro(.queryInsights)
-            .task {
+            .task(id: isUnlocked) {
+                guard isUnlocked else { return }
                 await viewModel.activate()
             }
             .onDisappear {
@@ -20,7 +29,10 @@ struct QueryInsightsView: View {
 
     @ViewBuilder
     private var content: some View {
-        if !viewModel.hasLoadedContent {
+        if !isUnlocked {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if !viewModel.hasLoadedContent {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if viewModel.isStoreUnavailable {

@@ -81,6 +81,32 @@ final class QueryInsightsTabUITests: UITestCase {
         )
     }
 
+    /// The test sandbox carries no license, so this run sees exactly what an unlicensed user sees.
+    /// `requiresPro` only dims and scrims, so without the activation gate the panels below it would
+    /// still be built and their numbers would still be sitting in the accessibility tree.
+    func testAnUnlicensedRunComputesAndShowsNoInsightData() throws {
+        let app = try launchWithSampleDatabase()
+        runQuery(in: app)
+        openInsights(in: app)
+
+        let window = app.windows.firstMatch
+        XCTAssertTrue(
+            window.descendants(matching: .any)
+                .matching(NSPredicate(format: "label CONTAINS[c] %@", "Query Insights"))
+                .firstMatch.waitForExistence(timeout: 10),
+            "The tab still opens without a license"
+        )
+
+        for panel in ["Most Run", "Slowest", "Got Slower", "Failures"] {
+            let heading = window.descendants(matching: .any)
+                .matching(NSPredicate(format: "label CONTAINS[c] %@", panel)).firstMatch
+            XCTAssertFalse(
+                heading.exists,
+                "\(panel) must not be built for a run that cannot read it"
+            )
+        }
+    }
+
     // MARK: - Helpers
 
     /// Walks the Database menu rather than typing a shortcut, because the tab has no key
