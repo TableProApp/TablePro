@@ -19,6 +19,7 @@ enum TabType: Equatable, Codable, Hashable {
     case erDiagram
     case serverDashboard
     case usersRoles
+    case insights
 }
 
 /// Minimal representation of a tab for persistence

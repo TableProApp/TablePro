@@ -289,6 +289,19 @@ final class QueryTabManager {
         selectedTabId = newTab.id
     }
 
+    func addQueryInsightsTab() {
+        if let existing = tabs.first(where: { $0.tabType == .insights }) {
+            selectedTabId = existing.id
+            return
+        }
+        let tabTitle = String(localized: "Query Insights")
+        var newTab = QueryTab(title: tabTitle, tabType: .insights)
+        newTab.tableContext.isEditable = false
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+    }
+
     func addUsersRolesTab() {
         if let existing = tabs.first(where: { $0.tabType == .usersRoles }) {
             selectedTabId = existing.id

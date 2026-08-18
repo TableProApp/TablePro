@@ -14,10 +14,22 @@ protocol QueryHistoryReading: Sendable {
     /// the same empty page for "no rows" and for "could not read", and the drawer rendered that as
     /// a positive statement that nothing had ever been recorded.
     func isStoreAvailable() async -> Bool
+
+    func insights(
+        _ request: QueryInsightsRequest,
+        slowestRanking: QueryInsightsSlowestRanking
+    ) async -> QueryInsightsSnapshot
 }
 
 extension QueryHistoryReading {
     func isStoreAvailable() async -> Bool { true }
+
+    func insights(
+        _ request: QueryInsightsRequest,
+        slowestRanking: QueryInsightsSlowestRanking
+    ) async -> QueryInsightsSnapshot {
+        .empty
+    }
 }
 
 extension QueryHistoryReading {

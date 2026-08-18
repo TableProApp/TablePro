@@ -295,6 +295,7 @@ final class ConnectionStorage {
         DatabaseTreeFilterStorage.shared.removeFilter(for: connection.id)
         RecentlyClosedTabStore.shared.removeEntries(for: connection.id)
         HistoryPanelPreferencesStorage.remove(for: connection.id)
+        QueryInsightsPreferencesStorage.remove(for: connection.id)
         Task {
             await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: connection.id)
             await QueryHistoryManager.shared.clear(
@@ -337,6 +338,7 @@ final class ConnectionStorage {
         RecentlyClosedTabStore.shared.removeEntries(for: idsToDelete)
         for id in idsToDelete {
             HistoryPanelPreferencesStorage.remove(for: id)
+            QueryInsightsPreferencesStorage.remove(for: id)
         }
         Task {
             for conn in connectionsToDelete {

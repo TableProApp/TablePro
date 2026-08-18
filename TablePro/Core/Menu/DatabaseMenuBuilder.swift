@@ -81,6 +81,10 @@ enum DatabaseMenuBuilder {
                 String(localized: "Users & Roles"),
                 action: #selector(MainSplitViewController.showUsersAndRoles(_:))
             ),
+            MenuItemFactory.item(
+                String(localized: "Query Insights"),
+                action: #selector(MainSplitViewController.showQueryInsights(_:))
+            ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Disconnect"),

@@ -145,6 +145,7 @@
                   "features/workspace-rail",
                   "features/quick-switcher",
                   "features/query-history",
+                  "features/query-insights",
                   "features/favorites",
                   "features/project-folder-import",
                   "features/keyboard-shortcuts"

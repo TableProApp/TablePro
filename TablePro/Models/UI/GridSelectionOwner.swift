@@ -21,7 +21,7 @@ internal enum GridSelectionOwner: Equatable {
         switch tabType {
         case .table, .query:
             return .dataGrid
-        case .createTable, .erDiagram, .serverDashboard, .usersRoles:
+        case .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights:
             return .none
         }
     }

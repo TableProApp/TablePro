@@ -62,6 +62,7 @@ struct MainEditorContentView: View {
     @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
+    @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
     @State private var dataTabDelegate = DataTabGridDelegate()
 
     @Bindable private var treeService = DatabaseTreeMetadataService.shared
@@ -150,6 +151,7 @@ struct MainEditorContentView: View {
             erDiagramViewModels = erDiagramViewModels.filter { openTabIds.contains($0.key) }
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
             usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
+            queryInsightsViewModels = queryInsightsViewModels.filter { openTabIds.contains($0.key) }
         }
         .onChange(of: tabManager.selectedTabId) { _, _ in
             updateHasQueryText()
@@ -229,7 +231,31 @@ struct MainEditorContentView: View {
             serverDashboardContent(tab: tab)
         case .usersRoles:
             usersRolesContent(tab: tab)
+        case .insights:
+            queryInsightsContent(tab: tab)
         }
+    }
+
+    // MARK: - Query Insights Tab Content
+
+    @ViewBuilder
+    private func queryInsightsContent(tab: QueryTab) -> some View {
+        Group {
+            if let vm = queryInsightsViewModels[tab.id] {
+                QueryInsightsView(viewModel: vm, coordinator: coordinator)
+            } else {
+                ProgressView(String(localized: "Loading insights..."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onAppear {
+                        guard queryInsightsViewModels[tab.id] == nil else { return }
+                        queryInsightsViewModels[tab.id] = QueryInsightsViewModel(
+                            connectionId: connection.id,
+                            history: QueryHistoryManager.shared
+                        )
+                    }
+            }
+        }
+        .id(tab.id)
     }
 
     // MARK: - Users & Roles Tab Content

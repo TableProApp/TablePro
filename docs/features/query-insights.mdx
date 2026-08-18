@@ -1,0 +1,79 @@
+---
+title: Query Insights
+description: Which queries you run most, which cost the most time, and which got slower
+---
+
+<Note>
+Query Insights needs a [Starter license](/features/licensing). Everything it shows is computed on your Mac from the [query history](/features/query-history) already stored there. Nothing is uploaded.
+</Note>
+
+Query history answers "what did I run". Insights answers "what is worth my attention". It reads the same local SQLite database and summarizes it.
+
+Open it from **Database** > **Query Insights**. It opens as a tab, one per connection, and reuses the existing tab if you already have one open.
+
+<Frame caption="Query Insights: summary, activity chart, and the ranked panels below it">
+  <img className="block dark:hidden" src="/images/query-insights.png" alt="Query Insights tab" />
+  <img className="hidden dark:block" src="/images/query-insights-dark.png" alt="Query Insights tab" />
+</Frame>
+
+## Queries Are Grouped by Shape
+
+`SELECT * FROM users WHERE id = 1` and `SELECT * FROM users WHERE id = 2` are the same query run twice, not two queries run once. Insights strips the values out of every statement and groups by what is left:
+
+| Written | Counted as |
+|---------|------------|
+| `WHERE id = 1` and `WHERE id = 2` | `WHERE id = ?` |
+| `IN (1, 2)` and `IN (1, 2, 3, 4)` | `IN (...)` |
+| `VALUES (1, 'a')` and `VALUES (1, 'a'), (2, 'b')` | `VALUES (...)` |
+| `select * from t` and `SELECT * FROM t` | one shape |
+| the same query with and without comments | one shape |
+
+This is the same idea as PostgreSQL's `pg_stat_statements` and MySQL's statement digest, so the numbers mean what they mean there.
+
+Two things are deliberately **not** merged. Table and column names keep their capitalization, because on a case-sensitive server `Orders` and `orders` are different tables and merging them would report a wrong count. And numbers inside a name stay part of the name, so `events_2025` and `events_2026` are counted separately.
+
+Each row shows the shape, not the literal query you ran. **Copy Query** and **Load in Editor** in the right-click menu give you the most recent real query in the group, values and all.
+
+## The Panels
+
+**Summary** across the top: how many queries ran, what share failed, the average duration, and the total time spent waiting.
+
+**Activity** charts queries per day, split into succeeded and failed. Ranges of two days or less are charted by hour instead.
+
+**Most Run** ranks shapes by how many times they ran.
+
+**Slowest** ranks by **Total Time** by default, which is what `pg_stat_statements` sorts by: it finds the query that actually costs you time, which is usually a quick query you run constantly rather than one slow query you ran once. Switch it to **Average Time** to find the query that is slow every single time. Average Time only lists shapes that ran at least 3 times, because the average of one run is just that run.
+
+**Got Slower** compares the range you picked against the range immediately before it. Pick **Last 7 Days** and it compares against the 7 days before that. A shape is reported when all of these hold:
+
+- it ran at least 5 times in **both** periods
+- its average got at least 50% slower
+- its average grew by at least 25 ms
+
+Those floors are there because without them the panel reports noise. Ordinary variation in a query that runs hundreds of times a day will cross a 20% threshold regularly, and a query going from 1 ms to 2 ms has doubled without costing you anything. Only successful runs count, since a query that failed fast is not a query that got quicker.
+
+Rows are ordered by the time the slowdown actually costs, so a query that got twice as slow and runs all day ranks above one that got ten times slower and runs twice.
+
+**Failures** ranks shapes by how many times they failed, with the most recent error message for each.
+
+## Filtering
+
+| Control | What it does |
+|---------|--------------|
+| Scope | This connection, or all connections |
+| Source | Which parts of the app the queries came from |
+| Date | Last hour, today, last 7 days, last 4 weeks, all time |
+
+Source defaults to **My Queries**, the SQL you wrote yourself. Turn on **Table Browsing** to see what the app sent while you clicked around, which is usually where the highest run counts hide. The sources are the same ones the [history drawer](/features/query-history) uses.
+
+Date defaults to **Last 4 Weeks** rather than All Time, because "got slower than before" needs a before to compare against.
+
+There is no outcome filter, on purpose. Hiding failed queries would make the failure panel report that nothing ever fails.
+
+Insights refreshes itself as you run queries. The refresh button is there for when you want it now.
+
+## What It Cannot Tell You
+
+It only knows what your Mac recorded. Queries run before you installed TablePro, run by other people, or run while [capture was paused](/features/query-history#pausing) are not in it. Queries pruned by your [retention settings](/features/query-history#storage-and-retention), 10,000 entries and 90 days by default, are gone too, so a long **All Time** range does not reach further back than retention allows.
+
+Durations are measured by TablePro, from sending the query to getting the result. That includes network time and any [SSH tunnel](/features/ssh-profiles), so a query is "slower" here if your connection got slower, not only if the server did. For server-side timings see the [Server Dashboard](/features/server-dashboard) and [EXPLAIN](/features/explain-visualization).

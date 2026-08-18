@@ -5,6 +5,7 @@ enum QueryHistorySqlBinding: Sendable {
     case text(String)
     case double(Double)
     case int(Int32)
+    case int64(Int64)
 
     static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -16,6 +17,8 @@ enum QueryHistorySqlBinding: Sendable {
             sqlite3_bind_double(statement, index, value)
         case .int(let value):
             sqlite3_bind_int(statement, index, value)
+        case .int64(let value):
+            sqlite3_bind_int64(statement, index, value)
         }
     }
 }

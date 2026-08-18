@@ -82,6 +82,8 @@ internal enum EditorTabOpener {
             tabManager.addServerDashboardTab()
         case .usersRoles:
             tabManager.addUsersRolesTab()
+        case .insights:
+            tabManager.addQueryInsightsTab()
         }
     }
 

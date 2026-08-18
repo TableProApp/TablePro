@@ -13,11 +13,14 @@ internal enum ProFeature: String, CaseIterable {
     case encryptedExport
     case envVarReferences
     case linkedFolders
+    case queryInsights
     case teamCatalog
     case teamLibrary
 
     var displayName: String {
         switch self {
+        case .queryInsights:
+            return String(localized: "Query Insights")
         case .iCloudSync:
             return String(localized: "iCloud Sync")
         case .encryptedExport:
@@ -35,6 +38,8 @@ internal enum ProFeature: String, CaseIterable {
 
     var systemImage: String {
         switch self {
+        case .queryInsights:
+            return "chart.bar.xaxis"
         case .iCloudSync:
             return "icloud"
         case .encryptedExport:
@@ -52,6 +57,8 @@ internal enum ProFeature: String, CaseIterable {
 
     var featureDescription: String {
         switch self {
+        case .queryInsights:
+            return String(localized: "See which queries you run most, which run slowest, and which got slower.")
         case .iCloudSync:
             return String(localized: "Sync connections, settings, and favorites across your Macs.")
         case .encryptedExport:
@@ -70,7 +77,7 @@ internal enum ProFeature: String, CaseIterable {
     /// The lowest license tier that unlocks this feature.
     var requiredTier: LicenseTier {
         switch self {
-        case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders:
+        case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders, .queryInsights:
             return .starter
         case .teamCatalog, .teamLibrary:
             return .team

@@ -177,6 +177,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.supportsServerDashboard
         case #selector(showUsersAndRoles(_:)):
             return context.isConnected && context.supportsUserManagement
+        case #selector(showQueryInsights(_:)):
+            return context.isConnected
 
         case #selector(toggleFilterBar(_:)):
             return context.isConnected && context.isTableTab

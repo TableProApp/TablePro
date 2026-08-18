@@ -67,6 +67,7 @@ actor QueryHistoryStorage {
 
         createTables()
         migrateIfNeeded()
+        createFingerprintIndex()
         protectDatabaseFiles(at: dbPath)
     }
 
@@ -99,7 +100,8 @@ actor QueryHistoryStorage {
             execution_time REAL NOT NULL,
             row_count INTEGER NOT NULL,
             was_successful INTEGER NOT NULL,
-            error_message TEXT
+            error_message TEXT,
+            fingerprint_hash INTEGER NOT NULL DEFAULT 0
         );
         """
 
@@ -138,6 +140,12 @@ actor QueryHistoryStorage {
         execute("CREATE INDEX IF NOT EXISTS idx_history_source ON history(source);")
     }
 
+    /// Kept out of `createIndexes` because that runs before the migration, when a database written
+    /// by an older release still has no `fingerprint_hash` column to index.
+    private func createFingerprintIndex() {
+        execute("CREATE INDEX IF NOT EXISTS idx_history_fingerprint ON history(fingerprint_hash);")
+    }
+
     // MARK: - Migration
 
     /// `createTables` already builds the current shape, so a fresh database needs no migration at
@@ -146,11 +154,81 @@ actor QueryHistoryStorage {
     private func migrateIfNeeded() {
         guard db != nil else { return }
 
-        guard hasColumn("source", inTable: "history") == false else {
-            setUserVersion(3)
+        if hasColumn("source", inTable: "history") == false {
+            migrateToVersion3()
+        }
+        migrateToVersion4()
+        setUserVersion(4)
+    }
+
+    /// Grouping a statement by its shape needs the shape stored, because deriving it on every read
+    /// costs about sixty times what reading a stored column does. The column is added first and
+    /// filled second so an app killed between the two reopens with an unfilled column and finishes
+    /// the backfill, rather than with no column and a version number claiming otherwise.
+    ///
+    /// A row the v3 rebuild carried forward arrives here with the column's `0` default, so both the
+    /// upgrade-from-v3 path and the upgrade-from-v2 path are covered by the same backfill.
+    private func migrateToVersion4() {
+        if hasColumn("fingerprint_hash", inTable: "history") == false {
+            execute("ALTER TABLE history ADD COLUMN fingerprint_hash INTEGER NOT NULL DEFAULT 0;")
+        }
+        backfillFingerprints()
+    }
+
+    private func backfillFingerprints() {
+        let pending = readRowsMissingFingerprint()
+        guard !pending.isEmpty else { return }
+
+        beginTransaction()
+        defer { commitTransaction() }
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(
+            db,
+            "UPDATE history SET fingerprint_hash = ? WHERE id = ?;",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            logSqliteError(context: "prepare fingerprint backfill")
             return
         }
-        migrateToVersion3()
+
+        for row in pending {
+            QueryHistorySqlBinding.int64(row.fingerprint).bind(to: statement, at: 1)
+            QueryHistorySqlBinding.text(row.id).bind(to: statement, at: 2)
+            if sqlite3_step(statement) != SQLITE_DONE {
+                logSqliteError(context: "fingerprint backfill")
+            }
+            sqlite3_reset(statement)
+            sqlite3_clear_bindings(statement)
+        }
+    }
+
+    private func readRowsMissingFingerprint() -> [(id: String, fingerprint: Int64)] {
+        var pending: [(id: String, fingerprint: Int64)] = []
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(
+            db,
+            "SELECT id, query, database_type FROM history WHERE fingerprint_hash = 0;",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else {
+            logSqliteError(context: "prepare fingerprint backfill read")
+            return pending
+        }
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let id = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
+                  let query = sqlite3_column_text(statement, 1).map({ String(cString: $0) })
+            else { continue }
+            let databaseTypeRaw = sqlite3_column_text(statement, 2).map { String(cString: $0) } ?? ""
+            pending.append((id, SQLQueryFingerprint.hash(query, databaseType: DatabaseType(rawValue: databaseTypeRaw))))
+        }
+        return pending
     }
 
     /// Renaming the table takes its triggers with it and dropping it destroys them, so between the
@@ -317,8 +395,8 @@ actor QueryHistoryStorage {
             INSERT INTO history (
                 id, query, connection_id, database_name, database_type, schema_name,
                 source, statement_type, executed_at, execution_time, row_count,
-                was_successful, error_message
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                was_successful, error_message, fingerprint_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """
 
         var statement: OpaquePointer?
@@ -350,6 +428,7 @@ actor QueryHistoryStorage {
         } else {
             sqlite3_bind_null(statement, 13)
         }
+        sqlite3_bind_int64(statement, 14, SQLQueryFingerprint.hash(entry.query, databaseType: entry.databaseType))
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
             logSqliteError(context: "insert")
@@ -523,6 +602,307 @@ actor QueryHistoryStorage {
         }
         guard sqlite3_step(statement) == SQLITE_ROW else { return 0 }
         return Int(sqlite3_column_int(statement, 0))
+    }
+
+    // MARK: - Insights
+
+    /// Ranked shapes for one panel. Every arm reads a column the grouped subquery selects, so the
+    /// ordering never reaches a value the caller cannot also see.
+    private enum InsightsRanking {
+        case callCount
+        case totalDuration
+        case meanDuration
+        case failureCount
+
+        var orderBy: String {
+            switch self {
+            case .callCount: return "g.call_count DESC, g.total_duration DESC"
+            case .totalDuration: return "g.total_duration DESC, g.call_count DESC"
+            case .meanDuration: return "g.total_duration / g.call_count DESC, g.call_count DESC"
+            case .failureCount: return "g.failure_count DESC, g.call_count DESC"
+            }
+        }
+
+        /// The average of a single run is that run, so without a floor one slow one-off statement
+        /// outranks the query that actually costs the user time all day. `pg_stat_statements` users
+        /// apply the same floor by hand for exactly this reason.
+        var having: String {
+            switch self {
+            case .failureCount:
+                return " HAVING failure_count > 0"
+            case .meanDuration:
+                return " HAVING call_count >= \(QueryInsightsRequest.minimumMeanRankingCalls)"
+            case .callCount, .totalDuration:
+                return ""
+            }
+        }
+    }
+
+    func insights(_ request: QueryInsightsRequest, slowestRanking: QueryInsightsSlowestRanking) -> QueryInsightsSnapshot {
+        guard db != nil, !request.matchesNothing else { return .empty }
+
+        return QueryInsightsSnapshot(
+            totals: fetchTotals(request),
+            mostRun: fetchGroups(request, ranking: .callCount),
+            slowest: fetchGroups(request, ranking: slowestRanking == .totalTime ? .totalDuration : .meanDuration),
+            regressions: fetchRegressions(request),
+            failures: fetchGroups(request, ranking: .failureCount),
+            activity: fetchActivity(request),
+            granularity: request.granularity
+        )
+    }
+
+    private func appendScopeAndSources(
+        _ request: QueryInsightsRequest,
+        to clause: inout QueryHistorySqlClause
+    ) {
+        if let connectionId = request.scope.connectionId {
+            clause.append(" AND connection_id = ?", .text(connectionId.uuidString))
+        }
+
+        let allSources = Set(QueryHistorySource.allCases)
+        guard request.sources != allSources else { return }
+        let sources = Array(request.sources)
+        clause.append(
+            " AND source IN (\(QueryHistorySqlClause.placeholders(count: sources.count)))",
+            bindings: sources.map { .text($0.rawValue) }
+        )
+    }
+
+    private func appendInsightsFilters(
+        _ request: QueryInsightsRequest,
+        to clause: inout QueryHistorySqlClause
+    ) {
+        appendScopeAndSources(request, to: &clause)
+        if let since = request.since {
+            clause.append(" AND executed_at >= ?", .double(since.timeIntervalSince1970))
+        }
+        if let until = request.until {
+            clause.append(" AND executed_at <= ?", .double(until.timeIntervalSince1970))
+        }
+    }
+
+    private func fetchTotals(_ request: QueryInsightsRequest) -> QueryInsightsTotals {
+        var clause = QueryHistorySqlClause()
+        clause.append("""
+            SELECT COUNT(*),
+                   SUM(CASE WHEN was_successful = 0 THEN 1 ELSE 0 END),
+                   COUNT(DISTINCT fingerprint_hash),
+                   SUM(execution_time),
+                   MAX(execution_time)
+            FROM history
+            WHERE 1 = 1
+            """)
+        appendInsightsFilters(request, to: &clause)
+        clause.append(";")
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard let statement = prepared(clause, context: "insights totals", into: &statement),
+              sqlite3_step(statement) == SQLITE_ROW
+        else {
+            return .empty
+        }
+
+        return QueryInsightsTotals(
+            totalCount: Int(sqlite3_column_int64(statement, 0)),
+            failedCount: Int(sqlite3_column_int64(statement, 1)),
+            distinctShapeCount: Int(sqlite3_column_int64(statement, 2)),
+            totalDuration: sqlite3_column_double(statement, 3),
+            maxDuration: sqlite3_column_double(statement, 4)
+        )
+    }
+
+    /// The representative row is looked up by fingerprint alone rather than through the panel's
+    /// own filters. Every row sharing a fingerprint normalizes to the same text by construction, so
+    /// the filters could only change which identical shape is shown, at the cost of binding the
+    /// whole filter set a second time inside the subquery.
+    private func fetchGroups(_ request: QueryInsightsRequest, ranking: InsightsRanking) -> [QueryInsightsGroup] {
+        var clause = QueryHistorySqlClause()
+        clause.append("""
+            SELECT g.fingerprint_hash, g.call_count, g.failure_count, g.total_duration, g.max_duration,
+                   g.total_rows,
+                   (SELECT r.query FROM history r
+                     WHERE r.fingerprint_hash = g.fingerprint_hash
+                     ORDER BY r.executed_at DESC LIMIT 1),
+                   (SELECT r.statement_type FROM history r
+                     WHERE r.fingerprint_hash = g.fingerprint_hash
+                     ORDER BY r.executed_at DESC LIMIT 1),
+                   (SELECT r.database_type FROM history r
+                     WHERE r.fingerprint_hash = g.fingerprint_hash
+                     ORDER BY r.executed_at DESC LIMIT 1),
+                   (SELECT r.error_message FROM history r
+                     WHERE r.fingerprint_hash = g.fingerprint_hash
+                       AND r.was_successful = 0 AND r.error_message IS NOT NULL
+                     ORDER BY r.executed_at DESC LIMIT 1)
+            FROM (
+                SELECT fingerprint_hash,
+                       COUNT(*) AS call_count,
+                       SUM(CASE WHEN was_successful = 0 THEN 1 ELSE 0 END) AS failure_count,
+                       SUM(execution_time) AS total_duration,
+                       MAX(execution_time) AS max_duration,
+                       SUM(CASE WHEN row_count >= 0 THEN row_count ELSE 0 END) AS total_rows
+                FROM history
+                WHERE 1 = 1
+            """)
+        appendInsightsFilters(request, to: &clause)
+        clause.append(" GROUP BY fingerprint_hash\(ranking.having)")
+        clause.append(") g ORDER BY \(ranking.orderBy) LIMIT ?;", .int(Int32(clamping: request.limit)))
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard let statement = prepared(clause, context: "insights groups", into: &statement) else { return [] }
+
+        var groups: [QueryInsightsGroup] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let query = sqlite3_column_text(statement, 6).map({ String(cString: $0) }) else { continue }
+            let statementTypeRaw = sqlite3_column_text(statement, 7).map { String(cString: $0) } ?? ""
+            let databaseTypeRaw = sqlite3_column_text(statement, 8).map { String(cString: $0) } ?? ""
+            let databaseType = DatabaseType(rawValue: databaseTypeRaw)
+            groups.append(QueryInsightsGroup(
+                fingerprintHash: sqlite3_column_int64(statement, 0),
+                representativeQuery: query,
+                normalizedQuery: SQLQueryFingerprint.normalize(query, databaseType: databaseType),
+                databaseType: databaseType,
+                callCount: Int(sqlite3_column_int64(statement, 1)),
+                failureCount: Int(sqlite3_column_int64(statement, 2)),
+                totalDuration: sqlite3_column_double(statement, 3),
+                maxDuration: sqlite3_column_double(statement, 4),
+                totalRows: Int(sqlite3_column_int64(statement, 5)),
+                statementType: QueryHistoryStatementType(rawValue: statementTypeRaw) ?? .other,
+                latestErrorMessage: sqlite3_column_text(statement, 9).map { String(cString: $0) }
+            ))
+        }
+        return groups
+    }
+
+    /// Compares two adjacent windows of equal length. Only successful runs count, because a query
+    /// that failed fast would otherwise read as one that got quicker.
+    private func fetchRegressions(_ request: QueryInsightsRequest) -> [QueryInsightsRegression] {
+        let end = (request.until ?? request.referenceDate).timeIntervalSince1970
+        let window = request.comparisonWindow
+        let middle = end - window
+        let start = middle - window
+
+        var clause = QueryHistorySqlClause()
+        clause.append("""
+            WITH windowed AS (
+                SELECT fingerprint_hash,
+                       CASE WHEN executed_at >= ? THEN 1 ELSE 0 END AS is_recent,
+                       execution_time
+                FROM history
+                WHERE was_successful = 1 AND executed_at >= ? AND executed_at < ?
+            """, .double(middle), .double(start), .double(end))
+        appendScopeAndSources(request, to: &clause)
+        clause.append("""
+            ),
+            paired AS (
+                SELECT fingerprint_hash,
+                       SUM(is_recent) AS recent_count,
+                       SUM(1 - is_recent) AS prior_count,
+                       AVG(CASE WHEN is_recent = 1 THEN execution_time END) AS recent_mean,
+                       AVG(CASE WHEN is_recent = 0 THEN execution_time END) AS prior_mean
+                FROM windowed
+                GROUP BY fingerprint_hash
+            )
+            SELECT p.fingerprint_hash, p.recent_count, p.prior_count, p.recent_mean, p.prior_mean,
+                   (SELECT r.query FROM history r
+                     WHERE r.fingerprint_hash = p.fingerprint_hash
+                     ORDER BY r.executed_at DESC LIMIT 1),
+                   (SELECT r.database_type FROM history r
+                     WHERE r.fingerprint_hash = p.fingerprint_hash
+                     ORDER BY r.executed_at DESC LIMIT 1)
+            FROM paired p
+            WHERE p.recent_count >= ? AND p.prior_count >= ?
+              AND p.prior_mean > 0
+              AND p.recent_mean >= p.prior_mean * ?
+              AND p.recent_mean - p.prior_mean >= ?
+            ORDER BY (p.recent_mean - p.prior_mean) * p.recent_count DESC
+            LIMIT ?;
+            """,
+            .int(Int32(QueryInsightsRequest.minimumRegressionSamples)),
+            .int(Int32(QueryInsightsRequest.minimumRegressionSamples)),
+            .double(QueryInsightsRequest.regressionRatio),
+            .double(QueryInsightsRequest.minimumRegressionIncrease),
+            .int(Int32(clamping: request.limit))
+        )
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard let statement = prepared(clause, context: "insights regressions", into: &statement) else { return [] }
+
+        var regressions: [QueryInsightsRegression] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let query = sqlite3_column_text(statement, 5).map({ String(cString: $0) }) else { continue }
+            let databaseTypeRaw = sqlite3_column_text(statement, 6).map { String(cString: $0) } ?? ""
+            let databaseType = DatabaseType(rawValue: databaseTypeRaw)
+            regressions.append(QueryInsightsRegression(
+                fingerprintHash: sqlite3_column_int64(statement, 0),
+                representativeQuery: query,
+                normalizedQuery: SQLQueryFingerprint.normalize(query, databaseType: databaseType),
+                databaseType: databaseType,
+                recentCallCount: Int(sqlite3_column_int64(statement, 1)),
+                priorCallCount: Int(sqlite3_column_int64(statement, 2)),
+                recentMeanDuration: sqlite3_column_double(statement, 3),
+                priorMeanDuration: sqlite3_column_double(statement, 4)
+            ))
+        }
+        return regressions
+    }
+
+    /// Buckets through SQLite's own `localtime` modifier rather than by dividing the epoch, because
+    /// a day boundary is a local-calendar fact: dividing puts a query run at 22:00 in New York into
+    /// the next day, and a fixed offset still slips by an hour across a daylight-saving change.
+    private func fetchActivity(_ request: QueryInsightsRequest) -> [QueryInsightsActivityBucket] {
+        let format = request.granularity == .hourly ? "%Y-%m-%d %H:00" : "%Y-%m-%d 00:00"
+
+        var clause = QueryHistorySqlClause()
+        clause.append("""
+            SELECT strftime('\(format)', executed_at, 'unixepoch', 'localtime') AS bucket,
+                   COUNT(*),
+                   SUM(CASE WHEN was_successful = 0 THEN 1 ELSE 0 END)
+            FROM history
+            WHERE 1 = 1
+            """)
+        appendInsightsFilters(request, to: &clause)
+        clause.append(" GROUP BY bucket ORDER BY bucket;")
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard let statement = prepared(clause, context: "insights activity", into: &statement) else { return [] }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+
+        var buckets: [QueryInsightsActivityBucket] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let raw = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
+                  let date = formatter.date(from: raw)
+            else { continue }
+            buckets.append(QueryInsightsActivityBucket(
+                date: date,
+                totalCount: Int(sqlite3_column_int64(statement, 1)),
+                failedCount: Int(sqlite3_column_int64(statement, 2))
+            ))
+        }
+        return buckets
+    }
+
+    private func prepared(
+        _ clause: QueryHistorySqlClause,
+        context: String,
+        into storage: inout OpaquePointer?
+    ) -> OpaquePointer? {
+        guard sqlite3_prepare_v2(db, clause.sql, -1, &storage, nil) == SQLITE_OK else {
+            logSqliteError(context: "prepare \(context)")
+            return nil
+        }
+        for (offset, binding) in clause.bindings.enumerated() {
+            binding.bind(to: storage, at: Int32(offset + 1))
+        }
+        return storage
     }
 
     // MARK: - Deletes

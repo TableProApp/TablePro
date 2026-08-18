@@ -62,14 +62,7 @@ struct QueryHistoryEntry: Identifiable, Codable, Hashable, Sendable {
     }
 
     var formattedExecutionTime: String {
-        let milliseconds = executionTime * 1_000
-        if milliseconds < 1 {
-            return String(localized: "<1 ms", comment: "Query duration under one millisecond")
-        }
-        if executionTime < 1.0 {
-            return String(format: "%.0f ms", milliseconds)
-        }
-        return String(format: "%.2f s", executionTime)
+        QueryDurationFormatter.string(from: executionTime)
     }
 
     var formattedRowCount: String {

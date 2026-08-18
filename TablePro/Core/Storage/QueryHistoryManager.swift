@@ -63,6 +63,13 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading {
         await storage.count(scope: scope)
     }
 
+    func insights(
+        _ request: QueryInsightsRequest,
+        slowestRanking: QueryInsightsSlowestRanking
+    ) async -> QueryInsightsSnapshot {
+        await storage.insights(request, slowestRanking: slowestRanking)
+    }
+
     // MARK: - Deleting
 
     func delete(id: UUID) async -> Bool {
