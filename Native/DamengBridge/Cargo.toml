@@ -1,5 +1,4 @@
 [workspace]
-members = ["Vendor/*"]
 
 [package]
 name = "tablepro-dameng-bridge"
@@ -10,9 +9,16 @@ license = "AGPL-3.0-only"
 [lib]
 crate-type = ["staticlib"]
 
-[dependencies]
-dameng = { path = "Vendor/dameng" }
-dameng-types = { path = "Vendor/dameng-types" }
+# TablePro's fork of rarnu/rust-dameng, pinned by revision. The DM8 compatibility work
+# lives there as reviewable commits on top of upstream c5120eb0, the same shape as the
+# OracleNIO fork. Cargo.lock pins this rev, so --locked builds stay reproducible.
+[dependencies.dameng]
+git = "https://github.com/TableProApp/rust-dameng"
+rev = "d7a374fe5257228dd3454c36ccbfe3e6bce7a107"
+
+[dependencies.dameng-types]
+git = "https://github.com/TableProApp/rust-dameng"
+rev = "d7a374fe5257228dd3454c36ccbfe3e6bce7a107"
 
 [profile.release]
 codegen-units = 1
