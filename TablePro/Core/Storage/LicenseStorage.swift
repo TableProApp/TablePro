@@ -50,9 +50,7 @@ final class LicenseStorage {
     /// Save cached license (including signed payload) to UserDefaults
     func saveLicense(_ license: License) {
         do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(license)
+            let data = try JSONEncoder().encode(license)
             defaults.set(data, forKey: Keys.licensePayload)
         } catch {
             Self.logger.error("Failed to encode license: \(error.localizedDescription)")
@@ -66,9 +64,7 @@ final class LicenseStorage {
         }
 
         do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode(License.self, from: data)
+            return try JSONDecoder().decode(License.self, from: data)
         } catch {
             Self.logger.error("Failed to decode license: \(error.localizedDescription)")
             return nil

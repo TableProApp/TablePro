@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File > Save As...** stayed available on a table, structure or diagram tab, and **File > Export > Export Results...** stayed available with no rows to export. Both did nothing when chosen. They are dimmed now until they can run.
 - Clearing query history from the drawer promised to delete the connection's history while the source filter was quietly sparing table browsing, row edits, imports and AI queries. The confirmation now says what it will actually delete, and clearing itself is unchanged.
 - A query history database TablePro cannot open showed as "No Query History", which reads as though nothing had ever been recorded. The drawer now says the store could not be opened and that your history is still on disk.
+- A license the server reports as suspended, expired, or no longer activated on this Mac now pauses Pro features at that check, instead of running on for up to a month because the reply was treated as if the server could not be reached. **Check Status** in **Settings > Account** says what the server replied, rather than appearing to do nothing.
+- A license bought with an email address containing a slash could never be activated, and said to update the app, which never helped.
 
 ### Changed
 
@@ -66,6 +68,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Settings > Data no longer lists every saved table layout and filter. TablePro still remembers both. Reset columns from the table's Columns popover, and remove saved filters from the filter panel.
+
+### Security
+
+- Licensing reads every entitlement from the signed license itself, so an edited or copied local copy cannot unlock paid features. TablePro also honours a machine binding when the license server includes one. (#2181)
 
 ## [0.65.0] - 2026-08-16
 
