@@ -164,6 +164,46 @@ struct CommandActionsBulkCloseTests {
         #expect(!current.actions.canCloseTabsForOtherDatabases)
     }
 
+    /// A tab holds a container only when it has work as well as a name, which is the rule the
+    /// workspace rail applies. So an untouched scratch tab on another database is left alone even
+    /// though it can name where it is.
+    @Test("an empty scratch tab on another database is left alone")
+    func emptyScratchTabOnAnotherDatabaseSurvives() {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(databaseName: "db_b")
+
+        #expect(!current.actions.canCloseTabsForOtherDatabases)
+    }
+
+    /// The enablement flag and the close itself read the same victim list, so this drives the real
+    /// command and checks what survives rather than trusting the boolean.
+    @Test("closing for other schemas keeps the query tabs and closes the foreign table tab")
+    func closingForOtherSchemasKeepsQueryTabs() async throws {
+        let connection = TestFixtures.makeConnection(database: "ORCL", type: .oracle)
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1 FROM dual", databaseName: "ORCL")
+        try current.coordinator.tabManager.addTableTab(
+            tableName: "EMPLOYEES", databaseType: .oracle, databaseName: "ORCL", schemaName: "HR"
+        )
+        #expect(current.coordinator.tabManager.tabs.count == 2)
+
+        current.actions.closeTabsForOtherDatabases()
+
+        var spins = 0
+        while current.coordinator.tabManager.tabs.count > 1, spins < 500 {
+            await Task.yield()
+            spins += 1
+        }
+
+        #expect(current.coordinator.tabManager.tabs.count == 1)
+        #expect(current.coordinator.tabManager.tabs.first?.tabType == .query)
+    }
+
     // MARK: - Container wording
 
     /// Both titles were computed and then never used: the menu items carry hardcoded literals and
