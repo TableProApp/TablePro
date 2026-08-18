@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - JSON results and Copy as JSON no longer crash on unsigned or wider-than-64-bit integer values. Large integer tokens stay exact instead of being narrowed through floating-point conversion.
+- Text pasted into the query editor could stay the wrong colour for the rest of the session, showing as plain text while everything around it kept its syntax highlighting. This happened when the editor had to abandon a parse partway through, which it does for a large paste. (#2172)
 - The flat sidebar dropped its Materialized Views, Foreign Tables, Procedures and Functions sections while a connection was recovering from a dropped SSH or proxy tunnel, including after the Mac woke from sleep. Their objects were still listed a moment earlier and came back only once the reconnect finished. The sidebar now lists whatever the connection returned, and switching between the flat and tree layouts shows the same object kinds either way. (#2173)
 - Command+V sometimes did nothing, with no error and no beep. Pressing Command+C in the query editor with nothing selected used to replace the clipboard with an empty string, so every later paste in any app came up empty; it now copies the current line, like Command+X already did. The editor also refused clipboards that carry text as RTF or a file path. Paste is now disabled, instead of silently doing nothing, when the focused view cannot take it: a read-only SQL view, an empty clipboard, or a query-result grid. Pasting a single copied value into a grid cell now fills that cell instead of adding a new row, and Command+V works with the keyboard focus in the sidebar. (#2172)
 - Sixteen-byte SQL binary columns respect their Display As setting in the grid, the row inspector, VoiceOver, and single-cell copy. Raw Value stays selected after refresh, filtered rows keep their identity when the format changes, and MongoDB binary UUIDs remain under the driver's Legacy UUID Encoding setting. (#2157)
@@ -58,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File > Save As...** stayed available on a table, structure or diagram tab, and **File > Export > Export Results...** stayed available with no rows to export. Both did nothing when chosen. They are dimmed now until they can run.
 - Clearing query history from the drawer promised to delete the connection's history while the source filter was quietly sparing table browsing, row edits, imports and AI queries. The confirmation now says what it will actually delete, and clearing itself is unchanged.
 - A query history database TablePro cannot open showed as "No Query History", which reads as though nothing had ever been recorded. The drawer now says the store could not be opened and that your history is still on disk.
+- A license the server reports as suspended, expired, or no longer activated on this Mac now pauses Pro features at that check, instead of running on for up to a month because the reply was treated as if the server could not be reached. **Check Status** in **Settings > Account** says what the server replied, rather than appearing to do nothing.
+- A license bought with an email address containing a slash could never be activated, and said to update the app, which never helped.
 
 ### Changed
 
@@ -67,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Settings > Data no longer lists every saved table layout and filter. TablePro still remembers both. Reset columns from the table's Columns popover, and remove saved filters from the filter panel.
+
+### Security
+
+- Licensing reads every entitlement from the signed license itself, so an edited or copied local copy cannot unlock paid features. TablePro also honours a machine binding when the license server includes one. (#2181)
 
 ## [0.65.0] - 2026-08-16
 

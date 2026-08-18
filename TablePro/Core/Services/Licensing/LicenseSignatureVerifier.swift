@@ -32,9 +32,11 @@ final class LicenseSignatureVerifier {
             throw LicenseError.signatureInvalid
         }
 
-        // Encode the data portion as canonical JSON (same as server)
+        // Encode the data portion as canonical JSON (same as server). The server signs
+        // json_encode($data, JSON_UNESCAPED_SLASHES) over a ksort'ed array, so the slash must
+        // stay raw here or a signed field containing one never verifies.
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let dataJSON = try encoder.encode(payload.data)
 
         guard let signatureData = Data(base64Encoded: payload.signature) else {
