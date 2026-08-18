@@ -38,7 +38,7 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": ["index", "quickstart", "installation", "changelog"]
+            "pages": ["index", "quickstart", "installation", "switching", "changelog"]
           },
           {
             "group": "Database Connections",
