@@ -93,7 +93,7 @@ struct ForeignKeyPreviewView: View {
     @ViewBuilder
     private var content: some View {
         if cellValue == nil {
-            Text("NULL — no referenced row")
+            Text("NULL, no referenced row")
                 .foregroundStyle(.secondary)
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .center)

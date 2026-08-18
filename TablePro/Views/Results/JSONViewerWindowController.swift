@@ -47,7 +47,11 @@ final class JSONViewerWindowController {
             defer: false
         )
         window.identifier = NSUserInterfaceItemIdentifier("json-viewer")
-        window.title = columnName.map { "JSON — \($0)" } ?? String(localized: "JSON Viewer")
+        if let columnName {
+            window.title = String(format: String(localized: "JSON: %@"), columnName)
+        } else {
+            window.title = String(localized: "JSON Viewer")
+        }
         window.isReleasedWhenClosed = false
         window.minSize = Self.minSize
         window.collectionBehavior = [.fullScreenPrimary]

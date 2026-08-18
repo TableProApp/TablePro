@@ -30,7 +30,7 @@ final class PhpViewerWindowController {
         )
         window.identifier = NSUserInterfaceItemIdentifier("php-viewer")
         if let columnName {
-            window.title = String(format: String(localized: "PHP — %@"), columnName)
+            window.title = String(format: String(localized: "PHP: %@"), columnName)
         } else {
             window.title = String(localized: "PHP Viewer")
         }
