@@ -48,7 +48,9 @@ tablepro://connect/<connection-uuid>/database/<db>/table/<table-name>
 tablepro://connect/<connection-uuid>/database/<db>/schema/<schema>/table/<table-name>
 ```
 
-The first form opens the table in the connection's current database and schema. The second selects a database first. The third (Postgres-style) selects both.
+The first form opens the table in the connection's current database and schema. The second selects a database first. The third (Postgres-style) selects both, database before schema.
+
+On a connection that has schemas but no databases to switch between, such as Oracle, a lone `database` segment names the schema. A segment naming a dimension the connection does not have is ignored rather than applied to the other one.
 
 Table and schema names with spaces or special characters must be percent-encoded.
 

@@ -57,12 +57,10 @@ extension MainContentCommandActions {
     }
 
     var closeTabsForOtherDatabasesTitle: String {
-        switch PluginManager.shared.containerSwitchTarget(for: currentDatabaseType) {
-        case .schema:
-            return String(localized: "Close Tabs for Other Schemas")
-        case .database, .none:
-            return String(localized: "Close Tabs for Other Databases")
-        }
+        containerSwitchTitle(
+            schema: String(localized: "Close Tabs for Other Schemas"),
+            database: String(localized: "Close Tabs for Other Databases")
+        )
     }
 
     /// Tabs live in one window now, so a batch close is a list edit rather than a walk over
@@ -110,7 +108,15 @@ extension MainContentCommandActions {
             return tabs.filter { $0.id != anchor }
         case .otherDatabases:
             let current = browsedContainerName
-            return tabs.filter { WorkspaceAnchoring.containerName(of: $0, target: target) != current }
+            /// A tab that cannot name its container is not in another one, it is in none, and
+            /// `containerName` returning nil compared against a non-optional name made every such
+            /// tab foreign. Only `.table` tabs carry a schema, so on a schema-switching engine that
+            /// swept up every query tab the user had typed into. `container(of:)` is the same
+            /// composition the workspace rail already uses to avoid exactly this.
+            return tabs.filter { tab in
+                guard let name = WorkspaceAnchoring.container(of: tab, target: target) else { return false }
+                return name != current
+            }
         }
     }
 }

@@ -464,6 +464,34 @@ extension MainContentCoordinator {
         }
     }
 
+    /// Applies both dimensions a link named, in the order this engine can take them.
+    ///
+    /// A link names dimensions, not one container, so choosing between them is what sent a
+    /// database name to `switchSchema` on every engine that has schemas. `switchContainer` cannot
+    /// express this because it carries one container; the planner decides which to apply and in
+    /// what order, and this runs them.
+    func applyLinkedContainers(database: String?, schema: String?) async {
+        let steps = ContainerSwitchPlanner.plan(
+            database: database,
+            schema: schema,
+            switchable: PluginManager.shared.switchableContainers(for: connection.type)
+        )
+
+        for step in steps {
+            switch step {
+            case .database(let name):
+                guard name != services.databaseManager.session(for: connectionId)?.resolvedBrowseDatabase else {
+                    continue
+                }
+                /// A schema belongs to a database, so a failed database switch stops the plan
+                /// rather than applying the schema against whatever is still open.
+                guard await switchDatabase(to: name) else { return }
+            case .schema(let name):
+                await switchSchema(to: name)
+            }
+        }
+    }
+
     private var schemaEntityName: String {
         guard PluginManager.shared.containerSwitchTarget(for: connection.type) == .schema else {
             return String(localized: "Schema")
