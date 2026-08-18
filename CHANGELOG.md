@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Every database operation TablePro authorizes is written to a local execution log, including the ones the AI assistant and MCP clients ask for, with the statement stored as a digest rather than as text. Records are hash chained, so an edited, reordered or removed entry can be detected. The log stays on the Mac and is not synced.
+
 ## [0.66.0] - 2026-08-19
 
 ### Added
