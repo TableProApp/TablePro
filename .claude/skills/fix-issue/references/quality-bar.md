@@ -1,100 +1,76 @@
 # Quality Bar
 
-## Definition of done
+The definition of done for a fix. Read this early: it is what separates an accepted fix from a rejected one. `CLAUDE.md` at the repo root is the authoritative source for the project's rules; this file is the fix-specific lens on top of it.
 
-The change sits at the correct ownership boundary, preserves native behavior and project
-invariants, lands with its test, builds, passes targeted verification, survives independent
-review, and reports its limitations honestly. A defect is done when the root cause is gone, not
-when the symptom is. A feature is done when a user can find it, use it, undo it, and read about
-it, not when the happy path compiles.
+## The bar, in one sentence
 
-## Refactor versus targeted fix
+Ship the version Apple would ship: native, correct behaviour, clean architecture, full scope, no leftover patches, and proof that it builds and passes. If the right fix is harder, do the right fix.
 
-Refactor when the current shape cannot express correct behavior without a special case, models a
-multi-state domain as a boolean, puts ownership in the wrong layer, or leaves the same failure
-class in sibling paths.
+## Refactor vs. patch: the central decision
 
-Take the targeted fix when the architecture is sound and the defect is local: a wrong comparison,
-a missing guard, a stale mapping, an incorrect ordering. Small is good only when it is complete.
+Every fix forces this call. Make it explicit in the blueprint.
 
-Decide this once, in the blueprint, with the reason written down. Discovering halfway through the
-edit that the shape cannot hold the behavior is how a fix becomes a special case.
+Choose **refactor or rewrite** when:
 
-## New seam versus existing shape
+- The current structure cannot express the correct behaviour without a special case that fights the existing shape.
+- The bug is a symptom of a design that is wrong for the real requirement: a boolean where the state is actually multi-valued, an enum where the domain is open-ended, logic in a view that belongs in a model.
+- Fixing only the reported case would leave the same class of bug latent elsewhere.
 
-The same decision on the change track. Extend the abstraction that already owns this behavior.
-Add a seam only when the existing one cannot express the feature without lying about what it
-models, and say in the blueprint what it could not express. A parallel system that duplicates an
-existing one is the expensive mistake here, because both halves then have to be maintained and
-they drift.
+Choose **targeted patch** when:
 
-Copy a precedent rather than inventing one. The repository has a shipping example of almost every
-kind of surface: a settings pane, a menu command with a shortcut, a sidebar section, a sheet, a
-plugin-backed capability. Find the nearest one and follow its structure, including where it puts
-persistence and where it registers itself. Departing from it is allowed and has to be argued.
+- The design is sound and the bug is a genuine local mistake: an off-by-one, a missing guard, a wrong comparison.
+- A small change fully resolves the root cause without distorting the surrounding code.
 
-Ship the smallest version that satisfies the acceptance criteria, and write the non-goals down.
-An unwritten non-goal is an invitation for a critic, a reviewer, and the implementer to each
-invent a different larger feature.
+The failure mode to avoid is patching a symptom: making the reported case disappear while the underlying cause stays. The user's standing preference is the complete, root-cause fix grounded in documented APIs, never a phased or quick-win version offered as the answer. Do not present a minimal stopgap alongside the real fix as if they were equal options, and do not stop to ask which one to build.
 
-Requests are not designs. A reporter asking for a button is describing a need, and the button may
-not be the answer. The HIG and the app's existing interaction language decide the surface.
-
-## Evidence
-
-- Cite code as `file:line` plus the state transition that reaches it.
-- Cite platform behavior with the exact API and authoritative documentation, and check
-  availability in the installed SDK for the deployment target.
-- Verify C and database behavior against the vendored header and the shipped artifact, not the
-  upstream project's current documentation.
-- Measure ambiguous behavior with a minimal probe.
-- Treat lane reports, review findings, and competitor descriptions as hypotheses until verified at
-  the source. Agreement between agents is not evidence.
-- Verify at the anchor. Open the cited lines rather than re-reading whole files, and read a file
-  end to end only when you are about to change its structure.
-
-## Native UX
-
-- Prefer documented AppKit, SwiftUI, and system behavior over a hand-rolled approximation.
-- Preserve keyboard access, focus, selection, undo, IME, UTF-16 range handling, accessibility, and
-  the responder chain.
-- Use AppKit where the repository deliberately uses it to avoid a known SwiftUI lifecycle or
-  sizing failure. Check before replacing one with the other.
-- Competitor behavior is research input. The HIG and verified user requirements decide the design.
-
-## Completion checks
-
-Both tracks:
-
-- Changelog entry under `[Unreleased]` for user-visible behavior, in the right section: `Added`
-  for a new capability, `Changed` for altered behavior, `Fixed` for a defect. A fix to a feature
-  that has not shipped yet folds into that feature's existing entry instead of adding a new one.
-- The relevant `docs/` page for a feature, shortcut, setting, external API, or driver behavior.
-- Localization through `String(localized:)` with no interpolation inside a key.
-- Unit coverage, and deterministic UI automation where the flow allows it.
-- Project regeneration after any source or configuration change.
-- Build, targeted tests, strict lint, and the plugin or ABI checks the change requires.
-- Independent other-vendor review for high-risk changes.
-- A diff read end to end, preserving unrelated work already in the tree.
-
-A new user-visible feature also needs:
-
-- Discoverability: the menu item, keyboard shortcut, or entry point a user reaches it by, placed
-  where comparable commands already live.
-- An empty state, an error state, and cancellation for anything that can take time or fail.
-- Settings defaults chosen for existing users, plus whatever migration keeps their stored state
-  valid. A new key that silently changes behavior on upgrade is a regression.
-- Undo, or an explicit note in the blueprint that the action is not undoable and why that is safe.
-- A decision about the iOS target, even when the decision is that it does not apply.
-- For a new database type: the string-backed `DatabaseType` stays open, unknown types round-trip,
-  every switch keeps a fallback, and the registry-only build and ABI checks run.
+The second failure mode is believing the wrong thing confidently. Where the correct behaviour depends on a dependency, a C library, or a system framework, measure it against the artifact we ship before designing on top of it. A probe that takes ten minutes has overturned claims that three independent investigators agreed on.
 
 ## Collateral findings
 
-Fold a finding into this change only when it is required for the correctness, safety, or
-verification of the requested behavior. Everything else verified goes into the register with its
-evidence, and the register is the follow-up queue: a qualifying finding ships as its own pull
-request after the primary one, never as an unannounced addition to this diff. Mixing them makes
-the diff hard to review and impossible to revert cleanly.
+A fix is judged on the subsystem it leaves behind, not only on the symptom it closes. **An investigation that finds three defects and fixes one has failed at the part that mattered most.**
 
-The bar for entering the queue is the evidence bar above. A hunch is not a queue item.
+Anything real that the investigation turns up and that is not the reported bug is either scope for the primary fix, when shipping without it would leave the same class of bug latent, or a reported finding the user decides on. Only the first ships unasked. SKILL.md Phase 6 holds the disposition rules and the bar a finding must clear to be worth reporting at all. Two things it will not accept as findings: style preferences, and claims that never got verified.
+
+## Native and HIG
+
+- Use native macOS/iOS components (AppKit, SwiftUI, system frameworks). No cross-platform abstractions, no web views for native UI.
+- Match the documented HIG behaviour for the interaction, and cite the guideline in the blueprint.
+- Name the specific API the fix uses, and prefer the modern, non-deprecated one. Confirm it exists and check its `@available` against our macOS 14 target in the SDK `.swiftinterface` (see `research-sources.md`).
+- **Prefer the documented native API over a hand-rolled equivalent.** If AppKit or SwiftUI already provides the behaviour (a text-completion contract, a dismissal action, a selection model, a tabbing API), use it instead of reimplementing it. A hand-rolled version can pass tests and still mishandle what the platform API already handles: IME and marked text, the undo stack, Unicode and UTF-16 ranges, accessibility, focus. When the investigation surfaces a documented API that fits, that is the design, not a custom loop that approximates it.
+- **Research the approach, then commit to it.** Do not ship a guess, wait for a screenshot, and guess again. For focus and keyboard work specifically, that means the AppKit key view loop, the responder chain, Full Keyboard Access, and SwiftUI's `@FocusState` and `.focusSection`, not custom `makeFirstResponder` calls that steal focus on an event.
+- **Treat the user's UI suggestions as input, not instructions.** When their sketch conflicts with the native convention, say what the correct approach is and why, then build that.
+- The behaviour should feel right to someone who uses native macOS apps daily, including keyboard affordances, focus, and selection.
+
+## Clean code and architecture
+
+From the `CLAUDE.md` principles, the ones a fix most often violates:
+
+- Self-explanatory naming, and **no comments** (the codebase is comment-free by design).
+- Early returns over nested conditionals; small focused functions.
+- Separation of concerns, protocol-oriented design, dependency injection where it fits.
+- `DatabaseType` is a string-based struct, not an enum: every `switch` over it needs `default:`.
+- Explicit access control, no force unwraps, OSLog and never `print`.
+- Stay under the SwiftLint limits; extract into `TypeName+Category.swift` extensions when approaching them.
+
+## Invariants
+
+`CLAUDE.md` has an **Invariants** section listing patterns that have caused real bugs: sync field deployment, sync delete ordering, the tab replacement guard, window tab titles, schema loading, refresh never clearing its own cache, display-position selection indices, connection cancel semantics, split pane holding priority, and more. Several of them shipped the same bug more than once.
+
+If the fix touches one of those areas, the blueprint must show it respects the invariant, quoting the relevant rule. Re-read that section whenever the affected code is near one, rather than trusting memory of it.
+
+## Mandatory rules checklist (from CLAUDE.md)
+
+A fix is not done until these are handled:
+
+- [ ] **CHANGELOG.md**: entry under `[Unreleased]` in the right canonical section, one user-facing line, no file paths or symbols, reference id in parens. Docs-only changes are exempt, and do not add a "Fixed" entry for something that is itself still unreleased.
+- [ ] **Localization**: `String(localized:)` for new user-facing strings, never with interpolation (use `String(format:)`). SwiftUI literals auto-localize. Do not localize technical terms.
+- [ ] **Documentation**: update `docs/` for new shortcuts, UI or feature changes, settings, or driver changes.
+- [ ] **Tests**: write the test that would have caught the bug. Fix the source to make tests pass, never the reverse. UI and user-flow changes also get `TableProUITests` automation where the flow runs deterministically; if it cannot, say why in the PR description. UI suites subclass `UITestCase`, never `XCTestCase` directly (`verification.md` explains why, and what breaks if you do).
+- [ ] **Build**: the app scheme compiles, plus `AllPlugins` if a registry plugin changed.
+- [ ] **Lint**: `swiftlint lint --strict` clean on the changed files.
+- [ ] **Commit message**: Conventional Commits, single line, canonical scope from the list in `CLAUDE.md`.
+- [ ] **Writing style**: no em dashes, no banned filler words. Run the `git diff --cached` grep from `CLAUDE.md` before committing.
+
+## Verification
+
+You build, test, and lint the fix yourself before reporting it done. `references/verification.md` has the environment setup that makes local `xcodebuild` and `swiftlint` work, which failures are environmental rather than yours, and the branch-safety rules for committing.

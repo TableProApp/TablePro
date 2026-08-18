@@ -1,4 +1,0 @@
-interface:
-  display_name: "TablePro Engineering"
-  short_description: "Build and verify TablePro changes correctly"
-  default_prompt: "Use $tablepro-engineering to implement and verify this TablePro change."

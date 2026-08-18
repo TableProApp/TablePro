@@ -97,7 +97,7 @@ The script copies the bundle from DerivedData, so build from Xcode, not from a C
 
 Publishing to TablePro's registry takes two steps in this repo:
 
-1. Add a case for your plugin to `resolve_plugin_info()` in `.github/workflows/build-plugin.yml`: target name, bundle ID, display name, summary, database type IDs, icon, category, homepage. Without it the workflow exits with `Unknown plugin name`.
+1. Add a case for your plugin to the `case "$PLUGIN_NAME"` block in the `Resolve plugin info` step of `.github/workflows/build-plugin.yml`: target name, bundle ID, display name, summary, database type IDs, icon, category, homepage. Without it the workflow exits with `Unknown plugin name`.
 2. Push the tag `plugin-<name>-v<version>`. CI builds both architectures, signs, notarizes, and updates `plugins.json`.
 
 CI signs with TablePro's own certificate, so a third-party plugin ships through a pull request, not a tag of your own. See [Plugin Registry](/development/plugin-registry) for the manifest format, the self-describing `metadata` block, and the publishing flow.

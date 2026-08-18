@@ -1,4 +1,0 @@
-interface:
-  display_name: "Cross-model Review"
-  short_description: "Review TablePro changes across Claude and Codex"
-  default_prompt: "Use $cross-model-review to run an independent review of this TablePro change."
