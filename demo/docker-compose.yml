@@ -1,0 +1,49 @@
+# The databases the marketing screenshots are taken against.
+#
+# Both open with trust authentication and bind to loopback only. That is
+# deliberate: the screenshot run seeds a connection file and never touches the
+# keychain, so no credential exists to leak into a public image or into this
+# repository. Do not point these at anything reachable.
+#
+#   docker compose -f demo/docker-compose.yml up -d
+#   docker compose -f demo/docker-compose.yml down -v
+
+name: tablepro-demo
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: tablepro_demo
+      POSTGRES_USER: tablepro
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - ./schema.postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./data.sql:/docker-entrypoint-initdb.d/02-data.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tablepro -d tablepro_demo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mariadb:
+    image: mariadb:12.2
+    environment:
+      MARIADB_DATABASE: tablepro_demo
+      MARIADB_USER: tablepro
+      MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "yes"
+      MARIADB_PASSWORD: ""
+      MARIADB_ROOT_HOST: "%"
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "127.0.0.1:53306:3306"
+    volumes:
+      - ./schema.mysql.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./data.sql:/docker-entrypoint-initdb.d/02-data.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb -u root -e 'SELECT 1' tablepro_demo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

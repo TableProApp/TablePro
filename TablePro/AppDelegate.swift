@@ -69,7 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let appearanceSettings = AppSettingsManager.shared.appearance
         ThemeEngine.shared.updateAppearanceAndTheme(
-            mode: appearanceSettings.appearanceMode,
+            mode: ScreenshotEnvironment.appearanceMode ?? appearanceSettings.appearanceMode,
             lightThemeId: appearanceSettings.preferredLightThemeId,
             darkThemeId: appearanceSettings.preferredDarkThemeId
         )

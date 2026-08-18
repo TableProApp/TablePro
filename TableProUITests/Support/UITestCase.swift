@@ -12,7 +12,7 @@ import XCTest
 /// Application Support root, its defaults domain and its keychain from it, so nothing a test does
 /// can reach the real ones, and nothing it leaves behind outlives the run.
 internal class UITestCase: XCTestCase {
-    private var sandboxRoot: URL?
+    internal private(set) var sandboxRoot: URL?
     private var launchedApps: [XCUIApplication] = []
     private var privacyAlertMonitor: (any NSObjectProtocol)?
 
@@ -82,11 +82,14 @@ internal class UITestCase: XCTestCase {
         }
     }
 
-    internal func launchApp() throws -> XCUIApplication {
+    internal func launchApp(environment: [String: String] = [:]) throws -> XCUIApplication {
         let root = try XCTUnwrap(sandboxRoot, "setUpWithError did not prepare a sandbox")
         let app = XCUIApplication()
         app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
         app.launchEnvironment["TABLEPRO_UI_TEST_SANDBOX"] = root.path
+        for (key, value) in environment {
+            app.launchEnvironment[key] = value
+        }
         app.launch()
         launchedApps.append(app)
         return app

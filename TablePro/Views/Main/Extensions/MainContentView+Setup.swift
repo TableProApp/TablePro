@@ -277,6 +277,8 @@ extension MainContentView {
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.installToolbar(coordinator: coordinator)
         }
+
+        ScreenshotEnvironment.pinWindowSize(window)
         MainContentView.lifecycleLogger.info(
             "[open] configureWindow done windowId=\(windowId, privacy: .public) isPreview=\(isPreview) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
