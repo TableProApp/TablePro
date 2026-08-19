@@ -67,15 +67,23 @@ extension MainSplitViewController {
             EditorEventRouter.shared.showFindPanelForKeyWindow()
             return
         }
-        commandActions?.toggleFilterPanel()
+        commandActions?.showFindBar()
     }
 
     @objc func findNext(_ sender: Any?) {
-        EditorEventRouter.shared.findNext()
+        guard commandActions?.hasActiveGridFind == true else {
+            EditorEventRouter.shared.findNext()
+            return
+        }
+        commandActions?.stepFindForward()
     }
 
     @objc func findPrevious(_ sender: Any?) {
-        EditorEventRouter.shared.findPrevious()
+        guard commandActions?.hasActiveGridFind == true else {
+            EditorEventRouter.shared.findPrevious()
+            return
+        }
+        commandActions?.stepFindBackward()
     }
 
     @objc func addRow(_ sender: Any?) {

@@ -64,7 +64,8 @@ TablePro is the missing fourth: native, multi-database, and open source.
 |----------|--------|
 | macOS 14+ | Stable |
 | iOS / iPadOS 18+ | Stable |
-| Linux | In development |
+| Linux | Prototype, nothing to install yet |
+| Windows | No |
 
 ## Supported Databases
 
@@ -174,4 +175,3 @@ Thanks to these amazing people for supporting TablePro:
 
 This project is licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE).
 
-Contributions require signing a Contributor License Agreement (CLA). See [CLA.md](CLA.md) for details.

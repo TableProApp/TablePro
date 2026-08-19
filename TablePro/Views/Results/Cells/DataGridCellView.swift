@@ -31,6 +31,7 @@ final class DataGridCellView: NSView {
     private var isFocusedCell: Bool = false
     private var onEmphasizedSelection: Bool = false
     private var hasOverlay: Bool = false
+    private var findMatchTint: NSColor?
 
     private var cachedLine: CTLine?
 
@@ -214,6 +215,13 @@ final class DataGridCellView: NSView {
             needsRedraw = true
         }
 
+        let nextFindTint: NSColor? = state.isCurrentFindMatch ? palette.findMatchTint : nil
+        if !colorsEqual(findMatchTint, nextFindTint) {
+            findMatchTint = nextFindTint
+            cachedLine = nil
+            needsRedraw = true
+        }
+
         if visualState != state.visualState {
             visualState = state.visualState
             needsRedraw = true
@@ -293,7 +301,10 @@ final class DataGridCellView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        if let tint = modifiedColumnTint, !onEmphasizedSelection {
+        if let tint = findMatchTint {
+            tint.setFill()
+            bounds.fill()
+        } else if let tint = modifiedColumnTint, !onEmphasizedSelection {
             tint.setFill()
             bounds.fill()
         }
@@ -340,7 +351,8 @@ final class DataGridCellView: NSView {
     }
 
     private func resolvedTextColor() -> NSColor {
-        onEmphasizedSelection ? .alternateSelectedControlTextColor : textColor
+        if findMatchTint != nil { return .black }
+        return onEmphasizedSelection ? .alternateSelectedControlTextColor : textColor
     }
 
     private func cachedCTLine() -> CTLine {

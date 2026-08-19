@@ -64,7 +64,8 @@ TablePro là mảnh thứ tư còn thiếu: native, đa database, và mã nguồ
 |----------|-----------|
 | macOS 14+ | Ổn định |
 | iOS / iPadOS 18+ | Ổn định |
-| Linux | Đang phát triển |
+| Linux | Bản thử nghiệm, chưa có gì để cài |
+| Windows | Không |
 
 ## Database hỗ trợ
 
@@ -141,4 +142,3 @@ Cảm ơn những người tuyệt vời đã ủng hộ TablePro:
 
 Dự án này cấp phép theo [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE).
 
-Đóng góp cần ký Contributor License Agreement (CLA). Xem [CLA.md](CLA.md) để biết chi tiết.

@@ -119,6 +119,33 @@ Drivers are `.tableplugin` bundles loaded at runtime. Create a new bundle under 
 
 Full guide: [docs/development/plugin-registry](https://docs.tablepro.app/development/plugin-registry)
 
+## Translating
+
+Strings live in a `.xcstrings` catalog, which interleaves every language inside every key. Editing
+one by hand means working in a 109,000-line file next to languages you do not speak.
+
+`scripts/localization.py` gives you one flat file per language instead.
+
+```bash
+scripts/localization.py status              # what is translated, per language
+scripts/localization.py export vi           # Localization/mac.vi.json
+# edit the "translation" values
+scripts/localization.py import vi           # merge back into the catalog
+```
+
+Add `--target ios` for the iPhone and iPad app, which has its own catalog.
+
+Commit the catalog, not the exported file: `Localization/` is ignored, and the catalog stays the
+single source of truth. A merge only rewrites the strings you actually changed, so the diff shows
+your work and nothing else.
+
+A string marked `needs_review` carries a `"state"` field in the export so you can find it. The
+merge never writes that field back: whether a string still needs review is the reviewer's call, not
+a side effect of editing the file.
+
+Run `scripts/localization.py verify` if you change the script. It checks that reading and rewriting
+each catalog reproduces it byte for byte, which is what keeps a translation diff small.
+
 ## Reporting Bugs
 
 Open a [GitHub issue](https://github.com/TableProApp/TablePro/issues) with:
@@ -127,10 +154,6 @@ Open a [GitHub issue](https://github.com/TableProApp/TablePro/issues) with:
 - TablePro version
 - Reproduction steps
 - Database type and version (for database-specific bugs)
-
-## CLA
-
-Sign the Contributor License Agreement on your first PR. The CLA bot walks you through it. One-time thing.
 
 ## License
 
