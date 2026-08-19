@@ -86,7 +86,9 @@ struct MainStatusBarView: View {
                         Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
                         Label("Structure", systemImage: "list.bullet.rectangle").tag(ResultsViewMode.structure)
                         Label("JSON", systemImage: "curlybraces").tag(ResultsViewMode.json)
-                        Label("Chart", systemImage: "chart.xyaxis.line").tag(ResultsViewMode.chart)
+                        Label("Chart", systemImage: "chart.xyaxis.line")
+                            .accessibilityIdentifier("results-view-mode-chart")
+                            .tag(ResultsViewMode.chart)
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
@@ -97,7 +99,9 @@ struct MainStatusBarView: View {
                     Picker(String(localized: "View Mode"), selection: $viewMode) {
                         Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
                         Label("JSON", systemImage: "curlybraces").tag(ResultsViewMode.json)
-                        Label("Chart", systemImage: "chart.xyaxis.line").tag(ResultsViewMode.chart)
+                        Label("Chart", systemImage: "chart.xyaxis.line")
+                            .accessibilityIdentifier("results-view-mode-chart")
+                            .tag(ResultsViewMode.chart)
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)

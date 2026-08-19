@@ -26,47 +26,74 @@ struct ResultChartToolbar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
+            ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
-                    Picker(String(localized: "Chart Type"), selection: chartTypeBinding) {
-                        ForEach(ResultChartType.allCases) { type in
-                            Label(type.displayName, systemImage: type.systemImage)
-                                .tag(type)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .fixedSize()
-                    .accessibilityIdentifier("result-chart-type-picker")
+                    ResultChartTypePicker(selection: chartTypeBinding)
+                        .fixedSize()
 
                     Divider()
                         .frame(height: 22)
 
-                    axisPicker(
+                    ResultChartAxisPicker(
                         title: String(localized: "X Axis"),
                         selection: xColumnBinding,
                         columns: xColumns,
-                        noneLabel: String(localized: "Row Number")
+                        noneLabel: String(localized: "Row Number"),
+                        accessibilityIdentifier: "result-chart-x-picker"
                     )
+                    .frame(width: 170)
 
-                    axisPicker(
+                    ResultChartAxisPicker(
                         title: String(localized: "Y Axis"),
                         selection: yColumnBinding,
                         columns: yColumns,
-                        noneLabel: String(localized: "Choose Column")
+                        noneLabel: String(localized: "Choose Column"),
+                        accessibilityIdentifier: "result-chart-y-picker"
                     )
+                    .frame(width: 170)
 
-                    axisPicker(
+                    ResultChartAxisPicker(
                         title: String(localized: "Series"),
                         selection: seriesColumnBinding,
                         columns: seriesColumns,
-                        noneLabel: String(localized: "None")
+                        noneLabel: String(localized: "None"),
+                        accessibilityIdentifier: "result-chart-series-picker"
+                    )
+                    .frame(width: 170)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ResultChartTypePicker(selection: chartTypeBinding)
+                        .frame(maxWidth: 400, alignment: .leading)
+
+                    ResultChartAxisPicker(
+                        title: String(localized: "X Axis"),
+                        selection: xColumnBinding,
+                        columns: xColumns,
+                        noneLabel: String(localized: "Row Number"),
+                        accessibilityIdentifier: "result-chart-x-picker"
+                    )
+                    ResultChartAxisPicker(
+                        title: String(localized: "Y Axis"),
+                        selection: yColumnBinding,
+                        columns: yColumns,
+                        noneLabel: String(localized: "Choose Column"),
+                        accessibilityIdentifier: "result-chart-y-picker"
+                    )
+                    ResultChartAxisPicker(
+                        title: String(localized: "Series"),
+                        selection: seriesColumnBinding,
+                        columns: seriesColumns,
+                        noneLabel: String(localized: "None"),
+                        accessibilityIdentifier: "result-chart-series-picker"
                     )
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             HStack(spacing: 6) {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal) {
                     HStack(spacing: 5) {
                         if hasUnloadedRows {
                             Label(
@@ -88,13 +115,13 @@ struct ResultChartToolbar: View {
                     }
                     .fixedSize(horizontal: true, vertical: false)
                 }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                 .accessibilityIdentifier("result-chart-data-scope")
 
                 Image(systemName: "info.circle")
                     .foregroundStyle(.secondary)
                     .help(String(localized: "Charts use the loaded result buffer. Grid selection, Find, hidden columns, and value filters do not change the chart."))
                     .accessibilityLabel(String(localized: "Chart data scope"))
-                    .accessibilityValue(String(localized: "Charts use the loaded result buffer. Grid selection, Find, hidden columns, and value filters do not change the chart."))
             }
             .font(.caption)
             .lineLimit(1)
@@ -130,20 +157,5 @@ struct ResultChartToolbar: View {
             get: { configuration.seriesColumnIndex },
             set: { configuration.seriesColumnIndex = $0 }
         )
-    }
-
-    private func axisPicker(
-        title: String,
-        selection: Binding<Int?>,
-        columns: [ResultChartColumn],
-        noneLabel: String
-    ) -> some View {
-        Picker(title, selection: selection) {
-            Text(noneLabel).tag(Int?.none)
-            ForEach(columns) { column in
-                Text(column.displayName).tag(Optional(column.index))
-            }
-        }
-        .frame(width: 170)
     }
 }

@@ -14,13 +14,14 @@ final class ResultChartUITests: UITestCase {
         let modePicker = window.radioGroups["results-view-mode-picker"].firstMatch
         XCTAssertTrue(modePicker.waitForExistence(timeout: 10), "The result must expose its view modes")
 
-        let chart = modePicker.radioButtons["Chart"]
-        XCTAssertTrue(chart.exists, "Column-bearing results must offer Chart mode")
+        let chart = modePicker.radioButtons["results-view-mode-chart"].firstMatch
+        XCTAssertTrue(
+            waitUntilHittable(chart, timeout: 10),
+            "Column-bearing results must offer an interactive Chart mode"
+        )
         chart.click()
 
-        let gate = window.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS[c] %@", "Result Charts requires"))
-            .firstMatch
+        let gate = window.staticTexts["pro-feature-gate-resultCharts"].firstMatch
         XCTAssertTrue(gate.waitForExistence(timeout: 10), "An unlicensed chart must show its license gate")
         XCTAssertFalse(window.descendants(matching: .any).matching(identifier: "result-chart").firstMatch.exists)
         XCTAssertFalse(

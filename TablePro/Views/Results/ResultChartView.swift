@@ -109,6 +109,7 @@ struct ResultChartView: View {
         } else if isLoading {
             ProgressView()
                 .controlSize(.small)
+                .accessibilityLabel(String(localized: "Building chart"))
         } else if let projection {
             projectionContent(projection)
         }
