@@ -32,7 +32,11 @@ extension DatabaseTreeOutlineCoordinator {
         case .showStructure(let ref):
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.openTableTab(
-                    ref.table, schema: ref.schema, showStructure: true, activateGridFocus: true
+                    ref.table,
+                    schema: ref.schema,
+                    showStructure: true,
+                    forceNonPreview: true,
+                    activateGridFocus: true
                 )
             }
         case .showERDiagram:

@@ -87,6 +87,9 @@ extension MainContentCoordinator {
             isVisible: true,
             filterLogicMode: .and
         )
+        /// This payload is only built once no open tab could take the jump, so it must land in a
+        /// tab of its own. Reusing one would write the FK filter over filters the user applied
+        /// there, and leave the grid on rows the new filter never ran against.
         return EditorTabPayload(
             connectionId: connection.id,
             tabType: .table,
@@ -94,6 +97,7 @@ extension MainContentCoordinator {
             databaseName: databaseName,
             schemaName: schemaName,
             isView: false,
+            forcesNewTab: true,
             initialFilterState: fkFilterState
         )
     }

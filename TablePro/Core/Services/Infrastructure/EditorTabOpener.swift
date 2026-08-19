@@ -102,29 +102,26 @@ internal enum EditorTabOpener {
             return
         }
 
+        let didCreateTab: Bool
         do {
-            if payload.isPreview {
-                try tabManager.addPreviewTableTab(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    databaseName: payload.databaseName ?? browseDatabaseName,
-                    schemaName: resolvedSchemaName,
-                    isView: payload.isView
-                )
-            } else {
-                try tabManager.addTableTab(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    databaseName: payload.databaseName ?? browseDatabaseName,
-                    schemaName: resolvedSchemaName,
-                    isView: payload.isView
-                )
-            }
+            didCreateTab = try tabManager.addTableTab(
+                tableName: tableName,
+                databaseType: connection.type,
+                databaseName: payload.databaseName ?? browseDatabaseName,
+                schemaName: resolvedSchemaName,
+                isView: payload.isView,
+                isPreview: payload.isPreview,
+                allowsDuplicate: payload.forcesNewTab
+            )
         } catch {
             logger.error("create tab for table failed: \(error.localizedDescription, privacy: .public)")
+            return
         }
 
-        guard let index = tabManager.selectedTabIndex else { return }
+        /// Only a tab this payload created may take the payload's state. An existing tab was
+        /// reselected, not asked for, and writing the payload's filter over its own would destroy
+        /// work the user did there while leaving the grid on rows the new filter never ran.
+        guard didCreateTab, let index = tabManager.selectedTabIndex else { return }
         tabManager.tabs[index].tableContext.isView = payload.isView
         tabManager.tabs[index].tableContext.isEditable = !payload.isView
         tabManager.tabs[index].tableContext.schemaName = resolvedSchemaName

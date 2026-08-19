@@ -339,7 +339,7 @@ internal struct FavoritesTabView: View {
     @ViewBuilder
     private func favoriteTableContextMenu(_ table: TableInfo) -> some View {
         Button(String(localized: "Open Table")) {
-            coordinator?.openTableTab(table, activateGridFocus: true)
+            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
         }
 
         Button(String(localized: "Show ER Diagram")) {
@@ -355,12 +355,15 @@ internal struct FavoritesTabView: View {
         }
     }
 
+    /// Selecting a favourite does not open it, so every open from this list is a deliberate one:
+    /// a double-click, Return, or a menu item. None of them may hand back a tab the next sidebar
+    /// click throws away.
     private func handlePrimaryAction(_ kind: FavoritesOutlineNode.Kind) {
         switch kind {
         case .header:
             break
         case .table(let table):
-            coordinator?.openTableTab(table, activateGridFocus: true)
+            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
         case .query(let node):
             switch node.content {
             case .favorite(let favorite):
@@ -405,7 +408,7 @@ internal struct FavoritesTabView: View {
     private func perform(_ command: FavoritesMenuCommand) {
         switch command {
         case .openTable(let table):
-            coordinator?.openTableTab(table, activateGridFocus: true)
+            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
         case .showERDiagram:
             coordinator?.showERDiagram()
         case .removeTableFavorite(let table):

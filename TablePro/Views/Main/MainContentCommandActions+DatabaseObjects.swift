@@ -15,7 +15,9 @@ extension MainContentCommandActions {
 
     func showTableStructure() {
         guard let object = selectedObject else { return }
-        coordinator?.openTableTab(object, showStructure: true, activateGridFocus: true)
+        coordinator?.openTableTab(
+            object, showStructure: true, forceNonPreview: true, activateGridFocus: true
+        )
     }
 
     var canEditViewDefinition: Bool {

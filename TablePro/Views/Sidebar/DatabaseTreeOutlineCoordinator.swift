@@ -42,6 +42,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var isModelSelectionAdoptionPending = false
     private var openSelectionDepth = 0
     private var pendingOpenWork: DispatchWorkItem?
+    private var openWork: Task<Void, Never>?
     internal var isApplyingExpansion = false
     private var isSelectionSyncScheduled = false
     private var isCollapsingItem = false
@@ -341,12 +342,28 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         return activeDatabase
     }
 
-    private func open(_ ref: DatabaseTreeTableRef, activateGridFocus: Bool) {
+    /// Opens run one after another, because a double-click is two opens of the same row and the
+    /// second lands while the first is still inside `activate(_:)`. Both would then read the same
+    /// stale `activeDatabase` and switch the database twice for one gesture, which on an engine
+    /// that reconnects to switch means two reconnects and two schema invalidations. Waiting for the
+    /// one in flight lets the second see the database it already moved to, so it only promotes.
+    private func open(
+        _ ref: DatabaseTreeTableRef,
+        activateGridFocus: Bool,
+        forceNonPreview: Bool = false
+    ) {
+        let inFlight = openWork
         openSelectionDepth += 1
-        Task { @MainActor in
+        openWork = Task { @MainActor in
             defer { openSelectionDepth -= 1 }
+            await inFlight?.value
             await activate(ref)
-            mainCoordinator?.openTableTab(ref.table, schema: ref.schema, activateGridFocus: activateGridFocus)
+            mainCoordinator?.openTableTab(
+                ref.table,
+                schema: ref.schema,
+                forceNonPreview: forceNonPreview,
+                activateGridFocus: activateGridFocus
+            )
             publishSelection()
         }
     }
@@ -520,17 +537,46 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         Task { await schemaService.reloadSchemaTables(connectionId: connectionId, schema: schema, driver: driver) }
     }
 
-    /// Selection already opened whatever was clicked, so the second click is only ever a
-    /// disclosure gesture.
     @objc
     func handleDoubleClick() {
         guard let outlineView, outlineView.clickedRow >= 0,
-              let node = outlineView.item(atRow: outlineView.clickedRow) as? DatabaseTreeNode,
-              node.isExpandable else { return }
-        if outlineView.isItemExpanded(node) {
-            outlineView.collapseItem(node)
-        } else {
-            outlineView.expandItem(node)
+              let node = outlineView.item(atRow: outlineView.clickedRow) as? DatabaseTreeNode
+        else { return }
+        perform(DatabaseTreeDoubleClickResolver.resolve(node: node), on: node, in: outlineView)
+    }
+
+    /// Return does what a double-click does, because a keyboard user arrowing through the tree has
+    /// already opened every row they passed and needs the same way to keep one. `NSOutlineView`
+    /// routes neither gesture on its own.
+    internal func performPrimaryAction() {
+        /// One row only, for the same reason `DatabaseTreeSelection.navigationTarget` refuses to
+        /// navigate on an extended selection: that selection is a batch about to be exported or
+        /// truncated, and opening one of its rows would move the browsed database out from under it.
+        guard let outlineView, outlineView.numberOfSelectedRows == 1,
+              outlineView.selectedRow >= 0,
+              let node = outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode
+        else { return }
+        perform(DatabaseTreeDoubleClickResolver.resolve(node: node), on: node, in: outlineView)
+    }
+
+    private func perform(
+        _ intent: DatabaseTreeDoubleClickIntent,
+        on node: DatabaseTreeNode,
+        in outlineView: NSOutlineView
+    ) {
+        switch intent {
+        case .openPermanently(let ref):
+            pendingOpenWork?.cancel()
+            pendingOpenWork = nil
+            open(ref, activateGridFocus: true, forceNonPreview: true)
+        case .toggleDisclosure:
+            if outlineView.isItemExpanded(node) {
+                outlineView.collapseItem(node)
+            } else {
+                outlineView.expandItem(node)
+            }
+        case .ignore:
+            return
         }
     }
 }
