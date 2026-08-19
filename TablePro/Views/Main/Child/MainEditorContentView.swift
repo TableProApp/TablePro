@@ -644,6 +644,19 @@ struct MainEditorContentView: View {
                             Divider()
                         }
 
+                        if tab.findState.isVisible && tab.tabType == .table {
+                            FindBarView(
+                                coordinator: coordinator,
+                                findState: tab.findState,
+                                rowsRevision: tab.loadEpoch
+                                    &+ tab.pagination.currentPage
+                                    &+ tab.paginationVersion
+                                    &+ resolvedRows.rows.count,
+                                onSearchAllRows: { coordinator.findCoordinator.escalateToAllRows() }
+                            )
+                            Divider()
+                        }
+
                         if tab.tabType == .query && !resolvedRows.columns.isEmpty
                             && resolvedRows.rows.isEmpty && tab.execution.lastExecutedAt != nil
                             && !coordinator.tabExecution.isExecuting(tab.id) && !tab.filterState.hasAppliedFilters

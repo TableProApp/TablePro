@@ -30,14 +30,25 @@ TablePro also auto-detects two cases: `BINARY(16)` columns with id-like names an
 The viewer opens as a popover anchored to the cell, with two modes:
 
 - **Text**: syntax-highlighted JSON, pretty-printed. Editable when the cell is editable.
-- **Tree**: collapsible tree with a search field. Read-only navigation.
+- **Tree**: collapsible tree with a search field. Read-only navigation. See [Filtering a tree](#filtering-a-tree).
 
 <Frame caption="JSON editor popover with Text and Tree modes">
   <img className="block dark:hidden" src="/images/json-editor-popover.png" alt="JSON editor popover" />
   <img className="hidden dark:block" src="/images/json-editor-popover-dark.png" alt="JSON editor popover" />
 </Frame>
 
-Both modes keep your original key order and exact number values, including integers larger than JavaScript can represent. Pretty-printing caps at 500 KB; larger values show as stored. Tree mode handles documents up to 100 KB and 5,000 nodes; beyond that it shows a "JSON Too Large" placeholder and you read the value in Text mode.
+Both modes keep your original key order and exact number values, including integers larger than JavaScript can represent. Pretty-printing caps at 500 KB; larger values show as stored. Tree mode parses documents up to 100 KB, and above that shows a "JSON Too Large" placeholder so you read the value in Text mode. A document that parses but runs past 5,000 nodes loads only the first 5,000 and marks the cut with a `…` row; filtering then says so, because the rows past the cut were never searched.
+
+### Filtering a tree
+
+The search field above the tree filters keys and values as you type. Both the JSON tree and the [PHP serialized tree](#php-serialized-viewer) work the same way.
+
+- Matching ignores case and accents, so `cafe` finds `café`. It does not ignore full-width and half-width differences: `ABC` does not find `ＡＢＣ`.
+- A row matches on its whole value, not the shortened form shown in the row, so a match deep inside a long string still finds it.
+- Matches nested under collapsed parents open on their own, so you see the match rather than the parent hiding it.
+- A key that matches keeps its full contents and stays expandable, so you can search for a key and then read what is under it.
+- Rows you open or close while filtering stay that way for as long as the field has text. Clearing the field restores the layout you had before you started, which is why **Expand All** during a filter applies to the filtered view rather than to the whole document.
+- A filter that matches nothing says so. If the document was cut off at 5,000 nodes, it says that too instead of claiming the value does not contain what you typed.
 
 The mode you switch to becomes the default for the next open. The same preference lives in **Settings > Data > JSON Viewer > Default view** (`Cmd+,`).
 
@@ -51,7 +62,7 @@ Opening a value and seeing it pretty-printed is not an edit. The row is marked c
 
 Set **Display As > PHP Serialized** on a text column, then double-click or `Enter`. The viewer is read-only: PHP serialized values round-trip through PHP itself, so TablePro does not write them back.
 
-- **Tree**: collapsible tree with search. Nodes show type badges (`str`, `int`, `arr`, `obj`, `ser`, `ref`). Protected object members show a `protected` badge; private members show `private (ClassName)`. Custom-serialized classes (the `C:` token) appear as a single opaque leaf; references (`r:`/`R:`) show as `→ #N` and are not followed.
+- **Tree**: collapsible tree with search, filtered the same way as the JSON tree. See [Filtering a tree](#filtering-a-tree). Nodes show type badges (`str`, `int`, `arr`, `obj`, `ser`, `ref`). Protected object members show a `protected` badge; private members show `private (ClassName)`. Custom-serialized classes (the `C:` token) appear as a single opaque leaf; references (`r:`/`R:`) show as `→ #N` and are not followed.
 - **Raw**: the original serialized string with text selection.
 
 Values above 5 MB are not parsed; the tree shows a placeholder and Raw mode still works. Trees cap at 5,000 nodes and 256 nesting levels, with a truncation marker beyond that. The toolbar pop-out button opens the value in its own window.

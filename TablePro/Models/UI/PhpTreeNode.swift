@@ -54,6 +54,7 @@ internal struct PhpTreeNode: Identifiable {
     let keyPath: String
     let nodeType: PhpNodeType
     let displayValue: String
+    let rawValue: String?
     let visibilityBadge: String?
     let children: [PhpTreeNode]
 
@@ -63,6 +64,7 @@ internal struct PhpTreeNode: Identifiable {
         keyPath: String,
         nodeType: PhpNodeType,
         displayValue: String,
+        rawValue: String? = nil,
         visibilityBadge: String? = nil,
         children: [PhpTreeNode] = []
     ) {
@@ -71,6 +73,7 @@ internal struct PhpTreeNode: Identifiable {
         self.keyPath = keyPath
         self.nodeType = nodeType
         self.displayValue = displayValue
+        self.rawValue = rawValue
         self.visibilityBadge = visibilityBadge
         self.children = children
     }
@@ -80,8 +83,34 @@ internal struct PhpTreeNode: Identifiable {
     }
 }
 
+extension PhpTreeNode: FilterableTreeNode {
+    internal var searchableText: String {
+        rawValue ?? displayValue
+    }
+
+    internal var badgeLabel: String {
+        nodeType.badgeLabel
+    }
+
+    internal var isTruncationMarker: Bool {
+        nodeType == .truncated
+    }
+
+    internal var copyableValue: String {
+        rawValue ?? displayValue
+    }
+
+    internal func replacingChildren(_ children: [PhpTreeNode]) -> PhpTreeNode {
+        PhpTreeNode(
+            id: id, key: key, keyPath: keyPath, nodeType: nodeType,
+            displayValue: displayValue, rawValue: rawValue,
+            visibilityBadge: visibilityBadge, children: children
+        )
+    }
+}
+
 internal enum PhpTreeBuilder {
-    static let maxNodes = 5_000
+    static let maxNodes = TreeNodeLimits.maxNodes
 
     static func build(from phpValue: PhpValue) -> PhpTreeNode {
         var nodeCount = 0
@@ -126,7 +155,7 @@ internal enum PhpTreeBuilder {
         case .string(let stringValue):
             return PhpTreeNode(
                 key: key, keyPath: keyPath, nodeType: .string,
-                displayValue: stringDisplay(stringValue), visibilityBadge: badge
+                displayValue: stringDisplay(stringValue), rawValue: stringValue, visibilityBadge: badge
             )
 
         case .array(let entries):

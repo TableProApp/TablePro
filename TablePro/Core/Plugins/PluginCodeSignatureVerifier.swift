@@ -20,12 +20,23 @@ enum PluginCodeSignatureVerifier {
     }()
 
     static func verify(bundle: Bundle) throws {
+        _ = try evaluate(bundle: bundle)
+    }
+
+    /// Classifies a bundle's signature. Throws when the bundle is unsigned, ad-hoc signed, tampered
+    /// with, or signed by a certificate that is neither TablePro's own nor a Developer ID.
+    ///
+    /// `SecStaticCodeCheckValidity` performs notarization checks by default: `kSecCSNoNetworkAccess`
+    /// is the flag that disables them, and a bundle whose notarization was revoked fails with
+    /// `errSecCSRevokedNotarization`. So a Developer ID bundle that passes here is one Apple has
+    /// seen and has not revoked.
+    static func evaluate(bundle: Bundle) throws -> PluginSignatureTrust {
         #if DEBUG
         if ProcessInfo.processInfo.environment["TABLEPRO_ALLOW_UNSIGNED_PLUGINS"] == "1" {
             logger.warning(
                 "Skipping code-signature verification for \(bundle.bundleURL.lastPathComponent): TABLEPRO_ALLOW_UNSIGNED_PLUGINS=1"
             )
-            return
+            return .firstParty
         }
         #endif
         var staticCode: SecStaticCode?
@@ -39,25 +50,58 @@ enum PluginCodeSignatureVerifier {
             throw PluginError.signatureInvalid(detail: describeOSStatus(createStatus))
         }
 
-        let requirement = createSigningRequirement()
+        let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures)
 
-        let checkStatus = SecStaticCodeCheckValidity(
-            code,
-            SecCSFlags(rawValue: kSecCSCheckAllArchitectures),
-            requirement
-        )
-
-        guard checkStatus == errSecSuccess else {
-            throw PluginError.signatureInvalid(detail: describeOSStatus(checkStatus))
+        if SecStaticCodeCheckValidity(code, flags, requirement(Self.firstPartyRequirement)) == errSecSuccess {
+            return .firstParty
         }
+
+        let developerIDStatus = SecStaticCodeCheckValidity(code, flags, requirement(Self.developerIDRequirement))
+        guard developerIDStatus == errSecSuccess else {
+            throw PluginError.signatureInvalid(detail: describeOSStatus(developerIDStatus))
+        }
+
+        guard let identity = developerIdentity(of: code) else {
+            throw PluginError.signatureInvalid(detail: "signature carries no team identifier")
+        }
+        return .developerID(identity)
     }
 
-    private static func createSigningRequirement() -> SecRequirement? {
+    private static var firstPartyRequirement: String {
+        "anchor apple generic and certificate leaf[subject.OU] = \"\(resolvedSigningTeamId)\""
+    }
+
+    /// `1.2.840.113635.100.6.1.13` is Apple's Developer ID Application marker OID. Verified against a
+    /// Developer ID signed app with `codesign -R`.
+    private static let developerIDRequirement =
+        "anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
+
+    private static func requirement(_ text: String) -> SecRequirement? {
         var requirement: SecRequirement?
-        let teamId = resolvedSigningTeamId
-        let requirementString = "anchor apple generic and certificate leaf[subject.OU] = \"\(teamId)\"" as CFString
-        SecRequirementCreateWithString(requirementString, SecCSFlags(), &requirement)
+        SecRequirementCreateWithString(text as CFString, SecCSFlags(), &requirement)
         return requirement
+    }
+
+    private static func developerIdentity(of code: SecStaticCode) -> PluginDeveloperIdentity? {
+        var info: CFDictionary?
+        let status = SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &info)
+        guard status == errSecSuccess,
+              let infoDict = info as? [String: Any],
+              let teamID = infoDict[kSecCodeInfoTeamIdentifier as String] as? String,
+              !teamID.isEmpty
+        else { return nil }
+
+        let name = signerCommonName(from: infoDict) ?? teamID
+        return PluginDeveloperIdentity(teamID: teamID, name: name)
+    }
+
+    private static func signerCommonName(from info: [String: Any]) -> String? {
+        guard let certificates = info[kSecCodeInfoCertificates as String] as? [SecCertificate],
+              let leaf = certificates.first
+        else { return nil }
+        var commonName: CFString?
+        guard SecCertificateCopyCommonName(leaf, &commonName) == errSecSuccess else { return nil }
+        return commonName as String?
     }
 
     private static func teamIdFromBundleSignature() -> String? {

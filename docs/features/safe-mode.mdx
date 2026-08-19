@@ -93,6 +93,38 @@ SHOW SESSION VARIABLES WHERE Variable_name IN
 
 `innodb_read_only` set to `ON` means you are on a replica. Connect to the primary to write.
 
+## Execution Log
+
+Every database operation goes through one authorization step, including the ones the AI assistant and the MCP tools ask for. TablePro records each decision, allowed or refused, to a local log.
+
+A record holds the time, the connection, the kind of operation, whether it was a write, and the outcome. It holds a SHA-256 digest of the statement, never the statement itself: a query contains customer data, and an audit trail that stored it would be a second copy of the database.
+
+Each record carries the hash of the one before it. Recomputing the chain shows whether any record was edited, reordered or removed.
+
+<Warning>
+This is tamper evident, not tamper proof. Anyone who can write the file can also recompute every hash after the record they changed, and truncating the end of the log leaves a chain that still verifies. It turns a silent edit into a visible one; it does not prevent one. Somewhere the person being audited cannot write is the only thing that would.
+</Warning>
+
+The log is local, is not synced, and is not sent anywhere.
+
+## Managed by an Organization
+
+An administrator can set a minimum Safe Mode level through a macOS configuration profile, delivered by an MDM such as Jamf or Kandji. A connection set below that level is raised to it. A stricter choice is left alone, so the policy is a floor and never a ceiling: someone who wants Read-Only on a production connection still gets it.
+
+The profile targets the `com.TablePro` preference domain with a flat key:
+
+| Key | Type | Value |
+|---|---|---|
+| `com.TablePro.policy.minimumSafeModeLevel` | String | `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull`, or `readOnly` |
+
+A value TablePro does not recognise imposes no floor at all. It never falls back to Read-Only, which would lock people out of a typo, and never to Silent, which would quietly drop the policy.
+
+TablePro reads this the way macOS intends: a configuration profile already outranks the app's own preferences, so a forced key simply wins, and the app asks `CFPreferencesAppValueIsForced` only to know that the matching control should be disabled rather than merely preset.
+
+<Note>
+This is a floor on TablePro's own behaviour, not on the database. It stops the app issuing a write; it does not stop the same person connecting with `psql`. Pair it with server-side privileges for anything that has to hold. See [Server Read-Only Is Not Safe Mode](#server-read-only-is-not-safe-mode).
+</Note>
+
 ## External Clients
 
 Safe Mode runs inside the app on every query you execute. External clients (Raycast, Cursor, Claude Desktop, and other MCP clients) hit a separate gate first.
