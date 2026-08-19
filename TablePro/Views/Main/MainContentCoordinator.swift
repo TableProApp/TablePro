@@ -200,6 +200,7 @@ final class MainContentCoordinator {
     // MARK: - Published State
 
     var cursorPositions: [CursorPosition] = []
+    var collapsedFoldRanges: [Range<Int>] = []
     var tableMetadata: TableMetadata?
     var activeSheet: ActiveSheet?
     var isDatabaseSwitcherShown = false
@@ -385,6 +386,7 @@ final class MainContentCoordinator {
             let range = cursorPositions.first?.range
             enriched.restoredCursorOffset = range?.location
             enriched.restoredCursorLength = range.map(\.length)
+            enriched.restoredCollapsedFoldRanges = collapsedFoldRanges.isEmpty ? nil : collapsedFoldRanges
         }
         return enriched
     }
@@ -419,6 +421,20 @@ final class MainContentCoordinator {
         let clamped = min(max(0, offset), length)
         let selectionLength = min(tabManager.tabs[index].restoredCursorLength ?? 0, length - clamped)
         return NSRange(location: clamped, length: max(0, selectionLength))
+    }
+
+    func restoredFoldRanges(for tabId: UUID) -> [Range<Int>]? {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[index].tabType == .query else { return nil }
+        return tabManager.tabs[index].restoredCollapsedFoldRanges
+    }
+
+    func clearRestoredFoldRanges(for tabId: UUID) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[index].restoredCollapsedFoldRanges != nil else { return }
+        tabManager.mutate(at: index) {
+            $0.restoredCollapsedFoldRanges = nil
+        }
     }
 
     func clearRestoredCursor(for tabId: UUID) {

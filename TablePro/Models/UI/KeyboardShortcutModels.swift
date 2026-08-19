@@ -75,6 +75,9 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case cancelQuery
     case explainQuery
     case formatQuery
+    case foldAll
+    case unfoldAll
+    case toggleFold
     case previewSQL
     case findNext
     case findPrevious
@@ -139,6 +142,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
             return .connections
         case .openFile, .saveChanges, .saveAs, .executeQuery, .executeAllStatements,
              .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
+             .foldAll, .unfoldAll, .toggleFold,
              .previewSQL, .findNext, .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
@@ -159,7 +163,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     var context: ShortcutContext {
         switch self {
         case .executeQuery, .executeAllStatements, .executeQueryWithoutLimit,
-             .cancelQuery, .explainQuery, .formatQuery, .previewSQL, .findNext,
+             .cancelQuery, .explainQuery, .formatQuery, .foldAll, .unfoldAll,
+             .toggleFold, .previewSQL, .findNext,
              .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
@@ -203,6 +208,9 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .refresh: return String(localized: "Refresh")
         case .explainQuery: return String(localized: "Explain Query")
         case .formatQuery: return String(localized: "Format Query")
+        case .foldAll: return String(localized: "Fold All")
+        case .unfoldAll: return String(localized: "Unfold All")
+        case .toggleFold: return String(localized: "Toggle Fold")
         case .findNext: return String(localized: "Find Next")
         case .findPrevious: return String(localized: "Find Previous")
         case .export: return String(localized: "Export")
@@ -487,6 +495,9 @@ struct KeyboardSettings: Codable, Equatable {
         .cancelQuery: .character(".", command: true),
         .explainQuery: .character("e", command: true, option: true),
         .formatQuery: .character("l", command: true, shift: true),
+        .foldAll: .special(.leftArrow, command: true, shift: true, option: true),
+        .unfoldAll: .special(.rightArrow, command: true, shift: true, option: true),
+        .toggleFold: .special(.leftArrow, command: true, option: true),
         .previewSQL: .character("p", command: true, shift: true),
         .findNext: .character("g", command: true),
         .findPrevious: .character("g", command: true, shift: true),

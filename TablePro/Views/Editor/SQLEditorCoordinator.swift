@@ -76,6 +76,28 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         cursorRestorePending = range
     }
 
+    @ObservationIgnored private var foldRestorePending: [Range<Int>]?
+
+    /// Collapsed folds are replayed once, the same way the cursor is, because the fold state the editor reports back
+    /// is written on every collapse the user makes.
+    func scheduleFoldRestore(_ ranges: [Range<Int>]) {
+        guard !hasInstalledEditorServices, !ranges.isEmpty else { return }
+        foldRestorePending = ranges
+    }
+
+    /// Query tabs share one editor, so a tab switch swaps the document under a live fold cache that reuses collapse
+    /// state by depth and start offset. Dropping every fold before replaying the incoming tab's own ranges keeps one
+    /// tab's collapsed regions from reappearing in another.
+    func repointFolds(to ranges: [Range<Int>]?) {
+        guard let controller else {
+            foldRestorePending = ranges
+            return
+        }
+        controller.unfoldAll()
+        guard let ranges, !ranges.isEmpty else { return }
+        controller.restoreCollapsedFolds(ranges)
+    }
+
     /// Vim mode for UI observation
     private(set) var vimMode: VimMode = .normal
     @ObservationIgnored private var vimEngine: VimEngine?
@@ -173,6 +195,11 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             controller.setCursorPositions([CursorPosition(range: clamped)], scrollToVisible: true)
         } else if controller.cursorPositions.isEmpty {
             controller.setCursorPositions([CursorPosition(range: NSRange(location: 0, length: 0))])
+        }
+
+        if let folds = foldRestorePending {
+            foldRestorePending = nil
+            controller.restoreCollapsedFolds(folds)
         }
     }
 
@@ -300,8 +327,27 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         menu.onOptimizeWithAI = { [weak self] text in self?.onAIOptimize?(text) }
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
         menu.onFormatSQL = { [weak self] in self?.performFormatSQL() }
+        menu.foldStateAtCursor = { [weak controller] in controller?.foldStateAtCursor() }
+        menu.onToggleFold = { [weak controller] in controller?.toggleFoldAtCursor() }
         contextMenu = menu
         controller.textView?.menu = menu
+    }
+
+    func toggleFoldAtCursor() {
+        controller?.toggleFoldAtCursor()
+    }
+
+    func foldAll() {
+        controller?.foldAll()
+    }
+
+    func unfoldAll() {
+        controller?.unfoldAll()
+    }
+
+    /// Whether the fold containing the cursor is collapsed. `nil` when the cursor is not inside a fold.
+    func foldStateAtCursor() -> Bool? {
+        controller?.foldStateAtCursor()
     }
 
     func performFormatSQL() {

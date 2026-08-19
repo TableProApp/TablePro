@@ -1014,6 +1014,18 @@ final class MainContentCommandActions {
         EditorEventRouter.shared.performFormatSQLForKeyWindow()
     }
 
+    func toggleFold() {
+        EditorEventRouter.shared.performToggleFoldForKeyWindow()
+    }
+
+    func foldAll() {
+        EditorEventRouter.shared.performFoldAllForKeyWindow()
+    }
+
+    func unfoldAll() {
+        EditorEventRouter.shared.performUnfoldAllForKeyWindow()
+    }
+
     // MARK: - UI Operations (Group A — Called Directly)
 
     func toggleHistoryPanel() {

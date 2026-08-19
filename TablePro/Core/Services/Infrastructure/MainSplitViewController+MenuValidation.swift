@@ -133,6 +133,8 @@ extension MainSplitViewController: NSMenuItemValidation {
              #selector(explainQueryWithAI(_:)),
              #selector(optimizeQueryWithAI(_:)):
             return context.isConnected && context.hasQueryText
+        case #selector(toggleFold(_:)), #selector(foldAll(_:)), #selector(unfoldAll(_:)):
+            return context.hasEditorForFind
         case #selector(cancelQuery(_:)):
             return context.isQueryExecuting
         case #selector(previewSQL(_:)):

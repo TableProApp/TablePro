@@ -26,6 +26,8 @@ struct QueryEditorView: View {
     var claimFocusOnAppear: Bool = false
     var onFocusClaimed: (() -> Void)?
     var restoredCursorRange: NSRange?
+    var restoredFoldRanges: [Range<Int>]?
+    var onFoldRangesChanged: (([Range<Int>]) -> Void)?
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
     var onExplain: ((ExplainVariant?) -> Void)?
@@ -70,6 +72,8 @@ struct QueryEditorView: View {
                 claimFocusOnAppear: claimFocusOnAppear,
                 onFocusClaimed: onFocusClaimed,
                 restoredCursorRange: restoredCursorRange,
+                restoredFoldRanges: restoredFoldRanges,
+                onFoldRangesChanged: onFoldRangesChanged,
                 vimMode: $vimMode,
                 onCloseTab: onCloseTab,
                 onExecuteQuery: onExecuteQuery,

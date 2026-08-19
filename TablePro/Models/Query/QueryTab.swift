@@ -37,6 +37,27 @@ struct QueryTab: Identifiable, Equatable {
     var restoredPage: Int?
     var restoredCursorOffset: Int?
     var restoredCursorLength: Int?
+    var restoredCollapsedFoldRanges: [Range<Int>]?
+
+    /// Fold ranges survive a round trip as a flat list of bounds, and any pair that no longer fits the query is
+    /// dropped rather than replayed onto text that changed while the tab was closed.
+    private static func clampedFoldRanges(_ bounds: [Int]?, in query: String) -> [Range<Int>]? {
+        guard let bounds, bounds.count >= 2 else { return nil }
+        let limit = (query as NSString).length
+        var ranges: [Range<Int>] = []
+        for pair in stride(from: 0, to: bounds.count - 1, by: 2) {
+            let lower = bounds[pair]
+            let upper = bounds[pair + 1]
+            guard lower >= 0, upper > lower, upper <= limit else { continue }
+            ranges.append(lower..<upper)
+        }
+        return ranges.isEmpty ? nil : ranges
+    }
+
+    private static func foldBounds(_ ranges: [Range<Int>]?, in query: String) -> [Int]? {
+        let bounds = ranges?.flatMap { [$0.lowerBound, $0.upperBound] }
+        return clampedFoldRanges(bounds, in: query)?.flatMap { [$0.lowerBound, $0.upperBound] }
+    }
 
     private static func clampedCursorOffset(_ offset: Int?, in query: String) -> Int? {
         guard let offset, offset >= 0 else { return nil }
@@ -125,6 +146,7 @@ struct QueryTab: Identifiable, Equatable {
             from: persisted.cursorOffset,
             in: persisted.query
         )
+        self.restoredCollapsedFoldRanges = Self.clampedFoldRanges(persisted.collapsedFoldRanges, in: persisted.query)
     }
 
     @MainActor static func buildBaseTableQuery(
@@ -210,6 +232,7 @@ struct QueryTab: Identifiable, Equatable {
                 from: restoredCursorOffset,
                 in: persistedQuery
             ),
+            collapsedFoldRanges: Self.foldBounds(restoredCollapsedFoldRanges, in: persistedQuery),
             columnWidths: widths,
             columnContentWidths: contentWidths
         )

@@ -25,7 +25,8 @@ struct SQLCodePreview: View {
                 $text,
                 language: .sql,
                 configuration: editorConfiguration,
-                state: $editorState
+                state: $editorState,
+                foldProvider: SQLLineFoldProvider()
             )
             .onChange(of: colorScheme) {
                 editorConfiguration = Self.makeConfiguration()
@@ -51,7 +52,7 @@ struct SQLCodePreview: View {
             peripherals: .init(
                 showGutter: true,
                 showMinimap: false,
-                showFoldingRibbon: false
+                showFoldingRibbon: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }

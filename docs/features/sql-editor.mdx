@@ -135,9 +135,23 @@ ORDER BY order_count DESC;
 
 Enable Vim keybindings in **Settings > Editor > Vim mode**. Normal, Insert, Replace, Visual, Visual Line, and Command-line modes are supported, with standard motions, operators, count prefixes, and text objects. `:w` executes the query and `:q` closes the tab. Jump to a line with `10G` or `10gg` (`:10` is not supported). Control-key bindings other than `Ctrl+R` are not intercepted. Full key reference: [Vim Mode](/features/vim-mode).
 
+## Code Folding
+
+A ribbon in the gutter marks every region that spans more than one line: whole statements, table bodies, CTEs, subqueries, `BEGIN` blocks, and block comments. Click a marker to collapse the region, click it again to expand.
+
+A collapsed region is replaced by a chip showing the start of what it hides and the number of hidden lines, so a folded `CREATE TABLE` still tells you what is inside it.
+
+**Toggle Fold** (`Cmd+Option+Left`), **Fold All** (`Cmd+Option+Shift+Left`) and **Unfold All** (`Cmd+Option+Shift+Right`) are in the Query menu and can be rebound in **Settings > Keyboard**. Fold All collapses top-level statements; fold the regions inside them individually. **Fold** and **Unfold** are also on the editor's right-click menu.
+
+Collapsed regions are remembered when you close and reopen a tab. If the file changed while the tab was closed, the folds that no longer fit are dropped.
+
+Strings, comments, and PostgreSQL dollar-quoted bodies are never treated as structure, so a `(` inside a string does not open a fold. Folding is skipped on documents over 2 million characters, the same limit that applies to syntax highlighting.
+
+Turn folding off in **Settings > Editor**. It also works on the DDL and trigger views, the SQL import preview, the AI review sheet, AI chat code blocks, and the JSON cell viewer.
+
 ## Editor Settings
 
-**Settings > Editor** covers line numbers, current-line highlight, word wrap, tab width, auto-uppercase keywords as you type, query parameters, and Vim mode. Editor font family and size are set per theme in **Settings > Appearance**.
+**Settings > Editor** covers line numbers, current-line highlight, word wrap, code folding, tab width, auto-uppercase keywords as you type, query parameters, and Vim mode. Editor font family and size are set per theme in **Settings > Appearance**.
 
 Editor windows remember their size, position, and font zoom between launches. See [Query Tabs](/features/tabs#windows-and-connections).
 

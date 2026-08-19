@@ -14,6 +14,7 @@ struct EditorSettingsView: View {
                 Toggle("Show line numbers", isOn: $settings.showLineNumbers)
                 Toggle("Highlight current line", isOn: $settings.highlightCurrentLine)
                 Toggle("Word wrap", isOn: $settings.wordWrap)
+                Toggle("Code folding", isOn: $settings.codeFoldingEnabled)
                 Picker("Tab width:", selection: $settings.tabWidth) {
                     Text("2 spaces").tag(2)
                     Text("4 spaces").tag(4)

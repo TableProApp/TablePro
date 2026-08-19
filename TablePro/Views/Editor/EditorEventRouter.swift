@@ -107,6 +107,21 @@ internal final class EditorEventRouter {
         coordinator.performFormatSQL()
     }
 
+    internal func performToggleFoldForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.toggleFoldAtCursor()
+    }
+
+    internal func performFoldAllForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.foldAll()
+    }
+
+    internal func performUnfoldAllForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.unfoldAll()
+    }
+
     /// Called by the SwiftUI "Clear Selection" menu when its bare-Escape key equivalent
     /// fires. A bare-key menu equivalent preempts every local event monitor in the key
     /// window, so the focused editor's completion popup, Vim interceptor, and

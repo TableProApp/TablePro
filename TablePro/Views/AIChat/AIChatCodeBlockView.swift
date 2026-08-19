@@ -120,7 +120,8 @@ struct AIChatCodeBlockView: View, Equatable {
                     .constant(code),
                     language: treeSitterLanguage,
                     configuration: Self.makeConfiguration(),
-                    state: $editorState
+                    state: $editorState,
+                    foldProvider: treeSitterLanguage.id == CodeLanguage.sql.id ? SQLLineFoldProvider() : nil
                 )
                 .frame(maxWidth: .infinity)
                 .frame(height: contentHeight)
@@ -206,9 +207,10 @@ struct AIChatCodeBlockView: View, Equatable {
                 contentInsets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
             ),
             peripherals: .init(
-                showGutter: false,
+                showGutter: AppSettingsManager.shared.editor.codeFoldingEnabled,
+                showLineNumbers: false,
                 showMinimap: false,
-                showFoldingRibbon: false
+                showFoldingRibbon: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }
