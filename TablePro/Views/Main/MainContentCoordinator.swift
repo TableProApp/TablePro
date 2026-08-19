@@ -104,6 +104,9 @@ final class MainContentCoordinator {
     let tabSessionRegistry: TabSessionRegistry
     let queryExecutor: QueryExecutor
     let windowSidebarState: WindowSidebarState
+    /// Which tab each of this connection's containers was last on, so the connections strip lands
+    /// on that container's work instead of leaving a tab from another database on screen.
+    @ObservationIgnored internal var containerTabHistory = ContainerTabHistory()
 
     // MARK: - Services
 

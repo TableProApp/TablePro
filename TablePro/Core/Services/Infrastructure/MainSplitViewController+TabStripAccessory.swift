@@ -85,6 +85,9 @@ internal extension MainSplitViewController {
         if let sessionState = workspace.sessionState {
             EditorTabStrip(
                 tabManager: sessionState.tabManager,
+                containerTarget: workspace.connection.flatMap {
+                    PluginManager.shared.containerSwitchTarget(for: $0.type)
+                },
                 onClose: { [weak workspace] id in
                     workspace?.sessionState?.coordinator.commandActions?.closeTab(id: id)
                 },

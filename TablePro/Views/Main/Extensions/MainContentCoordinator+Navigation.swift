@@ -436,6 +436,7 @@ extension MainContentCoordinator {
             await SchemaService.shared.prepareForReload(connectionId: connectionId)
 
             await refreshTables(currentDatabaseOnly: true)
+            syncSidebarObjectSelection()
             return true
         } catch {
             navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
@@ -462,6 +463,24 @@ extension MainContentCoordinator {
         case .database, nil:
             await switchDatabase(to: container)
         }
+    }
+
+    /// Land on the work a container already holds.
+    ///
+    /// The connections strip returns to the tab you last used when it moves between two
+    /// connections. A row for a second database of one connection is the same promise, and without
+    /// it the strip moved the object tree while leaving a tab from another database on screen: the
+    /// row said one database, the window title said another (#2217).
+    ///
+    /// A container holding no tab selects nothing. That row is the browse cursor alone, and the
+    /// next thing opened lands there anyway.
+    func selectTab(inContainer container: String) {
+        guard let tabId = containerTabHistory.tabToSelect(
+            inContainer: container,
+            among: tabManager.tabs,
+            target: PluginManager.shared.containerSwitchTarget(for: connection.type)
+        ) else { return }
+        tabManager.selectedTabId = tabId
     }
 
     /// Applies both dimensions a link named, in the order this engine can take them.
@@ -520,6 +539,7 @@ extension MainContentCoordinator {
 
         do {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
+            syncSidebarObjectSelection()
         } catch {
             toolbarState.currentSchema = previousSchema
 

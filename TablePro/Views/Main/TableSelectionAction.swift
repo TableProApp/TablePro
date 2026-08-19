@@ -48,23 +48,40 @@ enum SelectionDelta {
     }
 }
 
-/// Determines which table (if any) to select when the table list loads in a new window.
-enum SidebarSyncAction: Equatable {
-    case noSync
-    case select(tableName: String)
+/// Which object row the sidebar marks as the one this window has open.
+///
+/// The mark is document chrome: it names the table the selected tab is showing. The object tree
+/// lists one container at a time, so the mark only means something while that tab's scope is the
+/// scope being browsed. A tab bound to another database occupies no row here, and marking one
+/// anyway picks a different table that merely shares a name, because `TableInfo` carries no
+/// database to tell the two apart.
+///
+/// That is how a table opened in one database left the same-named row in another looking already
+/// selected. `NSOutlineView` posts no selection change for a click on a row that is already the
+/// whole selection, and the tree opens from that notification alone, so the click did nothing at
+/// all and the table could not be opened in the second database (#2217).
+enum SidebarObjectSelection: Equatable {
+    /// The object list has not loaded, so there is no row to name yet and no answer to give.
+    /// Clearing the mark here would blank it every time a container starts loading.
+    case leaveUnchanged
+    /// The rows the open document occupies, empty when it occupies none in the container on screen.
+    case mark(Set<TableInfo>)
 
-    /// Called when `tables` array changes. Returns which table to sync to, if any.
-    static func resolveOnTablesLoad(
-        newTables: [TableInfo],
-        selectedTables: Set<TableInfo>,
-        currentTabTableName: String?
-    ) -> SidebarSyncAction {
-        guard !newTables.isEmpty, selectedTables.isEmpty,
-              let tabTableName = currentTabTableName,
-              newTables.contains(where: { $0.name == tabTableName })
+    /// - Parameters:
+    ///   - tabScope: the selected tab's own scope, which it owns for life.
+    ///   - browseScope: where the object tree is pointing.
+    static func resolve(
+        tabTableName: String?,
+        tabScope: DatabaseScope?,
+        browseScope: DatabaseScope?,
+        tables: [TableInfo]
+    ) -> SidebarObjectSelection {
+        guard !tables.isEmpty else { return .leaveUnchanged }
+        guard let tabTableName, !tabTableName.isEmpty, tabScope == browseScope,
+              let match = tables.first(where: { $0.name == tabTableName })
         else {
-            return .noSync
+            return .mark([])
         }
-        return .select(tableName: tabTableName)
+        return .mark([match])
     }
 }

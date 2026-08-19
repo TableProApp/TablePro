@@ -107,7 +107,55 @@ final class QueryInsightsTabUITests: UITestCase {
         }
     }
 
+    /// Reusing the tab is only half the contract. An editor tab used to be a window, so the opener
+    /// raised the window and stopped, which showed the tab only when it already happened to be the
+    /// one in front. With one window holding every tab, the command has to select it.
+    func testOpeningInsightsAgainSelectsItsExistingTab() throws {
+        let app = try launchWithSampleDatabase()
+        runQuery(in: app)
+        openInsights(in: app)
+
+        let insightsTab = app.windows.firstMatch.descendants(matching: .any)
+            .matching(identifier: "editor-tab")
+            .matching(NSPredicate(format: "label == %@", "Query Insights"))
+            .firstMatch
+        XCTAssertTrue(insightsTab.waitForExistence(timeout: 10), "The insights tab must reach the strip")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { insightsTab.isSelected },
+            "Opening it the first time selects it"
+        )
+
+        selectTab(otherThan: "Query Insights", in: app)
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { !insightsTab.isSelected },
+            "The window must actually move off the insights tab before the second open is meaningful"
+        )
+
+        openInsights(in: app)
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { insightsTab.isSelected },
+            "Database > Query Insights must select the tab it already opened"
+        )
+    }
+
     // MARK: - Helpers
+
+    /// Clicking a tab in the strip, which is how anyone moves off the tab in front.
+    private func selectTab(otherThan label: String, in app: XCUIApplication) {
+        let strip = app.windows.firstMatch.descendants(matching: .any).matching(identifier: "editor-tab")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { strip.count >= 2 },
+            "The strip must hold both tabs before one can be clicked"
+        )
+        for index in 0 ..< strip.count {
+            let tab = strip.element(boundBy: index)
+            guard tab.label != label else { continue }
+            XCTAssertTrue(waitUntilHittable(tab, timeout: 10), "A tab in the strip must be clickable")
+            tab.click()
+            return
+        }
+        XCTFail("The strip holds no tab other than \(label)")
+    }
 
     /// Walks the Database menu rather than typing a shortcut, because the tab has no key
     /// equivalent and the menu item is the only way in.
