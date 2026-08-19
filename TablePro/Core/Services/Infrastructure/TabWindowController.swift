@@ -12,13 +12,13 @@ import SwiftUI
 /// dispatches a drag by selector, runs `NSWindow`'s own refusal instead.
 @MainActor
 private final class EditorWindow: NSWindow, NSDraggingDestination {
+    /// A window that draws its own tabs says so by redefining the close command, which is the
+    /// mechanism AppKit gives native tabbed windows for free. The editor's meaning of Close lives
+    /// in one place behind it, so the menu, the keyboard and any other sender cannot disagree.
     override func performClose(_ sender: Any?) {
-        if let coordinator = MainContentCoordinator.coordinator(forWindow: self),
-           let actions = coordinator.commandActions {
-            actions.closeTab()
-        } else {
-            super.performClose(sender)
-        }
+        let editor = contentViewController as? MainSplitViewController
+        guard editor?.closeFrontmostTab() != true else { return }
+        super.performClose(sender)
     }
 
     /// Hiding the toolbar is what drops the content pane's top safe area, so the titlebar has to be
@@ -41,6 +41,12 @@ private final class EditorWindow: NSWindow, NSDraggingDestination {
         guard !urls.isEmpty else { return false }
         FileDropDestination.open(urls)
         return true
+    }
+}
+
+extension EditorWindow: CloseCommandNaming {
+    var closeCommandTitle: String? {
+        (contentViewController as? MainSplitViewController)?.closeCommandTitle
     }
 }
 

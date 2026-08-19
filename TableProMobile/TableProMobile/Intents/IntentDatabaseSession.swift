@@ -87,8 +87,14 @@ struct IntentDatabaseSession {
             table: table,
             type: connection.type,
             schema: schema,
+            qualifier: pickedSchema(namespace: namespace),
             rows: rows
         )
+    }
+
+    private func pickedSchema(namespace: String?) -> String? {
+        guard let namespace, !namespace.isEmpty, session.driver.supportsSchemas else { return nil }
+        return namespace
     }
 
     private func resolveSchema(namespace: String?) async throws -> String? {

@@ -35,7 +35,9 @@ extension RowInsertingIntent {
 struct AddRowToTableIntent: RowInsertingIntent {
     static var title: LocalizedStringResource = "Add Row to Table"
     static var description = IntentDescription(
-        "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row."
+        "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row.",
+        categoryName: "Database",
+        searchKeywords: ["TablePro", "database", "SQL", "insert", "row", "table"]
     )
     static var openAppWhenRun = false
     static var authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
@@ -70,7 +72,9 @@ struct AddRowToTableIntent: RowInsertingIntent {
 struct AddRowsToTableIntent: RowInsertingIntent {
     static var title: LocalizedStringResource = "Add Rows to Table"
     static var description = IntentDescription(
-        "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file."
+        "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file.",
+        categoryName: "Database",
+        searchKeywords: ["TablePro", "database", "SQL", "insert", "rows", "table", "import"]
     )
     static var openAppWhenRun = false
     static var authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication

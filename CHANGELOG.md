@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The iOS Shortcuts documentation says which app build each action needs and where to find the full action list, so a Mac release note no longer reads as though the iPhone app already has them.
 - `Cmd+F` on a table tab used to toggle the filter panel, which meant it closed the panel when it was already open and never searched anything. The filter panel keeps `Cmd+Option+F` and its funnel button in the status bar.
 - Find Next and Find Previous work on the data grid when its find bar is open, instead of staying dimmed on a table tab.
 - The PHP serialized viewer's tree filter now behaves like the JSON one. Both ignore accents, so `cafe` finds `café`. (#2204)
@@ -25,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The inspector button stays at the right end of the toolbar when the inspector is open. It used to slide left and sit against the inspector's inner edge, so the button moved as soon as you used it.
 - The Tables and Favorites switch in the toolbar keeps following the sidebar after you open Customize Toolbar. It stopped responding until the window was closed and reopened.
 - Refresh, New Tab, Open Quickly, Export, Database, Results and Dashboard are dimmed in the toolbar's overflow menu when they cannot run. On a narrow window they looked available and did nothing.
+- iOS: a value containing a backslash, a newline or a carriage return is stored as you typed it on PostgreSQL, Redshift, SQL Server, SQLite, DuckDB and Oracle. Every insert, edit and delete used MySQL's escaping rules, so `C:\Users\dat` was saved with doubled backslashes, a line break was saved as the two characters `\n`, and editing a row that already held a backslash matched nothing and silently changed no rows. MySQL and MariaDB are unaffected.
+- iOS: PostgreSQL sessions now set `standard_conforming_strings` on, so a backslash in a value is always data and never an escape character. Servers that do not have the setting, Redshift among them, already behave that way and are left alone.
+- iOS: Add Row to Table and Add Rows to Table write to the database or schema you picked in Shortcuts. The rows went to the connection's default schema instead, while the column names were checked against the schema you chose, so a row could land in the wrong table or fail against a table the picker had just offered.
+- iOS: the three Shortcuts actions are found by searching "TablePro" in the Shortcuts action list, and are grouped under Database. Only Open Connection matched before, because the two insert actions carried no keywords.
+- `Cmd+W` now closes the Settings window, the Integrations window, the JSON and PHP viewers, the connection form and the column inspector. It was bound to a command only a connection window answered, so it did nothing in any of them.
+- The File menu names the close command after what it will close: Close Tab in a connection window, the connection's own name when that window has no tabs open or while the connections strip has focus, and Close Window everywhere else.
 - Filtering a JSON or PHP tree now reveals nested key and value matches instead of leaving them behind collapsed parent rows. (#2204)
 - A tree filter that matches a key now lets you open that key and read what is inside it. (#2204)
 - Expanding or collapsing rows while a tree filter is active no longer springs back on the next keystroke. (#2204)

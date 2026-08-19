@@ -59,21 +59,8 @@ internal final class WelcomeWindowController: NSWindowController {
     }
 }
 
-internal extension WelcomeWindowController {
-    /// Cmd+W is bound to Close Tab, which the editor window answers through its split controller.
-    /// The welcome window has no tabs and nothing else in its responder chain implements the
-    /// command, so the menu item validated to disabled and the shortcut did nothing here. Closing
-    /// the front window is what Cmd+W means everywhere on macOS, so the window answers for itself.
-    @objc func closeEditorTab(_ sender: Any?) {
-        close()
-    }
-}
-
 extension WelcomeWindowController: NSMenuItemValidation {
     internal func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if menuItem.action == #selector(closeEditorTab(_:)) {
-            return window?.isKeyWindow == true
-        }
         guard menuItem.action == #selector(performFind(_:)) else { return true }
         return window?.isKeyWindow == true
     }
