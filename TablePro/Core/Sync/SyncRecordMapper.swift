@@ -60,46 +60,46 @@ struct SyncRecordMapper {
             record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
         }
 
-        record[.connectionId] = connection.id.uuidString as CKRecordValue
-        record[.name] = connection.name as CKRecordValue
-        record[.host] = connection.host as CKRecordValue
-        record[.port] = Int64(connection.port) as CKRecordValue
-        record[.database] = connection.database as CKRecordValue
-        record[.username] = connection.username as CKRecordValue
-        record[.type] = connection.type.rawValue as CKRecordValue
-        record[.color] = connection.color.rawValue as CKRecordValue
-        record[.safeModeLevel] = connection.safeModeLevel.rawValue as CKRecordValue
-        record[.modifiedAtLocal] = Date() as CKRecordValue
-        record[.schemaVersion] = schemaVersion as CKRecordValue
-        record[.sortOrder] = Int64(connection.sortOrder) as CKRecordValue
-        record[.isFavorite] = Int64(connection.isFavorite ? 1 : 0) as CKRecordValue
+        let fields = record.fields(ConnectionSyncField.self)
+        fields[.connectionId] = connection.id.uuidString
+        fields[.name] = connection.name
+        fields[.host] = connection.host
+        fields[.port] = Int64(connection.port)
+        fields[.database] = connection.database
+        fields[.username] = connection.username
+        fields[.type] = connection.type.rawValue
+        fields[.color] = connection.color.rawValue
+        fields[.safeModeLevel] = connection.safeModeLevel.rawValue
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+        fields[.sortOrder] = Int64(connection.sortOrder)
+        fields[.isFavorite] = Int64(connection.isFavorite ? 1 : 0)
 
         if !connection.tagIds.isEmpty {
             let tagIdStrings = connection.tagIds.map { $0.uuidString }
-            record[.tagIds] = tagIdStrings as CKRecordValue
-            record[.tagId] = tagIdStrings[0] as CKRecordValue
+            fields[.tagIds] = tagIdStrings
+            fields[.tagId] = tagIdStrings[0]
         }
         if let groupId = connection.groupId {
-            record[.groupId] = groupId.uuidString as CKRecordValue
+            fields[.groupId] = groupId.uuidString
         }
         if let aiPolicy = connection.aiPolicy {
-            record[.aiPolicy] = aiPolicy.rawValue as CKRecordValue
+            fields[.aiPolicy] = aiPolicy.rawValue
         }
         if let aiRules = connection.aiRules, !aiRules.isEmpty {
-            record[.aiRules] = aiRules as CKRecordValue
+            fields[.aiRules] = aiRules
         }
         if !connection.aiAlwaysAllowedTools.isEmpty {
-            let sorted = Array(connection.aiAlwaysAllowedTools).sorted()
-            record[.aiAlwaysAllowedTools] = sorted as CKRecordValue
+            fields[.aiAlwaysAllowedTools] = Array(connection.aiAlwaysAllowedTools).sorted()
         }
         if let redisDatabase = connection.redisDatabase {
-            record[.redisDatabase] = Int64(redisDatabase) as CKRecordValue
+            fields[.redisDatabase] = Int64(redisDatabase)
         }
         if let startupCommands = connection.startupCommands {
-            record[.startupCommands] = startupCommands as CKRecordValue
+            fields[.startupCommands] = startupCommands
         }
         if let sshProfileId = connection.sshProfileId {
-            record[.sshProfileId] = sshProfileId.uuidString as CKRecordValue
+            fields[.sshProfileId] = sshProfileId.uuidString
         }
 
         // Encode complex structs as JSON Data — contract device-local paths
@@ -114,20 +114,20 @@ struct SyncRecordMapper {
         // is device-local and may not exist or resolve on another Mac.
         do {
             let sshData = try encoder.encode(Self.makePortable(connection.sshConfig))
-            record[.sshConfigJson] = sshData as CKRecordValue
+            fields[.sshConfigJson] = sshData
         } catch {
             logger.warning("Failed to encode SSH config for sync: \(error.localizedDescription)")
         }
         do {
             let sslData = try encoder.encode(Self.makePortable(connection.sslConfig))
-            record[.sslConfigJson] = sslData as CKRecordValue
+            fields[.sslConfigJson] = sslData
         } catch {
             logger.warning("Failed to encode SSL config for sync: \(error.localizedDescription)")
         }
         if !connection.additionalFields.isEmpty {
             do {
                 let fieldsData = try encoder.encode(connection.additionalFields)
-                record[.additionalFieldsJson] = fieldsData as CKRecordValue
+                fields[.additionalFieldsJson] = fieldsData
             } catch {
                 logger.warning("Failed to encode additional fields for sync: \(error.localizedDescription)")
             }
@@ -137,45 +137,46 @@ struct SyncRecordMapper {
     }
 
     static func toConnection(_ record: CKRecord) throws -> DatabaseConnection {
-        guard let connectionIdString = record[.connectionId] as? String,
+        let fields = record.fields(ConnectionSyncField.self)
+        guard let connectionIdString = fields[.connectionId] as? String,
               let connectionId = UUID(uuidString: connectionIdString)
         else {
             throw SyncDecodeError.missingRequiredField("connectionId")
         }
-        guard let name = record[.name] as? String else {
+        guard let name = fields[.name] as? String else {
             throw SyncDecodeError.missingRequiredField("name")
         }
-        guard let typeRawValue = record[.type] as? String else {
+        guard let typeRawValue = fields[.type] as? String else {
             throw SyncDecodeError.missingRequiredField("type")
         }
 
-        let host = record[.host] as? String ?? "localhost"
-        let port = (record[.port] as? Int64).map { Int($0) } ?? 0
-        let database = record[.database] as? String ?? ""
-        let username = record[.username] as? String ?? ""
-        let colorRaw = record[.color] as? String ?? ConnectionColor.none.rawValue
-        let isReadOnly = (record[.isReadOnly] as? Int64 ?? 0) != 0
-        let safeModeLevel = Self.safeModeLevel(fromWire: record[.safeModeLevel] as? String, isReadOnly: isReadOnly)
+        let host = fields[.host] as? String ?? "localhost"
+        let port = (fields[.port] as? Int64).map { Int($0) } ?? 0
+        let database = fields[.database] as? String ?? ""
+        let username = fields[.username] as? String ?? ""
+        let colorRaw = fields[.color] as? String ?? ConnectionColor.none.rawValue
+        let isReadOnly = (fields[.isReadOnly] as? Int64 ?? 0) != 0
+        let safeModeLevel = Self.safeModeLevel(fromWire: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
         let tagIds: [UUID]
-        if let rawIds = record[.tagIds] as? [String], !rawIds.isEmpty {
+        if let rawIds = fields[.tagIds] as? [String], !rawIds.isEmpty {
             tagIds = rawIds.compactMap { UUID(uuidString: $0) }
-        } else if let single = (record[.tagId] as? String).flatMap({ UUID(uuidString: $0) }) {
+        } else if let single = (fields[.tagId] as? String).flatMap({ UUID(uuidString: $0) }) {
             tagIds = [single]
         } else {
             tagIds = []
         }
-        let groupId = (record[.groupId] as? String).flatMap { UUID(uuidString: $0) }
-        let aiPolicyRaw = record[.aiPolicy] as? String
-        let aiRulesRaw = record[.aiRules] as? String
-        let aiAlwaysAllowedToolsArray = record[.aiAlwaysAllowedTools] as? [String] ?? []
-        let redisDatabase = (record[.redisDatabase] as? Int64).map { Int($0) }
-        let startupCommands = record[.startupCommands] as? String
-        let sortOrder = (record[.sortOrder] as? Int64).map { Int($0) } ?? 0
-        let isFavorite = (record[.isFavorite] as? Int64 ?? 0) != 0
-        let sshProfileId = (record[.sshProfileId] as? String).flatMap { UUID(uuidString: $0) }
+        let groupId = (fields[.groupId] as? String).flatMap { UUID(uuidString: $0) }
+        let aiPolicyRaw = fields[.aiPolicy] as? String
+        let aiRulesRaw = fields[.aiRules] as? String
+        let aiAlwaysAllowedToolsArray = fields[.aiAlwaysAllowedTools] as? [String] ?? []
+        let redisDatabase = (fields[.redisDatabase] as? Int64).map { Int($0) }
+        let startupCommands = fields[.startupCommands] as? String
+        let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
+        let isFavorite = (fields[.isFavorite] as? Int64 ?? 0) != 0
+        let sshProfileId = (fields[.sshProfileId] as? String).flatMap { UUID(uuidString: $0) }
 
         var sshConfig = SSHConfiguration()
-        if let sshData = record[.sshConfigJson] as? Data {
+        if let sshData = fields[.sshConfigJson] as? Data {
             do {
                 sshConfig = try decoder.decode(SSHConfiguration.self, from: sshData)
             } catch {
@@ -186,7 +187,7 @@ struct SyncRecordMapper {
 
         let connectionType = DatabaseType(rawValue: typeRawValue)
         var sslConfig = SSLConfiguration(mode: connectionType.defaultSSLMode)
-        if let sslData = record[.sslConfigJson] as? Data {
+        if let sslData = fields[.sslConfigJson] as? Data {
             do {
                 sslConfig = try decoder.decode(SSLConfiguration.self, from: sslData)
             } catch {
@@ -196,7 +197,7 @@ struct SyncRecordMapper {
         }
 
         var additionalFields: [String: String]?
-        if let fieldsData = record[.additionalFieldsJson] as? Data {
+        if let fieldsData = fields[.additionalFieldsJson] as? Data {
             do {
                 additionalFields = try decoder.decode([String: String].self, from: fieldsData)
             } catch {
@@ -246,31 +247,33 @@ struct SyncRecordMapper {
         let recordID = recordID(type: .group, id: group.id.uuidString, in: zone)
         let record = CKRecord(recordType: SyncRecordType.group.rawValue, recordID: recordID)
 
-        record["groupId"] = group.id.uuidString as CKRecordValue
-        record["name"] = group.name as CKRecordValue
-        record["color"] = group.color.rawValue as CKRecordValue
+        let fields = record.fields(ConnectionGroupSyncField.self)
+        fields[.groupId] = group.id.uuidString
+        fields[.name] = group.name
+        fields[.color] = group.color.rawValue
         if let parentId = group.parentId {
-            record["parentId"] = parentId.uuidString as CKRecordValue
+            fields[.parentId] = parentId.uuidString
         }
-        record["sortOrder"] = Int64(group.sortOrder) as CKRecordValue
-        record["modifiedAtLocal"] = Date() as CKRecordValue
-        record["schemaVersion"] = schemaVersion as CKRecordValue
+        fields[.sortOrder] = Int64(group.sortOrder)
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
 
         return record
     }
 
     static func toGroup(_ record: CKRecord) -> ConnectionGroup? {
-        guard let groupIdString = record["groupId"] as? String,
+        let fields = record.fields(ConnectionGroupSyncField.self)
+        guard let groupIdString = fields[.groupId] as? String,
               let groupId = UUID(uuidString: groupIdString),
-              let name = record["name"] as? String
+              let name = fields[.name] as? String
         else {
             logger.warning("Failed to decode group from CKRecord: missing required fields")
             return nil
         }
 
-        let colorRaw = record["color"] as? String ?? ConnectionColor.none.rawValue
-        let parentId = (record["parentId"] as? String).flatMap { UUID(uuidString: $0) }
-        let sortOrder = (record["sortOrder"] as? Int64).map { Int($0) } ?? 0
+        let colorRaw = fields[.color] as? String ?? ConnectionColor.none.rawValue
+        let parentId = (fields[.parentId] as? String).flatMap { UUID(uuidString: $0) }
+        let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
 
         return ConnectionGroup(
             id: groupId,
@@ -287,27 +290,29 @@ struct SyncRecordMapper {
         let recordID = recordID(type: .tag, id: tag.id.uuidString, in: zone)
         let record = CKRecord(recordType: SyncRecordType.tag.rawValue, recordID: recordID)
 
-        record["tagId"] = tag.id.uuidString as CKRecordValue
-        record["name"] = tag.name as CKRecordValue
-        record["isPreset"] = Int64(tag.isPreset ? 1 : 0) as CKRecordValue
-        record["color"] = tag.color.rawValue as CKRecordValue
-        record["modifiedAtLocal"] = Date() as CKRecordValue
-        record["schemaVersion"] = schemaVersion as CKRecordValue
+        let fields = record.fields(ConnectionTagSyncField.self)
+        fields[.tagId] = tag.id.uuidString
+        fields[.name] = tag.name
+        fields[.isPreset] = Int64(tag.isPreset ? 1 : 0)
+        fields[.color] = tag.color.rawValue
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
 
         return record
     }
 
     static func toTag(_ record: CKRecord) -> ConnectionTag? {
-        guard let tagIdString = record["tagId"] as? String,
+        let fields = record.fields(ConnectionTagSyncField.self)
+        guard let tagIdString = fields[.tagId] as? String,
               let tagId = UUID(uuidString: tagIdString),
-              let name = record["name"] as? String
+              let name = fields[.name] as? String
         else {
             logger.warning("Failed to decode tag from CKRecord: missing required fields")
             return nil
         }
 
-        let isPreset = (record["isPreset"] as? Int64 ?? 0) != 0
-        let colorRaw = record["color"] as? String ?? ConnectionColor.gray.rawValue
+        let isPreset = (fields[.isPreset] as? Int64 ?? 0) != 0
+        let colorRaw = fields[.color] as? String ?? ConnectionColor.gray.rawValue
 
         return ConnectionTag(
             id: tagId,
@@ -327,20 +332,21 @@ struct SyncRecordMapper {
         let recordID = recordID(type: .settings, id: category, in: zone)
         let record = CKRecord(recordType: SyncRecordType.settings.rawValue, recordID: recordID)
 
-        record["category"] = category as CKRecordValue
-        record["settingsJson"] = settingsData as CKRecordValue
-        record["modifiedAtLocal"] = Date() as CKRecordValue
-        record["schemaVersion"] = schemaVersion as CKRecordValue
+        let fields = record.fields(AppSettingsSyncField.self)
+        fields[.category] = category
+        fields[.settingsJson] = settingsData
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
 
         return record
     }
 
     static func settingsCategory(from record: CKRecord) -> String? {
-        record["category"] as? String
+        record.fields(AppSettingsSyncField.self)[.category] as? String
     }
 
     static func settingsData(from record: CKRecord) -> Data? {
-        record["settingsJson"] as? Data
+        record.fields(AppSettingsSyncField.self)[.settingsJson] as? Data
     }
 
     // MARK: - Table Favorite
@@ -350,30 +356,32 @@ struct SyncRecordMapper {
         let recordID = recordID(type: .tableFavorite, id: favoriteId, in: zone)
         let record = CKRecord(recordType: SyncRecordType.tableFavorite.rawValue, recordID: recordID)
 
-        record["connectionId"] = entry.connectionId.uuidString as CKRecordValue
-        record["name"] = entry.name as CKRecordValue
+        let fields = record.fields(FavoriteTableSyncField.self)
+        fields[.connectionId] = entry.connectionId.uuidString
+        fields[.name] = entry.name
         if let database = entry.database {
-            record["database"] = database as CKRecordValue
+            fields[.database] = database
         }
         if let schema = entry.schema {
-            record["schema"] = schema as CKRecordValue
+            fields[.schema] = schema
         }
-        record["modifiedAtLocal"] = Date() as CKRecordValue
-        record["schemaVersion"] = schemaVersion as CKRecordValue
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
 
         return record
     }
 
     static func favoriteEntry(from record: CKRecord) throws -> FavoriteTablesStorage.FavoriteEntry {
-        guard let name = record["name"] as? String, !name.isEmpty else {
+        let fields = record.fields(FavoriteTableSyncField.self)
+        guard let name = fields[.name] as? String, !name.isEmpty else {
             throw SyncDecodeError.missingRequiredField("name")
         }
-        guard let connectionIdString = record["connectionId"] as? String,
+        guard let connectionIdString = fields[.connectionId] as? String,
               let connectionId = UUID(uuidString: connectionIdString) else {
             throw SyncDecodeError.missingRequiredField("connectionId")
         }
-        let database = record["database"] as? String
-        let schema = record["schema"] as? String
+        let database = fields[.database] as? String
+        let schema = fields[.schema] as? String
         return FavoriteTablesStorage.FavoriteEntry(
             connectionId: connectionId,
             database: database,
@@ -388,47 +396,49 @@ struct SyncRecordMapper {
         let recordID = recordID(type: .favorite, id: favorite.id.uuidString, in: zone)
         let record = CKRecord(recordType: SyncRecordType.favorite.rawValue, recordID: recordID)
 
-        record["favoriteId"] = favorite.id.uuidString as CKRecordValue
-        record["name"] = favorite.name as CKRecordValue
-        record["query"] = favorite.query as CKRecordValue
+        let fields = record.fields(SQLFavoriteSyncField.self)
+        fields[.favoriteId] = favorite.id.uuidString
+        fields[.name] = favorite.name
+        fields[.query] = favorite.query
         if let keyword = favorite.keyword {
-            record["keyword"] = keyword as CKRecordValue
+            fields[.keyword] = keyword
         }
         if let folderId = favorite.folderId {
-            record["folderId"] = folderId.uuidString as CKRecordValue
+            fields[.folderId] = folderId.uuidString
         }
         if let connectionId = favorite.connectionId {
-            record["connectionId"] = connectionId.uuidString as CKRecordValue
+            fields[.connectionId] = connectionId.uuidString
         }
-        record["sortOrder"] = Int64(favorite.sortOrder) as CKRecordValue
-        record["createdAt"] = favorite.createdAt as CKRecordValue
-        record["updatedAt"] = favorite.updatedAt as CKRecordValue
-        record["modifiedAtLocal"] = Date() as CKRecordValue
-        record["schemaVersion"] = schemaVersion as CKRecordValue
+        fields[.sortOrder] = Int64(favorite.sortOrder)
+        fields[.createdAt] = favorite.createdAt
+        fields[.updatedAt] = favorite.updatedAt
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
 
         return record
     }
 
     static func sqlFavorite(from record: CKRecord) throws -> SQLFavorite {
-        guard let idString = record["favoriteId"] as? String, let id = UUID(uuidString: idString) else {
+        let fields = record.fields(SQLFavoriteSyncField.self)
+        guard let idString = fields[.favoriteId] as? String, let id = UUID(uuidString: idString) else {
             throw SyncDecodeError.missingRequiredField("favoriteId")
         }
-        guard let name = record["name"] as? String else {
+        guard let name = fields[.name] as? String else {
             throw SyncDecodeError.missingRequiredField("name")
         }
-        guard let query = record["query"] as? String else {
+        guard let query = fields[.query] as? String else {
             throw SyncDecodeError.missingRequiredField("query")
         }
         return SQLFavorite(
             id: id,
             name: name,
             query: query,
-            keyword: record["keyword"] as? String,
-            folderId: (record["folderId"] as? String).flatMap(UUID.init(uuidString:)),
-            connectionId: (record["connectionId"] as? String).flatMap(UUID.init(uuidString:)),
-            sortOrder: Int(record["sortOrder"] as? Int64 ?? 0),
-            createdAt: record["createdAt"] as? Date,
-            updatedAt: record["updatedAt"] as? Date
+            keyword: fields[.keyword] as? String,
+            folderId: (fields[.folderId] as? String).flatMap(UUID.init(uuidString:)),
+            connectionId: (fields[.connectionId] as? String).flatMap(UUID.init(uuidString:)),
+            sortOrder: Int(fields[.sortOrder] as? Int64 ?? 0),
+            createdAt: fields[.createdAt] as? Date,
+            updatedAt: fields[.updatedAt] as? Date
         )
     }
 
@@ -438,38 +448,40 @@ struct SyncRecordMapper {
         let recordID = recordID(type: .favoriteFolder, id: folder.id.uuidString, in: zone)
         let record = CKRecord(recordType: SyncRecordType.favoriteFolder.rawValue, recordID: recordID)
 
-        record["folderId"] = folder.id.uuidString as CKRecordValue
-        record["name"] = folder.name as CKRecordValue
+        let fields = record.fields(SQLFavoriteFolderSyncField.self)
+        fields[.folderId] = folder.id.uuidString
+        fields[.name] = folder.name
         if let parentId = folder.parentId {
-            record["parentId"] = parentId.uuidString as CKRecordValue
+            fields[.parentId] = parentId.uuidString
         }
         if let connectionId = folder.connectionId {
-            record["connectionId"] = connectionId.uuidString as CKRecordValue
+            fields[.connectionId] = connectionId.uuidString
         }
-        record["sortOrder"] = Int64(folder.sortOrder) as CKRecordValue
-        record["createdAt"] = folder.createdAt as CKRecordValue
-        record["updatedAt"] = folder.updatedAt as CKRecordValue
-        record["modifiedAtLocal"] = Date() as CKRecordValue
-        record["schemaVersion"] = schemaVersion as CKRecordValue
+        fields[.sortOrder] = Int64(folder.sortOrder)
+        fields[.createdAt] = folder.createdAt
+        fields[.updatedAt] = folder.updatedAt
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
 
         return record
     }
 
     static func sqlFavoriteFolder(from record: CKRecord) throws -> SQLFavoriteFolder {
-        guard let idString = record["folderId"] as? String, let id = UUID(uuidString: idString) else {
+        let fields = record.fields(SQLFavoriteFolderSyncField.self)
+        guard let idString = fields[.folderId] as? String, let id = UUID(uuidString: idString) else {
             throw SyncDecodeError.missingRequiredField("folderId")
         }
-        guard let name = record["name"] as? String else {
+        guard let name = fields[.name] as? String else {
             throw SyncDecodeError.missingRequiredField("name")
         }
         return SQLFavoriteFolder(
             id: id,
             name: name,
-            parentId: (record["parentId"] as? String).flatMap(UUID.init(uuidString:)),
-            connectionId: (record["connectionId"] as? String).flatMap(UUID.init(uuidString:)),
-            sortOrder: Int(record["sortOrder"] as? Int64 ?? 0),
-            createdAt: record["createdAt"] as? Date,
-            updatedAt: record["updatedAt"] as? Date
+            parentId: (fields[.parentId] as? String).flatMap(UUID.init(uuidString:)),
+            connectionId: (fields[.connectionId] as? String).flatMap(UUID.init(uuidString:)),
+            sortOrder: Int(fields[.sortOrder] as? Int64 ?? 0),
+            createdAt: fields[.createdAt] as? Date,
+            updatedAt: fields[.updatedAt] as? Date
         )
     }
 
@@ -479,28 +491,28 @@ struct SyncRecordMapper {
         let recordID = recordID(type: .sshProfile, id: profile.id.uuidString, in: zone)
         let record = CKRecord(recordType: SyncRecordType.sshProfile.rawValue, recordID: recordID)
 
-        record["profileId"] = profile.id.uuidString as CKRecordValue
-        record["name"] = profile.name as CKRecordValue
-        record["host"] = profile.host as CKRecordValue
+        let fields = record.fields(SSHProfileSyncField.self)
+        fields[.profileId] = profile.id.uuidString
+        fields[.name] = profile.name
+        fields[.host] = profile.host
         if let port = profile.port {
-            record["port"] = Int64(port) as CKRecordValue
+            fields[.port] = Int64(port)
         }
-        record["username"] = profile.username as CKRecordValue
-        record["authMethod"] = profile.authMethod.rawValue as CKRecordValue
-        record["privateKeyPath"] = PathPortability.contractHome(profile.privateKeyPath) as CKRecordValue
-        record["agentSocketPath"] = PathPortability.contractHome(profile.agentSocketPath) as CKRecordValue
-        record["totpMode"] = profile.totpMode.rawValue as CKRecordValue
-        record["totpAlgorithm"] = profile.totpAlgorithm.rawValue as CKRecordValue
-        record["totpDigits"] = Int64(profile.totpDigits) as CKRecordValue
-        record["totpPeriod"] = Int64(profile.totpPeriod) as CKRecordValue
-        record["modifiedAtLocal"] = Date() as CKRecordValue
-        record["schemaVersion"] = schemaVersion as CKRecordValue
+        fields[.username] = profile.username
+        fields[.authMethod] = profile.authMethod.rawValue
+        fields[.privateKeyPath] = PathPortability.contractHome(profile.privateKeyPath)
+        fields[.agentSocketPath] = PathPortability.contractHome(profile.agentSocketPath)
+        fields[.totpMode] = profile.totpMode.rawValue
+        fields[.totpAlgorithm] = profile.totpAlgorithm.rawValue
+        fields[.totpDigits] = Int64(profile.totpDigits)
+        fields[.totpPeriod] = Int64(profile.totpPeriod)
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
 
         if !profile.jumpHosts.isEmpty {
             do {
                 let portableJumpHosts = Self.makePortable(profile.jumpHosts)
-                let jumpHostsData = try encoder.encode(portableJumpHosts)
-                record["jumpHostsJson"] = jumpHostsData as CKRecordValue
+                fields[.jumpHostsJson] = try encoder.encode(portableJumpHosts)
             } catch {
                 logger.warning("Failed to encode jump hosts for sync: \(error.localizedDescription)")
             }
@@ -510,28 +522,29 @@ struct SyncRecordMapper {
     }
 
     static func toSSHProfile(_ record: CKRecord) throws -> SSHProfile {
-        guard let profileIdString = record["profileId"] as? String,
+        let fields = record.fields(SSHProfileSyncField.self)
+        guard let profileIdString = fields[.profileId] as? String,
               let profileId = UUID(uuidString: profileIdString)
         else {
             throw SyncDecodeError.missingRequiredField("profileId")
         }
-        guard let name = record["name"] as? String else {
+        guard let name = fields[.name] as? String else {
             throw SyncDecodeError.missingRequiredField("name")
         }
 
-        let host = record["host"] as? String ?? ""
-        let port = (record["port"] as? Int64).map { Int($0) }
-        let username = record["username"] as? String ?? ""
-        let authMethodRaw = record["authMethod"] as? String ?? SSHAuthMethod.password.rawValue
-        let privateKeyPath = PathPortability.expandHome(record["privateKeyPath"] as? String ?? "")
-        let agentSocketPath = PathPortability.expandHome(record["agentSocketPath"] as? String ?? "")
-        let totpModeRaw = record["totpMode"] as? String ?? TOTPMode.none.rawValue
-        let totpAlgorithmRaw = record["totpAlgorithm"] as? String ?? TOTPAlgorithm.sha1.rawValue
-        let totpDigits = (record["totpDigits"] as? Int64).map { Int($0) } ?? 6
-        let totpPeriod = (record["totpPeriod"] as? Int64).map { Int($0) } ?? 30
+        let host = fields[.host] as? String ?? ""
+        let port = (fields[.port] as? Int64).map { Int($0) }
+        let username = fields[.username] as? String ?? ""
+        let authMethodRaw = fields[.authMethod] as? String ?? SSHAuthMethod.password.rawValue
+        let privateKeyPath = PathPortability.expandHome(fields[.privateKeyPath] as? String ?? "")
+        let agentSocketPath = PathPortability.expandHome(fields[.agentSocketPath] as? String ?? "")
+        let totpModeRaw = fields[.totpMode] as? String ?? TOTPMode.none.rawValue
+        let totpAlgorithmRaw = fields[.totpAlgorithm] as? String ?? TOTPAlgorithm.sha1.rawValue
+        let totpDigits = (fields[.totpDigits] as? Int64).map { Int($0) } ?? 6
+        let totpPeriod = (fields[.totpPeriod] as? Int64).map { Int($0) } ?? 30
 
         var jumpHosts: [SSHJumpHost] = []
-        if let jumpHostsData = record["jumpHostsJson"] as? Data {
+        if let jumpHostsData = fields[.jumpHostsJson] as? Data {
             do {
                 jumpHosts = try decoder.decode([SSHJumpHost].self, from: jumpHostsData)
             } catch {

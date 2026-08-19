@@ -26,6 +26,10 @@ import SwiftUI
 /// the selection reads through its stroke and its label, not through a brighter fill.
 internal struct EditorTabStrip: View {
     internal let tabManager: QueryTabManager
+    /// The dimension this engine's tabs are anchored to, so a label can name the container it
+    /// shares a title with. Resolved by the window, because a view has no business asking the
+    /// plugin registry what kind of container a connection has.
+    internal let containerTarget: ContainerSwitchTarget?
     internal let onClose: (UUID) -> Void
     internal let onCloseOthers: (UUID) -> Void
     internal let onCloseAll: () -> Void
@@ -78,10 +82,11 @@ internal struct EditorTabStrip: View {
     private var track: some View {
         GeometryReader { proxy in
             ScrollViewReader { scroller in
+                let labels = EditorTabLabelResolver.resolve(tabs: tabManager.tabs, target: containerTarget)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 0) {
                         ForEach(Array(tabManager.tabs.enumerated()), id: \.element.id) { index, tab in
-                            item(for: tab, at: index)
+                            item(for: tab, at: index, label: labels[tab.id])
                                 .frame(
                                     width: EditorTabStripLayout.tabWidth(
                                         forTrack: proxy.size.width,
@@ -111,9 +116,14 @@ internal struct EditorTabStrip: View {
         .trackSurface()
     }
 
-    private func item(for tab: QueryTab, at index: Int) -> some View {
+    private func item(
+        for tab: QueryTab,
+        at index: Int,
+        label: EditorTabLabelResolver.Label?
+    ) -> some View {
         EditorTabStripItem(
             tab: tab,
+            label: label ?? EditorTabLabelResolver.Label(text: tab.title, description: tab.title),
             isSelected: tabManager.selectedTab?.id == tab.id,
             isHovered: hoveredTabId == tab.id,
             isWindowActive: isWindowActive,
@@ -163,6 +173,7 @@ private enum EditorTabStripPalette {
 
 private struct EditorTabStripItem: View {
     let tab: QueryTab
+    let label: EditorTabLabelResolver.Label
     let isSelected: Bool
     let isHovered: Bool
     let isWindowActive: Bool
@@ -196,7 +207,7 @@ private struct EditorTabStripItem: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onHover(perform: onHover)
-        .help(Text(tab.title))
+        .help(Text(label.description))
         .contextMenu {
             Button(String(localized: "Close Tab"), action: onClose)
             Button(String(localized: "Close Other Tabs"), action: onCloseOthers)
@@ -205,7 +216,7 @@ private struct EditorTabStripItem: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("editor-tab")
-        .accessibilityLabel(Text(tab.title))
+        .accessibilityLabel(Text(label.text))
         .accessibilityValue(Text(positionDescription))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityAction(named: Text("Close Tab"), onClose)
@@ -245,7 +256,7 @@ private struct EditorTabStripItem: View {
         HStack(spacing: 0) {
             Color.clear
                 .frame(width: EditorTabStripLayout.accessoryWidth)
-            Text(tab.title)
+            Text(label.text)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .italic(tab.isPreview)

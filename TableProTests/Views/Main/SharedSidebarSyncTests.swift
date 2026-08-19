@@ -21,11 +21,11 @@ struct SharedSidebarSyncTests {
         TestFixtures.makeTableInfo(name: name, type: type)
     }
 
-    // MARK: - syncSidebarToCurrentTab must not trigger navigation
+    // MARK: - syncSidebarObjectSelection must not trigger navigation
 
-    @Test("syncSidebarToCurrentTab sets same table as current tab — resolve skips")
+    @Test("syncSidebarObjectSelection sets same table as current tab, so resolve skips")
     func syncSameTableSkipsNavigation() {
-        // Simulates: didBecomeKey → syncSidebarToCurrentTab → onChange fires
+        // Simulates: didBecomeKey → syncSidebarObjectSelection → onChange fires
         // previousSelectedTables was empty (initial), sync sets [users]
         let previousSelectedTables: Set<TableInfo> = []
         let newSelectedTables: Set<TableInfo> = [makeTable("users")]
@@ -45,10 +45,10 @@ struct SharedSidebarSyncTests {
             hasExistingTabs: true,
             isActiveTabReusable: false
         )
-        #expect(result == .skip, "syncSidebarToCurrentTab must not trigger navigation")
+        #expect(result == .skip, "syncSidebarObjectSelection must not trigger navigation")
     }
 
-    @Test("syncSidebarToCurrentTab with no change — no onChange fires")
+    @Test("syncSidebarObjectSelection with no change fires no onChange")
     func syncNoChangeNoOnChange() {
         // When sidebarState already has [users] and sync sets [users],
         // @Observable does not fire onChange (same value)
@@ -58,7 +58,7 @@ struct SharedSidebarSyncTests {
         #expect(action == .noNavigation, "Same selection set must not trigger navigation")
     }
 
-    @Test("syncSidebarToCurrentTab clears selection for query tab — no navigation")
+    @Test("syncSidebarObjectSelection clears selection for a query tab without navigating")
     func syncClearsForQueryTab() {
         // Current tab is SQL query (tableName = nil), sync clears sidebar
         let previous: Set<TableInfo> = [makeTable("users")]
@@ -93,7 +93,7 @@ struct SharedSidebarSyncTests {
     @Test("Switch back: sync sets same table — skip, no new tab")
     func switchBackSameTable() {
         // User has "users" tab, switches away and back
-        // syncSidebarToCurrentTab sets [users] (same as before)
+        // syncSidebarObjectSelection sets [users] (same as before)
         let previous: Set<TableInfo> = [makeTable("users")]
         let new: Set<TableInfo> = [makeTable("users")]
         let action = TableSelectionAction.resolve(oldTables: previous, newTables: new, selectedRowCount: new.count)
@@ -124,7 +124,7 @@ struct SharedSidebarSyncTests {
     @Test("Switch back to SQL query tab — sync clears, no navigation")
     func switchBackToQueryTab() {
         // User was on SQL query tab (tableName = nil), switches back
-        // syncSidebarToCurrentTab clears selection
+        // syncSidebarObjectSelection clears selection
         let action = TableSelectionAction.resolve(
             oldTables: [makeTable("users")],
             newTables: [],
@@ -216,30 +216,6 @@ struct SharedSidebarSyncTests {
             selectedRowCount: ([makeTable("users")]).count
         )
         #expect(action == .noNavigation)
-    }
-
-    // MARK: - Tables load scenarios
-
-    @Test("Tables load with empty sidebar and matching tab — syncs selection")
-    func tablesLoadSyncsSelection() {
-        let tables = [makeTable("users"), makeTable("orders")]
-        let result = SidebarSyncAction.resolveOnTablesLoad(
-            newTables: tables,
-            selectedTables: [],
-            currentTabTableName: "users"
-        )
-        #expect(result == .select(tableName: "users"))
-    }
-
-    @Test("Tables load with existing sidebar selection — no sync")
-    func tablesLoadNoSyncWhenSelected() {
-        let tables = [makeTable("users"), makeTable("orders")]
-        let result = SidebarSyncAction.resolveOnTablesLoad(
-            newTables: tables,
-            selectedTables: [makeTable("users")],
-            currentTabTableName: "orders"
-        )
-        #expect(result == .noSync)
     }
 
     // MARK: - Deselection scenarios

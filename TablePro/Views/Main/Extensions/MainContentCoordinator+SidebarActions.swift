@@ -210,15 +210,43 @@ extension MainContentCoordinator {
         return driver.supportedMaintenanceOperations() ?? []
     }
 
-    func showMaintenanceSheet(operation: String, tableName: String) {
-        activeSheet = .maintenance(operation: operation, tableName: tableName)
+    func showMaintenanceSheet(
+        operation: String,
+        tableName: String,
+        database: String? = nil,
+        schema: String? = nil
+    ) {
+        activeSheet = .maintenance(
+            operation: operation, tableName: tableName, database: database, schema: schema
+        )
     }
 
-    func executeMaintenance(operation: String, tableName: String, options: [String: String]) {
+    /// Runs against the database the object it names lives in, on a scoped lease.
+    ///
+    /// A maintenance statement names its table and nothing else, so where it lands is decided
+    /// entirely by the connection's current database. Executing on the session driver directly left
+    /// that to chance: a cross-database tab pins the shared handle to its own database for the
+    /// length of its query and deliberately writes no session state back, so `OPTIMIZE TABLE
+    /// role_ability` could optimize the copy in another database while the sheet reported success.
+    /// Every other statement the user owns takes a scoped lease; this one now does too, which also
+    /// puts it behind the same gate rather than interleaving with a tab's work on one handle.
+    func executeMaintenance(
+        operation: String,
+        tableName: String,
+        options: [String: String],
+        database: String? = nil,
+        schema: String? = nil
+    ) {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
         guard let statements = driver.maintenanceStatements(
             operation: operation, table: tableName, options: options
         ) else { return }
+        /// The object the user picked names its own database, and only a command that names none
+        /// falls back to where the browser is pointing. `resolvedScope` is what decides that, so a
+        /// schema is never carried across a database boundary.
+        guard let scope = services.databaseManager.resolvedScope(
+            database: database, schema: schema, for: connectionId
+        ) ?? browseScope else { return }
 
         Task { [weak self] in
             guard let self else { return }
@@ -245,8 +273,18 @@ extension MainContentCoordinator {
             }
             do {
                 var lastResult: QueryResult?
+                let route = DatabaseManager.shared.executionRoute(for: scope)
                 for sql in statements {
-                    lastResult = try await driver.execute(query: sql)
+                    /// `.protectedWrite`: a half-applied OPTIMIZE or REPAIR cannot be undone by
+                    /// retrying, so the lease is registered to mark the connection busy and is never
+                    /// reachable by Stop.
+                    lastResult = try await DatabaseManager.shared.withScopedDriver(
+                        scope: scope,
+                        route: route,
+                        cancellation: .protectedWrite
+                    ) { scopedDriver in
+                        try await scopedDriver.execute(query: sql)
+                    }
                 }
                 await AlertHelper.showInfoSheet(
                     title: String(format: String(localized: "%@ completed"), operation),

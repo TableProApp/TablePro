@@ -581,9 +581,12 @@ final class SyncCoordinator {
         let localRecord = SyncRecordMapper.toCKRecord(localConnection, in: remoteRecord.recordID.zoneID)
         guard let merged = remoteRecord.copy() as? CKRecord else { return nil }
 
+        let localFields = localRecord.fields(ConnectionSyncField.self)
+        let baseFields = base.fields(ConnectionSyncField.self)
+        let mergedFields = merged.fields(ConnectionSyncField.self)
         for field in ConnectionSyncField.allCases where field != .modifiedAtLocal {
-            guard !CKRecord.isEqualRecordValue(localRecord[field], base[field]) else { continue }
-            merged[field] = localRecord[field]
+            guard !CKRecord.isEqualRecordValue(localFields[field], baseFields[field]) else { continue }
+            mergedFields[field] = localFields[field]
         }
 
         do {

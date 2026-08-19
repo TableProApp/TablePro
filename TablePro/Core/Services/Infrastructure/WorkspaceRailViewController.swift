@@ -381,16 +381,13 @@ internal final class WorkspaceRailViewController: NSViewController {
         applySelection()
     }
 
+    /// Both halves of going to a workspace: the object tree moves to its container, and the window
+    /// lands on the work that container already holds. They run in one place, in that order,
+    /// because the switch is asynchronous and a second trigger would select a tab against a cursor
+    /// that had not moved yet.
     private func moveBrowseCursor(of window: NSWindow, to workspace: WorkspaceID) {
         guard !workspace.container.isEmpty else {
             Self.logger.debug("moveBrowseCursor skipped: unnamed container")
-            return
-        }
-        let current = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
-        guard current != workspace else {
-            Self.logger.debug(
-                "moveBrowseCursor skipped: already at \(Self.describe(workspace), privacy: .public)"
-            )
             return
         }
         /// Resolved by connection through the window that hosts it, never by window alone.
@@ -407,6 +404,14 @@ internal final class WorkspaceRailViewController: NSViewController {
             )
             return
         }
+        let current = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
+        guard current != workspace else {
+            Self.logger.debug(
+                "moveBrowseCursor skipped: already at \(Self.describe(workspace), privacy: .public)"
+            )
+            coordinator.selectTab(inContainer: workspace.container)
+            return
+        }
         Self.logger.info(
             """
             moveBrowseCursor from=\(current.map(Self.describe) ?? "none", privacy: .public) \
@@ -418,6 +423,10 @@ internal final class WorkspaceRailViewController: NSViewController {
             let landed = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
             if landed == workspace {
                 Self.logger.info("moveBrowseCursor landed \(Self.describe(workspace), privacy: .public)")
+                /// Only once the cursor is really there. A failed switch has already told the user
+                /// why, and selecting that container's tab on top of it would leave the window
+                /// showing one database while the tree lists another.
+                coordinator.selectTab(inContainer: workspace.container)
             } else {
                 Self.logger.error(
                     """

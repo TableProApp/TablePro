@@ -468,20 +468,26 @@ internal struct FavoritesTabView: View {
 
     /// An empty list has no row to right-click, so the commands the background menu carries have to
     /// be here too. They used to live in a bar at the bottom of the sidebar.
+    ///
+    /// The actions are stacked, not left to `ContentUnavailableView`'s default row. On macOS 15 the
+    /// row of three buttons is wider than the sidebar, and the view sizes its whole content to that
+    /// row, so the description and the buttons ran past both edges and were cut off.
     private var emptyState: some View {
         ContentUnavailableView {
             Label(String(localized: "No Favorites"), systemImage: "star")
         } description: {
             Text("Save frequently used queries, or link a folder of .sql files to share with your team.")
         } actions: {
-            Button(String(localized: "New Favorite...")) {
-                viewModel.createFavorite()
-            }
-            Button(String(localized: "New Folder")) {
-                viewModel.createFolder()
-            }
-            Button(String(localized: "Link a Folder...")) {
-                addLinkedFolder()
+            VStack(spacing: 8) {
+                Button(String(localized: "New Favorite...")) {
+                    viewModel.createFavorite()
+                }
+                Button(String(localized: "New Folder")) {
+                    viewModel.createFolder()
+                }
+                Button(String(localized: "Link a Folder...")) {
+                    addLinkedFolder()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

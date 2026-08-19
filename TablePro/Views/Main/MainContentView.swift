@@ -266,12 +266,20 @@ struct MainContentView: View {
                     ?? connection.database,
                 sourceURL: fileURL
             )
-        case .maintenance(let operation, let tableName):
+        case .maintenance(let operation, let tableName, let database, let schema):
             MaintenanceSheet(
                 operation: operation,
                 tableName: tableName,
                 databaseType: connection.type,
-                onExecute: coordinator.executeMaintenance
+                onExecute: { operation, tableName, options in
+                    coordinator.executeMaintenance(
+                        operation: operation,
+                        tableName: tableName,
+                        options: options,
+                        database: database,
+                        schema: schema
+                    )
+                }
             )
         case .sqlPreview:
             SQLReviewSheet(
@@ -383,17 +391,13 @@ struct MainContentView: View {
                 }
                 handleTableSelectionChange(from: oldTables, to: newTables)
             }
-            .onChange(of: tables) { _, newTables in
-                let syncAction = SidebarSyncAction.resolveOnTablesLoad(
-                    newTables: newTables,
-                    selectedTables: coordinator.windowSidebarState.selectedTables,
-                    currentTabTableName: tabManager.selectedTab?.tableContext.tableName
-                )
-                if case .select(let tableName) = syncAction,
-                    let match = newTables.first(where: { $0.name == tableName })
-                {
-                    coordinator.windowSidebarState.selectTables([match])
-                }
+            /// A background reload of the same container must not take a selection out from under
+            /// the user. Every other input re-asserts unconditionally: a container switch above all,
+            /// because a selection made in the container being left is not one in the container
+            /// arriving.
+            .onChange(of: tables) { _, _ in
+                guard coordinator.windowSidebarState.acceptsObjectMarkRefresh else { return }
+                coordinator.syncSidebarObjectSelection()
             }
     }
 
