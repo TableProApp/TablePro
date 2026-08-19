@@ -9,55 +9,62 @@ struct ResultChartProjectionKey: Hashable {
     let tabId: UUID
     let resultSetId: UUID
     let dataRevision: Int
-    let xColumnIndex: Int?
-    let yColumnIndex: Int?
-    let seriesColumnIndex: Int?
+    let xColumn: ResultChartColumnID?
+    let yColumn: ResultChartColumnID?
+    let seriesColumn: ResultChartColumnID?
     let isUnlocked: Bool
 
     init(
         tabId: UUID,
         resultSetId: UUID,
         dataRevision: Int,
-        configuration: ResultChartConfiguration,
+        resolved: ResultChartConfiguration.Resolved?,
         isUnlocked: Bool
     ) {
         self.tabId = tabId
         self.resultSetId = resultSetId
         self.dataRevision = dataRevision
-        self.xColumnIndex = configuration.xColumnIndex
-        self.yColumnIndex = configuration.yColumnIndex
-        self.seriesColumnIndex = configuration.seriesColumnIndex
+        xColumn = resolved?.xColumn?.id
+        yColumn = resolved?.yColumn.id
+        seriesColumn = resolved?.seriesColumn?.id
         self.isUnlocked = isUnlocked
     }
 }
 
 struct ResultChartView: View {
-    @Bindable var resultSet: ResultSet
+    @Binding var configuration: ResultChartConfiguration
     let tableRows: TableRows
+    let primaryKeyColumns: Set<String>
     let tabId: UUID
+    let resultSetId: UUID
     let dataRevision: Int
-    let hasUnloadedRows: Bool
     let isUnlocked: Bool
 
-    @State private var projection: ResultChartProjection?
-    @State private var isLoading = false
+    /// Every state the pane can be in has a branch below, so there is no combination that renders
+    /// nothing. Projection is cancellable but cannot otherwise fail, which its signature enforces.
+    private enum LoadState: Equatable {
+        case loading
+        case loaded(ResultChartProjection)
+    }
+
+    @State private var state: LoadState = .loading
+
+    private var columns: [ResultChartColumn] {
+        ResultChartColumn.columns(in: tableRows, primaryKeyColumns: primaryKeyColumns)
+    }
+
+    private var resolved: ResultChartConfiguration.Resolved? {
+        configuration.resolved(in: columns)
+    }
 
     private var projectionKey: ResultChartProjectionKey {
         ResultChartProjectionKey(
             tabId: tabId,
-            resultSetId: resultSet.id,
+            resultSetId: resultSetId,
             dataRevision: dataRevision,
-            configuration: resultSet.chartConfiguration,
+            resolved: resolved,
             isUnlocked: isUnlocked
         )
-    }
-
-    private var columns: [ResultChartColumn] {
-        ResultChartColumn.columns(in: tableRows)
-    }
-
-    private var resolvedConfiguration: ResultChartConfiguration.Resolved? {
-        resultSet.chartConfiguration.resolved(in: columns)
     }
 
     var body: some View {
@@ -65,11 +72,10 @@ struct ResultChartView: View {
             if isUnlocked {
                 VStack(spacing: 0) {
                     ResultChartToolbar(
-                        configuration: configurationBinding,
+                        configuration: $configuration,
                         columns: columns,
-                        loadedRowCount: tableRows.rows.count,
-                        skippedRowCount: projection?.skippedRowCount ?? 0,
-                        hasUnloadedRows: hasUnloadedRows
+                        resolved: resolved,
+                        projection: loadedProjection
                     )
                     Divider()
                     content
@@ -85,11 +91,9 @@ struct ResultChartView: View {
         }
     }
 
-    private var configurationBinding: Binding<ResultChartConfiguration> {
-        Binding(
-            get: { resultSet.chartConfiguration },
-            set: { resultSet.chartConfiguration = $0 }
-        )
+    private var loadedProjection: ResultChartProjection? {
+        guard case .loaded(let projection) = state else { return nil }
+        return projection
     }
 
     @ViewBuilder
@@ -100,95 +104,45 @@ struct ResultChartView: View {
                 systemImage: "chart.bar.xaxis",
                 description: Text(String(localized: "Execute a query to chart its loaded rows."))
             )
-        } else if resolvedConfiguration == nil {
+        } else if resolved == nil {
             ContentUnavailableView(
-                String(localized: "Choose Chart Columns"),
+                String(localized: "No Numeric Column"),
                 systemImage: "slider.horizontal.3",
-                description: Text(String(localized: "Choose a numeric Y column. X can use row numbers or a supported column."))
+                description: Text(String(localized: "Charts need a numeric column for the Y axis. This result has none."))
             )
-        } else if isLoading {
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel(String(localized: "Building chart"))
-        } else if let projection {
-            projectionContent(projection)
-        }
-    }
-
-    @ViewBuilder
-    private func projectionContent(_ projection: ResultChartProjection) -> some View {
-        switch projection.issue {
-        case .noChartableRows:
-            ContentUnavailableView(
-                String(localized: "No Chartable Rows"),
-                systemImage: "chart.bar.xaxis",
-                description: Text(String(localized: "The selected axes contain only null, binary, or invalid numeric values."))
-            )
-        case .tooManyPoints(let limit):
-            ContentUnavailableView(
-                String(localized: "Too Many Chart Points"),
-                systemImage: "chart.bar.xaxis",
-                description: Text(
-                    String(
-                        format: String(localized: "Charts support up to %d chartable points. Narrow the query or use a smaller page."),
-                        limit
-                    )
+        } else {
+            switch state {
+            case .loading:
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(String(localized: "Building chart"))
+            case .loaded(let projection) where projection.points.isEmpty:
+                ContentUnavailableView(
+                    String(localized: "No Chartable Rows"),
+                    systemImage: "chart.bar.xaxis",
+                    description: Text(String(localized: "The selected axes contain only null, binary, or invalid values."))
                 )
-            )
-        case .tooManySeries(let limit):
-            ContentUnavailableView(
-                String(localized: "Too Many Series"),
-                systemImage: "square.stack.3d.up",
-                description: Text(
-                    String(
-                        format: String(localized: "Charts support up to %d series. Choose another series column or narrow the query."),
-                        limit
-                    )
-                )
-            )
-        case .tooManyRows(let limit):
-            ContentUnavailableView(
-                String(localized: "Too Many Rows to Inspect"),
-                systemImage: "chart.bar.xaxis",
-                description: Text(
-                    String(
-                        format: String(localized: "Charts inspect up to %d loaded rows. Narrow the query or use a smaller page."),
-                        limit
-                    )
-                )
-            )
-        case nil:
-            if let configuration = resolvedConfiguration {
+            case .loaded(let projection):
                 ResultChartCanvas(projection: projection, chartType: configuration.chartType)
+                    .id(projectionKey)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
             }
         }
     }
 
+    /// A cancelled projection leaves the state alone: `task(id:)` cancels only to start a
+    /// replacement, and that replacement owns the state from its first line.
     private func rebuild(for expectedKey: ResultChartProjectionKey) async {
-        guard expectedKey.isUnlocked, let configuration = resolvedConfiguration else {
-            projection = nil
-            isLoading = false
+        guard expectedKey.isUnlocked, let configuration = resolved else { return }
+        state = .loading
+        guard let output = try? await ResultChartProjector.shared.project(
+            tableRows: tableRows,
+            configuration: configuration
+        ) else {
             return
         }
-
-        projection = nil
-        isLoading = true
-        do {
-            let output = try await ResultChartProjector.shared.project(
-                tableRows: tableRows,
-                configuration: configuration
-            )
-            guard !Task.isCancelled, projectionKey == expectedKey else { return }
-            projection = output
-            isLoading = false
-        } catch is CancellationError {
-            return
-        } catch {
-            guard projectionKey == expectedKey else { return }
-            projection = nil
-            isLoading = false
-        }
+        guard projectionKey == expectedKey else { return }
+        state = .loaded(output)
     }
 }

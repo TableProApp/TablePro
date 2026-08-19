@@ -603,20 +603,15 @@ struct MainEditorContentView: View {
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let resultSet = tab.display.activeResultSet {
-                    let resolvedRows = resolvedTableRows(for: tab)
                     ResultChartView(
-                        resultSet: resultSet,
-                        tableRows: resolvedRows,
+                        configuration: chartConfigurationBinding(for: tab),
+                        tableRows: resolvedTableRows(for: tab),
+                        primaryKeyColumns: Set(tab.tableContext.primaryKeyColumns),
                         tabId: tab.id,
+                        resultSetId: resultSet.id,
                         dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
-                        hasUnloadedRows: ResultChartDataScope.hasUnloadedRows(
-                            tabType: tab.tabType,
-                            pagination: tab.pagination,
-                            loadedRowCount: resolvedRows.rows.count
-                        ),
                         isUnlocked: LicenseManager.shared.isFeatureAvailable(.resultCharts)
                     )
-                    .id(resultSet.id)
                 } else {
                     ContentUnavailableView(
                         String(localized: "No Data"),
@@ -882,6 +877,19 @@ struct MainEditorContentView: View {
             set: { newValue in
                 if let index = tabManager.selectedTabIndex {
                     tabManager.mutate(at: index) { $0.sortState = newValue }
+                }
+            }
+        )
+    }
+
+    /// The chart's choices belong to the tab, not to the result set: a page turn, a sort or a
+    /// re-execute builds a new `ResultSet`, and the axes have to outlive it.
+    private func chartConfigurationBinding(for tab: QueryTab) -> Binding<ResultChartConfiguration> {
+        Binding(
+            get: { tab.chartConfiguration },
+            set: { newValue in
+                if let index = tabManager.selectedTabIndex {
+                    tabManager.mutate(at: index) { $0.chartConfiguration = newValue }
                 }
             }
         )

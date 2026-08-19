@@ -14,7 +14,7 @@ final class ResultChartUITests: UITestCase {
         let modePicker = window.radioGroups["results-view-mode-picker"].firstMatch
         XCTAssertTrue(modePicker.waitForExistence(timeout: 10), "The result must expose its view modes")
 
-        let chart = modePicker.radioButtons["results-view-mode-chart"].firstMatch
+        let chart = modePicker.radioButtons["Chart"].firstMatch
         XCTAssertTrue(
             waitUntilHittable(chart, timeout: 10),
             "Column-bearing results must offer an interactive Chart mode"

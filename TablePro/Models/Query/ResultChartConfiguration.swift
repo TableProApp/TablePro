@@ -5,59 +5,45 @@
 
 import Foundation
 
+/// The user's chart choices for a tab. Columns are named rather than indexed, so paging, sorting and
+/// re-running keep the axes while an edited SELECT list cannot silently chart a different column that
+/// happens to land on the same position. A choice that no longer resolves is kept, not erased, so it
+/// comes back when the column does.
 struct ResultChartConfiguration: Equatable, Hashable, Sendable {
     var chartType: ResultChartType
-    var xColumnIndex: Int?
-    var yColumnIndex: Int?
-    var seriesColumnIndex: Int?
+    var xColumn: ResultChartColumnID?
+    var yColumn: ResultChartColumnID?
+    var seriesColumn: ResultChartColumnID?
 
     init(
         chartType: ResultChartType = .bar,
-        xColumnIndex: Int? = nil,
-        yColumnIndex: Int? = nil,
-        seriesColumnIndex: Int? = nil
+        xColumn: ResultChartColumnID? = nil,
+        yColumn: ResultChartColumnID? = nil,
+        seriesColumn: ResultChartColumnID? = nil
     ) {
         self.chartType = chartType
-        self.xColumnIndex = xColumnIndex
-        self.yColumnIndex = yColumnIndex
-        self.seriesColumnIndex = seriesColumnIndex
+        self.xColumn = xColumn
+        self.yColumn = yColumn
+        self.seriesColumn = seriesColumn
     }
 
-    static func defaultConfiguration(for tableRows: TableRows) -> ResultChartConfiguration {
-        let columns = ResultChartColumn.columns(in: tableRows)
-        return ResultChartConfiguration(
-            yColumnIndex: columns.first(where: \.supportsY)?.index
-        )
+    /// The first numeric column that is not part of the primary key. A leading auto-increment key
+    /// plots as a straight diagonal, which tells the reader nothing about their data.
+    static func defaultYColumn(in columns: [ResultChartColumn]) -> ResultChartColumn? {
+        columns.first { $0.supportsY && !$0.isPrimaryKey } ?? columns.first(where: \.supportsY)
     }
 
     func resolved(in columns: [ResultChartColumn]) -> Resolved? {
-        guard let yColumnIndex,
-              let yColumn = columns.first(where: { $0.index == yColumnIndex && $0.supportsY })
-        else {
-            return nil
-        }
+        let resolvedY = columns.first { $0.id == yColumn && $0.supportsY }
+            ?? Self.defaultYColumn(in: columns)
+        guard let resolvedY else { return nil }
 
-        let xColumn: ResultChartColumn?
-        if let xColumnIndex {
-            guard let selected = columns.first(where: { $0.index == xColumnIndex && $0.xAxisKind != nil }) else {
-                return nil
-            }
-            xColumn = selected
-        } else {
-            xColumn = nil
-        }
-
-        let seriesColumn: ResultChartColumn?
-        if let seriesColumnIndex {
-            guard let selected = columns.first(where: { $0.index == seriesColumnIndex && $0.supportsSeries }) else {
-                return nil
-            }
-            seriesColumn = selected
-        } else {
-            seriesColumn = nil
-        }
-
-        return Resolved(chartType: chartType, xColumn: xColumn, yColumn: yColumn, seriesColumn: seriesColumn)
+        return Resolved(
+            chartType: chartType,
+            xColumn: columns.first { $0.id == xColumn && $0.xAxisKind != nil },
+            yColumn: resolvedY,
+            seriesColumn: columns.first { $0.id == seriesColumn && $0.supportsSeries }
+        )
     }
 
     struct Resolved: Equatable, Sendable {
@@ -66,6 +52,7 @@ struct ResultChartConfiguration: Equatable, Hashable, Sendable {
         let yColumn: ResultChartColumn
         let seriesColumn: ResultChartColumn?
 
+        /// No X column means the row number, which is a numeric axis.
         var xAxisKind: ResultChartColumn.AxisKind {
             xColumn?.xAxisKind ?? .number
         }

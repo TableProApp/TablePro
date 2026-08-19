@@ -8,6 +8,21 @@ enum ResultsViewMode: String, Equatable {
     case structure
     case json
     case chart
+
+    /// How much of the loaded result the mode is showing, and how to load more. A chart draws the
+    /// same buffer the grid does, so it needs the same scope controls: a warning that the chart is
+    /// incomplete is only useful next to the control that completes it.
+    var showsResultScope: Bool {
+        self != .structure
+    }
+
+    var showsColumnControls: Bool {
+        self == .data || self == .json
+    }
+
+    var showsRowFilters: Bool {
+        self == .data || self == .json
+    }
 }
 
 struct QueryTab: Identifiable, Equatable {
@@ -28,6 +43,7 @@ struct QueryTab: Identifiable, Equatable {
     var findState: TabFindState
     var columnLayout: ColumnLayoutState
     var pagination: PaginationState
+    var chartConfiguration: ResultChartConfiguration
     var hasUserInteraction: Bool
     var schemaVersion: Int
     var metadataVersion: Int
@@ -73,6 +89,7 @@ struct QueryTab: Identifiable, Equatable {
         self.findState = TabFindState()
         self.columnLayout = ColumnLayoutState()
         self.pagination = PaginationState()
+        self.chartConfiguration = ResultChartConfiguration()
         self.hasUserInteraction = false
         self.schemaVersion = 0
         self.metadataVersion = 0
@@ -113,6 +130,7 @@ struct QueryTab: Identifiable, Equatable {
             columnContentWidths: persisted.columnContentWidths
         )
         self.pagination = PaginationState(pageSize: defaultPageSize)
+        self.chartConfiguration = ResultChartConfiguration()
         self.hasUserInteraction = false
         self.schemaVersion = 0
         self.metadataVersion = 0
@@ -224,6 +242,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.paginationVersion == rhs.paginationVersion
             && lhs.pagination == rhs.pagination
             && lhs.sortState == rhs.sortState
+            && lhs.chartConfiguration == rhs.chartConfiguration
             && lhs.display == rhs.display
             && lhs.tableContext.isEditable == rhs.tableContext.isEditable
             && lhs.tableContext.isView == rhs.tableContext.isView

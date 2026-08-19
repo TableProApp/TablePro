@@ -66,11 +66,24 @@ struct MainStatusBarLayoutTests {
         #expect(!MainStatusBarView.showsAddRow(viewMode: .chart, canAddRow: false))
     }
 
-    @Test("Chart mode owns its toolbar instead of stale data-grid controls")
-    func dataChromeVisibilityByMode() {
-        #expect(MainStatusBarView.showsDataChrome(viewMode: .data))
-        #expect(MainStatusBarView.showsDataChrome(viewMode: .json))
-        #expect(!MainStatusBarView.showsDataChrome(viewMode: .structure))
-        #expect(!MainStatusBarView.showsDataChrome(viewMode: .chart))
+    @Test("Chart mode keeps the controls that decide which rows it is drawing")
+    func resultScopeVisibilityByMode() {
+        #expect(ResultsViewMode.data.showsResultScope)
+        #expect(ResultsViewMode.json.showsResultScope)
+        #expect(ResultsViewMode.chart.showsResultScope)
+        #expect(!ResultsViewMode.structure.showsResultScope)
+    }
+
+    @Test("Grid-only controls stay with the grid")
+    func gridControlVisibilityByMode() {
+        #expect(ResultsViewMode.data.showsColumnControls)
+        #expect(ResultsViewMode.json.showsColumnControls)
+        #expect(!ResultsViewMode.chart.showsColumnControls)
+        #expect(!ResultsViewMode.structure.showsColumnControls)
+
+        #expect(ResultsViewMode.data.showsRowFilters)
+        #expect(ResultsViewMode.json.showsRowFilters)
+        #expect(!ResultsViewMode.chart.showsRowFilters)
+        #expect(!ResultsViewMode.structure.showsRowFilters)
     }
 }

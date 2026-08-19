@@ -68,11 +68,7 @@ struct ResultChartSelectionCallout: View {
     }
 
     private func valueLabel(for point: ResultChartProjection.Point) -> String {
-        guard seriesLabel != nil else { return yAxisLabel }
-        switch point.series {
-        case .value(let raw): return raw
-        case .missing: return String(localized: "No value")
-        case nil: return yAxisLabel
-        }
+        guard seriesLabel != nil, let series = point.series else { return yAxisLabel }
+        return series.displayName
     }
 }

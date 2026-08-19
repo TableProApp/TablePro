@@ -193,10 +193,10 @@ final class MainContentCommandActions {
         // a column / index / FK row depending on the active Structure sub-tab.
         // The data tab routes through MainContentCoordinator.addNewRow which
         // calls RowEditingCoordinator.addNewRow (data-only).
-        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            coordinator?.structureActions?.addRow?()
-        } else if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .data {
-            coordinator?.addNewRow()
+        switch selectionOwner {
+        case .schemaGrid: coordinator?.structureActions?.addRow?()
+        case .dataGrid: coordinator?.addNewRow()
+        case .none: break
         }
     }
 
@@ -204,26 +204,33 @@ final class MainContentCommandActions {
         coordinator?.dataTabDelegate?.tableViewCoordinator?.currentRowSelection() ?? selectionState.indices
     }
 
-    /// `selectionState` is shared with the structure and new-table grids, so a row command
-    /// has to confirm the data grid owns the selection before it acts on data rows.
-    private var dataGridOwnsSelection: Bool {
-        GridSelectionOwner.resolve(
+    /// `selectionState` is shared with the structure and new-table grids, and nothing clears it when
+    /// the result mode changes, so its indices only mean something once this says whose grid they
+    /// came from. Every row command routes through it rather than re-deriving the answer.
+    ///
+    /// A Create Table tab publishes into the same channel but has no structure handler behind it,
+    /// so claiming ownership there would make its commands silently inert and would shadow the
+    /// table-deletion fallback the sidebar still needs. Ownership counts only where someone can act.
+    private var selectionOwner: GridSelectionOwner {
+        let owner = GridSelectionOwner.resolve(
             tabType: coordinator?.tabManager.selectedTab?.tabType,
             resultsViewMode: coordinator?.tabManager.selectedTab?.display.resultsViewMode
-        ) == .dataGrid
+        )
+        guard owner == .schemaGrid, coordinator?.structureActions == nil else { return owner }
+        return .none
     }
+
+    private var dataGridOwnsSelection: Bool { selectionOwner == .dataGrid }
 
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
         let fromDataGrid = rowIndices != nil
 
-        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
+        if selectionOwner == .schemaGrid {
             coordinator?.structureActions?.removeRow?()
             return
         }
 
-        guard dataGridOwnsSelection || !selectedTables.wrappedValue.isEmpty else { return }
-
-        let indices = rowIndices ?? resolvedRowSelection()
+        let indices = dataGridOwnsSelection ? (rowIndices ?? resolvedRowSelection()) : []
         if !indices.isEmpty {
             coordinator?.deleteSelectedRows(indices: indices)
         } else if !fromDataGrid, !selectedTables.wrappedValue.isEmpty {
@@ -254,10 +261,10 @@ final class MainContentCommandActions {
     }
 
     func copySelectedRows() {
-        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            coordinator?.structureActions?.copyRows?()
-        } else if dataGridOwnsSelection {
-            coordinator?.copySelectedRowsToClipboard(indices: resolvedRowSelection())
+        switch selectionOwner {
+        case .schemaGrid: coordinator?.structureActions?.copyRows?()
+        case .dataGrid: coordinator?.copySelectedRowsToClipboard(indices: resolvedRowSelection())
+        case .none: break
         }
     }
 
@@ -272,10 +279,10 @@ final class MainContentCommandActions {
     }
 
     func pasteRows() {
-        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            coordinator?.structureActions?.pasteRows?()
-        } else if dataGridOwnsSelection {
-            coordinator?.pasteRows()
+        switch selectionOwner {
+        case .schemaGrid: coordinator?.structureActions?.pasteRows?()
+        case .dataGrid: coordinator?.pasteRows()
+        case .none: break
         }
     }
 
@@ -354,20 +361,19 @@ final class MainContentCommandActions {
     }
 
     var isCurrentTabEditable: Bool {
-        guard let tab = coordinator?.tabManager.selectedTab,
-              Self.supportsRowEditing(viewMode: tab.display.resultsViewMode)
-        else {
-            return false
-        }
+        guard let tab = coordinator?.tabManager.selectedTab, selectionOwner != .none else { return false }
         return tab.tableContext.isEditable
     }
 
-    static func supportsRowEditing(viewMode: ResultsViewMode) -> Bool {
-        viewMode == .data || viewMode == .structure
-    }
-
+    /// Find and the filter panel act on the result grid, so they need a table tab that is showing
+    /// one. Chart mode is not, and neither is Structure, whose own grid has its own commands.
     var canUseTableResultCommands: Bool {
-        coordinator?.toolbarState.isTableTab == true && dataGridOwnsSelection
+        guard coordinator?.toolbarState.isTableTab == true,
+              let viewMode = coordinator?.tabManager.selectedTab?.display.resultsViewMode
+        else {
+            return false
+        }
+        return viewMode.showsRowFilters
     }
 
     var hasActiveGridFind: Bool {
@@ -383,11 +389,14 @@ final class MainContentCommandActions {
         guard !safeModeLevel.blocksAllWrites, let tab = coordinator?.tabManager.selectedTab else {
             return false
         }
-        guard tab.display.resultsViewMode != .structure else {
+        switch selectionOwner {
+        case .schemaGrid:
             return coordinator?.structureActions?.pasteRows != nil && TableStructureView.canPasteStructureRows
+        case .dataGrid:
+            return tab.tabType == .table && isCurrentTabEditable && ClipboardService.shared.hasText
+        case .none:
+            return false
         }
-        guard dataGridOwnsSelection else { return false }
-        return tab.tabType == .table && isCurrentTabEditable && ClipboardService.shared.hasText
     }
 
     /// The two facts Save As and Export Results actually turn on. Their menu items used to be
@@ -403,6 +412,13 @@ final class MainContentCommandActions {
     }
 
     var hasRowSelection: Bool {
+        selectionOwner != .none && !resolvedRowSelection().isEmpty
+    }
+
+    /// Copy with headers and copy as JSON read the data grid's columns, so they are only meaningful
+    /// when the data grid owns the indices. The structure grid has its own plain copy and nothing
+    /// else; handing it these would read a structure row's position into the result rows.
+    var hasDataGridRowSelection: Bool {
         dataGridOwnsSelection && !resolvedRowSelection().isEmpty
     }
 

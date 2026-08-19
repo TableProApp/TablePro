@@ -28,6 +28,9 @@ struct MenuValidationContext: Equatable {
     var hasPendingChanges = false
     var hasDataPendingChanges = false
     var hasRowSelection = false
+    /// Copy with headers and copy as JSON read the result grid's columns, so they need the data
+    /// grid's selection specifically, not the structure grid's.
+    var hasDataGridRowSelection = false
     var hasTableSelection = false
     /// Whether the window-level `paste:` fallback would actually paste. AppKit hands a disabled
     /// item its key equivalent regardless, so an item enabled over a handler that returns at its
@@ -153,10 +156,11 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canRedo
         case #selector(copy(_:)):
             return context.hasRowSelection || context.hasTableSelection
-        case #selector(copySelectedRows(_:)),
-             #selector(copyRowsWithHeaders(_:)),
-             #selector(copyRowsAsJson(_:)):
+        case #selector(copySelectedRows(_:)):
             return context.hasRowSelection
+        case #selector(copyRowsWithHeaders(_:)),
+             #selector(copyRowsAsJson(_:)):
+            return context.hasDataGridRowSelection
         case #selector(paste(_:)):
             return context.isConnected && context.canPasteRows
         case #selector(delete(_:)):
@@ -220,6 +224,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasPendingChanges: actions.hasPendingChanges,
             hasDataPendingChanges: actions.hasDataPendingChanges,
             hasRowSelection: actions.hasRowSelection,
+            hasDataGridRowSelection: actions.hasDataGridRowSelection,
             hasTableSelection: actions.hasTableSelection,
             canPasteRows: actions.canPasteRows,
             canCloseOtherTabs: actions.canCloseOtherTabs,

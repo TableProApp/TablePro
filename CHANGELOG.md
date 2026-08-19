@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Query results can be drawn as native bar, line, area and scatter charts from the loaded rows. Charts offer responsive axis and series controls, exact values on hover, skipped-value reporting and warnings when more rows remain to be fetched. This is a Starter feature.
+- Query results can be drawn as native bar, line, area and scatter charts from the loaded rows. Date and timestamp columns plot on a real time axis. Axis and series controls stack when the pane is narrow, hover shows exact values, and the chart keeps its type and axes across a page turn, a sort and a re-run. A result past the plotting limit still draws what fits and says how much. The status bar keeps the row count and pagination in Chart mode. This is a Starter feature.
 - Every database operation TablePro authorizes is written to a local execution log, including the ones the AI assistant and MCP clients ask for, with the statement stored as a digest rather than as text. Records are hash chained, so an edited, reordered or removed entry can be detected. The log stays on the Mac and is not synced.
 - An administrator can set a minimum Safe Mode level for every connection through a macOS configuration profile, so a managed Mac cannot be dropped below it. A connection set stricter keeps its own level, since the policy is a floor rather than a ceiling. The control shows as managed instead of editable.
 - Plugins signed by other developers can be installed. TablePro used to refuse any plugin bundle it had not signed itself, so the only way to publish a driver was through the TablePro repository. A bundle signed with a Developer ID and notarized by Apple now installs after you agree to trust that developer by name, and the prompt says plainly that a database plugin runs as part of TablePro and can read the credentials of every connection you open. Trust is recorded per developer rather than per plugin, so their updates install without asking again, and you can withdraw it. Unsigned and ad-hoc signed bundles are still refused.
@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Cmd+F` on a table tab used to toggle the filter panel, which meant it closed the panel when it was already open and never searched anything. The filter panel keeps `Cmd+Option+F` and its funnel button in the status bar.
 - Find Next and Find Previous work on the data grid when its find bar is open, instead of staying dimmed on a table tab.
+
+### Fixed
+
+- Timestamps written with a space before the time zone offset, or with fractional seconds, are now shown in your chosen date format instead of as raw text. PostgreSQL `timestamptz` and MySQL `DATETIME(6)` values used to slip through unformatted while the same instant written in ISO form was formatted.
 
 ## [0.66.0] - 2026-08-19
 

@@ -29,14 +29,6 @@ private func flatten(_ menu: NSMenu) -> [NSMenuItem] {
 @Suite("Main menu structure")
 @MainActor
 struct MainMenuStructureTests {
-    @Test("Row editing commands stay out of read-only result modes")
-    func rowEditingModes() {
-        #expect(MainContentCommandActions.supportsRowEditing(viewMode: .data))
-        #expect(MainContentCommandActions.supportsRowEditing(viewMode: .structure))
-        #expect(!MainContentCommandActions.supportsRowEditing(viewMode: .json))
-        #expect(!MainContentCommandActions.supportsRowEditing(viewMode: .chart))
-    }
-
     @Test("Top level order follows the macOS HIG")
     func topLevelOrder() {
         let titles = buildMenu().items.map(\.title)

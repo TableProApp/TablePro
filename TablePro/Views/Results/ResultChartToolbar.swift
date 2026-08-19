@@ -8,9 +8,8 @@ import SwiftUI
 struct ResultChartToolbar: View {
     @Binding var configuration: ResultChartConfiguration
     let columns: [ResultChartColumn]
-    let loadedRowCount: Int
-    let skippedRowCount: Int
-    let hasUnloadedRows: Bool
+    let resolved: ResultChartConfiguration.Resolved?
+    let projection: ResultChartProjection?
 
     private var xColumns: [ResultChartColumn] {
         columns.filter { $0.xAxisKind != nil }
@@ -34,32 +33,7 @@ struct ResultChartToolbar: View {
                     Divider()
                         .frame(height: 22)
 
-                    ResultChartAxisPicker(
-                        title: String(localized: "X Axis"),
-                        selection: xColumnBinding,
-                        columns: xColumns,
-                        noneLabel: String(localized: "Row Number"),
-                        accessibilityIdentifier: "result-chart-x-picker"
-                    )
-                    .frame(width: 170)
-
-                    ResultChartAxisPicker(
-                        title: String(localized: "Y Axis"),
-                        selection: yColumnBinding,
-                        columns: yColumns,
-                        noneLabel: String(localized: "Choose Column"),
-                        accessibilityIdentifier: "result-chart-y-picker"
-                    )
-                    .frame(width: 170)
-
-                    ResultChartAxisPicker(
-                        title: String(localized: "Series"),
-                        selection: seriesColumnBinding,
-                        columns: seriesColumns,
-                        noneLabel: String(localized: "None"),
-                        accessibilityIdentifier: "result-chart-series-picker"
-                    )
-                    .frame(width: 170)
+                    axisPickers { $0.frame(width: 170) }
                 }
                 .fixedSize(horizontal: true, vertical: false)
 
@@ -67,27 +41,7 @@ struct ResultChartToolbar: View {
                     ResultChartTypePicker(selection: chartTypeBinding)
                         .frame(maxWidth: 400, alignment: .leading)
 
-                    ResultChartAxisPicker(
-                        title: String(localized: "X Axis"),
-                        selection: xColumnBinding,
-                        columns: xColumns,
-                        noneLabel: String(localized: "Row Number"),
-                        accessibilityIdentifier: "result-chart-x-picker"
-                    )
-                    ResultChartAxisPicker(
-                        title: String(localized: "Y Axis"),
-                        selection: yColumnBinding,
-                        columns: yColumns,
-                        noneLabel: String(localized: "Choose Column"),
-                        accessibilityIdentifier: "result-chart-y-picker"
-                    )
-                    ResultChartAxisPicker(
-                        title: String(localized: "Series"),
-                        selection: seriesColumnBinding,
-                        columns: seriesColumns,
-                        noneLabel: String(localized: "None"),
-                        accessibilityIdentifier: "result-chart-series-picker"
-                    )
+                    axisPickers { $0 }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -95,21 +49,12 @@ struct ResultChartToolbar: View {
             HStack(spacing: 6) {
                 ScrollView(.horizontal) {
                     HStack(spacing: 5) {
-                        if hasUnloadedRows {
-                            Label(
-                                String(localized: "More rows available"),
-                                systemImage: "exclamationmark.triangle.fill"
-                            )
-                            .foregroundStyle(.orange)
-                            Text("·")
-                                .foregroundStyle(.quaternary)
-                        }
-                        Text(String(format: String(localized: "%d loaded rows"), loadedRowCount))
-                            .foregroundStyle(.secondary)
-                        if skippedRowCount > 0 {
-                            Text("·")
-                                .foregroundStyle(.quaternary)
-                            Text(String(format: String(localized: "%d skipped"), skippedRowCount))
+                        ForEach(Array(notices.enumerated()), id: \.offset) { index, notice in
+                            if index > 0 {
+                                Text("·")
+                                    .foregroundStyle(.quaternary)
+                            }
+                            Text(notice)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -120,7 +65,7 @@ struct ResultChartToolbar: View {
 
                 Image(systemName: "info.circle")
                     .foregroundStyle(.secondary)
-                    .help(String(localized: "Charts use the loaded result buffer. Grid selection, Find, hidden columns, and value filters do not change the chart."))
+                    .help(String(localized: "Charts draw the rows the result pane has loaded. Grid selection, Find, hidden columns, and value filters do not change the chart."))
                     .accessibilityLabel(String(localized: "Chart data scope"))
             }
             .font(.caption)
@@ -131,6 +76,69 @@ struct ResultChartToolbar: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
+    @ViewBuilder
+    private func axisPickers(_ sized: (ResultChartAxisPicker) -> some View) -> some View {
+        sized(ResultChartAxisPicker(
+            title: String(localized: "X Axis"),
+            selection: xColumnBinding,
+            columns: xColumns,
+            noneLabel: String(localized: "Row Number"),
+            allowsNone: true,
+            accessibilityIdentifier: "result-chart-x-picker"
+        ))
+        sized(ResultChartAxisPicker(
+            title: String(localized: "Y Axis"),
+            selection: yColumnBinding,
+            columns: yColumns,
+            noneLabel: String(localized: "Choose Column"),
+            allowsNone: false,
+            accessibilityIdentifier: "result-chart-y-picker"
+        ))
+        sized(ResultChartAxisPicker(
+            title: String(localized: "Series"),
+            selection: seriesColumnBinding,
+            columns: seriesColumns,
+            noneLabel: String(localized: "None"),
+            allowsNone: true,
+            accessibilityIdentifier: "result-chart-series-picker"
+        ))
+    }
+
+    /// What the chart itself has to say. The row count and the controls that load more rows belong
+    /// to the status bar, which shows them in chart mode too, so repeating them here would give the
+    /// same fact two different phrasings.
+    private var notices: [String] {
+        guard let projection else { return [] }
+        var notices = projection.limits.map { Self.noticeText(for: $0, loadedRowCount: projection.loadedRowCount) }
+        if projection.skippedRowCount > 0 {
+            notices.append(String(format: String(localized: "%d skipped"), projection.skippedRowCount))
+        }
+        return notices
+    }
+
+    static func noticeText(for limit: ResultChartProjection.Limit, loadedRowCount: Int) -> String {
+        switch limit {
+        case .points(let limit):
+            return String(
+                format: String(localized: "Showing the first %1$@ points of %2$@ loaded rows"),
+                grouped(limit),
+                grouped(loadedRowCount)
+            )
+        case .series(let limit):
+            return String(format: String(localized: "Showing the first %@ series"), grouped(limit))
+        case .inspectedRows(let limit):
+            return String(
+                format: String(localized: "Charting the first %1$@ of %2$@ loaded rows"),
+                grouped(limit),
+                grouped(loadedRowCount)
+            )
+        }
+    }
+
+    private static func grouped(_ value: Int) -> String {
+        value.formatted(.number.grouping(.automatic))
+    }
+
     private var chartTypeBinding: Binding<ResultChartType> {
         Binding(
             get: { configuration.chartType },
@@ -138,24 +146,29 @@ struct ResultChartToolbar: View {
         )
     }
 
-    private var xColumnBinding: Binding<Int?> {
+    /// The pickers show what the chart is actually plotting, which is the resolved column rather
+    /// than the stored preference: a choice whose column is missing from this result is kept so it
+    /// comes back, but it is not what the reader is looking at. With no numeric column there is no
+    /// resolution to echo, so the stored preference is shown instead of snapping back to a
+    /// placeholder the user did not pick.
+    private var xColumnBinding: Binding<ResultChartColumnID?> {
         Binding(
-            get: { configuration.xColumnIndex },
-            set: { configuration.xColumnIndex = $0 }
+            get: { resolved.map { $0.xColumn?.id } ?? configuration.xColumn },
+            set: { configuration.xColumn = $0 }
         )
     }
 
-    private var yColumnBinding: Binding<Int?> {
+    private var yColumnBinding: Binding<ResultChartColumnID?> {
         Binding(
-            get: { configuration.yColumnIndex },
-            set: { configuration.yColumnIndex = $0 }
+            get: { resolved?.yColumn.id ?? configuration.yColumn },
+            set: { configuration.yColumn = $0 }
         )
     }
 
-    private var seriesColumnBinding: Binding<Int?> {
+    private var seriesColumnBinding: Binding<ResultChartColumnID?> {
         Binding(
-            get: { configuration.seriesColumnIndex },
-            set: { configuration.seriesColumnIndex = $0 }
+            get: { resolved.map { $0.seriesColumn?.id } ?? configuration.seriesColumn },
+            set: { configuration.seriesColumn = $0 }
         )
     }
 }

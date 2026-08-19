@@ -10,38 +10,6 @@ import Testing
 
 @Suite("ResultChartProjector")
 struct ResultChartProjectorTests {
-    @Test("Result scope distinguishes query truncation from table pagination")
-    func resultScope() {
-        var queryPagination = PaginationState(pageSize: 1_000)
-        queryPagination.hasMoreRows = true
-        #expect(ResultChartDataScope.hasUnloadedRows(
-            tabType: .query,
-            pagination: queryPagination,
-            loadedRowCount: 1_000
-        ))
-
-        queryPagination.hasMoreRows = false
-        #expect(!ResultChartDataScope.hasUnloadedRows(
-            tabType: .query,
-            pagination: queryPagination,
-            loadedRowCount: 10_000
-        ))
-
-        var tablePagination = PaginationState(totalRowCount: 1_500, pageSize: 1_000)
-        #expect(ResultChartDataScope.hasUnloadedRows(
-            tabType: .table,
-            pagination: tablePagination,
-            loadedRowCount: 1_000
-        ))
-
-        tablePagination.currentPage = 2
-        #expect(!ResultChartDataScope.hasUnloadedRows(
-            tabType: .table,
-            pagination: tablePagination,
-            loadedRowCount: 500
-        ))
-    }
-
     @Test("Projects one point per valid row without aggregating duplicate categories")
     func projectsRowsWithoutAggregation() async throws {
         let rows = makeRows(
@@ -53,21 +21,28 @@ struct ResultChartProjectorTests {
             columns: ["category", "value"],
             types: [.text(rawType: "TEXT"), .integer(rawType: "BIGINT")]
         )
-        let configuration = try #require(
-            ResultChartConfiguration(xColumnIndex: 0, yColumnIndex: 1)
-                .resolved(in: ResultChartColumn.columns(in: rows))
-        )
+        let projection = try await project(rows, x: "category", y: "value")
 
-        let projection = try await ResultChartProjector.shared.project(
-            tableRows: rows,
-            configuration: configuration
-        )
-
-        #expect(projection.issue == nil)
+        #expect(projection.limits.isEmpty)
         #expect(projection.points.count == 3)
         #expect(projection.points.map(\.rawX) == ["A", "A", "B"])
         #expect(projection.points.map(\.rawY) == ["10", "20", "30"])
         #expect(projection.points[0].barGroup != projection.points[1].barGroup)
+    }
+
+    @Test("Ordinary two-decimal money values plot instead of being dropped as imprecise")
+    func moneyValuesPlot() async throws {
+        let prices = ["19.99", "0.07", "1.07", "0.11", "0.21", "5.00", "10.50", "3.25", "7.99", "2.50"]
+        let rows = makeRows(
+            values: prices.enumerated().map { [.text("p\($0.offset)"), .text($0.element)] },
+            columns: ["product", "price"],
+            types: [.text(rawType: "TEXT"), .decimal(rawType: "DECIMAL(10,2)")]
+        )
+        let projection = try await project(rows, x: "product", y: "price")
+
+        #expect(projection.points.count == prices.count)
+        #expect(projection.skippedRowCount == 0)
+        #expect(projection.points.map(\.rawY) == prices)
     }
 
     @Test("Accepts only values that Swift Charts can plot without precision loss")
@@ -83,15 +58,7 @@ struct ResultChartProjectorTests {
             columns: ["x", "y"],
             types: [.decimal(rawType: "DECIMAL"), .decimal(rawType: "DECIMAL")]
         )
-        let configuration = try #require(
-            ResultChartConfiguration(xColumnIndex: 0, yColumnIndex: 1)
-                .resolved(in: ResultChartColumn.columns(in: rows))
-        )
-
-        let projection = try await ResultChartProjector.shared.project(
-            tableRows: rows,
-            configuration: configuration
-        )
+        let projection = try await project(rows, x: "x", y: "y")
 
         #expect(projection.points.map(\.rawX) == ["9007199254740992", "3"])
         #expect(projection.points.map(\.rawY) == ["9007199254740992", "1234567890.125"])
@@ -109,18 +76,51 @@ struct ResultChartProjectorTests {
             columns: ["x", "y"],
             types: [.integer(rawType: nil), .integer(rawType: nil)]
         )
-        let configuration = try #require(
-            ResultChartConfiguration(xColumnIndex: 0, yColumnIndex: 1)
-                .resolved(in: ResultChartColumn.columns(in: rows))
-        )
-
-        let projection = try await ResultChartProjector.shared.project(
-            tableRows: rows,
-            configuration: configuration
-        )
+        let projection = try await project(rows, x: "x", y: "y")
 
         #expect(projection.points.map(\.x) == [.number(1), .number(1), .number(1)])
         #expect(Set(projection.points.map(\.barGroup)).count == 3)
+    }
+
+    @Test("A date column plots on a temporal axis in chronological order")
+    func dateAxisIsTemporal() async throws {
+        let rows = makeRows(
+            values: [
+                [.text("2024-9-1"), .text("10")],
+                [.text("2024-10-1"), .text("20")],
+                [.text("2024-03-01 08:30:00+07"), .text("30")],
+            ],
+            columns: ["when", "value"],
+            types: [.timestamp(rawType: "TIMESTAMPTZ"), .integer(rawType: nil)]
+        )
+        let projection = try await project(rows, x: "when", y: "value")
+
+        #expect(projection.xAxisKind == .date)
+        #expect(projection.points.count == 3)
+        let dates: [Date] = projection.points.compactMap {
+            guard case .date(let value) = $0.x else { return nil }
+            return value
+        }
+        #expect(dates.count == 3)
+        #expect(dates[2] < dates[0])
+        #expect(dates[0] < dates[1])
+        #expect(projection.points.map(\.rawX) == ["2024-9-1", "2024-10-1", "2024-03-01 08:30:00+07"])
+    }
+
+    @Test("An unparseable date is skipped rather than charted as a label")
+    func unparseableDateIsSkipped() async throws {
+        let rows = makeRows(
+            values: [
+                [.text("2024-03-01"), .text("10")],
+                [.text("not a date"), .text("20")],
+            ],
+            columns: ["when", "value"],
+            types: [.date(rawType: "DATE"), .integer(rawType: nil)]
+        )
+        let projection = try await project(rows, x: "when", y: "value")
+
+        #expect(projection.points.map(\.rawX) == ["2024-03-01"])
+        #expect(projection.skippedRowCount == 1)
     }
 
     @Test("Bar series keep stable positions when row order changes between categories")
@@ -135,15 +135,7 @@ struct ResultChartProjectorTests {
             columns: ["x", "y", "series"],
             types: [.text(rawType: nil), .integer(rawType: nil), .text(rawType: nil)]
         )
-        let configuration = try #require(
-            ResultChartConfiguration(xColumnIndex: 0, yColumnIndex: 1, seriesColumnIndex: 2)
-                .resolved(in: ResultChartColumn.columns(in: rows))
-        )
-
-        let projection = try await ResultChartProjector.shared.project(
-            tableRows: rows,
-            configuration: configuration
-        )
+        let projection = try await project(rows, x: "x", y: "y", series: "series")
 
         #expect(projection.points[0].barGroup == projection.points[3].barGroup)
         #expect(projection.points[1].barGroup == projection.points[2].barGroup)
@@ -170,24 +162,35 @@ struct ResultChartProjectorTests {
             columns: ["x", "y", "series"],
             types: [.integer(rawType: nil), .integer(rawType: nil), .text(rawType: nil)]
         )
-        let configuration = try #require(
-            ResultChartConfiguration(xColumnIndex: 0, yColumnIndex: 1, seriesColumnIndex: 2)
-                .resolved(in: ResultChartColumn.columns(in: otherSeriesInvalid))
-        )
 
-        let unaffected = try await ResultChartProjector.shared.project(
-            tableRows: otherSeriesInvalid,
-            configuration: configuration
-        )
-        let broken = try await ResultChartProjector.shared.project(
-            tableRows: ownSeriesInvalid,
-            configuration: configuration
-        )
+        let unaffected = try await project(otherSeriesInvalid, x: "x", y: "y", series: "series")
+        let broken = try await project(ownSeriesInvalid, x: "x", y: "y", series: "series")
 
         #expect(unaffected.points.count == 2)
         #expect(unaffected.points[0].lineGroup == unaffected.points[1].lineGroup)
         #expect(broken.points.count == 2)
         #expect(broken.points[0].lineGroup != broken.points[1].lineGroup)
+    }
+
+    @Test("A row whose series cannot be read breaks every line, because it cannot be attributed")
+    func unreadableSeriesBreaksEveryLine() async throws {
+        let rows = makeRows(
+            values: [
+                [.text("1"), .text("10"), .text("A")],
+                [.text("2"), .text("20"), .text("B")],
+                [.text("3"), .text("30"), .bytes(Data([0x01]))],
+                [.text("4"), .text("40"), .text("A")],
+                [.text("5"), .text("50"), .text("B")],
+            ],
+            columns: ["x", "y", "series"],
+            types: [.integer(rawType: nil), .integer(rawType: nil), .text(rawType: nil)]
+        )
+        let projection = try await project(rows, x: "x", y: "y", series: "series")
+
+        #expect(projection.points.count == 4)
+        #expect(projection.skippedRowCount == 1)
+        #expect(projection.points[0].lineGroup != projection.points[2].lineGroup)
+        #expect(projection.points[1].lineGroup != projection.points[3].lineGroup)
     }
 
     @Test("Skips null, binary, invalid, and unrepresentable axis values")
@@ -206,15 +209,7 @@ struct ResultChartProjectorTests {
             columns: ["category", "value"],
             types: [.text(rawType: nil), .decimal(rawType: nil)]
         )
-        let configuration = try #require(
-            ResultChartConfiguration(xColumnIndex: 0, yColumnIndex: 1)
-                .resolved(in: ResultChartColumn.columns(in: rows))
-        )
-
-        let projection = try await ResultChartProjector.shared.project(
-            tableRows: rows,
-            configuration: configuration
-        )
+        let projection = try await project(rows, x: "category", y: "value")
 
         #expect(projection.points.map(\.rawX) == ["A", "H"])
         #expect(projection.skippedRowCount == 6)
@@ -228,17 +223,10 @@ struct ResultChartProjectorTests {
             columns: ["value"],
             types: [.integer(rawType: nil)]
         )
-        let configuration = try #require(
-            ResultChartConfiguration(yColumnIndex: 0)
-                .resolved(in: ResultChartColumn.columns(in: rows))
-        )
-
-        let projection = try await ResultChartProjector.shared.project(
-            tableRows: rows,
-            configuration: configuration
-        )
+        let projection = try await project(rows, y: "value")
 
         #expect(projection.points.map(\.rawX) == ["1", "2"])
+        #expect(projection.xAxisKind == .number)
         #expect(projection.xAxisLabel == String(localized: "Row Number"))
     }
 
@@ -253,66 +241,58 @@ struct ResultChartProjectorTests {
             columns: ["value", "status"],
             types: [.integer(rawType: nil), .text(rawType: nil)]
         )
-        let configuration = try #require(
-            ResultChartConfiguration(yColumnIndex: 0, seriesColumnIndex: 1)
-                .resolved(in: ResultChartColumn.columns(in: rows))
-        )
-
-        let projection = try await ResultChartProjector.shared.project(
-            tableRows: rows,
-            configuration: configuration
-        )
+        let projection = try await project(rows, y: "value", series: "status")
 
         #expect(projection.points.map(\.series) == [.missing, .missing, .value("paid")])
     }
 
-    @Test("Accepts two thousand points and refuses the next point without sampling")
-    func pointLimit() async throws {
-        let acceptedRows = makeNumericRows(count: ResultChartProjector.maximumPointCount)
-        let configuration = try #require(
-            ResultChartConfiguration(yColumnIndex: 0)
-                .resolved(in: ResultChartColumn.columns(in: acceptedRows))
+    @Test("Passing the point cap truncates and says so instead of discarding the chart")
+    func pointLimitTruncates() async throws {
+        let accepted = try await project(
+            makeNumericRows(count: ResultChartProjector.maximumPointCount),
+            y: "value"
         )
-
-        let accepted = try await ResultChartProjector.shared.project(
-            tableRows: acceptedRows,
-            configuration: configuration
-        )
-        let refused = try await ResultChartProjector.shared.project(
-            tableRows: makeNumericRows(count: ResultChartProjector.maximumPointCount + 1),
-            configuration: configuration
+        let truncated = try await project(
+            makeNumericRows(count: ResultChartProjector.maximumPointCount + 1),
+            y: "value"
         )
 
         #expect(accepted.points.count == ResultChartProjector.maximumPointCount)
-        #expect(accepted.issue == nil)
-        #expect(refused.points.isEmpty)
-        #expect(refused.issue == .tooManyPoints(limit: ResultChartProjector.maximumPointCount))
+        #expect(accepted.limits.isEmpty)
+        #expect(truncated.points.count == ResultChartProjector.maximumPointCount)
+        #expect(truncated.limits == [.points(limit: ResultChartProjector.maximumPointCount)])
     }
 
-    @Test("Accepts twenty series and refuses the twenty-first")
-    func seriesLimit() async throws {
-        let acceptedRows = makeSeriesRows(count: ResultChartProjector.maximumSeriesCount)
-        let configuration = try #require(
-            ResultChartConfiguration(yColumnIndex: 0, seriesColumnIndex: 1)
-                .resolved(in: ResultChartColumn.columns(in: acceptedRows))
+    @Test("Passing the series cap keeps the series already plotted")
+    func seriesLimitKeepsPlottedSeries() async throws {
+        let accepted = try await project(
+            makeSeriesRows(count: ResultChartProjector.maximumSeriesCount),
+            y: "value",
+            series: "series"
+        )
+        let truncated = try await project(
+            makeSeriesRows(count: ResultChartProjector.maximumSeriesCount + 3),
+            y: "value",
+            series: "series"
         )
 
-        let accepted = try await ResultChartProjector.shared.project(
-            tableRows: acceptedRows,
-            configuration: configuration
-        )
-        let refused = try await ResultChartProjector.shared.project(
-            tableRows: makeSeriesRows(count: ResultChartProjector.maximumSeriesCount + 1),
-            configuration: configuration
-        )
-
-        #expect(accepted.issue == nil)
-        #expect(refused.points.isEmpty)
-        #expect(refused.issue == .tooManySeries(limit: ResultChartProjector.maximumSeriesCount))
+        #expect(accepted.limits.isEmpty)
+        #expect(truncated.points.count == ResultChartProjector.maximumSeriesCount)
+        #expect(truncated.limits == [.series(limit: ResultChartProjector.maximumSeriesCount)])
+        #expect(Set(truncated.points.compactMap(\.series)).count == ResultChartProjector.maximumSeriesCount)
     }
 
-    @Test("Bounds invalid-row inspection before another chart waits on the shared projector")
-    func inspectionLimit() async throws {
+    @Test("Passing the inspection cap charts the prefix it did inspect")
+    func inspectionLimitChartsThePrefix() async throws {
+        let rows = makeNumericRows(count: ResultChartProjector.maximumInspectedRowCount + 1)
+        let projection = try await project(rows, y: "value")
+
+        #expect(projection.limits.contains(.points(limit: ResultChartProjector.maximumPointCount)))
+        #expect(projection.points.count == ResultChartProjector.maximumPointCount)
+    }
+
+    @Test("Inspection stops after fifty thousand unusable rows")
+    func inspectionLimitBoundsUnusableRows() async throws {
         let rows = makeRows(
             values: Array(
                 repeating: [PluginCellValue.null],
@@ -321,18 +301,11 @@ struct ResultChartProjectorTests {
             columns: ["value"],
             types: [.integer(rawType: nil)]
         )
-        let configuration = try #require(
-            ResultChartConfiguration(yColumnIndex: 0)
-                .resolved(in: ResultChartColumn.columns(in: rows))
-        )
+        let projection = try await project(rows, y: "value")
 
-        let projection = try await ResultChartProjector.shared.project(
-            tableRows: rows,
-            configuration: configuration
-        )
-
-        #expect(projection.issue == .tooManyRows(limit: ResultChartProjector.maximumInspectedRowCount))
+        #expect(projection.limits == [.inspectedRows(limit: ResultChartProjector.maximumInspectedRowCount)])
         #expect(projection.skippedRowCount == ResultChartProjector.maximumInspectedRowCount)
+        #expect(projection.points.isEmpty)
     }
 
     @Test("Skips oversized values before building chart labels and group identities")
@@ -349,15 +322,7 @@ struct ResultChartProjectorTests {
             columns: ["category", "value", "series"],
             types: [.text(rawType: nil), .decimal(rawType: nil), .text(rawType: nil)]
         )
-        let configuration = try #require(
-            ResultChartConfiguration(xColumnIndex: 0, yColumnIndex: 1, seriesColumnIndex: 2)
-                .resolved(in: ResultChartColumn.columns(in: rows))
-        )
-
-        let projection = try await ResultChartProjector.shared.project(
-            tableRows: rows,
-            configuration: configuration
-        )
+        let projection = try await project(rows, x: "category", y: "value", series: "series")
 
         #expect(projection.points.map(\.rawX) == ["A"])
         #expect(projection.skippedRowCount == 3)
@@ -368,10 +333,7 @@ struct ResultChartProjectorTests {
     @Test("A cancelled projection stops before publishing points")
     func cancellation() async throws {
         let rows = makeNumericRows(count: 10_000)
-        let configuration = try #require(
-            ResultChartConfiguration(yColumnIndex: 0)
-                .resolved(in: ResultChartColumn.columns(in: rows))
-        )
+        let configuration = try resolve(rows, y: "value")
         let task = Task {
             try await ResultChartProjector.shared.project(tableRows: rows, configuration: configuration)
         }
@@ -380,6 +342,30 @@ struct ResultChartProjectorTests {
         await #expect(throws: CancellationError.self) {
             try await task.value
         }
+    }
+
+    private func resolve(
+        _ rows: TableRows,
+        x: String? = nil,
+        y: String,
+        series: String? = nil
+    ) throws -> ResultChartConfiguration.Resolved {
+        let configuration = ResultChartConfiguration(
+            xColumn: x.map { ResultChartColumnID(name: $0, occurrence: 1) },
+            yColumn: ResultChartColumnID(name: y, occurrence: 1),
+            seriesColumn: series.map { ResultChartColumnID(name: $0, occurrence: 1) }
+        )
+        return try #require(configuration.resolved(in: ResultChartColumn.columns(in: rows)))
+    }
+
+    private func project(
+        _ rows: TableRows,
+        x: String? = nil,
+        y: String,
+        series: String? = nil
+    ) async throws -> ResultChartProjection {
+        let configuration = try resolve(rows, x: x, y: y, series: series)
+        return try await ResultChartProjector.shared.project(tableRows: rows, configuration: configuration)
     }
 
     private func makeNumericRows(count: Int) -> TableRows {
