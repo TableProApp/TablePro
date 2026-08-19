@@ -407,7 +407,7 @@ struct MainMenuValidationTests {
         ))
     }
 
-    @Test("Find needs an editor or an active table result grid")
+    @Test("Find needs an editor or a mounted data grid, not merely a result that can be filtered")
     func findNeedsAnEditor() {
         var context = MenuValidationContext()
         context.isConnected = true
@@ -415,9 +415,12 @@ struct MainMenuValidationTests {
         #expect(!enabled(#selector(MainSplitViewController.findNext(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.findPrevious(_:)), context))
         context.canUseTableResultCommands = true
+        #expect(!enabled(#selector(MainSplitViewController.performFind(_:)), context))
+        context.canUseGridFindCommands = true
         #expect(enabled(#selector(MainSplitViewController.performFind(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.findNext(_:)), context))
         context.canUseTableResultCommands = false
+        context.canUseGridFindCommands = false
         context.hasEditorForFind = true
         #expect(enabled(#selector(MainSplitViewController.performFind(_:)), context))
         #expect(enabled(#selector(MainSplitViewController.findNext(_:)), context))
