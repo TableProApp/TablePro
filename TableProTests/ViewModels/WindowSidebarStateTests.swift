@@ -28,6 +28,41 @@ struct WindowSidebarStateTests {
         #expect(windowB.selectedTables.isEmpty)
     }
 
+    @Test("A window with nothing selected accepts the open document's mark")
+    func acceptsTheMarkWhenNothingIsSelected() {
+        #expect(WindowSidebarState().acceptsObjectMarkRefresh)
+    }
+
+    @Test("A table the user picked without opening it survives a background reload")
+    func refusesTheMarkOverASingleUserPick() {
+        let state = WindowSidebarState()
+        state.select(tables: [TestFixtures.makeTableInfo(name: "orders")], rowCount: 1)
+
+        #expect(!state.acceptsObjectMarkRefresh)
+    }
+
+    @Test("A batch selection survives a background reload")
+    func refusesTheMarkOverAMultiRowSelection() {
+        let state = WindowSidebarState()
+        state.select(
+            tables: [
+                TestFixtures.makeTableInfo(name: "orders"),
+                TestFixtures.makeTableInfo(name: "users"),
+            ],
+            rowCount: 2
+        )
+
+        #expect(!state.acceptsObjectMarkRefresh)
+    }
+
+    @Test("A selected row that is not a table survives a background reload")
+    func refusesTheMarkOverANonTableRow() {
+        let state = WindowSidebarState()
+        state.select(tables: [], rowCount: 1)
+
+        #expect(!state.acceptsObjectMarkRefresh)
+    }
+
     private func makeDefaults() throws -> UserDefaults {
         try #require(UserDefaults(suiteName: "sidebar-tree-\(UUID().uuidString)"))
     }

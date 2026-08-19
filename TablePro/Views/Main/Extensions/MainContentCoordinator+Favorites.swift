@@ -40,10 +40,14 @@ extension MainContentCoordinator {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: favorite.fileURL.path)[.modificationDate]) as? Date
 
         if let existing = WindowLifecycleMonitor.shared.window(forSourceFile: favorite.fileURL) {
-            let stillHasTab = MainContentCoordinator.coordinator(forWindow: existing)?
-                .tabManager.tabs.contains { $0.content.sourceFileURL == favorite.fileURL } ?? false
-            if stillHasTab {
-                existing.makeKeyAndOrderFront(nil)
+            if let hosting = MainContentCoordinator.coordinator(forWindow: existing),
+               let match = hosting.tabManager.tabs.first(where: {
+                   $0.content.sourceFileURL == favorite.fileURL
+               }) {
+                /// Selecting it, not just raising its window. An editor tab used to be a window, so
+                /// raising the window was the whole of showing the tab; now a window holds every tab
+                /// and the command did nothing whenever the file's tab is not the one in front.
+                hosting.selectTabAndFocusWindow(match.id)
                 NSApp.activate(ignoringOtherApps: true)
                 return
             }

@@ -74,6 +74,7 @@ struct EditorTabStripChromeTests {
 
         let strip = EditorTabStrip(
             tabManager: manager,
+            containerTarget: nil,
             onClose: { _ in },
             onCloseOthers: { _ in },
             onCloseAll: {},

@@ -48,23 +48,56 @@ enum SelectionDelta {
     }
 }
 
-/// Determines which table (if any) to select when the table list loads in a new window.
-enum SidebarSyncAction: Equatable {
-    case noSync
-    case select(tableName: String)
+/// Which object row the sidebar marks as the one this window has open.
+///
+/// The mark is document chrome: it names the table the selected tab is showing. The object tree
+/// lists one database at a time, so the mark only means something while the selected tab is in
+/// that database. A tab bound to another one occupies no row here, and marking it anyway picks a
+/// different table that merely shares a name, because `TableInfo` carries no database to tell the
+/// two apart.
+///
+/// That is how a table opened in one database left the same-named row in another looking already
+/// selected. `NSOutlineView` posts no selection change for a click on a row that is already the
+/// whole selection, and the tree opens from that notification alone, so the click did nothing at
+/// all and the table could not be opened in the second database (#2217).
+///
+/// The schema is a tie-break rather than a second gate. Engines that group by schema list every
+/// schema of the database at once, so `public.orders` keeps its row while the browse cursor is on
+/// `reporting`, and gating on the schema too would unmark a row the user can see.
+enum SidebarObjectSelection: Equatable {
+    /// The object list has not loaded, so there is no row to name yet and no answer to give.
+    /// Clearing the mark here would blank it every time a container starts loading.
+    case leaveUnchanged
+    /// The rows the open document occupies, empty when it occupies none in the database on screen.
+    case mark(Set<TableInfo>)
 
-    /// Called when `tables` array changes. Returns which table to sync to, if any.
-    static func resolveOnTablesLoad(
-        newTables: [TableInfo],
-        selectedTables: Set<TableInfo>,
-        currentTabTableName: String?
-    ) -> SidebarSyncAction {
-        guard !newTables.isEmpty, selectedTables.isEmpty,
-              let tabTableName = currentTabTableName,
-              newTables.contains(where: { $0.name == tabTableName })
+    /// - Parameters:
+    ///   - tabScope: the selected tab's own scope, which it owns for life.
+    ///   - browseScope: where the object tree is pointing.
+    static func resolve(
+        tabTableName: String?,
+        tabScope: DatabaseScope?,
+        browseScope: DatabaseScope?,
+        tables: [TableInfo]
+    ) -> SidebarObjectSelection {
+        guard !tables.isEmpty else { return .leaveUnchanged }
+        guard let tabTableName, !tabTableName.isEmpty,
+              let tabScope, let browseScope,
+              tabScope.database == browseScope.database,
+              let match = tables.first(where: { row($0, is: tabTableName, in: tabScope.schema) })
         else {
-            return .noSync
+            return .mark([])
         }
-        return .select(tableName: tabTableName)
+        return .mark([match])
+    }
+
+    /// A schema decides between two rows only when both sides name one. An engine without schemas
+    /// leaves every row's schema empty, and one that lists a single schema at a time can only offer
+    /// rows from it, so in both cases the name is already the whole answer.
+    private static func row(_ table: TableInfo, is name: String, in schema: String?) -> Bool {
+        guard table.name == name else { return false }
+        guard let schema, !schema.isEmpty,
+              let rowSchema = table.schema, !rowSchema.isEmpty else { return true }
+        return rowSchema == schema
     }
 }

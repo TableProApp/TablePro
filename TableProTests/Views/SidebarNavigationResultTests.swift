@@ -209,7 +209,7 @@ struct SidebarNavigationResultTests {
         #expect(result == .reuseActiveTab)
     }
 
-    // MARK: - syncSidebarToCurrentTab logic
+    // MARK: - syncSidebarObjectSelection logic
 
     @Test("Sync finds table by name in table list")
     func syncFindsTableByName() {

@@ -7,6 +7,8 @@ Every open connection lives in one window, and each connection has its own set o
 
 Each tab keeps its own SQL, results, sorting, and filter state. Tabs persist across app restarts.
 
+A tab is named after the object it shows. When two tabs would carry the same name from different databases, both names gain the database: two tabs called `orders` become `app.orders` and `staging.orders`. A name no other tab uses stays short. Hovering a tab names its database either way, and VoiceOver reads the same.
+
 <Frame caption="Tab strip with query and table tabs">
   <img className="block dark:hidden" src="/images/tabs.png" alt="Tab strip with query and table tabs" />
   <img className="hidden dark:block" src="/images/tabs-dark.png" alt="Tab strip with query and table tabs" />

@@ -44,6 +44,18 @@ internal final class WindowSidebarState {
         guard selectedTables != tables else { return }
         selectedTables = tables
     }
+
+    /// Whether a background reload of the object list may re-assert the object the selected tab is
+    /// showing. Only while nothing at all is selected.
+    ///
+    /// Anything selected is a pick the user is in the middle of, and it need not be a row they
+    /// opened: extending a selection and then narrowing it back to one row navigates nowhere, so a
+    /// single table can be selected while another is the tab in front. Re-asserting over it moves
+    /// the highlight and changes what the Table menu would act on, without the user touching
+    /// anything.
+    var acceptsObjectMarkRefresh: Bool {
+        selectedTables.isEmpty && selectedRowCount == 0
+    }
     var expandedTreeSchemas: Set<String> = [] { didSet { persistExpansion() } }
     var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
     var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }
