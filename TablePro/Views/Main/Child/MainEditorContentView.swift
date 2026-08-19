@@ -402,6 +402,7 @@ struct MainEditorContentView: View {
                         isParameterPanelVisible: parameterVisibilityBinding(for: tab),
                         onExecute: { coordinator.runQuery() },
                         onExecuteWithoutLimit: { coordinator.runQuery(bypassRowLimit: true) },
+                        onExecuteAllStatements: { coordinator.runAllStatements() },
                         schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: coordinator.connection.id),
                         databaseType: coordinator.connection.type,
                         connectionId: coordinator.connection.id,
