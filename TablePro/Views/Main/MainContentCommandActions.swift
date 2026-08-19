@@ -358,6 +358,11 @@ final class MainContentCommandActions {
         coordinator?.toolbarState.isTableTab ?? false
     }
 
+    var hasActiveGridFind: Bool {
+        guard isTableTab, let findState = coordinator?.tabManager.selectedTab?.findState else { return false }
+        return findState.isVisible && !findState.matches.isEmpty
+    }
+
     /// What `pasteRows()` will actually do, so the Edit menu's Paste item is enabled only when it
     /// leads somewhere. AppKit gives a disabled item its key equivalent all the same, so an item
     /// enabled over a handler that returns at its first guard swallows Command+V in silence.
@@ -798,6 +803,19 @@ final class MainContentCommandActions {
         guard let coordinator = coordinator,
               coordinator.tabManager.selectedTab?.tabType == .table else { return }
         coordinator.toggleFilterPanel()
+    }
+
+    func showFindBar() {
+        guard let coordinator, coordinator.tabManager.selectedTab?.tabType == .table else { return }
+        coordinator.findCoordinator.show()
+    }
+
+    func stepFindForward() {
+        coordinator?.findCoordinator.stepForward()
+    }
+
+    func stepFindBackward() {
+        coordinator?.findCoordinator.stepBackward()
     }
 
     // MARK: - Data Operations (Group A — Called Directly)

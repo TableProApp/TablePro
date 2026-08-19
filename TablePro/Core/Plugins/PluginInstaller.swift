@@ -73,7 +73,11 @@ actor PluginInstaller {
         guard let stagedBundle = Bundle(url: stagedURL) else {
             throw PluginError.invalidBundle("Cannot create bundle from \(stagedURL.lastPathComponent)")
         }
-        try PluginCodeSignatureVerifier.verify(bundle: stagedBundle)
+        let trust = try PluginCodeSignatureVerifier.evaluate(bundle: stagedBundle)
+        if case .developerID(let identity) = trust,
+           !PluginDeveloperTrustStore.shared.isTrusted(identity) {
+            throw PluginError.developerNotTrusted(identity: identity)
+        }
         let bundleName = stagedURL.deletingPathExtension().lastPathComponent
         let destURL = userPluginsDir.appendingPathComponent("\(bundleName).tableplugin", isDirectory: true)
         let finalURL = try Self.atomicReplace(stagedBundleURL: stagedURL, destURL: destURL)
@@ -222,7 +226,10 @@ actor PluginInstaller {
             throw PluginError.invalidBundle("Cannot create bundle from \(bundleURL.lastPathComponent)")
         }
 
-        try PluginCodeSignatureVerifier.verify(bundle: stagedBundle)
+        let trust = try PluginCodeSignatureVerifier.evaluate(bundle: stagedBundle)
+        if case .developerID(let identity) = trust {
+            try await Self.requireTrust(in: identity, pluginName: registryPlugin.name)
+        }
 
         try Self.validateStagedABI(
             bundleURL: bundleURL,
@@ -240,6 +247,19 @@ actor PluginInstaller {
     nonisolated static func stagingRoot(for userPluginsDir: URL) -> URL {
         userPluginsDir.deletingLastPathComponent()
             .appendingPathComponent("PluginStaging", isDirectory: true)
+    }
+
+    /// Asks once per developer, not once per plugin, and records the answer only on yes. Declining
+    /// aborts the install, so a plugin never lands on disk unless its signer is trusted.
+    private static func requireTrust(in identity: PluginDeveloperIdentity, pluginName: String) async throws {
+        guard !PluginDeveloperTrustStore.shared.isTrusted(identity) else { return }
+
+        let decision = await MainActor.run { PluginDeveloperTrustAlertPrompt() }
+            .prompt(for: identity, pluginName: pluginName)
+        guard decision == .trust else {
+            throw PluginError.developerNotTrusted(identity: identity)
+        }
+        PluginDeveloperTrustStore.shared.trust(identity)
     }
 
     nonisolated static func extractZip(at zipURL: URL, into destDir: URL) throws {

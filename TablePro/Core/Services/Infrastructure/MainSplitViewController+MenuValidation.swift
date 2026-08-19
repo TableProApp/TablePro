@@ -47,6 +47,7 @@ struct MenuValidationContext: Equatable {
     var canUndo = false
     var canRedo = false
     var hasEditorForFind = false
+    var hasActiveGridFind = false
     var hasImportFormats = false
     var supportsContainerSwitching = false
     var supportsBackup = false
@@ -145,7 +146,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(performFind(_:)):
             return context.hasEditorForFind || (context.isConnected && context.isTableTab)
         case #selector(findNext(_:)), #selector(findPrevious(_:)):
-            return context.hasEditorForFind
+            return context.hasEditorForFind || context.hasActiveGridFind
         case #selector(undo(_:)):
             return context.canUndo
         case #selector(redo(_:)):
@@ -235,6 +236,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canUndo: actions.canUndo,
             canRedo: actions.canRedo,
             hasEditorForFind: EditorEventRouter.shared.keyWindowHasEditor,
+            hasActiveGridFind: actions.hasActiveGridFind,
             hasImportFormats: !actions.availableImportFormats.isEmpty,
             supportsContainerSwitching: actions.supportsContainerSwitching,
             supportsBackup: actions.supportsBackup,
