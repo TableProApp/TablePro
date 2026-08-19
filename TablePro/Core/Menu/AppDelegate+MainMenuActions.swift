@@ -13,6 +13,10 @@ extension AppDelegate: NSMenuItemValidation {
         NSApplication.shared.orderFrontStandardAboutPanel(options: [.credits: AboutPanelCredits.attributedString()])
     }
 
+    @objc func showAcknowledgements(_ sender: Any?) {
+        AcknowledgementsWindowController.present()
+    }
+
     @objc func checkForUpdates(_ sender: Any?) {
         UpdaterBridge.shared.checkForUpdates()
     }

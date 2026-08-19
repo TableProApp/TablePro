@@ -14,6 +14,7 @@ internal enum WindowIdentifier {
     internal static let connectionForm = "connection-form"
     internal static let integrationsActivity = "integrations-activity"
     internal static let settings = "settings"
+    internal static let acknowledgements = "acknowledgements"
 
     internal static let connection = "main"
     internal static let documentInspector = "main-inspector"
