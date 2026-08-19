@@ -114,6 +114,7 @@ final class MainContentCoordinator {
     }()
 
     @ObservationIgnored private(set) var filterCoordinator: FilterCoordinator!
+    @ObservationIgnored private(set) var findCoordinator: FindCoordinator!
     @ObservationIgnored private(set) var queryExecutionCoordinator: QueryExecutionCoordinator!
     @ObservationIgnored private(set) var paginationCoordinator: PaginationCoordinator!
     @ObservationIgnored private(set) var rowEditingCoordinator: RowEditingCoordinator!
@@ -579,6 +580,7 @@ final class MainContentCoordinator {
             }
 
         self.filterCoordinator = FilterCoordinator(parent: self)
+        self.findCoordinator = FindCoordinator(parent: self)
         self.queryExecutionCoordinator = QueryExecutionCoordinator(parent: self)
         self.paginationCoordinator = PaginationCoordinator(parent: self)
         self.rowEditingCoordinator = RowEditingCoordinator(parent: self)

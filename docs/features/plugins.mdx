@@ -57,7 +57,19 @@ To browse the full catalog, open **Settings > Plugins > Browse**. Search, filter
 
 To install from a file, drag a `.tableplugin` or `.zip` onto **Settings > Plugins > Installed**, or click the **+** button there. User-installed plugins live in `~/Library/Application Support/TablePro/Plugins`.
 
-Every plugin is verified before it loads: registry downloads must match the SHA-256 checksum in the registry manifest, and the bundle's code signature must match TablePro's signing team.
+Every plugin is verified before it loads. Registry downloads must match the SHA-256 checksum in the registry manifest, and the bundle must carry a valid code signature.
+
+### Plugins from other developers
+
+A plugin TablePro signed itself installs with no extra step.
+
+A plugin signed by someone else installs only after you agree to trust that developer. TablePro asks once, naming the developer and their Apple Team ID, and the plugin is discarded if you decline. The bundle must be signed with a Developer ID and notarized by Apple to get that far; unsigned and ad-hoc signed bundles are refused outright and there is no way to override that.
+
+Say yes only if you would give that developer your database credentials, because that is what you are granting. A driver plugin runs as part of TablePro and can read the credentials of every connection you open.
+
+Trust is recorded per developer rather than per plugin, so later plugins and updates from the same developer install without asking again. Withdraw it in **Settings > Plugins**, which stops every plugin signed by that developer from loading.
+
+Themes are different: they are JSON with no executable code, so they need no signature and never ask. They are still checked against their SHA-256 checksum.
 
 ## Updates
 

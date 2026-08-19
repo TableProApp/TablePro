@@ -64,7 +64,8 @@ TablePro 补上缺失的第四类:原生、多数据库、开源。
 |------|------|
 | macOS 14+ | 稳定版 |
 | iOS / iPadOS 18+ | 稳定版 |
-| Linux | 开发中 |
+| Linux | 原型阶段，暂无可安装版本 |
+| Windows | 无 |
 
 ## 支持的数据库
 
@@ -140,4 +141,3 @@ brew install --cask tablepro
 
 本项目采用 [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE) 许可。
 
-贡献者需签署贡献者许可协议(CLA)。详见 [CLA.md](CLA.md)。

@@ -446,15 +446,10 @@ struct InstalledPluginsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
-            VStack(spacing: 8) {
-                Image(systemName: "puzzlepiece.extension")
-                    .font(.title)
-                    .foregroundStyle(.tertiary)
-                Text("Select a Plugin")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+            Form {
+                TrustedDevelopersView()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .formStyle(.grouped)
         }
     }
 

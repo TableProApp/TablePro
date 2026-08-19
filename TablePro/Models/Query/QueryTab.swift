@@ -24,6 +24,7 @@ struct QueryTab: Identifiable, Equatable {
     var selectedRowIndices: Set<Int>
     var sortState: SortState
     var filterState: TabFilterState
+    var findState: TabFindState
     var columnLayout: ColumnLayoutState
     var pagination: PaginationState
     var hasUserInteraction: Bool
@@ -68,6 +69,7 @@ struct QueryTab: Identifiable, Equatable {
         self.selectedRowIndices = []
         self.sortState = SortState()
         self.filterState = TabFilterState()
+        self.findState = TabFindState()
         self.columnLayout = ColumnLayoutState()
         self.pagination = PaginationState()
         self.hasUserInteraction = false
@@ -104,6 +106,7 @@ struct QueryTab: Identifiable, Equatable {
         self.selectedRowIndices = []
         self.sortState = SortState()
         self.filterState = TabFilterState()
+        self.findState = TabFindState()
         self.columnLayout = ColumnLayoutState(
             columnWidths: persisted.columnWidths ?? [:],
             columnContentWidths: persisted.columnContentWidths
