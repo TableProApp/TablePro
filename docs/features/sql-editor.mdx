@@ -137,7 +137,11 @@ Enable Vim keybindings in **Settings > Editor > Vim mode**. Normal, Insert, Repl
 
 ## Code Folding
 
-A ribbon in the gutter marks every region that spans more than one line: whole statements, table bodies, CTEs, subqueries, `BEGIN` blocks, and block comments. Click a marker to collapse the region, click it again to expand.
+Move the pointer over the gutter and a chevron appears next to every region that spans more than one line: whole statements, table bodies, CTEs, subqueries, `BEGIN` blocks, and block comments. The chevron points down while the region is showing and right while it is folded, the way a disclosure control works everywhere else in macOS. Resting on a chevron marks how far its region reaches. Click to collapse, click again to expand.
+
+A folded region keeps its chevron whether or not the pointer is in the gutter, so nothing is ever hidden without a way back to it. Move the pointer away and a gutter with nothing folded is just line numbers.
+
+Where a statement and the block inside it open on the same line, the chevron folds the larger of the two.
 
 A collapsed region is replaced by a chip showing the start of what it hides and the number of hidden lines, so a folded `CREATE TABLE` still tells you what is inside it. Click the chip to bring the region back.
 

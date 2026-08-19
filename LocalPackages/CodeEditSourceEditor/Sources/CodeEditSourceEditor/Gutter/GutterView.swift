@@ -212,6 +212,42 @@ public class GutterView: NSView {
         textView?.menu(for: event)
     }
 
+    // MARK: - Fold Control Hover
+
+    /// The gutter owns the tracking for the fold controls, not the ribbon that draws them.
+    ///
+    /// The ribbon is only as wide as a chevron, and a strip that narrow is a poor thing to have to find with the
+    /// pointer before the controls will even appear. Tracking the whole gutter means moving anywhere near the line
+    /// numbers reveals them, which is how an outline view reveals its disclosure triangles.
+    override public func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero,
+                options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                owner: self
+            )
+        )
+    }
+
+    override public func mouseEntered(with event: NSEvent) {
+        forwardPointer(event)
+    }
+
+    override public func mouseMoved(with event: NSEvent) {
+        forwardPointer(event)
+    }
+
+    override public func mouseExited(with event: NSEvent) {
+        foldingRibbon.pointerExitedGutter()
+    }
+
+    private func forwardPointer(_ event: NSEvent) {
+        guard !foldingRibbon.isHidden else { return }
+        foldingRibbon.pointerMoved(to: foldingRibbon.convert(event.locationInWindow, from: nil))
+    }
+
     /// Updates the width of the gutter if needed to match the maximum line number found as well as the folding ribbon.
     func updateWidthIfNeeded() {
         guard let textView else { return }

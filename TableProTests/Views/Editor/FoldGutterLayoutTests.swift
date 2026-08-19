@@ -49,8 +49,10 @@ struct FoldGutterLayoutTests {
 
         #expect(ribbonOnly < withNumbers, "Dropping the numbers must shrink the gutter")
         #expect(
-            ribbonOnly <= 25,
-            "A ribbon only gutter must not keep the padding the numbers needed, got \(ribbonOnly)"
+            withNumbers - ribbonOnly >= 20,
+            """
+            A ribbon only gutter must drop the 20pt leading inset that only exists to keep numbers off the edge,             not just the width of the digits, got \(ribbonOnly) against \(withNumbers)
+            """
         )
     }
 
