@@ -266,12 +266,20 @@ struct MainContentView: View {
                     ?? connection.database,
                 sourceURL: fileURL
             )
-        case .maintenance(let operation, let tableName):
+        case .maintenance(let operation, let tableName, let database, let schema):
             MaintenanceSheet(
                 operation: operation,
                 tableName: tableName,
                 databaseType: connection.type,
-                onExecute: coordinator.executeMaintenance
+                onExecute: { operation, tableName, options in
+                    coordinator.executeMaintenance(
+                        operation: operation,
+                        tableName: tableName,
+                        options: options,
+                        database: database,
+                        schema: schema
+                    )
+                }
             )
         case .sqlPreview:
             SQLReviewSheet(

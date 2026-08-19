@@ -210,12 +210,18 @@ extension MainContentCoordinator {
         return driver.supportedMaintenanceOperations() ?? []
     }
 
-    func showMaintenanceSheet(operation: String, tableName: String) {
-        activeSheet = .maintenance(operation: operation, tableName: tableName)
+    func showMaintenanceSheet(
+        operation: String,
+        tableName: String,
+        database: String? = nil,
+        schema: String? = nil
+    ) {
+        activeSheet = .maintenance(
+            operation: operation, tableName: tableName, database: database, schema: schema
+        )
     }
 
-    /// Runs against the database the object browser is listing, not against whatever the session
-    /// driver was last pointed at.
+    /// Runs against the database the object it names lives in, on a scoped lease.
     ///
     /// A maintenance statement names its table and nothing else, so where it lands is decided
     /// entirely by the connection's current database. Executing on the session driver directly left
@@ -224,12 +230,23 @@ extension MainContentCoordinator {
     /// role_ability` could optimize the copy in another database while the sheet reported success.
     /// Every other statement the user owns takes a scoped lease; this one now does too, which also
     /// puts it behind the same gate rather than interleaving with a tab's work on one handle.
-    func executeMaintenance(operation: String, tableName: String, options: [String: String]) {
+    func executeMaintenance(
+        operation: String,
+        tableName: String,
+        options: [String: String],
+        database: String? = nil,
+        schema: String? = nil
+    ) {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
         guard let statements = driver.maintenanceStatements(
             operation: operation, table: tableName, options: options
         ) else { return }
-        guard let scope = browseScope else { return }
+        /// The object the user picked names its own database, and only a command that names none
+        /// falls back to where the browser is pointing. `resolvedScope` is what decides that, so a
+        /// schema is never carried across a database boundary.
+        guard let scope = services.databaseManager.resolvedScope(
+            database: database, schema: schema, for: connectionId
+        ) ?? browseScope else { return }
 
         Task { [weak self] in
             guard let self else { return }

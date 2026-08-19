@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Table maintenance from the object browser (OPTIMIZE, ANALYZE, CHECK, REPAIR, and VACUUM on PostgreSQL) now runs against the database you are looking at. It ran on whichever database the connection happened to be on, which a tab from another database moves for the length of its query, so the command could maintain the wrong copy of a table and still report success.
+- Table maintenance from the object browser (OPTIMIZE, ANALYZE, CHECK, REPAIR, and VACUUM on PostgreSQL) now runs against the database the table you picked lives in. It ran on whichever database the connection happened to be on, which a tab from another database moves for the length of its query, so the command could maintain the same-named table in the wrong database and still report success.
 - The inspector button stays at the right end of the toolbar when the inspector is open. It used to slide left and sit against the inspector's inner edge, so the button moved as soon as you used it.
 - The Tables and Favorites switch in the toolbar keeps following the sidebar after you open Customize Toolbar. It stopped responding until the window was closed and reopened.
 - Refresh, New Tab, Open Quickly, Export, Database, Results and Dashboard are dimmed in the toolbar's overflow menu when they cannot run. On a narrow window they looked available and did nothing.

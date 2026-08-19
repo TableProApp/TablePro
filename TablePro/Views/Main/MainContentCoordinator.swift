@@ -52,7 +52,11 @@ enum ActiveSheet: Identifiable {
     case exportQueryResults
     case backupDatabase
     case restoreDatabase(fileURL: URL)
-    case maintenance(operation: String, tableName: String)
+    /// The object's own database and schema travel with the request. A maintenance statement names
+    /// its table and nothing else, so acting on wherever the object browser happens to point
+    /// maintains the same-named table in another database whenever the two have drifted apart.
+    /// This is the rule the sidebar's other destructive commands already keep by carrying their ref.
+    case maintenance(operation: String, tableName: String, database: String?, schema: String?)
     case createDatabase
 
     var id: String {
@@ -64,7 +68,8 @@ enum ActiveSheet: Identifiable {
         case .exportQueryResults: "exportQueryResults"
         case .backupDatabase: "backupDatabase"
         case .restoreDatabase(let fileURL): "restoreDatabase-\(fileURL.path)"
-        case .maintenance(let operation, let tableName): "maintenance-\(operation)-\(tableName)"
+        case .maintenance(let operation, let tableName, let database, let schema):
+            "maintenance-\(operation)-\(database ?? "")-\(schema ?? "")-\(tableName)"
         case .createDatabase: "createDatabase"
         }
     }

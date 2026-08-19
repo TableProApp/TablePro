@@ -49,7 +49,12 @@ extension DatabaseTreeOutlineCoordinator {
             }
         case .maintenance(let operation, let tableName, let ref):
             activateThen(ref) { [weak self] in
-                self?.mainCoordinator?.showMaintenanceSheet(operation: operation, tableName: tableName)
+                self?.mainCoordinator?.showMaintenanceSheet(
+                    operation: operation,
+                    tableName: tableName,
+                    database: ref.database,
+                    schema: ref.schema
+                )
             }
         case .truncateTables(let names, let ref):
             activateThen(ref) { [weak self] in
