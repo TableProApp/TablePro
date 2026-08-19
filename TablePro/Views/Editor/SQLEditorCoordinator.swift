@@ -206,6 +206,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
         vimEngine?.invalidateLineCache()
+        foldPreview.dismiss()
 
         let isLargeDocument = textView.textStorage.length > Self.languageServiceLengthLimit
 
@@ -250,6 +251,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         Task { [weak controller] in
             controller?.textView.scrollToRange(range)
         }
+    }
+
+    func textViewDidChangeHoveredFold(controller: TextViewController, hit: CollapsedFoldHit?) {
+        foldPreview.hoverDidChange(to: hit)
     }
 
     func destroy() {

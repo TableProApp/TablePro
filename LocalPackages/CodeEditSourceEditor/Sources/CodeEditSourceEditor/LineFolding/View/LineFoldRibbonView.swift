@@ -17,8 +17,12 @@ import CodeEditTextView
 /// worse than a little chrome.
 ///
 /// The controls are drawn rather than hosted as a view per fold, so scrolling a long document never churns through
-/// view reuse. Nothing fades in or out: the chevrons arrive with the pointer and leave with it, and an animation on
-/// that would only delay the affordance the pointer went looking for.
+/// view reuse. Drawn controls are invisible to assistive technology unless they say otherwise, so the ribbon
+/// publishes one accessibility element per chevron; see ``LineFoldRibbonView/accessibilityChildren()``.
+///
+/// Which fold is hovered is ``LineFoldModel/hoveredFold``, not state of this view: the gutter's chevron and the
+/// collapsed fold's placeholder are two controls for the same fold, and both have to agree on which one the pointer
+/// is on.
 class LineFoldRibbonView: NSView {
     /// The width of the fold controls, in points.
     ///
@@ -37,10 +41,6 @@ class LineFoldRibbonView: NSView {
     /// Whether the pointer is over the gutter, which is what reveals the open folds' chevrons.
     @Invalidating(.display)
     var isPointerInGutter: Bool = false
-
-    /// The fold whose chevron the pointer is on, drawn at full strength alongside the extent of what it hides.
-    @Invalidating(.display)
-    var hoveredFold: FoldRange? = nil
 
     @Invalidating(.display)
     var backgroundColor: NSColor = .controlBackgroundColor
@@ -99,30 +99,19 @@ class LineFoldRibbonView: NSView {
     /// the same thing.
     func pointerMoved(to point: CGPoint) {
         isPointerInGutter = true
-        setHoveredFold(bounds.contains(point) ? fold(at: point) : nil)
+        model?.setGutterHover(bounds.contains(point) ? fold(at: point) : nil)
     }
 
     /// Called by the ``GutterView`` when the pointer leaves the gutter.
     func pointerExitedGutter() {
         isPointerInGutter = false
-        setHoveredFold(nil)
+        model?.setGutterHover(nil)
     }
 
     /// Scrolling moves the folds under a stationary pointer, so the hovered fold has to be resolved again.
     override func scrollWheel(with event: NSEvent) {
         super.scrollWheel(with: event)
         pointerMoved(to: convert(event.locationInWindow, from: nil))
-    }
-
-    private func setHoveredFold(_ fold: FoldRange?) {
-        guard fold?.range != hoveredFold?.range else { return }
-        hoveredFold = fold
-
-        guard let fold else {
-            model?.clearEmphasis()
-            return
-        }
-        model?.emphasizeBracketsForFold(fold)
     }
 
     // MARK: - Mouse Events
@@ -145,6 +134,17 @@ class LineFoldRibbonView: NSView {
         guard let layoutManager = model?.controller?.textView.layoutManager,
               let line = layoutManager.textLineForPosition(point.y) else { return nil }
         return foldsByStartLine(in: line.range.intRange, layoutManager: layoutManager)[line.index]
+    }
+
+    /// The document range a rect in this view covers.
+    ///
+    /// The ribbon is taller than the text it sits beside, so a rect reaching past the last line resolves to no line
+    /// at all. Falling back to the last line is what keeps a document scrolled to its end from losing every chevron.
+    func documentRange(covering rect: CGRect, layoutManager: TextLayoutManager) -> Range<Int>? {
+        guard let firstLine = layoutManager.textLineForPosition(max(0, rect.minY)) else { return nil }
+        guard let lastLine = layoutManager.textLineForPosition(rect.maxY)
+            ?? layoutManager.textLineForIndex(max(0, layoutManager.lineCount - 1)) else { return nil }
+        return firstLine.range.location..<max(firstLine.range.upperBound, lastLine.range.upperBound)
     }
 
     /// The fold each line in a range opens, keyed by line number.

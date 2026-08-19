@@ -294,6 +294,7 @@ public class TextViewController: NSViewController {
     /// without waiting for deinit. Call when the editor is no longer visible but
     /// SwiftUI may keep the controller alive in @State.
     public func releaseHeavyState() {
+        foldModel?.destroy()
         if let highlighter {
             textView?.removeStorageDelegate(highlighter)
         }

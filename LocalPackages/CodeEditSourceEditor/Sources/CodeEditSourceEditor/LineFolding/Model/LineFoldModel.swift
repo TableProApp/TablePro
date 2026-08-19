@@ -30,6 +30,7 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
     private var textChangedStreamContinuation: AsyncStream<Void>.Continuation
     private var cacheListenTask: Task<Void, Never>?
     private var pendingRestoreRanges: Set<Range<Int>>?
+    private var placeholderTracker: LineFoldPlaceholderTracker?
 
     weak var controller: TextViewController?
     weak var foldView: NSView?
@@ -58,16 +59,28 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
             }
         }
         textChangedStreamContinuation.yield(Void())
+        placeholderTracker = LineFoldPlaceholderTracker(model: self)
     }
 
     func getFolds(in range: Range<Int>) -> [FoldRange] {
         foldCache.folds(in: range)
     }
 
+    /// Releases what outlives the view hierarchy on its own.
+    ///
+    /// The pointer tracking's area names this model's tracker as its owner and must not outlive it, and the task
+    /// listening to the calculator awaits a stream that never ends, so neither is released by the editor's views
+    /// going away.
+    func destroy() {
+        placeholderTracker?.destroy()
+        placeholderTracker = nil
+        cacheListenTask?.cancel()
+        cacheListenTask = nil
+    }
+
     // MARK: - Collapse
 
-    /// The single place a fold's collapsed state changes. Every entry point routes here so the placeholder attachment
-    /// and the cached state can never disagree.
+    /// Collapses or expands a fold, adding or removing its placeholder to match.
     func setCollapsed(_ isCollapsed: Bool, for fold: FoldRange) {
         guard let controller, let layoutManager = controller.textView?.layoutManager else { return }
         guard isCollapsed != self.isCollapsed(fold) else { return }
@@ -79,10 +92,21 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
             layoutManager.attachments.remove(atOffset: attachment.range.location)
         }
 
+        commitCollapseChange(for: fold)
+    }
+
+    /// The single place a fold's collapsed state is recorded and published.
+    ///
+    /// Every route that collapses or expands a fold ends here, so the cache, the layout, the gutter and anything
+    /// listening for the notification can never disagree about what is folded. The two routes differ only in who
+    /// removes the placeholder: the gutter's chevron asks the layout manager to, and a click on the placeholder has
+    /// already had it removed by the attachment manager before the delegate is told.
+    private func commitCollapseChange(for fold: FoldRange) {
         foldCache.toggleCollapse(forFold: fold)
-        controller.textView.needsLayout = true
-        controller.gutterView.needsDisplay = true
+        controller?.textView?.needsLayout = true
+        controller?.gutterView?.needsDisplay = true
         foldView?.needsDisplay = true
+        guard let controller else { return }
         NotificationCenter.default.post(
             name: TextViewController.foldStateDidChangeNotification,
             object: controller
@@ -133,6 +157,55 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
         for fold in folds where pending.contains(fold.range) && !fold.isCollapsed {
             setCollapsed(true, for: fold)
         }
+    }
+
+    // MARK: - Hover
+
+    /// A collapsed fold the pointer is resting on, and where its placeholder is drawn.
+    struct PlaceholderHover: Equatable {
+        let fold: FoldRange
+        let hit: CollapsedFoldHit
+    }
+
+    /// The fold the pointer is on, whichever of the two controls reports it.
+    ///
+    /// The gutter's chevron and the collapsed fold's placeholder are two views onto the same fold, and only one of
+    /// them can be under the pointer. Both report here instead of each keeping its own idea of what is hovered, so
+    /// pointing at either one lights up both.
+    private(set) var hoveredFold: FoldRange?
+
+    private var gutterHover: FoldRange?
+    private var placeholderHover: PlaceholderHover?
+
+    /// Reports the fold whose chevron the pointer is on, or `nil` when it is on none of them.
+    func setGutterHover(_ fold: FoldRange?) {
+        guard gutterHover?.id != fold?.id else { return }
+        gutterHover = fold
+        resolveHover()
+    }
+
+    /// Reports the collapsed fold whose placeholder the pointer is on, or `nil` when it is on none of them.
+    ///
+    /// Scrolling moves a placeholder out from under a stationary pointer, so this is compared on the whole hit
+    /// rather than on the fold: a peek anchored to the old rect has to be told the anchor moved.
+    func setPlaceholderHover(_ hover: PlaceholderHover?) {
+        guard placeholderHover != hover else { return }
+        placeholderHover = hover
+        resolveHover()
+        controller?.foldHoverDidChange(hover?.hit)
+    }
+
+    private func resolveHover() {
+        let resolved = placeholderHover?.fold ?? gutterHover
+        guard resolved?.id != hoveredFold?.id else { return }
+        hoveredFold = resolved
+        foldView?.needsDisplay = true
+
+        guard let resolved else {
+            clearEmphasis()
+            return
+        }
+        emphasizeBracketsForFold(resolved)
     }
 
     private func attachment(for fold: FoldRange) -> AnyTextAttachment? {
@@ -213,7 +286,7 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
         return deepestFold
     }
 
-    func emphasizeBracketsForFold(_ fold: FoldRange) {
+    private func emphasizeBracketsForFold(_ fold: FoldRange) {
         clearEmphasis()
 
         // Find the text object, make sure there's available characters around the fold.
@@ -240,7 +313,7 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
         )
     }
 
-    func clearEmphasis() {
+    private func clearEmphasis() {
         controller?.textView.emphasisManager?.removeEmphases(for: Self.emphasisId)
     }
 }
@@ -265,14 +338,7 @@ extension LineFoldModel: LineFoldPlaceholderDelegate {
     }
 
     func placeholderDiscarded(fold: FoldRange) {
-        foldCache.toggleCollapse(forFold: fold)
-        foldView?.needsDisplay = true
-        textChangedStreamContinuation.yield()
-        if let controller {
-            NotificationCenter.default.post(
-                name: TextViewController.foldStateDidChangeNotification,
-                object: controller
-            )
-        }
+        setPlaceholderHover(nil)
+        commitCollapseChange(for: fold)
     }
 }

@@ -19,6 +19,12 @@ public final class TextAttachmentManager {
 
     public weak var delegate: TextAttachmentManagerDelegate?
 
+    /// Whether the document has no attachments at all.
+    ///
+    /// Lets a caller that only cares about attachments skip a layout query per mouse move in the common case where
+    /// there are none.
+    public var isEmpty: Bool { orderedAttachments.isEmpty }
+
     /// Adds a new attachment, keeping `orderedAttachments` sorted by range.location.
     /// If two attachments overlap, the layout phase will later ignore the one with the higher start.
     /// - Complexity: `O(n log(n))` due to array insertion. Could be improved with a binary tree.

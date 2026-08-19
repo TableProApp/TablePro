@@ -8,10 +8,11 @@ import CodeEditLanguages
 import CodeEditSourceEditor
 import SwiftUI
 
-/// Shows the block behind a collapsed fold when the pointer rests on its placeholder.
+/// Shows the block behind a collapsed fold while the pointer rests on its placeholder.
 ///
-/// The placeholder is drawn by the layout manager rather than being a view of its own, so there is nothing to attach a
-/// tracking area to. Hovering is resolved by hit testing the pointer against the collapsed folds instead.
+/// Where the pointer is comes from the editor, which is the only thing that can answer it: a placeholder is drawn by
+/// the layout manager rather than being a view, so there is nothing outside the editor to track. This decides how
+/// long to wait and what to show.
 @MainActor
 final class FoldPreviewController: NSObject {
     /// How long the pointer must rest before a peek opens.
@@ -21,77 +22,70 @@ final class FoldPreviewController: NSObject {
     private static let previewCharacterLimit = 20_000
 
     private weak var controller: TextViewController?
-    private var monitor: Any?
-    private var overlay: FoldHoverOverlayView?
     private var popover: NSPopover?
-    private var shownRange: Range<Int>?
     private var pendingTask: Task<Void, Never>?
+    private var observers: [NSObjectProtocol] = []
+
+    /// The fold the peek is showing or waiting to show. Hovering the same placeholder reports the same hit many
+    /// times over, and restarting the wait on each of them would mean the peek never opens.
+    private var activeHit: CollapsedFoldHit?
 
     var language: CodeLanguage = .sql
 
     func install(controller: TextViewController) {
         self.controller = controller
 
-        // The placeholder is drawn by the layout manager and has no view to track. A transparent overlay carries the
-        // tracking area instead, and passes every click straight through to the editor beneath it.
-        if let textView = controller.textView {
-            let overlay = FoldHoverOverlayView(frame: textView.bounds)
-            overlay.autoresizingMask = [.width, .height]
-            overlay.onMouseMoved = { [weak self] event in self?.hover(at: event) }
-            overlay.onMouseExited = { [weak self] in self?.dismiss() }
-            textView.addSubview(overlay)
-            self.overlay = overlay
-        }
-
-        monitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.scrollWheel, .leftMouseDown, .keyDown]
-        ) { [weak self] event in
-            self?.dismiss()
-            return event
-        }
+        // A peek is a look at code, so it goes away when that code changes underneath it or when the user leaves the
+        // app. Watching for a window losing key would be wrong here: showing the peek can take key away from the
+        // editor's own window, and the peek would close itself the moment it opened.
+        observers = [
+            NotificationCenter.default.addObserver(
+                forName: TextViewController.foldStateDidChangeNotification,
+                object: controller,
+                queue: .main
+            ) { [weak self] _ in MainActor.assumeIsolated { self?.dismiss() } },
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in MainActor.assumeIsolated { self?.dismiss() } }
+        ]
     }
 
     func destroy() {
-        pendingTask?.cancel()
-        pendingTask = nil
-        overlay?.removeFromSuperview()
-        overlay = nil
-        if let monitor {
-            NSEvent.removeMonitor(monitor)
-        }
-        monitor = nil
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
         dismiss()
         controller = nil
     }
 
-    deinit {
-        if let monitor {
-            NSEvent.removeMonitor(monitor)
-        }
-    }
-
     // MARK: - Hover
 
-    private func hover(at event: NSEvent) {
-        guard let textView = controller?.textView else {
-            dismiss()
-            return
-        }
+    /// Reports where the pointer is, from ``CodeEditSourceEditor/TextViewCoordinator``.
+    func hoverDidChange(to hit: CollapsedFoldHit?) {
+        guard hit != activeHit else { return }
 
-        let point = textView.convert(event.locationInWindow, from: nil)
-        guard let hit = controller?.collapsedFold(at: point) else {
-            dismiss()
-            return
-        }
-        guard hit.hiddenRange != shownRange else { return }
+        // Closing the popover runs the delegate, which drops the active hit, so the new one is recorded after.
+        dismiss()
+        activeHit = hit
+        guard let hit else { return }
 
-        pendingTask?.cancel()
         pendingTask = Task { [weak self] in
             try? await Task.sleep(for: Self.hoverDelay)
             guard !Task.isCancelled else { return }
             self?.present(hit)
         }
     }
+
+    /// Closes the peek and forgets what it was for, so the same placeholder can open it again.
+    func dismiss() {
+        pendingTask?.cancel()
+        pendingTask = nil
+        popover?.performClose(nil)
+        popover = nil
+    }
+
+    // MARK: - Presentation
 
     private func present(_ hit: CollapsedFoldHit) {
         guard let controller, let textView = controller.textView, textView.window != nil else { return }
@@ -100,13 +94,15 @@ final class FoldPreviewController: NSObject {
         let layout = FoldPreviewMetrics.layout(for: block, font: ThemeEngine.shared.editorFonts.font)
         guard !layout.text.isEmpty else { return }
 
-        dismiss()
-
         let content = NSHostingController(rootView: FoldPreviewView(layout: layout, language: language))
         content.sizingOptions = [.preferredContentSize]
 
         let popover = NSPopover()
-        popover.behavior = .transient
+        // A transient popover installs its own event monitor and swallows the click that dismisses it, so the click
+        // that should have expanded the fold did nothing and the reader had to click the chip twice. This peek is a
+        // look at code and nothing in it is clickable, so it is closed by the things that make it stale instead: the
+        // pointer leaving the chip, the fold changing, the text changing, or the window going away.
+        popover.behavior = .applicationDefined
         popover.animates = false
         popover.delegate = self
         popover.contentViewController = content
@@ -117,25 +113,16 @@ final class FoldPreviewController: NSObject {
         popover.show(relativeTo: hit.rect, of: textView, preferredEdge: .maxY)
 
         self.popover = popover
-        shownRange = hit.hiddenRange
-    }
-
-    private func dismiss() {
-        pendingTask?.cancel()
-        pendingTask = nil
-        popover?.performClose(nil)
-        popover = nil
-        shownRange = nil
     }
 }
 
 // MARK: - NSPopoverDelegate
 
 extension FoldPreviewController: NSPopoverDelegate {
-    /// A transient popover closes itself on the next event outside it, without routing through ``dismiss()``. Clearing
-    /// the shown range here is what lets the same placeholder open a second time.
+    /// AppKit closes a popover on its own when the view it is anchored to leaves the window. Dropping the hit here is
+    /// what lets the same placeholder open a peek again afterwards.
     func popoverDidClose(_ notification: Notification) {
         popover = nil
-        shownRange = nil
+        activeHit = nil
     }
 }

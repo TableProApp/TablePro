@@ -13,8 +13,7 @@ extension LineFoldRibbonView {
         guard let context = NSGraphicsContext.current?.cgContext,
               let model,
               let layoutManager = model.controller?.textView.layoutManager,
-              let firstLine = layoutManager.textLineForPosition(dirtyRect.minY),
-              let lastLine = layoutManager.textLineForPosition(dirtyRect.maxY) else {
+              let range = documentRange(covering: dirtyRect, layoutManager: layoutManager) else {
             return
         }
 
@@ -22,14 +21,11 @@ extension LineFoldRibbonView {
         defer { context.restoreGState() }
         context.clip(to: dirtyRect)
 
-        if let hoveredFold, !model.isCollapsed(hoveredFold) {
-            drawExtent(of: hoveredFold, in: context, using: layoutManager)
+        if let hovered = model.hoveredFold, !model.isCollapsed(hovered) {
+            drawExtent(of: hovered, in: context, using: layoutManager)
         }
 
-        let foldsByLine = foldsByStartLine(
-            in: firstLine.range.location..<lastLine.range.upperBound,
-            layoutManager: layoutManager
-        )
+        let foldsByLine = foldsByStartLine(in: range, layoutManager: layoutManager)
 
         for (lineNumber, fold) in foldsByLine {
             guard let line = layoutManager.textLineForIndex(lineNumber) else { continue }
@@ -47,7 +43,7 @@ extension LineFoldRibbonView {
         model: LineFoldModel
     ) {
         let isCollapsed = model.isCollapsed(fold)
-        let isHovered = hoveredFold?.range == fold.range
+        let isHovered = model.hoveredFold?.id == fold.id
         guard isCollapsed || isPointerInGutter else { return }
 
         let color = if isHovered {

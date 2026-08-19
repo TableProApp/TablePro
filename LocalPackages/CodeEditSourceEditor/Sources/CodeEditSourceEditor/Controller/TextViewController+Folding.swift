@@ -34,27 +34,7 @@ public extension TextViewController {
     /// Every character a placeholder hides is drawn as that one placeholder, so a point that resolves to an offset
     /// inside the folded range is a point over the placeholder. Text after the placeholder resolves past the range.
     func collapsedFold(at point: CGPoint) -> CollapsedFoldHit? {
-        guard let textView, let layoutManager = textView.layoutManager,
-              let offset = layoutManager.textOffsetAtPoint(point) else { return nil }
-
-        let overlapping = layoutManager.attachments.getAttachmentsOverlapping(NSRange(location: offset, length: 1))
-        guard let attachment = overlapping.first(where: { $0.attachment is LineFoldPlaceholder }),
-              let caret = layoutManager.rectForOffset(attachment.range.location) else { return nil }
-
-        // `rectForOffset` reports a caret, which has no width. The placeholder's own width makes the hit a rect that
-        // covers what the reader sees, which is what a popover needs to anchor to.
-        let rect = CGRect(
-            x: caret.minX,
-            y: caret.minY,
-            width: attachment.attachment.width,
-            height: caret.height
-        )
-        let hidden = attachment.range.intRange
-        return CollapsedFoldHit(
-            hiddenRange: hidden,
-            blockRange: blockRange(covering: hidden),
-            rect: rect
-        )
+        placeholderHover(at: point)?.hit
     }
 
     /// The document's plain text over a range, capped so reading a huge region stays cheap.
@@ -130,6 +110,48 @@ public extension TextViewController {
     internal var foldModel: LineFoldModel? {
         gutterView?.foldingRibbon.model
     }
+}
+
+// MARK: - Hover
+
+internal extension TextViewController {
+    /// The collapsed fold's placeholder under a point, with the fold it stands for.
+    ///
+    /// The placeholder carries its own fold, so resolving the pointer to an attachment resolves it to a fold too. No
+    /// second lookup against the cache is needed, and the two can never disagree about which fold was hit.
+    func placeholderHover(at point: CGPoint) -> LineFoldModel.PlaceholderHover? {
+        guard let textView, let layoutManager = textView.layoutManager,
+              let offset = layoutManager.textOffsetAtPoint(point) else { return nil }
+
+        let overlapping = layoutManager.attachments.getAttachmentsOverlapping(NSRange(location: offset, length: 1))
+        guard let attachment = overlapping.first(where: { $0.attachment is LineFoldPlaceholder }),
+              let placeholder = attachment.attachment as? LineFoldPlaceholder,
+              let caret = layoutManager.rectForOffset(attachment.range.location) else { return nil }
+
+        // `rectForOffset` reports a caret, which has no width. The placeholder's own width makes the hit a rect that
+        // covers what the reader sees, which is what a popover needs to anchor to.
+        let hidden = attachment.range.intRange
+        return LineFoldModel.PlaceholderHover(
+            fold: placeholder.fold,
+            hit: CollapsedFoldHit(
+                hiddenRange: hidden,
+                blockRange: blockRange(covering: hidden),
+                rect: CGRect(
+                    x: caret.minX,
+                    y: caret.minY,
+                    width: placeholder.width,
+                    height: caret.height
+                )
+            )
+        )
+    }
+
+    /// Tells every coordinator which collapsed fold the pointer came to rest on, or that it left one.
+    func foldHoverDidChange(_ hit: CollapsedFoldHit?) {
+        for coordinator in textCoordinators.values() {
+            coordinator.textViewDidChangeHoveredFold(controller: self, hit: hit)
+        }
+    }
 
     /// Grows a range to cover whole lines.
     ///
@@ -137,7 +159,7 @@ public extension TextViewController {
     /// to ask: the fold hides them by zeroing their heights, and the layout manager resolves offsets through visible
     /// positions only. `lineRange(for:)` answers from the text itself, so it is correct whether or not a line has
     /// ever been laid out.
-    private func blockRange(covering range: Range<Int>) -> Range<Int> {
+    func blockRange(covering range: Range<Int>) -> Range<Int> {
         guard let storage = textView?.textStorage, storage.length > 0 else { return range }
         let string = storage.string as NSString
         let lower = max(0, min(range.lowerBound, string.length))

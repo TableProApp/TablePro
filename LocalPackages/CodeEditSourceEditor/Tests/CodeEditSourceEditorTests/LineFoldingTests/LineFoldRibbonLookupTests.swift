@@ -68,6 +68,21 @@ struct LineFoldRibbonLookupTests {
         #expect(result[0] == nil)
     }
 
+    @Test("A rect taller than the document still covers every line")
+    func rectPastTheLastLineStillResolves() throws {
+        // The ribbon is laid out taller than the text beside it, so the rect it is asked to draw routinely reaches
+        // past the last line. Resolving that to nothing lost every chevron at the bottom of a document.
+        let range = try #require(
+            ribbon.documentRange(
+                covering: NSRect(x: 0, y: 0, width: 14, height: 5000),
+                layoutManager: controller.textView.layoutManager
+            )
+        )
+
+        #expect(range.lowerBound == 0)
+        #expect(range.upperBound == controller.textView.textStorage.length)
+    }
+
     @Test("A document with no folds draws no chevrons")
     func noFoldsNoChevrons() {
         setFolds([])
