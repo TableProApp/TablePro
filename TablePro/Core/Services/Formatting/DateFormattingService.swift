@@ -23,8 +23,6 @@ final class DateFormattingService {
     /// Current date format option
     private(set) var currentFormat: DateFormatOption
 
-    private let parser = DatabaseDateParser()
-
     /// Cache for formatted date strings to avoid repeated parsing
     private let formatCache = NSCache<NSString, NSString>()
 
@@ -70,7 +68,7 @@ final class DateFormattingService {
             return cached.length == 0 ? nil : cached as String
         }
 
-        guard let date = parser.date(from: dateString) else {
+        guard let date = DatabaseDateParser.date(from: dateString) else {
             formatCache.setObject("" as NSString, forKey: cacheKey)
             return nil
         }
