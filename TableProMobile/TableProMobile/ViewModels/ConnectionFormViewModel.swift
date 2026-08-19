@@ -10,6 +10,13 @@ final class ConnectionFormViewModel {
     enum KeyInputMode: String, CaseIterable {
         case file = "Import File"
         case paste = "Paste Key"
+
+        var displayName: LocalizedStringResource {
+            switch self {
+            case .file: LocalizedStringResource("Import File")
+            case .paste: LocalizedStringResource("Paste Key")
+            }
+        }
     }
 
     struct TestResult: Sendable {

@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProMobile
+import Testing
 
 @Suite("RowPayload")
 struct RowPayloadTests {
@@ -66,6 +66,27 @@ struct RowPayloadTests {
     func malformedJsonThrows() async throws {
         await #expect(throws: IntentDataError.self) {
             _ = try await RowPayload.parse(data: "{not valid", file: nil)
+        }
+    }
+
+    @Test("rejects a JSON array containing a non-object")
+    func jsonArrayRejectsNonObject() {
+        #expect(throws: IntentDataError.jsonArrayContainsNonObject) {
+            _ = try RowPayload.parseJSON(#"[{"a":"1"}, 2]"#)
+        }
+    }
+
+    @Test("rejects a JSON value that is not an object or array")
+    func jsonRejectsUnsupportedShape() {
+        #expect(throws: IntentDataError.invalidJSONShape) {
+            _ = try RowPayload.parseJSON("42")
+        }
+    }
+
+    @Test("rejects CSV without a header")
+    func csvRejectsMissingHeader() {
+        #expect(throws: IntentDataError.csvMissingHeader) {
+            _ = try RowPayload.parseCSV(",\nAda,36")
         }
     }
 }

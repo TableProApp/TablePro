@@ -35,7 +35,7 @@ struct QueryLiveActivityWidget: Widget {
                             .truncationMode(.tail)
                         Spacer()
                         if context.state.rowsStreamed > 0 {
-                            Label("^[\(context.state.rowsStreamed) row](inflect: true)", systemImage: "list.bullet")
+                            Label(rowCountText(context.state.rowsStreamed), systemImage: "list.bullet")
                                 .font(.caption)
                                 .labelStyle(.titleAndIcon)
                                 .foregroundStyle(.secondary)
@@ -81,7 +81,7 @@ struct QueryLiveActivityWidget: Widget {
                 elapsedText(context.state)
                     .font(.body.monospacedDigit())
                 if context.state.rowsStreamed > 0 {
-                    Text("^[\(context.state.rowsStreamed) row](inflect: true)")
+                    Text(rowCountText(context.state.rowsStreamed))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -118,6 +118,13 @@ struct QueryLiveActivityWidget: Widget {
 
     private func deepLink(connectionId: UUID) -> URL? {
         URL(string: "tablepro://connect/\(connectionId.uuidString)")
+    }
+
+    private func rowCountText(_ count: Int) -> String {
+        if count == 1 {
+            return String(localized: "1 row")
+        }
+        return String(format: String(localized: "%lld rows"), Int64(count))
     }
 
     private func formatElapsed(_ seconds: TimeInterval) -> String {

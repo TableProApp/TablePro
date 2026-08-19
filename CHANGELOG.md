@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Korean localization for macOS, iPhone and iPad, with a 한국어 language option in General settings. (#2219)
 - Every database operation TablePro authorizes is written to a local execution log, including the ones the AI assistant and MCP clients ask for, with the statement stored as a digest rather than as text. Records are hash chained, so an edited, reordered or removed entry can be detected. The log stays on the Mac and is not synced.
 - An administrator can set a minimum Safe Mode level for every connection through a macOS configuration profile, so a managed Mac cannot be dropped below it. A connection set stricter keeps its own level, since the policy is a floor rather than a ceiling. The control shows as managed instead of editable.
 - Plugins signed by other developers can be installed. TablePro used to refuse any plugin bundle it had not signed itself, so the only way to publish a driver was through the TablePro repository. A bundle signed with a Developer ID and notarized by Apple now installs after you agree to trust that developer by name, and the prompt says plainly that a database plugin runs as part of TablePro and can read the credentials of every connection you open. Trust is recorded per developer rather than per plugin, so their updates install without asking again, and you can withdraw it. Unsigned and ad-hoc signed bundles are still refused.

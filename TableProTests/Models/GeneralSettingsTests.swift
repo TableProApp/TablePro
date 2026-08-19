@@ -2,6 +2,26 @@ import Foundation
 @testable import TablePro
 import Testing
 
+@Suite("AppLanguage")
+struct AppLanguageTests {
+    @Test("Includes Korean with its standard locale identifier and native name")
+    func includesKorean() {
+        #expect(AppLanguage(rawValue: "ko") == .korean)
+        #expect(AppLanguage.korean.rawValue == "ko")
+        #expect(AppLanguage.korean.displayName == "한국어")
+        #expect(AppLanguage.allCases.contains(.korean))
+    }
+
+    @Test("Persists Korean in general settings")
+    func persistsKorean() throws {
+        let settings = GeneralSettings(language: .korean)
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
+
+        #expect(decoded.language == .korean)
+    }
+}
+
 @Suite("GeneralSettings.showRecentTables")
 struct GeneralSettingsTests {
     @Test("Defaults to off")

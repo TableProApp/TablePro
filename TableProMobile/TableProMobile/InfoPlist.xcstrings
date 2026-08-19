@@ -1,0 +1,42 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSFaceIDUsageDescription" : {
+      "comment" : "Privacy - Face ID Usage Description",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro uses Face ID to protect your saved database connections and credentials."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro는 저장된 데이터베이스 연결 및 자격 증명을 보호하기 위해 Face ID를 사용합니다."
+          }
+        }
+      }
+    },
+    "NSLocalNetworkUsageDescription" : {
+      "comment" : "Privacy - Local Network Usage Description",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro connects to database servers and SSH tunnels running on your local network, including Bonjour (.local) hostnames."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro는 Bonjour(.local) 호스트 이름을 포함하여 로컬 네트워크에서 실행되는 데이터베이스 서버 및 SSH 터널에 연결합니다."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
