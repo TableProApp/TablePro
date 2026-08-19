@@ -25,9 +25,12 @@ MongoDB is a registry plugin. Picking it in the **Choose a Database** sheet prom
 | **Hosts** | `localhost:27017` | Add multiple `host:port` pairs for replica sets |
 | **Username** | - | Leave empty for local dev without auth |
 | **Password** | - | |
+| **Database** | - | The database to open on connect. Leave empty to browse them all |
 | **Auth Mechanism** | Default | SCRAM-SHA-1, SCRAM-SHA-256, X.509, or AWS IAM. In the Authentication section |
 
-The form has no Database field. On connect TablePro opens the first non-system database it finds, and **Cmd+K** switches to another. A database in a connection URL path (`mongodb://host:27017/mydb`) is used instead.
+Naming a **Database** opens straight into it and skips listing every database on the server, which is worth doing on a cluster with many of them. Leave it empty and TablePro opens the first non-system database it finds. **Cmd+K** switches to another either way. A database in a connection URL path (`mongodb://host:27017/mydb`) fills the same field.
+
+**Database** is not the same as **Auth Database**: one says what you browse, the other says where your user account lives. They are linked in one direction. With **Auth Database** empty, a named **Database** is also what TablePro authenticates against, matching how a `/database` path works in a MongoDB connection string. So if your user lives in `admin` and you name a **Database**, set **Auth Database** to `admin` as well, or authentication fails. SRV connections are exempt and always authenticate against `admin` unless you say otherwise.
 
 **Advanced**: **Auth Database** (usually `admin`), **Read Preference**, **Write Concern**, **Use SRV Record**, **Replica Set** name, and **Legacy UUID Encoding**.
 

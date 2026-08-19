@@ -54,7 +54,8 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: elasticsearchConnectionFields(),
                     category: .document,
-                    tagline: String(localized: "Search and analytics engine")
+                    tagline: String(localized: "Search and analytics engine"),
+                    hidesBuiltInDatabase: true
                 )
             )),
         ]

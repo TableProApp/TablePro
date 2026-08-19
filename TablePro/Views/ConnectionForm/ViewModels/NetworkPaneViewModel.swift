@@ -56,11 +56,30 @@ final class NetworkPaneViewModel {
         Int(port) ?? type.defaultPort
     }
 
-    var supportsDatabaseField: Bool {
-        let mode = connectionMode
-        return mode == .fileBased
-            || (mode == .apiOnly && PluginManager.shared.supportsDatabaseSwitching(for: type))
-            || (mode == .network && PluginManager.shared.requiresAuthentication(for: type))
+    var hidesBuiltInDatabase: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)?
+            .connection.hidesBuiltInDatabase ?? false
+    }
+
+    /// Whether the form renders the built-in Database field. A driver opts out through
+    /// `hidesBuiltInDatabase` when it names its container some other way, or has none.
+    /// This is deliberately not `requiresAuthentication`: whether a driver needs credentials
+    /// says nothing about whether it accepts a database name.
+    var showsBuiltInDatabaseField: Bool {
+        switch connectionMode {
+        case .fileBased:
+            return false
+        case .apiOnly:
+            return PluginManager.shared.supportsDatabaseSwitching(for: type) && !hidesBuiltInDatabase
+        default:
+            return !hidesBuiltInDatabase
+        }
+    }
+
+    /// Never require a value the form does not render. A file-based connection stores its
+    /// path in `database` and renders it as the Database File field.
+    var requiresDatabaseValue: Bool {
+        connectionMode == .fileBased || (connectionMode == .apiOnly && showsBuiltInDatabaseField)
     }
 
     var validationIssues: [String] {
@@ -69,9 +88,7 @@ final class NetworkPaneViewModel {
             issues.append(String(localized: "Connection name is required"))
         }
         let mode = connectionMode
-        let needsDatabaseField = mode == .fileBased
-            || (mode == .apiOnly && PluginManager.shared.supportsDatabaseSwitching(for: type))
-        if needsDatabaseField && database.trimmingCharacters(in: .whitespaces).isEmpty {
+        if requiresDatabaseValue && database.trimmingCharacters(in: .whitespaces).isEmpty {
             let label = mode == .fileBased
                 ? String(localized: "Database file path is required")
                 : String(localized: "Database name is required")

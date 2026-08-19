@@ -408,8 +408,11 @@ final class SortableHeaderView: NSTableHeaderView {
             isMultiSort: isMultiSort
         )
 
-        coordinator.currentSortState = transition.newState
-        applySortState(transition.newState, schema: coordinator.identitySchema)
-        coordinator.delegate?.dataGridSortStateChanged(transition.newState)
+        let schema = coordinator.identitySchema
+        let newState = SortColumnResolver.stamped(transition.newState, displayColumns: schema.columnNames)
+
+        coordinator.currentSortState = newState
+        applySortState(newState, schema: schema)
+        coordinator.delegate?.dataGridSortStateChanged(newState)
     }
 }

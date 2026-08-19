@@ -263,7 +263,11 @@ extension TableViewCoordinator {
     @objc func sortAscending(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
         var state = SortState()
-        state.columns = [SortColumn(columnIndex: columnIndex, direction: .ascending)]
+        state.columns = [SortColumn(
+            columnIndex: columnIndex,
+            direction: .ascending,
+            columnName: identitySchema.columnName(for: columnIndex)
+        )]
         currentSortState = state
         applyCurrentSortStateToHeader()
         delegate?.dataGridSortStateChanged(state)
@@ -272,7 +276,11 @@ extension TableViewCoordinator {
     @objc func sortDescending(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
         var state = SortState()
-        state.columns = [SortColumn(columnIndex: columnIndex, direction: .descending)]
+        state.columns = [SortColumn(
+            columnIndex: columnIndex,
+            direction: .descending,
+            columnName: identitySchema.columnName(for: columnIndex)
+        )]
         currentSortState = state
         applyCurrentSortStateToHeader()
         delegate?.dataGridSortStateChanged(state)

@@ -174,9 +174,10 @@ struct PluginMetadataSnapshot: Sendable {
         let category: DatabaseCategory
         let tagline: String
         let hidesBuiltInPassword: Bool
-        /// An engine can switch database without the user naming one on the connection:
-        /// an embedded engine takes it from the file it opens. Showing the built-in
-        /// database field there offers a second, meaningless place to type one.
+        /// The driver takes no container name on the connection, so the built-in field would
+        /// be a second, meaningless place to type one: an embedded engine reads it from the
+        /// file it opens, Redis numbers its databases through its own field, and a key-value
+        /// store may have no container at all.
         let hidesBuiltInDatabase: Bool
         let defaultUnixSocketPath: String?
         let defaultHost: String?
