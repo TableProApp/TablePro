@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The empty Favorites sidebar fits its width on macOS 15. The description and the New Favorite, New Folder and Link a Folder buttons ran past both edges of the sidebar and were cut off, so the buttons could not be read or reached. They now wrap and stack inside the sidebar.
 - Table favorites and saved queries sync through iCloud. Their record types had never been created in the iCloud schema, so every one was rejected on upload, and Account settings reported the same sync error again on every attempt because the rejected items were retried forever.
 - An SSH profile that uses a jump host syncs. iCloud rejected the jump host list, and that stopped the whole profile from uploading.
 - A connection carries its favorite mark, every tag assigned to it, and its AI rules and always-allowed tools to your other Macs. These were held back from upload, so they stayed on the Mac that set them, and a connection with several tags arrived with only the first one.
