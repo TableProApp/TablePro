@@ -128,6 +128,21 @@ struct QueryTabManagerDeduplicationTests {
         #expect(tabManager.tabs.first?.content.isFileDirty == false)
     }
 
+    @Test("A tab that never learned what its file said is not overwritten either")
+    @MainActor
+    func keepsTextWhenTheBaselineIsUnknown() {
+        let tabManager = QueryTabManager()
+        let url = URL(fileURLWithPath: "/tmp/test.sql")
+        var reopened = QueryTab(title: "test.sql", query: "SELECT 1 -- work in progress")
+        reopened.content.sourceFileURL = url
+        tabManager.adoptTab(reopened)
+
+        tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: url)
+
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.tabs.first?.content.query == "SELECT 1 -- work in progress")
+    }
+
     @Test("Reopening a clean file tab clears a pending changed-on-disk banner")
     @MainActor
     func clearsTheExternalModificationBanner() {

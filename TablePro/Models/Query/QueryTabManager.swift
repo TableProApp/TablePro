@@ -168,7 +168,7 @@ final class QueryTabManager {
         newTab.content.sourceFileURL = sourceFileURL
         if let sourceFileURL {
             newTab.content.savedFileContent = newTab.content.query
-            newTab.content.loadMtime = Self.modificationDate(of: sourceFileURL)
+            newTab.content.loadMtime = FileTextLoader.modificationDate(of: sourceFileURL)
         }
         tabs.append(newTab)
         selectedTabId = newTab.id
@@ -188,15 +188,14 @@ final class QueryTabManager {
     /// dirty against content it had just loaded, and armed the same banner for a change it had
     /// already taken.
     private func adoptReopenedFile(at index: Int, content: String, url: URL) {
-        guard !tabs[index].content.isFileDirty else { return }
+        /// An unknown baseline is not a licence to replace what the tab holds. `isFileDirty` reads a
+        /// missing one as clean, so without this a tab that never learned what its file said would
+        /// be overwritten by the very check meant to protect it.
+        guard tabs[index].content.savedFileContent != nil, !tabs[index].content.isFileDirty else { return }
         tabs[index].content.query = content
         tabs[index].content.savedFileContent = content
-        tabs[index].content.loadMtime = Self.modificationDate(of: url)
+        tabs[index].content.loadMtime = FileTextLoader.modificationDate(of: url)
         tabs[index].content.externalModificationDetected = false
-    }
-
-    private static func modificationDate(of url: URL) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
     }
 
     /// Take an already-built tab, such as one rebuilt from the recently closed history, rather than

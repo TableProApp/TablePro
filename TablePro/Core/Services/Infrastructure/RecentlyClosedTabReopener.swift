@@ -53,10 +53,12 @@ internal enum RecentlyClosedTabReopener {
     }
 
     private static func makeTab(for entry: RecentlyClosedTabEntry) -> QueryTab {
-        QueryTab(
+        var tab = QueryTab(
             from: entry.tab,
             defaultPageSize: AppSettingsManager.shared.dataGrid.defaultPageSize
         )
+        FileTabBaseline.hydrate(&tab)
+        return tab
     }
 
     internal static func openWindowTab(for entry: RecentlyClosedTabEntry) {
