@@ -8,6 +8,7 @@
 //  is why the identifier-order unit tests are not enough on their own.
 //
 
+import AppKit
 import XCTest
 
 final class InspectorToolbarPlacementUITests: UITestCase {
@@ -21,16 +22,27 @@ final class InspectorToolbarPlacementUITests: UITestCase {
 
     /// The window size is pinned because the measurement is a distance from the window's trailing
     /// edge: a restored frame narrow enough to overflow the toolbar would move the last item for
-    /// reasons that have nothing to do with the inspector. The language is pinned because the only
-    /// handle on the toggle is the label AppKit gives its own standard item, which is localized.
+    /// reasons that have nothing to do with the inspector.
+    private let pinnedWindowSize = CGSize(width: 1512, height: 861)
+
     private var pinnedEnvironment: [String: String] {
-        ["TABLEPRO_SCREENSHOT_FRAME": "1512x861", "AppleLanguages": "(en)"]
+        ["TABLEPRO_SCREENSHOT_FRAME": "\(Int(pinnedWindowSize.width))x\(Int(pinnedWindowSize.height))"]
     }
+
+    /// The only handle on the toggle is the label AppKit gives its own standard item, which is
+    /// localized, so the app has to run in a known language. `AppleLanguages` is a defaults key
+    /// rather than an environment variable, and this test used to pass it in the environment, where
+    /// nothing reads it: the match worked only because both machines happened to be English.
+    private let pinnedArguments = ["-AppleLanguages", "(en)"]
 
     /// The inspector remembers whether it was open, so the starting state is whatever the previous
     /// launch left. Both directions are asserted rather than assuming one.
     func testTheInspectorToggleHoldsTheTrailingEdgeThroughBothTransitions() throws {
-        let app = try launchWithSampleDatabase(environment: pinnedEnvironment)
+        try skipUnlessTheScreenFitsThePinnedWindow()
+        let app = try launchWithSampleDatabase(
+            environment: pinnedEnvironment,
+            arguments: pinnedArguments
+        )
         let window = try mainWindow(of: app)
         let toggle = try inspectorToggle(in: window)
 
@@ -69,6 +81,25 @@ final class InspectorToolbarPlacementUITests: UITestCase {
     }
 
     // MARK: - Helpers
+
+    /// A window pinned wider than the screen is placed partly off it, and its toolbar collapses the
+    /// trailing items into the overflow menu, so there is no toggle in the toolbar to measure at
+    /// all. That is unmeasurable rather than wrong, and it is what the CI runner is: a 1024x768
+    /// virtual machine, where this reported "No inspector toggle in the toolbar" on every run while
+    /// passing on any real display.
+    private func skipUnlessTheScreenFitsThePinnedWindow() throws {
+        /// Width only, and against the screen's own frame rather than its visible one. The failure
+        /// this guards is horizontal, and the menu bar and Dock take height, not toolbar room.
+        let width = NSScreen.main?.frame.width ?? 0
+        try XCTSkipUnless(
+            width >= pinnedWindowSize.width,
+            """
+            Needs a screen at least \(Int(pinnedWindowSize.width))pt wide to hold the pinned window; \
+            this one is \(Int(width))pt. Anything narrower overflows the toolbar's trailing items \
+            into its menu, and the toggle is then not in the toolbar to measure.
+            """
+        )
+    }
 
     private func mainWindow(of app: XCUIApplication) throws -> XCUIElement {
         let window = app.windows.matching(NSPredicate(format: "identifier != %@", "welcome")).firstMatch
