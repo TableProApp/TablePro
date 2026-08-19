@@ -594,6 +594,32 @@ struct MainEditorContentView: View {
                     columnLayout: tab.columnLayout
                 )
                 .id(tab.id)
+            case .chart:
+                resultTabBarSection(tab: tab)
+                if let explain = tab.display.activeExplainResult {
+                    QueryPlanResultView(
+                        rawText: explain.explainRawText ?? "",
+                        executionTime: explain.executionTime,
+                        plan: explain.queryPlan
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let resultSet = tab.display.activeResultSet {
+                    ResultChartView(
+                        configuration: chartConfigurationBinding(for: tab),
+                        tableRows: resolvedTableRows(for: tab),
+                        primaryKeyColumns: Set(tab.tableContext.primaryKeyColumns),
+                        tabId: tab.id,
+                        resultSetId: resultSet.id,
+                        dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
+                        isUnlocked: LicenseManager.shared.isFeatureAvailable(.resultCharts)
+                    )
+                } else {
+                    ContentUnavailableView(
+                        String(localized: "No Data"),
+                        systemImage: "chart.bar.xaxis",
+                        description: Text(String(localized: "Execute a query to chart its loaded rows."))
+                    )
+                }
             case .data:
                 resultTabBarSection(tab: tab)
 
@@ -852,6 +878,19 @@ struct MainEditorContentView: View {
             set: { newValue in
                 if let index = tabManager.selectedTabIndex {
                     tabManager.mutate(at: index) { $0.sortState = newValue }
+                }
+            }
+        )
+    }
+
+    /// The chart's choices belong to the tab, not to the result set: a page turn, a sort or a
+    /// re-execute builds a new `ResultSet`, and the axes have to outlive it.
+    private func chartConfigurationBinding(for tab: QueryTab) -> Binding<ResultChartConfiguration> {
+        Binding(
+            get: { tab.chartConfiguration },
+            set: { newValue in
+                if let index = tabManager.selectedTabIndex {
+                    tabManager.mutate(at: index) { $0.chartConfiguration = newValue }
                 }
             }
         )

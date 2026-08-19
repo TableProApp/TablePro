@@ -109189,6 +109189,790 @@
           }
         }
       }
+    },
+    "%1$@ chart of %2$@ by %3$@ with %4$d points" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ chart of %2$@ by %3$@ with %#@points@"
+          },
+          "substitutions" : {
+            "points" : {
+              "argNum" : 4,
+              "formatSpecifier" : "d",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg point"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg points"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "%3$@ ölçütüne göre %2$@ için %4$d noktalı %1$@ grafiği",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Biểu đồ %1$@ của %2$@ theo %3$@ với %4$d điểm",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "包含 %4$d 个点的%1$@图：按%3$@显示%2$@",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "包含 %4$d 個點的%1$@圖：依%3$@顯示%2$@",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Showing the first %1$@ points of %2$@ loaded rows" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yüklenen %2$@ satırın ilk %1$@ noktası gösteriliyor"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang hiển thị %1$@ điểm đầu tiên trong %2$@ hàng đã tải"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示已加载 %2$@ 行中的前 %1$@ 个点"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示已載入 %2$@ 列中的前 %1$@ 個點"
+          }
+        }
+      }
+    },
+    "Showing the first %@ series" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İlk %@ seri gösteriliyor"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang hiển thị %@ chuỗi đầu tiên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示前 %@ 个系列"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示前 %@ 個系列"
+          }
+        }
+      }
+    },
+    "Charting the first %1$@ of %2$@ loaded rows" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yüklenen %2$@ satırın ilk %1$@ tanesi grafiğe alınıyor"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang vẽ %1$d trong số %2$@ hàng đã tải đầu tiên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "绘制已加载 %2$@ 行中的前 %1$@ 行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "繪製已載入 %2$@ 列中的前 %1$@ 列"
+          }
+        }
+      }
+    },
+    "%d skipped" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "%d atlandı",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "đã bỏ qua %d",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "已跳过 %d 行",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "已略過 %d 列",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Area" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Alan",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Miền",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "面积",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "面積",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Chart" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Grafik",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Biểu đồ",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "图表",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "圖表",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Chart Type" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Grafik Türü",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Loại biểu đồ",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "图表类型",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "圖表類型",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Charts draw the rows the result pane has loaded. Grid selection, Find, hidden columns, and value filters do not change the chart." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grafikler sonuç bölmesinin yüklediği satırları çizer. Tablo seçimi, Bul, gizli sütunlar ve değer filtreleri grafiği değiştirmez."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biểu đồ vẽ các hàng mà khung kết quả đã tải. Lựa chọn trong lưới, Tìm, cột ẩn và bộ lọc giá trị không làm thay đổi biểu đồ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图表绘制结果面板已加载的行。网格选择、查找、隐藏列和值过滤器不会改变图表。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖表繪製結果面板已載入的列。表格選取、尋找、隱藏欄和值篩選器不會改變圖表。"
+          }
+        }
+      }
+    },
+    "Chart data scope" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Grafik veri kapsamı",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Phạm vi dữ liệu biểu đồ",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "图表数据范围",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "圖表資料範圍",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Choose Column" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Sütun Seç",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Chọn cột",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "选择列",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "選擇欄",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Execute a query to chart its loaded rows." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Yüklenen satırları grafikte göstermek için bir sorgu çalıştırın.",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Chạy truy vấn để vẽ biểu đồ từ các hàng đã tải.",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "执行查询以绘制已加载行的图表。",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "執行查詢以繪製已載入列的圖表。",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Line" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Çizgi",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Đường",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "折线",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "折線",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "No Numeric Column" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sayısal Sütun Yok"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không có cột số"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有数值列"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有數值欄"
+          }
+        }
+      }
+    },
+    "Charts need a numeric column for the Y axis. This result has none." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grafikler Y ekseni için sayısal bir sütuna ihtiyaç duyar. Bu sonuçta yok."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biểu đồ cần một cột số cho trục Y. Kết quả này không có cột nào."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图表的 Y 轴需要一个数值列，此结果没有。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖表的 Y 軸需要一個數值欄，此結果沒有。"
+          }
+        }
+      }
+    },
+    "The selected axes contain only null, binary, or invalid values." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seçilen eksenler yalnızca null, ikili veya geçersiz değerler içeriyor."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các trục đã chọn chỉ chứa giá trị null, nhị phân hoặc không hợp lệ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选坐标轴只包含空值、二进制或无效值。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所選座標軸只包含空值、二進位或無效值。"
+          }
+        }
+      }
+    },
+    "No Chartable Rows" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Grafiğe Uygun Satır Yok",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Không có hàng để vẽ biểu đồ",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "没有可绘制的行",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "沒有可繪製的列",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "No value" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Değer yok",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Không có giá trị",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "无值",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "無值",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Result Charts" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Sonuç Grafikleri",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Biểu đồ kết quả",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "结果图表",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "結果圖表",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Row" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Satır",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Hàng",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "行",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "列",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Scatter" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Dağılım",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Phân tán",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "散点",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "散佈",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Series" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Seri",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Chuỗi",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "系列",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "數列",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Turn loaded query results into native bar, line, area, and scatter charts." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Yüklenen sorgu sonuçlarını yerel çubuk, çizgi, alan ve dağılım grafiklerine dönüştürün.",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Chuyển kết quả truy vấn đã tải thành biểu đồ cột, đường, miền và phân tán theo chuẩn hệ thống.",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "将已加载的查询结果转换为原生柱状图、折线图、面积图和散点图。",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "將已載入的查詢結果轉換為原生長條圖、折線圖、面積圖和散佈圖。",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "X Axis" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "X Ekseni",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Trục X",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "X 轴",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "X 軸",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Y Axis" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Y Ekseni",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Trục Y",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "Y 轴",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "Y 軸",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "%d more" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d daha"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "thêm %d"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还有 %d 个"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "還有 %d 個"
+          }
+        }
+      }
+    },
+    "Building chart" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grafik oluşturuluyor"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang tạo biểu đồ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在生成图表"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在產生圖表"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

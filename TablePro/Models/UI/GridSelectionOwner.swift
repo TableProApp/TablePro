@@ -18,6 +18,7 @@ internal enum GridSelectionOwner: Equatable {
         guard let tabType else { return .none }
         if tabType == .createTable { return .schemaGrid }
         if resultsViewMode == .structure { return .schemaGrid }
+        if resultsViewMode == .chart { return .none }
         switch tabType {
         case .table, .query:
             return .dataGrid

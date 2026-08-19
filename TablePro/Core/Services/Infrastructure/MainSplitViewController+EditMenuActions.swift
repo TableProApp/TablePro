@@ -60,10 +60,11 @@ extension MainSplitViewController {
     /// One Find command, and the responder chain decides what finding means. A focused editor declares
     /// the same selectors on its own `TextViewController`, closer to the first responder, so it searches
     /// its own text without this class knowing which editor is focused. Reaching here means no editor
-    /// holds focus: a table tab filters its rows, and every other tab hands the find to the editor the
-    /// window is built around, so Cmd+F still reaches the query text while the grid or sidebar has focus.
+    /// holds focus: an active table result grid filters its rows, and every other view hands the find
+    /// to the editor the window is built around, so Cmd+F still reaches the query text while the grid
+    /// or sidebar has focus.
     @objc func performFind(_ sender: Any?) {
-        guard commandActions?.isTableTab == true else {
+        guard commandActions?.canUseTableResultCommands == true else {
             EditorEventRouter.shared.showFindPanelForKeyWindow()
             return
         }

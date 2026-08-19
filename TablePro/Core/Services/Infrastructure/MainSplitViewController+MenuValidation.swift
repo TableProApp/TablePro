@@ -17,7 +17,7 @@ struct MenuValidationContext: Equatable {
     var hasSelectedWorkspace = false
     var isConnected = false
     var isReadOnly = false
-    var isTableTab = false
+    var canUseTableResultCommands = false
     /// Save As writes the selected tab's SQL, so it needs a query tab and not merely a connection.
     var isQueryTab = false
     /// Export Results exports the selected tab's rows, so an empty grid has nothing to offer.
@@ -28,6 +28,9 @@ struct MenuValidationContext: Equatable {
     var hasPendingChanges = false
     var hasDataPendingChanges = false
     var hasRowSelection = false
+    /// Copy with headers and copy as JSON read the result grid's columns, so they need the data
+    /// grid's selection specifically, not the structure grid's.
+    var hasDataGridRowSelection = false
     var hasTableSelection = false
     /// Whether the window-level `paste:` fallback would actually paste. AppKit hands a disabled
     /// item its key equivalent regardless, so an item enabled over a handler that returns at its
@@ -145,7 +148,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(truncateTable(_:)):
             return context.isConnected && context.hasTableSelection && !context.isReadOnly
         case #selector(performFind(_:)):
-            return context.hasEditorForFind || (context.isConnected && context.isTableTab)
+            return context.hasEditorForFind || (context.isConnected && context.canUseTableResultCommands)
         case #selector(findNext(_:)), #selector(findPrevious(_:)):
             return context.hasEditorForFind || context.hasActiveGridFind
         case #selector(undo(_:)):
@@ -154,10 +157,11 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canRedo
         case #selector(copy(_:)):
             return context.hasRowSelection || context.hasTableSelection
-        case #selector(copySelectedRows(_:)),
-             #selector(copyRowsWithHeaders(_:)),
-             #selector(copyRowsAsJson(_:)):
+        case #selector(copySelectedRows(_:)):
             return context.hasRowSelection
+        case #selector(copyRowsWithHeaders(_:)),
+             #selector(copyRowsAsJson(_:)):
+            return context.hasDataGridRowSelection
         case #selector(paste(_:)):
             return context.isConnected && context.canPasteRows
         case #selector(delete(_:)):
@@ -189,7 +193,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected
 
         case #selector(toggleFilterBar(_:)):
-            return context.isConnected && context.isTableTab
+            return context.isConnected && context.canUseTableResultCommands
         case #selector(pinResult(_:)):
             return context.canPinResultTab
         case #selector(useFlatSidebarLayout(_:)), #selector(useTreeSidebarLayout(_:)):
@@ -212,7 +216,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
             isConnected: isConnected,
             isReadOnly: actions.isReadOnly,
-            isTableTab: actions.isTableTab,
+            canUseTableResultCommands: actions.canUseTableResultCommands,
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
             isCurrentTabEditable: actions.isCurrentTabEditable,
@@ -221,6 +225,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasPendingChanges: actions.hasPendingChanges,
             hasDataPendingChanges: actions.hasDataPendingChanges,
             hasRowSelection: actions.hasRowSelection,
+            hasDataGridRowSelection: actions.hasDataGridRowSelection,
             hasTableSelection: actions.hasTableSelection,
             canPasteRows: actions.canPasteRows,
             canCloseOtherTabs: actions.canCloseOtherTabs,
