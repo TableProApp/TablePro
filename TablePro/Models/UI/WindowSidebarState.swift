@@ -44,6 +44,13 @@ internal final class WindowSidebarState {
         guard selectedTables != tables else { return }
         selectedTables = tables
     }
+
+    /// Whether the window may re-assert the object its selected tab is showing over what is
+    /// selected now. It may not while the user is holding a pick of their own: several rows for a
+    /// batch command, or one row that is not a table at all, such as a schema they just clicked.
+    var acceptsObjectMarkRefresh: Bool {
+        selectedRowCount <= 1 && selectedTables.count == selectedRowCount
+    }
     var expandedTreeSchemas: Set<String> = [] { didSet { persistExpansion() } }
     var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
     var expandedTreeDatabaseSchemas: Set<DatabaseSchemaKey> = [] { didSet { persistExpansion() } }

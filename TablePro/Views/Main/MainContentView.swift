@@ -383,12 +383,12 @@ struct MainContentView: View {
                 }
                 handleTableSelectionChange(from: oldTables, to: newTables)
             }
-            /// A background reload of the same container must not collapse a selection the user is
-            /// building for a batch command. Every other input re-asserts unconditionally: a
-            /// container switch above all, because a selection made in the container being left is
-            /// not a selection in the one arriving.
+            /// A background reload of the same container must not take a selection out from under
+            /// the user. Every other input re-asserts unconditionally: a container switch above all,
+            /// because a selection made in the container being left is not one in the container
+            /// arriving.
             .onChange(of: tables) { _, _ in
-                guard coordinator.windowSidebarState.selectedRowCount <= 1 else { return }
+                guard coordinator.windowSidebarState.acceptsObjectMarkRefresh else { return }
                 coordinator.syncSidebarObjectSelection()
             }
     }

@@ -216,7 +216,7 @@ private struct EditorTabStripItem: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("editor-tab")
-        .accessibilityLabel(Text(label.description))
+        .accessibilityLabel(Text(label.text))
         .accessibilityValue(Text(positionDescription))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityAction(named: Text("Close Tab"), onClose)

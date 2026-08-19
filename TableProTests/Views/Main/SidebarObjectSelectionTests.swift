@@ -22,6 +22,10 @@ struct SidebarObjectSelectionTests {
         ]
     }
 
+    private func table(_ name: String, schema: String) -> TableInfo {
+        TableInfo(name: name, type: .table, rowCount: nil, schema: schema)
+    }
+
     @Test("The tab's table is marked when the tab is in the container being browsed")
     func marksTabInBrowsedContainer() {
         let selection = SidebarObjectSelection.resolve(
@@ -44,15 +48,40 @@ struct SidebarObjectSelectionTests {
         #expect(selection == .mark([]))
     }
 
-    @Test("A tab in another schema of the same database marks nothing")
-    func marksNothingForTabInAnotherSchema() {
+    @Test("A tab in another schema of the same database keeps its mark, because its row is listed")
+    func marksTabInAnotherSchemaOfTheSameDatabase() {
+        let publicOrders = table("orders", schema: "public")
         let selection = SidebarObjectSelection.resolve(
             tabTableName: "orders",
             tabScope: scope("app", schema: "public"),
             browseScope: scope("app", schema: "reporting"),
-            tables: tables
+            tables: [publicOrders, table("orders", schema: "reporting")]
         )
-        #expect(selection == .mark([]))
+        #expect(selection == .mark([publicOrders]))
+    }
+
+    @Test("Two rows sharing a name in one database are told apart by the tab's schema")
+    func picksTheRowInTheTabsSchema() {
+        let reportingOrders = table("orders", schema: "reporting")
+        let selection = SidebarObjectSelection.resolve(
+            tabTableName: "orders",
+            tabScope: scope("app", schema: "reporting"),
+            browseScope: scope("app", schema: "reporting"),
+            tables: [table("orders", schema: "public"), reportingOrders]
+        )
+        #expect(selection == .mark([reportingOrders]))
+    }
+
+    @Test("A tab naming no schema takes the first row with that name, as before")
+    func fallsBackToTheNameWhenTheTabNamesNoSchema() {
+        let first = table("orders", schema: "public")
+        let selection = SidebarObjectSelection.resolve(
+            tabTableName: "orders",
+            tabScope: scope("app"),
+            browseScope: scope("app"),
+            tables: [first, table("orders", schema: "reporting")]
+        )
+        #expect(selection == .mark([first]))
     }
 
     @Test("A tab that names no table marks nothing")

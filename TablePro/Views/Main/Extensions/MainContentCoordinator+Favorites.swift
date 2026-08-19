@@ -40,8 +40,7 @@ extension MainContentCoordinator {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: favorite.fileURL.path)[.modificationDate]) as? Date
 
         if let existing = WindowLifecycleMonitor.shared.window(forSourceFile: favorite.fileURL) {
-            let hosting = MainContentCoordinator.coordinator(forWindow: existing)
-            if let hosting,
+            if let hosting = MainContentCoordinator.coordinator(forWindow: existing),
                let match = hosting.tabManager.tabs.first(where: {
                    $0.content.sourceFileURL == favorite.fileURL
                }) {

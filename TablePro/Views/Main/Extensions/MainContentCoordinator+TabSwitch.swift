@@ -64,13 +64,7 @@ extension MainContentCoordinator {
             let newTab = tabManager.tabs[newIndex]
             let newRows = tabSessionRegistry.tableRows(for: newId)
 
-            containerTabHistory.record(
-                tabId: newId,
-                container: WorkspaceAnchoring.containerName(
-                    of: newTab,
-                    target: PluginManager.shared.containerSwitchTarget(for: connection.type)
-                )
-            )
+            recordSelectedTabContainer()
 
             selectionState.indices = newTab.selectedRowIndices
             toolbarState.isTableTab = newTab.tabType == .table

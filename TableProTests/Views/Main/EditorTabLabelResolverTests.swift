@@ -75,6 +75,19 @@ struct EditorTabLabelResolverTests {
         #expect(labels[tabs[0].id]?.description == "reporting.orders")
     }
 
+    @Test("A tab that names no object is never qualified, whatever database it was opened from")
+    func neverQualifiesANonObjectTab() {
+        var dashboard = QueryTab(title: "Server Dashboard", tabType: .serverDashboard)
+        dashboard.tableContext.databaseName = "app"
+        var other = QueryTab(title: "Server Dashboard", tabType: .serverDashboard)
+        other.tableContext.databaseName = "staging"
+        let labels = EditorTabLabelResolver.resolve(tabs: [dashboard, other], target: .database)
+
+        #expect(labels[dashboard.id]?.text == "Server Dashboard")
+        #expect(labels[dashboard.id]?.description == "Server Dashboard")
+        #expect(labels[other.id]?.text == "Server Dashboard")
+    }
+
     @Test("A collision between a bound and an unbound tab qualifies only the one that can be")
     func qualifiesOnlyTheTabWithAContainer() {
         let tabs = [tableTab("orders", database: "app"), tableTab("orders")]

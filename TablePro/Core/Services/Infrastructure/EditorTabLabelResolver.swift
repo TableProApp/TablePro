@@ -14,8 +14,13 @@ import Foundation
 /// the same one. That is what DataGrip does across schemas and VS Code across folders: a name that
 /// is already unique stays short, because a bar of qualified names is harder to read, not easier.
 ///
-/// The description carries the container either way. A tooltip and an accessibility label have no
-/// width budget, so there is no reason to make anyone find the database somewhere else.
+/// Only a tab that names an object is ever qualified. `container.name` reads as a path to that
+/// object, which a Server Dashboard or a Users & Roles tab is not: those are server work that
+/// happens to have been opened from a database, and `mydb.Server Dashboard` names nothing.
+///
+/// The tooltip carries the container either way, since hovering has no width budget. The
+/// accessibility label stays on the drawn text, so what VoiceOver reads is what is on screen; when
+/// two tabs really do collide the drawn text is already qualified, and both channels say so.
 ///
 /// Resolved for rendering rather than written into `QueryTab.title`, because qualification is a
 /// function of what else is open: baked into the tab it would outlive the sibling that caused it,
@@ -23,7 +28,9 @@ import Foundation
 /// anything.
 internal enum EditorTabLabelResolver {
     internal struct Label: Equatable {
+        /// What the strip draws, and what VoiceOver reads.
         internal let text: String
+        /// What hovering says.
         internal let description: String
 
         internal init(text: String, description: String) {
@@ -37,7 +44,9 @@ internal enum EditorTabLabelResolver {
         var containersByTitle: [String: Set<String>] = [:]
 
         for tab in tabs {
-            let container = WorkspaceAnchoring.containerName(of: tab, target: target) ?? ""
+            let container = tab.tableContext.tableName == nil
+                ? ""
+                : WorkspaceAnchoring.containerName(of: tab, target: target) ?? ""
             containers[tab.id] = container
             containersByTitle[tab.title, default: []].insert(container)
         }

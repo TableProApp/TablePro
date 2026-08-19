@@ -474,6 +474,24 @@ extension MainContentCoordinator {
     ///
     /// A container holding no tab selects nothing. That row is the browse cursor alone, and the
     /// next thing opened lands there anyway.
+    /// Records which container the tab on screen belongs to, so the connections strip can come
+    /// back to it.
+    ///
+    /// Called on every tab change and again when the window becomes key. A window restoring its
+    /// tabs picks the selected one before anything is watching the selection, so without the second
+    /// call the first thing ever recorded would be whatever the user switched to next, and coming
+    /// back to that database would land on the wrong tab.
+    func recordSelectedTabContainer() {
+        guard let tab = tabManager.selectedTab else { return }
+        containerTabHistory.record(
+            tabId: tab.id,
+            container: WorkspaceAnchoring.containerName(
+                of: tab,
+                target: PluginManager.shared.containerSwitchTarget(for: connection.type)
+            )
+        )
+    }
+
     func selectTab(inContainer container: String) {
         guard let tabId = containerTabHistory.tabToSelect(
             inContainer: container,
