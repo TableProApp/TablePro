@@ -1,7 +1,7 @@
 import AppIntents
 import Foundation
 
-enum IntentDataError: Error, CustomLocalizedStringResourceConvertible {
+enum IntentDataError: Error, CustomLocalizedStringResourceConvertible, Equatable {
     case connectionNotFound
     case unsupportedDatabaseType(String)
     case connectionFailed(String)
@@ -11,6 +11,11 @@ enum IntentDataError: Error, CustomLocalizedStringResourceConvertible {
     case unknownColumns([String], String)
     case emptyPayload
     case expectedSingleRow
+    case fileIsNotUTF8
+    case invalidTextEncoding
+    case jsonArrayContainsNonObject
+    case invalidJSONShape
+    case csvMissingHeader
     case malformedPayload(String)
     case tooManyRows(Int)
 
@@ -34,6 +39,16 @@ enum IntentDataError: Error, CustomLocalizedStringResourceConvertible {
             return "No data was provided to add."
         case .expectedSingleRow:
             return "Add Row to Table expects one row. Use Add Rows to Table for multiple rows."
+        case .fileIsNotUTF8:
+            return LocalizedStringResource("The file is not UTF-8 text.")
+        case .invalidTextEncoding:
+            return LocalizedStringResource("The text encoding is invalid.")
+        case .jsonArrayContainsNonObject:
+            return LocalizedStringResource("The JSON array must contain only objects.")
+        case .invalidJSONShape:
+            return LocalizedStringResource("Provide a JSON object or an array of objects.")
+        case .csvMissingHeader:
+            return LocalizedStringResource("The CSV data has no header row.")
         case .malformedPayload(let message):
             return "The data could not be read: \(message)"
         case .tooManyRows(let limit):

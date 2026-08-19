@@ -37,10 +37,14 @@ struct CreateTableView: View {
 
     @Environment(\.appServices) private var services
 
-    @State private var structureChangeManager: StructureChangeManager
+    /// The definition in progress. Held outside this view because the view is destroyed the moment
+    /// the tab is deselected, and nothing in a Create Table tab exists anywhere else yet.
+    @Bindable var draft: CreateTableDraft
+
     @State private var wrappedChangeManager: AnyChangeManager
-    @State private var tableName = ""
-    @State private var tableOptions = CreateTableOptions()
+
+    private var structureChangeManager: StructureChangeManager { draft.changeManager }
+
     @State private var selectedTab: CreateTableTab = .columns
     @State private var isCreating = false
     @State private var errorMessage: String?
@@ -57,14 +61,15 @@ struct CreateTableView: View {
     init(
         connection: DatabaseConnection,
         coordinator: MainContentCoordinator?,
-        selectionState: GridSelectionState
+        selectionState: GridSelectionState,
+        draft: CreateTableDraft
     ) {
         self.connection = connection
         self.coordinator = coordinator
         self.selectionState = selectionState
+        self.draft = draft
 
-        let manager = StructureChangeManager()
-        _structureChangeManager = State(wrappedValue: manager)
+        let manager = draft.changeManager
         _wrappedChangeManager = State(wrappedValue: AnyChangeManager(manager))
         _gridDelegate = State(wrappedValue: CreateTableGridDelegate(
             structureChangeManager: manager,
@@ -119,7 +124,7 @@ struct CreateTableView: View {
             Text("Table Name:")
                 .font(.body.weight(.medium))
 
-            TextField("Enter table name", text: $tableName)
+            TextField("Enter table name", text: $draft.tableName)
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled(true)
                 .frame(maxWidth: 300)
@@ -128,22 +133,22 @@ struct CreateTableView: View {
                 Divider()
                     .frame(height: 20)
 
-                Picker("Engine:", selection: $tableOptions.engine) {
+                Picker("Engine:", selection: $draft.tableOptions.engine) {
                     ForEach(CreateTableOptions.engines, id: \.self) { engine in
                         Text(engine).tag(engine)
                     }
                 }
                 .fixedSize()
 
-                Picker("Charset:", selection: $tableOptions.charset) {
+                Picker("Charset:", selection: $draft.tableOptions.charset) {
                     ForEach(CreateTableOptions.charsets, id: \.self) { cs in
                         Text(cs).tag(cs)
                     }
                 }
                 .fixedSize()
 
-                Picker("Collation:", selection: $tableOptions.collation) {
-                    ForEach(CreateTableOptions.collations[tableOptions.charset] ?? [], id: \.self) { col in
+                Picker("Collation:", selection: $draft.tableOptions.collation) {
+                    ForEach(CreateTableOptions.collations[draft.tableOptions.charset] ?? [], id: \.self) { col in
                         Text(col).tag(col)
                     }
                 }
@@ -154,9 +159,9 @@ struct CreateTableView: View {
         }
         .padding()
         .background(Color(nsColor: .controlBackgroundColor))
-        .onChange(of: tableOptions.charset) { _, newCharset in
+        .onChange(of: draft.tableOptions.charset) { _, newCharset in
             if let first = CreateTableOptions.collations[newCharset]?.first {
-                tableOptions.collation = first
+                draft.tableOptions.collation = first
             }
         }
     }
@@ -212,7 +217,7 @@ struct CreateTableView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.accentColor)
-            .disabled(tableName.isEmpty || structureChangeManager.workingColumns.isEmpty || isCreating)
+            .disabled(draft.tableName.isEmpty || structureChangeManager.workingColumns.isEmpty || isCreating)
             .keyboardShortcut(.return, modifiers: .command)
         }
         .padding()
@@ -313,8 +318,8 @@ struct CreateTableView: View {
         }
         .onAppear { generatePreviewSQL() }
         .onChange(of: structureChangeManager.reloadVersion) { generatePreviewSQL() }
-        .onChange(of: tableName) { generatePreviewSQL() }
-        .onChange(of: tableOptions) { generatePreviewSQL() }
+        .onChange(of: draft.tableName) { generatePreviewSQL() }
+        .onChange(of: draft.tableOptions) { generatePreviewSQL() }
     }
 
     // Cell editing, row operations, undo/redo handled by CreateTableGridDelegate
@@ -336,7 +341,7 @@ struct CreateTableView: View {
         }
 
         let definition = PluginCreateTableDefinition(
-            tableName: tableName.isEmpty ? "untitled" : tableName,
+            tableName: draft.tableName.isEmpty ? "untitled" : draft.tableName,
             columns: columns.map { $0.toPlugin() },
             indexes: structureChangeManager.workingIndexes
                 .filter { !$0.name.isEmpty && !$0.columns.isEmpty }
@@ -345,10 +350,10 @@ struct CreateTableView: View {
                 .filter { !$0.name.isEmpty && !$0.columns.isEmpty && !$0.referencedTable.isEmpty }
                 .map { $0.toPlugin() },
             primaryKeyColumns: pkColumns,
-            engine: showMySQLOptions ? tableOptions.engine : nil,
-            charset: showMySQLOptions ? tableOptions.charset : nil,
-            collation: showMySQLOptions ? tableOptions.collation : nil,
-            ifNotExists: tableOptions.ifNotExists
+            engine: showMySQLOptions ? draft.tableOptions.engine : nil,
+            charset: showMySQLOptions ? draft.tableOptions.charset : nil,
+            collation: showMySQLOptions ? draft.tableOptions.collation : nil,
+            ifNotExists: draft.tableOptions.ifNotExists
         )
 
         let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?.schemaPluginDriver
@@ -359,7 +364,7 @@ struct CreateTableView: View {
 
     private var isReadyToCreate: Bool {
         !isCreating
-            && !tableName.isEmpty
+            && !draft.tableName.isEmpty
             && structureChangeManager.workingColumns.contains { !$0.name.isEmpty && !$0.dataType.isEmpty }
     }
 
@@ -368,7 +373,7 @@ struct CreateTableView: View {
     }
 
     private func createTable() {
-        guard !isCreating, !tableName.isEmpty else { return }
+        guard !isCreating, !draft.tableName.isEmpty else { return }
         guard let sql = buildCreateTableSQL() else {
             errorMessage = String(localized: "Add at least one column with a name and type")
             showError = true
@@ -423,7 +428,7 @@ struct CreateTableView: View {
                 )
 
                 if let coordinator {
-                    coordinator.openTableTab(tableName)
+                    coordinator.openTableTab(draft.tableName)
                 }
 
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))

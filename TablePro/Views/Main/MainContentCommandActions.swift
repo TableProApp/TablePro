@@ -526,7 +526,61 @@ final class MainContentCommandActions {
     /// in right after connecting. The window hosts every open connection now, so closing it here
     /// would take the other connections' tabs and their unsaved edits with it.
     func closeTab(id: UUID) {
-        coordinator?.closeTabsByUser(ids: [id])
+        Task { await closeTabAwaiting(id: id) }
+    }
+
+    /// A tab holding work only a save can recover asks before it goes, which is what the window
+    /// close and the batch closes already do and what the HIG requires of an app that does not
+    /// autosave: "present a save dialog when people choose to close the document, quit your app,
+    /// log out, or restart".
+    ///
+    /// Save proceeds with the close, per `NSDocument.canCloseDocumentWithDelegate`: "shouldClose
+    /// will be YES if ... the user chose to discard modifications, or chose to save and the saving
+    /// was successful". `saveSelectedTabWork` returns false for the one case where saving cannot
+    /// finish on its own, staged principals, whose review sheet is now up and owns the decision.
+    func closeTabAwaiting(id: UUID) async {
+        guard let coordinator,
+              let tab = coordinator.tabManager.tabs.first(where: { $0.id == id }) else { return }
+        guard coordinator.hasUnsavedWork(in: tab) else {
+            coordinator.closeTabsByUser(ids: [id])
+            return
+        }
+        guard coordinator.tabClosesInFlight.insert(id).inserted else { return }
+        defer { coordinator.tabClosesInFlight.remove(id) }
+
+        let previousSelection = coordinator.tabManager.selectedTabId
+        revealTab(id)
+
+        switch await AlertHelper.confirmSaveChanges(
+            message: String(localized: "Your changes will be lost if you don't save them."),
+            window: closeAnchorWindow
+        ) {
+        case .save:
+            guard await saveSelectedTabWork() else { return }
+            coordinator.closeTabsByUser(ids: [id])
+        case .dontSave:
+            coordinator.closeTabsByUser(ids: [id])
+        case .cancel:
+            restoreSelection(previousSelection)
+        }
+    }
+
+    /// Shown, then asked. The save and discard machinery reads the selected tab, so the tab being
+    /// closed has to be the selected one before the question is put; naming work the user cannot
+    /// see would also ask them to decide about something they have no way to look at first.
+    private func revealTab(_ id: UUID) {
+        guard let coordinator, coordinator.tabManager.selectedTabId != id else { return }
+        coordinator.tabManager.selectedTabId = id
+    }
+
+    /// Cancel puts everything back, including a selection that only moved so the sheet had
+    /// somewhere honest to point.
+    private func restoreSelection(_ id: UUID?) {
+        guard let coordinator,
+              let id,
+              coordinator.tabManager.selectedTabId != id,
+              coordinator.tabManager.tabs.contains(where: { $0.id == id }) else { return }
+        coordinator.tabManager.selectedTabId = id
     }
 
     /// Cmd+W closes the tab in front. Pressed again with no tabs left it closes the connection,
@@ -643,15 +697,15 @@ final class MainContentCommandActions {
         coordinator.toolbarState.isTableTab = false
     }
 
-    private func saveAndClose(asBatchSurvivor: Bool?) async -> Bool {
-        guard let coordinator = coordinator else {
-            finish(asBatchSurvivor: asBatchSurvivor)
-            return true
-        }
+    /// The save half of a close, shared by the tab close, the window close and the batch close so
+    /// the three cannot drift on what Save means. Returns whether the caller may go on to close.
+    ///
+    /// False comes back for exactly one case: user and role changes can only be applied after the
+    /// SQL is reviewed, so Save opens the review sheet and stands the close down. Falling through
+    /// there would close over the sheet and destroy every staged change.
+    func saveSelectedTabWork() async -> Bool {
+        guard let coordinator = coordinator else { return true }
 
-        // User and role changes can only be applied after the SQL is reviewed, so Save opens the
-        // review sheet and cancels the close. Falling through here would close the window and
-        // destroy every staged change.
         if isUsersRolesTab, coordinator.usersRolesActions?.hasChanges() == true {
             coordinator.usersRolesActions?.reviewAndApply()
             return false
@@ -660,7 +714,6 @@ final class MainContentCommandActions {
         // Structure view saves via direct coordinator call
         if coordinator.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator.structureActions?.saveChanges?()
-            finish(asBatchSurvivor: asBatchSurvivor)
             return true
         }
 
@@ -669,30 +722,33 @@ final class MainContentCommandActions {
             || !pendingTruncates.wrappedValue.isEmpty
             || !pendingDeletes.wrappedValue.isEmpty
         if hasDataChanges {
-            let saved = await withCheckedContinuation { continuation in
+            return await withCheckedContinuation { continuation in
                 coordinator.saveCompletionContinuation = continuation
                 saveChanges()
             }
-            if saved {
-                finish(asBatchSurvivor: asBatchSurvivor)
-            }
-            return saved
         }
 
         // Sidebar-only edits (made directly in the inspector panel)
         if rightPanelState.editState.hasEdits {
             rightPanelState.onSave?()
-            finish(asBatchSurvivor: asBatchSurvivor)
             return true
         }
 
         // File save (query editor with source file)
         if coordinator.tabManager.selectedTab?.content.isFileDirty == true {
             saveFileToSourceURL()
-            finish(asBatchSurvivor: asBatchSurvivor)
             return true
         }
 
+        return true
+    }
+
+    private func saveAndClose(asBatchSurvivor: Bool?) async -> Bool {
+        guard coordinator != nil else {
+            finish(asBatchSurvivor: asBatchSurvivor)
+            return true
+        }
+        guard await saveSelectedTabWork() else { return false }
         finish(asBatchSurvivor: asBatchSurvivor)
         return true
     }

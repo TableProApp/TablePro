@@ -29,7 +29,7 @@ enum RowPayload {
         if let file {
             let fileData = try await file.data(contentType: .data)
             guard let text = String(data: fileData, encoding: .utf8) else {
-                throw IntentDataError.malformedPayload("the file is not UTF-8 text")
+                throw IntentDataError.fileIsNotUTF8
             }
             return text
         }
@@ -41,11 +41,11 @@ enum RowPayload {
 
     static func parseJSON(_ text: String) throws -> [PayloadRow] {
         guard let data = text.data(using: .utf8) else {
-            throw IntentDataError.malformedPayload("invalid text encoding")
+            throw IntentDataError.invalidTextEncoding
         }
         let object: Any
         do {
-            object = try JSONSerialization.jsonObject(with: data, options: [])
+            object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
         } catch {
             throw IntentDataError.malformedPayload(error.localizedDescription)
         }
@@ -55,18 +55,18 @@ enum RowPayload {
         if let array = object as? [Any] {
             return try array.map { element in
                 guard let dictionary = element as? [String: Any] else {
-                    throw IntentDataError.malformedPayload("expected a list of objects")
+                    throw IntentDataError.jsonArrayContainsNonObject
                 }
                 return row(from: dictionary)
             }
         }
-        throw IntentDataError.malformedPayload("expected a JSON object or a list of objects")
+        throw IntentDataError.invalidJSONShape
     }
 
     static func parseCSV(_ text: String) throws -> [PayloadRow] {
         let records = CSVRecordParser.parse(text)
         guard let header = records.first, !header.allSatisfy(\.isEmpty) else {
-            throw IntentDataError.malformedPayload("the CSV has no header row")
+            throw IntentDataError.csvMissingHeader
         }
         return records.dropFirst().compactMap { record in
             guard !(record.count == 1 && record[0].isEmpty) else { return nil }

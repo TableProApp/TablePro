@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Help › Acknowledgements lists the 38 open source libraries TablePro ships, each with the exact version that shipped, its license, the copyright lines it asks you to reproduce, and the full license text. Several of these licenses require the text to travel with the app, and it had never been included. Two libraries whose own projects publish no license are listed as unresolved rather than being given a guess.
+- Korean localization for macOS, iPhone and iPad, with a 한국어 language option in General settings. (#2219)
 - Query results can be drawn as native bar, line, area and scatter charts from the loaded rows. Date and timestamp columns plot on a real time axis. Axis and series controls stack when the pane is narrow, hover shows exact values, and the chart keeps its type and axes across a page turn, a sort and a re-run. A result past the plotting limit still draws what fits and says how much. The status bar keeps the row count and pagination in Chart mode. This is a Starter feature.
 - Every database operation TablePro authorizes is written to a local execution log, including the ones the AI assistant and MCP clients ask for, with the statement stored as a digest rather than as text. Records are hash chained, so an edited, reordered or removed entry can be detected. The log stays on the Mac and is not synced.
 - An administrator can set a minimum Safe Mode level for every connection through a macOS configuration profile, so a managed Mac cannot be dropped below it. A connection set stricter keeps its own level, since the policy is a floor rather than a ceiling. The control shows as managed instead of editable.
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The PHP serialized viewer's tree filter now behaves like the JSON one. Both ignore accents, so `cafe` finds `café`. (#2204)
 - Picking a database in the connections strip returns you to the tab you last used in it, the way picking a connection already returns you to that connection's tab. A database with nothing open just moves the object browser, as before. (#2217)
 - Two tabs showing objects with the same name from different databases now carry the database in their names, so two tabs called `orders` read as `app.orders` and `staging.orders`. A name no other tab uses stays short. Hovering a tab, or reading it with VoiceOver, always names its database. (#2217)
+- Save in the "Do you want to save changes?" prompt now closes what you asked to close once the save lands. Closing a group of tabs, or closing a connection, used to save and then leave everything open.
 
 ### Fixed
 
@@ -57,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A tree filter that finds nothing now says so instead of showing an empty list, and says when the value was too large to load in full. (#2204)
 - Filtering a tree now searches the whole of a long string value instead of only the shortened form shown in the row. (#2204)
 - Copy Value on a JSON object or array now copies that part of the document instead of a summary like `{3 keys}`, and long strings copy in full. (#2204)
+- Closing a tab holding unsaved work asks before it goes, instead of discarding the work in silence. This covers unsaved cell edits in a table tab, a `.sql` file that differs from what is on disk, staged structure and Create Table changes, and staged user and role changes. Cell edits were the worst case: nothing brought them back, not even Reopen Closed Tab. Tabs holding only typed query text still close without asking, because that text comes back.
+- A tab with unsaved cell edits now shows the unsaved dot, so a tab is never marked clean and then asks to be saved.
+- Closing a tab used to leave its unsaved cell edits loaded behind it. The connection went on reporting unsaved changes with no tabs to show for it, and saving from there could write those edits to whichever database the sidebar had moved to.
+- A `.sql` file opened from a linked favorite can be opened again after its tab is closed. Opening it used to just bring the window forward and do nothing.
+- Staged structure changes survive switching tabs, and switching a table tab between Data and Structure. Adding a column or an index and then looking at anything else threw the pending change away, with no prompt and nothing in Undo.
+- A table definition in progress survives switching tabs. Naming a new table and defining its columns, then clicking any other tab, used to discard the whole definition.
+- Closing a tab with staged structure changes or an unfinished table definition asks before discarding them, and they count as unsaved work when you close the window or quit.
 
 ### Fixed
 
