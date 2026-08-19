@@ -26,6 +26,8 @@ public struct SourceEditor: NSViewControllerRepresentable {
     ///   - cursorPositions: The cursor's position in the editor, measured in `(lineNum, columnNum)`
     ///   - highlightProviders: A set of classes you provide to perform syntax highlighting. Leave this as `nil` to use
     ///                         the default `TreeSitterClient` highlighter.
+    ///   - foldProvider: A class you provide to find fold regions in the document. Leave this as `nil` to use the
+    ///                    default indentation-based provider.
     ///   - undoManager: The undo manager for the text view. Defaults to `nil`, which will create a new CEUndoManager
     ///   - coordinators: Any text coordinators for the view to use. See ``TextViewCoordinator`` for more information.
     public init(
@@ -34,6 +36,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
         configuration: SourceEditorConfiguration,
         state: Binding<SourceEditorState>,
         highlightProviders: [any HighlightProviding]? = nil,
+        foldProvider: LineFoldProvider? = nil,
         undoManager: CEUndoManager? = nil,
         coordinators: [any TextViewCoordinator] = [],
         completionDelegate: CodeSuggestionDelegate? = nil,
@@ -44,6 +47,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
         self.configuration = configuration
         self._state = state
         self.highlightProviders = highlightProviders
+        self.foldProvider = foldProvider
         self.undoManager = undoManager
         self.coordinators = coordinators
         self.completionDelegate = completionDelegate
@@ -59,6 +63,8 @@ public struct SourceEditor: NSViewControllerRepresentable {
     ///   - cursorPositions: The cursor's position in the editor, measured in `(lineNum, columnNum)`
     ///   - highlightProviders: A set of classes you provide to perform syntax highlighting. Leave this as `nil` to use
     ///                         the default `TreeSitterClient` highlighter.
+    ///   - foldProvider: A class you provide to find fold regions in the document. Leave this as `nil` to use the
+    ///                    default indentation-based provider.
     ///   - undoManager: The undo manager for the text view. Defaults to `nil`, which will create a new CEUndoManager
     ///   - coordinators: Any text coordinators for the view to use. See ``TextViewCoordinator`` for more information.
     public init(
@@ -67,6 +73,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
         configuration: SourceEditorConfiguration,
         state: Binding<SourceEditorState>,
         highlightProviders: [any HighlightProviding]? = nil,
+        foldProvider: LineFoldProvider? = nil,
         undoManager: CEUndoManager? = nil,
         coordinators: [any TextViewCoordinator] = [],
         completionDelegate: CodeSuggestionDelegate? = nil,
@@ -77,6 +84,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
         self.configuration = configuration
         self._state = state
         self.highlightProviders = highlightProviders
+        self.foldProvider = foldProvider
         self.undoManager = undoManager
         self.coordinators = coordinators
         self.completionDelegate = completionDelegate
@@ -88,6 +96,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
     var configuration: SourceEditorConfiguration
     @Binding var state: SourceEditorState
     var highlightProviders: [any HighlightProviding]?
+    var foldProvider: LineFoldProvider?
     var undoManager: CEUndoManager?
     var coordinators: [any TextViewCoordinator]
     var completionDelegate: CodeSuggestionDelegate?
@@ -102,6 +111,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
             configuration: configuration,
             cursorPositions: state.cursorPositions ?? [],
             highlightProviders: context.coordinator.highlightProviders,
+            foldProvider: foldProvider,
             undoManager: undoManager,
             coordinators: coordinators,
             completionDelegate: completionDelegate,

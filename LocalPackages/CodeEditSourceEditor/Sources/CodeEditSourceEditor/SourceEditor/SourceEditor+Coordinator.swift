@@ -36,6 +36,17 @@ extension SourceEditor {
             listenToTextViewNotifications(controller: controller)
             listenToCursorNotifications(controller: controller)
             listenToFindNotifications(controller: controller)
+            listenToFoldNotifications(controller: controller)
+        }
+
+        /// Listen to fold collapse and expand events on the text view controller.
+        func listenToFoldNotifications(controller: TextViewController) {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(textControllerFoldsDidUpdate(_:)),
+                name: TextViewController.foldStateDidChangeNotification,
+                object: controller
+            )
         }
 
         // MARK: - Listeners
@@ -130,6 +141,13 @@ extension SourceEditor {
                 return
             }
             updateState { $0.cursorPositions = controller.cursorPositions }
+        }
+
+        @objc func textControllerFoldsDidUpdate(_ notification: Notification) {
+            guard let controller = notification.object as? TextViewController else {
+                return
+            }
+            updateState { $0.collapsedFoldRanges = controller.collapsedFoldRanges }
         }
 
         func textControllerScrollDidChange(_ notification: Notification) {

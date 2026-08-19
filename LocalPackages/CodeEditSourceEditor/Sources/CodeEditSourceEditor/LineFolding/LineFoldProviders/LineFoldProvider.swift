@@ -48,4 +48,16 @@ public protocol LineFoldProvider: AnyObject {
         previousDepth: Int,
         controller: TextViewController
     ) -> [LineFoldProviderLineInfo]
+
+    /// The label drawn in place of a collapsed region.
+    ///
+    /// The provider owns this string because it is the only part of the folding system the host application supplies,
+    /// so it is the only part that can reach the application's localized strings.
+    func foldPlaceholderLabel(for summary: FoldPlaceholderSummary) -> String
+}
+
+public extension LineFoldProvider {
+    func foldPlaceholderLabel(for summary: FoldPlaceholderSummary) -> String {
+        summary.previewText
+    }
 }

@@ -120,35 +120,17 @@ class LineFoldRibbonView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let clickPoint = convert(event.locationInWindow, from: nil)
-        guard let layoutManager = model?.controller?.textView.layoutManager,
+        guard let model,
               event.type == .leftMouseDown,
+              let layoutManager = model.controller?.textView.layoutManager,
               let lineNumber = layoutManager.textLineForPosition(clickPoint.y)?.index,
-              let fold = model?.getCachedFoldAt(lineNumber: lineNumber),
-              let firstLineInFold = layoutManager.textLineForOffset(fold.range.lowerBound) else {
+              let fold = model.getCachedFoldAt(lineNumber: lineNumber) else {
             super.mouseDown(with: event)
             return
         }
 
-        if let attachment = findAttachmentFor(fold: fold, firstLineRange: firstLineInFold.range) {
-            layoutManager.attachments.remove(atOffset: attachment.range.location)
-        } else {
-            let charWidth = model?.controller?.font.charWidth ?? 1.0
-            let placeholder = LineFoldPlaceholder(delegate: model, fold: fold, charWidth: charWidth)
-            layoutManager.attachments.add(placeholder, for: NSRange(fold.range))
-        }
-
-        model?.foldCache.toggleCollapse(forFold: fold)
-        model?.controller?.textView.needsLayout = true
-        model?.controller?.gutterView.needsDisplay = true
+        model.setCollapsed(!model.isCollapsed(fold), for: fold)
         mouseMoved(with: event)
-    }
-
-    private func findAttachmentFor(fold: FoldRange, firstLineRange: NSRange) -> AnyTextAttachment? {
-        model?.controller?.textView?.layoutManager.attachments
-            .getAttachmentsStartingIn(NSRange(fold.range))
-            .filter({
-                $0.attachment is LineFoldPlaceholder && firstLineRange.contains($0.range.location)
-            }).first
     }
 
     override func mouseMoved(with event: NSEvent) {

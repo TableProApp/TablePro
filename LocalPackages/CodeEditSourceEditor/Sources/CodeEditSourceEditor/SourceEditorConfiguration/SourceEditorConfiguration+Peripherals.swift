@@ -10,6 +10,10 @@ extension SourceEditorConfiguration {
         /// Whether to show the gutter.
         public var showGutter: Bool = true
 
+        /// Whether to draw line numbers in the gutter. The gutter can stay visible without them, which lets an editor
+        /// show the folding ribbon while hiding line numbers.
+        public var showLineNumbers: Bool = true
+
         /// Whether to show the minimap.
         public var showMinimap: Bool
 
@@ -18,6 +22,11 @@ extension SourceEditorConfiguration {
 
         /// Whether to show the folding ribbon. Only available if ``showGutter`` is `true`.
         public var showFoldingRibbon: Bool
+
+        /// The largest document, in UTF-16 units, that folds are calculated for. Fold calculation walks every line in
+        /// the document, so past this length the editor stops computing folds instead of blocking on a document it
+        /// cannot fold responsively.
+        public var foldingSizeLimit: Int = EditorHighlighting.maxHighlightableCharacters
 
         /// Configuration for drawing invisible characters.
         ///
@@ -30,16 +39,20 @@ extension SourceEditorConfiguration {
 
         public init(
             showGutter: Bool = true,
+            showLineNumbers: Bool = true,
             showMinimap: Bool = true,
             showReformattingGuide: Bool = false,
             showFoldingRibbon: Bool = true,
+            foldingSizeLimit: Int = EditorHighlighting.maxHighlightableCharacters,
             invisibleCharactersConfiguration: InvisibleCharactersConfiguration = .empty,
             warningCharacters: Set<UInt16> = []
         ) {
             self.showGutter = showGutter
+            self.showLineNumbers = showLineNumbers
             self.showMinimap = showMinimap
             self.showReformattingGuide = showReformattingGuide
             self.showFoldingRibbon = showFoldingRibbon
+            self.foldingSizeLimit = foldingSizeLimit
             self.invisibleCharactersConfiguration = invisibleCharactersConfiguration
             self.warningCharacters = warningCharacters
         }
@@ -61,6 +74,11 @@ extension SourceEditorConfiguration {
             if oldConfig?.showReformattingGuide != showReformattingGuide {
                 controller.reformattingGuideView.isHidden = !showReformattingGuide
                 controller.reformattingGuideView.updatePosition(in: controller)
+            }
+
+            if oldConfig?.showLineNumbers != showLineNumbers {
+                controller.gutterView.showLineNumbers = showLineNumbers
+                shouldUpdateInsets = true
             }
 
             if oldConfig?.showFoldingRibbon != showFoldingRibbon {

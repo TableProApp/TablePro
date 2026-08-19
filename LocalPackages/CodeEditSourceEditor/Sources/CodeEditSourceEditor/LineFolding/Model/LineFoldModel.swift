@@ -17,6 +17,7 @@ import Combine
 ///
 /// For fold storage and querying, see ``LineFoldStorage``. For fold calculation see ``LineFoldCalculator``
 /// and ``LineFoldProvider``. For drawing see ``LineFoldRibbonView``.
+@MainActor
 class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
     static let emphasisId = "lineFolding"
 
@@ -28,6 +29,7 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
     private var textChangedStream: AsyncStream<Void>
     private var textChangedStreamContinuation: AsyncStream<Void>.Continuation
     private var cacheListenTask: Task<Void, Never>?
+    private var pendingRestoreRanges: Set<Range<Int>>?
 
     weak var controller: TextViewController?
     weak var foldView: NSView?
@@ -35,7 +37,9 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
     init(controller: TextViewController, foldView: NSView) {
         self.controller = controller
         self.foldView = foldView
-        (textChangedStream, textChangedStreamContinuation) = AsyncStream<Void>.makeStream()
+        (textChangedStream, textChangedStreamContinuation) = AsyncStream<Void>.makeStream(
+            bufferingPolicy: .bufferingNewest(1)
+        )
         self.calculator = LineFoldCalculator(
             foldProvider: controller.foldProvider,
             controller: controller,
@@ -44,10 +48,13 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
         super.init()
         controller.textView.addStorageDelegate(self)
 
-        cacheListenTask = Task { @MainActor [weak foldView] in
+        let calculator = self.calculator
+        cacheListenTask = Task { @MainActor [weak self, weak foldView] in
             for await newFolds in await calculator.valueStream {
-                foldCache = newFolds
+                guard let self else { return }
+                self.foldCache = newFolds
                 foldView?.needsDisplay = true
+                self.applyPendingRestoreIfPossible()
             }
         }
         textChangedStreamContinuation.yield(Void())
@@ -55,6 +62,108 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
 
     func getFolds(in range: Range<Int>) -> [FoldRange] {
         foldCache.folds(in: range)
+    }
+
+    // MARK: - Collapse
+
+    /// The single place a fold's collapsed state changes. Every entry point routes here so the placeholder attachment
+    /// and the cached state can never disagree.
+    func setCollapsed(_ isCollapsed: Bool, for fold: FoldRange) {
+        guard let controller, let layoutManager = controller.textView?.layoutManager else { return }
+        guard isCollapsed != self.isCollapsed(fold) else { return }
+
+        if isCollapsed {
+            guard let placeholder = makePlaceholder(for: fold, controller: controller) else { return }
+            layoutManager.attachments.add(placeholder, for: NSRange(fold.range))
+        } else if let attachment = attachment(for: fold) {
+            layoutManager.attachments.remove(atOffset: attachment.range.location)
+        }
+
+        foldCache.toggleCollapse(forFold: fold)
+        controller.textView.needsLayout = true
+        controller.gutterView.needsDisplay = true
+        foldView?.needsDisplay = true
+        NotificationCenter.default.post(
+            name: TextViewController.foldStateDidChangeNotification,
+            object: controller
+        )
+    }
+
+    /// Collapses or expands every fold at once.
+    ///
+    /// Collapsing is limited to the outermost folds because the layout manager ignores an attachment that overlaps an
+    /// earlier one, so collapsing a fold and its children together would leave the children's placeholders unlaid out.
+    func setAllCollapsed(_ isCollapsed: Bool) {
+        guard let controller else { return }
+        let documentRange = controller.textView.documentRange.intRange
+        let folds = foldCache.folds(in: documentRange)
+        guard let minimumDepth = folds.map(\.depth).min() else { return }
+
+        let targets = isCollapsed ? folds.filter { $0.depth == minimumDepth } : folds.reversed()
+        for fold in targets {
+            setCollapsed(isCollapsed, for: fold)
+        }
+    }
+
+    func isCollapsed(_ fold: FoldRange) -> Bool {
+        foldCache.isCollapsed(fold.id) ?? fold.isCollapsed
+    }
+
+    func collapsedFoldRanges() -> [Range<Int>] {
+        guard let controller else { return [] }
+        return foldCache
+            .folds(in: controller.textView.documentRange.intRange)
+            .filter(\.isCollapsed)
+            .map(\.range)
+    }
+
+    /// Queues ranges to collapse once the fold cache next reports folds for them.
+    func restoreCollapsedFolds(_ ranges: [Range<Int>]) {
+        guard !ranges.isEmpty else { return }
+        pendingRestoreRanges = Set(ranges)
+        applyPendingRestoreIfPossible()
+    }
+
+    private func applyPendingRestoreIfPossible() {
+        guard let pending = pendingRestoreRanges, let controller else { return }
+        let folds = foldCache.folds(in: controller.textView.documentRange.intRange)
+        guard !folds.isEmpty else { return }
+
+        pendingRestoreRanges = nil
+        for fold in folds where pending.contains(fold.range) && !fold.isCollapsed {
+            setCollapsed(true, for: fold)
+        }
+    }
+
+    private func attachment(for fold: FoldRange) -> AnyTextAttachment? {
+        guard let layoutManager = controller?.textView?.layoutManager,
+              let firstLine = layoutManager.textLineForOffset(fold.range.lowerBound) else { return nil }
+        return layoutManager.attachments
+            .getAttachmentsStartingIn(NSRange(fold.range))
+            .first {
+                $0.attachment is LineFoldPlaceholder && firstLine.range.contains($0.range.location)
+            }
+    }
+
+    private func makePlaceholder(for fold: FoldRange, controller: TextViewController) -> LineFoldPlaceholder? {
+        guard let text = controller.textView.textStorage?.string as NSString?,
+              let layoutManager = controller.textView?.layoutManager else { return nil }
+        let startLine = layoutManager.textLineForOffset(fold.range.lowerBound)?.index ?? 0
+        let endLine = layoutManager.textLineForOffset(max(fold.range.lowerBound, fold.range.upperBound - 1))?.index
+            ?? startLine
+        let summary = FoldPlaceholderSummary.summarize(
+            content: text,
+            foldRange: fold.range,
+            hiddenLineCount: max(0, endLine - startLine)
+        )
+
+        return LineFoldPlaceholder(
+            delegate: self,
+            fold: fold,
+            charWidth: controller.font.charWidth,
+            label: controller.foldProvider.foldPlaceholderLabel(for: summary),
+            font: controller.font
+        )
     }
 
     /// Recomputes folds for the whole document. Used to catch up after the ribbon has been hidden and is shown again.
@@ -159,5 +268,11 @@ extension LineFoldModel: LineFoldPlaceholderDelegate {
         foldCache.toggleCollapse(forFold: fold)
         foldView?.needsDisplay = true
         textChangedStreamContinuation.yield()
+        if let controller {
+            NotificationCenter.default.post(
+                name: TextViewController.foldStateDidChangeNotification,
+                object: controller
+            )
+        }
     }
 }

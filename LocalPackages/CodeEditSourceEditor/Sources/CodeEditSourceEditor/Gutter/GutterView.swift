@@ -84,6 +84,15 @@ public class GutterView: NSView {
         }
     }
 
+    /// Toggle the visibility of the line numbers. The gutter stays visible either way, so an editor can show the
+    /// folding ribbon on its own.
+    @Invalidating(.display)
+    public var showLineNumbers: Bool = true {
+        didSet {
+            updateWidthIfNeeded()
+        }
+    }
+
     private weak var textView: TextView?
     private weak var delegate: GutterViewDelegate?
     private var maxLineNumberWidth: CGFloat = 0
@@ -213,7 +222,8 @@ public class GutterView: NSView {
             maxLineLength = lineStorageDigits
         }
 
-        let newWidth = maxLineNumberWidth + edgeInsets.horizontal + foldingRibbonWidth
+        let numberWidth = showLineNumbers ? maxLineNumberWidth : 0
+        let newWidth = numberWidth + edgeInsets.horizontal + foldingRibbonWidth
         if frame.size.width != newWidth {
             frame.size.width = newWidth
             delegate?.gutterViewWidthDidUpdate()
@@ -349,7 +359,9 @@ public class GutterView: NSView {
         context.saveGState()
         drawBackground(context, dirtyRect: dirtyRect)
         drawSelectedLines(context)
-        drawLineNumbers(context, dirtyRect: dirtyRect)
+        if showLineNumbers {
+            drawLineNumbers(context, dirtyRect: dirtyRect)
+        }
         context.restoreGState()
     }
 
