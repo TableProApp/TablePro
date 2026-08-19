@@ -18,6 +18,7 @@ struct MenuValidationContext: Equatable {
     var isConnected = false
     var isReadOnly = false
     var canUseTableResultCommands = false
+    var canUseGridFindCommands = false
     /// Save As writes the selected tab's SQL, so it needs a query tab and not merely a connection.
     var isQueryTab = false
     /// Export Results exports the selected tab's rows, so an empty grid has nothing to offer.
@@ -148,7 +149,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(truncateTable(_:)):
             return context.isConnected && context.hasTableSelection && !context.isReadOnly
         case #selector(performFind(_:)):
-            return context.hasEditorForFind || (context.isConnected && context.canUseTableResultCommands)
+            return context.hasEditorForFind || (context.isConnected && context.canUseGridFindCommands)
         case #selector(findNext(_:)), #selector(findPrevious(_:)):
             return context.hasEditorForFind || context.hasActiveGridFind
         case #selector(undo(_:)):
@@ -217,6 +218,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             isConnected: isConnected,
             isReadOnly: actions.isReadOnly,
             canUseTableResultCommands: actions.canUseTableResultCommands,
+            canUseGridFindCommands: actions.canUseGridFindCommands,
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
             isCurrentTabEditable: actions.isCurrentTabEditable,

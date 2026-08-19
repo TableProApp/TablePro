@@ -621,6 +621,7 @@ struct MainEditorContentView: View {
                 }
             case .json:
                 resultTabBarSection(tab: tab)
+                rowFilterChrome(tab: tab, rows: resolvedTableRows(for: tab))
                 ResultsJsonView(
                     tableRows: resolvedTableRows(for: tab),
                     selectedRowIndices: selectionState.indices,
@@ -690,22 +691,7 @@ struct MainEditorContentView: View {
                             )
                         }
                     } else {
-                        if tab.filterState.isVisible && tab.tabType == .table {
-                            if let descriptor = coordinator.browseFilterDescriptor {
-                                KeyPatternSearchBar(coordinator: coordinator, descriptor: descriptor)
-                            } else {
-                                FilterPanelView(
-                                    coordinator: coordinator,
-                                    columns: resolvedRows.columns,
-                                    primaryKeyColumn: changeManager.primaryKeyColumn,
-                                    databaseType: connection.type,
-                                    enumValuesByColumn: resolvedRows.columnEnumValues,
-                                    onApply: onApplyFilters,
-                                    onUnset: onClearFilters
-                                )
-                            }
-                            Divider()
-                        }
+                        rowFilterChrome(tab: tab, rows: resolvedRows)
 
                         if tab.findState.isVisible && tab.tabType == .table {
                             FindBarView(
@@ -738,6 +724,30 @@ struct MainEditorContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Shared by every mode whose `showsRowFilters` is true. Filtering rebuilds the query and
+    /// re-runs it, so a mode that renders this panel shows filtered rows without knowing about it.
+    @ViewBuilder
+    private func rowFilterChrome(tab: QueryTab, rows: TableRows) -> some View {
+        if tab.filterState.isVisible && tab.tabType == .table
+            && tab.display.resultsViewMode.showsRowFilters
+        {
+            if let descriptor = coordinator.browseFilterDescriptor {
+                KeyPatternSearchBar(coordinator: coordinator, descriptor: descriptor)
+            } else {
+                FilterPanelView(
+                    coordinator: coordinator,
+                    columns: rows.columns,
+                    primaryKeyColumn: changeManager.primaryKeyColumn,
+                    databaseType: connection.type,
+                    enumValuesByColumn: rows.columnEnumValues,
+                    onApply: onApplyFilters,
+                    onUnset: onClearFilters
+                )
+            }
+            Divider()
+        }
     }
 
     @ViewBuilder

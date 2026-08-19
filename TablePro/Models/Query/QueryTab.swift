@@ -23,6 +23,13 @@ enum ResultsViewMode: String, Equatable {
     var showsRowFilters: Bool {
         self == .data || self == .json
     }
+
+    /// The find bar reads the data grid's cells through the grid's own coordinator, which exists
+    /// only while the grid is mounted, so it can find nothing in any other mode. JSON mode carries
+    /// its own search inside the tree view.
+    var showsFindBar: Bool {
+        self == .data
+    }
 }
 
 struct QueryTab: Identifiable, Equatable {

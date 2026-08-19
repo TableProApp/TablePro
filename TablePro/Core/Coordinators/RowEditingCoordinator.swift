@@ -14,6 +14,13 @@ final class RowEditingCoordinator {
         self.parent = parent
     }
 
+    /// A row command selects the row it just made so the grid can highlight it and scroll to it.
+    /// No other mode has a grid to point at, and the JSON view reads the same selection as "show
+    /// only these rows", so writing it there collapses the document to the one new row.
+    private var selectionPointsTheGrid: Bool {
+        parent.tabManager.selectedTab?.display.resultsViewMode == .data
+    }
+
     // MARK: - Row Operations
 
     func addNewRow() {
@@ -41,7 +48,9 @@ final class RowEditingCoordinator {
 
         guard let result = addResult else { return }
 
-        parent.selectionState.indices = [result.rowIndex]
+        if selectionPointsTheGrid {
+            parent.selectionState.indices = [result.rowIndex]
+        }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
@@ -75,10 +84,12 @@ final class RowEditingCoordinator {
         }
 
         let totalRows = parent.tabSessionRegistry.tableRows(for: tabId).count
-        if deleteResult.nextRowToSelect >= 0 && deleteResult.nextRowToSelect < totalRows {
-            parent.selectionState.indices = [deleteResult.nextRowToSelect]
-        } else {
-            parent.selectionState.indices.removeAll()
+        if selectionPointsTheGrid {
+            if deleteResult.nextRowToSelect >= 0 && deleteResult.nextRowToSelect < totalRows {
+                parent.selectionState.indices = [deleteResult.nextRowToSelect]
+            } else {
+                parent.selectionState.indices.removeAll()
+            }
         }
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
@@ -171,7 +182,9 @@ final class RowEditingCoordinator {
 
         guard let result = dupResult else { return }
 
-        parent.selectionState.indices = [result.rowIndex]
+        if selectionPointsTheGrid {
+            parent.selectionState.indices = [result.rowIndex]
+        }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
@@ -313,7 +326,9 @@ final class RowEditingCoordinator {
         guard !pasteResult.pastedRows.isEmpty else { return }
 
         let newIndices = Set(pasteResult.pastedRows.map { $0.rowIndex })
-        parent.selectionState.indices = newIndices
+        if selectionPointsTheGrid {
+            parent.selectionState.indices = newIndices
+        }
 
         parent.tabManager.mutate(at: tabIndex) { tab in
             tab.selectedRowIndices = newIndices

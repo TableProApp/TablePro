@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Cmd+F` no longer opens a find bar in JSON result mode. It searched the data grid's cells through the grid, which is not mounted there, so it always reported no matches whatever you typed. The Tree view keeps its own search field. (#2244)
+- The Filters button and `Cmd+Option+F` now open the filter panel in JSON result mode, where they used to flip a switch and draw nothing. Applying a filter re-runs the query, so the JSON shows the filtered rows. (#2244)
+- Add Row, Duplicate Row, Paste and Delete no longer collapse the JSON view to the single row they touched. Each command selected that row so the grid could scroll to it, and JSON mode reads the same selection as "show only these rows", so the document appeared to empty out. (#2244)
 - **Open in New Tab** opens a second tab for a table that is already open. It reselected the existing tab and said nothing, so there was no way to browse one table under two different filters. (#2235)
 - Following a foreign key into a new tab no longer overwrites the filters on a tab already showing that table. The jump reused the open tab, replaced its filters with the foreign key's, and left the grid on the rows it had before, so the filters were gone and the rows did not match what the panel said.
 - Opening a table from the sidebar while the object list is still loading opens it. The click was dropped with no tab, no error, and no retry when the load finished, which was most visible right after relaunching with tabs restored.
