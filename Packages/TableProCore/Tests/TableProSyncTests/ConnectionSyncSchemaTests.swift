@@ -64,9 +64,11 @@ struct ConnectionSyncSchemaTests {
         #expect(Set(record.allKeys()).isSubset(of: ConnectionSyncField.declaredKeys))
     }
 
-    @Test("isFavorite stays out of the wire until the production schema is verified")
-    func isFavoriteIsNotWritten() {
-        #expect(ConnectionSyncField.isFavorite.isWritable == false)
+    @Test("every declared field is deployed, so nothing is silently dropped")
+    func everyDeclaredFieldIsWritable() {
+        let gated = ConnectionSyncField.allCases.filter { !$0.isWritable }
+
+        #expect(gated.isEmpty, "Gated Connection fields: \(gated.map(\.key).sorted())")
     }
 
     @Test("a colour tag is written to colorTag and never to the macOS color field")
@@ -75,9 +77,10 @@ struct ConnectionSyncSchemaTests {
         connection.colorTag = "#00FF00"
 
         let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        let fields = record.fields(ConnectionSyncField.self)
 
-        #expect(record[ConnectionSyncField.colorTag] as? String == "#00FF00")
-        #expect(record[ConnectionSyncField.color] == nil)
+        #expect(fields[.colorTag] as? String == "#00FF00")
+        #expect(fields[.color] == nil)
     }
 
     @Test("a macOS colour name is not adopted as an iOS colour tag")
@@ -85,10 +88,11 @@ struct ConnectionSyncSchemaTests {
         let connection = makeFullyPopulatedConnection()
         let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
         let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
-        record[ConnectionSyncField.connectionId] = connection.id.uuidString as CKRecordValue
-        record[ConnectionSyncField.name] = "From Mac" as CKRecordValue
-        record[ConnectionSyncField.type] = "PostgreSQL" as CKRecordValue
-        record[ConnectionSyncField.color] = "Blue" as CKRecordValue
+        let fields = record.fields(ConnectionSyncField.self)
+        fields[.connectionId] = connection.id.uuidString
+        fields[.name] = "From Mac"
+        fields[.type] = "PostgreSQL"
+        fields[.color] = "Blue"
 
         let decoded = SyncRecordMapper.toConnection(record)
 
@@ -115,15 +119,25 @@ struct ConnectionSyncSchemaTests {
         #expect(decoded?.colorTag == connection.colorTag)
     }
 
-    @Test("A gated field does not survive the round trip")
-    func gatedFieldsDoNotRoundTrip() {
+    @Test("a query timeout survives the round trip now that the field is deployed")
+    func queryTimeoutRoundTrips() {
         let connection = makeFullyPopulatedConnection()
         let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
 
         let decoded = SyncRecordMapper.toConnection(record)
 
         #expect(connection.queryTimeoutSeconds != nil)
-        #expect(ConnectionSyncField.queryTimeoutSeconds.isWritable == false)
-        #expect(decoded?.queryTimeoutSeconds == nil)
+        #expect(decoded?.queryTimeoutSeconds == connection.queryTimeoutSeconds)
+    }
+
+    @Test("every tag survives the round trip instead of collapsing to the first")
+    func everyTagRoundTrips() {
+        let connection = makeFullyPopulatedConnection()
+        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+
+        let decoded = SyncRecordMapper.toConnection(record)
+
+        #expect(connection.tagIds.count == 2)
+        #expect(decoded?.tagIds == connection.tagIds)
     }
 }

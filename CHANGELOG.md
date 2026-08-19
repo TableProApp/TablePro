@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Table favorites and saved queries sync through iCloud. Their record types had never been created in the iCloud schema, so every one was rejected on upload, and Account settings reported the same sync error again on every attempt because the rejected items were retried forever.
+- An SSH profile that uses a jump host syncs. iCloud rejected the jump host list, and that stopped the whole profile from uploading.
+- A connection carries its favorite mark, every tag assigned to it, and its AI rules and always-allowed tools to your other Macs. These were held back from upload, so they stayed on the Mac that set them, and a connection with several tags arrived with only the first one.
+- iOS: a connection's query timeout syncs instead of being dropped on upload.
 - The inspector button stays at the right end of the toolbar when the inspector is open. It used to slide left and sit against the inspector's inner edge, so the button moved as soon as you used it.
 - The Tables and Favorites switch in the toolbar keeps following the sidebar after you open Customize Toolbar. It stopped responding until the window was closed and reopened.
 - Refresh, New Tab, Open Quickly, Export, Database, Results and Dashboard are dimmed in the toolbar's overflow menu when they cannot run. On a narrow window they looked available and did nothing.
