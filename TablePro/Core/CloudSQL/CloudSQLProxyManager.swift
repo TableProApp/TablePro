@@ -26,13 +26,21 @@ actor CloudSQLProxyManager: TunnelManaging {
     private var tunnels: [UUID: TunnelState] = [:]
     private var pidRecords: [UUID: CloudSQLProxyPidRecord] = [:]
     private let runnerFactory: () -> any SupervisedProcessRunner
+    private let binaryManager: CloudSQLProxyBinaryManager
+    private let systemBinaryLookup: (String) -> String?
 
     private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any SupervisedProcessRunner]())
 
     private var appNapActivity: NSObjectProtocol?
 
-    init(runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() }) {
+    init(
+        runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() },
+        binaryManager: CloudSQLProxyBinaryManager = .shared,
+        systemBinaryLookup: @escaping (String) -> String? = { CLIExecutableFinder.findExecutable($0) }
+    ) {
         self.runnerFactory = runnerFactory
+        self.binaryManager = binaryManager
+        self.systemBinaryLookup = systemBinaryLookup
     }
 
     func createTunnel(
@@ -227,13 +235,14 @@ actor CloudSQLProxyManager: TunnelManaging {
             }
             return expandedPath
         }
-        if let resolved = CLIExecutableFinder.findExecutable("cloud-sql-proxy") {
+        if let resolved = systemBinaryLookup("cloud-sql-proxy") {
             return resolved
         }
-        if let cached = await CloudSQLProxyBinaryManager.shared.cachedBinaryPath {
-            return cached
-        }
-        throw CloudSQLProxyError.binaryNotFound
+        /// The managed binary is ad-hoc signed and lives in a user-writable directory, so its
+        /// pinned checksum is the only thing attesting to what is about to run. Going through
+        /// `ensureBinary()` rather than the path alone means a stale or altered copy is replaced
+        /// here instead of being executed.
+        return try await binaryManager.ensureBinary()
     }
 
     private static func buildArguments(

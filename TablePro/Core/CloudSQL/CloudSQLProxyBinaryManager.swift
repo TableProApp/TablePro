@@ -39,8 +39,13 @@ actor CloudSQLProxyBinaryManager {
         baseDirectory.appendingPathComponent("cloud-sql-proxy").path
     }
 
-    var cachedBinaryPath: String? {
-        FileManager.default.isExecutableFile(atPath: binaryExecutablePath) ? binaryExecutablePath : nil
+    /// Whether a managed binary is present at all, for the connection form's "Downloaded" state.
+    ///
+    /// This answers a question about the UI, not about trust, and it must never be the way the
+    /// launch path obtains a path to execute. Use `ensureBinary()` for that, which verifies the
+    /// pinned version and checksum first and reinstalls when either no longer matches.
+    var isInstalled: Bool {
+        FileManager.default.isExecutableFile(atPath: binaryExecutablePath)
     }
 
     func installedVersion() -> String? {

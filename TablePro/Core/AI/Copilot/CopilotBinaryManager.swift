@@ -20,10 +20,18 @@ actor CopilotBinaryManager {
             ?? appSupport.appendingPathComponent("TablePro/copilot-language-server", isDirectory: true)
     }
 
-    /// npm serves whatever `latest` resolves to, so there is no version to pin against.
-    /// The digest recorded at install time is what the registry's own integrity hash
-    /// attested to, and re-checking it here is the only thing standing between an
-    /// altered file in a user-writable directory and a process this app spawns.
+    /// Whether the installed binary still matches the digest recorded when it was extracted.
+    ///
+    /// This catches a truncated download, a half-finished extraction and a file left behind by a
+    /// failed install, and it makes those reinstall instead of being executed.
+    ///
+    /// It is deliberately **not** an integrity control against a deliberate swap, and must not be
+    /// described as one. `sha256.txt` sits in the same user-writable directory as the binary it
+    /// attests to, so anything able to replace the binary can rewrite the digest in the same
+    /// breath. A real control needs an attestation the app can pin, and npm has none to pin
+    /// against: this package is fetched from the `latest` tag, so the version is whatever the
+    /// registry served that day. Compare `CloudSQLProxyBinaryManager`, where the version and the
+    /// checksum are both pinned in source and the check does carry weight.
     func installedBinaryIsIntact() -> Bool {
         guard FileManager.default.isExecutableFile(atPath: binaryExecutablePath) else { return false }
 

@@ -57,7 +57,7 @@ struct CloudSQLProxyBinaryManagerTests {
         await #expect(throws: CloudSQLProxyError.binaryNotFound) {
             _ = try await manager.ensureBinary()
         }
-        #expect(await manager.cachedBinaryPath == nil)
+        #expect(!(await manager.isInstalled))
     }
 
     /// Writes a binary that looks installed, so a test can vary one of the two things
