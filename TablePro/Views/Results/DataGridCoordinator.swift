@@ -48,6 +48,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var valueFilterState = GridValueFilterState()
     var displayIDs: [RowID]? { valueFilteredIDs ?? sortedIDs }
     private(set) var columnDisplayFormats: [ValueDisplayFormat?] = []
+    private(set) var currentFindMatch: FindMatch?
     private let displayCache = RowDisplayCache()
     weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
@@ -935,6 +936,68 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard let tableView, let window = tableView.window else { return false }
         window.makeFirstResponder(tableView)
         return true
+    }
+
+    var selectedDisplayRow: Int? {
+        guard let tableView, tableView.selectedRow >= 0 else { return nil }
+        return tableView.selectedRow
+    }
+
+    func runFind(term: String) -> [FindMatch] {
+        let tableRows = tableRowsProvider()
+        let displayCount = displayIDs?.count ?? tableRows.count
+        let columnTypes = tableRows.columnTypes
+        let visible = visibleColumnDataIndices().map(Set.init)
+
+        return FindMatcher.matches(
+            term: term,
+            displayRowCount: displayCount,
+            columnCount: tableRows.columns.count,
+            isColumnSearchable: { column in
+                guard visible?.contains(column) ?? true else { return false }
+                guard column < columnTypes.count else { return true }
+                return FindMatcher.isSearchable(columnTypes[column])
+            },
+            cellText: { [weak self] displayIndex, column in
+                guard let self,
+                      let row = displayRow(at: displayIndex, in: tableRows),
+                      column < row.values.count
+                else { return nil }
+                let rawValue = row.values[column]
+                guard rawValue.asText != nil else { return nil }
+                return displayValue(
+                    forID: row.id,
+                    column: column,
+                    rawValue: rawValue,
+                    columnType: column < columnTypes.count ? columnTypes[column] : nil
+                )
+            }
+        )
+    }
+
+    func applyFindMatch(_ match: FindMatch?) {
+        let previous = currentFindMatch
+        guard previous != match else { return }
+        currentFindMatch = match
+
+        guard let tableView else { return }
+        let affected = IndexSet([previous?.displayRow, match?.displayRow]
+            .compactMap(\.self)
+            .filter { $0 >= 0 && $0 < tableView.numberOfRows })
+        if !affected.isEmpty {
+            tableView.reloadData(
+                forRowIndexes: affected,
+                columnIndexes: IndexSet(integersIn: 0 ..< tableView.numberOfColumns)
+            )
+        }
+
+        guard let match, match.displayRow >= 0, match.displayRow < tableView.numberOfRows else { return }
+        tableView.scrollRowToVisible(match.displayRow)
+        if let displayColumn = tableColumnIndex(for: match.columnIndex),
+           displayColumn < tableView.numberOfColumns {
+            tableView.scrollColumnToVisible(displayColumn)
+        }
+        tableView.selectRowIndexes(IndexSet(integer: match.displayRow), byExtendingSelection: false)
     }
 
     func beginEditing(displayRow: Int, column: Int) {

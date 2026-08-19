@@ -73,6 +73,7 @@ extension TableViewCoordinator {
             isFocused: isFocused,
             isEditable: isEditable,
             isLargeDataset: isLargeDataset,
+            isCurrentFindMatch: currentFindMatch == FindMatch(displayRow: row, columnIndex: columnIndex),
             row: row,
             columnIndex: columnIndex
         )

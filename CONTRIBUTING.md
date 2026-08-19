@@ -128,10 +128,6 @@ Open a [GitHub issue](https://github.com/TableProApp/TablePro/issues) with:
 - Reproduction steps
 - Database type and version (for database-specific bugs)
 
-## CLA
-
-Sign the Contributor License Agreement on your first PR. The CLA bot walks you through it. One-time thing.
-
 ## License
 
 Contributions are licensed under [AGPLv3](LICENSE).

@@ -16,17 +16,24 @@ final class FilterCoordinator {
 
     // MARK: - Filtering
 
-    func applyFilters(_ filters: [TableFilter]) {
+    func applyFilters(_ filters: [TableFilter], logicMode: FilterLogicMode? = nil) {
         guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               let tableName = tab.tableContext.tableName else { return }
 
         let capturedTabIndex = tabIndex
         let capturedTableName = tableName
         let capturedFilters = filters
+        let capturedLogicMode = logicMode
         parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
             guard let self, confirmed else { return }
             guard capturedTabIndex < parent.tabManager.tabs.count else { return }
 
+            if let capturedLogicMode {
+                parent.tabManager.mutate(at: capturedTabIndex) {
+                    $0.filterState.filterLogicMode = capturedLogicMode
+                    $0.filterState.isVisible = true
+                }
+            }
             parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
 
             let tab = parent.tabManager.tabs[capturedTabIndex]
@@ -247,6 +254,24 @@ final class FilterCoordinator {
         mutateSelectedTabFilterState { state in
             state.filters.append(newFilter)
         }
+    }
+
+    /// One CONTAINS row per searchable column, joined with OR, replacing the filter set. Only the
+    /// find bar calls this, and only when no filters are applied, because `filterLogicMode` is one
+    /// mode for the whole array: switching it to OR would silently loosen filters the user wrote.
+    func applyCrossColumnSearch(term: String, columns: [String]) {
+        guard !columns.isEmpty else { return }
+
+        let filters = columns.map { column in
+            var filter = TableFilter()
+            filter.columnName = column
+            filter.filterOperator = .contains
+            filter.value = term
+            filter.isEnabled = true
+            return filter
+        }
+
+        applyFilters(filters, logicMode: .or)
     }
 
     func addFilterForColumn(_ columnName: String) {
