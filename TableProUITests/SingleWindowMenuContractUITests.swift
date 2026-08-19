@@ -37,12 +37,21 @@ final class SingleWindowMenuContractUITests: UITestCase {
     func testFileMenuOffersTheEditorTabCommands() throws {
         let app = try launchAppShowingAWindow()
 
-        for title in ["New Tab", "Close Tab"] {
-            XCTAssertTrue(
-                app.menuBars.menuItems[title].waitForExistence(timeout: 5),
-                "File menu must offer \(title), which now acts on the editor tab list"
-            )
-        }
+        XCTAssertTrue(
+            app.menuBars.menuItems["New Tab"].waitForExistence(timeout: 5),
+            "File menu must offer New Tab, which now acts on the editor tab list"
+        )
+    }
+
+    /// Close is one item named after the window in front, the way Xcode, Terminal and Finder all
+    /// ship it. Launch shows the welcome window, which has no tabs, so it reads Close Window.
+    func testCloseIsNamedForTheKeyWindow() throws {
+        let app = try launchAppShowingAWindow()
+
+        XCTAssertTrue(
+            app.menuBars.menuItems["Close Window"].waitForExistence(timeout: 5),
+            "A window with no tabs must name the close command Close Window"
+        )
     }
 
     /// The connections strip offers Close on a row, and the HIG requires every context-menu command

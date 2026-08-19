@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Cmd+W` now closes the Settings window, the Integrations window, the JSON and PHP viewers, the connection form and the column inspector. It was bound to a command only a connection window answered, so it did nothing in any of them.
+- The File menu names the close command after the window in front: Close Tab in a connection window, Close Window where there are no tabs, and the connection's own name while the connections strip has focus.
 - Filtering a JSON or PHP tree now reveals nested key and value matches instead of leaving them behind collapsed parent rows. (#2204)
 - A tree filter that matches a key now lets you open that key and read what is inside it. (#2204)
 - Expanding or collapsing rows while a tree filter is active no longer springs back on the next keystroke. (#2204)

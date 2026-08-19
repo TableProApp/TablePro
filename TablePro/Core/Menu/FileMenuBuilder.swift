@@ -7,8 +7,11 @@ import AppKit
 
 @MainActor
 enum FileMenuBuilder {
+    /// Retained for the menu's lifetime, which is the app's: `NSMenu.delegate` is unowned.
+    private static let closeTitleDelegate = CloseCommandMenuDelegate()
+
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
-        MenuItemFactory.menu(String(localized: "File"), items: [
+        let file = MenuItemFactory.menu(String(localized: "File"), items: [
             MenuItemFactory.item(
                 String(localized: "New Connection..."),
                 action: #selector(AppDelegate.newConnection(_:)),
@@ -54,9 +57,16 @@ enum FileMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.separator,
+            /// `performClose:` is the close command every `NSWindow` implements and validates, so
+            /// Command W reaches Settings, the integrations activity window and every viewer the
+            /// app opens. An app-specific selector here reached only the editor window, and the
+            /// windows that missed out had to answer it by hand. `EditorWindow` overrides it to
+            /// close the front tab, which is where a window that draws its own tabs says so.
+            /// Built with the title the resolver gives a window with no tabs; the File menu's
+            /// delegate resolves it from the key window from then on.
             MenuItemFactory.item(
-                String(localized: "Close Tab"),
-                action: #selector(MainSplitViewController.closeEditorTab(_:)),
+                CloseCommandTitleResolver.windowTitle,
+                action: #selector(NSWindow.performClose(_:)),
                 shortcut: .closeTab,
                 keyboard: keyboard
             ),
@@ -101,6 +111,8 @@ enum FileMenuBuilder {
                 action: #selector(MainSplitViewController.restoreDatabase(_:))
             )
         ])
+        file.submenu?.delegate = closeTitleDelegate
+        return file
     }
 
     private static func importSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {

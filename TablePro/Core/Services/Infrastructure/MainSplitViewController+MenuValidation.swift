@@ -100,12 +100,13 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(exportQueryResults(_:)):
             return context.isConnected && context.hasResultRows
 
-        /// AppKit validated New Tab and Close Tab for free while they were its own selectors.
-        /// `NSWindow.validateUserInterfaceItem` only speaks to the native ones, so these are
-        /// ours to enable and disable now.
+        /// AppKit validated New Tab for free while it was its own selector.
+        /// `NSWindow.validateUserInterfaceItem` only speaks to the native ones, so this is
+        /// ours to enable and disable now. Close went back to `performClose:`, which every
+        /// window validates for itself.
         case #selector(newEditorTab(_:)):
             return context.isConnected
-        case #selector(closeEditorTab(_:)), #selector(closeConnection(_:)):
+        case #selector(closeConnection(_:)):
             return context.hasSelectedWorkspace
         case #selector(selectNextEditorTab(_:)), #selector(selectPreviousEditorTab(_:)):
             return context.isConnected
