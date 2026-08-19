@@ -77,10 +77,19 @@ public actor CloudKitSyncEngine {
 
     @discardableResult
     public func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
-        guard !records.isEmpty || !deletions.isEmpty else { return PushOutcome() }
+        let withheldTypes = SyncSchemaGate.withheldRecordTypes(in: records)
+        if !withheldTypes.isEmpty {
+            Self.logger.error(
+                "Withholding record types absent from the production schema: \(withheldTypes.sorted().joined(separator: ", "), privacy: .public)"
+            )
+        }
 
-        var remainingSaves = records[...]
-        var remainingDeletions = deletions[...]
+        let publishableRecords = SyncSchemaGate.publishable(records: records)
+        let publishableDeletions = SyncSchemaGate.publishable(deletions: deletions)
+        guard !publishableRecords.isEmpty || !publishableDeletions.isEmpty else { return PushOutcome() }
+
+        var remainingSaves = publishableRecords[...]
+        var remainingDeletions = publishableDeletions[...]
         var outcome = PushOutcome()
 
         while !remainingSaves.isEmpty || !remainingDeletions.isEmpty {
