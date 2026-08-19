@@ -33,6 +33,7 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(host: host, port: port, user: user, password: password, database: database, ssl: ssl)
+        _ = try? await actor.execute("SET standard_conforming_strings = on")
         serverVersion = await actor.serverVersion()
     }
 

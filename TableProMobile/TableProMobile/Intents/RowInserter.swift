@@ -5,7 +5,9 @@ import TableProModels
 enum RowInsertPlanner {
     static func statements(
         table: String,
+        schema: String?,
         type: DatabaseType,
+        driver: any DatabaseDriver,
         columns: [ColumnInfo],
         rows: [PayloadRow]
     ) throws -> [String] {
@@ -28,7 +30,9 @@ enum RowInsertPlanner {
             guard !insertColumns.isEmpty else { return nil }
             return SQLBuilder.buildInsert(
                 table: table,
+                schema: schema,
                 type: type,
+                driver: driver,
                 columns: insertColumns,
                 values: insertValues
             )
@@ -42,10 +46,18 @@ enum RowInserter {
         table: String,
         type: DatabaseType,
         schema: String?,
+        qualifier: String?,
         rows: [PayloadRow]
     ) async throws -> Int {
         let columns = try await driver.fetchColumns(table: table, schema: schema)
-        let statements = try RowInsertPlanner.statements(table: table, type: type, columns: columns, rows: rows)
+        let statements = try RowInsertPlanner.statements(
+            table: table,
+            schema: qualifier,
+            type: type,
+            driver: driver,
+            columns: columns,
+            rows: rows
+        )
         guard !statements.isEmpty else { throw IntentDataError.noInsertableValues(table) }
 
         if driver.supportsTransactions, statements.count > 1 {

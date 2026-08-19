@@ -16,6 +16,10 @@ final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     var currentSchema: String? { nil }
     var supportsTransactions: Bool { true }
 
+    func escapeStringLiteral(_ value: String) -> String {
+        SQLEscaping.backslashStringLiteral(value)
+    }
+
     // Set once during connect() before the driver is shared — safe for concurrent reads
     nonisolated(unsafe) private(set) var serverVersion: String?
 

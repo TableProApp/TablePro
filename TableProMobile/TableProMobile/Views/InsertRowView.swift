@@ -178,7 +178,7 @@ struct InsertRowView: View {
     private func insertRow() async {
         guard let session else { return }
 
-        let sql = buildInsertSQL()
+        let sql = buildInsertSQL(driver: session.driver)
 
         switch safeModeLevel.writePermission {
         case .blocked:
@@ -197,7 +197,7 @@ struct InsertRowView: View {
         await executeInsert(sql: sql, session: session)
     }
 
-    private func buildInsertSQL() -> String {
+    private func buildInsertSQL(driver: any DatabaseDriver) -> String {
         var insertColumns: [String] = []
         var insertValues: [String?] = []
 
@@ -219,7 +219,9 @@ struct InsertRowView: View {
 
         return SQLBuilder.buildInsert(
             table: table.name,
+            schema: nil,
             type: databaseType,
+            driver: driver,
             columns: insertColumns,
             values: insertValues
         )
