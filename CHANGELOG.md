@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A Cloud SQL Auth Proxy or Cloudflare tunnel that fails to start now reports the last thing it said. The final line a helper wrote before exiting was dropped whenever it exited quickly, and that line is usually the reason it failed, so the error could arrive with nothing in it.
 - Editing a connection keeps its favorite mark, its place in the connection list, and the AI tools you had chosen to always allow for it. All three were reset to their defaults every time the connection form saved, so starring a connection and then renaming it lost the star.
 - Opening a `.sql` file that is already open shows its tab instead of replacing what you have typed in it. The buffer was overwritten with the copy on disk, with no prompt and nothing to undo it. A tab with no unsaved edits still picks up the current file, and its unsaved marker and changed-on-disk banner now follow the text it just loaded.
 - A `.sql` tab reopened from Recently Closed knows it has unsaved edits. It compared against nothing, so it showed no unsaved marker, Save did nothing, and reopening the file replaced what you had typed.
