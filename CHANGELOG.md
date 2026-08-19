@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Scrolling a result with hundreds of columns is no longer slow. Every column built a cell for every row on screen whether or not it was anywhere near the viewport, so a 500-column table carried about 18,000 live cells and laid all of them out on each frame. Only the columns near the viewport are built now, and the rest keep their width so the horizontal scroller still spans the whole result. (#1219)
+- A column you hid keeps its place in the column order. The order was saved from the columns the query returned, and a hidden column is left out of that query, so its position was erased and Show All put it back at the far right of a grid you had arranged.
+- A row you are inserting shows empty values in JSON result mode for the columns the server fills in, instead of printing TablePro's internal marker for them as though it were data.
 - `Cmd+F` no longer opens a find bar in JSON result mode. It searched the data grid's cells through the grid, which is not mounted there, so it always reported no matches whatever you typed. The Tree view keeps its own search field. (#2244)
 - The Filters button and `Cmd+Option+F` now open the filter panel in JSON result mode, where they used to flip a switch and draw nothing. Applying a filter re-runs the query, so the JSON shows the filtered rows. (#2244)
 - Add Row, Duplicate Row, Paste and Delete no longer collapse the JSON view to the single row they touched. Each command selected that row so the grid could scroll to it, and JSON mode reads the same selection as "show only these rows", so the document appeared to empty out. (#2244)

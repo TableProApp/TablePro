@@ -102,10 +102,18 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         identitySchema.dataIndex(from: identifier)
     }
 
+    /// Whether the result presents this column, regardless of whether the window has it mounted.
+    func presentsColumn(_ column: NSTableColumn) -> Bool {
+        columnPool.presentsColumn(column)
+    }
+
+    /// The columns the user is looking at, which is every presented column and not merely the
+    /// mounted ones. Copy, find and size-all all read this, so narrowing it to the window would
+    /// silently drop the columns off screen from a copied row or a search.
     func visibleColumnDataIndices() -> [Int]? {
         guard let tableView else { return nil }
         return tableView.tableColumns
-            .filter { !$0.isHidden && $0.identifier != ColumnIdentitySchema.rowNumberIdentifier }
+            .filter { presentsColumn($0) }
             .compactMap { dataColumnIndex(from: $0.identifier) }
     }
 
@@ -709,7 +717,36 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 self?.schedulePrewarmResume()
             }
         }
-        scrollObservers = [start, end]
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        let bounds = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateColumnWindow()
+            }
+        }
+        // A bounds change is scrolling; a frame change is the viewport resizing. Widening the
+        // window exposes area the window never covered, and only this fires for that.
+        scrollView.contentView.postsFrameChangedNotifications = true
+        let frame = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateColumnWindow()
+            }
+        }
+        scrollObservers = [start, end, bounds, frame]
+    }
+
+    /// Re-mounts the columns the viewport can now reach. The resolver keeps the range stable while
+    /// the viewport stays inside its margin, so most scroll frames return without touching a column.
+    func updateColumnWindow() {
+        guard let tableView, !isRebuildingColumns else { return }
+        columnPool.applyColumnWindow(in: tableView)
     }
 
     private func detachScrollObservers() {

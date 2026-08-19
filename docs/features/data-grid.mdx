@@ -60,7 +60,9 @@ Hide columns from the columns button in the status bar or the header menu. A hid
 
 On a schemaless store such as MongoDB, the popover lists every field the grid can draw, including ones that only turn up in later documents, so **Hide All** covers all of them.
 
-Column widths, order, and which columns are hidden are remembered per table, scoped to the connection, database, and schema. Click **Reset Columns** in the columns popover to put everything back to defaults.
+Column widths, order, and which columns are hidden are remembered per table, scoped to the connection, database, and schema. Hiding a column keeps its place in that order, so showing it again puts it back where it was. Click **Reset Columns** in the columns popover to put everything back to defaults.
+
+A result with hundreds of columns only builds the ones near the viewport, so scrolling stays smooth on very wide tables. The horizontal scroller still covers the whole result, and columns are built as you reach them.
 
 ### Display Format
 

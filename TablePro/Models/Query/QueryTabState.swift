@@ -339,10 +339,51 @@ struct ColumnLayoutState: Equatable {
     var columnOrder: [String]?
     var hiddenColumns: Set<String> = []
 
+    /// Splices a captured order into the stored one, keeping names the capture never saw.
+    ///
+    /// A capture only lists the columns the query returned, and hiding a column takes it out of
+    /// that projection. Overwriting with the capture therefore drops the hidden column's position,
+    /// and showing it again appends it at the end, which reorders a grid the user never touched.
+    /// Names the capture does cover take its order; the rest hold their slots.
+    static func mergedColumnOrder(current: [String]?, incoming: [String]?) -> [String]? {
+        guard let incoming else { return current }
+        guard let current, !current.isEmpty else { return incoming }
+
+        let incomingSet = Set(incoming)
+        // Only a narrowing of the same column set is a partial capture worth splicing. Anything
+        // else is a different result, and merging there would accumulate names from a table the
+        // layout no longer describes.
+        guard incomingSet.isSubset(of: Set(current)) else { return incoming }
+        var remaining = incoming.makeIterator()
+        var merged: [String] = []
+        merged.reserveCapacity(max(current.count, incoming.count))
+
+        for name in current {
+            if incomingSet.contains(name) {
+                guard let next = remaining.next() else { continue }
+                merged.append(next)
+            } else {
+                merged.append(name)
+            }
+        }
+
+        let placed = Set(merged)
+        merged.append(contentsOf: incoming.filter { !placed.contains($0) })
+        return merged
+    }
+
     mutating func applyGeometry(from other: ColumnLayoutState) {
         columnWidths = other.columnWidths
         columnContentWidths = other.columnContentWidths
-        columnOrder = other.columnOrder
+        columnOrder = Self.mergedColumnOrder(current: columnOrder, incoming: other.columnOrder)
+    }
+
+    /// Drops the geometry outright. Reset is not a capture, so it must not go through the merge,
+    /// which deliberately keeps a stored order when a capture carries none.
+    mutating func resetGeometry() {
+        columnWidths = [:]
+        columnContentWidths = nil
+        columnOrder = nil
     }
 
     func mergingWidths(_ liveWidths: [String: CGFloat]) -> ColumnLayoutState {

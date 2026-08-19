@@ -40,7 +40,7 @@ internal struct JsonRowConverter {
                 }
 
                 let cell = row[colIdx]
-                if cell.isNull {
+                if cell.isNull || cell.isDefaultMarker {
                     result.append("null")
                     appendPropertySuffix(to: &result, colIdx: colIdx)
                     continue
