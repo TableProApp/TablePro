@@ -20,17 +20,33 @@ struct ResultChartCanvas: View {
         }
         .chartYAxis {
             AxisMarks(position: .leading) { value in
-                AxisGridLine()
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color(nsColor: .separatorColor).opacity(0.55))
+                AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color(nsColor: .separatorColor))
                 AxisValueLabel {
                     if let number = value.as(Decimal.self) {
                         Text(NSDecimalNumber(decimal: number).stringValue)
                             .monospacedDigit()
                     }
                 }
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             }
         }
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 8))
+            AxisMarks(values: .automatic(desiredCount: 7)) {
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color(nsColor: .separatorColor).opacity(0.55))
+                AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color(nsColor: .separatorColor))
+                AxisValueLabel()
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            }
+        }
+        .chartPlotStyle { plotArea in
+            plotArea
+                .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+                .clipShape(.rect(cornerRadius: 8))
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilitySummary)
@@ -44,6 +60,7 @@ struct ResultChartCanvas: View {
             }
         }
         .chartLegend(projection.seriesLabel == nil ? .hidden : .visible)
+        .chartLegend(position: .bottom, alignment: .leading, spacing: 10)
     }
 
     private var numericChart: some View {
@@ -53,6 +70,7 @@ struct ResultChartCanvas: View {
             }
         }
         .chartLegend(projection.seriesLabel == nil ? .hidden : .visible)
+        .chartLegend(position: .bottom, alignment: .leading, spacing: 10)
     }
 
     @ChartContentBuilder
@@ -77,6 +95,7 @@ struct ResultChartCanvas: View {
                 .position(by: .value(String(localized: "Row"), point.barGroup))
                 .foregroundStyle(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
                 .symbol(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
+                .symbolSize(28)
                 .accessibilityHidden(true)
             } else {
                 BarMark(
@@ -98,6 +117,7 @@ struct ResultChartCanvas: View {
                 )
                 .foregroundStyle(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
                 .lineStyle(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                 .accessibilityLabel(pointAccessibilityLabel(point, series: series))
                 .accessibilityValue(point.rawY)
                 PointMark(
@@ -106,6 +126,7 @@ struct ResultChartCanvas: View {
                 )
                 .foregroundStyle(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
                 .symbol(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
+                .symbolSize(42)
                 .accessibilityHidden(true)
             } else {
                 LineMark(
@@ -114,8 +135,16 @@ struct ResultChartCanvas: View {
                     series: .value(String(localized: "Line"), point.lineGroup)
                 )
                 .foregroundStyle(Color.accentColor)
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                 .accessibilityLabel(pointAccessibilityLabel(point, series: nil))
                 .accessibilityValue(point.rawY)
+                PointMark(
+                    x: .value(projection.xAxisLabel, x),
+                    y: .value(projection.yAxisLabel, point.y)
+                )
+                .foregroundStyle(Color.accentColor)
+                .symbolSize(42)
+                .accessibilityHidden(true)
             }
         case .area:
             if let series {
@@ -135,6 +164,7 @@ struct ResultChartCanvas: View {
                 )
                 .foregroundStyle(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
                 .lineStyle(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                 .accessibilityLabel(pointAccessibilityLabel(point, series: series))
                 .accessibilityValue(point.rawY)
                 PointMark(
@@ -143,6 +173,7 @@ struct ResultChartCanvas: View {
                 )
                 .foregroundStyle(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
                 .symbol(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
+                .symbolSize(42)
                 .accessibilityHidden(true)
             } else {
                 AreaMark(
@@ -151,9 +182,24 @@ struct ResultChartCanvas: View {
                     series: .value(String(localized: "Area"), point.lineGroup),
                     stacking: .unstacked
                 )
-                .foregroundStyle(Color.accentColor.opacity(0.65))
+                .foregroundStyle(Color.accentColor.opacity(0.18))
+                .accessibilityHidden(true)
+                LineMark(
+                    x: .value(projection.xAxisLabel, x),
+                    y: .value(projection.yAxisLabel, point.y),
+                    series: .value(String(localized: "Area"), point.lineGroup)
+                )
+                .foregroundStyle(Color.accentColor)
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                 .accessibilityLabel(pointAccessibilityLabel(point, series: nil))
                 .accessibilityValue(point.rawY)
+                PointMark(
+                    x: .value(projection.xAxisLabel, x),
+                    y: .value(projection.yAxisLabel, point.y)
+                )
+                .foregroundStyle(Color.accentColor)
+                .symbolSize(42)
+                .accessibilityHidden(true)
             }
         case .scatter:
             if let series {
@@ -163,6 +209,7 @@ struct ResultChartCanvas: View {
                 )
                 .foregroundStyle(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
                 .symbol(by: .value(projection.seriesLabel ?? String(localized: "Series"), series))
+                .symbolSize(48)
                 .accessibilityLabel(pointAccessibilityLabel(point, series: series))
                 .accessibilityValue(point.rawY)
             } else {
@@ -171,6 +218,7 @@ struct ResultChartCanvas: View {
                     y: .value(projection.yAxisLabel, point.y)
                 )
                 .foregroundStyle(Color.accentColor)
+                .symbolSize(48)
                 .accessibilityLabel(pointAccessibilityLabel(point, series: nil))
                 .accessibilityValue(point.rawY)
             }

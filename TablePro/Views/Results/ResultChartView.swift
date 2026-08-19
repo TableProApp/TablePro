@@ -159,7 +159,8 @@ struct ResultChartView: View {
         case nil:
             if let configuration = resolvedConfiguration {
                 ResultChartCanvas(projection: projection, chartType: configuration.chartType)
-                    .padding(20)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
             }
         }
     }

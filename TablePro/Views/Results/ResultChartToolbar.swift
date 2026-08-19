@@ -25,9 +25,9 @@ struct ResultChartToolbar: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
+                HStack(spacing: 12) {
                     Picker(String(localized: "Chart Type"), selection: chartTypeBinding) {
                         ForEach(ResultChartType.allCases) { type in
                             Label(type.displayName, systemImage: type.systemImage)
@@ -38,6 +38,9 @@ struct ResultChartToolbar: View {
                     .pickerStyle(.segmented)
                     .fixedSize()
                     .accessibilityIdentifier("result-chart-type-picker")
+
+                    Divider()
+                        .frame(height: 22)
 
                     axisPicker(
                         title: String(localized: "X Axis"),
@@ -96,8 +99,9 @@ struct ResultChartToolbar: View {
             .font(.caption)
             .lineLimit(1)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private var chartTypeBinding: Binding<ResultChartType> {
@@ -140,7 +144,6 @@ struct ResultChartToolbar: View {
                 Text(column.displayName).tag(Optional(column.index))
             }
         }
-        .controlSize(.small)
-        .frame(width: 160)
+        .frame(width: 170)
     }
 }
