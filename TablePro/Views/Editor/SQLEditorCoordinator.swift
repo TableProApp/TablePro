@@ -168,6 +168,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         hasInstalledEditorServices = true
 
         installAIContextMenu(controller: controller)
+        installFoldPreview(controller: controller)
         installInlineSuggestionManager(controller: controller)
         diagnosticsController.configure(databaseType: databaseType)
         diagnosticsController.scheduleRefresh(for: controller)
@@ -262,6 +263,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             Task { await sync.didCloseTab(tabID: id) }
         }
 
+        foldPreview.destroy()
         inlineSuggestionManager?.uninstall()
         inlineSuggestionManager = nil
         copilotDocumentSync = nil
@@ -307,6 +309,13 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     // MARK: - AI Context Menu
 
+    private func installFoldPreview(controller: TextViewController) {
+        foldPreview.language = PluginManager.shared
+            .editorLanguage(for: databaseType ?? .mysql)
+            .treeSitterLanguage
+        foldPreview.install(controller: controller)
+    }
+
     private func installAIContextMenu(controller: TextViewController) {
         guard controller.textView != nil else { return }
         let menu = AIEditorContextMenu(title: "")
@@ -332,6 +341,8 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         contextMenu = menu
         controller.textView?.menu = menu
     }
+
+    @ObservationIgnored private let foldPreview = FoldPreviewController()
 
     func toggleFoldAtCursor() {
         controller?.toggleFoldAtCursor()

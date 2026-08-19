@@ -141,6 +141,8 @@ A ribbon in the gutter marks every region that spans more than one line: whole s
 
 A collapsed region is replaced by a chip showing the start of what it hides and the number of hidden lines, so a folded `CREATE TABLE` still tells you what is inside it.
 
+Rest the pointer on the chip to peek at the block without expanding it. The peek shows the whole block, opening line included, with the same syntax highlighting and theme as the editor, and reports how many lines it left out when the block is longer than it can show. Moving away, scrolling, typing, or clicking closes it, and the caret never leaves the editor.
+
 **Toggle Fold** (`Cmd+Option+Left`), **Fold All** (`Cmd+Option+Shift+Left`) and **Unfold All** (`Cmd+Option+Shift+Right`) are in the Query menu and can be rebound in **Settings > Keyboard**. Fold All collapses top-level statements; fold the regions inside them individually. **Fold** and **Unfold** are also on the editor's right-click menu.
 
 Collapsed regions are remembered when you close and reopen a tab. If the file changed while the tab was closed, the folds that no longer fit are dropped.
