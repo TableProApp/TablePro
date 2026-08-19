@@ -69,10 +69,13 @@ struct TableQueryBuilder {
         offset: Int = 0
     ) -> String {
         if let pluginDriver {
-            let sortCols = sortColumnsAsTuples(sortState)
+            let targetColumns = selectColumns ?? columns
+            let sortCols = SortColumnResolver.resolvedIndices(
+                for: sortState, displayColumns: columns, targetColumns: targetColumns
+            )
             if let result = pluginDriver.buildBrowseQuery(
                 table: tableName, schema: schemaName, sortColumns: sortCols,
-                columns: selectColumns ?? columns, limit: limit, offset: offset
+                columns: targetColumns, limit: limit, offset: offset
             ) {
                 return result
             }
@@ -102,14 +105,17 @@ struct TableQueryBuilder {
         offset: Int = 0
     ) -> String {
         if let pluginDriver {
-            let sortCols = sortColumnsAsTuples(sortState)
+            let targetColumns = selectColumns ?? columns
+            let sortCols = SortColumnResolver.resolvedIndices(
+                for: sortState, displayColumns: columns, targetColumns: targetColumns
+            )
             let queryFilters = filters
                 .filter { $0.isEnabled && !$0.columnName.isEmpty }
                 .map(\.asPluginQueryFilter)
             if let result = pluginDriver.buildFilteredQuery(
                 table: tableName, schema: schemaName, queryFilters: queryFilters,
                 logicMode: logicMode == .and ? "and" : "or",
-                sortColumns: sortCols, columns: selectColumns ?? columns, limit: limit, offset: offset,
+                sortColumns: sortCols, columns: targetColumns, limit: limit, offset: offset,
                 columnKinds: pluginColumnKinds(columns: columns, columnTypes: columnTypes)
             ) {
                 return result
@@ -150,7 +156,10 @@ struct TableQueryBuilder {
         offset: Int = 0
     ) -> String {
         if let pluginDriver {
-            let sortCols = sortColumnsAsTuples(sortState)
+            let targetColumns = selectColumns ?? columns
+            let sortCols = SortColumnResolver.resolvedIndices(
+                for: sortState, displayColumns: columns, targetColumns: targetColumns
+            )
             var tuples: [(column: String, op: String, value: String)] = []
             let trimmedPattern = pattern.trimmingCharacters(in: .whitespaces)
             if !trimmedPattern.isEmpty {
@@ -162,7 +171,7 @@ struct TableQueryBuilder {
             if let result = pluginDriver.buildFilteredQuery(
                 table: tableName, schema: schemaName, filters: tuples,
                 logicMode: "and", sortColumns: sortCols,
-                columns: selectColumns ?? columns, limit: limit, offset: offset
+                columns: targetColumns, limit: limit, offset: offset
             ) {
                 return result
             }
@@ -216,13 +225,6 @@ struct TableQueryBuilder {
         return "LIMIT \(limit) OFFSET \(offset)"
     }
 
-    private func sortColumnsAsTuples(_ sortState: SortState?) -> [(columnIndex: Int, ascending: Bool)] {
-        sortState?.columns.compactMap { sortCol -> (columnIndex: Int, ascending: Bool)? in
-            guard sortCol.columnIndex >= 0 else { return nil }
-            return (sortCol.columnIndex, sortCol.direction == .ascending)
-        } ?? []
-    }
-
     private func orderByOrOffsetFetchDefault(sortState: SortState?, columns: [String]) -> String? {
         if let orderBy = buildOrderByClause(sortState: sortState, columns: columns) {
             return orderBy
@@ -236,8 +238,9 @@ struct TableQueryBuilder {
         guard let state = sortState, state.isSorting else { return nil }
 
         let parts = state.columns.compactMap { sortCol -> String? in
-            guard sortCol.columnIndex >= 0, sortCol.columnIndex < columns.count else { return nil }
-            let columnName = columns[sortCol.columnIndex]
+            guard let columnName = SortColumnResolver.clauseColumnName(for: sortCol, displayColumns: columns) else {
+                return nil
+            }
             let direction = sortCol.direction == .ascending ? "ASC" : "DESC"
             let quotedColumn = quote(columnName)
             return "\(quotedColumn) \(direction)"

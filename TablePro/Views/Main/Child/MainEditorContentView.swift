@@ -220,11 +220,7 @@ struct MainEditorContentView: View {
         case .table:
             tableTabContent(tab: tab)
         case .createTable:
-            CreateTableView(
-                connection: connection,
-                coordinator: coordinator,
-                selectionState: selectionState
-            )
+            createTableContent(tab: tab)
         case .erDiagram:
             erDiagramContent(tab: tab)
         case .serverDashboard:
@@ -264,7 +260,7 @@ struct MainEditorContentView: View {
     private func usersRolesContent(tab: QueryTab) -> some View {
         Group {
             if let vm = usersRolesViewModels[tab.id] {
-                UsersRolesTabView(viewModel: vm, coordinator: coordinator)
+                UsersRolesTabView(viewModel: vm, coordinator: coordinator, tabID: tab.id)
             } else {
                 ProgressView(String(localized: "Loading users and roles..."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -402,6 +398,7 @@ struct MainEditorContentView: View {
                         isParameterPanelVisible: parameterVisibilityBinding(for: tab),
                         onExecute: { coordinator.runQuery() },
                         onExecuteWithoutLimit: { coordinator.runQuery(bypassRowLimit: true) },
+                        onExecuteAllStatements: { coordinator.runAllStatements() },
                         schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: coordinator.connection.id),
                         databaseType: coordinator.connection.type,
                         connectionId: coordinator.connection.id,
@@ -506,7 +503,7 @@ struct MainEditorContentView: View {
                 guard tabId == tabManager.selectedTabId,
                       let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
                       let window = coordinator.contentWindow else { return }
-                let showsIndicator = tabManager.tabs[index].showsUnsavedIndicator
+                let showsIndicator = coordinator.showsUnsavedIndicator(for: tabManager.tabs[index])
                 Task { @MainActor in
                     window.isDocumentEdited = showsIndicator
                 }
@@ -567,6 +564,57 @@ struct MainEditorContentView: View {
         coordinator.scope(for: tab)
     }
 
+    /// A Create Table tab holds nothing but unsaved work, so its draft is cached here rather than
+    /// left in the view, which is destroyed the moment the tab is deselected.
+    @ViewBuilder
+    private func createTableContent(tab: QueryTab) -> some View {
+        Group {
+            if let draft = coordinator.createTableDrafts[tab.id] {
+                CreateTableView(
+                    connection: connection,
+                    coordinator: coordinator,
+                    selectionState: selectionState,
+                    draft: draft
+                )
+            } else {
+                Color.clear
+                    .onAppear { coordinator.createTableDrafts[tab.id] = CreateTableDraft() }
+            }
+        }
+        .id(tab.id)
+    }
+
+    /// The structure editor is rebuilt whenever the tab is deselected or switched to Data, so its
+    /// staged ALTERs live in a session cached here by tab, the same way the Users & Roles, ER
+    /// diagram and dashboard view models do. Creating it in `onAppear` rather than inline keeps the
+    /// write out of the view-update pass.
+    @ViewBuilder
+    private func structureContent(tab: QueryTab, tableName: String) -> some View {
+        let scope = structureScope(for: tab)
+        let identity = "\(scope?.qualifiedDescription ?? "").\(tableName)"
+        Group {
+            if let session = coordinator.structureSessions[tab.id], session.identity == identity {
+                TableStructureView(
+                    tableName: tableName,
+                    connection: connection,
+                    databaseName: scope?.database ?? "",
+                    schemaName: scope?.schema,
+                    toolbarState: coordinator.toolbarState,
+                    coordinator: coordinator,
+                    selectionState: selectionState,
+                    session: session
+                )
+                .id(identity)
+            } else {
+                Color.clear
+                    .onAppear {
+                        coordinator.structureSessions[tab.id] = StructureEditingSession(identity: identity)
+                    }
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+
     @ViewBuilder
     private func resultsSection(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
@@ -574,18 +622,7 @@ struct MainEditorContentView: View {
             switch tab.display.resultsViewMode {
             case .structure:
                 if let tableName = tab.tableContext.tableName {
-                    let scope = structureScope(for: tab)
-                    TableStructureView(
-                        tableName: tableName,
-                        connection: connection,
-                        databaseName: scope?.database ?? "",
-                        schemaName: scope?.schema,
-                        toolbarState: coordinator.toolbarState,
-                        coordinator: coordinator,
-                        selectionState: selectionState
-                    )
-                    .id("\(scope?.qualifiedDescription ?? "").\(tableName)")
-                    .frame(maxHeight: .infinity)
+                    structureContent(tab: tab, tableName: tableName)
                 }
             case .json:
                 resultTabBarSection(tab: tab)
@@ -598,6 +635,32 @@ struct MainEditorContentView: View {
                     columnLayout: tab.columnLayout
                 )
                 .id(tab.id)
+            case .chart:
+                resultTabBarSection(tab: tab)
+                if let explain = tab.display.activeExplainResult {
+                    QueryPlanResultView(
+                        rawText: explain.explainRawText ?? "",
+                        executionTime: explain.executionTime,
+                        plan: explain.queryPlan
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let resultSet = tab.display.activeResultSet {
+                    ResultChartView(
+                        configuration: chartConfigurationBinding(for: tab),
+                        tableRows: resolvedTableRows(for: tab),
+                        primaryKeyColumns: Set(tab.tableContext.primaryKeyColumns),
+                        tabId: tab.id,
+                        resultSetId: resultSet.id,
+                        dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
+                        isUnlocked: LicenseManager.shared.isFeatureAvailable(.resultCharts)
+                    )
+                } else {
+                    ContentUnavailableView(
+                        String(localized: "No Data"),
+                        systemImage: "chart.bar.xaxis",
+                        description: Text(String(localized: "Execute a query to chart its loaded rows."))
+                    )
+                }
             case .data:
                 resultTabBarSection(tab: tab)
 
@@ -856,6 +919,19 @@ struct MainEditorContentView: View {
             set: { newValue in
                 if let index = tabManager.selectedTabIndex {
                     tabManager.mutate(at: index) { $0.sortState = newValue }
+                }
+            }
+        )
+    }
+
+    /// The chart's choices belong to the tab, not to the result set: a page turn, a sort or a
+    /// re-execute builds a new `ResultSet`, and the axes have to outlive it.
+    private func chartConfigurationBinding(for tab: QueryTab) -> Binding<ResultChartConfiguration> {
+        Binding(
+            get: { tab.chartConfiguration },
+            set: { newValue in
+                if let index = tabManager.selectedTabIndex {
+                    tabManager.mutate(at: index) { $0.chartConfiguration = newValue }
                 }
             }
         )

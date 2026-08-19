@@ -160,7 +160,7 @@ struct QueryEditorView: View {
             }
 
             if resultRowCount > 0 {
-                Text(verbatim: "\(resultRowCount) rows")
+                Text("\(resultRowCount) rows")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

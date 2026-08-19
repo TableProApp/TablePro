@@ -362,9 +362,11 @@ struct DataGridView: NSViewRepresentable {
     }
 
     private func syncSortState(tableView: NSTableView, coordinator: TableViewCoordinator) {
-        coordinator.currentSortState = sortState
+        let schema = coordinator.identitySchema
+        let resolved = SortColumnResolver.reindexed(sortState, displayColumns: schema.columnNames)
+        coordinator.currentSortState = resolved
         guard let header = tableView.headerView as? SortableHeaderView else { return }
-        header.applySortState(sortState, schema: coordinator.identitySchema)
+        header.applySortState(resolved, schema: schema)
     }
 
     // MARK: - Column Layout Helpers

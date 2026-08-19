@@ -63,7 +63,7 @@ Every plugin is verified before it loads. Registry downloads must match the SHA-
 
 A plugin TablePro signed itself installs with no extra step.
 
-A plugin signed by someone else installs only after you agree to trust that developer. TablePro asks once, naming the developer and their Apple Team ID, and the plugin is discarded if you decline. The bundle must be signed with a Developer ID and notarized by Apple to get that far; unsigned and ad-hoc signed bundles are refused outright and there is no way to override that.
+A plugin signed by someone else installs only after you agree to trust that developer. TablePro asks once, naming the developer and their Apple Team ID, and the plugin is discarded if you decline. The bundle must be signed with an Apple Developer ID to get that far; unsigned and ad-hoc signed bundles are refused outright and there is no way to override that. A Developer ID signature says Apple issued that certificate to a named developer and that nobody has altered the bundle since. It is not a review of what the plugin does, which is why the decision to trust the developer is yours and not something TablePro makes for you.
 
 Say yes only if you would give that developer your database credentials, because that is what you are granting. A driver plugin runs as part of TablePro and can read the credentials of every connection you open.
 

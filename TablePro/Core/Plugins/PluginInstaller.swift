@@ -4,7 +4,6 @@
 //
 
 import CryptoKit
-import Darwin
 import Foundation
 import os
 
@@ -290,13 +289,7 @@ actor PluginInstaller {
     }
 
     nonisolated static func stripQuarantine(at url: URL) {
-        let path = url.path
-        let result = path.withCString { removexattr($0, "com.apple.quarantine", 0) }
-        guard result != 0 else { return }
-        let code = errno
-        if code != ENOATTR {
-            logger.warning("Failed to remove quarantine xattr at \(url.lastPathComponent): errno=\(code)")
-        }
+        DownloadedBinary.stripQuarantine(at: url)
     }
 
     nonisolated static func validateStagedABI(

@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import CryptoKit
 import Darwin
 import Foundation
 import Testing
@@ -123,6 +124,81 @@ struct CloudSQLProxyManagerTests {
         CloudSQLProxyConfiguration(instanceConnectionName: instance, localPort: localPort, binaryPath: "/bin/echo")
     }
 
+    /// The managed binary is ad-hoc signed and sits in a user-writable directory, so the launch
+    /// path has to obtain it through the checksum-verifying accessor rather than by checking that
+    /// a file exists. It did the latter, which left the pinned checksum unread before exec.
+    @Test("A tampered managed binary is refused rather than launched")
+    func tamperedManagedBinaryIsRefused() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloudsqlproxy-launch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let binary = dir.appendingPathComponent("cloud-sql-proxy")
+        try Data("swapped in later".utf8).write(to: binary)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
+        try CloudSQLProxyBinaryManager.pinnedVersion
+            .write(to: dir.appendingPathComponent("version.txt"), atomically: true, encoding: .utf8)
+
+        let started = LaunchFlag()
+        let manager = CloudSQLProxyManager(
+            runnerFactory: {
+                started.set()
+                return FakeCloudSQLProxyRunner(behavior: .ready)
+            },
+            binaryManager: CloudSQLProxyBinaryManager(
+                baseDirectory: dir,
+                expectedSHA256: ["arm64": "deadbeef", "amd64": "deadbeef"],
+                fetch: { _ in Data("still wrong".utf8) }
+            ),
+            systemBinaryLookup: { _ in nil }
+        )
+
+        await #expect(throws: CloudSQLProxyError.binaryNotFound) {
+            _ = try await manager.createTunnel(
+                connectionId: UUID(),
+                config: CloudSQLProxyConfiguration(
+                    instanceConnectionName: "proj:region:inst",
+                    localPort: nil,
+                    binaryPath: ""
+                )
+            )
+        }
+        #expect(!started.value, "the proxy was launched despite failing its checksum")
+    }
+
+    @Test("A managed binary matching its pin is launched")
+    func verifiedManagedBinaryIsLaunched() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloudsqlproxy-launch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bytes = Data("pinned build".utf8)
+        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+
+        let manager = CloudSQLProxyManager(
+            runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) },
+            binaryManager: CloudSQLProxyBinaryManager(
+                baseDirectory: dir,
+                expectedSHA256: ["arm64": digest, "amd64": digest],
+                fetch: { _ in bytes }
+            ),
+            systemBinaryLookup: { _ in nil }
+        )
+
+        let port = try await manager.createTunnel(
+            connectionId: UUID(),
+            config: CloudSQLProxyConfiguration(
+                instanceConnectionName: "proj:region:inst",
+                localPort: nil,
+                binaryPath: ""
+            )
+        )
+
+        #expect(port > 0)
+    }
+
     @Test("createTunnel returns the allocated port once the proxy is listening")
     func readinessSucceeds() async throws {
         let fake = FakeCloudSQLProxyRunner(behavior: .ready)
@@ -218,5 +294,22 @@ struct CloudSQLProxyManagerTests {
         await manager.sweepStalePidsIfNeeded()
 
         #expect(UserDefaults.standard.data(forKey: "cloudSQLProxyStalePids") == nil)
+    }
+}
+
+private final class LaunchFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+
+    func set() {
+        lock.lock()
+        flag = true
+        lock.unlock()
+    }
+
+    var value: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return flag
     }
 }

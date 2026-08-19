@@ -134,6 +134,7 @@ targets:
       - path: TableProWidget
         excludes:
           - Info.plist
+      - TableProMobile/Localizable.xcstrings
     configFiles:
       Debug: ../Configs/Version-iOS.xcconfig
       Release: ../Configs/Version-iOS.xcconfig

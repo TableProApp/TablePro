@@ -73,7 +73,9 @@ final class CloudSQLProxyPaneViewModel {
             if let found {
                 resolvedBinaryPath = found
             } else {
-                resolvedBinaryPath = await CloudSQLProxyBinaryManager.shared.cachedBinaryPath
+                resolvedBinaryPath = await CloudSQLProxyBinaryManager.shared.isInstalled
+                    ? CloudSQLProxyBinaryManager.shared.binaryExecutablePath
+                    : nil
             }
             downloadedVersion = await CloudSQLProxyBinaryManager.shared.installedVersion()
             didResolveBinary = true

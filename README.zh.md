@@ -24,6 +24,7 @@
 <p align="center">
   <a href="README.md">English</a>
   <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.ko.md">한국어</a>
 </p>
 
 <p align="center">

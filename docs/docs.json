@@ -175,7 +175,8 @@
                 "group": "Team & Licensing",
                 "pages": ["features/team", "features/licensing"]
               },
-              "features/plugins"
+              "features/plugins",
+              "features/acknowledgements"
             ]
           },
           {

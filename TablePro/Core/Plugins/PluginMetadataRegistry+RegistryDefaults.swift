@@ -166,6 +166,7 @@ extension PluginMetadataRegistry {
                     ],
                     category: .keyValue,
                     tagline: String(localized: "In-memory data store and cache"),
+                    hidesBuiltInDatabase: true,
                     defaultUnixSocketPath: "/var/run/redis/redis.sock"
                 )
             )),
@@ -974,7 +975,8 @@ extension PluginMetadataRegistry {
                         ),
                     ],
                     category: .coordination,
-                    tagline: String(localized: "Distributed key-value store for service discovery")
+                    tagline: String(localized: "Distributed key-value store for service discovery"),
+                    hidesBuiltInDatabase: true
                 )
             )),
             ("Cloudflare D1", PluginMetadataSnapshot(

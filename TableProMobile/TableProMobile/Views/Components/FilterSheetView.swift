@@ -137,24 +137,24 @@ struct FilterSheetView: View {
 // MARK: - Filter Operator Display
 
 extension FilterOperator {
-    var displayName: String {
+    var displayName: LocalizedStringResource {
         switch self {
-        case .equal: return "equals"
-        case .notEqual: return "not equals"
-        case .greaterThan: return "greater than"
-        case .greaterThanOrEqual: return "≥"
-        case .lessThan: return "less than"
-        case .lessThanOrEqual: return "≤"
-        case .like: return "like"
-        case .notLike: return "not like"
-        case .isNull: return "is null"
-        case .isNotNull: return "is not null"
-        case .in: return "in"
-        case .notIn: return "not in"
-        case .between: return "between"
-        case .contains: return "contains"
-        case .startsWith: return "starts with"
-        case .endsWith: return "ends with"
+        case .equal: return LocalizedStringResource("equals")
+        case .notEqual: return LocalizedStringResource("not equals")
+        case .greaterThan: return LocalizedStringResource("greater than")
+        case .greaterThanOrEqual: return LocalizedStringResource("≥")
+        case .lessThan: return LocalizedStringResource("less than")
+        case .lessThanOrEqual: return LocalizedStringResource("≤")
+        case .like: return LocalizedStringResource("like")
+        case .notLike: return LocalizedStringResource("not like")
+        case .isNull: return LocalizedStringResource("is null")
+        case .isNotNull: return LocalizedStringResource("is not null")
+        case .in: return LocalizedStringResource("in")
+        case .notIn: return LocalizedStringResource("not in")
+        case .between: return LocalizedStringResource("between")
+        case .contains: return LocalizedStringResource("contains")
+        case .startsWith: return LocalizedStringResource("starts with")
+        case .endsWith: return LocalizedStringResource("ends with")
         }
     }
 

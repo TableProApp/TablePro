@@ -245,7 +245,7 @@ extension MainContentView {
             connectionId: connection.id
         )
         viewWindow?.representedURL = selectedTab?.content.sourceFileURL
-        viewWindow?.isDocumentEdited = selectedTab?.showsUnsavedIndicator ?? false
+        viewWindow?.isDocumentEdited = selectedTab.map(coordinator.showsUnsavedIndicator) ?? false
     }
 
     /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.
@@ -270,7 +270,7 @@ extension MainContentView {
 
         // Native proxy icon (Cmd+click shows path in Finder) and dirty dot
         window.representedURL = tabManager.selectedTab?.content.sourceFileURL
-        window.isDocumentEdited = tabManager.selectedTab?.showsUnsavedIndicator ?? false
+        window.isDocumentEdited = tabManager.selectedTab.map(coordinator.showsUnsavedIndicator) ?? false
 
         commandActions?.window = window
 

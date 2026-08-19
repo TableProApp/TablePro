@@ -15,12 +15,24 @@ import UniformTypeIdentifiers
 // MARK: - Data Loading
 
 extension TableStructureView {
+    /// Runs once per session, not once per view. The view is rebuilt whenever the tab is deselected
+    /// or switched to Data and back, and `loadSchemaForEditing` re-baselines the change manager,
+    /// which clears every staged edit, its validation errors and its undo stack. So a rebuild reads
+    /// what the session already holds rather than fetching over the top of the user's work.
+    ///
+    /// A genuine refresh still refetches, through `onRefreshData`, which asks before discarding.
     @Sendable
     func loadInitialData() async {
+        guard !session.hasLoaded else {
+            isInitialLoading = false
+            isLoading = false
+            return
+        }
         await loadColumns()
         await loadTabDataIfNeeded(.indexes)
         await loadTabDataIfNeeded(.foreignKeys)
         loadSchemaForEditing()
+        session.hasLoaded = true
         isInitialLoading = false
     }
 
