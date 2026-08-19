@@ -26,10 +26,17 @@ enum PluginCodeSignatureVerifier {
     /// Classifies a bundle's signature. Throws when the bundle is unsigned, ad-hoc signed, tampered
     /// with, or signed by a certificate that is neither TablePro's own nor a Developer ID.
     ///
-    /// `SecStaticCodeCheckValidity` performs notarization checks by default: `kSecCSNoNetworkAccess`
-    /// is the flag that disables them, and a bundle whose notarization was revoked fails with
-    /// `errSecCSRevokedNotarization`. So a Developer ID bundle that passes here is one Apple has
-    /// seen and has not revoked.
+    /// `SecStaticCodeCheckValidity` verifies the seal and matches the certificate chain against the
+    /// requirement it is given. It does **not** establish that the bundle was notarized, and neither
+    /// does anything else reachable from in-process API: `SecRequirementCreateWithString("notarized")`
+    /// answers `errSecCSReqFailed` for a bundle that was never notarized and for one whose ticket was
+    /// revoked alike, and `SecAssessmentTicketLookup` is not in the public SDK. So what a passing
+    /// Developer ID bundle proves is that Apple issued that certificate and the bundle has not been
+    /// altered since it was signed, not that Apple has scanned it.
+    ///
+    /// The gate that carries the weight is therefore the user's own decision: a Developer ID bundle
+    /// reaches `PluginDeveloperTrustStore` and installs only once the user trusts that team by name.
+    /// Do not narrow that prompt on the strength of a notarization claim this code cannot make.
     static func evaluate(bundle: Bundle) throws -> PluginSignatureTrust {
         #if DEBUG
         if ProcessInfo.processInfo.environment["TABLEPRO_ALLOW_UNSIGNED_PLUGINS"] == "1" {
