@@ -184,6 +184,7 @@ final class RowDetailViewModel {
         let sql = SQLBuilder.buildUpdate(
             table: table.name,
             type: databaseType,
+            driver: session.driver,
             changes: changes,
             primaryKeys: pkValues
         )

@@ -2,4 +2,4 @@
 // The app and its widget extension must ship the same values, so both read this file.
 
 MARKETING_VERSION = 1.0
-CURRENT_PROJECT_VERSION = 16
+CURRENT_PROJECT_VERSION = 17

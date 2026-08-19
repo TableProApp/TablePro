@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- iOS: a value containing a backslash, a newline or a carriage return is stored as you typed it on PostgreSQL, Redshift, SQL Server, SQLite, DuckDB and Oracle. Every insert, edit and delete used MySQL's escaping rules, so `C:\Users\dat` was saved with doubled backslashes, a line break was saved as the two characters `\n`, and editing a row that already held a backslash matched nothing and silently changed no rows. MySQL and MariaDB are unaffected.
+- iOS: PostgreSQL sessions now set `standard_conforming_strings` on, so a backslash in a value is always data and never an escape character. Servers that do not have the setting, Redshift among them, already behave that way and are left alone.
+- iOS: Add Row to Table and Add Rows to Table write to the database or schema you picked in Shortcuts. The rows went to the connection's default schema instead, while the column names were checked against the schema you chose, so a row could land in the wrong table or fail against a table the picker had just offered.
+- iOS: the three Shortcuts actions are found by searching "TablePro" in the Shortcuts action list, and are grouped under Database. Only Open Connection matched before, because the two insert actions carried no keywords.
+
+### Changed
+
+- The iOS Shortcuts documentation says which app build each action needs and where to find the full action list, so a Mac release note no longer reads as though the iPhone app already has them.
+
 ## [0.66.0] - 2026-08-19
 
 ### Added

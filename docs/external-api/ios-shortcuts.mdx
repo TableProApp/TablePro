@@ -7,6 +7,20 @@ TablePro for iOS exposes App Intents, so you can add data to a database table fr
 
 This is iOS only. On macOS, use the [URL scheme](/external-api/url-scheme) and [MCP](/external-api/mcp-tools).
 
+## Availability
+
+The iOS app updates separately from the Mac app, so a Mac release note about these actions does not mean your iPhone or iPad already has them.
+
+| Action | Needs |
+| --- | --- |
+| **Open Connection** | Any recent build. |
+| **Add Row to Table** | iOS app build 17 or later. |
+| **Add Rows to Table** | iOS app build 17 or later. |
+
+Check your build under **Settings > About** in the iOS app. If you are on an older build, update through TestFlight; the two insert actions will not appear in Shortcuts until you do.
+
+To see every action the app offers, open Shortcuts, tap the action list, and go to **Apps > TablePro**. Searching the app name works too, but the app list is the complete view.
+
 ## Actions
 
 | Action | Use it for |
@@ -17,7 +31,7 @@ This is iOS only. On macOS, use the [URL scheme](/external-api/url-scheme) and [
 
 Open Connection launches the app on the chosen connection. The two insert actions run in the background and share the same pickers:
 
-- **Connection**: the picker lists every saved connection. Inserts work on MySQL, MariaDB, PostgreSQL, Redshift, SQL Server, SQLite, and DuckDB. Pick any other type, Redis for example, and the action fails with an unsupported database type error.
+- **Connection**: the picker lists every saved connection. Inserts work on MySQL, MariaDB, PostgreSQL, Redshift, SQL Server, SQLite, DuckDB, and Oracle. Pick any other type, Redis for example, and the action fails with an unsupported database type error.
 - **Database or Schema**: optional. Leave it empty to use the connection's configured database. On schema databases like PostgreSQL it lists schemas; on others it lists databases.
 - **Table**: the table to insert into. The list is read from the chosen connection.
 
