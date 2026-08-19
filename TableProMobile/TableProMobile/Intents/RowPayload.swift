@@ -45,7 +45,7 @@ enum RowPayload {
         }
         let object: Any
         do {
-            object = try JSONSerialization.jsonObject(with: data, options: [])
+            object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
         } catch {
             throw IntentDataError.malformedPayload(error.localizedDescription)
         }
