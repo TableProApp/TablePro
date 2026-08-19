@@ -11,6 +11,11 @@ public extension TextViewController {
         "CodeEditSourceEditor.foldStateDidChangeNotification"
     )
 
+    /// The range of every fold in the document, collapsed or not, ordered by start position.
+    var foldRanges: [Range<Int>] {
+        foldModel?.getFolds(in: textView.documentRange.intRange).map(\.range) ?? []
+    }
+
     /// The ranges of every collapsed fold, suitable for persisting and replaying with ``restoreCollapsedFolds(_:)``.
     var collapsedFoldRanges: [Range<Int>] {
         foldModel?.collapsedFoldRanges() ?? []

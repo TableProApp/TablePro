@@ -115,6 +115,16 @@ public class GutterView: NSView {
     /// The view that draws the fold decoration in the gutter.
     var foldingRibbon: LineFoldRibbonView
 
+    /// The leading inset only exists to keep line numbers off the edge, so a gutter without them drops it rather
+    /// than leaving a blank margin where the numbers would have been.
+    private var horizontalInsets: CGFloat {
+        showLineNumbers ? edgeInsets.horizontal : edgeInsets.trailing
+    }
+
+    private var numberAreaWidth: CGFloat {
+        showLineNumbers ? maxLineNumberWidth : 0
+    }
+
     /// Syntax helper for determining the required space for the folding ribbon.
     private var foldingRibbonWidth: CGFloat {
         if foldingRibbon.isHidden {
@@ -222,8 +232,7 @@ public class GutterView: NSView {
             maxLineLength = lineStorageDigits
         }
 
-        let numberWidth = showLineNumbers ? maxLineNumberWidth : 0
-        let newWidth = numberWidth + edgeInsets.horizontal + foldingRibbonWidth
+        let newWidth = numberAreaWidth + horizontalInsets + foldingRibbonWidth
         if frame.size.width != newWidth {
             frame.size.width = newWidth
             delegate?.gutterViewWidthDidUpdate()
@@ -262,7 +271,9 @@ public class GutterView: NSView {
         context.setFillColor(selectedLineColor.safeCGColor)
 
         let xPos = backgroundEdgeInsets.leading
-        let width = frame.width - backgroundEdgeInsets.trailing
+        // Stops where the gutter background stops. The folding ribbon sits over the text view, so painting the
+        // selection under it would stack this colour on top of the text view's own line highlight.
+        let width = frame.width - backgroundEdgeInsets.trailing - foldingRibbonWidth
 
         for selection in selectionManager.textSelections where selection.range.isEmpty {
             guard let line = textView.layoutManager.textLineForOffset(selection.range.location),
@@ -336,7 +347,7 @@ public class GutterView: NSView {
 
             let yPos = linePosition.yPos + ascent + (fragment?.heightDifference ?? 0)/2 + fontHeightDifference
             // Leading padding + (width - linewidth)
-            let xPos = edgeInsets.leading + (maxLineNumberWidth - lineNumberWidth)
+            let xPos = edgeInsets.leading + (numberAreaWidth - lineNumberWidth)
 
             ContextSetHiddenSmoothingStyle(context, 16)
 
