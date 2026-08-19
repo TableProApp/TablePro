@@ -145,7 +145,9 @@ A folded region keeps its chevron whether or not the pointer is in the gutter, s
 
 Where a statement and the block inside it open on the same line, the chevron folds the larger of the two.
 
-A collapsed region is replaced by a chip showing the start of what it hides and the number of hidden lines, so a folded `CREATE TABLE` still tells you what is inside it. Click the chip to bring the region back.
+A collapsed region is replaced by a chip showing the start of what it hides and the number of hidden lines, so a folded `CREATE TABLE` still tells you what is inside it. Click the chip to bring the region back. Pointing at a chip marks its chevron in the gutter too: the chip and the chevron are two ways to reach the same fold.
+
+The chevrons are reachable with VoiceOver. Each one reports as a disclosure control that says whether its block is folded, and pressing it folds or unfolds the block.
 
 Rest the pointer on the chip to peek at the block without expanding it. The peek shows the whole block, opening line included, with the same syntax highlighting and theme as the editor, and reports how many lines it left out when the block is longer than it can show. Moving away, scrolling, typing, or clicking closes it, and the caret never leaves the editor.
 
