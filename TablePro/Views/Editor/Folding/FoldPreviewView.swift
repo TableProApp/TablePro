@@ -81,11 +81,7 @@ struct FoldPreviewView: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
             ),
-            peripherals: .init(
-                showGutter: false,
-                showMinimap: false,
-                showFoldingRibbon: false
-            )
+            peripherals: EditorPeripherals.make(lineNumbers: false, folding: false)
         )
     }
 }

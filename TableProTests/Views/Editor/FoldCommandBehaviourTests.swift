@@ -23,14 +23,17 @@ struct FoldCommandBehaviourTests {
     );
     """
 
-    private func makeController(_ text: String) -> TextViewController {
+    private func makeController(
+        _ text: String,
+        peripherals: SourceEditorConfiguration.Peripherals = .init(showGutter: true, showFoldingRibbon: true)
+    ) -> TextViewController {
         let configuration = SourceEditorConfiguration(
             appearance: .init(
                 theme: TableProEditorTheme.make(),
                 font: .monospacedSystemFont(ofSize: 12, weight: .regular),
                 wrapLines: false
             ),
-            peripherals: .init(showGutter: true, showFoldingRibbon: true)
+            peripherals: peripherals
         )
         let controller = TextViewController(
             string: text,
@@ -50,6 +53,24 @@ struct FoldCommandBehaviourTests {
             if !controller.foldRanges.isEmpty { return }
             try await Task.sleep(for: .milliseconds(50))
         }
+    }
+
+    /// Hiding the line numbers hides the gutter with them, and the chevrons go with it, but the reader turned off
+    /// line numbers rather than folding. Folds have to keep being calculated so the Query menu, the right-click menu
+    /// and the collapsed chips still work.
+    @Test("Folding survives the reader hiding the line numbers")
+    func foldingSurvivesAHiddenGutter() async throws {
+        let controller = makeController(
+            script,
+            peripherals: EditorPeripherals.make(lineNumbers: false, folding: true)
+        )
+        try await waitForFolds(controller)
+
+        #expect(controller.textView.textInsets.left == 0, "No gutter means no reserved rail beside the code")
+        #expect(!controller.foldRanges.isEmpty, "Folds are still calculated with nothing drawing them")
+
+        controller.foldAll()
+        #expect(!controller.collapsedFoldRanges.isEmpty, "Fold All still works from the menu")
     }
 
     @Test("Fold All collapses the document")

@@ -157,7 +157,9 @@ Collapsed regions are remembered when you close and reopen a tab. If the file ch
 
 Strings, comments, and PostgreSQL dollar-quoted bodies are never treated as structure, so a `(` inside a string does not open a fold. Folding is skipped on documents over 2 million characters, the same limit that applies to syntax highlighting.
 
-Turn folding off in **Settings > Editor**. It also works on the DDL and trigger views, the SQL import preview, the AI review sheet, AI chat code blocks, and the JSON cell viewer.
+Turn folding off in **Settings > Editor**. It also works on the DDL and trigger views, the SQL import preview, the AI review sheet, AI chat code blocks, and the JSON cell viewer. Those views number their lines while folding is on, because a gutter holding nothing but the chevrons reads as code that failed to line up.
+
+Turning line numbers off in **Settings > Editor** removes the gutter, and the chevrons with it. Toggle Fold, Fold All, Unfold All and the collapsed chips still work.
 
 ## Editor Settings
 

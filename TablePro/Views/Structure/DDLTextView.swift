@@ -78,10 +78,9 @@ struct DDLTextView: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
             ),
-            peripherals: .init(
-                showGutter: true,
-                showMinimap: false,
-                showFoldingRibbon: AppSettingsManager.shared.editor.codeFoldingEnabled
+            peripherals: EditorPeripherals.make(
+                lineNumbers: true,
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }

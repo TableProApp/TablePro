@@ -307,11 +307,8 @@ struct SQLReviewSheet: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
             ),
-            peripherals: .init(
-                showGutter: AppSettingsManager.shared.editor.codeFoldingEnabled,
-                showLineNumbers: false,
-                showMinimap: false,
-                showFoldingRibbon: AppSettingsManager.shared.editor.codeFoldingEnabled
+            peripherals: EditorPeripherals.preview(
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }

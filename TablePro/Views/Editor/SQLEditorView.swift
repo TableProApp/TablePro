@@ -204,11 +204,9 @@ struct SQLEditorView: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 8, right: 0)
             ),
-            peripherals: .init(
-                showGutter: ThemeEngine.shared.showLineNumbers || AppSettingsManager.shared.editor.codeFoldingEnabled,
-                showLineNumbers: ThemeEngine.shared.showLineNumbers,
-                showMinimap: false,
-                showFoldingRibbon: AppSettingsManager.shared.editor.codeFoldingEnabled
+            peripherals: EditorPeripherals.make(
+                lineNumbers: ThemeEngine.shared.showLineNumbers,
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }
