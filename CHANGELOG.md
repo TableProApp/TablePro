@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The PHP serialized viewer's tree filter now behaves like the JSON one. Both ignore accents, so `cafe` finds `café`. (#2204)
 - Picking a database in the connections strip returns you to the tab you last used in it, the way picking a connection already returns you to that connection's tab. A database with nothing open just moves the object browser, as before. (#2217)
 - Two tabs showing objects with the same name from different databases now carry the database in their names, so two tabs called `orders` read as `app.orders` and `staging.orders`. A name no other tab uses stays short. Hovering a tab, or reading it with VoiceOver, always names its database. (#2217)
+- Save in the "Do you want to save changes?" prompt now closes what you asked to close once the save lands. Closing a group of tabs, or closing a connection, used to save and then leave everything open.
 
 ### Fixed
 
@@ -52,6 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A tree filter that finds nothing now says so instead of showing an empty list, and says when the value was too large to load in full. (#2204)
 - Filtering a tree now searches the whole of a long string value instead of only the shortened form shown in the row. (#2204)
 - Copy Value on a JSON object or array now copies that part of the document instead of a summary like `{3 keys}`, and long strings copy in full. (#2204)
+- Closing a tab holding unsaved work asks before it goes, instead of discarding the work in silence. This covers unsaved cell edits in a table tab, a `.sql` file that differs from what is on disk, staged structure and Create Table changes, and staged user and role changes. Cell edits were the worst case: nothing brought them back, not even Reopen Closed Tab. Tabs holding only typed query text still close without asking, because that text comes back.
+- A tab with unsaved cell edits now shows the unsaved dot, so a tab is never marked clean and then asks to be saved.
+- Closing a tab used to leave its unsaved cell edits loaded behind it. The connection went on reporting unsaved changes with no tabs to show for it, and saving from there could write those edits to whichever database the sidebar had moved to.
+- A `.sql` file opened from a linked favorite can be opened again after its tab is closed. Opening it used to just bring the window forward and do nothing.
 
 ## [0.66.0] - 2026-08-19
 

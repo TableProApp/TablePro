@@ -145,6 +145,16 @@ final class MainContentCoordinator {
 
     weak var usersRolesActions: UsersRolesActionHandler?
 
+    /// Tabs holding staged principal changes. `usersRolesActions` is nilled the moment the tab is
+    /// deselected, but the view model behind it is cached per tab id and keeps the staged work, so
+    /// without this record a background Users & Roles tab reports itself clean and closes silently.
+    @ObservationIgnored internal var tabsWithStagedPrincipals: Set<UUID> = []
+
+    /// Tabs whose close confirmation is already on screen. `saveCompletionContinuation` is a single
+    /// slot, so a second gesture arriving before the first sheet resolves would overwrite the
+    /// continuation the first one is suspended on and leave that task waiting forever.
+    @ObservationIgnored internal var tabClosesInFlight: Set<UUID> = []
+
     /// Published capability/labels for the structure-mode footer in the bottom status bar.
     /// `TableStructureView` writes to this; `MainStatusBarView` reads from it.
     let structureFooterState = StructureFooterState()

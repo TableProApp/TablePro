@@ -78,7 +78,13 @@ extension MainContentCommandActions {
 
     /// A partial close leaves the window open, so it cannot lean on the window's own prompt.
     /// Unsaved work is tracked for the connection rather than per tab, so the question is asked
-    /// once for the batch.
+    /// once for the batch rather than once per tab, which is also what keeps the sheets from
+    /// queueing: `NSWindow.beginSheet` queues a second sheet behind the first rather than
+    /// presenting it, so N prompts would be answered one at a time with no way to see why.
+    ///
+    /// Save goes on to close. This used to save and then return false, which left the batch
+    /// standing after a successful save and made Save mean "cancel" on this path while it meant
+    /// "close" on the window path.
     func confirmDiscardingUnsavedWork() async -> Bool {
         guard hasUnsavedWorkInConnection else { return true }
 
@@ -87,8 +93,7 @@ extension MainContentCommandActions {
             window: closeAnchorWindow
         ) {
         case .save:
-            saveChanges()
-            return false
+            return await saveSelectedTabWork()
         case .dontSave:
             return true
         case .cancel:

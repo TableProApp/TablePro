@@ -264,7 +264,7 @@ struct MainEditorContentView: View {
     private func usersRolesContent(tab: QueryTab) -> some View {
         Group {
             if let vm = usersRolesViewModels[tab.id] {
-                UsersRolesTabView(viewModel: vm, coordinator: coordinator)
+                UsersRolesTabView(viewModel: vm, coordinator: coordinator, tabID: tab.id)
             } else {
                 ProgressView(String(localized: "Loading users and roles..."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -502,7 +502,7 @@ struct MainEditorContentView: View {
                 guard tabId == tabManager.selectedTabId,
                       let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
                       let window = coordinator.contentWindow else { return }
-                let showsIndicator = tabManager.tabs[index].showsUnsavedIndicator
+                let showsIndicator = coordinator.showsUnsavedIndicator(for: tabManager.tabs[index])
                 Task { @MainActor in
                     window.isDocumentEdited = showsIndicator
                 }
