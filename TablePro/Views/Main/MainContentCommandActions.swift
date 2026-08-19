@@ -380,8 +380,17 @@ final class MainContentCommandActions {
         return viewMode.showsRowFilters
     }
 
+    var canUseGridFindCommands: Bool {
+        guard coordinator?.toolbarState.isTableTab == true,
+              let viewMode = coordinator?.tabManager.selectedTab?.display.resultsViewMode
+        else {
+            return false
+        }
+        return viewMode.showsFindBar
+    }
+
     var hasActiveGridFind: Bool {
-        guard canUseTableResultCommands,
+        guard canUseGridFindCommands,
               let findState = coordinator?.tabManager.selectedTab?.findState else { return false }
         return findState.isVisible && !findState.matches.isEmpty
     }
@@ -895,7 +904,7 @@ final class MainContentCommandActions {
     }
 
     func showFindBar() {
-        guard canUseTableResultCommands, let coordinator else { return }
+        guard canUseGridFindCommands, let coordinator else { return }
         coordinator.findCoordinator.show()
     }
 

@@ -74,6 +74,7 @@ extension MainContentCoordinator {
             schemaName: resolvedSchema,
             showStructure: showStructure,
             activateGridFocus: activateGridFocus,
+            forceNonPreview: forceNonPreview,
             includeSiblings: navigationModel != .inPlace
         ) {
             navigationLogger.debug(
@@ -88,31 +89,6 @@ extension MainContentCoordinator {
         /// the sidebar from the second table on.
         if activateGridFocus {
             requestGridFocus()
-        }
-
-        // During database switch, update the existing tab in-place instead of
-        // opening a new native window tab.
-        if case .loading = SchemaService.shared.state(for: connectionId) {
-            navigationLogger.debug(
-                "[tableload] deferredToSchemaLoad table=\(tableName, privacy: .public) hasTabs=\(!self.tabManager.tabs.isEmpty)"
-            )
-            if tabManager.tabs.isEmpty {
-                do {
-                    try tabManager.addTableTab(
-                        tableName: tableName,
-                        databaseType: connection.type,
-                        databaseName: currentDatabase,
-                        schemaName: resolvedSchema,
-                        isView: isView
-                    )
-                    return .currentCoordinator
-                } catch {
-                    navigationLogger.error("openTableTab addTableTab failed: \(error.localizedDescription, privacy: .public)")
-                }
-            } else {
-                pendingGridFocusOnOpen = false
-            }
-            return nil
         }
 
         if tabManager.tabs.isEmpty {
@@ -189,9 +165,10 @@ extension MainContentCoordinator {
             schemaName: resolvedSchema,
             isView: isView,
             showStructure: showStructure,
-            isPreview: createAsPreview
+            isPreview: createAsPreview,
+            forcesNewTab: forceNewTab
         )
-        WindowManager.shared.openTab(payload: payload)
+        openTabInNewWindow(payload)
         return .focusedElsewhere
     }
 
@@ -201,18 +178,23 @@ extension MainContentCoordinator {
         schemaName: String?,
         showStructure: Bool,
         activateGridFocus: Bool,
+        forceNonPreview: Bool = false,
         includeSiblings: Bool
     ) -> WindowTabOpenDisposition? {
-        func matches(_ tab: QueryTab) -> Bool {
-            tab.tabType == .table
-                && tab.tableContext.tableName == tableName
-                && tab.tableContext.databaseName == databaseName
-                && tab.tableContext.schemaName == schemaName
+        func match(in tabManager: QueryTabManager) -> QueryTab? {
+            tabManager.tabShowingTable(
+                named: tableName, databaseName: databaseName, schemaName: schemaName
+            )
         }
 
-        if let match = tabManager.tabs.first(where: matches) {
+        if let match = match(in: tabManager) {
             if tabManager.selectedTabId != match.id {
                 tabManager.selectedTabId = match.id
+            }
+            /// The gesture that says "keep this one" has to reach a tab that is already open, or
+            /// double-clicking a table the sidebar just previewed would leave it disposable.
+            if forceNonPreview {
+                promotePreviewTab()
             }
             applyStructureMode(showStructure, toTab: match.id, in: tabManager)
             if activateGridFocus {
@@ -225,10 +207,13 @@ extension MainContentCoordinator {
 
         for sibling in MainContentCoordinator.allActiveCoordinators()
             where sibling !== self && sibling.connectionId == connectionId {
-            guard let match = sibling.tabManager.tabs.first(where: matches) else { continue }
+            guard let match = match(in: sibling.tabManager) else { continue }
             sibling.pendingGridFocusOnOpen = activateGridFocus
             applyStructureMode(showStructure, toTab: match.id, in: sibling.tabManager)
             sibling.selectTabAndFocusWindow(match.id)
+            if forceNonPreview {
+                sibling.promotePreviewTab()
+            }
             return .focusedElsewhere
         }
         return nil
@@ -248,23 +233,14 @@ extension MainContentCoordinator {
         isInPlace: Bool
     ) -> Bool {
         do {
-            if createAsPreview {
-                try tabManager.addPreviewTableTab(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    databaseName: currentDatabase,
-                    schemaName: resolvedSchema,
-                    isView: isView
-                )
-            } else {
-                try tabManager.addTableTab(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    databaseName: currentDatabase,
-                    schemaName: resolvedSchema,
-                    isView: isView
-                )
-            }
+            try tabManager.addTableTab(
+                tableName: tableName,
+                databaseType: connection.type,
+                databaseName: currentDatabase,
+                schemaName: resolvedSchema,
+                isView: isView,
+                isPreview: createAsPreview
+            )
         } catch {
             navigationLogger.error("openTableTab tab creation failed: \(error.localizedDescription, privacy: .public)")
             return false
@@ -393,7 +369,7 @@ extension MainContentCoordinator {
             tabType: .query,
             initialQuery: sql
         )
-        WindowManager.shared.openTab(payload: payload)
+        openTabInNewWindow(payload)
     }
 
     private func allTablesMetadataSQL() -> String? {

@@ -14,7 +14,6 @@ actor ResultChartProjector {
     static let maximumLabelLength = 512
     static let maximumNumericLength = 256
 
-    private let dateParser = DatabaseDateParser()
 
     private enum XOccurrenceKey: Hashable {
         case category(String)
@@ -194,7 +193,7 @@ actor ResultChartProjector {
         case .date:
             guard case .text(let raw) = cell,
                   raw.utf8.count <= Self.maximumLabelLength,
-                  let date = dateParser.date(from: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+                  let date = DatabaseDateParser.date(from: raw.trimmingCharacters(in: .whitespacesAndNewlines))
             else {
                 return nil
             }

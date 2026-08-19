@@ -180,9 +180,9 @@ extension TableViewCoordinator {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
         let columnType = tableRows.columnTypes[columnIndex]
-        let parsed = DateEditingService.parse(cellValue(at: row, column: columnIndex))
+        let parsed = DatabaseDateParser.parse(cellValue(at: row, column: columnIndex))
         let initialDate = parsed?.date ?? Date()
-        let timeZone = parsed?.timeZone ?? .gmt
+        let timeZone = parsed?.timeZone ?? DateEditingService.defaultTimeZone
         let components = DateEditingService.components(for: columnType)
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))

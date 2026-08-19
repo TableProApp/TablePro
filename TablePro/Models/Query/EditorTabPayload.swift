@@ -43,6 +43,9 @@ internal struct EditorTabPayload: Codable, Hashable {
     internal let skipAutoExecute: Bool
     /// Whether this tab is a preview (temporary) tab
     internal let isPreview: Bool
+    /// Whether this open must get a tab of its own, even when the table already has one.
+    /// Carries "Open in New Tab" all the way to tab creation, which re-checks for a duplicate.
+    internal let forcesNewTab: Bool
     /// Initial filter state (for FK navigation — pre-applies a WHERE filter)
     internal let initialFilterState: TabFilterState?
     /// Source file URL for .sql files opened from disk (used for deduplication)
@@ -57,6 +60,7 @@ internal struct EditorTabPayload: Codable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case id, connectionId, tabType, tableName, databaseName, schemaName
         case initialQuery, isView, showStructure, skipAutoExecute, isPreview
+        case forcesNewTab
         case tabTitle
         case initialFilterState, sourceFileURL, erDiagramSchemaKey, intent
         // Legacy key for backward decoding only
@@ -75,6 +79,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         showStructure: Bool = false,
         skipAutoExecute: Bool = false,
         isPreview: Bool = false,
+        forcesNewTab: Bool = false,
         initialFilterState: TabFilterState? = nil,
         sourceFileURL: URL? = nil,
         erDiagramSchemaKey: String? = nil,
@@ -92,6 +97,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.showStructure = showStructure
         self.skipAutoExecute = skipAutoExecute
         self.isPreview = isPreview
+        self.forcesNewTab = forcesNewTab
         self.initialFilterState = initialFilterState
         self.sourceFileURL = sourceFileURL
         self.erDiagramSchemaKey = erDiagramSchemaKey
@@ -112,6 +118,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         showStructure = try container.decodeIfPresent(Bool.self, forKey: .showStructure) ?? false
         skipAutoExecute = try container.decodeIfPresent(Bool.self, forKey: .skipAutoExecute) ?? false
         isPreview = try container.decodeIfPresent(Bool.self, forKey: .isPreview) ?? false
+        forcesNewTab = try container.decodeIfPresent(Bool.self, forKey: .forcesNewTab) ?? false
         initialFilterState = try container.decodeIfPresent(TabFilterState.self, forKey: .initialFilterState)
         sourceFileURL = try container.decodeIfPresent(URL.self, forKey: .sourceFileURL)
         erDiagramSchemaKey = try container.decodeIfPresent(String.self, forKey: .erDiagramSchemaKey)
@@ -137,6 +144,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         try container.encode(showStructure, forKey: .showStructure)
         try container.encode(skipAutoExecute, forKey: .skipAutoExecute)
         try container.encode(isPreview, forKey: .isPreview)
+        try container.encode(forcesNewTab, forKey: .forcesNewTab)
         try container.encodeIfPresent(initialFilterState, forKey: .initialFilterState)
         try container.encodeIfPresent(sourceFileURL, forKey: .sourceFileURL)
         try container.encodeIfPresent(erDiagramSchemaKey, forKey: .erDiagramSchemaKey)
@@ -157,6 +165,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.showStructure = tab.display.resultsViewMode == .structure
         self.skipAutoExecute = skipAutoExecute
         self.isPreview = false
+        self.forcesNewTab = false
         self.initialFilterState = nil
         self.sourceFileURL = tab.content.sourceFileURL
         self.erDiagramSchemaKey = tab.display.erDiagramSchemaKey

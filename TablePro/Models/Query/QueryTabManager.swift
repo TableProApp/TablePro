@@ -222,26 +222,48 @@ final class QueryTabManager {
         onTableOpened?(tableName, schemaName, databaseName, isView, isPreview)
     }
 
+    /// The tab already showing this table, preferring the selected one.
+    ///
+    /// A table can legitimately hold more than one tab now, so plain array order would send a
+    /// sidebar click on the table you are already looking at to the other copy of it.
+    func tabShowingTable(
+        named tableName: String, databaseName: String, schemaName: String?
+    ) -> QueryTab? {
+        func matches(_ tab: QueryTab) -> Bool {
+            tab.tabType == .table
+                && tab.tableContext.tableName == tableName
+                && tab.tableContext.databaseName == databaseName
+                && tab.tableContext.schemaName == schemaName
+        }
+        if let selected = selectedTab, matches(selected) { return selected }
+        return tabs.first(where: matches)
+    }
+
+    /// - Parameter allowsDuplicate: `true` when the caller asked for a tab of its own, so a table
+    ///   that is already open gets a second one instead of the existing tab being reselected.
+    ///   "Open in New Tab" means what it says only if this reaches here.
+    /// - Returns: `true` when a tab was created, `false` when an existing one was reselected.
+    ///   Callers that carry per-tab payload state must not write it onto a tab they did not create.
+    @discardableResult
     func addTableTab(
         tableName: String,
         databaseType: DatabaseType = .mysql,
         databaseName: String = "",
         schemaName: String? = nil,
         isView: Bool = false,
+        isPreview: Bool = false,
+        allowsDuplicate: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
-    ) throws {
-        if let existingTab = tabs.first(where: {
-            $0.tabType == .table
-                && $0.tableContext.tableName == tableName
-                && $0.tableContext.databaseName == databaseName
-                && $0.tableContext.schemaName == schemaName
-        }) {
+    ) throws -> Bool {
+        if !allowsDuplicate, let existingTab = tabShowingTable(
+            named: tableName, databaseName: databaseName, schemaName: schemaName
+        ) {
             selectedTabId = existingTab.id
             notifyTableOpened(
                 tableName: tableName, schemaName: schemaName, databaseName: databaseName,
-                isView: isView, isPreview: false
+                isView: isView, isPreview: isPreview
             )
-            return
+            return false
         }
 
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
@@ -260,12 +282,14 @@ final class QueryTabManager {
         newTab.pagination = PaginationState(pageSize: pageSize)
         newTab.tableContext.databaseName = databaseName
         newTab.tableContext.schemaName = schemaName
+        newTab.isPreview = isPreview
         tabs.append(newTab)
         selectedTabId = newTab.id
         notifyTableOpened(
             tableName: tableName, schemaName: schemaName, databaseName: databaseName,
-            isView: isView, isPreview: false
+            isView: isView, isPreview: isPreview
         )
+        return true
     }
 
     static func tabTitle(name: String, schema: String?, databaseType: DatabaseType) -> String {
@@ -334,53 +358,6 @@ final class QueryTabManager {
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
-    }
-
-    func addPreviewTableTab(
-        tableName: String,
-        databaseType: DatabaseType = .mysql,
-        databaseName: String = "",
-        schemaName: String? = nil,
-        isView: Bool = false,
-        quoteIdentifier: ((String) -> String)? = nil
-    ) throws {
-        if let existing = tabs.first(where: {
-            $0.tabType == .table
-                && $0.tableContext.tableName == tableName
-                && $0.tableContext.databaseName == databaseName
-                && $0.tableContext.schemaName == schemaName
-        }) {
-            selectedTabId = existing.id
-            notifyTableOpened(
-                tableName: tableName, schemaName: schemaName, databaseName: databaseName,
-                isView: isView, isPreview: true
-            )
-            return
-        }
-
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
-        let query = try QueryTab.buildBaseTableQuery(
-            tableName: tableName,
-            databaseType: databaseType,
-            schemaName: schemaName,
-            quoteIdentifier: quoteIdentifier
-        )
-        var newTab = QueryTab(
-            title: Self.tabTitle(name: tableName, schema: schemaName, databaseType: databaseType),
-            query: query,
-            tabType: .table,
-            tableName: tableName
-        )
-        newTab.pagination = PaginationState(pageSize: pageSize)
-        newTab.tableContext.databaseName = databaseName
-        newTab.tableContext.schemaName = schemaName
-        newTab.isPreview = true
-        tabs.append(newTab)
-        selectedTabId = newTab.id
-        notifyTableOpened(
-            tableName: tableName, schemaName: schemaName, databaseName: databaseName,
-            isView: isView, isPreview: true
-        )
     }
 
     /// Replace the currently selected tab's content with a new table.

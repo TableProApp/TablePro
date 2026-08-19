@@ -55,9 +55,11 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
         outlineView.delegate = context.coordinator
         outlineView.target = context.coordinator
         /// No `action`: it arrives on mouse up, a whole gesture after the selection the user can
-        /// already see. Opening follows the selection instead. `doubleAction` only discloses.
+        /// already see. Opening follows the selection instead, so `doubleAction` is free to mean
+        /// "keep this one" on a table row and to disclose on a container.
         outlineView.doubleAction = #selector(DatabaseTreeOutlineCoordinator.handleDoubleClick)
         outlineView.selectionClearing = context.coordinator
+        outlineView.primaryActionTarget = context.coordinator
 
         /// The menu hangs off the table, not off the row's hosted view, so `NSTableView`'s own
         /// secondary-click handling runs: it sets `clickedRow`, draws the clicked-row highlight, and
@@ -82,10 +84,15 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
 /// alone, so without this the Table menu stays scoped to a row the user tried to deselect.
 final class DatabaseTreeNSOutlineView: SidebarOutlineView {
     weak var selectionClearing: (any DatabaseTreeSelectionClearing)?
+    weak var primaryActionTarget: DatabaseTreeOutlineCoordinator?
 
     override func cancelOperation(_ sender: Any?) {
         super.cancelOperation(sender)
         selectionClearing?.clearSelection()
+    }
+
+    override func insertNewline(_ sender: Any?) {
+        primaryActionTarget?.performPrimaryAction()
     }
 }
 

@@ -86,4 +86,16 @@ struct MainStatusBarLayoutTests {
         #expect(!ResultsViewMode.chart.showsRowFilters)
         #expect(!ResultsViewMode.structure.showsRowFilters)
     }
+
+    @Test("The find bar belongs to the grid it searches, unlike the filter panel")
+    func findBarVisibilityByMode() {
+        #expect(ResultsViewMode.data.showsFindBar)
+        #expect(!ResultsViewMode.json.showsFindBar)
+        #expect(!ResultsViewMode.chart.showsFindBar)
+        #expect(!ResultsViewMode.structure.showsFindBar)
+
+        for mode in [ResultsViewMode.data, .json, .chart, .structure] where mode.showsFindBar {
+            #expect(mode.showsRowFilters, "a mode that finds must also filter")
+        }
+    }
 }
