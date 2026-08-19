@@ -465,15 +465,6 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Land on the work a container already holds.
-    ///
-    /// The connections strip returns to the tab you last used when it moves between two
-    /// connections. A row for a second database of one connection is the same promise, and without
-    /// it the strip moved the object tree while leaving a tab from another database on screen: the
-    /// row said one database, the window title said another (#2217).
-    ///
-    /// A container holding no tab selects nothing. That row is the browse cursor alone, and the
-    /// next thing opened lands there anyway.
     /// Records which container the tab on screen belongs to, so the connections strip can come
     /// back to it.
     ///
@@ -492,6 +483,15 @@ extension MainContentCoordinator {
         )
     }
 
+    /// Land on the work a container already holds.
+    ///
+    /// The connections strip returns to the tab you last used when it moves between two
+    /// connections. A row for a second database of one connection is the same promise, and without
+    /// it the strip moved the object tree while leaving a tab from another database on screen: the
+    /// row said one database, the window title said another (#2217).
+    ///
+    /// A container holding no tab selects nothing. That row is the browse cursor alone, and the
+    /// next thing opened lands there anyway.
     func selectTab(inContainer container: String) {
         guard let tabId = containerTabHistory.tabToSelect(
             inContainer: container,

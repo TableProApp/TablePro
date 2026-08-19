@@ -45,11 +45,16 @@ internal final class WindowSidebarState {
         selectedTables = tables
     }
 
-    /// Whether the window may re-assert the object its selected tab is showing over what is
-    /// selected now. It may not while the user is holding a pick of their own: several rows for a
-    /// batch command, or one row that is not a table at all, such as a schema they just clicked.
+    /// Whether a background reload of the object list may re-assert the object the selected tab is
+    /// showing. Only while nothing at all is selected.
+    ///
+    /// Anything selected is a pick the user is in the middle of, and it need not be a row they
+    /// opened: extending a selection and then narrowing it back to one row navigates nowhere, so a
+    /// single table can be selected while another is the tab in front. Re-asserting over it moves
+    /// the highlight and changes what the Table menu would act on, without the user touching
+    /// anything.
     var acceptsObjectMarkRefresh: Bool {
-        selectedRowCount <= 1 && selectedTables.count == selectedRowCount
+        selectedTables.isEmpty && selectedRowCount == 0
     }
     var expandedTreeSchemas: Set<String> = [] { didSet { persistExpansion() } }
     var expandedTreeDatabases: Set<String> = [] { didSet { persistExpansion() } }
