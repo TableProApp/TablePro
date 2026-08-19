@@ -781,7 +781,9 @@ final class MainContentCoordinator {
         }
     }
 
-    /// Explicit cleanup called from `onDisappear`. Releases schema provider
+    /// Explicit cleanup, called when the connection or the window that hosts it goes away, never
+    /// from a view's `onDisappear`: a workspace switch unparents a connection's panes, which is a
+    /// disappearance the connection is expected to come back from. Releases the schema provider
     /// synchronously on MainActor so we don't depend on deinit + Task scheduling.
     func teardown() {
         let start = Date()

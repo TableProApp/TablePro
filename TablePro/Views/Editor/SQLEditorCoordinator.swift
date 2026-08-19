@@ -49,7 +49,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored private var didDestroy = false
     @ObservationIgnored private var focusClaimPending = false
 
-    /// Test-only accessor for destroy state
+    /// One way. `destroy()` runs when the editor is dismantled, which it never comes back from.
     var isDestroyed: Bool { didDestroy }
 
     @ObservationIgnored private var hasInstalledEditorServices = false
@@ -254,28 +254,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         vimEngine = nil
         vimCursorManager = nil
 
-        controller?.releaseHeavyState()
-
         EditorEventRouter.shared.unregister(self)
         Self.logger.debug("SQLEditorCoordinator destroyed")
         cleanupMonitors()
-    }
-
-    func revive() {
-        guard didDestroy else { return }
-        didDestroy = false
-        if let controller, let textView = controller.textView {
-            EditorEventRouter.shared.register(self, textView: textView)
-        }
-        if contextMenu == nil, let controller {
-            installAIContextMenu(controller: controller)
-        }
-        if inlineSuggestionManager == nil, let controller {
-            installInlineSuggestionManager(controller: controller)
-        }
-        if let controller {
-            installEditorSettingsObserver(controller: controller)
-        }
     }
 
     // MARK: - AI Context Menu

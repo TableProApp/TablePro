@@ -75,10 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Staged structure changes survive switching tabs, and switching a table tab between Data and Structure. Adding a column or an index and then looking at anything else threw the pending change away, with no prompt and nothing in Undo.
 - A table definition in progress survives switching tabs. Naming a new table and defining its columns, then clicking any other tab, used to discard the whole definition.
 - Closing a tab with staged structure changes or an unfinished table definition asks before discarding them, and they count as unsaved work when you close the window or quit.
-
-### Fixed
-
 - Timestamps written with a space before the time zone offset, or with fractional seconds, are now shown in your chosen date format instead of as raw text. PostgreSQL `timestamptz` and MySQL `DATETIME(6)` values used to slip through unformatted while the same instant written in ISO form was formatted.
+- Switching to another connection no longer empties the SQL editor. Typing into the blank editor replaced the query you had written, and the same switch cleared undo history, turned off syntax highlighting, and left the editor's own shortcuts (comment, indent, duplicate line, delete line, move line, manual completion) and Vim mode dead for the rest of the tab's life. (#2236)
 
 ## [0.66.0] - 2026-08-19
 

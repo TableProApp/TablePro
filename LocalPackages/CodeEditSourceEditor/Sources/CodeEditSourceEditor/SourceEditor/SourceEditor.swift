@@ -125,7 +125,26 @@ public struct SourceEditor: NSViewControllerRepresentable {
     }
 
     public func makeCoordinator() -> Coordinator {
-        Coordinator(text: text, editorState: $state, highlightProviders: highlightProviders)
+        Coordinator(
+            text: text,
+            editorState: $state,
+            highlightProviders: highlightProviders,
+            textCoordinators: coordinators
+        )
+    }
+
+    /// The editor's terminal signal: SwiftUI calls this only when the representable is removed for
+    /// good, never when its host view merely leaves the window.
+    ///
+    /// Appearance is not lifetime. A host that keeps a controller alive while unparenting its view
+    /// fires `onDisappear` and then `onAppear` again on the same identity, so a teardown driven from
+    /// `onDisappear` runs on a live editor and cannot be undone. `TextViewController.deinit` is not
+    /// a usable substitute either, because it is not guaranteed to run promptly. The destroy goes
+    /// through ``Coordinator/textCoordinators``, and `releaseHeavyState` then empties the
+    /// controller's weak list so `deinit` cannot destroy the same coordinators twice.
+    public static func dismantleNSViewController(_ controller: TextViewController, coordinator: Coordinator) {
+        coordinator.textCoordinators.forEach { $0.destroy() }
+        controller.releaseHeavyState()
     }
 
     public func updateNSViewController(_ controller: TextViewController, context: Context) {
