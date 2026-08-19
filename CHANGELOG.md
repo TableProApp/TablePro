@@ -59,6 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A tab with unsaved cell edits now shows the unsaved dot, so a tab is never marked clean and then asks to be saved.
 - Closing a tab used to leave its unsaved cell edits loaded behind it. The connection went on reporting unsaved changes with no tabs to show for it, and saving from there could write those edits to whichever database the sidebar had moved to.
 - A `.sql` file opened from a linked favorite can be opened again after its tab is closed. Opening it used to just bring the window forward and do nothing.
+- Staged structure changes survive switching tabs, and switching a table tab between Data and Structure. Adding a column or an index and then looking at anything else threw the pending change away, with no prompt and nothing in Undo.
+- A table definition in progress survives switching tabs. Naming a new table and defining its columns, then clicking any other tab, used to discard the whole definition.
+- Closing a tab with staged structure changes or an unfinished table definition asks before discarding them, and they count as unsaved work when you close the window or quit.
 
 ### Fixed
 

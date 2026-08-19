@@ -42,6 +42,8 @@ extension MainContentCoordinator {
             WindowLifecycleMonitor.shared.unregisterSourceFile(url)
         }
         tabsWithStagedPrincipals.remove(tab.id)
+        structureSessions.removeValue(forKey: tab.id)
+        createTableDrafts.removeValue(forKey: tab.id)
         guard isSelectedTab(tab) else { return }
         changeManager.clearChangesAndUndoHistory()
         toolbarState.hasStructureChanges = false

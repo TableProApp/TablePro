@@ -145,6 +145,13 @@ final class MainContentCoordinator {
 
     weak var usersRolesActions: UsersRolesActionHandler?
 
+    /// Staged structure edits and table drafts, per tab. They belong here rather than in the view
+    /// for two reasons: the view is destroyed on every tab switch and on every switch between Data
+    /// and Structure, and the close gate has to be able to see the staged work of a tab the user is
+    /// not currently looking at.
+    var structureSessions: [UUID: StructureEditingSession] = [:]
+    var createTableDrafts: [UUID: CreateTableDraft] = [:]
+
     /// Tabs holding staged principal changes. `usersRolesActions` is nilled the moment the tab is
     /// deselected, but the view model behind it is cached per tab id and keeps the staged work, so
     /// without this record a background Users & Roles tab reports itself clean and closes silently.
@@ -511,6 +518,12 @@ final class MainContentCoordinator {
     func cleanupTabCaches(openTabIds: Set<UUID>) {
         if displayFormatsCache.keys.contains(where: { !openTabIds.contains($0) }) {
             displayFormatsCache = displayFormatsCache.filter { openTabIds.contains($0.key) }
+        }
+        if structureSessions.keys.contains(where: { !openTabIds.contains($0) }) {
+            structureSessions = structureSessions.filter { openTabIds.contains($0.key) }
+        }
+        if createTableDrafts.keys.contains(where: { !openTabIds.contains($0) }) {
+            createTableDrafts = createTableDrafts.filter { openTabIds.contains($0.key) }
         }
     }
 

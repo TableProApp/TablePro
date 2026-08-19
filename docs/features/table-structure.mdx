@@ -66,6 +66,10 @@ Structure edits queue locally; nothing runs until you save. See [Change Tracking
 - **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queued changes. Changes that can lose data (dropping a column, changing a type, adding NOT NULL, changing the primary key) first show a confirmation that lists each risky change.
 - **Preview SQL** (`Cmd+Shift+P`) shows the generated DDL statements without executing them.
 
+Queued changes stay queued while you look at something else. Switching to another tab, or switching the same tab between Data and Structure, leaves them alone, and so does coming back. They are only discarded when you discard them: closing the tab, closing the window or quitting asks first, and **Refresh** asks before replacing them with what is on the server.
+
+The same holds for a table you are still defining in a Create Table tab. The name, the options and every column you have added survive switching away and back.
+
 <Frame caption="Generated DDL preview">
   <img className="block dark:hidden" src="/images/schema-change-preview.png" alt="Schema change preview with ALTER TABLE statements" />
   <img className="hidden dark:block" src="/images/schema-change-preview-dark.png" alt="Schema change preview with ALTER TABLE statements" />

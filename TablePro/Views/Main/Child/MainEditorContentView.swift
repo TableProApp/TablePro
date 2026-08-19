@@ -220,11 +220,7 @@ struct MainEditorContentView: View {
         case .table:
             tableTabContent(tab: tab)
         case .createTable:
-            CreateTableView(
-                connection: connection,
-                coordinator: coordinator,
-                selectionState: selectionState
-            )
+            createTableContent(tab: tab)
         case .erDiagram:
             erDiagramContent(tab: tab)
         case .serverDashboard:
@@ -563,6 +559,57 @@ struct MainEditorContentView: View {
         coordinator.scope(for: tab)
     }
 
+    /// A Create Table tab holds nothing but unsaved work, so its draft is cached here rather than
+    /// left in the view, which is destroyed the moment the tab is deselected.
+    @ViewBuilder
+    private func createTableContent(tab: QueryTab) -> some View {
+        Group {
+            if let draft = coordinator.createTableDrafts[tab.id] {
+                CreateTableView(
+                    connection: connection,
+                    coordinator: coordinator,
+                    selectionState: selectionState,
+                    draft: draft
+                )
+            } else {
+                Color.clear
+                    .onAppear { coordinator.createTableDrafts[tab.id] = CreateTableDraft() }
+            }
+        }
+        .id(tab.id)
+    }
+
+    /// The structure editor is rebuilt whenever the tab is deselected or switched to Data, so its
+    /// staged ALTERs live in a session cached here by tab, the same way the Users & Roles, ER
+    /// diagram and dashboard view models do. Creating it in `onAppear` rather than inline keeps the
+    /// write out of the view-update pass.
+    @ViewBuilder
+    private func structureContent(tab: QueryTab, tableName: String) -> some View {
+        let scope = structureScope(for: tab)
+        let identity = "\(scope?.qualifiedDescription ?? "").\(tableName)"
+        Group {
+            if let session = coordinator.structureSessions[tab.id], session.identity == identity {
+                TableStructureView(
+                    tableName: tableName,
+                    connection: connection,
+                    databaseName: scope?.database ?? "",
+                    schemaName: scope?.schema,
+                    toolbarState: coordinator.toolbarState,
+                    coordinator: coordinator,
+                    selectionState: selectionState,
+                    session: session
+                )
+                .id(identity)
+            } else {
+                Color.clear
+                    .onAppear {
+                        coordinator.structureSessions[tab.id] = StructureEditingSession(identity: identity)
+                    }
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+
     @ViewBuilder
     private func resultsSection(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
@@ -570,18 +617,7 @@ struct MainEditorContentView: View {
             switch tab.display.resultsViewMode {
             case .structure:
                 if let tableName = tab.tableContext.tableName {
-                    let scope = structureScope(for: tab)
-                    TableStructureView(
-                        tableName: tableName,
-                        connection: connection,
-                        databaseName: scope?.database ?? "",
-                        schemaName: scope?.schema,
-                        toolbarState: coordinator.toolbarState,
-                        coordinator: coordinator,
-                        selectionState: selectionState
-                    )
-                    .id("\(scope?.qualifiedDescription ?? "").\(tableName)")
-                    .frame(maxHeight: .infinity)
+                    structureContent(tab: tab, tableName: tableName)
                 }
             case .json:
                 resultTabBarSection(tab: tab)

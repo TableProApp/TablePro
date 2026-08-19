@@ -170,6 +170,87 @@ struct TabCloseProtectionTests {
         #expect(coordinator.hasUnsavedWork(in: tab))
     }
 
+    // MARK: - Structure and Create Table
+
+    /// Staged ALTERs used to live in the structure view's own `@State`, so a tab switch destroyed
+    /// them outright. They live in a per-tab session now, which is also what lets the close gate see
+    /// them once the user has switched away from the tab holding them.
+    @Test("A background table tab reports its staged structure edits")
+    func backgroundStructureEditsAreGated() {
+        let coordinator = makeCoordinator()
+        defer { coordinator.teardown() }
+
+        var tab = QueryTab(query: "")
+        tab.tabType = .table
+        tab.tableContext.tableName = "users"
+
+        let session = StructureEditingSession(identity: "db_a.users")
+        coordinator.structureSessions[tab.id] = session
+        #expect(!coordinator.hasUnsavedWork(in: tab))
+
+        session.changeManager.loadSchema(
+            tableName: "users",
+            columns: [],
+            indexes: [],
+            foreignKeys: [],
+            primaryKey: []
+        )
+        session.changeManager.addNewColumn()
+
+        #expect(session.changeManager.hasChanges)
+        #expect(coordinator.hasUnsavedWork(in: tab))
+    }
+
+    /// A session survives being read back, which is the whole point: the view is rebuilt on every
+    /// tab switch and on every switch between Data and Structure, and re-baselining the manager is
+    /// what would clear the staged edits.
+    @Test("A structure session keeps its staged edits across a rebuild")
+    func structureSessionSurvivesRebuild() {
+        let session = StructureEditingSession(identity: "db_a.users")
+        session.changeManager.loadSchema(
+            tableName: "users", columns: [], indexes: [], foreignKeys: [], primaryKey: []
+        )
+        session.changeManager.addNewColumn()
+        session.hasLoaded = true
+
+        #expect(session.hasLoaded)
+        #expect(session.changeManager.hasChanges)
+    }
+
+    /// A freshly opened Create Table tab seeds one blank column so the grid has a row. That is not
+    /// the user's work, and treating it as unsaved would prompt on every empty tab the user closes.
+    @Test("An untouched Create Table draft is not gated")
+    func untouchedTableDraftIsNotGated() {
+        let coordinator = makeCoordinator()
+        defer { coordinator.teardown() }
+
+        var tab = QueryTab(query: "")
+        tab.tabType = .createTable
+
+        let draft = CreateTableDraft()
+        draft.changeManager.addNewColumn()
+        coordinator.createTableDrafts[tab.id] = draft
+
+        #expect(!draft.holdsWork)
+        #expect(!coordinator.hasUnsavedWork(in: tab))
+    }
+
+    @Test("A named Create Table draft is gated in the background")
+    func namedTableDraftIsGated() {
+        let coordinator = makeCoordinator()
+        defer { coordinator.teardown() }
+
+        var tab = QueryTab(query: "")
+        tab.tabType = .createTable
+
+        let draft = CreateTableDraft()
+        draft.tableName = "invoices"
+        coordinator.createTableDrafts[tab.id] = draft
+
+        #expect(draft.holdsWork)
+        #expect(coordinator.hasUnsavedWork(in: tab))
+    }
+
     // MARK: - The dot agrees with the prompt
 
     /// Anything that would raise the save prompt is marked before the user reaches for the close
@@ -267,6 +348,25 @@ struct TabCloseProtectionTests {
         coordinator.closeTabsByUser(ids: [id])
 
         #expect(!coordinator.tabsWithStagedPrincipals.contains(id))
+    }
+
+    @Test("Closing a tab drops its structure session and table draft")
+    func closingDropsStructureAndDraftState() {
+        let coordinator = makeCoordinator()
+        defer { coordinator.teardown() }
+
+        coordinator.tabManager.addTab(initialQuery: "", databaseName: "db_a")
+        guard let id = coordinator.tabManager.selectedTabId else {
+            Issue.record("expected a selected tab")
+            return
+        }
+        coordinator.structureSessions[id] = StructureEditingSession(identity: "db_a.users")
+        coordinator.createTableDrafts[id] = CreateTableDraft()
+
+        coordinator.closeTabsByUser(ids: [id])
+
+        #expect(coordinator.structureSessions[id] == nil)
+        #expect(coordinator.createTableDrafts[id] == nil)
     }
 
     /// A closed tab's file registration used to outlive it, and `TabRouter.openSQLFile` trusts that

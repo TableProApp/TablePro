@@ -48,8 +48,14 @@ extension MainContentCoordinator {
     /// while `usersRolesActions` does not, so the staged principals survive a deselect even though
     /// nothing on the coordinator can still reach them.
     private func backgroundUnsavedWork(in tab: QueryTab) -> Bool {
-        if tab.tabType == .usersRoles { return tabsWithStagedPrincipals.contains(tab.id) }
-        return tab.pendingChanges.hasChanges
+        switch tab.tabType {
+        case .usersRoles:
+            return tabsWithStagedPrincipals.contains(tab.id)
+        case .createTable:
+            return hasTableDraftWork(in: tab)
+        default:
+            return tab.pendingChanges.hasChanges || hasStagedStructureEdits(in: tab)
+        }
     }
 
     private func liveUnsavedWork(in tab: QueryTab) -> Bool {
@@ -57,10 +63,23 @@ extension MainContentCoordinator {
         case .usersRoles:
             return usersRolesActions?.hasChanges() ?? tabsWithStagedPrincipals.contains(tab.id)
         case .createTable:
-            return toolbarState.hasCreateTablePending
+            return toolbarState.hasCreateTablePending || hasTableDraftWork(in: tab)
         default:
-            return changeManager.hasChanges || toolbarState.hasStructureChanges
+            return changeManager.hasChanges
+                || toolbarState.hasStructureChanges
+                || hasStagedStructureEdits(in: tab)
         }
+    }
+
+    /// Staged ALTERs read from the tab's own session rather than from `toolbarState`, which only
+    /// ever describes the tab on screen. A background tab keeps its session, so this is the only
+    /// answer that holds once the user has switched away from it.
+    private func hasStagedStructureEdits(in tab: QueryTab) -> Bool {
+        structureSessions[tab.id]?.changeManager.hasChanges ?? false
+    }
+
+    private func hasTableDraftWork(in tab: QueryTab) -> Bool {
+        createTableDrafts[tab.id]?.holdsWork ?? false
     }
 
     /// The dot on the tab and in the window's close button. Deliberately broader than
