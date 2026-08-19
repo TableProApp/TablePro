@@ -476,7 +476,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ — 연결: %2$@"
+            "value" : "%2$@에서 %1$@"
           }
         },
         "tr" : {
@@ -3493,7 +3493,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld ^[행](inflect: true)"
+            "value" : "%lld행"
           }
         },
         "tr" : {
