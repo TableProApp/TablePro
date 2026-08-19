@@ -69,23 +69,12 @@ enum SQLStatementScanner {
 
     // MARK: - Private
 
-    private static let singleQuote = UInt16(UnicodeScalar("'").value)
-    private static let doubleQuote = UInt16(UnicodeScalar("\"").value)
-    private static let backtick = UInt16(UnicodeScalar("`").value)
-    private static let semicolonChar = UInt16(UnicodeScalar(";").value)
-    private static let dash = UInt16(UnicodeScalar("-").value)
-    private static let slash = UInt16(UnicodeScalar("/").value)
-    private static let star = UInt16(UnicodeScalar("*").value)
-    private static let newline = UInt16(UnicodeScalar("\n").value)
-    private static let backslash = UInt16(UnicodeScalar("\\").value)
-    private static let dollar = UInt16(UnicodeScalar("$").value)
-    private static let exclamationMark = UInt16(UnicodeScalar("!").value)
-    private static let space = UInt16(UnicodeScalar(" ").value)
-    private static let tab = UInt16(UnicodeScalar("\t").value)
-    private static let carriageReturn = UInt16(UnicodeScalar("\r").value)
+    private static let semicolonChar = SqlLexer.semicolon
+    private static let newline = SqlLexer.newline
+    private static let dollar = SqlDollarQuote.dollar
 
     private static func isWhitespace(_ ch: UInt16) -> Bool {
-        ch == space || ch == tab || ch == newline || ch == carriageReturn
+        SqlLexer.isWhitespace(ch)
     }
 
     private static func scan(
@@ -121,7 +110,7 @@ enum SQLStatementScanner {
             }
 
             if inBlockComment {
-                if ch == star && i + 1 < length && nsQuery.character(at: i + 1) == slash {
+                if ch == SqlLexer.star && i + 1 < length && nsQuery.character(at: i + 1) == SqlLexer.slash {
                     inBlockComment = false
                     i += 2
                     continue
@@ -142,14 +131,14 @@ enum SQLStatementScanner {
                 continue
             }
 
-            if !inString && ch == dash && i + 1 < length && nsQuery.character(at: i + 1) == dash {
+            if !inString && SqlLexer.startsLineComment(nsQuery, at: i, length: length) {
                 inLineComment = true
                 i += 2
                 continue
             }
 
-            if !inString && ch == slash && i + 1 < length && nsQuery.character(at: i + 1) == star {
-                if i + 2 < length && nsQuery.character(at: i + 2) == exclamationMark {
+            if !inString && SqlLexer.startsBlockComment(nsQuery, at: i, length: length) {
+                if SqlLexer.startsConditionalComment(nsQuery, at: i, length: length) {
                     hasStatementContent = true
                 }
                 inBlockComment = true
@@ -157,12 +146,12 @@ enum SQLStatementScanner {
                 continue
             }
 
-            if inString && ch == backslash && i + 1 < length {
+            if inString && ch == SqlLexer.backslash && i + 1 < length {
                 i += 2
                 continue
             }
 
-            if ch == singleQuote || ch == doubleQuote || ch == backtick {
+            if SqlLexer.isQuote(ch) {
                 if !inString {
                     inString = true
                     stringCharVal = ch
