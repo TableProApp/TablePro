@@ -12,9 +12,13 @@ Query results and table data open in a spreadsheet-style grid. Sort and filter c
 
 ## View Modes
 
-Switch between **Data**, **Structure**, and **JSON** in the status bar. Query tabs show Data and JSON only. The mode is remembered per tab.
+Switch between **Data**, **Structure**, **JSON**, and **Chart** in the status bar. Query tabs show Data, JSON, and Chart only. The mode is remembered per tab.
 
 JSON mode shows the rows as a JSON array, with **Text** and **Tree** views. Select rows in Data mode first to limit what JSON shows, then use **Copy JSON**.
+
+Chart mode is a Starter feature. Pick a bar, line, area, or scatter chart, then choose a numeric Y column. X can use row numbers, another numeric column, or a categorical column; an optional text, boolean, enum, or set column splits the result into series.
+
+Charts use the active result's loaded rows, with a limit of 2,000 chartable points, 20 series, and 50,000 inspected rows. Null, binary, invalid, and precision-losing numeric axis values are skipped. The toolbar reports skipped values and warns when the table has another page or a query result was truncated. Grid selection, Find, hidden columns, and value filters do not narrow the chart. Use a server filter or run a narrower query when the chart needs a different scope.
 
 ## Columns
 

@@ -29,6 +29,14 @@ private func flatten(_ menu: NSMenu) -> [NSMenuItem] {
 @Suite("Main menu structure")
 @MainActor
 struct MainMenuStructureTests {
+    @Test("Row editing commands stay out of read-only result modes")
+    func rowEditingModes() {
+        #expect(MainContentCommandActions.supportsRowEditing(viewMode: .data))
+        #expect(MainContentCommandActions.supportsRowEditing(viewMode: .structure))
+        #expect(!MainContentCommandActions.supportsRowEditing(viewMode: .json))
+        #expect(!MainContentCommandActions.supportsRowEditing(viewMode: .chart))
+    }
+
     @Test("Top level order follows the macOS HIG")
     func topLevelOrder() {
         let titles = buildMenu().items.map(\.title)
@@ -248,12 +256,12 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.cancelQuery(_:)), context))
     }
 
-    @Test("Filter bar is a table-tab command")
-    func filterBarNeedsTableTab() {
+    @Test("Filter bar needs an active table result grid")
+    func filterBarNeedsTableResultGrid() {
         var context = MenuValidationContext()
         context.isConnected = true
         #expect(!enabled(#selector(MainSplitViewController.toggleFilterBar(_:)), context))
-        context.isTableTab = true
+        context.canUseTableResultCommands = true
         #expect(enabled(#selector(MainSplitViewController.toggleFilterBar(_:)), context))
     }
 
@@ -282,7 +290,7 @@ struct MainMenuValidationTests {
 
     private func capableContext() -> MenuValidationContext {
         var context = MenuValidationContext()
-        context.isTableTab = true
+        context.canUseTableResultCommands = true
         context.isQueryTab = true
         context.hasResultRows = true
         context.hasQueryText = true
@@ -407,17 +415,17 @@ struct MainMenuValidationTests {
         ))
     }
 
-    @Test("Find needs somewhere to search: an editor, or a table tab to filter")
+    @Test("Find needs an editor or an active table result grid")
     func findNeedsAnEditor() {
         var context = MenuValidationContext()
         context.isConnected = true
         #expect(!enabled(#selector(MainSplitViewController.performFind(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.findNext(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.findPrevious(_:)), context))
-        context.isTableTab = true
+        context.canUseTableResultCommands = true
         #expect(enabled(#selector(MainSplitViewController.performFind(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.findNext(_:)), context))
-        context.isTableTab = false
+        context.canUseTableResultCommands = false
         context.hasEditorForFind = true
         #expect(enabled(#selector(MainSplitViewController.performFind(_:)), context))
         #expect(enabled(#selector(MainSplitViewController.findNext(_:)), context))

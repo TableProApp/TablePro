@@ -593,6 +593,37 @@ struct MainEditorContentView: View {
                     columnLayout: tab.columnLayout
                 )
                 .id(tab.id)
+            case .chart:
+                resultTabBarSection(tab: tab)
+                if let explain = tab.display.activeExplainResult {
+                    QueryPlanResultView(
+                        rawText: explain.explainRawText ?? "",
+                        executionTime: explain.executionTime,
+                        plan: explain.queryPlan
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let resultSet = tab.display.activeResultSet {
+                    let resolvedRows = resolvedTableRows(for: tab)
+                    ResultChartView(
+                        resultSet: resultSet,
+                        tableRows: resolvedRows,
+                        tabId: tab.id,
+                        dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
+                        hasUnloadedRows: ResultChartDataScope.hasUnloadedRows(
+                            tabType: tab.tabType,
+                            pagination: tab.pagination,
+                            loadedRowCount: resolvedRows.rows.count
+                        ),
+                        isUnlocked: LicenseManager.shared.isFeatureAvailable(.resultCharts)
+                    )
+                    .id(resultSet.id)
+                } else {
+                    ContentUnavailableView(
+                        String(localized: "No Data"),
+                        systemImage: "chart.bar.xaxis",
+                        description: Text(String(localized: "Execute a query to chart its loaded rows."))
+                    )
+                }
             case .data:
                 resultTabBarSection(tab: tab)
 

@@ -7,6 +7,7 @@ enum ResultsViewMode: String, Equatable {
     case data
     case structure
     case json
+    case chart
 }
 
 struct QueryTab: Identifiable, Equatable {

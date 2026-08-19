@@ -195,7 +195,7 @@ final class MainContentCommandActions {
         // calls RowEditingCoordinator.addNewRow (data-only).
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.addRow?()
-        } else {
+        } else if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .data {
             coordinator?.addNewRow()
         }
     }
@@ -220,6 +220,8 @@ final class MainContentCommandActions {
             coordinator?.structureActions?.removeRow?()
             return
         }
+
+        guard dataGridOwnsSelection || !selectedTables.wrappedValue.isEmpty else { return }
 
         let indices = rowIndices ?? resolvedRowSelection()
         if !indices.isEmpty {
@@ -254,7 +256,7 @@ final class MainContentCommandActions {
     func copySelectedRows() {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.copyRows?()
-        } else {
+        } else if dataGridOwnsSelection {
             coordinator?.copySelectedRowsToClipboard(indices: resolvedRowSelection())
         }
     }
@@ -265,13 +267,14 @@ final class MainContentCommandActions {
     }
 
     func copySelectedRowsAsJson() {
+        guard dataGridOwnsSelection else { return }
         coordinator?.copySelectedRowsAsJson(indices: resolvedRowSelection())
     }
 
     func pasteRows() {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.pasteRows?()
-        } else {
+        } else if dataGridOwnsSelection {
             coordinator?.pasteRows()
         }
     }
@@ -351,15 +354,25 @@ final class MainContentCommandActions {
     }
 
     var isCurrentTabEditable: Bool {
-        coordinator?.tabManager.selectedTab?.tableContext.isEditable == true
+        guard let tab = coordinator?.tabManager.selectedTab,
+              Self.supportsRowEditing(viewMode: tab.display.resultsViewMode)
+        else {
+            return false
+        }
+        return tab.tableContext.isEditable
     }
 
-    var isTableTab: Bool {
-        coordinator?.toolbarState.isTableTab ?? false
+    static func supportsRowEditing(viewMode: ResultsViewMode) -> Bool {
+        viewMode == .data || viewMode == .structure
+    }
+
+    var canUseTableResultCommands: Bool {
+        coordinator?.toolbarState.isTableTab == true && dataGridOwnsSelection
     }
 
     var hasActiveGridFind: Bool {
-        guard isTableTab, let findState = coordinator?.tabManager.selectedTab?.findState else { return false }
+        guard canUseTableResultCommands,
+              let findState = coordinator?.tabManager.selectedTab?.findState else { return false }
         return findState.isVisible && !findState.matches.isEmpty
     }
 
@@ -373,6 +386,7 @@ final class MainContentCommandActions {
         guard tab.display.resultsViewMode != .structure else {
             return coordinator?.structureActions?.pasteRows != nil && TableStructureView.canPasteStructureRows
         }
+        guard dataGridOwnsSelection else { return false }
         return tab.tabType == .table && isCurrentTabEditable && ClipboardService.shared.hasText
     }
 
@@ -389,7 +403,7 @@ final class MainContentCommandActions {
     }
 
     var hasRowSelection: Bool {
-        !resolvedRowSelection().isEmpty
+        dataGridOwnsSelection && !resolvedRowSelection().isEmpty
     }
 
     var hasTableSelection: Bool {
@@ -800,13 +814,12 @@ final class MainContentCommandActions {
     // MARK: - Filter Operations (Group A — Called Directly)
 
     func toggleFilterPanel() {
-        guard let coordinator = coordinator,
-              coordinator.tabManager.selectedTab?.tabType == .table else { return }
+        guard canUseTableResultCommands, let coordinator else { return }
         coordinator.toggleFilterPanel()
     }
 
     func showFindBar() {
-        guard let coordinator, coordinator.tabManager.selectedTab?.tabType == .table else { return }
+        guard canUseTableResultCommands, let coordinator else { return }
         coordinator.findCoordinator.show()
     }
 

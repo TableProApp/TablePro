@@ -29,6 +29,7 @@ final class ResultSet: Identifiable {
     var sortState = SortState()
     var pagination = PaginationState()
     var columnLayout = ColumnLayoutState()
+    var chartConfiguration: ResultChartConfiguration
 
     /// An EXPLAIN result is a result set like any other, so it rides the same tab strip, pinning
     /// and history. It carries a plan instead of rows.
@@ -43,5 +44,6 @@ final class ResultSet: Identifiable {
         self.id = id
         self.label = label
         self.tableRows = tableRows
+        self.chartConfiguration = .defaultConfiguration(for: tableRows)
     }
 }

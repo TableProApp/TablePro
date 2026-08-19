@@ -24,6 +24,12 @@ struct GridSelectionOwnerTests {
         #expect(GridSelectionOwner.resolve(tabType: .table, resultsViewMode: .json) == .dataGrid)
     }
 
+    @Test("Chart view does not inherit a stale grid selection")
+    func chartModeHasNoSelectionOwner() {
+        #expect(GridSelectionOwner.resolve(tabType: .table, resultsViewMode: .chart) == .none)
+        #expect(GridSelectionOwner.resolve(tabType: .query, resultsViewMode: .chart) == .none)
+    }
+
     @Test("A query tab's results are data rows")
     func queryTab() {
         #expect(GridSelectionOwner.resolve(tabType: .query, resultsViewMode: .data) == .dataGrid)

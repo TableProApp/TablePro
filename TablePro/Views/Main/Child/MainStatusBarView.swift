@@ -48,7 +48,11 @@ struct MainStatusBarView: View {
     @State private var showColumnPopover = false
 
     private var isStructureMode: Bool { viewMode == .structure }
-    private var showsDataChrome: Bool { !isStructureMode }
+    private var showsDataChrome: Bool { Self.showsDataChrome(viewMode: viewMode) }
+
+    static func showsDataChrome(viewMode: ResultsViewMode) -> Bool {
+        viewMode == .data || viewMode == .json
+    }
 
     static func showsAddRow(viewMode: ResultsViewMode, canAddRow: Bool) -> Bool {
         viewMode == .data && canAddRow
@@ -82,20 +86,22 @@ struct MainStatusBarView: View {
                         Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
                         Label("Structure", systemImage: "list.bullet.rectangle").tag(ResultsViewMode.structure)
                         Label("JSON", systemImage: "curlybraces").tag(ResultsViewMode.json)
+                        Label("Chart", systemImage: "chart.xyaxis.line").tag(ResultsViewMode.chart)
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
-                    .frame(width: 260)
+                    .frame(width: 340)
                     .controlSize(.small)
                     .accessibilityIdentifier("results-view-mode-picker")
                 } else if snapshot.hasColumns {
                     Picker(String(localized: "View Mode"), selection: $viewMode) {
                         Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
                         Label("JSON", systemImage: "curlybraces").tag(ResultsViewMode.json)
+                        Label("Chart", systemImage: "chart.xyaxis.line").tag(ResultsViewMode.chart)
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
-                    .frame(width: 140)
+                    .frame(width: 220)
                     .controlSize(.small)
                     .accessibilityIdentifier("results-view-mode-picker")
                 }

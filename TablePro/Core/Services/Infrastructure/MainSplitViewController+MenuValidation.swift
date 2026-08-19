@@ -17,7 +17,7 @@ struct MenuValidationContext: Equatable {
     var hasSelectedWorkspace = false
     var isConnected = false
     var isReadOnly = false
-    var isTableTab = false
+    var canUseTableResultCommands = false
     /// Save As writes the selected tab's SQL, so it needs a query tab and not merely a connection.
     var isQueryTab = false
     /// Export Results exports the selected tab's rows, so an empty grid has nothing to offer.
@@ -144,7 +144,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(truncateTable(_:)):
             return context.isConnected && context.hasTableSelection && !context.isReadOnly
         case #selector(performFind(_:)):
-            return context.hasEditorForFind || (context.isConnected && context.isTableTab)
+            return context.hasEditorForFind || (context.isConnected && context.canUseTableResultCommands)
         case #selector(findNext(_:)), #selector(findPrevious(_:)):
             return context.hasEditorForFind || context.hasActiveGridFind
         case #selector(undo(_:)):
@@ -188,7 +188,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected
 
         case #selector(toggleFilterBar(_:)):
-            return context.isConnected && context.isTableTab
+            return context.isConnected && context.canUseTableResultCommands
         case #selector(pinResult(_:)):
             return context.canPinResultTab
         case #selector(useFlatSidebarLayout(_:)), #selector(useTreeSidebarLayout(_:)):
@@ -211,7 +211,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
             isConnected: isConnected,
             isReadOnly: actions.isReadOnly,
-            isTableTab: actions.isTableTab,
+            canUseTableResultCommands: actions.canUseTableResultCommands,
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
             isCurrentTabEditable: actions.isCurrentTabEditable,

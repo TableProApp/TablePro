@@ -55,6 +55,7 @@ struct MainStatusBarLayoutTests {
         #expect(MainStatusBarView.showsAddRow(viewMode: .data, canAddRow: true))
         #expect(!MainStatusBarView.showsAddRow(viewMode: .structure, canAddRow: true))
         #expect(!MainStatusBarView.showsAddRow(viewMode: .json, canAddRow: true))
+        #expect(!MainStatusBarView.showsAddRow(viewMode: .chart, canAddRow: true))
     }
 
     @Test("Add Row button is hidden when adding is not allowed")
@@ -62,5 +63,14 @@ struct MainStatusBarLayoutTests {
         #expect(!MainStatusBarView.showsAddRow(viewMode: .data, canAddRow: false))
         #expect(!MainStatusBarView.showsAddRow(viewMode: .structure, canAddRow: false))
         #expect(!MainStatusBarView.showsAddRow(viewMode: .json, canAddRow: false))
+        #expect(!MainStatusBarView.showsAddRow(viewMode: .chart, canAddRow: false))
+    }
+
+    @Test("Chart mode owns its toolbar instead of stale data-grid controls")
+    func dataChromeVisibilityByMode() {
+        #expect(MainStatusBarView.showsDataChrome(viewMode: .data))
+        #expect(MainStatusBarView.showsDataChrome(viewMode: .json))
+        #expect(!MainStatusBarView.showsDataChrome(viewMode: .structure))
+        #expect(!MainStatusBarView.showsDataChrome(viewMode: .chart))
     }
 }
