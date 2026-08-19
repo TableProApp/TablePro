@@ -199,7 +199,7 @@ struct SidebarNavigationResultTests {
     @MainActor
     func resolveReuseWhenActiveTabIsPreview() throws {
         let manager = QueryTabManager()
-        try manager.addPreviewTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
+        try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb", isPreview: true)
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "orders",
             currentTabTableName: manager.selectedTab?.tableContext.tableName,

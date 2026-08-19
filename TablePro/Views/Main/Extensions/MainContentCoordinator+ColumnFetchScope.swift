@@ -18,7 +18,8 @@ extension MainContentCoordinator {
         return ColumnFetchScope.selectColumns(
             schemaColumns: schema.columns,
             hiddenColumns: tab.columnLayout.hiddenColumns,
-            primaryKeyColumns: schema.primaryKeys
+            primaryKeyColumns: schema.primaryKeys,
+            sortColumns: tab.sortState.columns.compactMap(\.columnName)
         )
     }
 
@@ -74,11 +75,11 @@ extension MainContentCoordinator {
 
     func columnsForVisibilityPicker(for tab: QueryTab, resultColumns: [String]) -> [String] {
         guard tab.tabType == .table, let tableName = tab.tableContext.tableName else { return resultColumns }
-        if let schema = schemaColumns.cached(schemaColumnsKey(tableName, scope: scope(for: tab))), !schema.columns.isEmpty {
-            return schema.columns
-        }
-        let missingHidden = tab.columnLayout.hiddenColumns.subtracting(resultColumns)
-        return missingHidden.isEmpty ? resultColumns : resultColumns + missingHidden.sorted()
+        return ColumnFetchScope.visibilityPickerColumns(
+            schemaColumns: schemaColumns.cached(schemaColumnsKey(tableName, scope: scope(for: tab)))?.columns,
+            resultColumns: resultColumns,
+            hiddenColumns: tab.columnLayout.hiddenColumns
+        )
     }
 
     func selectedTabSchemaColumns() -> [String]? {

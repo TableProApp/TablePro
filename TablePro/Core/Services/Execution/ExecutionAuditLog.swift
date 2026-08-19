@@ -27,22 +27,19 @@ internal actor ExecutionAuditLog: ExecutionAuditLogging {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExecutionAudit")
 
-    private let fileURL: URL?
+    private let fileURL: URL
     private var records: [ExecutionAuditRecord] = []
     private var loaded = false
 
-    internal init(fileURL: URL? = ExecutionAuditLog.defaultFileURL()) {
+    internal init(fileURL: URL = ExecutionAuditLog.defaultFileURL()) {
         self.fileURL = fileURL
     }
 
-    internal static func defaultFileURL() -> URL? {
-        guard let support = try? FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        ) else { return nil }
-        let directory = support.appendingPathComponent("TablePro", isDirectory: true)
+    /// Resolved through `AppStorageEnvironment` like every other store, so a UI test appends to its
+    /// own sandbox. The chain is hash linked, which makes a foreign entry indistinguishable from a
+    /// real one rather than merely noise.
+    internal static func defaultFileURL() -> URL {
+        let directory = AppStorageEnvironment.shared.supportDirectory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("ExecutionAudit.json")
     }
@@ -104,7 +101,7 @@ internal actor ExecutionAuditLog: ExecutionAuditLogging {
     private func load() {
         guard !loaded else { return }
         loaded = true
-        guard let fileURL, let data = try? Data(contentsOf: fileURL) else { return }
+        guard let data = try? Data(contentsOf: fileURL) else { return }
         do {
             records = try JSONDecoder().decode([ExecutionAuditRecord].self, from: data)
         } catch {
@@ -115,7 +112,6 @@ internal actor ExecutionAuditLog: ExecutionAuditLogging {
     }
 
     private func persist() {
-        guard let fileURL else { return }
         do {
             let data = try JSONEncoder().encode(records)
             try data.write(to: fileURL, options: .atomic)

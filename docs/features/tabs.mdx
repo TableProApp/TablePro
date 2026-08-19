@@ -25,9 +25,19 @@ Table tabs track cell edits as pending changes by default. Query tabs support [c
 
 ## Preview Tabs
 
-Clicking a table opens it right away, in a preview tab that is reused when you click a different table, like VS Code's preview tabs. A tab with unsaved edits, an applied filter, or sorting is never replaced: the click opens a new tab instead. A preview tab becomes permanent when you interact with it (sort, filter, edit data), or straight away if you use **Open in New Tab** on the table's contextual menu. A preview tab still open at quit is restored as a permanent tab.
+Clicking a table opens it right away, in a preview tab that is reused when you click a different table, like VS Code's preview tabs. A tab with unsaved edits, an applied filter, or sorting is never replaced: the click opens a new tab instead. A preview tab still open at quit is restored as a permanent tab.
+
+Double-click a table, or select it and press `Return`, to keep its tab. The tab stops being a preview and the next table you click opens in its own tab, so double-clicking your way down a list gives you one tab each. Double-clicking a table that is already open switches to its tab rather than opening a second one. A preview tab also becomes permanent on its own once you interact with it: sort it, filter it, or edit data.
+
+Opening a table from Favorites always gives it a permanent tab, since selecting a favorite does not open it and the double-click, `Return`, or **Open Table** that does is deliberate.
 
 Turn preview tabs off with **Settings > General > Tabs > Enable preview tabs** if you prefer every click to open a permanent tab.
+
+## Two Tabs on One Table
+
+**Open in New Tab**, on the table's contextual menu in the object browser, opens another tab for a table you already have open. The two tabs are independent, so you can filter, sort, and page one without touching the other, which is how you compare a table under two sets of conditions side by side.
+
+Per-table filters are saved per connection, database, schema, and table rather than per tab, so the filter that comes back when you next open the table is whichever of the two you set last.
 
 ## Managing Tabs
 
@@ -36,7 +46,7 @@ Turn preview tabs off with **Settings > General > Tabs > Enable preview tabs** i
 | Action | How |
 |--------|-----|
 | New query tab | `Cmd+T` or the **+** button at the end of the tab strip |
-| New table tab | Click a table in the sidebar (the preview tab is reused), or **Open in New Tab** on its contextual menu for a permanent one |
+| New table tab | Click a table in the sidebar (the preview tab is reused), double-click it or press `Return` to keep its tab, or **Open in New Tab** on its contextual menu for a second tab on a table already open |
 | Close tab | `Cmd+W`, the tab's close button, or **Close Tab** on the tab's contextual menu |
 | Close other tabs | **File > Close Other Tabs**, or **Close Other Tabs** on the tab's contextual menu |
 | Close every tab for the connection | **File > Close All Tabs**, or **Close All Tabs** on the tab's contextual menu |

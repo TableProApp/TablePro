@@ -277,7 +277,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let docs = try await conn.find(
             database: currentDb, collection: table,
-            filter: "{}", sort: nil, projection: nil, skip: 0, limit: 50
+            filter: "{}", sort: nil, projection: nil, skip: 0, limit: MongoStreamProjection.sampleSize
         ).docs
 
         let enumMap = (try? await fetchJsonSchemaEnums(conn: conn, table: table)) ?? [:]

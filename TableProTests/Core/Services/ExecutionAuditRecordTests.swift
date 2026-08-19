@@ -189,4 +189,12 @@ struct ExecutionAuditLogTests {
         #expect(Set(entries.map(\.sequence)).count == 20)
         #expect(await log.verify() == .intact(count: 20))
     }
+
+    @Test("the default log lives inside the storage environment, so a UI test cannot append to the real chain")
+    func defaultLocationFollowsStorageEnvironment() {
+        let url = ExecutionAuditLog.defaultFileURL()
+        #expect(url.lastPathComponent == "ExecutionAudit.json")
+        #expect(url.deletingLastPathComponent() == AppStorageEnvironment.shared.supportDirectory)
+        #expect(url.path.hasPrefix(AppStorageEnvironment.shared.applicationSupportRoot.path))
+    }
 }

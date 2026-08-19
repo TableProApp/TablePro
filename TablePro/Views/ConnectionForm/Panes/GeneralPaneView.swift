@@ -19,9 +19,7 @@ struct GeneralPaneView: View {
     }
 
     private var showsBuiltInDatabaseField: Bool {
-        guard PluginManager.shared.supportsDatabaseSwitching(for: type) else { return false }
-        return PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)?
-            .connection.hidesBuiltInDatabase != true
+        coordinator.network.showsBuiltInDatabaseField
     }
 
     var body: some View {
@@ -99,7 +97,7 @@ struct GeneralPaneView: View {
         case .network:
             Section(String(localized: "Connection")) {
                 hostFieldsView
-                if PluginManager.shared.requiresAuthentication(for: type) {
+                if showsBuiltInDatabaseField {
                     TextField(
                         containerEntityName,
                         text: $coordinator.network.database,
