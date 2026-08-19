@@ -143,7 +143,7 @@ final class QueryTabManager {
         if let sourceFileURL,
            let existingIndex = tabs.firstIndex(where: { $0.content.sourceFileURL == sourceFileURL }) {
             if let query = initialQuery {
-                tabs[existingIndex].content.query = query
+                adoptReopenedFile(at: existingIndex, content: query, url: sourceFileURL)
             }
             selectedTabId = tabs[existingIndex].id
             return
@@ -168,13 +168,35 @@ final class QueryTabManager {
         newTab.content.sourceFileURL = sourceFileURL
         if let sourceFileURL {
             newTab.content.savedFileContent = newTab.content.query
-            newTab.content.loadMtime = (try? FileManager.default.attributesOfItem(atPath: sourceFileURL.path)[.modificationDate]) as? Date
+            newTab.content.loadMtime = Self.modificationDate(of: sourceFileURL)
         }
         tabs.append(newTab)
         selectedTabId = newTab.id
         if claimFocus {
             pendingFocusTabId = newTab.id
         }
+    }
+
+    /// A file that is already open is shown, not reloaded over.
+    ///
+    /// Opening it again is a request to look at it, so the buffer is replaced only when there is
+    /// nothing of the user's in it. A tab with unsaved edits keeps them: `setText` on the editor
+    /// resets its storage, so the replacement was not undoable and nothing asked first. The one
+    /// path that does replace a dirty buffer is the file-changed-on-disk banner, which asks.
+    ///
+    /// The baseline moves with the buffer. Writing the text without it left the tab reading as
+    /// dirty against content it had just loaded, and armed the same banner for a change it had
+    /// already taken.
+    private func adoptReopenedFile(at index: Int, content: String, url: URL) {
+        guard !tabs[index].content.isFileDirty else { return }
+        tabs[index].content.query = content
+        tabs[index].content.savedFileContent = content
+        tabs[index].content.loadMtime = Self.modificationDate(of: url)
+        tabs[index].content.externalModificationDetected = false
+    }
+
+    private static func modificationDate(of url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
     }
 
     /// Take an already-built tab, such as one rebuilt from the recently closed history, rather than

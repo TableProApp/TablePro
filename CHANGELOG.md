@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Opening a `.sql` file that is already open shows its tab instead of replacing what you have typed in it. The buffer was overwritten with the copy on disk, with no prompt and nothing to undo it. A tab with no unsaved edits still picks up the current file, and its unsaved marker and changed-on-disk banner now follow the text it just loaded.
 - The inspector button stays at the right end of the toolbar when the inspector is open. It used to slide left and sit against the inspector's inner edge, so the button moved as soon as you used it.
 - The Tables and Favorites switch in the toolbar keeps following the sidebar after you open Customize Toolbar. It stopped responding until the window was closed and reopened.
 - Refresh, New Tab, Open Quickly, Export, Database, Results and Dashboard are dimmed in the toolbar's overflow menu when they cannot run. On a narrow window they looked available and did nothing.
