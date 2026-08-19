@@ -132746,6 +132746,28 @@
             }
           }
         },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%3$@ 기준 %2$@의 %1$@ 차트, %#@points@",
+            "state" : "translated"
+          },
+          "substitutions" : {
+            "points" : {
+              "argNum" : 4,
+              "formatSpecifier" : "d",
+              "variations" : {
+                "plural" : {
+                  "other" : {
+                    "stringUnit" : {
+                      "value" : "지점 %arg개",
+                      "state" : "translated"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "%3$@ ölçütüne göre %2$@ için %4$d noktalı %1$@ grafiği",
@@ -132774,6 +132796,12 @@
     },
     "Showing the first %1$@ points of %2$@ loaded rows" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "불러온 %2$@행 중 처음 %1$@개 지점을 표시 중",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
@@ -132802,6 +132830,12 @@
     },
     "Showing the first %@ series" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "처음 %@개 계열을 표시 중",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
@@ -132830,6 +132864,12 @@
     },
     "Charting the first %1$@ of %2$@ loaded rows" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "불러온 %2$@행 중 처음 %1$@행을 차트로 표시 중",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
@@ -132858,6 +132898,12 @@
     },
     "%d skipped" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%d개 건너뜀",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "%d atlandı",
@@ -132886,6 +132932,12 @@
     },
     "Area" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "영역",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Alan",
@@ -132914,6 +132966,12 @@
     },
     "Chart" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "차트",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Grafik",
@@ -132942,6 +133000,12 @@
     },
     "Chart Type" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "차트 종류",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Grafik Türü",
@@ -132970,6 +133034,12 @@
     },
     "Charts draw the rows the result pane has loaded. Grid selection, Find, hidden columns, and value filters do not change the chart." : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "차트는 결과 창이 불러온 행을 그립니다. 그리드 선택, 찾기, 숨긴 열, 값 필터는 차트를 바꾸지 않습니다.",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
@@ -132998,6 +133068,12 @@
     },
     "Chart data scope" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "차트 데이터 범위",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Grafik veri kapsamı",
@@ -133026,6 +133102,12 @@
     },
     "Choose Column" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "열 선택",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Sütun Seç",
@@ -133054,6 +133136,12 @@
     },
     "Execute a query to chart its loaded rows." : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "쿼리를 실행하면 불러온 행을 차트로 그립니다.",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Yüklenen satırları grafikte göstermek için bir sorgu çalıştırın.",
@@ -133082,6 +133170,12 @@
     },
     "Line" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "선",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Çizgi",
@@ -133110,6 +133204,12 @@
     },
     "No Numeric Column" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "숫자 열 없음",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
@@ -133138,6 +133238,12 @@
     },
     "Charts need a numeric column for the Y axis. This result has none." : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "차트에는 Y축으로 쓸 숫자 열이 필요합니다. 이 결과에는 없습니다.",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
@@ -133166,6 +133272,12 @@
     },
     "The selected axes contain only null, binary, or invalid values." : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "선택한 축에 null, 바이너리 또는 유효하지 않은 값만 있습니다.",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
@@ -133194,6 +133306,12 @@
     },
     "No Chartable Rows" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "차트로 그릴 행 없음",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Grafiğe Uygun Satır Yok",
@@ -133222,6 +133340,12 @@
     },
     "No value" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "값 없음",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Değer yok",
@@ -133250,6 +133374,12 @@
     },
     "Result Charts" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "결과 차트",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Sonuç Grafikleri",
@@ -133278,6 +133408,12 @@
     },
     "Row" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "행",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Satır",
@@ -133306,6 +133442,12 @@
     },
     "Scatter" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "분산형",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Dağılım",
@@ -133334,6 +133476,12 @@
     },
     "Series" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "계열",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Seri",
@@ -133362,6 +133510,12 @@
     },
     "Turn loaded query results into native bar, line, area, and scatter charts." : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "불러온 쿼리 결과를 막대, 선, 영역, 분산형 차트로 그립니다.",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Yüklenen sorgu sonuçlarını yerel çubuk, çizgi, alan ve dağılım grafiklerine dönüştürün.",
@@ -133390,6 +133544,12 @@
     },
     "X Axis" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "X축",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "X Ekseni",
@@ -133418,6 +133578,12 @@
     },
     "Y Axis" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "Y축",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "value" : "Y Ekseni",
@@ -133446,6 +133612,12 @@
     },
     "%d more" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%d개 더",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
@@ -133474,6 +133646,12 @@
     },
     "Building chart" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "차트 생성 중",
+            "state" : "translated"
+          }
+        },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",

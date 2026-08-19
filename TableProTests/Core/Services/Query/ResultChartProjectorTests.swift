@@ -101,7 +101,7 @@ struct ResultChartProjectorTests {
             guard case .date(let value) = $0.x else { return nil }
             return value
         }
-        #expect(dates.count == 3)
+        try #require(dates.count == 3)
         #expect(dates[2] < dates[0])
         #expect(dates[0] < dates[1])
         #expect(projection.points.map(\.rawX) == ["2024-9-1", "2024-10-1", "2024-03-01 08:30:00+07"])
