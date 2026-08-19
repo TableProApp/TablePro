@@ -4,7 +4,6 @@
 //
 
 import CryptoKit
-import Darwin
 import Foundation
 import os
 
@@ -15,14 +14,34 @@ actor CopilotBinaryManager {
     private let baseDirectory: URL
     private var downloadTask: Task<Void, Error>?
 
-    private init() {
+    init(baseDirectory: URL? = nil) {
         let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
-        baseDirectory = appSupport.appendingPathComponent("TablePro/copilot-language-server", isDirectory: true)
+        self.baseDirectory = baseDirectory
+            ?? appSupport.appendingPathComponent("TablePro/copilot-language-server", isDirectory: true)
+    }
+
+    /// npm serves whatever `latest` resolves to, so there is no version to pin against.
+    /// The digest recorded at install time is what the registry's own integrity hash
+    /// attested to, and re-checking it here is the only thing standing between an
+    /// altered file in a user-writable directory and a process this app spawns.
+    func installedBinaryIsIntact() -> Bool {
+        guard FileManager.default.isExecutableFile(atPath: binaryExecutablePath) else { return false }
+
+        guard let recorded = recordedDigest() else {
+            Self.logger.info("Copilot language server has no recorded digest, reinstalling")
+            return false
+        }
+
+        guard DownloadedBinary.sha256Hex(ofFileAt: binaryExecutablePath) == recorded else {
+            Self.logger.error("Copilot language server does not match its recorded digest, reinstalling")
+            return false
+        }
+        return true
     }
 
     func ensureBinary() async throws -> String {
         let path = binaryExecutablePath
-        if FileManager.default.isExecutableFile(atPath: path) {
+        if installedBinaryIsIntact() {
             return path
         }
 
@@ -41,7 +60,7 @@ actor CopilotBinaryManager {
             }
         }
 
-        guard FileManager.default.isExecutableFile(atPath: path) else {
+        guard installedBinaryIsIntact() else {
             throw CopilotError.binaryNotFound
         }
         return path
@@ -121,33 +140,39 @@ actor CopilotBinaryManager {
             ofItemAtPath: binaryExecutablePath
         )
 
-        stripQuarantineAttribute(at: binaryExecutablePath)
+        DownloadedBinary.stripQuarantine(at: URL(fileURLWithPath: binaryExecutablePath))
+
+        guard let digest = DownloadedBinary.sha256Hex(ofFileAt: binaryExecutablePath) else {
+            throw CopilotError.binaryNotFound
+        }
+        try digest.write(to: digestFile, atomically: true, encoding: .utf8)
 
         if let version = json["version"] as? String {
-            let versionFile = baseDirectory.appendingPathComponent("version.txt")
-            try? version.write(to: versionFile, atomically: true, encoding: .utf8)
-            Self.logger.info("Installed Copilot language server version \(version)")
+            try version.write(to: versionFile, atomically: true, encoding: .utf8)
+            Self.logger.info("Installed Copilot language server version \(version, privacy: .public)")
         }
 
         Self.logger.info("Downloaded Copilot language server binary")
     }
 
     func installedVersion() -> String? {
-        let versionFile = baseDirectory.appendingPathComponent("version.txt")
-        return try? String(contentsOf: versionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        try? String(contentsOf: versionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func recordedDigest() -> String? {
+        try? String(contentsOf: digestFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var versionFile: URL {
+        baseDirectory.appendingPathComponent("version.txt")
+    }
+
+    private var digestFile: URL {
+        baseDirectory.appendingPathComponent("sha256.txt")
     }
 
     private var binaryExecutablePath: String {
         baseDirectory.appendingPathComponent("copilot-language-server").path
-    }
-
-    private func stripQuarantineAttribute(at path: String) {
-        let removed = path.withCString { removexattr($0, "com.apple.quarantine", 0) }
-        guard removed != 0 else { return }
-        let err = errno
-        if err != ENOATTR {
-            Self.logger.warning("Failed to remove quarantine xattr: errno=\(err)")
-        }
     }
 
     private var platform: String {

@@ -4,7 +4,6 @@
 //
 
 import CryptoKit
-import Darwin
 import Foundation
 import os
 
@@ -49,8 +48,32 @@ actor CloudSQLProxyBinaryManager {
         return try? String(contentsOf: versionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The binary is executed directly, so a stale version or an altered file must be
+    /// refused rather than run. The checksum is re-read on every call because the file
+    /// lives in a user-writable directory and is only ad-hoc signed, which leaves the
+    /// pinned digest as the sole thing attesting to what is about to run.
+    func installedBinaryIsCurrent() -> Bool {
+        guard FileManager.default.isExecutableFile(atPath: binaryExecutablePath) else { return false }
+
+        guard installedVersion() == Self.pinnedVersion else {
+            Self.logger.info("cloud-sql-proxy on disk is not the pinned version, reinstalling")
+            return false
+        }
+
+        guard let expected = expectedSHA256[Self.arch] else {
+            Self.logger.error("No pinned cloud-sql-proxy checksum for \(Self.arch, privacy: .public)")
+            return false
+        }
+
+        guard DownloadedBinary.sha256Hex(ofFileAt: binaryExecutablePath) == expected else {
+            Self.logger.error("cloud-sql-proxy on disk does not match its pinned checksum, reinstalling")
+            return false
+        }
+        return true
+    }
+
     func ensureBinary() async throws -> String {
-        if FileManager.default.isExecutableFile(atPath: binaryExecutablePath) {
+        if installedBinaryIsCurrent() {
             return binaryExecutablePath
         }
 
@@ -69,7 +92,7 @@ actor CloudSQLProxyBinaryManager {
             }
         }
 
-        guard FileManager.default.isExecutableFile(atPath: binaryExecutablePath) else {
+        guard installedBinaryIsCurrent() else {
             throw CloudSQLProxyError.binaryNotFound
         }
         return binaryExecutablePath
@@ -100,20 +123,11 @@ actor CloudSQLProxyBinaryManager {
         try FileManager.default.moveItem(atPath: tempPath.path, toPath: binaryExecutablePath)
 
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binaryExecutablePath)
-        stripQuarantineAttribute(at: binaryExecutablePath)
+        DownloadedBinary.stripQuarantine(at: URL(fileURLWithPath: binaryExecutablePath))
 
         let versionFile = baseDirectory.appendingPathComponent("version.txt")
-        try? Self.pinnedVersion.write(to: versionFile, atomically: true, encoding: .utf8)
+        try Self.pinnedVersion.write(to: versionFile, atomically: true, encoding: .utf8)
         Self.logger.info("Downloaded cloud-sql-proxy \(Self.pinnedVersion, privacy: .public)")
-    }
-
-    private func stripQuarantineAttribute(at path: String) {
-        let removed = path.withCString { removexattr($0, "com.apple.quarantine", 0) }
-        guard removed != 0 else { return }
-        let err = errno
-        if err != ENOATTR {
-            Self.logger.warning("Failed to remove quarantine xattr: errno=\(err)")
-        }
     }
 
     private static var arch: String {
