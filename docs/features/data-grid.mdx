@@ -12,9 +12,17 @@ Query results and table data open in a spreadsheet-style grid. Sort and filter c
 
 ## View Modes
 
-Switch between **Data**, **Structure**, and **JSON** in the status bar. Query tabs show Data and JSON only. The mode is remembered per tab.
+Switch between **Data**, **Structure**, **JSON**, and **Chart** in the status bar. Query tabs show Data, JSON, and Chart only. The mode is remembered per tab.
 
 JSON mode shows the rows as a JSON array, with **Text** and **Tree** views. Select rows in Data mode first to limit what JSON shows, then use **Copy JSON**.
+
+### Chart mode
+
+Chart mode is a Starter feature. Pick a bar, line, area, or scatter chart, then choose a numeric Y column. X can use row numbers, another numeric column, a date or timestamp column, or a categorical column; an optional text, boolean, enum, or set column splits the result into series. Date and timestamp columns plot on a real time axis, so points sit at their true spacing whatever order the rows arrive in. Hover the plot to inspect exact X, Y and series values. Controls stack vertically when the result pane is narrow.
+
+Your chart type and axis choices belong to the tab and follow the column names, so they survive a page turn, a sort, a refresh and a re-run. A column that is missing from the next result is remembered rather than cleared, and comes back when the column does.
+
+Charts draw the active result's loaded rows, up to 2,000 points, 20 series, and 50,000 inspected rows. Past a limit the chart still draws what fits and the toolbar says how much, for example "Showing the first 2,000 points of 8,431 loaded rows". Null, binary and unrepresentable axis values are skipped and counted. The status bar keeps the row count, the pagination controls and **Fetch All** in Chart mode, so you can load the rest without leaving the chart. Grid selection, Find, hidden columns and value filters do not narrow the chart.
 
 ## Columns
 

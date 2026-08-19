@@ -18,6 +18,7 @@ struct QueryEditorView: View {
     @Binding var isParameterPanelVisible: Bool
     var onExecute: () -> Void
     var onExecuteWithoutLimit: (() -> Void)?
+    var onExecuteAllStatements: (() -> Void)?
     var schemaProvider: SQLSchemaProvider?
     var databaseType: DatabaseType?
     var connectionId: UUID?
@@ -140,6 +141,13 @@ struct QueryEditorView: View {
             explainButton(hasQueryText: hasQueryText)
 
             Menu {
+                Button(String(localized: "Execute All Statements")) {
+                    onExecuteAllStatements?()
+                }
+                .optionalKeyboardShortcut(
+                    AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeAllStatements)
+                )
+
                 Button(String(localized: "Execute Without Limit")) {
                     onExecuteWithoutLimit?()
                 }
@@ -160,6 +168,7 @@ struct QueryEditorView: View {
             .fixedSize()
             .help(shortcutHint(String(localized: "Execute"), for: .executeQuery))
             .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeQuery))
+            .accessibilityIdentifier("query-execute-menu")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

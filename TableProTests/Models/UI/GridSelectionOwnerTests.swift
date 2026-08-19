@@ -24,6 +24,23 @@ struct GridSelectionOwnerTests {
         #expect(GridSelectionOwner.resolve(tabType: .table, resultsViewMode: .json) == .dataGrid)
     }
 
+    @Test("Chart view does not inherit a stale grid selection")
+    func chartModeHasNoSelectionOwner() {
+        #expect(GridSelectionOwner.resolve(tabType: .table, resultsViewMode: .chart) == .none)
+        #expect(GridSelectionOwner.resolve(tabType: .query, resultsViewMode: .chart) == .none)
+    }
+
+    /// Row editing follows the owner, so this is also the list of modes whose row commands stay
+    /// live. JSON shows the same rows the data grid owns and keeps them; Chart has no rows to edit.
+    @Test("Only a mode with an owning grid can edit rows")
+    func rowEditingFollowsTheOwningGrid() {
+        let owners = [ResultsViewMode.data, .structure, .json, .chart].map {
+            GridSelectionOwner.resolve(tabType: .table, resultsViewMode: $0)
+        }
+
+        #expect(owners == [.dataGrid, .schemaGrid, .dataGrid, GridSelectionOwner.none])
+    }
+
     @Test("A query tab's results are data rows")
     func queryTab() {
         #expect(GridSelectionOwner.resolve(tabType: .query, resultsViewMode: .data) == .dataGrid)

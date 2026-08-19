@@ -48,7 +48,13 @@ struct MainStatusBarView: View {
     @State private var showColumnPopover = false
 
     private var isStructureMode: Bool { viewMode == .structure }
-    private var showsDataChrome: Bool { !isStructureMode }
+
+    /// Chart mode shows the row range so its plotting notices have a denominator, but it has no grid
+    /// and nothing clears the grid's selection on a mode change, so a carried-over count would
+    /// replace that range with a selection the user cannot see.
+    private var reportedSelectionCount: Int {
+        viewMode.showsColumnControls ? selectedRowIndices.count : 0
+    }
 
     static func showsAddRow(viewMode: ResultsViewMode, canAddRow: Bool) -> Bool {
         viewMode == .data && canAddRow
@@ -82,20 +88,22 @@ struct MainStatusBarView: View {
                         Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
                         Label("Structure", systemImage: "list.bullet.rectangle").tag(ResultsViewMode.structure)
                         Label("JSON", systemImage: "curlybraces").tag(ResultsViewMode.json)
+                        Label("Chart", systemImage: "chart.xyaxis.line").tag(ResultsViewMode.chart)
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
-                    .frame(width: 260)
+                    .frame(width: 340)
                     .controlSize(.small)
                     .accessibilityIdentifier("results-view-mode-picker")
                 } else if snapshot.hasColumns {
                     Picker(String(localized: "View Mode"), selection: $viewMode) {
                         Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
                         Label("JSON", systemImage: "curlybraces").tag(ResultsViewMode.json)
+                        Label("Chart", systemImage: "chart.xyaxis.line").tag(ResultsViewMode.chart)
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
-                    .frame(width: 140)
+                    .frame(width: 220)
                     .controlSize(.small)
                     .accessibilityIdentifier("results-view-mode-picker")
                 }
@@ -103,7 +111,7 @@ struct MainStatusBarView: View {
 
             Spacer()
 
-            if showsDataChrome, snapshot.hasRows {
+            if viewMode.showsResultScope, snapshot.hasRows {
                 HStack(spacing: 4) {
                     if snapshot.pagination.isLoadingMore {
                         ProgressView()
@@ -114,7 +122,7 @@ struct MainStatusBarView: View {
                             .foregroundStyle(.secondary)
                             .accessibilityLabel(String(localized: "Loading more rows"))
                     } else {
-                        Text(snapshot.rowInfoText(selectedCount: selectedRowIndices.count))
+                        Text(snapshot.rowInfoText(selectedCount: reportedSelectionCount))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -170,7 +178,7 @@ struct MainStatusBarView: View {
                     structureFooterControls(state: structureState.footer)
                 }
 
-                if showsDataChrome {
+                if viewMode.showsColumnControls {
                     if Self.showsAddRow(viewMode: viewMode, canAddRow: onAddRow != nil), let onAddRow {
                         Button {
                             onAddRow()
@@ -214,43 +222,45 @@ struct MainStatusBarView: View {
                             )
                         }
                     }
+                }
 
-                    if snapshot.tabType == .table, snapshot.hasTableName {
-                        Toggle(isOn: Binding(
-                            get: { filterState.isVisible },
-                            set: { _ in onToggleFilters() }
-                        )) {
-                            HStack(spacing: 4) {
-                                Image(systemName: filterState.hasAppliedFilters
-                                        ? "line.3.horizontal.decrease.circle.fill"
-                                        : "line.3.horizontal.decrease.circle")
-                                Text("Filters")
-                                if filterState.hasAppliedFilters {
-                                    Text("(\(filterState.appliedFilters.count))")
-                                        .foregroundStyle(.secondary)
-                                }
+                if viewMode.showsRowFilters, snapshot.tabType == .table, snapshot.hasTableName {
+                    Toggle(isOn: Binding(
+                        get: { filterState.isVisible },
+                        set: { _ in onToggleFilters() }
+                    )) {
+                        HStack(spacing: 4) {
+                            Image(systemName: filterState.hasAppliedFilters
+                                    ? "line.3.horizontal.decrease.circle.fill"
+                                    : "line.3.horizontal.decrease.circle")
+                            Text("Filters")
+                            if filterState.hasAppliedFilters {
+                                Text("(\(filterState.appliedFilters.count))")
+                                    .foregroundStyle(.secondary)
                             }
                         }
-                        .toggleStyle(.button)
-                        .controlSize(.small)
-                        .help(filterToggleHelp)
-                        .accessibilityLabel(String(localized: "Filters"))
-                        .accessibilityAddTraits(filterState.isVisible ? .isSelected : [])
                     }
+                    .toggleStyle(.button)
+                    .controlSize(.small)
+                    .help(filterToggleHelp)
+                    .accessibilityLabel(String(localized: "Filters"))
+                    .accessibilityAddTraits(filterState.isVisible ? .isSelected : [])
+                }
 
-                    if snapshot.tabType == .table, snapshot.hasTableName, snapshot.showsPaginationControls {
-                        PaginationControlsView(
-                            pagination: snapshot.pagination,
-                            loadedRowCount: snapshot.rowCount,
-                            onFirst: paginationCallbacks.onFirst,
-                            onPrevious: paginationCallbacks.onPrevious,
-                            onNext: paginationCallbacks.onNext,
-                            onLast: paginationCallbacks.onLast,
-                            onPageSizeChange: paginationCallbacks.onPageSizeChange,
-                            onShowAll: paginationCallbacks.onShowAll,
-                            onGoToPage: paginationCallbacks.onGoToPage
-                        )
-                    }
+                if viewMode.showsResultScope, snapshot.tabType == .table, snapshot.hasTableName,
+                   snapshot.showsPaginationControls
+                {
+                    PaginationControlsView(
+                        pagination: snapshot.pagination,
+                        loadedRowCount: snapshot.rowCount,
+                        onFirst: paginationCallbacks.onFirst,
+                        onPrevious: paginationCallbacks.onPrevious,
+                        onNext: paginationCallbacks.onNext,
+                        onLast: paginationCallbacks.onLast,
+                        onPageSizeChange: paginationCallbacks.onPageSizeChange,
+                        onShowAll: paginationCallbacks.onShowAll,
+                        onGoToPage: paginationCallbacks.onGoToPage
+                    )
                 }
             }
         }

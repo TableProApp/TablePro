@@ -35,7 +35,9 @@ SELECT * FROM users LIMIT 10;
 SELECT COUNT(*) FROM orders;
 ```
 
-Select text and press `Cmd+Enter` to run only the selection. Multiple statements in a selection run sequentially:
+To run the whole tab, choose **Execute All Statements** from the Execute button's menu, press `Cmd+Shift+Enter`, or use **Query > Execute All Statements**. Nothing needs to be selected first.
+
+Select text and press `Cmd+Enter` to run only the selection. Multiple statements, whether from a selection or from Execute All Statements, run sequentially:
 
 - On databases with transaction support, the batch runs in a transaction: if a statement fails, execution stops and all changes roll back. Databases without transactions run each statement as-is, with no rollback.
 - The error names the failing statement ("Statement 3/5 failed: ...").

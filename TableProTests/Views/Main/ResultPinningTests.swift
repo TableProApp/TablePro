@@ -225,7 +225,7 @@ struct ResultPinningTests {
         let index = try #require(coordinator.tabManager.selectedTabIndex)
         let result = Self.makeResultSet(label: "Result")
 
-        for mode in [ResultsViewMode.data, .json, .structure] {
+        for mode in [ResultsViewMode.data, .json, .chart, .structure] {
             coordinator.tabManager.mutate(at: index) { tab in
                 tab.display.resultSets = [result]
                 tab.display.activeResultSetId = result.id
