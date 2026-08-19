@@ -100,7 +100,11 @@ extension TextView {
     fileprivate func handleAttachmentClick(event: NSEvent, offset: Int, attachment: AnyTextAttachment) {
         switch event.clickCount {
         case 1:
-            selectionManager.setSelectedRange(attachment.range)
+            guard attachment.attachment.activatesOnSingleClick else {
+                selectionManager.setSelectedRange(attachment.range)
+                return
+            }
+            performAttachmentAction(attachment: attachment)
         case 2:
             performAttachmentAction(attachment: attachment)
         default:
