@@ -103,8 +103,8 @@ internal class UITestCase: XCTestCase {
     /// menu during menu traversal"; XCUITest then falls back to hovering and resolves the item to an
     /// unhittable zero-size frame. That failed every suite this helper serves.
     @discardableResult
-    internal func launchWithSampleDatabase() throws -> XCUIApplication {
-        let app = try launchApp()
+    internal func launchWithSampleDatabase(environment: [String: String] = [:]) throws -> XCUIApplication {
+        let app = try launchApp(environment: environment)
         let menuBar = app.menuBars.firstMatch
         XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
         let openSample = menuBar.menuItems["Open Sample Database"]

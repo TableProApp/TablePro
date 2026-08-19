@@ -100,6 +100,7 @@ extension MainWindowToolbar {
         menuItem.image = item.image
         menuItem.submenu = buildImportSubmenu()
         item.menuFormRepresentation = menuItem
+        bindMenuForm(action: #selector(performImportFormat(_:)), to: Self.importTables)
 
         bindShortcut(.importData, description: String(localized: "Import Data"), to: item)
         return item
@@ -151,6 +152,7 @@ extension MainWindowToolbar {
             item.target = self
             item.action = action
             item.autovalidates = true
+            bindMenuForm(action: action, to: id)
             let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: keyEquivalent)
             menuItem.keyEquivalentModifierMask = modifiers
             menuItem.target = self
@@ -181,6 +183,7 @@ extension MainWindowToolbar {
         item.isBordered = true
         item.symbolAccessibilityDescription = label
         item.symbolProvider = symbolProvider ?? { symbol }
+        bindMenuForm(action: action, to: id)
 
         let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: "")
         menuItem.target = self
@@ -231,8 +234,9 @@ extension MainWindowToolbar {
     /// AppKit asks the delegate again with `willBeInsertedIntoToolbar: false` to build the palette
     /// copies shown by Customize Toolbar, and letting those overwrite the slot released the
     /// controllers whose views were on screen. `NSToolbarItem` does not retain its controller, so
-    /// the live items collapsed to zero width the moment the panel opened.
-    static func retainsHostingController(willBeInsertedIntoToolbar: Bool) -> Bool {
+    /// the live items collapsed to zero width the moment the panel opened. The sidebar segmented
+    /// control keeps its live group in a slot of the same shape, so both read this one predicate.
+    static func claimsItemSlot(willBeInsertedIntoToolbar: Bool) -> Bool {
         willBeInsertedIntoToolbar
     }
 

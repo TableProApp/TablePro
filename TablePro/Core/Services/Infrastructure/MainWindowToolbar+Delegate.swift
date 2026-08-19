@@ -18,13 +18,13 @@ extension MainWindowToolbar {
         )
         switch itemIdentifier {
         case Self.sidebarToggle:
-            return makeSidebarToggleItem()
+            return makeSidebarToggleItem(claimsSlot: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag))
         case Self.connectionGroup:
             let group = makeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Connection"),
                 subitems: [subitemConnection(), subitemDatabase()],
-                retainsController: Self.retainsHostingController(willBeInsertedIntoToolbar: flag),
+                retainsController: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag),
                 content: HStack(spacing: 4) {
                     ConnectionToolbarSubjectButton(subject: subject)
                     DatabaseToolbarSubjectButton(subject: subject)
@@ -41,7 +41,7 @@ extension MainWindowToolbar {
                 action: nil,
                 keyEquivalent: "",
                 modifiers: [],
-                retainsController: Self.retainsHostingController(willBeInsertedIntoToolbar: flag),
+                retainsController: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag),
                 content: ToolbarPrincipalSubjectContent(subject: subject)
             )
             item.visibilityPriority = .high
@@ -87,11 +87,6 @@ extension MainWindowToolbar {
                         : "rectangle.bottomhalf.inset.filled"
                 }
             )
-        case Self.inspector:
-            let item = NSToolbarItem(itemIdentifier: Self.inspector)
-            item.label = String(localized: "Inspector")
-            item.paletteLabel = String(localized: "Inspector")
-            return item
         case Self.dashboard:
             return menuOnlyItem(
                 id: itemIdentifier,

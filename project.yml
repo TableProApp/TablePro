@@ -433,31 +433,6 @@ targets:
         SWIFT_EMIT_LOC_STRINGS: NO
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
 
-  TableProScreenshots:
-    type: bundle.ui-testing
-    platform: macOS
-    sources:
-      - TableProScreenshots
-      # Shared rather than copied. The sandbox it prepares is the only reason a
-      # screenshot cannot pick up the connections of whoever is capturing it.
-      - path: TableProUITests/Support/UITestCase.swift
-    dependencies:
-      - target: TablePro
-    settings:
-      base:
-        CURRENT_PROJECT_VERSION: 1
-        # The runner writes the PNGs straight to the output directory. Sandboxed
-        # it can only reach its own container, and the app target is already NO.
-        ENABLE_APP_SANDBOX: NO
-        GENERATE_INFOPLIST_FILE: YES
-        MARKETING_VERSION: "1.0"
-        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProScreenshots
-        PRODUCT_NAME: $(TARGET_NAME)
-        STRING_CATALOG_GENERATE_SYMBOLS: NO
-        SWIFT_APPROACHABLE_CONCURRENCY: YES
-        SWIFT_EMIT_LOC_STRINGS: NO
-        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
-
   # ─── Plugins bundled in the app ───────────────────────────────────────────────
 
   MySQLDriver:
@@ -952,19 +927,6 @@ schemes:
       config: Debug
       targets:
         - name: DamengDriverTests
-
-  # Kept out of the TablePro scheme on purpose. It needs the demo databases in
-  # demo/docker-compose.yml up and Screen Recording granted, so it cannot run in
-  # the job that gates a pull request.
-  TableProScreenshots:
-    build:
-      targets:
-        TableProScreenshots: [test]
-      buildImplicitDependencies: true
-    test:
-      config: Debug
-      targets:
-        - name: TableProScreenshots
 
   TablePro:
     build:
