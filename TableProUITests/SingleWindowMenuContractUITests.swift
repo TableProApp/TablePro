@@ -54,6 +54,22 @@ final class SingleWindowMenuContractUITests: UITestCase {
         )
     }
 
+    /// The retitle itself. "Close Window" is the title the menu is built with, so asserting only
+    /// that would pass even if the title were never resolved from the key window.
+    func testCloseIsNamedCloseTabOnceATabIsOpen() throws {
+        let app = try launchWithSampleDatabase()
+        app.typeKey("t", modifierFlags: .command)
+
+        XCTAssertTrue(
+            app.menuBars.menuItems["Close Tab"].waitForExistence(timeout: 15),
+            "A window with a tab open must name the close command Close Tab"
+        )
+        XCTAssertFalse(
+            app.menuBars.menuItems["Close Window"].exists,
+            "The close command is one item, so the built title must be gone once it resolves"
+        )
+    }
+
     /// The connections strip offers Close on a row, and the HIG requires every context-menu command
     /// to be reachable from the menu bar too.
     func testFileMenuOffersCloseConnection() throws {

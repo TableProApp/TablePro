@@ -45,7 +45,9 @@ private final class EditorWindow: NSWindow, NSDraggingDestination {
 }
 
 extension EditorWindow: CloseCommandNaming {
-    var closeCommandTitle: String? { String(localized: "Close Tab") }
+    var closeCommandTitle: String? {
+        (contentViewController as? MainSplitViewController)?.closeCommandTitle
+    }
 }
 
 @MainActor

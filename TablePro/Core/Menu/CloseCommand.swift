@@ -56,8 +56,14 @@ internal final class CloseCommandMenuDelegate: NSObject, NSMenuDelegate {
     }
 
     internal func menuNeedsUpdate(_ menu: NSMenu) {
-        guard let item = Self.closeItem(in: menu) else { return }
-        Self.retitle(item, to: CloseCommandTitleResolver.resolvedTitle())
+        Self.applyResolvedTitle(to: menu)
+    }
+
+    @discardableResult
+    internal static func applyResolvedTitle(to menu: NSMenu) -> NSMenuItem? {
+        guard let item = closeItem(in: menu) else { return nil }
+        retitle(item, to: CloseCommandTitleResolver.resolvedTitle())
+        return item
     }
 
     /// Assigning a title that has not changed still posts an item-changed notification, which makes

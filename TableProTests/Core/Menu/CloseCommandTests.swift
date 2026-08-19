@@ -60,10 +60,30 @@ struct CloseCommandBindingTests {
         #expect(CloseCommandMenuDelegate.closeItem(in: fileMenu())?.title == String(localized: "Close Window"))
     }
 
-    @Test("An editor window names the close command after the tab it closes")
-    func editorWindowNamesCloseTab() {
+    /// The built title already reads "Close Window", so asserting on it alone would pass even if
+    /// the delegate never ran. This drives the delegate over the real menu instead.
+    @Test("The delegate rewrites the built title from the key window")
+    func delegateRewritesTheBuiltTitle() {
+        let menu = fileMenu()
+        let item = try? #require(CloseCommandMenuDelegate.closeItem(in: menu))
+        item?.title = "stale"
+        CloseCommandMenuDelegate.applyResolvedTitle(to: menu)
+        #expect(item?.title == CloseCommandTitleResolver.resolvedTitle())
+        #expect(item?.title != "stale")
+    }
+
+    @Test("The delegate leaves a menu with no close item alone")
+    func delegateIgnoresAnUnrelatedMenu() {
+        #expect(CloseCommandMenuDelegate.applyResolvedTitle(to: NSMenu()) == nil)
+    }
+
+    /// A bare editor window hosts no split controller yet, so it has no tab to close and must not
+    /// offer to close one.
+    @Test("An editor window with no content does not claim to close a tab")
+    func bareEditorWindowDoesNotClaimATab() {
         let window = TabWindowController.makeEditorWindow()
-        #expect((window as? CloseCommandNaming)?.closeCommandTitle == String(localized: "Close Tab"))
+        #expect((window as? CloseCommandNaming)?.closeCommandTitle == nil)
+        #expect(CloseCommandTitleResolver.title(receiver: window, keyWindow: window) == "Close Window")
     }
 }
 
@@ -78,12 +98,12 @@ struct CloseCommandTitleResolverTests {
 
     @Test("A responder that claims the command without naming it defers to its window")
     func unnamedReceiverDefersToTheWindow() {
-        let window = TabWindowController.makeEditorWindow()
-        let receiver = NamedCloseTarget(nil)
+        let window = NamedCloseTarget("Close Tab")
         #expect(
-            CloseCommandTitleResolver.title(receiver: receiver, keyWindow: window)
-                == String(localized: "Close Tab")
+            CloseCommandTitleResolver.title(receiver: NamedCloseTarget(nil), keyWindow: nil)
+                == "Close Window"
         )
+        #expect(CloseCommandTitleResolver.title(receiver: window, keyWindow: nil) == "Close Tab")
     }
 
     @Test("A plain window closes itself, so the command is Close Window")

@@ -294,7 +294,13 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// hand.
     @objc
     internal func performClose(_ sender: Any?) {
-        guard let workspace = appliedSelection else { return }
+        guard let workspace = appliedSelection else {
+            /// Nothing highlighted means the strip has no connection to close, not that Close does
+            /// nothing: swallowing it here would leave the command dead in a window that has tabs,
+            /// which is the failure this whole route exists to prevent.
+            view.window?.performClose(sender)
+            return
+        }
         close(connectionId: workspace.connectionId)
     }
 
@@ -487,22 +493,13 @@ internal final class WorkspaceRailViewController: NSViewController {
     }
 }
 
-// MARK: - NSMenuItemValidation
-
-extension WorkspaceRailViewController: NSMenuItemValidation {
-    /// A responder that claims an action also owns whether it applies. Without this AppKit enables
-    /// the item on the strip's behalf even when no row is highlighted.
-    internal func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        guard menuItem.action == #selector(performClose(_:)) else { return true }
-        return appliedSelection != nil
-    }
-}
-
 // MARK: - CloseCommandNaming
 
 extension WorkspaceRailViewController: CloseCommandNaming {
     /// The strip's own contextual menu names the connection it would close, and the menu bar has to
     /// agree with it: the command is the same one.
+    /// nil while nothing is highlighted, so the resolver falls back to the window, which is where
+    /// the command goes in that state too.
     internal var closeCommandTitle: String? {
         guard let workspace = appliedSelection,
               let entry = entries.first(where: { $0.workspace == workspace })

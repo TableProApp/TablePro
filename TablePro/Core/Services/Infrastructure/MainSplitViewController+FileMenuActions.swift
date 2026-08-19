@@ -37,6 +37,15 @@ extension MainSplitViewController {
     /// Returns false when the window hosts nothing to close, so the window falls back to closing
     /// itself rather than letting the command resolve to nothing, which is the failure this whole
     /// route exists to make impossible.
+    /// What Close does here, in the words the connections strip already uses for the same command.
+    /// A window with no tab left closes the connection, so naming it "Close Tab" would describe an
+    /// action the command does not take.
+    var closeCommandTitle: String? {
+        if commandActions?.hasOpenTab == true { return String(localized: "Close Tab") }
+        guard let name = workspaces.selected?.connection?.name else { return nil }
+        return String(format: String(localized: "Close “%@”"), name)
+    }
+
     func closeFrontmostTab() -> Bool {
         guard let actions = commandActions else {
             guard let connectionId = workspaces.selectedConnectionId else { return false }

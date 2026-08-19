@@ -297,6 +297,10 @@ final class MainContentCommandActions {
 
     var connectionId: UUID { connection.id }
 
+    /// Whether Close has a tab to act on. With none, it ends the connection instead, and the menu
+    /// has to say so rather than offering to close a tab that is not there.
+    var hasOpenTab: Bool { coordinator?.tabManager.selectedTab != nil }
+
     var browseDatabaseName: String { coordinator?.browseDatabaseName ?? "" }
 
     var openTabCount: Int { coordinator?.tabManager.tabs.count ?? 0 }
