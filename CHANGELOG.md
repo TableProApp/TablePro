@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The inspector button stays at the right end of the toolbar when the inspector is open. It used to slide left and sit against the inspector's inner edge, so the button moved as soon as you used it.
+- The Tables and Favorites switch in the toolbar keeps following the sidebar after you open Customize Toolbar. It stopped responding until the window was closed and reopened.
+- Refresh, New Tab, Open Quickly, Export, Database, Results and Dashboard are dimmed in the toolbar's overflow menu when they cannot run. On a narrow window they looked available and did nothing.
 - Filtering a JSON or PHP tree now reveals nested key and value matches instead of leaving them behind collapsed parent rows. (#2204)
 - A tree filter that matches a key now lets you open that key and read what is inside it. (#2204)
 - Expanding or collapsing rows while a tree filter is active no longer springs back on the next keystroke. (#2204)

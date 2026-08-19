@@ -33,6 +33,13 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// receives both, so this is not a second list anyone has to keep in step by hand.
     private var shortcutBindings: [NSToolbarItem.Identifier: ToolbarShortcutBinding] = [:]
 
+    /// Which item an overflow-menu entry stands for. AppKit validates an overflowed item as a menu
+    /// item rather than as a toolbar item, so `validateToolbarItem(_:)` never runs for it and the
+    /// entry stayed enabled while the same button was disabled on a wider window. Recorded by the
+    /// factory that already receives both the identifier and the action, for the same reason
+    /// `shortcutBindings` is: a second hand-written table drifts.
+    private var menuFormIdentifiers: [Selector: NSToolbarItem.Identifier] = [:]
+
     /// How a hosted item answers "how wide are you". `.intrinsicContentSize` only overrides the
     /// hosting view's `intrinsicContentSize`, and AppKit measures a view-backed item when it is
     /// inserted and never reads that value again. Repointing the subject then left the item at the
@@ -87,6 +94,16 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             description: description
         )
         applyShortcutBinding(to: item)
+    }
+
+    /// Records which item an overflow-menu action belongs to, so validation can reach it.
+    internal func bindMenuForm(action: Selector, to itemIdentifier: NSToolbarItem.Identifier) {
+        menuFormIdentifiers[action] = itemIdentifier
+    }
+
+    /// Nil for a menu item this toolbar did not build, which is nobody else's item to validate.
+    internal func itemIdentifier(forMenuFormAction action: Selector?) -> NSToolbarItem.Identifier? {
+        action.flatMap { menuFormIdentifiers[$0] }
     }
 
     /// Re-words an item whose description follows the connection, keeping its shortcut hint. Setting
@@ -206,6 +223,14 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     /// Items ahead of `.sidebarTrackingSeparator` lay out in the sidebar's own titlebar strip,
     /// so the control that switches what the sidebar shows sits over the pane it drives.
+    ///
+    /// A tracking separator divides the toolbar into pane-aligned sections; it does not align the
+    /// items inside one. Everything after `.inspectorTrackingSeparator` therefore lays out from
+    /// that section's leading edge, which is the inspector divider, so the toggle walked inward as
+    /// the pane opened and only looked right while the inspector was closed. The `.flexibleSpace`
+    /// is what anchors it to the window's trailing edge, and it is the order Apple ships in
+    /// WWDC23 session 10054. Keep the toggle last: ahead of the separator it lands in the content
+    /// section and is wrong in both states.
     internal static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
         sidebarToggle,
         .sidebarTrackingSeparator,
@@ -217,6 +242,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         newTab,
         previewSQL,
         .inspectorTrackingSeparator,
+        .flexibleSpace,
         inspector,
     ]
 
@@ -268,15 +294,25 @@ extension MainWindowToolbar {
         return group
     }
 
-    internal func makeSidebarToggleItem() -> NSToolbarItem {
+    /// `sidebarGroup` is the one handle `syncSidebarSelection()` has on the live control, so only
+    /// the item actually going into the toolbar may claim it. A Customize Toolbar palette copy
+    /// that took the slot left every later sync writing into a discarded group, and the segments
+    /// stopped following the sidebar until the window was reopened.
+    internal func makeSidebarToggleItem(claimsSlot: Bool) -> NSToolbarItem {
         let group = Self.makeSidebarSegmentGroup(target: self, action: #selector(sidebarSegmentChanged(_:)))
+        bindMenuForm(action: #selector(sidebarSegmentChanged(_:)), to: Self.sidebarToggle)
+        guard claimsSlot else { return group }
         sidebarGroup = group
         syncSidebarSelection()
         return group
     }
 
-    @objc fileprivate func sidebarSegmentChanged(_ sender: NSToolbarItemGroup) {
-        let index = sender.selectedIndex
+    /// `@objc` does not type-check the sender, and this action is reachable from the overflow menu
+    /// as well as from the control, where AppKit sends an `NSMenuItem`. A typed parameter would
+    /// read `selectedIndex` off it and trap on `doesNotRecognizeSelector`.
+    @objc fileprivate func sidebarSegmentChanged(_ sender: Any?) {
+        guard let group = sender as? NSToolbarItemGroup else { return }
+        let index = group.selectedIndex
         guard Self.sidebarSegmentTabs.indices.contains(index) else { return }
         coordinator?.splitViewController?.setSidebarTab(Self.sidebarSegmentTabs[index])
     }
