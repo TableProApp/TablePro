@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The PHP serialized viewer's tree filter now behaves like the JSON one. Both ignore accents, so `cafe` finds `café`. (#2204)
+
 ### Fixed
 
-- Filtering a JSON tree now reveals nested key and value matches instead of leaving them behind collapsed parent rows. The filtered tree keeps stable row identities and is built once per search change rather than again on every redraw.
+- Filtering a JSON or PHP tree now reveals nested key and value matches instead of leaving them behind collapsed parent rows. (#2204)
+- A tree filter that matches a key now lets you open that key and read what is inside it. (#2204)
+- Expanding or collapsing rows while a tree filter is active no longer springs back on the next keystroke. (#2204)
+- Clearing a tree filter now restores the rows you had open before you started filtering. (#2204)
+- A tree filter that finds nothing now says so instead of showing an empty list, and says when the value was too large to load in full. (#2204)
+- Filtering a tree now searches the whole of a long string value instead of only the shortened form shown in the row. (#2204)
+- Copy Value on a JSON object or array now copies that part of the document instead of a summary like `{3 keys}`, and long strings copy in full. (#2204)
 
 ## [0.66.0] - 2026-08-19
 
