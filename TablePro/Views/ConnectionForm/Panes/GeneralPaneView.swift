@@ -142,6 +142,7 @@ struct GeneralPaneView: View {
                         defaultPort: type.defaultPort,
                         value: networkFieldBinding(for: field)
                     )
+                    .accessibilityIdentifier("connection-field-\(field.id)")
                 }
             }
         } else {
@@ -150,12 +151,14 @@ struct GeneralPaneView: View {
                 text: $coordinator.network.host,
                 prompt: Text("localhost")
             )
+            .accessibilityIdentifier("connection-form-host")
             .disabled(usesForwardSocket)
             TextField(
                 String(localized: "Port"),
                 text: $coordinator.network.port,
                 prompt: Text(defaultPortString)
             )
+            .accessibilityIdentifier("connection-form-port")
             .disabled(usesForwardSocket)
         }
         if coordinator.ssh.state.enabled {
