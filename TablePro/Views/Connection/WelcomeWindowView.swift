@@ -271,7 +271,7 @@ struct WelcomeWindowView: View {
 
             NativeSearchField(
                 text: $vm.searchText,
-                placeholder: String(localized: "Search for connection..."),
+                placeholder: String(localized: "Search for connection…"),
                 controlSize: .regular,
                 onMoveDown: { focus = .connectionList },
                 onSubmit: { focus = .connectionList },
@@ -632,7 +632,7 @@ private struct TreeRowsView<ConnectionContent: View>: View {
         }
 
         if vm.groups.count > 1 {
-            Menu(String(localized: "Move Group to...")) {
+            Menu(String(localized: "Move Group to…")) {
                 Button {
                     vm.moveGroup(group, toParent: nil)
                 } label: {

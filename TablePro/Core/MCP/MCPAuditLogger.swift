@@ -309,6 +309,6 @@ enum MCPAuditLogger {
     private static func truncate(_ text: String, to limit: Int) -> String {
         let nsText = text as NSString
         guard nsText.length > limit else { return text }
-        return nsText.substring(to: limit) + "..."
+        return nsText.substring(to: limit) + "…"
     }
 }

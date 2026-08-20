@@ -45,7 +45,7 @@ internal struct AlertOperationConfirming: OperationConfirming {
     private static func preview(of sql: String) -> String {
         let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
         if (trimmed as NSString).length > 200 {
-            return String(trimmed.prefix(200)) + "..."
+            return String(trimmed.prefix(200)) + "…"
         }
         return trimmed
     }

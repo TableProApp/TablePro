@@ -332,8 +332,8 @@ final class MainContentCommandActions {
 
     var openContainerSwitcherTitle: String {
         containerSwitchTitle(
-            schema: String(localized: "Open Schema..."),
-            database: String(localized: "Open Database...")
+            schema: String(localized: "Open Schema…"),
+            database: String(localized: "Open Database…")
         )
     }
 

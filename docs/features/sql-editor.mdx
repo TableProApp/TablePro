@@ -40,7 +40,7 @@ To run the whole tab, choose **Execute All Statements** from the Execute button'
 Select text and press `Cmd+Enter` to run only the selection. Multiple statements, whether from a selection or from Execute All Statements, run sequentially:
 
 - On databases with transaction support, the batch runs in a transaction: if a statement fails, execution stops and all changes roll back. Databases without transactions run each statement as-is, with no rollback.
-- The error names the failing statement ("Statement 3/5 failed: ...").
+- The error names the failing statement ("Statement 3/5 failed: …").
 - The last `SELECT` result appears in the data grid.
 - Each statement is recorded individually in query history.
 
@@ -89,7 +89,7 @@ A tab can hold many statements, and the editor marks which one it is about to ru
 - Move the pointer over the gutter and a run button appears beside every statement. Clicking one runs that statement, even when your cursor is somewhere else. The column the buttons sit in is reserved at all times, so revealing them never shifts the text.
 - A run button takes the same [Safe Mode](/features/safe-mode) checks and [query parameter](/features/query-parameters) prompts as any other run, and goes dim while a query is running.
 - VoiceOver reads each button as a button naming the line its statement starts on.
-- A `BEGIN ... END` body counts as one statement, so a trigger or stored procedure gets one button rather than one per line inside it. `BEGIN;` and `BEGIN TRANSACTION;` are statements of their own.
+- A `BEGIN … END` body counts as one statement, so a trigger or stored procedure gets one button rather than one per line inside it. `BEGIN;` and `BEGIN TRANSACTION;` are statements of their own.
 - Turn either off in **Settings > Editor** with **Highlight current statement** and **Run button beside each statement**.
 
 ### Moving Between Statements
@@ -200,7 +200,7 @@ Editor windows remember their size, position, and font zoom between launches. Se
 TablePro opens `.sql`, `.psql`, and `.pgsql` files:
 
 - Double-click in Finder (or **Open With > TablePro**)
-- **File > Open File...** (`Cmd+O`)
+- **File > Open File…** (`Cmd+O`)
 - Drag files onto the dock icon
 
 Files open in a new tab. Without a connection they queue and open on connect. Opening the same file twice focuses the existing tab.

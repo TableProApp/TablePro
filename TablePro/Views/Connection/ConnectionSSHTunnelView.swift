@@ -63,12 +63,12 @@ struct ConnectionSSHTunnelView: View {
             }
 
             HStack(spacing: 12) {
-                Button("Create New Profile...") {
+                Button("Create New Profile…") {
                     sshState.showingCreateProfile = true
                 }
 
                 if sshState.profileId != nil {
-                    Button("Edit Profile...") {
+                    Button("Edit Profile…") {
                         if let profileId = sshState.profileId {
                             sshState.editingProfile = SSHProfileStorage.shared.profile(for: profileId)
                         }
@@ -76,7 +76,7 @@ struct ConnectionSSHTunnelView: View {
                 }
 
                 if sshState.profileId == nil && sshState.enabled && !sshState.host.isEmpty {
-                    Button("Save Current as Profile...") {
+                    Button("Save Current as Profile…") {
                         sshState.showingSaveAsProfile = true
                     }
                 }

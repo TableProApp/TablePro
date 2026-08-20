@@ -32,7 +32,7 @@ struct LinkedFoldersSection: View {
             Button {
                 addFolder()
             } label: {
-                Label("Add Folder...", systemImage: "plus")
+                Label("Add Folder…", systemImage: "plus")
             }
             .disabled(!isLicensed)
         } header: {

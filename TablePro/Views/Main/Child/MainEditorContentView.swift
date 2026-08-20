@@ -236,7 +236,7 @@ struct MainEditorContentView: View {
             if let vm = queryInsightsViewModels[tab.id] {
                 QueryInsightsView(viewModel: vm, coordinator: coordinator)
             } else {
-                ProgressView(String(localized: "Loading insights..."))
+                ProgressView(String(localized: "Loading insights…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
                         guard queryInsightsViewModels[tab.id] == nil else { return }
@@ -258,7 +258,7 @@ struct MainEditorContentView: View {
             if let vm = usersRolesViewModels[tab.id] {
                 UsersRolesTabView(viewModel: vm, coordinator: coordinator, tabID: tab.id)
             } else {
-                ProgressView(String(localized: "Loading users and roles..."))
+                ProgressView(String(localized: "Loading users and roles…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
                         guard usersRolesViewModels[tab.id] == nil else { return }
@@ -281,7 +281,7 @@ struct MainEditorContentView: View {
             if let vm = serverDashboardViewModels[tab.id] {
                 ServerDashboardView(viewModel: vm)
             } else {
-                ProgressView(String(localized: "Loading dashboard..."))
+                ProgressView(String(localized: "Loading dashboard…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
                         guard serverDashboardViewModels[tab.id] == nil else { return }
@@ -304,7 +304,7 @@ struct MainEditorContentView: View {
             if let vm = erDiagramViewModels[tab.id] {
                 ERDiagramView(viewModel: vm)
             } else {
-                ProgressView(String(localized: "Loading schema..."))
+                ProgressView(String(localized: "Loading schema…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
                         guard erDiagramViewModels[tab.id] == nil else { return }

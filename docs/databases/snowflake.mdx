@@ -21,7 +21,7 @@ The account identifier is the part before `.snowflakecomputing.com`:
 **Key Pair (.p8)**: Point to an RSA private key file in PKCS#8 (`.p8`) format and, if the key is encrypted, supply its passphrase. Register the matching public key on your user first:
 
 ```sql
-ALTER USER jane_doe SET RSA_PUBLIC_KEY='MIIBIjANBgkq...';
+ALTER USER jane_doe SET RSA_PUBLIC_KEY='MIIBIjANBgkq…';
 ```
 
 **Single Sign-On (Browser)**: Authenticate through your identity provider (Okta, Entra ID, etc.) in the browser. TablePro opens your IdP's login page and captures the response automatically (`authenticator=externalbrowser`). With `ALLOW_ID_TOKEN = TRUE` on the account, the sign-in token is cached in the Keychain so later connects skip the browser for about four hours.

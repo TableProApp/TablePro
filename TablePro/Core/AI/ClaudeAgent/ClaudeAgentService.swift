@@ -66,7 +66,7 @@ final class ClaudeAgentService {
     var statusDescription: String {
         switch state {
         case .unknown:
-            return String(localized: "Checking for the Claude Code command line tool...")
+            return String(localized: "Checking for the Claude Code command line tool…")
         case .notInstalled:
             return String(localized: "Claude Code is not installed.")
         case .outdated(let version):

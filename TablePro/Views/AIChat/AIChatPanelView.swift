@@ -221,7 +221,7 @@ struct AIChatPanelView: View {
 
                 ChatComposerView(
                     text: $viewModel.inputText,
-                    placeholder: String(localized: "Ask about your database..."),
+                    placeholder: String(localized: "Ask about your database…"),
                     minLines: 1,
                     maxLines: 5,
                     mentionState: mentionState,

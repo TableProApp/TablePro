@@ -317,7 +317,7 @@ final class PaginationCoordinator {
                 guard !Task.isCancelled else {
                     /// Every other exit from this function clears the flag, and this one used to
                     /// bare return, so a fetch-all cancelled after its rows had already arrived
-                    /// left the tab showing "Loading..." for good with Fetch All hidden, healed
+                    /// left the tab showing "Loading…" for good with Fetch All hidden, healed
                     /// only by re-running the query. Deterministic on any driver whose
                     /// `cancelQuery()` is the PluginKit no-op default, because the fetch always
                     /// runs to completion there and returns straight into this guard.

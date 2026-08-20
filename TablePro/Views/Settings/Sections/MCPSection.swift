@@ -180,7 +180,7 @@ private struct MCPStatusIndicator: View {
         case .stopped:
             String(localized: "Stopped")
         case .starting:
-            String(localized: "Starting...")
+            String(localized: "Starting…")
         case .running(let port):
             String(format: String(localized: "Running on port %d"), port)
         case .failed(let message):

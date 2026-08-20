@@ -45,7 +45,7 @@ TablePro parses standard database connection URLs for importing connections, ope
 | `libsql://` | libSQL / Turso |
 | `surrealdb://` | SurrealDB |
 
-Every scheme above works in the **Import from URL...** sheet. Only these are registered with macOS, so only these can be launched with `open` or a browser link: `postgresql`, `postgres`, `mysql`, `mariadb`, `sqlite`, `mongodb`, `mongodb+srv`, `redis`, `rediss`, `redshift`, `cockroachdb`, `cockroach`, `mssql`, `sqlserver`, `oracle`, `dm`, `clickhouse`, `ch`, `cassandra`, `cql`, `scylladb`, `scylla`, `duckdb`, `etcd`, `etcds`, `d1`, `libsql`, `surrealdb`.
+Every scheme above works in the **Import from URL…** sheet. Only these are registered with macOS, so only these can be launched with `open` or a browser link: `postgresql`, `postgres`, `mysql`, `mariadb`, `sqlite`, `mongodb`, `mongodb+srv`, `redis`, `rediss`, `redshift`, `cockroachdb`, `cockroach`, `mssql`, `sqlserver`, `oracle`, `dm`, `clickhouse`, `ch`, `cassandra`, `cql`, `scylladb`, `scylla`, `duckdb`, `etcd`, `etcds`, `d1`, `libsql`, `surrealdb`.
 
 Append `+ssh` to any non-file-based scheme (not `sqlite`, `duckdb`, or `beancount`) to use an SSH tunnel:
 
@@ -60,7 +60,7 @@ mariadb+ssh://
 If the URL you want is already in a project's `.env` file, [Open Project Folder](/features/project-folder-import) reads it for you instead.
 
 ```text
-scheme://[username[:password]@]host[:port][/database][?param=value&...]
+scheme://[username[:password]@]host[:port][/database][?param=value&…]
 ```
 
 **Examples:**
@@ -274,17 +274,17 @@ open "postgresql://user:pass@localhost:5432/mydb"
 open "mysql://root@localhost/shop?table=products"
 ```
 
-Uses a saved connection if it matches, otherwise creates a temporary session. To save permanently, click **Create Connection...** on the welcome screen and pick **Import from URL...** in the chooser footer.
+Uses a saved connection if it matches, otherwise creates a temporary session. To save permanently, click **Create Connection…** on the welcome screen and pick **Import from URL…** in the chooser footer.
 
 <Frame caption="The Import from URL sheet accepts every scheme in this reference">
   <img className="block dark:hidden" src="/images/import-from-url.png" alt="Import from URL sheet with a pasted connection URL" />
   <img className="hidden dark:block" src="/images/import-from-url-dark.png" alt="Import from URL sheet with a pasted connection URL" />
 </Frame>
 
-`+ssh` schemes are not registered with macOS, so `open` and browser links cannot route them to TablePro. Use the **Import from URL...** sheet for SSH tunnel URLs.
+`+ssh` schemes are not registered with macOS, so `open` and browser links cannot route them to TablePro. Use the **Import from URL…** sheet for SSH tunnel URLs.
 
 <Tip>
-To force TablePro when another client also handles the scheme, use `open -b com.TablePro "mysql://..."`. See [Terminal and DDEV](/external-api/terminal) for the `tablepro` command and a `ddev tablepro` host command.
+To force TablePro when another client also handles the scheme, use `open -b com.TablePro "mysql://…"`. See [Terminal and DDEV](/external-api/terminal) for the `tablepro` command and a `ddev tablepro` host command.
 </Tip>
 
 ## Confirmation and Trusted Links

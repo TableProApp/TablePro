@@ -54,7 +54,7 @@ struct TypePickerContentView: View {
         VStack(spacing: 0) {
             NativeSearchField(
                 text: $searchText,
-                placeholder: String(localized: "Search or type..."),
+                placeholder: String(localized: "Search or type…"),
                 onSubmit: { commitFreeform() }
             )
             .padding(.horizontal, 8)

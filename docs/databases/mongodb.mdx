@@ -78,15 +78,15 @@ See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
 **Collection Browsing**: Sidebar shows all collections. Click to view documents in the data grid. Top-level fields render as columns, nested objects and arrays as formatted JSON, ObjectIds as strings. The grid schema is inferred by sampling documents.
 
-**Binary UUIDs**: A binary subtype 4 field renders as `UUID("8cd003eb-4a25-4324-9332-88fce2da0d1a")`. Subtype 3 is the older format the Java, C# and Python drivers each wrote with a different byte order, and nothing in the stored bytes says which one produced them. TablePro shows subtype 3 as `BinData(3, "...")` until you pick a byte order in **Legacy UUID Encoding** on the connection, then renders it as `LegacyJavaUUID("...")`, `LegacyCSharpUUID("...")`, or `LegacyPythonUUID("...")`. The names match `mongosh` 2.6 and Compass 1.49, so a copied value pastes into either.
+**Binary UUIDs**: A binary subtype 4 field renders as `UUID("8cd003eb-4a25-4324-9332-88fce2da0d1a")`. Subtype 3 is the older format the Java, C# and Python drivers each wrote with a different byte order, and nothing in the stored bytes says which one produced them. TablePro shows subtype 3 as `BinData(3, "…")` until you pick a byte order in **Legacy UUID Encoding** on the connection, then renders it as `LegacyJavaUUID("…")`, `LegacyCSharpUUID("…")`, or `LegacyPythonUUID("…")`. The names match `mongosh` 2.6 and Compass 1.49, so a copied value pastes into either.
 
 The setting only changes how TablePro reads the bytes; it never rewrites what is stored. Picking the wrong encoding shows a valid-looking but wrong UUID, so match it to the driver that wrote the data. Filtering, editing and MQL export all use the same encoding, and a value you type back is written as binary with the subtype it came from. Pasting a connection URL that carries `uuidRepresentation=javaLegacy` sets it, and Copy URL includes it. Changing it takes effect on the next connect.
 
 **New Database**: The dialog asks for a database name and the name of its first collection. Both are required. MongoDB stores a database only once it holds a collection, so a name on its own would disappear as soon as the sidebar refreshed. The collection is created empty.
 
-**Views**: **New View** in the sidebar opens a query tab with a `db.createView("view_name", "source_collection", [pipeline])` template. Editing a view definition pre-fills a `db.runCommand({"collMod": ...})` command.
+**Views**: **New View** in the sidebar opens a query tab with a `db.createView("view_name", "source_collection", [pipeline])` template. Editing a view definition pre-fills a `db.runCommand({"collMod": …})` command.
 
-**Explain**: Press `Cmd+Option+E` on an MQL statement. TablePro converts `find`, `aggregate`, `countDocuments`, update, delete, and `findOneAnd*` calls into `db.runCommand({"explain": ..., "verbosity": "executionStats"})`.
+**Explain**: Press `Cmd+Option+E` on an MQL statement. TablePro converts `find`, `aggregate`, `countDocuments`, update, delete, and `findOneAnd*` calls into `db.runCommand({"explain": …, "verbosity": "executionStats"})`.
 
 **MQL Shell Queries**: Filters and pipelines are parsed as JSON and Extended JSON, not JavaScript. Quote every key, operators included: `{age: {$gte: 18}}` fails with a parse error. The editor has no comment syntax, so a `//` line becomes part of the statement.
 
@@ -124,7 +124,7 @@ Count documents:
 db.users.countDocuments({"role": "admin"})
 ```
 
-**Collection references**: Write `db.users`, `db["users"]`, or `db.getCollection("users")`. The bracket and `getCollection` forms take the name exactly as written, so use them for names that contain dots or spaces, start with a digit, or match a database method such as `stats` or `version`. Single quotes and backticks work in place of double quotes. `db.getSiblingDB(...)` is not supported: a query always runs against the database the connection is using.
+**Collection references**: Write `db.users`, `db["users"]`, or `db.getCollection("users")`. The bracket and `getCollection` forms take the name exactly as written, so use them for names that contain dots or spaces, start with a digit, or match a database method such as `stats` or `version`. Single quotes and backticks work in place of double quotes. `db.getSiblingDB(…)` is not supported: a query always runs against the database the connection is using.
 
 **Chained methods**: `.sort()`, `.limit()` and `.skip()` chain onto `find` and onto `aggregate`. On an aggregation they become `$sort`, `$skip` and `$limit` stages appended to the pipeline, in that order, which is what the cursor methods mean. Chaining onto a call that returns no cursor, such as `insertOne`, is an error, and so is a method the parser does not recognise. Nothing is dropped silently.
 
@@ -140,7 +140,7 @@ The result reports `modifiedCount` and `upsertedCount`.
 
 **Autocomplete**: The editor suggests collections, methods, field names including nested paths such as `address.city`, and the `$` operators that are valid at the cursor. See [Autocomplete](/features/autocomplete#mongodb).
 
-**Supported methods**: collection-level `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`, `deleteOne`/`deleteMany`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete`, `createIndex`, `dropIndex`, `drop`; database-level `getCollectionNames`/`listCollections`, `createCollection`, `dropDatabase`, `version`, `stats`. Anything else goes through `db.runCommand({...})` or `db.adminCommand({...})`. Unlisted shell methods (for example `distinct` or `getUsers`) return an unsupported-method error.
+**Supported methods**: collection-level `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`, `deleteOne`/`deleteMany`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete`, `createIndex`, `dropIndex`, `drop`; database-level `getCollectionNames`/`listCollections`, `createCollection`, `dropDatabase`, `version`, `stats`. Anything else goes through `db.runCommand({…})` or `db.adminCommand({…})`. Unlisted shell methods (for example `distinct` or `getUsers`) return an unsupported-method error.
 
 ## Troubleshooting
 

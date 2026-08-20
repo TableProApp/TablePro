@@ -18,7 +18,7 @@ sequenceDiagram
 
     E->>E: verifier = randomBytes(32).base64url
     E->>E: challenge = base64url(SHA-256(verifier))
-    E->>T: open tablepro://integrations/pair<br/>?client=...&challenge=...&redirect=...&scopes=...
+    E->>T: open tablepro://integrations/pair<br/>?client=…&challenge=…&redirect=…&scopes=…
     T->>M: lazy-start server
     T->>U: Approval sheet (client, scopes, connections, expiry)
     U->>T: Approve
@@ -26,7 +26,7 @@ sequenceDiagram
     T->>E: open redirect URL with code<br/>(context JSON for raycast://, ?code= otherwise)
     E->>M: POST /v1/integrations/exchange<br/>{ code, code_verifier: verifier }
     M->>M: SHA-256(verifier) == challenge ?
-    M->>E: 200 { token: "tp_..." }
+    M->>E: 200 { token: "tp_…" }
     E->>E: store token in the Keychain
 ```
 
@@ -54,7 +54,7 @@ Keep the verifier in memory until the exchange step. Do not log it.
 
 ### 2. Open the pair deep link
 
-Open `tablepro://integrations/pair?client=...&challenge=...&redirect=...&scopes=...`. Parameters are documented in the [URL scheme reference](/external-api/url-scheme#start-pairing).
+Open `tablepro://integrations/pair?client=…&challenge=…&redirect=…&scopes=…`. Parameters are documented in the [URL scheme reference](/external-api/url-scheme#start-pairing).
 
 ### 3. Receive the code and exchange it
 
@@ -122,7 +122,7 @@ If the user clicks **Deny**, TablePro opens the `redirect` URL with `error=denie
 The flow is not Raycast-specific. Any client that can receive a callback can use it:
 
 1. Generate a verifier and challenge.
-2. Open `tablepro://integrations/pair?...` with a callback URL the OS can route back to you.
+2. Open `tablepro://integrations/pair?…` with a callback URL the OS can route back to you.
 3. Read the MCP port from the handshake file.
 4. POST `{ code, code_verifier }` to `/v1/integrations/exchange`.
 5. Store the returned token in the Keychain.

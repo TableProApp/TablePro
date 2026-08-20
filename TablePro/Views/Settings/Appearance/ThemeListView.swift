@@ -84,7 +84,7 @@ internal struct ThemeListView: View {
                         duplicateActiveTheme()
                     }
                     Divider()
-                    Button(String(localized: "Import...")) {
+                    Button(String(localized: "Import…")) {
                         importTheme()
                     }
                 } label: {
@@ -112,7 +112,7 @@ internal struct ThemeListView: View {
                     Button(String(localized: "Duplicate")) {
                         duplicateActiveTheme()
                     }
-                    Button(String(localized: "Export...")) {
+                    Button(String(localized: "Export…")) {
                         exportActiveTheme()
                     }
                     if selectedTheme?.isRegistry == true {

@@ -177,7 +177,7 @@ struct FilterPanelView: View {
                 Divider()
             }
 
-            Button("Save as Preset...") {
+            Button("Save as Preset…") {
                 newPresetName = ""
                 showSavePresetAlert = true
             }
@@ -209,7 +209,7 @@ struct FilterPanelView: View {
             Button {
                 showSettingsPopover.toggle()
             } label: {
-                Label(String(localized: "Filter Settings..."), systemImage: "gearshape")
+                Label(String(localized: "Filter Settings…"), systemImage: "gearshape")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
