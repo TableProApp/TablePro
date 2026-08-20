@@ -411,9 +411,9 @@ struct MainEditorContentView: View {
                             }
                         },
                         restoredCursorRange: coordinator.restoredCursorRange(for: tab.id),
-                        restoredFoldRanges: coordinator.restoredFoldRanges(for: tab.id),
+                        restoredFoldRanges: coordinator.foldRanges(for: tab.id),
                         onFoldRangesChanged: { ranges in
-                            coordinator.collapsedFoldRanges = ranges
+                            coordinator.recordFoldRanges(ranges, for: tab.id)
                         },
                         onCloseTab: {
                             coordinator.commandActions?.closeTab()
@@ -449,7 +449,6 @@ struct MainEditorContentView: View {
         )
         .onAppear {
             coordinator.clearRestoredCursor(for: tab.id)
-            coordinator.clearRestoredFoldRanges(for: tab.id)
         }
     }
 

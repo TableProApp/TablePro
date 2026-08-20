@@ -66,6 +66,23 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
         foldCache.folds(in: range)
     }
 
+    /// Drops every fold the outgoing document had.
+    ///
+    /// A recalculation deliberately carries collapse state across by depth and start offset, which is what keeps a
+    /// region folded while the reader types above it. Replacing the document makes those offsets meaningless, so
+    /// without this one document's collapsed regions reappear in the next wherever they happen to line up.
+    ///
+    /// Nothing is posted. This is not the reader collapsing or expanding anything, and there is no document left for
+    /// a listener to describe.
+    func documentDidReplace() {
+        gutterHover = nil
+        placeholderHover = nil
+        hoveredFold = nil
+        foldCache = LineFoldStorage(documentLength: controller?.textView.documentRange.length ?? 0)
+        pendingRestoreRanges = nil
+        refresh()
+    }
+
     /// Releases what outlives the view hierarchy on its own.
     ///
     /// The pointer tracking's area names this model's tracker as its owner and must not outlive it, and the task

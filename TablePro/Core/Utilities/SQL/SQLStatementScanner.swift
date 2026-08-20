@@ -69,14 +69,6 @@ enum SQLStatementScanner {
 
     // MARK: - Private
 
-    private static let semicolonChar = SqlLexer.semicolon
-    private static let newline = SqlLexer.newline
-    private static let dollar = SqlDollarQuote.dollar
-
-    private static func isWhitespace(_ ch: UInt16) -> Bool {
-        SqlLexer.isWhitespace(ch)
-    }
-
     private static func scan(
         sql: String,
         cursorPosition: Int?,
@@ -104,7 +96,7 @@ enum SQLStatementScanner {
             let ch = nsQuery.character(at: i)
 
             if inLineComment {
-                if ch == newline { inLineComment = false }
+                if ch == SqlLexer.newline { inLineComment = false }
                 i += 1
                 continue
             }
@@ -120,7 +112,7 @@ enum SQLStatementScanner {
             }
 
             if inDollarQuote {
-                if ch == dollar,
+                if ch == SqlDollarQuote.dollar,
                    SqlDollarQuote.matchesClose(at: i, tag: dollarTag, in: nsQuery, bufLen: length) {
                     inDollarQuote = false
                     i += (dollarTag as NSString).length + 2
@@ -164,7 +156,7 @@ enum SQLStatementScanner {
                 }
             }
 
-            if dollarQuotesEnabled, !inString, ch == dollar,
+            if dollarQuotesEnabled, !inString, ch == SqlDollarQuote.dollar,
                case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(at: i, in: nsQuery, bufLen: length) {
                 inDollarQuote = true
                 dollarTag = tag
@@ -173,7 +165,7 @@ enum SQLStatementScanner {
                 continue
             }
 
-            if ch == semicolonChar && !inString {
+            if ch == SqlLexer.semicolon && !inString {
                 let stmtEnd = i + 1
 
                 if let cursor = safePosition {
@@ -189,7 +181,7 @@ enum SQLStatementScanner {
 
                 currentStart = stmtEnd
                 hasStatementContent = false
-            } else if !isWhitespace(ch) {
+            } else if !SqlLexer.isWhitespace(ch) {
                 hasStatementContent = true
             }
 

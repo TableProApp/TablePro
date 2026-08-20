@@ -59,6 +59,20 @@ public final class TextAttachmentManager {
         delegate?.textAttachmentDidAdd(attachment.attachment, for: range)
     }
 
+    /// Removes every attachment.
+    ///
+    /// An attachment is a range in one text storage. Replacing that storage leaves every range pointing into text
+    /// that is gone, so they cannot be carried over.
+    public func removeAll() {
+        guard !orderedAttachments.isEmpty else { return }
+        let removed = orderedAttachments
+        orderedAttachments.removeAll()
+        layoutManager?.setNeedsLayout()
+        for attachment in removed {
+            delegate?.textAttachmentDidRemove(attachment.attachment, for: attachment.range)
+        }
+    }
+
     /// Removes an attachment and invalidates layout for the removed range.
     /// - Parameter offset: The offset the attachment begins at.
     /// - Returns: The removed attachment, if it exists.

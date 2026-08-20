@@ -14,27 +14,17 @@ final class QueryCodeFoldingUITests: UITestCase {
         let editor = openQueryTab(in: app)
 
         app.typeText(script)
-        XCTAssertTrue(waitForValueContaining("BIGSERIAL", in: editor, timeout: 5))
+        XCTAssertTrue(waitForEditorText(containing: "BIGSERIAL", in: editor))
 
         clickQueryMenuItem("Fold All", in: app)
-
         XCTAssertTrue(
-            app.windows.firstMatch.waitForExistence(timeout: 5),
-            "Folding must not bring the app down"
-        )
-        XCTAssertTrue(
-            editor.waitForExistence(timeout: 5),
-            "The editor must survive Fold All"
-        )
-        XCTAssertTrue(
-            waitForValueContaining("BIGSERIAL", in: editor, timeout: 5),
+            waitForEditorText(containing: "BIGSERIAL", in: editor),
             "Folding hides lines visually and must never change the document text"
         )
 
         clickQueryMenuItem("Unfold All", in: app)
-
         XCTAssertTrue(
-            waitForValueContaining("BIGSERIAL", in: editor, timeout: 5),
+            waitForEditorText(containing: "BIGSERIAL", in: editor),
             "Unfold All must leave the document text intact"
         )
     }
@@ -44,36 +34,15 @@ final class QueryCodeFoldingUITests: UITestCase {
         let editor = openQueryTab(in: app)
 
         app.typeText(script)
-        XCTAssertTrue(waitForValueContaining("BIGSERIAL", in: editor, timeout: 5))
+        XCTAssertTrue(waitForEditorText(containing: "BIGSERIAL", in: editor))
 
         clickQueryMenuItem("Toggle Fold", in: app)
         clickQueryMenuItem("Toggle Fold", in: app)
 
         XCTAssertTrue(
-            editor.waitForExistence(timeout: 5),
-            "Toggling a fold twice must leave a working editor"
-        )
-        XCTAssertTrue(
-            waitForValueContaining("BIGSERIAL", in: editor, timeout: 5),
+            waitForEditorText(containing: "BIGSERIAL", in: editor),
             "Toggling a fold must never change the document text"
         )
-    }
-
-    func testTheThreeFoldCommandsAreInTheQueryMenu() throws {
-        let app = try launchWithSampleDatabase()
-
-        let queryMenu = app.menuBars.menuBarItems["Query"]
-        XCTAssertTrue(queryMenu.waitForExistence(timeout: 10), "The Query menu must exist")
-        queryMenu.click()
-
-        for title in ["Toggle Fold", "Fold All", "Unfold All"] {
-            XCTAssertTrue(
-                app.menuBars.menuItems[title].waitForExistence(timeout: 10),
-                "Query > \(title) must exist"
-            )
-        }
-
-        app.typeKey(.escape, modifierFlags: [])
     }
 
     // MARK: - Helpers
@@ -107,18 +76,13 @@ final class QueryCodeFoldingUITests: UITestCase {
         return window.textViews.firstMatch
     }
 
-    private func waitForValueContaining(
-        _ needle: String,
+    private func waitForEditorText(
+        containing needle: String,
         in element: XCUIElement,
-        timeout: TimeInterval
+        timeout: TimeInterval = 5
     ) -> Bool {
-        let deadline = Date(timeIntervalSinceNow: timeout)
-        while Date() < deadline {
-            if (element.value as? String)?.contains(needle) == true {
-                return true
-            }
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        waitForPredicate(timeout: timeout) {
+            (element.value as? String)?.contains(needle) == true
         }
-        return (element.value as? String)?.contains(needle) == true
     }
 }

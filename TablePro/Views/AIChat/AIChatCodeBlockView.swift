@@ -121,7 +121,7 @@ struct AIChatCodeBlockView: View, Equatable {
                     language: treeSitterLanguage,
                     configuration: Self.makeConfiguration(),
                     state: $editorState,
-                    foldProvider: treeSitterLanguage.id == CodeLanguage.sql.id ? SQLLineFoldProvider() : nil
+                    foldProvider: FoldProviderResolver.provider(for: treeSitterLanguage)
                 )
                 .frame(maxWidth: .infinity)
                 .frame(height: contentHeight)

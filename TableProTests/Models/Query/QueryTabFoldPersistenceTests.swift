@@ -15,7 +15,7 @@ struct QueryTabFoldPersistenceTests {
 
     private func tab(withFolds folds: [Range<Int>]?) -> QueryTab {
         var tab = QueryTab(title: "Query", query: query)
-        tab.restoredCollapsedFoldRanges = folds
+        tab.collapsedFoldRanges = folds
         return tab
     }
 
@@ -23,7 +23,7 @@ struct QueryTabFoldPersistenceTests {
     func roundTrip() {
         let folds = [16..<43, 20..<30]
         let restored = QueryTab(from: tab(withFolds: folds).toPersistedTab(), defaultPageSize: 100)
-        #expect(restored.restoredCollapsedFoldRanges == folds)
+        #expect(restored.collapsedFoldRanges == folds)
     }
 
     @Test("A tab with no folds persists nothing")
@@ -38,7 +38,7 @@ struct QueryTabFoldPersistenceTests {
         var shortened = persisted
         shortened.query = "SELECT 1;"
 
-        #expect(QueryTab(from: shortened, defaultPageSize: 100).restoredCollapsedFoldRanges == nil)
+        #expect(QueryTab(from: shortened, defaultPageSize: 100).collapsedFoldRanges == nil)
     }
 
     @Test("An inverted or empty fold range is dropped")
@@ -46,7 +46,7 @@ struct QueryTabFoldPersistenceTests {
         var persisted = tab(withFolds: nil).toPersistedTab()
         persisted.collapsedFoldRanges = [30, 10, 5, 5]
 
-        #expect(QueryTab(from: persisted, defaultPageSize: 100).restoredCollapsedFoldRanges == nil)
+        #expect(QueryTab(from: persisted, defaultPageSize: 100).collapsedFoldRanges == nil)
     }
 
     @Test("A trailing unpaired bound is ignored, and valid pairs still restore")
@@ -54,7 +54,7 @@ struct QueryTabFoldPersistenceTests {
         var persisted = tab(withFolds: nil).toPersistedTab()
         persisted.collapsedFoldRanges = [16, 43, 20]
 
-        #expect(QueryTab(from: persisted, defaultPageSize: 100).restoredCollapsedFoldRanges == [16..<43])
+        #expect(QueryTab(from: persisted, defaultPageSize: 100).collapsedFoldRanges == [16..<43])
     }
 
     @Test("A tab file written before folding existed still decodes")
@@ -69,6 +69,6 @@ struct QueryTabFoldPersistenceTests {
         let persisted = try JSONDecoder().decode(PersistedTab.self, from: legacy)
 
         #expect(persisted.collapsedFoldRanges == nil)
-        #expect(QueryTab(from: persisted, defaultPageSize: 100).restoredCollapsedFoldRanges == nil)
+        #expect(QueryTab(from: persisted, defaultPageSize: 100).collapsedFoldRanges == nil)
     }
 }

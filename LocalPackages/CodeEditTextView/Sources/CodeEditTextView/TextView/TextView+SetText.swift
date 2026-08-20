@@ -29,6 +29,7 @@ extension TextView {
         }
 
         textStorage.addAttributes(typingAttributes, range: documentRange)
+        layoutManager.attachments.removeAll()
         layoutManager.textStorage = textStorage
         layoutManager.reset()
         storageDelegate.addDelegate(layoutManager)

@@ -286,6 +286,7 @@ public class TextViewController: NSViewController {
     /// - Parameter text: The new contents of the editor.
     public func setText(_ text: String) {
         self.textView.setText(text)
+        self.foldModel?.documentDidReplace()
         self.setUpHighlighter()
         self.gutterView.setNeedsDisplay(self.gutterView.frame)
     }

@@ -85,15 +85,14 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         foldRestorePending = ranges
     }
 
-    /// Query tabs share one editor, so a tab switch swaps the document under a live fold cache that reuses collapse
-    /// state by depth and start offset. Dropping every fold before replaying the incoming tab's own ranges keeps one
-    /// tab's collapsed regions from reappearing in another.
+    /// Query tabs share one editor, so a tab switch replays the incoming tab's collapsed regions over a document the
+    /// editor has just been handed. The outgoing tab's folds are already gone: replacing the document drops them,
+    /// which is what keeps this from having to clear anything and from reporting a collapse the reader never made.
     func repointFolds(to ranges: [Range<Int>]?) {
         guard let controller else {
             foldRestorePending = ranges
             return
         }
-        controller.unfoldAll()
         guard let ranges, !ranges.isEmpty else { return }
         controller.restoreCollapsedFolds(ranges)
     }

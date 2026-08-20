@@ -26,7 +26,7 @@ struct SQLCodePreview: View {
                 language: .sql,
                 configuration: editorConfiguration,
                 state: $editorState,
-                foldProvider: SQLLineFoldProvider()
+                foldProvider: FoldProviderResolver.provider(for: CodeLanguage.sql)
             )
             .onChange(of: colorScheme) {
                 editorConfiguration = Self.makeConfiguration()

@@ -42,7 +42,6 @@ struct SQLEditorView: View {
     @State private var completionAdapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: nil)
     @State private var coordinator = SQLEditorCoordinator()
     @State private var editorConfiguration = makeConfiguration()
-    @State private var foldProvider = SQLLineFoldProvider()
     @State private var favoritesCancellables: Set<AnyCancellable> = []
     @Environment(\.colorScheme) private var colorScheme
 
@@ -57,7 +56,6 @@ struct SQLEditorView: View {
         coordinator.connectionAIPolicy = connectionAIPolicy
         coordinator.databaseType = databaseType
         coordinator.tabID = tabID
-        foldProvider.dialect = SqlDialect.from(databaseTypeId: databaseType?.rawValue ?? "")
         coordinator.connectionId = connectionId
         if claimFocusOnAppear {
             coordinator.scheduleEditorFocusClaim()
@@ -75,7 +73,7 @@ struct SQLEditorView: View {
             language: PluginManager.shared.editorLanguage(for: databaseType ?? .mysql).treeSitterLanguage,
             configuration: editorConfiguration,
             state: $editorState,
-            foldProvider: foldProvider,
+            foldProvider: FoldProviderResolver.provider(for: databaseType ?? .mysql),
             coordinators: [coordinator],
             completionDelegate: completionAdapter
         )
@@ -100,10 +98,6 @@ struct SQLEditorView: View {
             cursorPositions = positions
         }
         .onChange(of: editorState.collapsedFoldRanges) { _, newValue in
-            if let controller = coordinator.controller {
-                let currentLength = (controller.textView.string as NSString).length
-                guard currentLength == (text as NSString).length else { return }
-            }
             onFoldRangesChanged?(newValue ?? [])
         }
         .onChange(of: tabID) { _, _ in

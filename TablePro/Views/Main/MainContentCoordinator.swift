@@ -217,7 +217,6 @@ final class MainContentCoordinator {
     // MARK: - Published State
 
     var cursorPositions: [CursorPosition] = []
-    var collapsedFoldRanges: [Range<Int>] = []
     var tableMetadata: TableMetadata?
     var activeSheet: ActiveSheet?
     var isDatabaseSwitcherShown = false
@@ -403,7 +402,6 @@ final class MainContentCoordinator {
             let range = cursorPositions.first?.range
             enriched.restoredCursorOffset = range?.location
             enriched.restoredCursorLength = range.map(\.length)
-            enriched.restoredCollapsedFoldRanges = collapsedFoldRanges.isEmpty ? nil : collapsedFoldRanges
         }
         return enriched
     }
@@ -440,17 +438,22 @@ final class MainContentCoordinator {
         return NSRange(location: clamped, length: max(0, selectionLength))
     }
 
-    func restoredFoldRanges(for tabId: UUID) -> [Range<Int>]? {
+    /// The regions collapsed in a query tab.
+    ///
+    /// Folds live on the tab rather than on the window, so switching tabs cannot carry one tab's collapsed regions
+    /// onto another and nothing has to be cleared when a tab appears.
+    func foldRanges(for tabId: UUID) -> [Range<Int>]? {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
               tabManager.tabs[index].tabType == .query else { return nil }
-        return tabManager.tabs[index].restoredCollapsedFoldRanges
+        return tabManager.tabs[index].collapsedFoldRanges
     }
 
-    func clearRestoredFoldRanges(for tabId: UUID) {
+    func recordFoldRanges(_ ranges: [Range<Int>], for tabId: UUID) {
+        let stored = ranges.isEmpty ? nil : ranges
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-              tabManager.tabs[index].restoredCollapsedFoldRanges != nil else { return }
+              tabManager.tabs[index].collapsedFoldRanges != stored else { return }
         tabManager.mutate(at: index) {
-            $0.restoredCollapsedFoldRanges = nil
+            $0.collapsedFoldRanges = stored
         }
     }
 

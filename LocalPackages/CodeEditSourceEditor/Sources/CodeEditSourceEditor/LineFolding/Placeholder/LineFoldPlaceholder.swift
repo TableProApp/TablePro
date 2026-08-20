@@ -116,8 +116,9 @@ class LineFoldPlaceholder: TextAttachment {
         context.fillPath()
     }
 
-    /// A placeholder stands in for code the reader wants back, so one click brings it back. The gutter's ribbon
-    /// toggles the same fold, and both routes end at ``LineFoldModel/setCollapsed(_:for:)``.
+    /// A placeholder stands in for code the reader wants back, so one click brings it back. The attachment manager
+    /// removes the placeholder itself, and the delegate records the change; the gutter's chevron removes it through
+    /// the layout manager instead. Both routes end at the same commit, so the two can never disagree.
     var activatesOnSingleClick: Bool { true }
 
     func attachmentAction() -> TextAttachmentAction {
