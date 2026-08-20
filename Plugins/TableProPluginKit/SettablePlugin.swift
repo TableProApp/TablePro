@@ -8,6 +8,7 @@ import SwiftUI
 
 /// Type-erased witness for runtime discovery (needed because SettablePlugin has associated type).
 public protocol SettablePluginDiscoverable: AnyObject {
+    @MainActor
     func settingsView() -> AnyView?
     func snapshotSettingsData() -> Data?
     func restoreSettingsData(_ data: Data)
@@ -34,6 +35,7 @@ public protocol SettablePlugin: SettablePluginDiscoverable {
 }
 
 public extension SettablePlugin {
+    @MainActor
     func settingsView() -> AnyView? { nil }
 
     func snapshotSettingsData() -> Data? {

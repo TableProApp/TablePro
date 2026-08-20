@@ -1,6 +1,6 @@
 import Foundation
 
-enum RedisDatabaseIndex {
+nonisolated enum RedisDatabaseIndex {
     static let fieldName = "redisDatabase"
 
     static func resolve(additionalFields: [String: String], database: String) -> Int {

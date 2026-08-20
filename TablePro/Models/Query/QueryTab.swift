@@ -73,6 +73,18 @@ struct QueryTab: Identifiable, Equatable {
     var restoredPageSize: Int?
     var restoredCursorOffset: Int?
     var restoredCursorLength: Int?
+
+    /// A statement the reader has asked to be taken to, set when they select the result it produced.
+    ///
+    /// Deliberately not `restoredCursorOffset`. That pair means "the selection this tab was left with, to apply once
+    /// when its editor mounts": the editor refuses it after its services are installed, and the tab-switch capture
+    /// only records a caret while both are nil, so borrowing them would make the second jump do nothing and stop the
+    /// switch capture forever. This is an event on a mounted editor, and it is cleared the moment one consumes it.
+    ///
+    /// An anchor rather than a range, because it is resolved against the editor's own text, which the tab's binding
+    /// can lag behind.
+    var pendingStatementJump: StatementAnchor?
+
     /// The regions the reader has collapsed in this tab. The editor is a view onto this, not its owner.
     var collapsedFoldRanges: [Range<Int>]?
 
@@ -190,9 +202,14 @@ struct QueryTab: Identifiable, Equatable {
         self.paginationVersion = 0
         self.loadEpoch = 0
         self.pendingRestoredSort = persisted.sortColumns
-        self.restoredPage = persisted.restoredPage.map { max(1, $0) }
-        self.restoredPageSize = persisted.restoredPageSize
+        let clampedPageSize = persisted.restoredPageSize
             .map { $0.clamped(to: SettingsValidationRules.defaultPageSizeRange) }
+        self.restoredPageSize = clampedPageSize
+        self.restoredPage = Self.restoredPage(
+            persisted.restoredPage,
+            savedPageSize: persisted.restoredPageSize,
+            appliedPageSize: clampedPageSize
+        )
         self.restoredCursorOffset = Self.clampedCursorOffset(persisted.cursorOffset, in: persisted.query)
         self.restoredCursorLength = Self.clampedCursorLength(
             persisted.cursorLength,
@@ -200,6 +217,30 @@ struct QueryTab: Identifiable, Equatable {
             in: persisted.query
         )
         self.collapsedFoldRanges = Self.clampedFoldRanges(persisted.collapsedFoldRanges, in: persisted.query)
+    }
+
+    /// A page number counts pages of the size it was taken in, so clamping the size without
+    /// rescaling the page moves the tab by the ratio between the two. A tab saved on page 2 of
+    /// 5,000,000 rows came back as page 2 of 100,000 and opened 4,900,000 rows short of the rows it
+    /// had been showing. Rescale to the page that still holds the first row the tab was on, which is
+    /// the same arithmetic `PaginationState.updatePageSize` does when the user changes the size by
+    /// hand.
+    private static func restoredPage(
+        _ page: Int?,
+        savedPageSize: Int?,
+        appliedPageSize: Int?
+    ) -> Int? {
+        guard let page else { return nil }
+        let requested = max(1, page)
+        guard let savedPageSize, let appliedPageSize,
+              savedPageSize != appliedPageSize,
+              savedPageSize > 0, appliedPageSize > 0 else { return requested }
+
+        /// Both numbers come off disk, so their product is not trusted to fit. A position that
+        /// cannot be computed is not a position, and the start of the table is the honest answer.
+        let (offset, overflowed) = (requested - 1).multipliedReportingOverflow(by: savedPageSize)
+        guard !overflowed else { return 1 }
+        return offset / appliedPageSize + 1
     }
 
     @MainActor static func buildBaseTableQuery(

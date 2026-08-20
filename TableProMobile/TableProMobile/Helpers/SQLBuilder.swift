@@ -4,7 +4,7 @@ import TableProModels
 import TableProPluginKit
 import TableProQuery
 
-enum SQLBuilder {
+nonisolated enum SQLBuilder {
     static func quoteIdentifier(_ name: String, for type: DatabaseType) -> String {
         switch type {
         case .mysql, .mariadb:
@@ -292,6 +292,12 @@ enum SQLBuilder {
         dialectDescriptor(for: type).caseSensitivityStyle
     }
 
+    /// Mirrors what each driver's plugin declares on the Mac, because iOS links its drivers
+    /// directly and has no plugin bundle to ask. The default arm is the trap: an omitted type gets
+    /// `caseSensitivityStyle` `.unsupported`, which resolves to plain `LIKE` and to a case
+    /// sensitivity toggle the UI will not offer, so a filter silently returns fewer rows than the
+    /// same filter on the Mac. `SQLDialectParityTests` is what stops a new driver landing here
+    /// without an arm.
     private static func dialectDescriptor(for type: DatabaseType) -> SQLDialectDescriptor {
         switch type {
         case .mysql, .mariadb:
@@ -348,6 +354,18 @@ enum SQLBuilder {
                 dataTypes: [],
                 likeEscapeStyle: .explicit,
                 caseSensitivityStyle: .collationDefined
+            )
+        case .duckdb:
+            return SQLDialectDescriptor(
+                identifierQuote: "\"",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                regexSyntax: .regexpMatches,
+                booleanLiteralStyle: .truefalse,
+                likeEscapeStyle: .explicit,
+                paginationStyle: .limit,
+                caseSensitivityStyle: .ilikeOperator
             )
         default:
             return SQLDialectDescriptor(

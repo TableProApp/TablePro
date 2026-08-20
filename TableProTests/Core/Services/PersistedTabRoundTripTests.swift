@@ -217,7 +217,10 @@ struct PersistedTabRoundTripTests {
         #expect(restored.toPersistedTab().sortColumns == nil)
     }
 
-    @Test("A restored page size outside the supported range is clamped")
+    /// Clamping the size alone moves the tab, because the page number counts pages of the size it
+    /// was taken in. Page 2 of 5,000,000 starts at row 5,000,001; page 2 of the clamped 100,000
+    /// starts at row 100,001, which is 4,900,000 rows short of what the tab was showing.
+    @Test("A restored page size outside the supported range is clamped, and its page rescaled")
     func restoredPageSizeIsClamped() {
         let absurd = PersistedTab(
             id: UUID(),
@@ -231,7 +234,67 @@ struct PersistedTabRoundTripTests {
 
         let restored = QueryTab(from: absurd, defaultPageSize: 1_000)
 
-        #expect(restored.restoredPageSize == SettingsValidationRules.defaultPageSizeRange.upperBound)
+        let clamped = SettingsValidationRules.defaultPageSizeRange.upperBound
+        #expect(restored.restoredPageSize == clamped)
+        #expect(restored.restoredPage == 5_000_000 / clamped + 1)
+    }
+
+    @Test("A page size below the supported range rescales its page too")
+    func restoredPageBelowRangeIsRescaled() {
+        let tiny = PersistedTab(
+            id: UUID(),
+            title: "users",
+            query: "SELECT * FROM users",
+            tabType: .table,
+            tableName: "users",
+            restoredPage: 4,
+            restoredPageSize: 5
+        )
+
+        let restored = QueryTab(from: tiny, defaultPageSize: 1_000)
+
+        /// Page 4 of 5 rows starts at row 16. Clamped to 10 rows a page, row 16 is on page 2, so
+        /// the tab opens on rows 11 to 20 rather than on 31 to 40.
+        #expect(restored.restoredPageSize == SettingsValidationRules.defaultPageSizeRange.lowerBound)
+        #expect(restored.restoredPage == 2)
+    }
+
+    /// A size the clamp leaves alone must leave the page alone too.
+    @Test("A restored page size inside the supported range keeps its page")
+    func restoredPageSurvivesAnUnclampedSize() {
+        let saved = PersistedTab(
+            id: UUID(),
+            title: "users",
+            query: "SELECT * FROM users",
+            tabType: .table,
+            tableName: "users",
+            restoredPage: 12,
+            restoredPageSize: 100
+        )
+
+        let restored = QueryTab(from: saved, defaultPageSize: 1_000)
+
+        #expect(restored.restoredPageSize == 100)
+        #expect(restored.restoredPage == 12)
+    }
+
+    /// Both numbers come off disk, so nothing stops their product overflowing. A position that
+    /// cannot be computed opens at the start rather than somewhere arbitrary.
+    @Test("A restored position that cannot be computed opens at the first page")
+    func restoredPageOverflowFallsBackToTheStart() {
+        let corrupt = PersistedTab(
+            id: UUID(),
+            title: "users",
+            query: "SELECT * FROM users",
+            tabType: .table,
+            tableName: "users",
+            restoredPage: Int.max,
+            restoredPageSize: Int.max
+        )
+
+        let restored = QueryTab(from: corrupt, defaultPageSize: 1_000)
+
+        #expect(restored.restoredPage == 1)
     }
 
     @Test("A tab saved before page sizes were persisted still restores its page")

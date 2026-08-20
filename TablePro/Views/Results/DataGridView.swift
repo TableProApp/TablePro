@@ -117,7 +117,10 @@ struct DataGridView: NSViewRepresentable {
         coordinator.rebuildColumnMetadataCache(from: initialRows)
 
         coordinator.isRebuildingColumns = true
-        let storedInitialLayout = coordinator.savedColumnLayout(binding: columnLayout)
+        let storedInitialLayout = coordinator.layoutDiscardingUnownedWidths(
+            coordinator.savedColumnLayout(binding: columnLayout),
+            tableRows: initialRows
+        )
         coordinator.synchronizeUserSizedColumns(
             with: storedInitialLayout,
             columns: initialRows.columns,
@@ -298,7 +301,10 @@ struct DataGridView: NSViewRepresentable {
                 current: coordinator.columnLayoutKey,
                 liveWidths: liveColumnWidths
             )
-            let storedLayout = coordinator.savedColumnLayout(binding: columnLayout)
+            let storedLayout = coordinator.layoutDiscardingUnownedWidths(
+                coordinator.savedColumnLayout(binding: columnLayout),
+                tableRows: latestRows
+            )
             coordinator.synchronizeUserSizedColumns(
                 with: storedLayout,
                 columns: latestRows.columns,
@@ -306,7 +312,7 @@ struct DataGridView: NSViewRepresentable {
             )
             let reconciliationWidths = coordinator.liveWidthsForReconciliation(sameTableLiveWidths)
             let savedLayout = coordinator.resolvedColumnLayout(
-                binding: columnLayout,
+                saved: storedLayout,
                 liveWidths: reconciliationWidths
             )
             reconcileColumnPool(
@@ -318,6 +324,7 @@ struct DataGridView: NSViewRepresentable {
             )
             coordinator.isRebuildingColumns = false
             coordinator.invalidateColumnIndexCache()
+            coordinator.applyAccessoryWidthChanges(presentationChanges, tableRows: latestRows)
         }
 
         coordinator.updateValueFilterHeaderIndicators()
@@ -361,20 +368,10 @@ struct DataGridView: NSViewRepresentable {
             isEditable: isEditable,
             hiddenColumnNames: configuration.hiddenColumns,
             widthCalculator: { columnName, slot in
-                coordinator.cellFactory.calculateOptimalColumnWidth(
+                coordinator.automaticColumnWidth(
                     for: columnName,
                     columnIndex: slot,
-                    tableRows: tableRows,
-                    accessory: coordinator.columnPresentation(
-                        for: slot,
-                        in: tableRows
-                    ).accessory,
-                    displayFormat: slot < coordinator.columnDisplayFormats.count
-                        ? coordinator.columnDisplayFormats[slot]
-                        : nil,
-                    databaseType: coordinator.databaseType,
-                    isLargeDataset: coordinator.isLargeDataset,
-                    nullDisplayString: coordinator.cellRegistry.nullDisplayString
+                    tableRows: tableRows
                 )
             }
         )

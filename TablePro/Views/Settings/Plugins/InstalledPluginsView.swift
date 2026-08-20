@@ -55,7 +55,7 @@ struct InstalledPluginsView: View {
                       let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                 let ext = url.pathExtension.lowercased()
                 guard ext == "zip" || ext == "tableplugin" else { return }
-                Task {
+                Task { @MainActor in
                     installPlugin(from: url)
                 }
             }
@@ -242,7 +242,7 @@ struct InstalledPluginsView: View {
 
     private var pluginList: some View {
         VStack(spacing: 0) {
-            NativeSearchField(text: $searchText, placeholder: String(localized: "Filter..."))
+            NativeSearchField(text: $searchText, placeholder: String(localized: "Filter…"))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
 
@@ -471,7 +471,7 @@ struct InstalledPluginsView: View {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Updating...")
+                    Text("Updating…")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }

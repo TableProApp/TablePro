@@ -1,6 +1,6 @@
 import Foundation
 
-enum PayloadValue: Equatable {
+nonisolated enum PayloadValue: Equatable {
     case null
     case text(String)
 
@@ -23,7 +23,7 @@ enum PayloadValue: Equatable {
     }
 }
 
-struct PayloadRow: Equatable {
+nonisolated struct PayloadRow: Equatable {
     let values: [String: PayloadValue]
 
     var keys: [String] {

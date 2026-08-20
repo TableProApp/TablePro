@@ -15,7 +15,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         return persister
     }()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ColumnLayoutPersister")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ColumnLayoutPersister")
     private static let legacyUserDefaultsPrefix = "com.TablePro.columns.layout."
     private static let legacyVisibilityPrefix = "com.TablePro.columns.hiddenColumns."
     private static let scopeMigrationKey = "com.TablePro.columnLayoutSchemaScopeMigrationComplete"

@@ -36,6 +36,12 @@ extension MongoDBError: PluginDriverError {
 
 // MARK: - Connection Class
 
+/// Hands a BSON pointer or a decoded document between the serial queue and the awaiting caller.
+/// Only one of the two touches it at a time, which is what the compiler cannot see through `Any`.
+private struct QueueTransfer<Value>: @unchecked Sendable {
+    let value: Value
+}
+
 /// Thread-safe MongoDB connection using libmongoc.
 /// All blocking C calls are dispatched to a dedicated serial queue.
 /// Async entry points use `queue.async` + continuations. Synchronous entry points
@@ -407,7 +413,9 @@ final class MongoDBConnection: @unchecked Sendable {
     /// libmongoc call at this point, so the `killSessions` command needs its own client.
     private func killSession(lsid: OpaquePointer) {
         let uriString = buildUri()
+        let session = QueueTransfer(value: lsid)
         controlQueue.async {
+            let lsid = session.value
             defer { bson_destroy(lsid) }
             guard let controlClient = mongoc_client_new(uriString) else { return }
             defer { mongoc_client_destroy(controlClient) }
@@ -511,8 +519,8 @@ final class MongoDBConnection: @unchecked Sendable {
             try checkCancelled()
             let result = try runCommandSync(client: client, command: command, database: database)
             try checkCancelled()
-            return result
-        }
+            return QueueTransfer(value: result)
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -536,11 +544,11 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try findSync(
+            return try QueueTransfer(value: findSync(
                 client: client, database: database, collection: collection,
                 filter: filter, sort: sort, projection: projection, skip: skip, limit: limit
-            )
-        }
+            ))
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -554,10 +562,10 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try aggregateSync(
+            return try QueueTransfer(value: aggregateSync(
                 client: client, database: database, collection: collection, pipeline: pipeline
-            )
-        }
+            ))
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -710,10 +718,10 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try listIndexesSync(
+            return try QueueTransfer(value: listIndexesSync(
                 client: client, database: database, collection: collection
-            )
-        }
+            ))
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif

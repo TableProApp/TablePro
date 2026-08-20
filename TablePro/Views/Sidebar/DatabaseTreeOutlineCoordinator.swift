@@ -5,6 +5,7 @@
 
 import AppKit
 import Observation
+import os
 import SwiftUI
 import TableProPluginKit
 
@@ -54,7 +55,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     internal let schemaService = SchemaService.shared
     private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
-    private var favoritesObserver: (any NSObjectProtocol)?
+    private let favoritesObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
 
     init(favoriteTablesStorage: FavoriteTablesStorage = .shared) {
         self.favoriteTablesStorage = favoriteTablesStorage
@@ -73,7 +74,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     func attach(outlineView: NSOutlineView) {
         self.outlineView = outlineView
-        favoritesObserver = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: .favoriteTablesDidChange, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -82,11 +83,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 self.refreshVisibleRows()
             }
         }
+        favoritesObserver.withLockUnchecked { $0 = observer }
     }
 
     deinit {
-        if let favoritesObserver {
-            NotificationCenter.default.removeObserver(favoritesObserver)
+        if let observer = favoritesObserver.withLockUnchecked({ $0 }) {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 

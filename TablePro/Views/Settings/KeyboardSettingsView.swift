@@ -22,7 +22,7 @@ struct KeyboardSettingsView: View {
         VStack(spacing: 0) {
             NativeSearchField(
                 text: $searchText,
-                placeholder: String(localized: "Search shortcuts...")
+                placeholder: String(localized: "Search shortcuts…")
             )
             .padding(.horizontal, 20)
             .padding(.top, 16)

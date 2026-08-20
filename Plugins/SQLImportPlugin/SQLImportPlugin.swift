@@ -9,7 +9,7 @@ import SwiftUI
 import TableProPluginKit
 
 @Observable
-final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
+final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLImportPlugin")
 
     static let pluginName = "SQL Import"
@@ -29,6 +29,7 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
 
     required init() { loadSettings() }
 
+    @MainActor
     func settingsView() -> AnyView? {
         AnyView(SQLImportOptionsView(plugin: self))
     }

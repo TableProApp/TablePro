@@ -14,13 +14,15 @@ enum ExplainResultSetFactory {
         rawText: String,
         plan: QueryPlan?,
         sql: String,
-        executionTime: TimeInterval?
+        executionTime: TimeInterval?,
+        anchor: StatementAnchor? = nil
     ) -> ResultSet {
         let resultSet = ResultSet(label: String(localized: "Plan"))
         resultSet.explainRawText = rawText
         resultSet.queryPlan = plan
         resultSet.baseQuery = sql
         resultSet.executionTime = executionTime
+        resultSet.statementAnchor = anchor
         return resultSet
     }
 }

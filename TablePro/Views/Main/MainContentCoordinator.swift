@@ -79,8 +79,8 @@ enum ActiveSheet: Identifiable {
 /// Coordinator managing MainContentView business logic
 @MainActor @Observable
 final class MainContentCoordinator {
-    static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator")
-    static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator")
+    nonisolated static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     /// Monotonic counter for correlating rapid tab-switch/close log entries.
     static var switchSeq: Int = 0
@@ -466,6 +466,30 @@ final class MainContentCoordinator {
         tabManager.mutate(at: index) {
             $0.collapsedFoldRanges = stored
         }
+    }
+
+    /// The statement a selected result asked the editor to go to, if one is waiting.
+    func pendingStatementJump(for tabId: UUID) -> StatementAnchor? {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[index].tabType == .query else { return nil }
+        return tabManager.tabs[index].pendingStatementJump
+    }
+
+    /// Asks the tab's editor to take the reader to `anchor`.
+    ///
+    /// The anchor is stored rather than applied, because the editor owns the text this has to be resolved against and
+    /// may not be mounted yet. It is cleared as soon as an editor consumes it, so selecting the same result again
+    /// asks again rather than being swallowed as an unchanged value.
+    func requestStatementJump(_ anchor: StatementAnchor, in tabId: UUID) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[index].tabType == .query else { return }
+        tabManager.mutate(at: index) { $0.pendingStatementJump = anchor }
+    }
+
+    func clearPendingStatementJump(for tabId: UUID) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[index].pendingStatementJump != nil else { return }
+        tabManager.mutate(at: index) { $0.pendingStatementJump = nil }
     }
 
     func clearRestoredCursor(for tabId: UUID) {
@@ -914,9 +938,10 @@ final class MainContentCoordinator {
         }
 
         if !alreadyHandled {
+            let registry = services.schemaProviderRegistry
             Task { @MainActor in
-                services.schemaProviderRegistry.release(for: connectionId)
-                services.schemaProviderRegistry.purgeUnused()
+                registry.release(for: connectionId)
+                registry.purgeUnused()
             }
         }
     }
@@ -975,10 +1000,16 @@ final class MainContentCoordinator {
 
         let fullQuery = tab.content.query
 
+        /// The offset says where the SQL sits in the tab's query, so each result can point back at the statement that
+        /// produced it. A sort override is SQL the app wrote rather than text the reader can be sent to, so it has
+        /// none. The other two hand over untrimmed text with an exact offset and let the scanner do the trimming,
+        /// which keeps the two from having to agree about how much whitespace was dropped.
         let sql: String
+        let sourceOffset: Int?
         if let sortOverride = tab.pagination.sortExecutionOverride {
             tabManager.mutate(at: index) { $0.pagination.sortExecutionOverride = nil }
             sql = sortOverride
+            sourceOffset = nil
         } else if let firstCursor = cursorPositions.first,
                   firstCursor.range.length > 0 {
             // Execute selected text only
@@ -988,16 +1019,18 @@ final class MainContentCoordinator {
                 NSRange(location: 0, length: nsQuery.length)
             )
             sql = nsQuery.substring(with: clampedRange)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            sourceOffset = clampedRange.location
         } else {
-            sql = SQLStatementScanner.statementAtCursor(
+            let statement = SQLStatementScanner.locatedStatementAtCursor(
                 in: fullQuery,
                 cursorPosition: cursorPositions.first?.range.location ?? 0,
                 dialect: sqlDialect
             )
+            sql = statement.sql
+            sourceOffset = statement.offset
         }
 
-        executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: bypassRowLimit)
+        executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: bypassRowLimit, sourceOffset: sourceOffset)
     }
 
     /// Runs one statement, named by its own text rather than by where the caret happens to be.
@@ -1007,29 +1040,45 @@ final class MainContentCoordinator {
     /// range on purpose: the editor's text and the tab's binding are two strings that can differ for a moment, and a
     /// range resolved against the wrong one truncates silently. Past that it is the ordinary path, so parameters, safe
     /// mode and the execution gate all apply exactly as they do to any other run.
-    func runStatement(_ sql: String) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return }
+    @discardableResult
+    func runStatement(_ sql: String, sourceOffset: Int? = nil) -> Bool {
+        guard let (tab, index) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return false }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runStatement")
-            return
+            return false
         }
 
-        executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false)
+        return executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false, sourceOffset: sourceOffset)
     }
 
     /// Everything both run paths do once the SQL to run has been decided.
     ///
     /// Shared so that a statement run from the gutter and a statement run from the caret cannot drift apart on
     /// parameter handling, which is the half of this that is easy to forget.
-    private func executeResolvedSQL(_ sql: String, tabIndex index: Int, bypassRowLimit: Bool) {
+    ///
+    /// Returns whether the SQL was actually dispatched. It is not when the statement carries parameters whose panel
+    /// has yet to be filled in: that opens the panel and runs nothing, and a caller that advances the caret on the
+    /// strength of a run would then be pointing at the wrong statement when the reader presses again.
+    @discardableResult
+    private func executeResolvedSQL(
+        _ sql: String,
+        tabIndex index: Int,
+        bypassRowLimit: Bool,
+        sourceOffset: Int? = nil
+    ) -> Bool {
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return
+            return false
+        }
+
+        let anchored = { (statements: [SQLStatementScanner.ExecutableStatement]) in
+            guard let sourceOffset else { return statements }
+            return statements.map { $0.offset(by: sourceOffset) }
         }
 
         if services.appSettings.editor.queryParametersEnabled {
-            let paramStatements = SQLStatementScanner.allStatements(in: sql, dialect: sqlDialect)
-            guard !paramStatements.isEmpty else { return }
-            let combinedSQL = paramStatements.joined(separator: "; ")
+            let paramStatements = anchored(SQLStatementScanner.executableStatements(in: sql, dialect: sqlDialect))
+            guard !paramStatements.isEmpty else { return false }
+            let combinedSQL = paramStatements.map(\.sql).joined(separator: "; ")
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
 
             if !detectedNames.isEmpty {
@@ -1041,7 +1090,7 @@ final class MainContentCoordinator {
 
                 if !tabManager.tabs[index].content.isParameterPanelVisible {
                     tabManager.mutate(at: index) { $0.content.isParameterPanelVisible = true }
-                    return
+                    return false
                 }
 
                 tabManager.tabStructureVersion += 1
@@ -1051,15 +1100,16 @@ final class MainContentCoordinator {
                     tabIndex: index,
                     bypassRowLimit: bypassRowLimit
                 )
-                return
+                return true
             }
         }
 
-        let statements = SQLStatementScanner.allStatements(in: sql, dialect: sqlDialect)
-        guard !statements.isEmpty else { return }
+        let statements = anchored(SQLStatementScanner.executableStatements(in: sql, dialect: sqlDialect))
+        guard !statements.isEmpty else { return false }
 
         tabManager.tabStructureVersion += 1
         dispatchStatements(statements, tabIndex: index, bypassRowLimit: bypassRowLimit)
+        return true
     }
 
     /// Execute table tab query directly.
@@ -1173,7 +1223,8 @@ final class MainContentCoordinator {
         _ sql: String,
         isAutoLoad: Bool = false,
         trigger: TableLoadTrigger = .userInitiated,
-        bypassRowLimit: Bool = false
+        bypassRowLimit: Bool = false,
+        anchor: StatementAnchor? = nil
     ) {
         guard let (selectedTab, index) = tabManager.selectedTabAndIndex else { return }
 
@@ -1312,7 +1363,8 @@ final class MainContentCoordinator {
                         hasSchema: false,
                         sql: sql,
                         connection: conn,
-                        isTruncated: fetchResult.isTruncated
+                        isTruncated: fetchResult.isTruncated,
+                        anchor: anchor
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: "completed")

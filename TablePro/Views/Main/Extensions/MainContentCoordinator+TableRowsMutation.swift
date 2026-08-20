@@ -34,10 +34,35 @@ extension MainContentCoordinator {
     /// pending edit set outlives the switch and `handleColumnsChange` refuses to rebuild the change
     /// manager while it exists, which leaves the grid writing to the outgoing result's table.
     func switchActiveResultSet(to resultSetId: UUID?, in tabId: UUID) {
+        guard let tabIdx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        let wasActive = tabManager.tabs[tabIdx].display.activeResultSetId == resultSetId
+
         confirmDiscardChangesIfNeeded(action: .resultSwitch) { [weak self] confirmed in
             guard confirmed else { return }
             self?.applyResultSetSwitch(to: resultSetId, in: tabId)
+            guard !wasActive else { return }
+            self?.revealStatement(behind: resultSetId, in: tabId)
         }
+    }
+
+    /// Takes the reader to the statement a result came from, when they moved to a different result.
+    ///
+    /// This is the reverse of the run: a statement produces a result, so selecting the result says which statement to
+    /// look at. It is only ever a response to the reader picking a result, which is what the HIG allows; nothing here
+    /// runs on its own. Re-selecting the result already showing does nothing, because the reader is comparing pinned
+    /// results rather than asking to be taken anywhere, and scrolling the editor under them would be an answer to a
+    /// question they did not ask.
+    ///
+    /// The caret moves without taking first responder, so focus stays wherever the reader put it and the
+    /// caret-statement band follows for free.
+    private func revealStatement(behind resultSetId: UUID?, in tabId: UUID) {
+        guard let tabIdx = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[tabIdx].tabType == .query,
+              let resultSetId,
+              let anchor = tabManager.tabs[tabIdx].display.resultSets
+                  .first(where: { $0.id == resultSetId })?.statementAnchor
+        else { return }
+        requestStatementJump(anchor, in: tabId)
     }
 
     /// The switch itself, for callers that have already decided the outgoing result is going away.

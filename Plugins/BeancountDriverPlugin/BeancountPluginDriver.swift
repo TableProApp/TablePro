@@ -5,6 +5,7 @@
 
 import Dispatch
 import Foundation
+import os
 import OSLog
 import SQLite3
 import TableProNumberFormatting
@@ -93,8 +94,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let closesQuery =
         "SELECT account, close FROM #accounts WHERE close IS NOT NULL ORDER BY close, account"
     private static let logger = Logger(subsystem: "com.TablePro", category: "BeancountPluginDriver")
-    private static let rledgerCapabilityLock = NSLock()
-    private static var rledgerNoCacheSupport: [String: Bool] = [:]
+    private static let rledgerNoCacheSupport = OSAllocatedUnfairLock(initialState: [String: Bool]())
 
     private static let workQueue = DispatchQueue(
         label: "com.TablePro.BeancountDriver",
@@ -756,12 +756,9 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static func rledgerSupportsNoCache(executablePath: String) -> Bool {
-        rledgerCapabilityLock.lock()
-        if let cached = rledgerNoCacheSupport[executablePath] {
-            rledgerCapabilityLock.unlock()
+        if let cached = rledgerNoCacheSupport.withLock({ $0[executablePath] }) {
             return cached
         }
-        rledgerCapabilityLock.unlock()
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executablePath)
@@ -784,9 +781,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             supports = false
         }
 
-        rledgerCapabilityLock.withLock {
-            rledgerNoCacheSupport[executablePath] = supports
-        }
+        rledgerNoCacheSupport.withLock { $0[executablePath] = supports }
         return supports
     }
 

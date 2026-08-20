@@ -3,7 +3,7 @@ import Foundation
 import TableProDatabase
 import TableProModels
 
-final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = PostgreSQLActor()
     private let host: String
     private let port: Int
@@ -606,7 +606,7 @@ private actor PostgreSQLActor {
     }
 }
 
-enum PGBeginStreamResult: Sendable {
+nonisolated enum PGBeginStreamResult: Sendable {
     case tuples([ColumnInfo])
     case commandOk(affectedRows: Int)
 }
@@ -645,7 +645,7 @@ nonisolated private func pgOidToTypeName(_ oid: UInt32) -> String {
     }
 }
 
-private struct RawPGResult: Sendable {
+nonisolated private struct RawPGResult: Sendable {
     let columns: [String]
     let columnTypes: [String]
     let rows: [[String?]]
@@ -656,7 +656,7 @@ private struct RawPGResult: Sendable {
 
 // MARK: - Errors
 
-enum PostgreSQLError: Error, LocalizedError {
+nonisolated enum PostgreSQLError: Error, LocalizedError {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)

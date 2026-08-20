@@ -8,6 +8,12 @@ import CodeEditSourceEditor
 import CodeEditTextView
 import TableProPluginKit
 
+/// Which way a statement navigation command moves the caret.
+enum StatementNavigationDirection {
+    case previous
+    case next
+}
+
 /// Keeps the editor's per-statement decorations in step with the document.
 ///
 /// Two things are drawn from one scanner: the run control the gutter puts beside each statement, and the band behind
@@ -25,10 +31,10 @@ final class StatementRunController {
     ///
     /// The same threshold syntax highlighting and code folding stop at, so an editor that has given up on colouring a
     /// document does not still be walking it for statement boundaries.
-    static let defaultSizeLimit = 2_000_000
+    nonisolated static let defaultSizeLimit = 2_000_000
 
     /// How long typing has to pause before the run controls are recomputed.
-    static let refreshDelay: Duration = .milliseconds(150)
+    nonisolated static let refreshDelay: Duration = .milliseconds(150)
 
     /// Below this length the controls are recomputed on the keystroke rather than on the pause.
     ///
@@ -39,12 +45,16 @@ final class StatementRunController {
     var sizeLimit = StatementRunController.defaultSizeLimit
     var dialect: SqlDialect = .generic
 
-    /// Called with the SQL the pressed control stands for, read from the document at the moment of the press.
+    /// Called with the SQL the pressed control stands for, read from the document at the moment of the press, and
+    /// where that SQL starts in the document.
     ///
-    /// Text rather than a range, because the caller substrings a different string: the SwiftUI binding the tab holds
-    /// lags the text view, and a range resolved against the wrong one silently truncates. A `DELETE ... WHERE ...`
-    /// cut short is still a statement the driver will accept.
-    var onRun: ((String) -> Void)?
+    /// The text is passed rather than only the range, because the caller substrings a different string: the SwiftUI
+    /// binding the tab holds lags the text view, and a range resolved against the wrong one silently truncates. A
+    /// `DELETE ... WHERE ...` cut short is still a statement the driver will accept. The offset rides alongside so
+    /// the result can point back at the statement, and it is only ever used through ``StatementAnchor``, which
+    /// re-resolves it against the live query and falls back to matching the statement itself. A range that was a
+    /// moment stale therefore corrects itself rather than sending the caret somewhere arbitrary.
+    var onRun: ((String, Int) -> Bool)?
 
     /// Whether the band is drawn at all.
     ///
@@ -64,6 +74,9 @@ final class StatementRunController {
         )
         controller.onRunStatement = { [weak self] statement in
             self?.run(statement, in: controller)
+        }
+        controller.statementBoundaryProvider = { [weak self, weak controller] offset, forward in
+            self?.statementBoundary(from: offset, forward: forward, in: controller)
         }
         controller.statementRunControlsEnabled = isEnabled
         refreshControls(in: controller)
@@ -114,9 +127,66 @@ final class StatementRunController {
         }
 
         controller.runnableStatements = SQLStatementScanner
-            .locatedStatements(in: text, dialect: dialect)
-            .filter { $0.hasContent && $0.contentRange.length > 0 }
+            .navigableStatements(in: text, dialect: dialect)
             .map { StatementRun(range: $0.contentRange) }
+    }
+
+    /// Moves the caret to the start of the statement before or after the one it is in.
+    ///
+    /// Rescans rather than reading the drawn controls, which a large document lets fall up to one debounce behind the
+    /// text. Anchors on the first caret and leaves a single one behind, matching how the band picks its statement.
+    func moveCursor(_ direction: StatementNavigationDirection, in controller: TextViewController?) {
+        guard let controller, let textView = controller.textView else { return }
+        let text = textView.string
+        guard (text as NSString).length <= sizeLimit else { return }
+        guard let caret = controller.cursorPositions.first?.range.location else { return }
+
+        guard let destination = statementStart(direction, from: caret, in: text) else { return }
+        controller.moveCursor(to: destination)
+    }
+
+    /// The offset `Option+Shift+Up` and `Option+Shift+Down` extend the selection to.
+    ///
+    /// Forward reaches the far edge of the last statement rather than the start of the next one, or the last
+    /// statement's own body could never be selected.
+    func statementBoundary(from offset: Int, forward: Bool, in controller: TextViewController?) -> Int? {
+        guard let controller, let textView = controller.textView else { return nil }
+        let text = textView.string
+        guard (text as NSString).length <= sizeLimit else { return nil }
+        guard forward else {
+            return SQLStatementScanner.statementStart(before: offset, in: text, dialect: dialect)
+        }
+        return SQLStatementScanner.statementSelectionEnd(after: offset, in: text, dialect: dialect)
+    }
+
+    /// The statement the caret is in and where it starts, or `nil` when there is nothing to run there.
+    ///
+    /// Capped the same way navigation is, so run-and-advance cannot run without also being able to advance.
+    func statementAtCursor(in controller: TextViewController?) -> (sql: String, offset: Int)? {
+        guard let controller, let textView = controller.textView else { return nil }
+        let text = textView.string
+        guard (text as NSString).length <= sizeLimit else { return nil }
+        guard let selection = controller.cursorPositions.first, selection.range.length == 0 else { return nil }
+
+        let statement = SQLStatementScanner.locatedStatementAtCursor(
+            in: text,
+            cursorPosition: selection.range.location,
+            dialect: dialect
+        )
+        guard statement.hasContent, statement.contentRange.length > 0 else { return nil }
+        return (
+            (text as NSString).substring(with: statement.contentRange),
+            statement.contentRange.location
+        )
+    }
+
+    private func statementStart(_ direction: StatementNavigationDirection, from offset: Int, in text: String) -> Int? {
+        switch direction {
+        case .previous:
+            return SQLStatementScanner.statementStart(before: offset, in: text, dialect: dialect)
+        case .next:
+            return SQLStatementScanner.statementStart(after: offset, in: text, dialect: dialect)
+        }
     }
 
     /// Moves the band to the statement the caret is in. Call after the selection changes.
@@ -131,6 +201,7 @@ final class StatementRunController {
         controller?.runnableStatements = []
         controller?.highlightedStatementRange = nil
         controller?.onRunStatement = nil
+        controller?.statementBoundaryProvider = nil
     }
 
     // MARK: - Private
@@ -160,7 +231,10 @@ final class StatementRunController {
             return
         }
 
-        onRun?((text as NSString).substring(with: resolved.contentRange))
+        _ = onRun?(
+            (text as NSString).substring(with: resolved.contentRange),
+            resolved.contentRange.location
+        )
     }
 
     /// The span the band covers, or `nil` when there is nothing to mark.

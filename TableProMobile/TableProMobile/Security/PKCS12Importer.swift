@@ -2,13 +2,13 @@ import CryptoKit
 import Foundation
 import Security
 
-struct ClientCertificateMaterial: Equatable, Sendable {
+nonisolated struct ClientCertificateMaterial: Equatable, Sendable {
     let certificateChainPEM: String
     let privateKeyPEM: String
     let commonName: String?
 }
 
-enum PKCS12ImportError: Error, LocalizedError, Equatable {
+nonisolated enum PKCS12ImportError: Error, LocalizedError, Equatable {
     case passwordRequired
     case importFailed(OSStatus)
     case noIdentityInFile
@@ -28,7 +28,7 @@ enum PKCS12ImportError: Error, LocalizedError, Equatable {
     }
 }
 
-enum PKCS12Importer {
+nonisolated enum PKCS12Importer {
     static func material(from data: Data, password: String) throws -> ClientCertificateMaterial {
         guard !password.isEmpty else { throw PKCS12ImportError.passwordRequired }
 

@@ -14,7 +14,7 @@ Open **Settings > AI** (`Cmd+,`). The **Enable AI Features** toggle at the top g
   <img className="hidden dark:block" src="/images/ai-chat-settings-provider-dark.png" alt="AI settings" />
 </Frame>
 
-1. Click **Add Provider...** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, Claude Agent, OpenAI, OpenRouter, Gemini, xAI, Ollama, llama.cpp, MLX, or OpenCode Zen. **Add Custom Provider...** at the bottom of the menu takes any OpenAI-compatible endpoint.
+1. Click **Add Provider…** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, Claude Agent, OpenAI, OpenRouter, Gemini, xAI, Ollama, llama.cpp, MLX, or OpenCode Zen. **Add Custom Provider…** at the bottom of the menu takes any OpenAI-compatible endpoint.
 2. Enter the API key, or sign in for Copilot, ChatGPT, Cursor, and xAI.
 3. Enter a model name, or pick one from the fetched list.
 4. Click **Test Connection**.
@@ -58,7 +58,7 @@ The mode picker in the composer footer controls which tools the AI can call. The
 | Mode | Tools available | When to use |
 |------|----------------|-------------|
 | **Ask** | Read-only schema lookups: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`. | Questions, exploration, drafting queries you run yourself. |
-| **Edit** | All Ask tools, plus `execute_query` for `SELECT`, `INSERT`, `UPDATE`, `DELETE`. Destructive DDL (`DROP`, `TRUNCATE`, `ALTER...DROP`) stays blocked. | Letting the AI run the queries it proposes. |
+| **Edit** | All Ask tools, plus `execute_query` for `SELECT`, `INSERT`, `UPDATE`, `DELETE`. Destructive DDL (`DROP`, `TRUNCATE`, `ALTER…DROP`) stays blocked. | Letting the AI run the queries it proposes. |
 | **Agent** | All tools, plus `confirm_destructive_operation` for destructive DDL. Runs tools in a loop, up to 25 tool calls per turn by default. | Multi-step migrations and schema changes. |
 
 Mode and [safe mode](/features/safe-mode) are independent gates. Agent mode does not bypass safe mode.

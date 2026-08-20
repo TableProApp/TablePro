@@ -14,7 +14,7 @@
 
 import AppKit
 import CodeEditLanguages
-@testable import CodeEditSourceEditor
+@preconcurrency @testable import CodeEditSourceEditor
 import CodeEditTextView
 import Foundation
 import Rearrange

@@ -30,12 +30,12 @@ struct ConnectionGroupPicker: View {
             Button {
                 showingCreateSheet = true
             } label: {
-                Label("Create New Group...", systemImage: "plus.circle")
+                Label("Create New Group…", systemImage: "plus.circle")
                     .labelStyle(.iconOnly)
             }
             .buttonStyle(.borderless)
-            .help(Text("Create New Group..."))
-            .accessibilityLabel(Text("Create New Group..."))
+            .help(Text("Create New Group…"))
+            .accessibilityLabel(Text("Create New Group…"))
         }
         .task { allGroups = groupStorage.loadGroups() }
         .sheet(isPresented: $showingCreateSheet) {

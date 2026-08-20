@@ -1,7 +1,7 @@
 import AppIntents
 import Foundation
 
-enum IntentDataError: Error, CustomLocalizedStringResourceConvertible, Equatable {
+nonisolated enum IntentDataError: Error, CustomLocalizedStringResourceConvertible, Equatable {
     case connectionNotFound
     case unsupportedDatabaseType(String)
     case connectionFailed(String)

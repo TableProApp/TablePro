@@ -12,7 +12,7 @@ import Foundation
 import os
 import TableProImport
 
-struct LinkedConnection: Identifiable {
+struct LinkedConnection: Identifiable, Sendable {
     let id: UUID
     let connection: ExportableConnection
     let folderId: UUID
@@ -23,7 +23,7 @@ struct LinkedConnection: Identifiable {
 @Observable
 final class LinkedFolderWatcher {
     static let shared = LinkedFolderWatcher()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedFolderWatcher")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedFolderWatcher")
 
     private(set) var linkedConnections: [LinkedConnection] = []
     private var watchSources: [UUID: DispatchSourceFileSystemObject] = [:]

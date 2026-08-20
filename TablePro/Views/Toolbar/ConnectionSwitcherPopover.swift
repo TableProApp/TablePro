@@ -196,7 +196,7 @@ struct ConnectionSwitcherPopover: View {
             HStack {
                 Image(systemName: "gear")
                     .foregroundStyle(.secondary)
-                Text("Manage Connections...")
+                Text("Manage Connections…")
                     .foregroundStyle(.primary)
                 Spacer()
             }

@@ -305,10 +305,10 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await connectionActor.executeQuery(QuackConnectBuilder.attachSQL(host: host, port: port, alias: alias))
         try await connectionActor.executeQuery(QuackConnectBuilder.useSQL(alias: alias))
 
-        stateLock.lock()
-        _currentSchema = "main"
-        _currentDatabase = alias
-        stateLock.unlock()
+        stateLock.withLock {
+            _currentSchema = "main"
+            _currentDatabase = alias
+        }
 
         await captureInterruptHandle()
     }
@@ -325,10 +325,10 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let position = try await readPosition()
         let catalog = try await resolveOpenedCatalog(named: position.catalog)
 
-        stateLock.lock()
-        _currentDatabase = catalog
-        if let schema = position.schema { _currentSchema = schema }
-        stateLock.unlock()
+        stateLock.withLock {
+            _currentDatabase = catalog
+            if let schema = position.schema { _currentSchema = schema }
+        }
     }
 
     /// Nothing has run `USE` yet at connect, so `search_path` is usually empty and the catalog
@@ -385,7 +385,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func captureInterruptHandle() async {
-        if let conn = await connectionActor.connectionHandleForInterrupt {
+        if let conn = await connectionActor.connectionHandleForInterrupt.connection {
             setInterruptHandle(conn)
         }
     }
@@ -749,9 +749,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func switchSchema(to schema: String) async throws {
         _ = try await execute(query: DuckDBSchemaQueries.useSchema(schema, in: currentDatabase))
-        stateLock.lock()
-        _currentSchema = schema
-        stateLock.unlock()
+        stateLock.withLock { _currentSchema = schema }
     }
 
     // MARK: - Database Operations
@@ -773,10 +771,10 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         _ = try await execute(query: DuckDBSchemaQueries.useDatabase(database))
         let canonical = await canonicalCatalogName(matching: database) ?? database
         let landedSchema = try? await readPosition().schema
-        stateLock.lock()
-        _currentDatabase = canonical
-        _currentSchema = landedSchema.flatMap { $0 } ?? "main"
-        stateLock.unlock()
+        stateLock.withLock {
+            _currentDatabase = canonical
+            _currentSchema = landedSchema.flatMap { $0 } ?? "main"
+        }
     }
 
     private func canonicalCatalogName(matching database: String) async -> String? {

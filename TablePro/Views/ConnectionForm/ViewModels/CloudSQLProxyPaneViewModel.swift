@@ -9,7 +9,7 @@ import os
 @Observable
 @MainActor
 final class CloudSQLProxyPaneViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyPane")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyPane")
 
     var state = CloudSQLProxyFormState()
 

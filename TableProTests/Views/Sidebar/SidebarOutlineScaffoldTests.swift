@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 import TableProPluginKit
 import TableProSyncTransport
@@ -550,11 +551,16 @@ struct DatabaseTreeObjectGroupHierarchyTests {
     }
 }
 
-private final class WriteCountingDefaults: UserDefaults, @unchecked Sendable {
-    var writeCount = 0
+private final class WriteCountingDefaults: UserDefaults {
+    private let writes = OSAllocatedUnfairLock(initialState: 0)
+
+    var writeCount: Int {
+        get { writes.withLock { $0 } }
+        set { writes.withLock { $0 = newValue } }
+    }
 
     override func set(_ value: Any?, forKey defaultName: String) {
-        writeCount += 1
+        writes.withLock { $0 += 1 }
         super.set(value, forKey: defaultName)
     }
 }

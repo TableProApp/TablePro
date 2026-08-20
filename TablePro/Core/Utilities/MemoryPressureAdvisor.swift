@@ -10,7 +10,7 @@ import os
 /// Advises on tab eviction budget based on system memory and pressure state.
 @MainActor
 internal enum MemoryPressureAdvisor {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MemoryPressureAdvisor")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MemoryPressureAdvisor")
 
     /// Current memory pressure level from the OS dispatch source.
     private(set) static var isUnderPressure = false

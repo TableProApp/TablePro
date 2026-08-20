@@ -22,7 +22,7 @@ Click **New Connection**, select **DynamoDB**, choose an auth method, enter your
 | Field | Description |
 |-------|-------------|
 | **Auth Method** | Access Key + Secret Key, AWS Profile, or AWS SSO |
-| **Access Key ID** | IAM access key, e.g. `AKIA...`. Access Key auth only |
+| **Access Key ID** | IAM access key, e.g. `AKIA…`. Access Key auth only |
 | **Secret Access Key** | The matching secret. Access Key auth only |
 | **Session Token** | Optional token for temporary STS credentials. Access Key auth only |
 | **Profile Name** | Profile to read from `~/.aws/config` or `~/.aws/credentials`. AWS Profile and AWS SSO only |
@@ -71,7 +71,7 @@ Table names in PartiQL must be quoted with double quotes: `"TableName"`. String 
 
 **Data Types**: S (string), N (number), B (binary), BOOL, NULL, L (JSON array), M (JSON object), SS (string set), NS (number set), BS (binary set).
 
-**Data Editing**: Edit cells, insert rows, and delete rows. TablePro generates PartiQL: `INSERT INTO "Table" VALUE { ... }`, `UPDATE "Table" SET attr = 'val' WHERE pk = 'pkVal'`, and `DELETE FROM "Table" WHERE pk = 'pkVal'`. Key attributes cannot be changed, so delete the item and insert it again.
+**Data Editing**: Edit cells, insert rows, and delete rows. TablePro generates PartiQL: `INSERT INTO "Table" VALUE { … }`, `UPDATE "Table" SET attr = 'val' WHERE pk = 'pkVal'`, and `DELETE FROM "Table" WHERE pk = 'pkVal'`. Key attributes cannot be changed, so delete the item and insert it again.
 
 **Query Instead of Scan**: A filter that pins the partition key to a single value with `=` runs through the Query API instead of Scan. It returns faster and burns less read capacity.
 

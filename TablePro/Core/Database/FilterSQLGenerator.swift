@@ -369,6 +369,8 @@ struct FilterSQLGenerator {
             return booleanText(isTrue: true)
         case .isFalse:
             return booleanText(isTrue: false)
+        @unknown default:
+            return nil
         }
     }
 

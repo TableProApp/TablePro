@@ -51,7 +51,7 @@ internal struct FilterableTreeView<Node: FilterableTreeNode, Row: View>: View {
         HStack(spacing: 6) {
             NativeSearchField(
                 text: $searchText,
-                placeholder: String(localized: "Filter keys or values..."),
+                placeholder: String(localized: "Filter keys or values…"),
                 controlSize: .small
             )
             if projection.isFiltered {

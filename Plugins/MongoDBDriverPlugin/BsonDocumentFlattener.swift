@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import TableProNumberFormatting
 import TableProPluginKit
 
@@ -148,7 +149,7 @@ struct BsonDocumentFlattener {
         case let num as NSNumber:
             return displayString(for: num)
         case let date as Date:
-            return iso8601Formatter.string(from: date)
+            return iso8601Text(for: date)
         case let objectId as MongoDBObjectId:
             return objectId.hex
         case let decimal as MongoDBDecimal128:
@@ -218,7 +219,7 @@ struct BsonDocumentFlattener {
         case let data as Data:
             return MongoDBUuidCodec.binaryText(for: MongoDBBinaryValue(data: data, subtype: 0))
         case let date as Date:
-            return iso8601Formatter.string(from: date)
+            return iso8601Text(for: date)
         case is NSNull:
             return value
         case let str as String:
@@ -230,7 +231,11 @@ struct BsonDocumentFlattener {
         }
     }
 
-    private static let iso8601Formatter = ISO8601DateFormatter()
+    private static let iso8601Formatter = OSAllocatedUnfairLock(uncheckedState: ISO8601DateFormatter())
+
+    private static func iso8601Text(for date: Date) -> String {
+        iso8601Formatter.withLockUnchecked { $0.string(from: date) }
+    }
 
     private static func displayString(for num: NSNumber) -> String {
         if isBoolean(num) {

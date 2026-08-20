@@ -36,7 +36,7 @@ internal enum CachedLicenseResolution: Equatable {
 final class LicenseManager {
     static let shared = LicenseManager()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseManager")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseManager")
 
     /// Current cached license (nil = unlicensed)
     private(set) var license: License?

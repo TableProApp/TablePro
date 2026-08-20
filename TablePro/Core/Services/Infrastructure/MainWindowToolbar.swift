@@ -12,7 +12,7 @@ import TableProPluginKit
 
 @MainActor
 internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
-    internal static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated internal static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     internal static let toolbarIdentifier = NSToolbar.Identifier("com.TablePro.main.toolbar.v2")
 

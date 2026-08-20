@@ -13,7 +13,7 @@ import os
 internal final class AppLaunchCoordinator {
     internal static let shared = AppLaunchCoordinator()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AppLaunchCoordinator")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AppLaunchCoordinator")
     internal static let collectionWindow: Duration = .milliseconds(150)
 
     private(set) var phase: LaunchPhase = .launching

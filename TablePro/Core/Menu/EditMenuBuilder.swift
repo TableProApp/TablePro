@@ -108,7 +108,7 @@ enum EditMenuBuilder {
     private static func findSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.submenu(String(localized: "Find"), items: [
             MenuItemFactory.item(
-                String(localized: "Find..."),
+                String(localized: "Find…"),
                 action: #selector(MainSplitViewController.performFind(_:)),
                 keyEquivalent: "f",
                 modifiers: .command
@@ -152,11 +152,11 @@ enum EditMenuBuilder {
                 action: #selector(InspectorViewController.inspectorInsertColumnRight(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "Split Column..."),
+                String(localized: "Split Column…"),
                 action: #selector(InspectorViewController.inspectorSplitColumn(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "Merge Columns..."),
+                String(localized: "Merge Columns…"),
                 action: #selector(InspectorViewController.inspectorMergeColumns(_:))
             ),
             MenuItemFactory.item(
@@ -171,7 +171,7 @@ enum EditMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
-                String(localized: "Set CSV Properties..."),
+                String(localized: "Set CSV Properties…"),
                 action: #selector(InspectorViewController.inspectorSetCSVProperties(_:))
             )
         ])

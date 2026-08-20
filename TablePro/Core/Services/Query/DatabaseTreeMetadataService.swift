@@ -42,7 +42,7 @@ final class DatabaseTreeMetadataService {
     @ObservationIgnored private let routinesDedup = OnceTask<ObjectsKey, [RoutineInfo]>()
     @ObservationIgnored private let partitionsDedup = OnceTask<PartitionsKey, [TableInfo]>()
 
-    @ObservationIgnored private static let logger = Logger(
+    @ObservationIgnored nonisolated private static let logger = Logger(
         subsystem: "com.TablePro", category: "SidebarTree"
     )
 
@@ -360,12 +360,12 @@ final class DatabaseTreeMetadataService {
         }
         await withTaskGroup(of: Void.self) { group in
             for key in keys {
-                group.addTask { @MainActor in
+                group.addTask {
                     await self.reloadTablesInPlace(key)
                 }
             }
             for key in loadedPartitionKeys {
-                group.addTask { @MainActor in
+                group.addTask {
                     await self.reloadPartitionsInPlace(key)
                 }
             }

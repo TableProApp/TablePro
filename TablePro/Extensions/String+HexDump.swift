@@ -65,7 +65,7 @@ extension String {
 
         if totalCount > maxBytes {
             let formattedTotal = totalCount.formatted(.number)
-            lines.append("... (truncated, \(formattedTotal) bytes total)")
+            lines.append("… (truncated, \(formattedTotal) bytes total)")
         }
 
         return lines.joined(separator: "\n")

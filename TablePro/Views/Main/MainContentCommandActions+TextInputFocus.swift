@@ -8,6 +8,7 @@
 
 import AppKit
 import Foundation
+import os
 
 extension MainContentCommandActions {
     /// AppKit matches a menu key equivalent before the first responder ever sees
@@ -21,13 +22,13 @@ extension MainContentCommandActions {
     }
 
     func updateTextInputFocusTracking() {
-        if let textInputFocusObserver {
-            NotificationCenter.default.removeObserver(textInputFocusObserver)
-            self.textInputFocusObserver = nil
+        if let observer = textInputFocusObserver.withLockUnchecked({ $0 }) {
+            NotificationCenter.default.removeObserver(observer)
+            textInputFocusObserver.withLockUnchecked { $0 = nil }
         }
         refreshFocusOwnsTextInput()
         guard let window else { return }
-        textInputFocusObserver = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: NSWindow.didUpdateNotification,
             object: window,
             queue: .main
@@ -37,6 +38,7 @@ extension MainContentCommandActions {
                 self.scheduleTextInputFocusCheck()
             }
         }
+        textInputFocusObserver.withLockUnchecked { $0 = observer }
     }
 
     /// `didUpdateNotification` fires once per event-loop pass, so the check is

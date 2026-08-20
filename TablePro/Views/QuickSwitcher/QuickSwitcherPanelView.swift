@@ -131,7 +131,7 @@ struct QuickSwitcherPanelContent: View {
 
             QuickSwitcherSearchField(
                 text: $viewModel.searchText,
-                placeholder: String(localized: "Search tables, views, databases, queries..."),
+                placeholder: String(localized: "Search tables, views, databases, queries…"),
                 onMoveUp: { viewModel.moveSelection(by: -1) },
                 onMoveDown: { viewModel.moveSelection(by: 1) },
                 onSubmit: { openSelectedItem() }
@@ -240,7 +240,7 @@ struct QuickSwitcherPanelContent: View {
         if viewModel.isLoadingResults {
             HStack(spacing: 10) {
                 ProgressView().controlSize(.small)
-                Text("Loading...")
+                Text("Loading…")
             }
             .font(.body)
             .foregroundStyle(.secondary)

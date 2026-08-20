@@ -83,7 +83,7 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
         menu.addItem(.separator())
 
         let saveAsFavItem = NSMenuItem(
-            title: String(localized: "Save as Favorite..."),
+            title: String(localized: "Save as Favorite…"),
             action: #selector(handleSaveAsFavorite),
             keyEquivalent: ""
         )

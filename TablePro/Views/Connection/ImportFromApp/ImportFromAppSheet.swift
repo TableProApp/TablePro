@@ -102,7 +102,7 @@ struct ImportFromAppSheet: View {
 
     // MARK: - Actions
 
-    static func requiresKeychainConfirmation(includePasswords: Bool, importer: any ForeignAppImporter) -> Bool {
+    nonisolated static func requiresKeychainConfirmation(includePasswords: Bool, importer: any ForeignAppImporter) -> Bool {
         includePasswords && importer.readsPasswordsFromKeychain
     }
 

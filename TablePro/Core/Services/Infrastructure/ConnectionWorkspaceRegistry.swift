@@ -10,7 +10,7 @@ import os
 /// answer this with its own identity, which could only ever name one connection.
 @MainActor
 internal final class ConnectionWorkspaceRegistry {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionWorkspace")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionWorkspace")
 
     private var workspacesById: [UUID: ConnectionWorkspace] = [:]
     private(set) var order: [UUID] = []

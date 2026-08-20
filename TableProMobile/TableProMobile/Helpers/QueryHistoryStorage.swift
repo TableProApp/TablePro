@@ -1,6 +1,6 @@
 import Foundation
 
-struct QueryHistoryItem: Identifiable, Codable, Hashable {
+nonisolated struct QueryHistoryItem: Identifiable, Codable, Hashable {
     let id: UUID
     let query: String
     let timestamp: Date
@@ -35,7 +35,7 @@ struct QueryHistoryItem: Identifiable, Codable, Hashable {
     }
 }
 
-struct QueryHistoryStorage {
+nonisolated struct QueryHistoryStorage {
     private static let maxEntries = 200
 
     private var fileURL: URL? {

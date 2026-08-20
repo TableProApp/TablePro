@@ -56,7 +56,7 @@ final class MainContentCommandActions {
     /// crosses that boundary; `NSWindow.firstResponder` publishes no change.
     var focusOwnsTextInput = false
 
-    @ObservationIgnored var textInputFocusObserver: NSObjectProtocol?
+    @ObservationIgnored let textInputFocusObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
 
     @ObservationIgnored var isTextInputFocusCheckScheduled = false
 
@@ -95,8 +95,8 @@ final class MainContentCommandActions {
         for task in notificationTasks {
             task.cancel()
         }
-        if let textInputFocusObserver {
-            NotificationCenter.default.removeObserver(textInputFocusObserver)
+        if let observer = textInputFocusObserver.withLockUnchecked({ $0 }) {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
@@ -332,8 +332,8 @@ final class MainContentCommandActions {
 
     var openContainerSwitcherTitle: String {
         containerSwitchTitle(
-            schema: String(localized: "Open Schema..."),
-            database: String(localized: "Open Database...")
+            schema: String(localized: "Open Schema…"),
+            database: String(localized: "Open Database…")
         )
     }
 
@@ -1172,6 +1172,25 @@ final class MainContentCommandActions {
 
     func unfoldAll() {
         EditorEventRouter.shared.performUnfoldAllForKeyWindow()
+    }
+
+    func goToPreviousStatement() {
+        EditorEventRouter.shared.moveCursorToStatementForKeyWindow(.previous)
+    }
+
+    func goToNextStatement() {
+        EditorEventRouter.shared.moveCursorToStatementForKeyWindow(.next)
+    }
+
+    /// Runs the statement the caret is in, then puts the caret on the next one.
+    ///
+    /// The caret moves first so the reader can see which statement is queued next while this one runs, and so a held
+    /// key steps through the script rather than running the same statement repeatedly. The editor resolves and runs
+    /// both halves itself, through the same callback the gutter control uses, so the statement can only ever reach the
+    /// connection whose editor it came from. That callback ends at `runStatement`, which refuses while the tab is
+    /// executing, so a held key cannot queue a second run.
+    func runStatementAndAdvance() {
+        EditorEventRouter.shared.runStatementAtCursorAndAdvanceForKeyWindow()
     }
 
     // MARK: - UI Operations (Group A — Called Directly)

@@ -14,14 +14,14 @@ The URL scheme drives the GUI, MCP exchanges data, and pairing bootstraps trust.
     `tablepro://` deep links open connections, tables, and queries in the GUI.
   </Card>
   <Card title="MCP server" icon="plug" href="/external-api/mcp-tools">
-    JSON-RPC tools and resources for AI clients. HTTP and stdio transports.
+    46 JSON-RPC tools, resources and prompts for AI clients, over stdio or local HTTP.
   </Card>
   <Card title="Pairing" icon="handshake" href="/external-api/pairing">
     One-click flow to issue a scoped token to an extension.
   </Card>
 </CardGroup>
 
-Two more surfaces build on these. TablePro also opens plain database URLs (`mysql://...`) handed to it by macOS, which is how the [Terminal and DDEV](/external-api/terminal) integration works. On iPhone and iPad, TablePro exposes App Intents for [iOS Shortcuts](/external-api/ios-shortcuts).
+Two more surfaces build on these. TablePro also opens plain database URLs (`mysql://…`) handed to it by macOS, which is how the [Terminal and DDEV](/external-api/terminal) integration works. On iPhone and iPad, TablePro exposes App Intents for [iOS Shortcuts](/external-api/ios-shortcuts).
 
 ## When to use which
 
@@ -32,14 +32,18 @@ Two more surfaces build on these. TablePro also opens plain database URLs (`mysq
 | Run a query and read rows back | MCP `execute_query` |
 | Browse schema for an AI model | MCP `list_tables`, `describe_table` |
 | Issue a token to a Raycast or Cursor extension | Pairing |
+| Read a table's rows with filters and paging | MCP `browse_table` |
+| Get a task written against the live schema | MCP prompts, such as `explain_table` or `review_query` |
 | Navigate to a tab the user already has open | MCP `list_recent_tabs` + `focus_query_tab` |
 | Insert rows from iPhone or iPad | [iOS Shortcuts](/external-api/ios-shortcuts) |
 
 ## Security model
 
-Every request must clear three independent gates: the connection's external access level (`blocked`, `readOnly` by default, or `readWrite`), the token's scope, and the connection's AI policy plus Safe Mode. The effective permission is the lower of token scope and connection access. See [Tokens](/external-api/tokens) for the full model.
+Every request clears the same gates: the connection's external access level (`blocked`, `readOnly` by default, or `readWrite`), the token's scope and connection allowlist, and the connection's AI policy plus Safe Mode. The effective permission is the lower of the token's scope and the connection's access. See [Tokens](/external-api/tokens) for the full model.
 
-Every request is recorded in the activity log. Open **Settings > Integrations** and click **View Activity** to inspect.
+The MCP server binds `127.0.0.1` only. An unauthenticated local caller is read-only and cannot be granted more.
+
+Every request is recorded in the activity log, with the token behind it. Statements are stored as a digest, not as text. Open **Settings > Integrations** and click **View Activity** to inspect.
 
 ## Quick start
 
@@ -60,8 +64,11 @@ The External API follows TablePro's semver. Paths and tools are additive within 
 - [URL Scheme](/external-api/url-scheme): every `tablepro://` action and parameter.
 - [Terminal and DDEV](/external-api/terminal): open databases and files from the shell, `ddev tablepro`, trusted links.
 - [iOS Shortcuts](/external-api/ios-shortcuts): App Intents for adding rows and opening connections.
-- [MCP Tools](/external-api/mcp-tools): JSON-RPC tool catalog with input and output schemas.
-- [MCP Resources](/external-api/mcp-resources): resources you can read.
+- [MCP Protocol](/external-api/mcp-protocol): protocol versions, required metadata, headers, and error codes.
+- [MCP Tools](/external-api/mcp-tools): the 46 tools with their arguments and result shapes.
+- [MCP Resources](/external-api/mcp-resources): resources you can read, and their URI templates.
+- [MCP Prompts](/external-api/mcp-prompts): the prompt catalog and `completion/complete`.
+- [MCP Subscriptions](/external-api/mcp-subscriptions): `subscriptions/listen` and the notification filter.
 - [Pairing](/external-api/pairing): sequence diagram and PKCE flow.
 - [Tokens](/external-api/tokens): scope model, allowlists, revocation.
 - [Raycast](/external-api/raycast): extension install and command list.

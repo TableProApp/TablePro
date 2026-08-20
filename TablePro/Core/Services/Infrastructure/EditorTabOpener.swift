@@ -11,7 +11,7 @@ import os
 /// connection is being created for it or has been open for hours.
 @MainActor
 internal enum EditorTabOpener {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "EditorTabOpener")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "EditorTabOpener")
 
     internal static func apply(
         _ payload: EditorTabPayload,

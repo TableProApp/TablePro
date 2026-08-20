@@ -100,7 +100,7 @@ internal final class ThemeEngine {
 
     // MARK: - Private
 
-    @ObservationIgnored private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEngine")
+    @ObservationIgnored nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEngine")
     @ObservationIgnored private var accessibilityObserver: NSObjectProtocol?
     @ObservationIgnored private var lastAccessibilityScale: CGFloat = 1.0
 

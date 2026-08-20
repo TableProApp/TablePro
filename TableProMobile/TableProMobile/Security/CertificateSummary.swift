@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-enum CertificateSummary {
+nonisolated enum CertificateSummary {
     static func subject(ofFirstCertificateIn pem: String) -> String? {
         guard let block = PEMDocument.inspect(pem).certificates.first,
               let der = der(from: block.text),

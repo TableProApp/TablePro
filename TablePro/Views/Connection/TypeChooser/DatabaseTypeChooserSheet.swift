@@ -105,7 +105,7 @@ struct DatabaseTypeChooserSheet: View {
                     onImportFromURL()
                     dismiss()
                 } label: {
-                    Label(String(localized: "Import from URL..."), systemImage: "link")
+                    Label(String(localized: "Import from URL…"), systemImage: "link")
                 }
                 .help(String(localized: "Paste a connection URL to detect type and pre-fill fields"))
             }

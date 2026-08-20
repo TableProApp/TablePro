@@ -43,7 +43,7 @@ internal protocol CommandLineToolInstalling {
 internal final class CommandLineToolInstaller: CommandLineToolInstalling {
     internal static let shared = CommandLineToolInstaller()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CommandLineToolInstaller")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CommandLineToolInstaller")
     private static let toolName = "tablepro"
     private static let marker = "# TablePro command line tool"
     private static let scriptContents = """

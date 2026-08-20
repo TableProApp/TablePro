@@ -105,9 +105,7 @@ extension MSSQLPluginDriver {
                 extra: isIdentity ? "IDENTITY" : nil
             )
         }
-        identityCacheLock.lock()
-        identityColumnsByTable[table] = identityColumns
-        identityCacheLock.unlock()
+        identityCacheLock.withLock { identityColumnsByTable[table] = identityColumns }
         return columns
     }
 

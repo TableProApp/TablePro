@@ -39,7 +39,7 @@ struct UndoResult {
 /// when multiple queries complete simultaneously (e.g., rapid sorting over SSH tunnel)
 @MainActor @Observable
 final class DataChangeManager: ChangeManaging {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DataChangeManager")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DataChangeManager")
 
     private(set) var pending = PendingChanges()
     var hasChanges: Bool = false

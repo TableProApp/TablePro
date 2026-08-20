@@ -23,7 +23,7 @@ internal protocol UserNotificationPresenting: AnyObject {
 internal final class SystemNotificationPresenter: UserNotificationPresenting {
     internal static let shared = SystemNotificationPresenter()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "Notifications")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "Notifications")
 
     private init() {}
 

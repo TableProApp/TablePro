@@ -2,7 +2,7 @@ import Foundation
 import TableProDatabase
 import TableProModels
 
-final class IOSDriverFactory: DriverFactory {
+nonisolated final class IOSDriverFactory: DriverFactory {
     private let bookmarkStore: FileBookmarkStore
     private let materializer: CertificateMaterializer
 

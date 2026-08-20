@@ -120,7 +120,7 @@ private class DatabaseSwitchBaseDriver {
     }
 }
 
-private final class DatabaseSwitchingDriver: DatabaseSwitchBaseDriver, PluginDatabaseDriver {
+private final class DatabaseSwitchingDriver: DatabaseSwitchBaseDriver, PluginDatabaseDriver, @unchecked Sendable {
     private(set) var switchedDatabases: [String] = []
     private var schema: String?
 

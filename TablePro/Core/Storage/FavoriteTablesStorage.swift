@@ -6,7 +6,7 @@ extension Notification.Name {
     static let favoriteTablesDidChange = Notification.Name("FavoriteTablesDidChange")
 }
 
-final class FavoriteTablesStorage {
+final class FavoriteTablesStorage: @unchecked Sendable {
     static let shared = FavoriteTablesStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "FavoriteTablesStorage")
 

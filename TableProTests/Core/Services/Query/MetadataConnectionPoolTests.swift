@@ -60,6 +60,69 @@ struct MetadataConnectionPoolTests {
         #expect(driver.currentSchema == nil)
     }
 
+    @Test("schema switch is skipped when the driver already reports that schema")
+    func switchSchemaSkipsRedundantStatement() async throws {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "APP_SCHEMA"
+
+        try await MetadataConnectionPool.switchSchema(driver, to: "APP_SCHEMA", timeoutSeconds: 1)
+
+        #expect(driver.switchSchemaCallCount == 0)
+    }
+
+    @Test("schema switch still runs when the driver is on another schema")
+    func switchSchemaRunsWhenSchemaDiffers() async throws {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "HR"
+
+        try await MetadataConnectionPool.switchSchema(driver, to: "APP_SCHEMA", timeoutSeconds: 1)
+
+        #expect(driver.switchSchemaCallCount == 1)
+        #expect(driver.currentSchema == "APP_SCHEMA")
+    }
+
+    @Test("a redundant schema switch cannot time out on a hanging driver")
+    func switchSchemaSkipsBeforeItCanHang() async throws {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "APP_SCHEMA"
+        driver.switchSchemaDelaySeconds = 5
+
+        try await MetadataConnectionPool.switchSchema(driver, to: "APP_SCHEMA", timeoutSeconds: 0.05)
+
+        #expect(driver.switchSchemaCallCount == 0)
+    }
+
+    @Test("session preparation fails with a connection error when a startup command hangs")
+    func prepareSessionTimesOut() async {
+        let driver = MockDatabaseDriver()
+        driver.executeDelaySeconds = 5
+
+        await #expect(throws: DatabaseError.self) {
+            try await MetadataConnectionPool.prepareSession(
+                driver,
+                queryTimeoutSeconds: 0,
+                startupCommands: "SELECT pg_advisory_lock(42)",
+                connectionName: "test",
+                timeoutSeconds: 0.05
+            )
+        }
+    }
+
+    @Test("session preparation applies the query timeout and passes through")
+    func prepareSessionPassesThrough() async throws {
+        let driver = MockDatabaseDriver()
+
+        try await MetadataConnectionPool.prepareSession(
+            driver,
+            queryTimeoutSeconds: 30,
+            startupCommands: nil,
+            connectionName: "test",
+            timeoutSeconds: 1
+        )
+
+        #expect(driver.applyQueryTimeoutValues == [30])
+    }
+
     @Test("database switch rejects a driver that cannot switch")
     func switchDatabaseRejectsUnsupportedDriver() async {
         let driver = MockDatabaseDriver()

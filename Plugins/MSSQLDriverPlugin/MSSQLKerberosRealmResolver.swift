@@ -1,5 +1,5 @@
 import Foundation
-import GSS
+@preconcurrency import GSS
 import TableProMSSQLCore
 
 /// Resolves the canonical SQL Server Kerberos service (host + realm) for a connection host.

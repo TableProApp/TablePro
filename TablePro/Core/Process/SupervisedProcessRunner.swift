@@ -10,7 +10,7 @@ struct SubprocessTermination: Sendable, Equatable {
     let wasRequested: Bool
 }
 
-protocol SupervisedProcessRunner: AnyObject {
+protocol SupervisedProcessRunner: AnyObject, Sendable {
     func start(binaryPath: String, arguments: [String], environment: [String: String]) throws
     func stop()
     var processIdentifier: Int32? { get }

@@ -631,12 +631,26 @@ struct TablePlusImporterTests {
     }
 }
 
-private final class KeychainSpy {
-    var calls: [(service: String, account: String)] = []
-    var responses: [String: KeychainReadResult] = [:]
+private final class KeychainSpy: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedCalls: [(service: String, account: String)] = []
+    private var storedResponses: [String: KeychainReadResult] = [:]
 
-    func read(_ service: String, _ account: String) -> KeychainReadResult {
-        calls.append((service: service, account: account))
-        return responses[account] ?? .notFound
+    var calls: [(service: String, account: String)] {
+        lock.withLock { recordedCalls }
+    }
+
+    var responses: [String: KeychainReadResult] {
+        get { lock.withLock { storedResponses } }
+        set { lock.withLock { storedResponses = newValue } }
+    }
+
+    var read: ForeignKeychainRead {
+        { [self] service, account in
+            lock.withLock {
+                recordedCalls.append((service: service, account: account))
+                return storedResponses[account] ?? .notFound
+            }
+        }
     }
 }

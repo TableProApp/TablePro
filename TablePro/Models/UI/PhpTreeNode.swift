@@ -31,7 +31,7 @@ internal enum PhpNodeType {
         case .serializable: return "ser"
         case .reference: return "ref"
         case .unsupported: return "?"
-        case .truncated: return "..."
+        case .truncated: return "…"
         }
     }
 
@@ -276,7 +276,7 @@ internal enum PhpTreeBuilder {
         let length = (escaped as NSString).length
         if length > 80 {
             let head = (escaped as NSString).substring(to: 80)
-            return "\"\(head)...\""
+            return "\"\(head)…\""
         }
         return "\"\(escaped)\""
     }
@@ -291,7 +291,7 @@ internal enum PhpTreeBuilder {
         let length = (payload as NSString).length
         if length > 80 {
             let head = (payload as NSString).substring(to: 80)
-            return "\(className) \(head)..."
+            return "\(className) \(head)…"
         }
         return "\(className) \(payload)"
     }

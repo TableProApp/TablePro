@@ -10,7 +10,7 @@ import TableProPluginKit
 
 @MainActor @Observable
 final class AIChatViewModel {
-    static let logger = Logger(subsystem: "com.TablePro", category: "AIChatViewModel")
+    nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "AIChatViewModel")
 
     enum StreamingState {
         case idle

@@ -21,7 +21,7 @@ struct LinkedFolder: Codable, Identifiable, Hashable {
     }
 }
 
-final class LinkedFolderStorage {
+final class LinkedFolderStorage: Sendable {
     static let shared = LinkedFolderStorage()
 
     private let store: CodableListPreferenceStore<LinkedFolder>

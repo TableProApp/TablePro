@@ -123,7 +123,7 @@ extension MainContentView {
                 case .bytes(let data):
                     raw = BlobFormattingService.shared.format(data, for: .copy) ?? ""
                 }
-                return (raw as NSString).length > 200 ? String(raw.prefix(200)) + "..." : raw
+                return (raw as NSString).length > 200 ? String(raw.prefix(200)) + "…" : raw
             }
             lines.append(values.joined(separator: " | "))
         }

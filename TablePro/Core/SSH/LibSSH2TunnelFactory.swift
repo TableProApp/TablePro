@@ -786,6 +786,13 @@ internal enum LibSSH2TunnelFactory {
         return channel
     }
 
+    /// The libssh2 handles the relay task takes ownership of. The relay is the only thing that
+    /// touches them once it starts, which is what the compiler cannot see through an OpaquePointer.
+    private struct RelayHandles: @unchecked Sendable {
+        let channel: OpaquePointer
+        let session: OpaquePointer
+    }
+
     /// Start a relay task that copies data between a channel and a socketpair fd.
     /// libssh2 calls use `sessionQueue.sync` for thread safety; I/O loop runs on a concurrent queue.
     private static func startChannelRelay(
@@ -799,6 +806,7 @@ internal enum LibSSH2TunnelFactory {
             label: "com.TablePro.ssh.hop-relay",
             qos: .utility
         )
+        let handles = RelayHandles(channel: channel, session: session)
         return Task.detached {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 relayQueue.async {
@@ -806,8 +814,8 @@ internal enum LibSSH2TunnelFactory {
                         localFD: socketFD,
                         transportFD: sshSocketFD,
                         channelIO: LibSSH2ChannelIO(
-                            channel: channel,
-                            session: session,
+                            channel: handles.channel,
+                            session: handles.session,
                             sessionQueue: sessionQueue
                         ),
                         bufferSize: 32_768,

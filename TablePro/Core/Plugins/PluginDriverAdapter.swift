@@ -73,11 +73,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "PluginDriverAdapter")
 
-    private static let iso8601Formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+    private static let iso8601Formatter = OSAllocatedUnfairLock(
+        uncheckedState: {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return formatter
+        }()
+    )
 
     static func cellValue(for parameter: Any?) -> PluginCellValue {
         guard let parameter else { return .null }
@@ -105,7 +107,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         case let f as any BinaryFloatingPoint:
             return NumberText.text(for: Double(f))
         case let d as Date:
-            return Self.iso8601Formatter.string(from: d)
+            return Self.iso8601Formatter.withLockUnchecked { $0.string(from: d) }
         case let data as Data:
             return data.hexEncoded
         case let uuid as UUID:

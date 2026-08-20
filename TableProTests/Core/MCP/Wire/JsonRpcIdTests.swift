@@ -58,4 +58,25 @@ final class JsonRpcIdTests: XCTestCase {
         let raw = Data("{}".utf8)
         XCTAssertThrowsError(try JSONDecoder().decode(JsonRpcId.self, from: raw))
     }
+
+    func testAsJsonValueMapsEachCase() {
+        XCTAssertEqual(JsonRpcId.string("abc").asJsonValue, .string("abc"))
+        XCTAssertEqual(JsonRpcId.number(42).asJsonValue, .int(42))
+        XCTAssertEqual(JsonRpcId.null.asJsonValue, .null)
+    }
+
+    func testAsJsonValueClampsOversizedNumbers() {
+        XCTAssertEqual(JsonRpcId.number(Int64(Int.max)).asJsonValue, .int(Int.max))
+        XCTAssertEqual(JsonRpcId.number(Int64(Int.min)).asJsonValue, .int(Int.min))
+    }
+
+    func testIdsHashAndCompareByCase() {
+        XCTAssertEqual(JsonRpcId.number(1), JsonRpcId.number(1))
+        XCTAssertNotEqual(JsonRpcId.number(1), JsonRpcId.string("1"))
+        XCTAssertEqual(Set([JsonRpcId.number(1), .number(1), .string("1")]).count, 2)
+    }
+
+    func testDecodeDoubleThrows() {
+        XCTAssertThrowsError(try JSONDecoder().decode(JsonRpcId.self, from: Data("1.5".utf8)))
+    }
 }

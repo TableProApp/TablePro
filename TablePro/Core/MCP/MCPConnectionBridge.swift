@@ -3,38 +3,50 @@ import os
 import TableProPluginKit
 
 public actor MCPConnectionBridge {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MCPConnectionBridge")
+    static let logger = Logger(subsystem: "com.TablePro", category: "MCPConnectionBridge")
 
     public init() {}
 
+    func listConnections(principal: MCPPrincipal) async -> JsonValue {
+        await listConnections(access: principal.connectionAccess)
+    }
+
     func listConnections() async -> JsonValue {
+        await listConnections(access: .all)
+    }
+
+    private func listConnections(access: ConnectionAccess) async -> JsonValue {
         let (connections, activeSessions) = await MainActor.run {
             let defaultPolicy = AppSettingsManager.shared.ai.defaultConnectionPolicy
             let conns = ConnectionStorage.shared.loadConnections()
                 .filter { $0.externalAccess != .blocked }
                 .filter { ($0.aiPolicy ?? defaultPolicy) != .never }
-            let sessions = DatabaseManager.shared.activeSessions
-            return (conns, sessions)
+                .filter { access.allows($0.id) }
+            return (conns, DatabaseManager.shared.activeSessions)
         }
 
-        let items: [JsonValue] = connections.map { conn in
-            let session = activeSessions[conn.id]
-            let isConnected = session?.status.isConnected ?? false
-            let policy = conn.aiPolicy ?? AIConnectionPolicy.askEachTime
-
-            return .object([
-                "id": .string(conn.id.uuidString),
-                "name": .string(conn.name),
-                "type": .string(conn.type.rawValue),
-                "host": .string(conn.host),
-                "port": .int(conn.port),
-                "database": .string(session?.resolvedBrowseDatabase ?? conn.database),
-                "username": .string(conn.username),
-                "is_connected": .bool(isConnected),
-                "ai_policy": .string(policy.rawValue),
-                "safe_mode": .string(conn.safeModeLevel.rawValue)
-            ])
-        }
+        let items: [JsonValue] = connections
+            .sorted { lhs, rhs in
+                lhs.name == rhs.name
+                    ? lhs.id.uuidString < rhs.id.uuidString
+                    : lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+            .map { conn in
+                let session = activeSessions[conn.id]
+                let policy = conn.aiPolicy ?? AIConnectionPolicy.askEachTime
+                return .object([
+                    "id": .string(conn.id.uuidString),
+                    "name": .string(conn.name),
+                    "type": .string(conn.type.rawValue),
+                    "host": .string(conn.host),
+                    "port": .int(conn.port),
+                    "database": .string(session?.resolvedBrowseDatabase ?? conn.database),
+                    "is_connected": .bool(session?.status.isConnected ?? false),
+                    "ai_policy": .string(policy.rawValue),
+                    "external_access": .string(conn.externalAccess.rawValue),
+                    "safe_mode": .string(conn.safeModeLevel.rawValue)
+                ])
+            }
 
         return .object(["connections": .array(items)])
     }
@@ -42,54 +54,41 @@ public actor MCPConnectionBridge {
     func connect(connectionId: UUID) async throws -> JsonValue {
         let connection = try await resolveConnection(connectionId)
 
-        let existingSession = await MainActor.run {
-            DatabaseManager.shared.activeSessions[connectionId]
+        let alreadyLive = await MainActor.run {
+            DatabaseManager.shared.activeSessions[connectionId]?.driver != nil
+        }
+        if !alreadyLive {
+            try await DatabaseManager.shared.ensureConnected(connection)
         }
 
-        if let existing = existingSession, existing.driver != nil {
-            let serverVersion = existing.driver?.serverVersion
-            let currentDatabase = existing.resolvedBrowseDatabase
-            let currentSchema = existing.browseSchema
-
-            var result: [String: JsonValue] = [
-                "status": "connected",
-                "current_database": .string(currentDatabase)
-            ]
-            if let version = serverVersion {
-                result["server_version"] = .string(version)
+        let snapshot = await MainActor.run { () -> (String?, String, String?)? in
+            guard let session = DatabaseManager.shared.activeSessions[connectionId],
+                  session.driver != nil
+            else {
+                return nil
             }
-            if let schema = currentSchema {
-                result["current_schema"] = .string(schema)
-            }
-            return .object(result)
+            return (session.driver?.serverVersion, session.resolvedBrowseDatabase, session.browseSchema)
         }
 
-        try await DatabaseManager.shared.ensureConnected(connection)
-
-        let (serverVersion, currentDatabase, currentSchema) = await MainActor.run {
-            let session = DatabaseManager.shared.activeSessions[connectionId]
-            return (
-                session?.driver?.serverVersion,
-                session?.resolvedBrowseDatabase,
-                session?.browseSchema
-            )
+        guard let snapshot else {
+            throw MCPDataLayerError.notConnected(connectionId)
         }
 
         var result: [String: JsonValue] = [
-            "status": "connected",
-            "current_database": .string(currentDatabase ?? "")
+            "status": .string("connected"),
+            "connection_id": .string(connectionId.uuidString),
+            "current_database": .string(snapshot.1)
         ]
-        if let version = serverVersion {
+        if let version = snapshot.0 {
             result["server_version"] = .string(version)
         }
-        if let schema = currentSchema {
+        if let schema = snapshot.2 {
             result["current_schema"] = .string(schema)
         }
-
         return .object(result)
     }
 
-    func disconnect(connectionId: UUID) async throws {
+    func disconnect(connectionId: UUID) async throws -> JsonValue {
         let sessionExists = await MainActor.run {
             DatabaseManager.shared.activeSessions[connectionId] != nil
         }
@@ -97,66 +96,68 @@ public actor MCPConnectionBridge {
             throw MCPDataLayerError.notConnected(connectionId)
         }
         await DatabaseManager.shared.disconnectSession(connectionId)
+        return .object([
+            "status": .string("disconnected"),
+            "connection_id": .string(connectionId.uuidString)
+        ])
+    }
+
+    struct ConnectionStatusSnapshot: Sendable {
+        let status: ConnectionStatus
+        let database: String
+        let schema: String?
+        let serverVersion: String?
+        let connectedAt: Date
+        let lastActiveAt: Date
     }
 
     func getConnectionStatus(connectionId: UUID) async throws -> JsonValue {
-        let core = await MainActor.run {
-            () -> (status: ConnectionStatus, database: String, schema: String?)? in
-            guard let session = DatabaseManager.shared.activeSessions[connectionId] else {
-                return nil
-            }
-            return (session.status, session.resolvedBrowseDatabase, session.browseSchema)
-        }
-
-        guard let core else {
-            throw MCPDataLayerError.notConnected(connectionId)
-        }
-
-        let meta = await MainActor.run {
-            () -> (version: String?, connectedAt: Date, lastActiveAt: Date) in
-            let session = DatabaseManager.shared.activeSessions[connectionId]
-            return (
-                session?.driver?.serverVersion,
-                session?.connectedAt ?? Date(),
-                session?.lastActiveAt ?? Date()
+        let snapshot = await MainActor.run { () -> ConnectionStatusSnapshot? in
+            guard let session = DatabaseManager.shared.activeSessions[connectionId] else { return nil }
+            return ConnectionStatusSnapshot(
+                status: session.status,
+                database: session.resolvedBrowseDatabase,
+                schema: session.browseSchema,
+                serverVersion: session.driver?.serverVersion,
+                connectedAt: session.connectedAt,
+                lastActiveAt: session.lastActiveAt
             )
+        }
+
+        guard let snapshot else {
+            throw MCPDataLayerError.notConnected(connectionId)
         }
 
         let statusString: String
         var errorDetail: JsonValue?
-        switch core.status {
+        switch snapshot.status {
         case .connected: statusString = "connected"
         case .connecting: statusString = "connecting"
         case .disconnected: statusString = "disconnected"
-        case .error(let msg):
+        case .error(let message):
             statusString = "error"
-            errorDetail = .object([
-                "message": .string(msg)
-            ])
+            errorDetail = .string(MCPErrorRedactor.redact(message))
         }
 
         var result: [String: JsonValue] = [
             "status": .string(statusString),
-            "current_database": .string(core.database),
-            "connected_at": .string(ISO8601DateFormatter().string(from: meta.connectedAt)),
-            "last_active_at": .string(ISO8601DateFormatter().string(from: meta.lastActiveAt))
+            "connection_id": .string(connectionId.uuidString),
+            "current_database": .string(snapshot.database),
+            "connected_at": .string(Self.iso8601.withLockUnchecked { $0.string(from: snapshot.connectedAt) }),
+            "last_active_at": .string(Self.iso8601.withLockUnchecked { $0.string(from: snapshot.lastActiveAt) })
         ]
-        if let schema = core.schema {
+        if let schema = snapshot.schema {
             result["current_schema"] = .string(schema)
         }
-        if let version = meta.version {
+        if let version = snapshot.serverVersion {
             result["server_version"] = .string(version)
         }
         if let errorDetail {
             result["error"] = errorDetail
         }
-
         return .object(result)
     }
 
-    /// The scope a tool operates on. A tool that names a database gets that database; one
-    /// that does not gets the connection's browse scope. Neither moves the user's cursor:
-    /// only `switch_database` does that.
     func resolveScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
         try await ensureConnected(connectionId)
         return try await MainActor.run {
@@ -166,35 +167,88 @@ public actor MCPConnectionBridge {
                 for: connectionId
             ) else {
                 throw MCPDataLayerError.invalidArgument(
-                    "No database to run against. Pass a database name."
+                    String(localized: "No database to run against. Pass a database name.")
                 )
             }
             return scope
         }
     }
 
+    func switchDatabase(connectionId: UUID, database: String) async throws -> JsonValue {
+        try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId)
+        return .object([
+            "status": .string("switched"),
+            "connection_id": .string(connectionId.uuidString),
+            "current_database": .string(database)
+        ])
+    }
+
+    func switchSchema(connectionId: UUID, schema: String) async throws -> JsonValue {
+        try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
+        return .object([
+            "status": .string("switched"),
+            "connection_id": .string(connectionId.uuidString),
+            "current_schema": .string(schema)
+        ])
+    }
+
     func executeQuery(
         scope: DatabaseScope,
         query: String,
         maxRows: Int,
-        timeoutSeconds: Int
+        timeoutSeconds: Int,
+        cancellation: MCPCancellationToken?
     ) async throws -> JsonValue {
+        let outcome = try await runStatement(
+            scope: scope,
+            query: query,
+            maxRows: maxRows,
+            timeoutSeconds: timeoutSeconds,
+            cancellation: cancellation
+        )
+        return Self.encode(
+            result: outcome.result,
+            scope: scope,
+            executionTimeMs: outcome.executionTimeMs
+        )
+    }
+
+    func runStatement(
+        scope: DatabaseScope,
+        query: String,
+        maxRows: Int,
+        timeoutSeconds: Int,
+        cancellation: MCPCancellationToken?
+    ) async throws -> (result: QueryResult, executionTimeMs: Double) {
         let databaseType = try await ensureConnected(scope.connectionId)
         let normalizedQuery = Self.stripTrailingSemicolons(query)
-        let isWrite = QueryClassifier.isWriteQuery(normalizedQuery, databaseType: databaseType)
-        let hasReturning = normalizedQuery.range(of: #"\bRETURNING\b"#, options: [.regularExpression, .caseInsensitive]) != nil
-        let shouldCap = !isWrite || hasReturning
+        let classification = QueryClassifier.classify(normalizedQuery, databaseType: databaseType)
+        let hasReturning = normalizedQuery.range(
+            of: #"\bRETURNING\b"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+        let shouldCap = classification.tier == .safe || hasReturning
+        let connectionId = scope.connectionId
+        let policy: DriverCancellationPolicy = classification.tier == .safe ? .cancellableRead : .protectedWrite
 
-        let startTime = CFAbsoluteTimeGetCurrent()
+        if let cancellation {
+            await cancellation.onCancel { _ in
+                await MainActor.run {
+                    try? DatabaseManager.shared.cancelRunningQuery(for: connectionId, reach: .userStop)
+                }
+            }
+        }
 
         let route = await MainActor.run { DatabaseManager.shared.executionRoute(for: scope) }
-        let result: QueryResult = try await DatabaseManager.shared.withScopedDriver(
-            scope: scope,
-            route: route,
-            cancellation: .untracked
-        ) { driver in
-            try await withThrowingTaskGroup(of: QueryResult.self) { group in
-                group.addTask {
+        let startTime = CFAbsoluteTimeGetCurrent()
+
+        let result = try await withThrowingTaskGroup(of: QueryResult.self) { group in
+            group.addTask {
+                try await DatabaseManager.shared.withScopedDriver(
+                    scope: scope,
+                    route: route,
+                    cancellation: policy
+                ) { driver in
                     if shouldCap {
                         return try await driver.executeUserQuery(
                             query: normalizedQuery,
@@ -204,287 +258,59 @@ public actor MCPConnectionBridge {
                     }
                     return try await driver.execute(query: normalizedQuery)
                 }
-                group.addTask {
-                    try await Task.sleep(for: .seconds(timeoutSeconds))
-                    try? driver.cancelQuery()
-                    throw MCPDataLayerError.timeout("Query timed out after \(timeoutSeconds) seconds")
-                }
-                guard let first = try await group.next() else {
-                    throw MCPDataLayerError.dataSourceError("No result from query execution")
-                }
-                group.cancelAll()
-                return first
             }
-        }
-
-        let executionTimeMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1_000
-        let isTruncated = result.isTruncated
-
-        let jsonColumns: [JsonValue] = result.columns.map { .string($0) }
-        let jsonRows: [JsonValue] = result.rows.map { row in
-            .array(row.map { cell in
-                switch cell {
-                case .null: return .null
-                case .text(let s): return .string(s)
-                case .bytes(let d): return .string(d.base64EncodedString())
+            group.addTask {
+                try await Task.sleep(for: .seconds(timeoutSeconds))
+                await MainActor.run {
+                    try? DatabaseManager.shared.cancelRunningQuery(for: connectionId, reach: .userStop)
                 }
-            })
+                throw MCPDataLayerError.timeout(
+                    String(
+                        format: String(localized: "Query timed out after %d seconds"),
+                        timeoutSeconds
+                    )
+                )
+            }
+            guard let first = try await group.next() else {
+                throw MCPDataLayerError.dataSourceError("No result from query execution")
+            }
+            group.cancelAll()
+            return first
         }
 
+        return (result, (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
+    }
+
+    static func encode(result: QueryResult, scope: DatabaseScope, executionTimeMs: Double) -> JsonValue {
         var response: [String: JsonValue] = [
-            "columns": .array(jsonColumns),
-            "rows": .array(jsonRows),
+            "columns": .array(result.columns.map { .string($0) }),
+            "rows": .array(result.rows.map { row in .array(row.map(cellValue)) }),
             "row_count": .int(result.rows.count),
             "rows_affected": .int(result.rowsAffected),
             "execution_time_ms": .double(executionTimeMs),
-            "is_truncated": .bool(isTruncated)
+            "is_truncated": .bool(result.isTruncated),
+            "database": .string(scope.database)
         ]
+        if let schema = scope.schema {
+            response["schema"] = .string(schema)
+        }
         if let statusMessage = result.statusMessage {
             response["status_message"] = .string(statusMessage)
         }
-
         return .object(response)
     }
 
-    func listTables(scope: DatabaseScope, includeRowCounts: Bool) async throws -> JsonValue {
-        try await ensureConnected(scope.connectionId)
-
-        let cachedTables = await MainActor.run { () -> [TableInfo] in
-            guard DatabaseManager.shared.browseScope(for: scope.connectionId) == scope else { return [] }
-            return SchemaService.shared.tables(for: scope.connectionId)
-        }
-
-        let tables: [TableInfo]
-        if !cachedTables.isEmpty {
-            tables = cachedTables
-        } else {
-            tables = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.fetchTables()
-            }
-        }
-
-        let jsonTables: [JsonValue] = tables.map { table in
-            var obj: [String: JsonValue] = [
-                "name": .string(table.name),
-                "type": .string(table.type.rawValue)
-            ]
-            if includeRowCounts, let rowCount = table.rowCount {
-                obj["row_count"] = .int(rowCount)
-            }
-            return .object(obj)
-        }
-
-        return .object(["tables": .array(jsonTables)])
-    }
-
-    func describeTable(scope: DatabaseScope, table: String) async throws -> JsonValue {
-        try await ensureConnected(scope.connectionId)
-
-        return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            let columns = try await driver.fetchColumns(table: table, schema: scope.schema)
-            let indexes = try await driver.fetchIndexes(table: table)
-            let foreignKeys = try await driver.fetchForeignKeys(table: table)
-            let approxRowCount = try await driver.fetchApproximateRowCount(table: table)
-            let ddl = try? await driver.fetchTableDDL(table: table)
-
-            let jsonColumns: [JsonValue] = columns.map { col in
-                var obj: [String: JsonValue] = [
-                    "name": .string(col.name),
-                    "data_type": .string(col.dataType),
-                    "is_nullable": .bool(col.isNullable),
-                    "is_primary_key": .bool(col.isPrimaryKey)
-                ]
-                if let def = col.defaultValue { obj["default_value"] = .string(def) }
-                if let extra = col.extra { obj["extra"] = .string(extra) }
-                if let comment = col.comment, !comment.isEmpty { obj["comment"] = .string(comment) }
-                return .object(obj)
-            }
-
-            let jsonIndexes: [JsonValue] = indexes.map { idx in
-                .object([
-                    "name": .string(idx.name),
-                    "columns": .array(idx.columns.map { .string($0) }),
-                    "is_unique": .bool(idx.isUnique),
-                    "is_primary": .bool(idx.isPrimary),
-                    "type": .string(idx.type)
-                ])
-            }
-
-            let jsonFKs: [JsonValue] = foreignKeys.map { fk in
-                var obj: [String: JsonValue] = [
-                    "name": .string(fk.name),
-                    "column": .string(fk.column),
-                    "referenced_table": .string(fk.referencedTable),
-                    "referenced_column": .string(fk.referencedColumn),
-                    "on_delete": .string(fk.onDelete),
-                    "on_update": .string(fk.onUpdate)
-                ]
-                if let refSchema = fk.referencedSchema {
-                    obj["referenced_schema"] = .string(refSchema)
-                }
-                return .object(obj)
-            }
-
-            var result: [String: JsonValue] = [
-                "columns": .array(jsonColumns),
-                "indexes": .array(jsonIndexes),
-                "foreign_keys": .array(jsonFKs)
-            ]
-            if let ddl {
-                result["ddl"] = .string(ddl)
-            }
-            if let count = approxRowCount {
-                result["approximate_row_count"] = .int(count)
-            }
-
-            return .object(result)
+    static func cellValue(_ cell: PluginCellValue) -> JsonValue {
+        switch cell {
+        case .null: return .null
+        case .text(let value): return .string(value)
+        case .bytes(let data): return .string(data.base64EncodedString())
         }
     }
 
-    func listDatabases(connectionId: UUID) async throws -> JsonValue {
-        let (driver, _) = try await resolveDriver(connectionId)
-        let databases = try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
-            try await driver.fetchDatabases()
-        }
-        return .object(["databases": .array(databases.map { .string($0) })])
-    }
+    static let iso8601 = OSAllocatedUnfairLock(uncheckedState: ISO8601DateFormatter())
 
-    func listSchemas(scope: DatabaseScope) async throws -> JsonValue {
-        try await ensureConnected(scope.connectionId)
-        let schemas = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            try await driver.fetchSchemas()
-        }
-        return .object(["schemas": .array(schemas.map { .string($0) })])
-    }
-
-    func getTableDDL(scope: DatabaseScope, table: String) async throws -> JsonValue {
-        try await ensureConnected(scope.connectionId)
-        let ddl = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            try await driver.fetchTableDDL(table: table)
-        }
-        return .object(["ddl": .string(ddl)])
-    }
-
-    func switchDatabase(connectionId: UUID, database: String) async throws -> JsonValue {
-        try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId)
-        return .object([
-            "status": "switched",
-            "current_database": .string(database)
-        ])
-    }
-
-    func switchSchema(connectionId: UUID, schema: String) async throws -> JsonValue {
-        try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
-        return .object([
-            "status": "switched",
-            "current_schema": .string(schema)
-        ])
-    }
-
-    /// A resource URI names no database, so the schema resource reports the connection's
-    /// browse scope. Reading it off the shared driver instead would report whichever
-    /// database a tab last executed against.
-    func fetchSchemaResource(connectionId: UUID) async throws -> JsonValue {
-        try await ensureConnected(connectionId)
-
-        let cachedTables = await MainActor.run {
-            SchemaService.shared.tables(for: connectionId)
-        }
-
-        let tables: [TableInfo]
-        if !cachedTables.isEmpty {
-            tables = cachedTables
-        } else {
-            tables = try await DatabaseManager.shared.withBrowseMetadataDriver(
-                connectionId: connectionId,
-                workload: .bulk
-            ) { driver in
-                try await driver.fetchTables()
-            }
-        }
-
-        let limitedTables = Array(tables.prefix(100))
-
-        let tableSchemas: [JsonValue] = try await DatabaseManager.shared.withBrowseMetadataDriver(
-            connectionId: connectionId,
-            workload: .bulk
-        ) { driver in
-            var schemas: [JsonValue] = []
-            for table in limitedTables {
-                let columns = try await driver.fetchColumns(table: table.name)
-                let jsonCols: [JsonValue] = columns.map { col in
-                    .object([
-                        "name": .string(col.name),
-                        "data_type": .string(col.dataType),
-                        "is_nullable": .bool(col.isNullable),
-                        "is_primary_key": .bool(col.isPrimaryKey)
-                    ])
-                }
-                schemas.append(.object([
-                    "name": .string(table.name),
-                    "type": .string(table.type.rawValue),
-                    "columns": .array(jsonCols)
-                ]))
-            }
-            return schemas
-        }
-
-        var result: [String: JsonValue] = ["tables": .array(tableSchemas)]
-        if tables.count > 100 {
-            result["truncated"] = .bool(true)
-            result["total_tables"] = .int(tables.count)
-        }
-
-        return .object(result)
-    }
-
-    func fetchHistoryResource(
-        connectionId: UUID,
-        limit: Int,
-        search: String?,
-        dateFilter: String?
-    ) async throws -> JsonValue {
-        let calendar = Calendar.current
-        let now = Date()
-        let since: Date?
-        switch dateFilter {
-        case "today": since = calendar.startOfDay(for: now)
-        case "thisWeek": since = calendar.date(byAdding: .day, value: -7, to: now)
-        case "thisMonth": since = calendar.date(byAdding: .day, value: -30, to: now)
-        default: since = nil
-        }
-
-        let page = await QueryHistoryManager.shared.fetch(
-            QueryHistoryFilter(scope: .connection(connectionId), searchText: search, since: since),
-            limit: limit
-        )
-
-        let jsonEntries: [JsonValue] = page.entries.map { entry in
-            var obj: [String: JsonValue] = [
-                "id": .string(entry.id.uuidString),
-                "query": .string(entry.query),
-                "database_name": .string(entry.databaseName),
-                "database_type": .string(entry.databaseType.rawValue),
-                "source": .string(entry.source.rawValue),
-                "statement_type": .string(entry.statementType.rawValue),
-                "executed_at": .string(ISO8601DateFormatter().string(from: entry.executedAt)),
-                "execution_time_ms": .double(entry.executionTime * 1_000),
-                "row_count": .int(entry.rowCount),
-                "was_successful": .bool(entry.wasSuccessful)
-            ]
-            if let schemaName = entry.schemaName {
-                obj["schema_name"] = .string(schemaName)
-            }
-            if let errorMsg = entry.errorMessage {
-                obj["error_message"] = .string(errorMsg)
-            }
-            return .object(obj)
-        }
-
-        return .object(["history": .array(jsonEntries)])
-    }
-
-    private func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
+    func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
         let pending: DatabaseConnection? = await MainActor.run {
             switch DatabaseManager.shared.connectionState(connectionId) {
             case .live: return nil
@@ -493,7 +319,7 @@ public actor MCPConnectionBridge {
             }
         }
         if let pending {
-            try await connectIfNeeded(pending)
+            try await DatabaseManager.shared.ensureConnected(pending)
         }
         return try await MainActor.run {
             switch DatabaseManager.shared.connectionState(connectionId) {
@@ -506,29 +332,18 @@ public actor MCPConnectionBridge {
     }
 
     @discardableResult
-    private func ensureConnected(_ connectionId: UUID) async throws -> DatabaseType {
+    func ensureConnected(_ connectionId: UUID) async throws -> DatabaseType {
         let (_, databaseType) = try await resolveDriver(connectionId)
         return databaseType
     }
 
-    private func connectIfNeeded(_ connection: DatabaseConnection) async throws {
-        try await DatabaseManager.shared.ensureConnected(connection)
-    }
-
-    private func resolveSession(_ connectionId: UUID) async throws -> ConnectionSession {
-        try await MainActor.run {
-            guard let session = DatabaseManager.shared.activeSessions[connectionId] else {
-                throw MCPDataLayerError.notConnected(connectionId)
-            }
-            return session
-        }
-    }
-
-    private func resolveConnection(_ connectionId: UUID) async throws -> DatabaseConnection {
+    func resolveConnection(_ connectionId: UUID) async throws -> DatabaseConnection {
         try await MainActor.run {
             let connections = ConnectionStorage.shared.loadConnections()
             guard let connection = connections.first(where: { $0.id == connectionId }) else {
-                throw MCPDataLayerError.invalidArgument("Connection not found: \(connectionId)")
+                throw MCPDataLayerError.notFound(
+                    String(localized: "No saved connection has that id.")
+                )
             }
             return connection
         }

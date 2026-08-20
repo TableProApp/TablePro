@@ -1,12 +1,12 @@
 import Foundation
 
-enum CertificateRequirement: String, Equatable, Sendable {
+nonisolated enum CertificateRequirement: String, Equatable, Sendable {
     case certificateAuthority
     case clientCertificate
     case clientKey
 }
 
-enum CertificatePreflightError: Error, LocalizedError, Equatable {
+nonisolated enum CertificatePreflightError: Error, LocalizedError, Equatable {
     case fileMissing(CertificateRequirement)
     case clientCertificateWithoutKey
     case clientKeyWithoutCertificate
@@ -27,7 +27,7 @@ enum CertificatePreflightError: Error, LocalizedError, Equatable {
     }
 }
 
-enum CertificatePreflight {
+nonisolated enum CertificatePreflight {
     static func validate(_ ssl: DriverSSLConfiguration) throws {
         guard ssl.isEnabled else { return }
 

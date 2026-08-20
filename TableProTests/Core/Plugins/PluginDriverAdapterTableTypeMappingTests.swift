@@ -8,7 +8,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class StubTableTypeDriver: PluginDatabaseDriver {
+private final class StubTableTypeDriver: PluginDatabaseDriver, @unchecked Sendable {
     var stubbedSupportsSchemas = false
     var stubbedCurrentSchema: String?
 

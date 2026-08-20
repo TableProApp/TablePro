@@ -1,0 +1,336 @@
+---
+title: MCP Protocol
+description: Wire contract for TablePro's MCP server: protocol versions, required metadata, headers, result envelope, cache hints, and error codes
+---
+
+TablePro's MCP server speaks [Model Context Protocol](https://modelcontextprotocol.io) revision **2026-07-28**, and still answers two older revisions for clients that have not moved yet. This page is the wire contract. For the tools themselves see [MCP Tools](/external-api/mcp-tools).
+
+Most people never read this page. The bundled `tablepro-mcp` stdio bridge speaks it for you, and every client in [MCP Clients](/external-api/mcp-clients) goes through the bridge. Read on if you are writing a client that talks to the HTTP endpoint directly.
+
+## Endpoint
+
+One path, one method:
+
+```
+POST http://127.0.0.1:<port>/mcp
+```
+
+The server binds `127.0.0.1` and speaks plain HTTP. The specification permits that for a server on the same machine, and there is no remote mode. `GET` and `DELETE` on `/mcp` answer `405 Method Not Allowed` with `Allow: POST, OPTIONS`. `OPTIONS` answers `204` for CORS preflight. Any other path answers `404`.
+
+The `Host` header must name a loopback host (`localhost`, `127.0.0.1`, `::1`) and, if it carries a port, the port the server bound. Anything else answers `403 forbidden_host`.
+
+`Origin`, when present, must be `https://claude.ai` or `https://app.cursor.com`. Any other origin answers `403 forbidden_origin`. A request with no `Origin` is fine, which is the normal case for a local client.
+
+The port comes from the handshake file at `~/Library/Application Support/TablePro/mcp-handshake.json`. Do not hardcode it.
+
+## Protocol versions
+
+| Version | Era | Notes |
+|---------|-----|-------|
+| `2026-07-28` | modern | The one to build against. Stateless. |
+| `2025-11-25` | legacy | `initialize` handshake, `Mcp-Session-Id`. |
+| `2025-06-18` | legacy | Same as above. |
+
+`2025-03-26` is no longer accepted. It requires JSON-RPC batching, which TablePro never implemented.
+
+The list lives in `TablePro/Core/MCP/Meta/MCPProtocolVersion.swift` and is served by `server/discover`. Read it from there rather than copying it into your client.
+
+An unsupported version comes back as error `-32022` with the supported list in `data.supported`.
+
+## Every request carries its version
+
+There is no handshake in the modern era. No `initialize`, no `Mcp-Session-Id`, no `ping`, no `GET` stream, no SSE resumability. Each POST stands on its own, so it has to say who is calling and what it speaks. Two `_meta` fields are required on every request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": {
+    "_meta": {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientCapabilities": {},
+      "io.modelcontextprotocol/clientInfo": { "name": "my-client", "version": "1.0.0" }
+    }
+  }
+}
+```
+
+- `io.modelcontextprotocol/protocolVersion` (**required**): a supported version string. Missing or empty is `-32602`; unsupported is `-32022`.
+- `io.modelcontextprotocol/clientCapabilities` (**required**): a JSON object. `{}` is valid and means you support nothing extra. A non-object is `-32602`.
+- `io.modelcontextprotocol/clientInfo` (optional): `name`, `title`, `version`. It names your client in the activity log and in **Connected Clients**.
+- `progressToken` (optional): string or integer. See [Progress](#progress).
+- `traceparent`, `tracestate`, `baggage` (optional): W3C trace context, carried through untouched.
+
+Declaring `elicitation` in `clientCapabilities` changes how TablePro asks for approval of a write. See [Approvals](#approvals-and-input-required).
+
+## Required headers
+
+The modern era mirrors part of the body into headers so a proxy can route and audit without parsing JSON. TablePro checks that the copies agree, and rejects any disagreement with `-32020`.
+
+| Header | When | Must equal |
+|--------|------|-----------|
+| `Content-Type` | always | `application/json` (or any `+json` type) |
+| `MCP-Protocol-Version` | always | `params._meta.io.modelcontextprotocol/protocolVersion` |
+| `Mcp-Method` | always | the JSON-RPC `method` |
+| `Mcp-Name` | `tools/call`, `prompts/get` | `params.name` |
+| `Mcp-Name` | `resources/read` | `params.uri` |
+| `Mcp-Param-<field>` | optional | the matching value in the body |
+| `Authorization` | when authentication is on | `Bearer <token>` |
+
+`Mcp-Param-<field>` is opt-in. Send it and it is validated; omit it and nothing happens. The name after the prefix is matched case-insensitively against the arguments object for `tools/call`, and against `params` for everything else, descending into nested objects. Values compare as text against strings, numerically against numbers, and as `true`/`false` against booleans. An array or object value never matches.
+
+### Non-ASCII header values
+
+HTTP headers are ASCII. A table name with an accent, or a value with a leading space, is wrapped:
+
+```
+Mcp-Name: =?base64?Y2Fmw6k=?=
+```
+
+The payload between `=?base64?` and `?=` is standard base64 of the UTF-8 bytes. TablePro decodes the wrapper before comparing to the body. Wrap only when you have to: a value that is already printable ASCII with no leading or trailing space should be sent as is. The rule is implemented in `MCPBase64Sentinel.encodeIfNeeded`.
+
+A malformed wrapper, or a header carrying a control character, is `-32020`.
+
+## Methods
+
+| Method | Scope | Era |
+|--------|-------|-----|
+| `server/discover` | none | modern only |
+| `tools/list` | `tools:read` | both |
+| `tools/call` | `tools:read` plus the tool's own | both |
+| `resources/list` | `resources:read` | both |
+| `resources/read` | `resources:read` | both |
+| `resources/templates/list` | `resources:read` | both |
+| `prompts/list` | `resources:read` | both |
+| `prompts/get` | `resources:read` | both |
+| `completion/complete` | `resources:read` | both |
+| `subscriptions/listen` | none | modern only |
+| `initialize` | none | legacy only |
+| `ping` | none | legacy |
+| `logging/setLevel` | none | legacy |
+
+An unknown method answers HTTP `404` with JSON-RPC `-32601`. A method that exists but is modern-only answers the same way to a legacy client.
+
+`notifications/cancelled` is the only notification the server acts on. Every other notification is accepted with `202` and dropped.
+
+### `server/discover`
+
+Replaces `initialize` for stateless clients. It takes no parameters beyond `_meta` and needs no scope, so it is the first call a client should make.
+
+```json
+{
+  "supportedVersions": ["2026-07-28", "2025-11-25", "2025-06-18"],
+  "capabilities": {
+    "tools": { "listChanged": false },
+    "resources": { "subscribe": true, "listChanged": true },
+    "prompts": { "listChanged": false },
+    "completions": {},
+    "extensions": {}
+  },
+  "instructions": "TablePro is a native macOS database client...",
+  "resultType": "complete",
+  "ttlMs": 3600000,
+  "cacheScope": "public",
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "tablepro",
+      "title": "TablePro",
+      "version": "0.68.0",
+      "websiteUrl": "https://tablepro.app"
+    }
+  }
+}
+```
+
+`instructions` is the same text a legacy `initialize` returns. It tells the model to start from `list_connections`, to call `describe_table` before writing SQL, and to treat a refusal as the user's policy rather than a transient error.
+
+The stdio bridge calls `server/discover` before it forwards anything, and refuses to start if the server does not list `2026-07-28`.
+
+## Result envelope
+
+Every modern result carries `resultType`:
+
+- `"complete"`: the normal case. The payload is the answer.
+- `"input_required"`: the server needs the user to approve something. See [Approvals](#approvals-and-input-required).
+
+Only `tools/call`, `resources/read` and `prompts/get` may return `input_required`.
+
+Modern results also carry `_meta.io.modelcontextprotocol/serverInfo`. Legacy results carry neither field.
+
+### Cache hints
+
+Six methods return `ttlMs` and `cacheScope` so a client can cache without guessing:
+
+| Method | `ttlMs` | `cacheScope` |
+|--------|---------|--------------|
+| `server/discover` | 3600000 | `public` |
+| `prompts/list` | 3600000 | `public` |
+| `resources/templates/list` | 3600000 | `public` |
+| `tools/list` | 300000 | `private` |
+| `resources/list` | 30000 | `private` |
+| `resources/read` | varies, see below | `private` |
+
+`resources/read` sets the TTL from the URI: 5s for history, 15s for the connections list, 60s for schema, table and database listings, 300s for a DDL read.
+
+`public` means the answer does not depend on the token. `private` means it does: `tools/list` is filtered by the token's scopes, and a resource read is filtered by its connection allowlist. A `ttlMs` of `0` means do not cache.
+
+No other method carries a cache hint, and a result that carries one from a method that may not is stripped before it goes out.
+
+## Pagination
+
+`tools/list`, `prompts/list`, `resources/list` and `resources/templates/list` page at 50 items. When more remain, the result carries `nextCursor`; pass it back as `params.cursor` for the next page.
+
+A cursor is opaque and bound to the method that issued it. Handing a `tools/list` cursor to `prompts/list` is `-32602`.
+
+## Progress
+
+Send `_meta.progressToken` on a request and the server streams `notifications/progress` back **on that request's own response stream**. The response switches to `text/event-stream`, the progress notifications arrive as SSE frames, and the final JSON-RPC response is the last frame. There is no separate `GET` stream to open, and no notification ever arrives out of band.
+
+```
+event: message
+data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"t1","progress":0.3,"total":1.0,"message":"Executing"}}
+
+event: message
+data: {"jsonrpc":"2.0","id":1,"result":{...}}
+```
+
+`progress` must advance; an update that does not move forward is dropped. `execute_query` reports at 0.0, 0.3 and 1.0.
+
+## Cancellation
+
+Send `notifications/cancelled` with the `requestId` of a request that is still running:
+
+```json
+{ "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "requestId": 7, "reason": "user aborted" } }
+```
+
+The notification is answered with `202` whether or not anything matched. The cancelled request finishes with `-33002`.
+
+Cancellation is per principal: a token can only cancel its own requests. Revoking a token cancels everything it has in flight.
+
+The server also cancels for you. Every handler has a 330-second deadline (`subscriptions/listen` is exempt), and the server polls for a dropped connection once a second, so a client that walks away does not leave a query running.
+
+## Approvals and input required
+
+A statement that writes needs the user's consent. Where that consent is collected depends on what your client declared in `clientCapabilities`.
+
+**Without `elicitation`**: TablePro shows its own confirmation dialog on the user's Mac and the call blocks until they answer.
+
+**With `elicitation`**: the call returns `resultType: "input_required"` instead:
+
+```json
+{
+  "resultType": "input_required",
+  "inputRequests": {
+    "approve_statement": {
+      "method": "elicitation/create",
+      "params": {
+        "mode": "form",
+        "message": "Allow a destructive statement on 'Production'?",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {
+            "approved": { "type": "boolean", "title": "Approve", "description": "DROP TABLE staging_users" }
+          },
+          "required": ["approved"]
+        }
+      }
+    }
+  },
+  "requestState": "..."
+}
+```
+
+Present the form, then repeat the **same** call with the answer and the state echoed back:
+
+```json
+{
+  "name": "confirm_destructive_operation",
+  "arguments": { "connection_id": "...", "query": "DROP TABLE staging_users" },
+  "requestState": "<the string you were given>",
+  "inputResponses": {
+    "approve_statement": { "action": "accept", "content": { "approved": true } }
+  }
+}
+```
+
+`requestState` is signed and bound to the token, the method, and a digest of the parameters. Change any argument between the two calls and it is rejected with `-32602`. It expires after 5 minutes. An `action` other than `accept`, or `approved: false`, fails the call with a `denied` tool error.
+
+A call that carries `inputResponses` or `requestState` is never cached, whatever the method's normal hint says.
+
+## Errors
+
+TablePro's own error codes live in `-33000` and above. The `-32000` block is frozen by the specification and TablePro no longer uses it. The three codes in `-32020` and below are defined by the specification itself.
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `-32700` | 400 | Parse error. The body is not JSON. |
+| `-32600` | 400 | Invalid request. Bad envelope, or a JSON-RPC response sent to the server. |
+| `-32601` | 404 | Method not found. |
+| `-32602` | 400 | Invalid params. Also unknown tool, unknown prompt, unknown resource URI, bad cursor, bad `requestState`. |
+| `-32603` | 500 | Internal error. |
+| `-32020` | 400 | Header mismatch. A required header is missing, malformed, or disagrees with the body. |
+| `-32021` | 400 | Missing required client capability. `data.requiredCapabilities` names it. |
+| `-32022` | 400 | Unsupported protocol version. `data.supported` lists what is accepted. |
+| `-33000` | 503 | Server error. Service unavailable. |
+| `-33001` | 404 | Session not found. Legacy sessions only. |
+| `-33002` | 200 | Request cancelled. |
+| `-33003` | 200 | Request timeout. The statement or the handler deadline ran out. |
+| `-33005` | 413 | Payload too large. The body cap is 10 MB. |
+| `-33006` | 503 | Server disabled. |
+| `-33007` | 403 | Forbidden. Token scope, connection allowlist, AI policy, or external access rejected the call. |
+| `-33008` | 401 | Token expired. |
+| `-33009` | 401 | Unauthenticated. No token, or an unknown or revoked one. |
+| `-33010` | 429 | Rate limited. Carries `Retry-After`. |
+
+Resource-not-found is `-32602`, not a code of its own. An unknown method is HTTP `404`.
+
+`401` responses carry a `WWW-Authenticate` challenge: `Bearer realm="TablePro"` for a missing token, `Bearer error="invalid_token"` for an unknown or revoked one, and `error_description="token expired"` when it expired. A `403` from a scope check carries `Bearer error="insufficient_scope"` and lists the scopes in `data.requiredScopes`.
+
+### Tool errors are not protocol errors
+
+A tool that fails because the database said no returns a **successful** JSON-RPC result with `isError: true`:
+
+```json
+{
+  "content": [{ "type": "text", "text": "query_failed: relation \"user\" does not exist" }],
+  "isError": true,
+  "resultType": "complete"
+}
+```
+
+The text starts with a machine-readable code: `invalid_argument`, `not_connected`, `not_found`, `denied`, `timeout`, `unsupported`, `query_failed`, `user_cancelled`, or `internal_failure`. Error text is redacted before it leaves the process, so a driver message that echoed a password does not reach the client.
+
+Protocol errors are reserved for the envelope: a malformed request, a missing scope, an expired token. If your client only handles JSON-RPC errors it will read every failed query as a success.
+
+## Limits
+
+| Limit | Value |
+|-------|-------|
+| Request body | 10 MB |
+| Request headers | 16 KB |
+| Concurrent connections | 64 |
+| Idle connection timeout | 30 seconds |
+| Handler deadline | 330 seconds |
+| Requests | 240 per 60 seconds per caller |
+| Concurrent requests | 8 per caller |
+| Failed auth attempts | 5 per 60 seconds, then a 5-minute lockout |
+| Pairing exchange attempts | 5 per 5 minutes, then a 15-minute lockout |
+
+The request limits are keyed by token id, or by client address for an unauthenticated caller. Going over either returns `-33010` with a `Retry-After` header. `subscriptions/listen` is exempt, since it holds its slot for as long as the client is listening.
+
+Auth lockouts are keyed by both client address and token id, so one misbehaving client cannot lock out another on the same loopback address.
+
+## Legacy era
+
+A request with no `io.modelcontextprotocol/protocolVersion` in `_meta` is treated as legacy, and legacy still works the old way:
+
+1. `POST /mcp` with `initialize` and a `protocolVersion` of `2025-11-25` or `2025-06-18`. Any other value is `-32022`.
+2. The response carries `protocolVersion`, `capabilities`, `serverInfo` and `instructions`.
+3. Every later request carries `Mcp-Session-Id`. A session belongs to the token that created it; presenting it under another token is `-33001`.
+4. A session lives until the server stops. The store holds at most 16 at a time and evicts the least recently used past that. A session the server does not recognise is `-33001`, and the client has to `initialize` again.
+
+Legacy clients see `resources.subscribe: false` and cannot call `server/discover` or `subscriptions/listen`. Their results carry no `resultType`, no cache hints, and no `serverInfo` in `_meta`.
+
+Legacy is there so an old client keeps working, not as a target to build against. Anything new should speak `2026-07-28`.

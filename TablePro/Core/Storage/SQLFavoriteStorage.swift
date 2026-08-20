@@ -10,7 +10,21 @@ import SQLite3
 internal actor SQLFavoriteStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFavoriteStorage")
 
-    private var db: OpaquePointer?
+    private struct DatabaseHandle: @unchecked Sendable {
+        var pointer: OpaquePointer?
+    }
+
+    private var dbHandle = DatabaseHandle()
+    private var isPrepared = false
+
+    private var db: OpaquePointer? {
+        if !isPrepared {
+            isPrepared = true
+            setupDatabase()
+        }
+        return dbHandle.pointer
+    }
+
 
     private let databaseURL: URL
     private let removeDatabaseOnDeinit: Bool
@@ -21,7 +35,6 @@ internal actor SQLFavoriteStorage {
     ) {
         self.databaseURL = databaseURL
         self.removeDatabaseOnDeinit = removeDatabaseOnDeinit
-        setupDatabase()
     }
 
     static func defaultDatabaseURL() -> URL {
@@ -32,8 +45,8 @@ internal actor SQLFavoriteStorage {
     }
 
     deinit {
-        if let db = db {
-            sqlite3_close_v2(db)
+        if let pointer = dbHandle.pointer {
+            sqlite3_close_v2(pointer)
         }
         if removeDatabaseOnDeinit {
             let path = databaseURL.path(percentEncoded: false)
@@ -52,7 +65,7 @@ internal actor SQLFavoriteStorage {
 
         let dbPath = databaseURL.path(percentEncoded: false)
 
-        if sqlite3_open(dbPath, &db) != SQLITE_OK {
+        if sqlite3_open(dbPath, &dbHandle.pointer) != SQLITE_OK {
             Self.logger.error("Error opening database")
             return
         }
@@ -425,19 +438,45 @@ internal actor SQLFavoriteStorage {
         WHERE folder_id IS NOT NULL AND folder_id NOT IN (SELECT id FROM folders);
         """
 
-    @discardableResult
-    func deleteFavoritesAndFolders(connectionId: UUID) -> Bool {
-        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return false }
+    /// Returns what it deleted rather than whether it deleted, because the caller has to tombstone
+    /// each record for sync and cannot ask afterwards: the rows are gone. Reporting a bare `Bool`
+    /// is why a deleted connection's favorites and folders lived on in CloudKit and came back on a
+    /// fresh install.
+    func deleteFavoritesAndFolders(connectionId: UUID) -> DeletedFavoriteRecords {
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else { return .none }
 
         let id = connectionId.uuidString
+        /// Read inside the same transaction as the delete, so nothing can be added between the two
+        /// and be removed without a tombstone.
+        let favorites = ids(from: "SELECT id FROM favorites WHERE connection_id = ?;", bindings: [id])
+        let folders = ids(from: "SELECT id FROM folders WHERE connection_id = ?;", bindings: [id])
+
         guard run("DELETE FROM favorites WHERE connection_id = ?;", bindings: [id]),
               run("DELETE FROM folders WHERE connection_id = ?;", bindings: [id]),
               run(Self.detachDanglingFolderReferencesSQL) else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            return false
+            return .none
         }
 
-        return sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK
+        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else { return .none }
+        return DeletedFavoriteRecords(favorites: favorites, folders: folders)
+    }
+
+    private func ids(from sql: String, bindings: [String]) -> [UUID] {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(statement) }
+        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for (index, value) in bindings.enumerated() {
+            sqlite3_bind_text(statement, Int32(index + 1), value, -1, SQLITE_TRANSIENT)
+        }
+        var result: [UUID] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let raw = sqlite3_column_text(statement, 0),
+                  let id = UUID(uuidString: String(cString: raw)) else { continue }
+            result.append(id)
+        }
+        return result
     }
 
     @discardableResult
@@ -1053,5 +1092,22 @@ internal actor SQLFavoriteStorage {
             createdAt: createdAt,
             updatedAt: updatedAt
         )
+    }
+}
+
+/// What a bulk favorite delete removed, so the caller can tombstone each record for sync.
+///
+/// Every other delete path in `SQLFavoriteManager` knows the ids it removed because the caller
+/// supplied them. A delete keyed on a connection does not, and reporting only success meant those
+/// records were never marked deleted: they stayed in CloudKit for good and reappeared on the next
+/// device to sync.
+struct DeletedFavoriteRecords {
+    let favorites: [UUID]
+    let folders: [UUID]
+
+    static let none = DeletedFavoriteRecords(favorites: [], folders: [])
+
+    var isEmpty: Bool {
+        favorites.isEmpty && folders.isEmpty
     }
 }

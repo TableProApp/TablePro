@@ -31,7 +31,7 @@ enum HelpMenuBuilder {
                 action: #selector(AppDelegate.openSampleDatabase(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "Reset Sample Database..."),
+                String(localized: "Reset Sample Database…"),
                 action: #selector(AppDelegate.resetSampleDatabase(_:))
             ),
             MenuItemFactory.separator,

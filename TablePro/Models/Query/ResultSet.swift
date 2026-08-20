@@ -42,6 +42,14 @@ final class ResultSet: Identifiable {
     /// to use whatever the tab is pointing at now.
     var origin: ResultOrigin?
 
+    /// The statement in the tab's query that produced these rows, kept so selecting this result can
+    /// take the reader back to it. Nil for rows no editor statement stands behind: a table tab's
+    /// load, a page turn, a sort, and anything else the app wrote itself.
+    ///
+    /// Like `origin` this describes the result rather than the tab, and like `origin` something
+    /// reads it, which is what earns it a place here.
+    var statementAnchor: StatementAnchor?
+
     /// An EXPLAIN result is a result set like any other, so it rides the same tab strip, pinning
     /// and history. It carries a plan instead of rows.
     var queryPlan: QueryPlan?
@@ -50,6 +58,17 @@ final class ResultSet: Identifiable {
     var isExplainResult: Bool { explainRawText != nil }
 
     var resultColumns: [String] { tableRows.columns }
+
+    /// What to call a result on its tab.
+    ///
+    /// The table it came from is the clearest name and wins. Failing that the statement names itself, which is the
+    /// whole reason the anchor keeps a bounded copy of the text: a strip reading "Result 1, Result 2, Result 3" tells
+    /// the reader nothing about which is which. The counter is the last resort, for rows no statement stands behind.
+    static func label(tableName: String?, anchor: StatementAnchor?, index: Int) -> String {
+        if let tableName, !tableName.isEmpty { return tableName }
+        if let statementLabel = anchor?.label, !statementLabel.isEmpty { return statementLabel }
+        return String(format: String(localized: "Result %d"), index + 1)
+    }
 
     init(id: UUID = UUID(), label: String, tableRows: TableRows = TableRows()) {
         self.id = id

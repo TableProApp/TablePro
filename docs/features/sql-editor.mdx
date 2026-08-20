@@ -40,7 +40,7 @@ To run the whole tab, choose **Execute All Statements** from the Execute button'
 Select text and press `Cmd+Enter` to run only the selection. Multiple statements, whether from a selection or from Execute All Statements, run sequentially:
 
 - On databases with transaction support, the batch runs in a transaction: if a statement fails, execution stops and all changes roll back. Databases without transactions run each statement as-is, with no rollback.
-- The error names the failing statement ("Statement 3/5 failed: ...").
+- The error names the failing statement ("Statement 3/5 failed: …").
 - The last `SELECT` result appears in the data grid.
 - Each statement is recorded individually in query history.
 
@@ -89,8 +89,16 @@ A tab can hold many statements, and the editor marks which one it is about to ru
 - Move the pointer over the gutter and a run button appears beside every statement. Clicking one runs that statement, even when your cursor is somewhere else. The column the buttons sit in is reserved at all times, so revealing them never shifts the text.
 - A run button takes the same [Safe Mode](/features/safe-mode) checks and [query parameter](/features/query-parameters) prompts as any other run, and goes dim while a query is running.
 - VoiceOver reads each button as a button naming the line its statement starts on.
-- A `BEGIN ... END` body counts as one statement, so a trigger or stored procedure gets one button rather than one per line inside it. `BEGIN;` and `BEGIN TRANSACTION;` are statements of their own.
+- A `BEGIN … END` body counts as one statement, so a trigger or stored procedure gets one button rather than one per line inside it. `BEGIN;` and `BEGIN TRANSACTION;` are statements of their own.
 - Turn either off in **Settings > Editor** with **Highlight current statement** and **Run button beside each statement**.
+
+### Moving Between Statements
+
+- `Ctrl+Cmd+Left` and `Ctrl+Cmd+Right` move the cursor to the previous and next statement. From part-way through a statement, the first press back lands on that statement's own start. Neither wraps: at the last statement, next does nothing.
+- `Ctrl+Cmd+Enter` runs the statement the cursor is in and then moves to the next one, so you can work down a script without reaching for the mouse. The cursor moves first, so you can see what is queued while the current one runs.
+- `Option+Shift+Up` and `Option+Shift+Down` extend the selection by a statement. macOS assigns those keys to paragraph selection, and a statement is the paragraph of a SQL file.
+- A statement hidden inside a collapsed fold is unfolded when the cursor lands on it.
+- All three commands are in the Query menu and rebindable in **Settings > Keyboard**.
 
 <Frame caption="A run control beside each statement, and a band over the one at the cursor">
   <img className="block dark:hidden" src="/images/sql-editor-statement-run.png" alt="Statement run controls in the editor gutter" />
@@ -113,6 +121,15 @@ When the cap trims a result, the status bar reads **Showing N rows** with a **Fe
 Results appear in the data grid below the editor with row count and execution time. Large result sets are paginated.
 
 - **Result tabs**: every result gets a tab above the grid; multi-statement runs produce one tab per statement. Tabs show in JSON view too. Switch with `Cmd+Option+[` / `Cmd+Option+]`, close with `Cmd+Shift+W`. Hover a tab to see its query.
+- **Tab names**: a result is named after the table it came from. When there is no single table, it is named after the statement instead, and a comment written above the statement is used as the name in preference to the SQL:
+
+    ```sql
+    -- monthly totals
+    SELECT count(*) FROM orders;
+    ```
+
+    names its result tab `monthly totals`.
+- **Back to the statement**: picking a result moves the editor cursor to the statement that produced it, and unfolds it if you had it collapsed. Picking the result already showing does nothing, so you can click between pinned results to compare them without the editor moving under you. A statement you have since edited away leaves the cursor where it is.
 - **Pinning**: click the pin on the right of a result tab, press `Cmd+Option+P`, or right-click the tab and choose **Pin Result**. The next query lands in a new tab instead of overwriting the pinned one. Pinned results move to the front of the strip and cannot be closed or cleared until unpinned.
 - **Panel**: toggle the results panel with `Cmd+Option+R` or the toolbar button; it auto-expands when a query executes. The toolbar trash button clears the query and results together; to keep the query, right-click the results and choose **Clear Results**.
 - **Errors**: a red banner above the results shows the database error message with a **Fix with AI** button.
@@ -192,7 +209,7 @@ Editor windows remember their size, position, and font zoom between launches. Se
 TablePro opens `.sql`, `.psql`, and `.pgsql` files:
 
 - Double-click in Finder (or **Open With > TablePro**)
-- **File > Open File...** (`Cmd+O`)
+- **File > Open File…** (`Cmd+O`)
 - Drag files onto the dock icon
 
 Files open in a new tab. Without a connection they queue and open on connect. Opening the same file twice focuses the existing tab.

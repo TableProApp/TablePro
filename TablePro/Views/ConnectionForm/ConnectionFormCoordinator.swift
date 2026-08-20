@@ -22,7 +22,7 @@ final class WeakCoordinatorRef {
 @Observable
 @MainActor
 final class ConnectionFormCoordinator {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormCoordinator")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormCoordinator")
 
     let connectionId: UUID?
     private(set) var originalConnection: DatabaseConnection?
@@ -477,7 +477,7 @@ final class ConnectionFormCoordinator {
             additionalFieldValues: additionalFieldValues
         )
 
-        testTask = Task { [weak self] in
+        testTask = Task { [weak self, services] in
             do {
                 let sshPasswordForTest = sshState.profileId == nil ? sshState.password : nil
                 let isApiOnly = services.pluginManager.connectionMode(for: connectionType) == .apiOnly
@@ -657,7 +657,7 @@ final class ConnectionFormCoordinator {
 
     func installPlugin(for databaseType: DatabaseType) {
         isInstallingPlugin = true
-        Task { [weak self] in
+        Task { [weak self, services] in
             do {
                 try await services.pluginManager.installMissingPlugin(for: databaseType) { _ in }
                 await MainActor.run {

@@ -5,7 +5,7 @@ import TableProOracleCore
 
 // MARK: - Error Category
 
-enum AppErrorCategory: Sendable {
+nonisolated enum AppErrorCategory: Sendable {
     case network
     case auth
     case config
@@ -16,7 +16,7 @@ enum AppErrorCategory: Sendable {
 
 // MARK: - App Error
 
-struct AppError: LocalizedError, Sendable {
+nonisolated struct AppError: LocalizedError, Sendable {
     let category: AppErrorCategory
     let title: String
     let message: String
@@ -47,7 +47,7 @@ struct AppError: LocalizedError, Sendable {
 
 // MARK: - Error Context
 
-struct ErrorContext: Sendable {
+nonisolated struct ErrorContext: Sendable {
     let operation: String
     let databaseType: DatabaseType?
     let host: String?
@@ -63,7 +63,7 @@ struct ErrorContext: Sendable {
 
 // MARK: - Error Classifier
 
-enum ErrorClassifier {
+nonisolated enum ErrorClassifier {
     private static let logger = Logger(subsystem: "com.TablePro", category: "Error")
 
     /// ORA-12514 and ORA-12505 each name the identifier kind the listener was

@@ -2,7 +2,7 @@ import AppIntents
 import Foundation
 import UniformTypeIdentifiers
 
-enum RowPayload {
+nonisolated enum RowPayload {
     static let maxRows = 10_000
 
     static func parse(data: String?, file: IntentFile?) async throws -> [PayloadRow] {
@@ -112,7 +112,7 @@ enum RowPayload {
     }
 }
 
-enum CSVRecordParser {
+nonisolated enum CSVRecordParser {
     static func parse(_ text: String) -> [[String]] {
         var records: [[String]] = []
         var record: [String] = []

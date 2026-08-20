@@ -11,7 +11,7 @@ import TableProSyncTransport
 @MainActor
 final class GroupStorage {
     static let shared = GroupStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "GroupStorage")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "GroupStorage")
 
     private let groupsKey = "com.TablePro.groups"
     private let defaults: UserDefaults

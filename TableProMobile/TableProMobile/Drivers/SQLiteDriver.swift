@@ -3,7 +3,7 @@ import SQLite3
 import TableProDatabase
 import TableProModels
 
-final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     private let dbPath: String
     private let actor = SQLiteActor()
 
@@ -426,12 +426,12 @@ private actor SQLiteActor {
     }
 }
 
-enum SQLiteBeginStreamResult: Sendable {
+nonisolated enum SQLiteBeginStreamResult: Sendable {
     case rowSet([ColumnInfo])
     case commandOk(affectedRows: Int)
 }
 
-private struct RawResult: Sendable {
+nonisolated private struct RawResult: Sendable {
     let columns: [String]
     let columnTypes: [String]
     let rows: [[String?]]
@@ -442,7 +442,7 @@ private struct RawResult: Sendable {
 
 // MARK: - Errors
 
-enum SQLiteError: Error, LocalizedError {
+nonisolated enum SQLiteError: Error, LocalizedError {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)

@@ -53,7 +53,7 @@ The script extracts the right slice from the universal static libraries, strips 
 | `NOTARIZE` | `false` | Set `true` to notarize and staple after building |
 | `APPLE_ID` | Maintainer's Apple ID | Account for notarization |
 
-Notarization uses a `notarytool` keychain profile named `TablePro`. Create it once with `xcrun notarytool store-credentials "TablePro" --apple-id ... --team-id ... --password ...`. Do not sign or notarize by hand; the script already does it per binary, which is what Apple's guidance requires.
+Notarization uses a `notarytool` keychain profile named `TablePro`. Create it once with `xcrun notarytool store-credentials "TablePro" --apple-id … --team-id … --password …`. Do not sign or notarize by hand; the script already does it per binary, which is what Apple's guidance requires.
 
 ## Static Libraries
 

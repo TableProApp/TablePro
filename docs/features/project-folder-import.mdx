@@ -7,8 +7,8 @@ Point TablePro at a project folder and it reads the database settings the projec
 
 ## Open a folder
 
-- **File > Open Project Folder...**
-- **Add from Existing > Open Project Folder...** on the welcome screen
+- **File > Open Project Folder…**
+- **Add from Existing > Open Project Folder…** on the welcome screen
 
 Pick the folder in the panel that appears. TablePro scans it and lists what it found.
 
@@ -36,8 +36,8 @@ A connection starts at the **Alert** [Safe Mode](/features/safe-mode) level inst
 |------|---------------|
 | `.env` and friends | `DATABASE_URL`, `MONGODB_URI`, `REDIS_URL`, `TURSO_DATABASE_URL` and similar URL keys; Laravel `DB_*` keys; Postgres, MySQL, MariaDB, Mongo and SQL Server container variables; `PG*` variables |
 | `wp-config.php` | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST` |
-| `prisma/schema.prisma` | The `datasource` provider and url, including `env("...")` references |
-| `config/database.yml` | The Rails development section, following anchors and `<<` merge keys, and resolving `ENV["..."]` |
+| `prisma/schema.prisma` | The `datasource` provider and url, including `env("…")` references |
+| `config/database.yml` | The Rails development section, following anchors and `<<` merge keys, and resolving `ENV["…"]` |
 | `docker-compose.yml`, `compose.yaml` | Database services, using the published host port |
 | `application.properties`, `application.yml` | `spring.datasource.url`, username, and password |
 | `appsettings.json` | The `ConnectionStrings` entries |

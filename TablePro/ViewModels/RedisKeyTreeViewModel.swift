@@ -10,7 +10,7 @@ import TableProPluginKit
 
 @MainActor @Observable
 internal final class RedisKeyTreeViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "RedisKeyTree")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RedisKeyTree")
     internal static let maxKeys = 50_000
 
     var rootNodes: [RedisKeyNode] = []

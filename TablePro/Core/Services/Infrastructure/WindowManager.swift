@@ -9,7 +9,7 @@ import SwiftUI
 
 @MainActor
 internal final class WindowManager {
-    private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     internal static let shared = WindowManager()
 

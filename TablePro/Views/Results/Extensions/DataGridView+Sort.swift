@@ -31,20 +31,15 @@ extension TableViewCoordinator {
     private func fitToContentWidth(
         for column: NSTableColumn,
         dataColumnIndex: Int,
-        tableRows: TableRows
+        tableRows: TableRows,
+        fittedColumnCount: Int = 1
     ) -> CGFloat {
-        cellFactory.calculateFitToContentWidth(
+        fitToContentColumnWidth(
             for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
             columnIndex: dataColumnIndex,
             tableRows: tableRows,
             availableWidth: visibleGridWidth,
-            accessory: columnPresentation(for: dataColumnIndex, in: tableRows).accessory,
-            displayFormat: dataColumnIndex < columnDisplayFormats.count
-                ? columnDisplayFormats[dataColumnIndex]
-                : nil,
-            databaseType: databaseType,
-            isLargeDataset: isLargeDataset,
-            nullDisplayString: cellRegistry.nullDisplayString
+            fittedColumnCount: fittedColumnCount
         )
     }
 
@@ -361,16 +356,19 @@ extension TableViewCoordinator {
         guard let tableView else { return }
 
         let tableRows = tableRowsProvider()
-        for column in tableView.tableColumns {
-            guard presentsColumn(column),
-                  let dataColumnIndex = dataColumnIndex(from: column.identifier),
-                  dataColumnIndex < tableRows.columns.count else { continue }
+        let fittedColumns = tableView.tableColumns.filter { column in
+            guard presentsColumn(column), let index = dataColumnIndex(from: column.identifier) else { return false }
+            return index < tableRows.columns.count
+        }
+        for column in fittedColumns {
+            guard let dataColumnIndex = dataColumnIndex(from: column.identifier) else { continue }
 
             markColumnWidthUserSized(column)
             column.width = fitToContentWidth(
                 for: column,
                 dataColumnIndex: dataColumnIndex,
-                tableRows: tableRows
+                tableRows: tableRows,
+                fittedColumnCount: fittedColumns.count
             )
         }
         scheduleLayoutPersist()

@@ -29,6 +29,7 @@ enum ImportTypeMapper {
         case .boolean: return "BOOLEAN"
         case .json: return "JSONB"
         case .text: return "TEXT"
+        @unknown default: return "TEXT"
         }
     }
 
@@ -39,6 +40,7 @@ enum ImportTypeMapper {
         case .boolean: return "TINYINT(1)"
         case .json: return "JSON"
         case .text: return "TEXT"
+        @unknown default: return "TEXT"
         }
     }
 
@@ -48,6 +50,7 @@ enum ImportTypeMapper {
         case .real: return "REAL"
         case .boolean: return "INTEGER"
         case .json, .text: return "TEXT"
+        @unknown default: return "TEXT"
         }
     }
 
@@ -57,6 +60,7 @@ enum ImportTypeMapper {
         case .real: return "FLOAT"
         case .boolean: return "BIT"
         case .json, .text: return "NVARCHAR(MAX)"
+        @unknown default: return "NVARCHAR(MAX)"
         }
     }
 
@@ -66,6 +70,7 @@ enum ImportTypeMapper {
         case .real: return "DOUBLE PRECISION"
         case .boolean: return "BOOLEAN"
         case .json, .text: return "TEXT"
+        @unknown default: return "TEXT"
         }
     }
 }

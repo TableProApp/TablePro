@@ -18,7 +18,7 @@ These govern every decision about code, architecture, tooling and process:
 
 ## Project Overview
 
-TablePro is a native macOS database client (SwiftUI + AppKit), a fast, lightweight alternative to TablePlus. macOS 14.0+, `SWIFT_VERSION = 5.0` (`Configs/Base.xcconfig`), Universal Binary (arm64 + x86_64).
+TablePro is a native macOS database client (SwiftUI + AppKit), a fast, lightweight alternative to TablePlus. macOS 14.0+, `SWIFT_VERSION = 6.0` (`Configs/Base.xcconfig`), Universal Binary (arm64 + x86_64).
 
 - **Source**: `TablePro/` holds `Core/` (business logic, services), `Views/` (UI), `Models/` (data structures), `ViewModels/`, `Extensions/` and `Theme/`
 - **Plugins**: `Plugins/` holds the `.tableplugin` bundles plus the `TableProPluginKit` shared framework.
@@ -27,6 +27,7 @@ TablePro is a native macOS database client (SwiftUI + AppKit), a fast, lightweig
 - **C bridges**: Each plugin contains its own C bridge module (e.g., `Plugins/MySQLDriverPlugin/CMariaDB/`, `Plugins/PostgreSQLDriverPlugin/CLibPQ/`)
 - **Static libs**: `Libs/` holds pre-built `.a` files and `Libs/ios/` holds the iOS xcframeworks. Both are downloaded by `scripts/download-libs.sh` and are not in git.
 - **SPM deps**: declared in `project.yml`. Vendored local packages under `LocalPackages/` (CodeEditSourceEditor, CodeEditTextView, CodeEditLanguages) and `Packages/` (TableProCore, TableProOracle); remote packages are Sparkle, swift-certificates and Yams. Revisions are pinned by the tracked `Package.resolved` inside each generated `.xcodeproj`.
+    - `SWIFT_VERSION` in `Configs/Base.xcconfig` sets the language mode for the Xcode-native targets only. A SwiftPM package takes its mode from its own manifest, so `Packages/TableProCore` and `Packages/TableProOracle` carry `swift-tools-version: 6.0` of their own. The vendored `LocalPackages/` forks stay on 5.9 so they can still take upstream changes, and a remote dependency keeps whatever its own manifest says. Never pass `SWIFT_VERSION=` on an `xcodebuild` command line to test a language-mode change: the override reaches the package targets too and reports their errors as yours.
 
 ## Build & Development Commands
 

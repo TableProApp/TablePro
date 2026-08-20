@@ -5,6 +5,7 @@
 
 import AppKit
 import Combine
+import os
 import SwiftUI
 
 enum FilterCompletionSource {
@@ -40,7 +41,7 @@ struct FilterValueTextField: NSViewRepresentable {
     var onSubmit: () -> Void = {}
     var onCancel: () -> Void = {}
 
-    static func suggestions(for input: String, in completions: [String]) -> [String] {
+    nonisolated static func suggestions(for input: String, in completions: [String]) -> [String] {
         guard !input.isEmpty else { return [] }
         let needle = input.lowercased()
         let matches = completions.filter { $0.lowercased().hasPrefix(needle) }
@@ -50,7 +51,7 @@ struct FilterValueTextField: NSViewRepresentable {
         return matches
     }
 
-    static func shouldOfferTokenCompletion(fieldText: String, cursor: Int) -> Bool {
+    nonisolated static func shouldOfferTokenCompletion(fieldText: String, cursor: Int) -> Bool {
         let nsText = fieldText as NSString
         guard nsText.length > 0 else { return false }
         let clamped = min(max(cursor, 0), nsText.length)
@@ -59,7 +60,7 @@ struct FilterValueTextField: NSViewRepresentable {
         return !CharacterSet.whitespaces.contains(scalar)
     }
 
-    static func splice(into current: String, range: NSRange, insertText: String) -> (text: String, caret: Int)? {
+    nonisolated static func splice(into current: String, range: NSRange, insertText: String) -> (text: String, caret: Int)? {
         let ns = current as NSString
         guard range.location >= 0, range.location + range.length <= ns.length else { return nil }
         let caret = range.location + (insertText as NSString).length
@@ -72,7 +73,7 @@ struct FilterValueTextField: NSViewRepresentable {
         case passThrough
     }
 
-    static func suggestionCommandOutcome(
+    nonisolated static func suggestionCommandOutcome(
         for commandSelector: Selector,
         submitsOnAccept: Bool
     ) -> SuggestionCommandOutcome {
@@ -91,7 +92,7 @@ struct FilterValueTextField: NSViewRepresentable {
         case closeBar
     }
 
-    static func escapeOutcome(popupVisible: Bool, recentlyDismissedPopup: Bool) -> EscapeOutcome {
+    nonisolated static func escapeOutcome(popupVisible: Bool, recentlyDismissedPopup: Bool) -> EscapeOutcome {
         if popupVisible { return .dismissPopup }
         if recentlyDismissedPopup { return .consume }
         return .closeBar
@@ -172,7 +173,7 @@ struct FilterValueTextField: NSViewRepresentable {
         private let suggestionState = SuggestionState()
         private var suggestionPopover: NSPopover?
         private var focusState = FilterFocusState()
-        private var windowKeyObserver: NSObjectProtocol?
+        private let windowKeyObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
         private var latestReplacementRange: NSRange?
         private var completionGeneration = 0
         private var escapeDismissedPopup = false
@@ -224,7 +225,7 @@ struct FilterValueTextField: NSViewRepresentable {
 
         func startObservingWindowKeyStatus(for window: NSWindow) {
             stopObservingWindowKeyStatus()
-            windowKeyObserver = NotificationCenter.default.addObserver(
+            let observer = NotificationCenter.default.addObserver(
                 forName: NSWindow.didResignKeyNotification,
                 object: window,
                 queue: .main
@@ -233,16 +234,17 @@ struct FilterValueTextField: NSViewRepresentable {
                     self?.handleResignedFirstResponder()
                 }
             }
+            windowKeyObserver.withLockUnchecked { $0 = observer }
         }
 
         func stopObservingWindowKeyStatus() {
-            guard let token = windowKeyObserver else { return }
+            guard let token = windowKeyObserver.withLockUnchecked({ $0 }) else { return }
             NotificationCenter.default.removeObserver(token)
-            windowKeyObserver = nil
+            windowKeyObserver.withLockUnchecked { $0 = nil }
         }
 
         deinit {
-            if let token = windowKeyObserver {
+            if let token = windowKeyObserver.withLockUnchecked({ $0 }) {
                 NotificationCenter.default.removeObserver(token)
             }
         }

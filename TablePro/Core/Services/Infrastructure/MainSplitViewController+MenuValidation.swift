@@ -139,6 +139,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.hasQueryText
         case #selector(toggleFold(_:)), #selector(foldAll(_:)), #selector(unfoldAll(_:)):
             return context.hasEditorForFind
+        case #selector(goToPreviousStatement(_:)), #selector(goToNextStatement(_:)):
+            return context.isQueryTab
+        case #selector(runStatementAndAdvance(_:)):
+            return context.isQueryTab && context.isConnected && context.hasQueryText && !context.isQueryExecuting
         case #selector(cancelQuery(_:)):
             return context.isQueryExecuting
         case #selector(previewSQL(_:)):
@@ -307,7 +311,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             )
         case #selector(openContainerSwitcher(_:)):
             setResolvedTitle(
-                commandActions?.openContainerSwitcherTitle ?? String(localized: "Open Database..."),
+                commandActions?.openContainerSwitcherTitle ?? String(localized: "Open Database…"),
                 on: menuItem
             )
         case #selector(setResultView(_:)):

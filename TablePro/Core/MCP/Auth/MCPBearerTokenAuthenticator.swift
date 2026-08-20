@@ -14,7 +14,7 @@ public struct MCPValidatedToken: Sendable, Equatable {
         tokenId: UUID,
         label: String?,
         scopes: Set<MCPScope>,
-        connectionAccess: ConnectionAccess = .all,
+        connectionAccess: ConnectionAccess,
         issuedAt: Date,
         expiresAt: Date?
     ) {
@@ -53,23 +53,12 @@ internal extension MCPTokenStore {
         let validated = MCPValidatedToken(
             tokenId: authToken.id,
             label: authToken.name,
-            scopes: Self.mcpScopes(for: authToken.permissions),
+            scopes: authToken.permissions.scopes,
             connectionAccess: authToken.connectionAccess,
             issuedAt: authToken.createdAt,
             expiresAt: authToken.expiresAt
         )
         return .success(validated)
-    }
-
-    private static func mcpScopes(for permissions: TokenPermissions) -> Set<MCPScope> {
-        switch permissions {
-        case .readOnly:
-            return [.toolsRead, .resourcesRead]
-        case .readWrite:
-            return [.toolsRead, .toolsWrite, .resourcesRead]
-        case .fullAccess:
-            return [.toolsRead, .toolsWrite, .resourcesRead, .admin]
-        }
     }
 }
 
@@ -94,74 +83,53 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
         authorizationHeader: String?,
         clientAddress: MCPClientAddress
     ) async -> MCPAuthDecision {
-        let ipString = Self.ipString(for: clientAddress)
+        let ipString = clientAddress.displayValue
+        let addressKey = MCPRateLimitKey.authFailure(address: clientAddress)
+
+        if let retry = await lockoutRetryAfter(key: addressKey) {
+            MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: retry)
+            return .deny(.rateLimited(retryAfterSeconds: retry))
+        }
 
         guard let header = authorizationHeader, !header.isEmpty else {
-            let key = MCPRateLimitKey(clientAddress: clientAddress, principalFingerprint: nil)
-            if let retry = await rateLimitedRetryAfter(key: key) {
-                Self.logger.warning("Auth rejected (rate limited, missing header)")
-                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: retry)
-                return .deny(.rateLimited(retryAfterSeconds: retry))
-            }
-            Self.logger.info("Auth missing Authorization header")
-            MCPAuditLogger.logAuthFailure(reason: "missing_authorization_header", ip: ipString)
-            return .deny(.unauthenticated(reason: "missing_authorization_header"))
+            return await denyAttempt(
+                addressKey: addressKey,
+                ip: ipString,
+                reason: "missing_authorization_header",
+                denial: .unauthenticated(reason: "missing_authorization_header")
+            )
         }
 
         guard let token = Self.parseBearerToken(header) else {
-            let key = MCPRateLimitKey(clientAddress: clientAddress, principalFingerprint: nil)
-            if let retry = await rateLimitedRetryAfter(key: key) {
-                MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: retry)
-                return .deny(.rateLimited(retryAfterSeconds: retry))
-            }
-            _ = await rateLimiter.recordAttempt(key: key, success: false)
-            Self.logger.info("Auth invalid Authorization scheme")
-            MCPAuditLogger.logAuthFailure(reason: "invalid_authorization_scheme", ip: ipString)
-            return .deny(.unauthenticated(reason: "invalid_authorization_scheme"))
-        }
-
-        let fingerprint = Self.fingerprint(of: token)
-        let principalKey = MCPRateLimitKey(
-            clientAddress: clientAddress,
-            principalFingerprint: fingerprint
-        )
-
-        if let retry = await rateLimitedRetryAfter(key: principalKey) {
-            Self.logger.warning(
-                "Auth rate limited fingerprint=\(fingerprint, privacy: .public)"
+            return await denyAttempt(
+                addressKey: addressKey,
+                ip: ipString,
+                reason: "invalid_authorization_scheme",
+                denial: .unauthenticated(reason: "invalid_authorization_scheme")
             )
-            MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: retry)
-            return .deny(.rateLimited(retryAfterSeconds: retry))
         }
 
         let validation = await tokenStore.validateBearerToken(token)
         switch validation {
         case .failure(let error):
-            let verdict = await rateLimiter.recordAttempt(key: principalKey, success: false)
-            if case .lockedUntil(let unlockDate) = verdict {
-                let retry = await retryAfter(unlockDate: unlockDate)
+            return await denyAttempt(
+                addressKey: addressKey,
+                ip: ipString,
+                reason: Self.reason(for: error),
+                denial: Self.denial(for: error)
+            )
+
+        case .success(let validated):
+            let tokenKey = MCPRateLimitKey.authFailure(tokenId: validated.tokenId)
+            if let retry = await lockoutRetryAfter(key: tokenKey) {
                 MCPAuditLogger.logRateLimited(ip: ipString, retryAfterSeconds: retry)
                 return .deny(.rateLimited(retryAfterSeconds: retry))
             }
-            switch error {
-            case .unknownToken:
-                Self.logger.info("Auth unknown token fingerprint=\(fingerprint, privacy: .public)")
-                MCPAuditLogger.logAuthFailure(reason: "unknown_token", ip: ipString)
-                return .deny(.tokenInvalid(reason: "unknown_token"))
-            case .expired:
-                Self.logger.info("Auth expired token fingerprint=\(fingerprint, privacy: .public)")
-                MCPAuditLogger.logAuthFailure(reason: "expired_token", ip: ipString)
-                return .deny(.tokenExpired())
-            case .revoked:
-                Self.logger.info("Auth revoked token fingerprint=\(fingerprint, privacy: .public)")
-                MCPAuditLogger.logAuthFailure(reason: "revoked_token", ip: ipString)
-                return .deny(.tokenInvalid(reason: "token_revoked"))
-            }
+            _ = await rateLimiter.recordAttempt(key: addressKey, success: true)
+            _ = await rateLimiter.recordAttempt(key: tokenKey, success: true)
 
-        case .success(let validated):
-            _ = await rateLimiter.recordAttempt(key: principalKey, success: true)
             let principal = MCPPrincipal(
-                tokenFingerprint: fingerprint,
+                tokenFingerprint: Self.fingerprint(of: token),
                 tokenId: validated.tokenId,
                 scopes: validated.scopes,
                 connectionAccess: validated.connectionAccess,
@@ -171,31 +139,57 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
                     expiresAt: validated.expiresAt
                 )
             )
-            Self.logger.info("Auth allowed fingerprint=\(fingerprint, privacy: .public)")
-            MCPAuditLogger.logAuthSuccess(tokenName: validated.label ?? "-", ip: ipString)
+            MCPAuditLogger.logAuthSuccess(
+                tokenId: validated.tokenId,
+                tokenName: validated.label,
+                ip: ipString
+            )
             return .allow(principal)
         }
     }
 
-    private func rateLimitedRetryAfter(key: MCPRateLimitKey) async -> Int? {
-        guard await rateLimiter.isLocked(key: key) else { return nil }
+    private func denyAttempt(
+        addressKey: MCPRateLimitKey,
+        ip: String,
+        reason: String,
+        denial: MCPAuthDenialReason
+    ) async -> MCPAuthDecision {
+        let verdict = await rateLimiter.recordAttempt(key: addressKey, success: false)
+        if case .lockedUntil(let unlockDate) = verdict {
+            let retry = await rateLimiter.retryAfterSeconds(until: unlockDate)
+            Self.logger.warning("Auth rate limited: reason=\(reason, privacy: .public)")
+            MCPAuditLogger.logRateLimited(ip: ip, retryAfterSeconds: retry)
+            return .deny(.rateLimited(retryAfterSeconds: retry))
+        }
+        Self.logger.info("Auth denied: reason=\(reason, privacy: .public)")
+        MCPAuditLogger.logAuthFailure(reason: reason, ip: ip)
+        return .deny(denial)
+    }
+
+    private func lockoutRetryAfter(key: MCPRateLimitKey) async -> Int? {
         guard let unlockDate = await rateLimiter.lockedUntil(key: key) else { return nil }
-        return await retryAfter(unlockDate: unlockDate)
+        return await rateLimiter.retryAfterSeconds(until: unlockDate)
     }
 
-    private func retryAfter(unlockDate: Date) async -> Int {
-        let now = await clock.now()
-        let delta = unlockDate.timeIntervalSince(now)
-        if delta <= 0 { return 1 }
-        return max(1, Int(delta.rounded(.up)))
+    private static func reason(for error: MCPTokenValidationError) -> String {
+        switch error {
+        case .unknownToken:
+            return "unknown_token"
+        case .expired:
+            return "expired_token"
+        case .revoked:
+            return "revoked_token"
+        }
     }
 
-    private static func ipString(for address: MCPClientAddress) -> String {
-        switch address {
-        case .loopback:
-            return "127.0.0.1"
-        case .remote(let host):
-            return host
+    private static func denial(for error: MCPTokenValidationError) -> MCPAuthDenialReason {
+        switch error {
+        case .unknownToken:
+            return .tokenInvalid(reason: "unknown_token")
+        case .expired:
+            return .tokenExpired()
+        case .revoked:
+            return .tokenInvalid(reason: "token_revoked")
         }
     }
 
@@ -212,7 +206,6 @@ public actor MCPBearerTokenAuthenticator: MCPAuthenticator {
     internal static func fingerprint(of token: String) -> String {
         guard let data = token.data(using: .utf8) else { return "" }
         let digest = SHA256.hash(data: data)
-        let hex = digest.hexEncoded
-        return String(hex.prefix(16))
+        return String(digest.hexEncoded.prefix(16))
     }
 }

@@ -34,7 +34,7 @@ enum WelcomeActiveSheet: Identifiable {
 
 @MainActor @Observable
 final class WelcomeViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeViewModel")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeViewModel")
 
     @ObservationIgnored let services: AppServices
     private var storage: ConnectionStorage { services.connectionStorage }

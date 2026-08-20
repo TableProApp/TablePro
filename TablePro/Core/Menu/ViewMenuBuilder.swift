@@ -39,7 +39,7 @@ enum ViewMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
-                String(localized: "Filter Databases..."),
+                String(localized: "Filter Databases…"),
                 action: #selector(MainSplitViewController.filterDatabases(_:))
             ),
             MenuItemFactory.item(
@@ -125,7 +125,7 @@ enum ViewMenuBuilder {
                 modifiers: [.command, .option]
             ),
             MenuItemFactory.item(
-                String(localized: "Customize Toolbar..."),
+                String(localized: "Customize Toolbar…"),
                 action: #selector(NSWindow.runToolbarCustomizationPalette(_:))
             ),
             MenuItemFactory.separator,

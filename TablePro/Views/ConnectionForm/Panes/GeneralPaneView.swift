@@ -76,7 +76,7 @@ struct GeneralPaneView: View {
                         prompt: Text(filePathPrompt)
                     )
                     .accessibilityIdentifier("connection-form-file-path")
-                    Button(String(localized: "Browse...")) {
+                    Button(String(localized: "Browse…")) {
                         browseForFile()
                     }
                     .controlSize(.small)

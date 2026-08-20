@@ -141,7 +141,7 @@ struct AIChatCodeBlockView: View, Equatable {
         return Self.detectLanguage(from: code)
     }
 
-    static func detectLanguage(from code: String) -> String? {
+    nonisolated static func detectLanguage(from code: String) -> String? {
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !trimmed.isEmpty else { return nil }
         let firstNonCommentLine = trimmed
