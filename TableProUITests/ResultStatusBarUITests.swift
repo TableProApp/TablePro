@@ -59,6 +59,39 @@ final class ResultStatusBarUITests: UITestCase {
         )
     }
 
+    /// Opening one table after another used to strip the bar back to the mode switcher and refill it
+    /// in stages. The transient frames are not observable from here, because the clear and reload
+    /// outrun XCUITest's polling, so this asserts the part that is: every control the bar owns is
+    /// still there once each table has settled, on a tab that is being reused rather than replaced.
+    func testTheBarKeepsItsControlsAcrossTableSwitches() throws {
+        let app = try launchWithSampleDatabase()
+        let window = app.windows.firstMatch
+
+        for table in ["Album", "Artist", "Track"] {
+            let row = window.outlines.firstMatch.staticTexts[table].firstMatch
+            guard row.waitForExistence(timeout: 15) else {
+                XCTFail("The object browser must list \(table)")
+                return
+            }
+            row.click()
+
+            let readout = window.staticTexts["result-status-readout"].firstMatch
+            XCTAssertTrue(readout.waitForExistence(timeout: 15), "\(table): the readout must survive the switch")
+
+            for identifier in ["result-status-columns", "result-status-filters", "pagination-page-size"] {
+                XCTAssertTrue(
+                    window.descendants(matching: .any)[identifier].firstMatch.waitForExistence(timeout: 15),
+                    "\(table): \(identifier) left the bar"
+                )
+            }
+
+            XCTAssertTrue(
+                window.descendants(matching: .any)["pagination-page-indicator"].firstMatch.exists,
+                "\(table): the page indicator left the bar"
+            )
+        }
+    }
+
     @discardableResult
     private func runQuery(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("t", modifierFlags: .command)

@@ -122,11 +122,7 @@ extension MainContentCoordinator {
                 )
                 if replaced {
                     clearFilterState()
-                    if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
-                        setActiveTableRows(TableRows(), for: tab.id)
-                        tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
-                        toolbarState.isTableTab = true
-                    }
+                    discardRowsForRetarget()
                     restoreLastHiddenColumnsForTable()
                     restoreFiltersForTable(tableName)
                     if let dbIndex = Int(currentDatabase) {
@@ -311,14 +307,7 @@ extension MainContentCoordinator {
         }
         if let token { TableLoadTracer.shared.stage(.replaceTabContent, token: token) }
         clearFilterState()
-        if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
-            setActiveTableRows(TableRows(), for: tab.id)
-            tabManager.mutate(at: tabIndex) {
-                $0.display.resultsViewMode = showStructure ? .structure : .data
-                $0.pagination.reset()
-            }
-            toolbarState.isTableTab = true
-        }
+        discardRowsForRetarget(resultsViewMode: showStructure ? .structure : .data)
         restoreLastHiddenColumnsForTable()
         restoreFiltersForTable(tableName)
         if let tabId = tabManager.selectedTab?.id {
@@ -327,6 +316,26 @@ extension MainContentCoordinator {
         }
         lazyLoadCurrentTabIfNeeded()
         return true
+    }
+
+    /// Drops the outgoing table's rows and says, in the same step, that a load is running.
+    ///
+    /// The two belong together. A cleared buffer that nothing has called a load is what the status
+    /// bar reads as "this tab has no result", and it removes every control that depends on one, so
+    /// the bar collapses and then refills as the fetch lands. The execution claim cannot stand in
+    /// for the flag: retargeting only schedules the load, so the claim arrives a main-actor turn
+    /// later and leaves a renderable frame in between.
+    private func discardRowsForRetarget(resultsViewMode: ResultsViewMode? = nil) {
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
+        setActiveTableRows(TableRows(), for: tab.id)
+        tabManager.mutate(at: tabIndex) { tab in
+            if let resultsViewMode {
+                tab.display.resultsViewMode = resultsViewMode
+            }
+            tab.pagination.reset()
+            tab.pagination.isLoading = true
+        }
+        toolbarState.isTableTab = true
     }
 
     // MARK: - Preview Tabs
@@ -643,6 +652,9 @@ extension MainContentCoordinator {
             } catch {
                 if !Task.isCancelled {
                     navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
+                }
+                if let tabId = tabManager.selectedTab?.id {
+                    declineTableLoad(for: tabId)
                 }
                 return
             }

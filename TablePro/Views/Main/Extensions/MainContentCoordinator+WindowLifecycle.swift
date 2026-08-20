@@ -141,10 +141,27 @@ extension MainContentCoordinator {
 
     // MARK: - Lazy Load
 
+    /// Lowers the flag `discardRowsForRetarget` raised, for a load that is not going to run.
+    ///
+    /// The flag is raised synchronously with the row buffer being emptied, so the bar never reads a
+    /// cleared tab as a settled empty result. Every path that then declines to start the load has to
+    /// lower it again, or the bar keeps a spinner and a fully disabled pagination cluster for a tab
+    /// that is not loading anything, until the next successful load or `Cmd+.`. A load that is
+    /// already in flight is not a decline, and must leave the flag alone.
+    func declineTableLoad(for tabId: UUID) {
+        tabManager.mutate(tabId: tabId) { $0.pagination.isLoading = false }
+    }
+
     func lazyLoadCurrentTabIfNeeded(trigger: TableLoadTrigger = .userInitiated) {
         guard let tab = tabManager.selectedTab else { return }
-        guard deferredRestoreLoadTabId != tab.id else { return }
-        guard canAutoLoadTableTab(tab) else { return }
+        guard deferredRestoreLoadTabId != tab.id else {
+            declineTableLoad(for: tab.id)
+            return
+        }
+        guard canAutoLoadTableTab(tab) else {
+            declineTableLoad(for: tab.id)
+            return
+        }
 
         let tracer = TableLoadTracer.shared
         let carriedToken = tracer.activeToken(for: tab.id)
@@ -169,6 +186,7 @@ extension MainContentCoordinator {
             tracer.anomaly(.connectionNotReady, token: traceToken)
             tracer.finish(token: traceToken, outcome: "notConnected")
             pendingLoadTrigger = trigger
+            declineTableLoad(for: tab.id)
             return
         }
 

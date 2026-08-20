@@ -54,14 +54,22 @@ struct StatusBarSnapshot: Equatable {
         self.statusMessage = statusMessage
     }
 
+    /// `isFetching` is the caller's answer to "is an execution running for this tab", which the tab
+    /// alone cannot give. `PaginationState.isLoading` covers the window a retarget opens before the
+    /// execution is claimed; the registry covers every later path, such as a page turn or a sort,
+    /// where the rows on screen stay put. Either one means the same thing to the bar, so they are
+    /// unioned here rather than checked separately by each control.
     init(
         tab: QueryTab?,
         tableRows: TableRows?,
         displayRowCount: Int? = nil,
+        isFetching: Bool = false,
         hasStructureActions: Bool = false
     ) {
         let loaded = tableRows?.rows.count ?? 0
         let displayed = displayRowCount ?? loaded
+        var pagination = tab?.pagination ?? PaginationState()
+        pagination.isLoading = pagination.isLoading || isFetching
         self.init(
             tabId: tab?.id,
             tabType: tab?.tabType,
@@ -77,16 +85,16 @@ struct StatusBarSnapshot: Equatable {
                 hasColumns: !(tableRows?.columns.isEmpty ?? true)
             ),
             hasStructureActions: hasStructureActions,
-            pagination: tab?.pagination ?? PaginationState(),
+            pagination: pagination,
             statusMessage: tab?.execution.statusMessage
         )
     }
 
-    var showsPaginationControls: Bool {
-        if let total = pagination.totalRowCount, total > 0 { return true }
-        return isPagedWithUnknownTotal
-    }
-
+    /// Whether the tab is on a page of a larger set whose size nobody has reported.
+    ///
+    /// Only the readout asks. Whether the pagination CONTROLS appear is a question about the tab,
+    /// not about the rows currently buffered, so it is answered by `ResultStatusModel` from the tab
+    /// type alone; deriving it from loaded rows made the cluster leave the layout mid-reload.
     var isPagedWithUnknownTotal: Bool {
         pagination.currentPage > 1 || rowCount >= pagination.pageSize
     }

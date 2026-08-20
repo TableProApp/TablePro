@@ -91,6 +91,34 @@ struct ResultStatusBarLayoutTests {
         #expect(empty >= StatusBarChrome.height)
     }
 
+    /// The reported bug rendered as motion: clicking between tables collapsed the bar to two
+    /// controls and refilled it in waves. Measuring the hosted view at each instant of that sequence
+    /// is the view-level counterpart to the control-set invariance asserted in ResultStatusModelTests.
+    @Test("The bar keeps its footprint at every instant of a table reload")
+    func heightIsConstantAcrossAReload() {
+        var loading = PaginationState(pageSize: 1_000)
+        loading.isLoading = true
+
+        var counting = PaginationState(pageSize: 1_000)
+        counting.isCountPending = true
+
+        var estimated = PaginationState(totalRowCount: 4_000_000, pageSize: 1_000)
+        estimated.isApproximateRowCount = true
+
+        let heights = [
+            makeBar(rowCount: 1_000, hasColumns: true, tabType: .table, viewMode: .data,
+                    pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)),
+            makeBar(rowCount: 0, hasColumns: false, tabType: .table, viewMode: .data, pagination: loading),
+            makeBar(rowCount: 1_000, hasColumns: true, tabType: .table, viewMode: .data, pagination: counting),
+            makeBar(rowCount: 1_000, hasColumns: true, tabType: .table, viewMode: .data, pagination: estimated),
+            makeBar(rowCount: 1_000, hasColumns: true, tabType: .table, viewMode: .data,
+                    pagination: PaginationState(totalRowCount: 3_812_004, pageSize: 1_000)),
+        ].map(measuredHeight)
+
+        #expect(Set(heights).count == 1, "the bar changed height while a table reloaded")
+        #expect(heights.allSatisfy { $0 >= StatusBarChrome.height })
+    }
+
     @Test("The bar is the same height in every result mode")
     func heightIsConstantAcrossModes() {
         let pagination = PaginationState(totalRowCount: 5_000, pageSize: 1_000)
