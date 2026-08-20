@@ -11,7 +11,13 @@ private let paramLog = Logger(subsystem: "com.TablePro", category: "QueryParamet
 
 /// One statement of a multi-statement run, resolved before the transaction opens so the
 /// lease holds nothing but driver work.
-private struct PreparedStatement {
+/// Carries the driver-bound parameter values into the scoped-driver closure. The values are
+/// handed to the driver and never touched again by the caller, which is what `[Any?]` hides.
+private struct BoundParameterValues: @unchecked Sendable {
+    let values: [Any?]
+}
+
+private struct PreparedStatement: @unchecked Sendable {
     let originalSQL: String
     let executableSQL: String
     let parameterValues: [Any?]?
@@ -121,6 +127,7 @@ extension QueryExecutionCoordinator {
             needsMetadataFetch = false
         }
 
+        let boundValues = BoundParameterValues(values: parameters)
         let parameterizedTask = Task { [weak self, parent] in
             guard let self else { return }
 
@@ -136,11 +143,11 @@ extension QueryExecutionCoordinator {
                     scope: scope,
                     route: DatabaseManager.shared.executionRoute(for: scope),
                     cancellation: .cancellableRead
-                ) { [queryExecutor = parent.queryExecutor] driver in
+                ) { [queryExecutor = parent.queryExecutor, boundValues] driver in
                     try await queryExecutor.executeQuery(
                         driver: driver,
                         sql: sql,
-                        parameters: parameters,
+                        parameters: boundValues.values,
                         rowCap: rowCap
                     )
                 }

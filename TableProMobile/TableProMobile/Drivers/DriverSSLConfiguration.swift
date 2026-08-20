@@ -2,7 +2,7 @@ import Foundation
 import TableProModels
 import TableProOracleCore
 
-struct DriverSSLConfiguration: Equatable, Sendable {
+nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
     let mode: SSLConfiguration.SSLMode
     let caCertificatePath: String?
     let clientCertificatePath: String?

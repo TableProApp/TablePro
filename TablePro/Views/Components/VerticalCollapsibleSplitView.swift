@@ -88,6 +88,7 @@ struct VerticalCollapsibleSplitView<TopContent: View, BottomContent: View>: NSVi
     /// The divider is draggable and double-clickable, so AppKit owns this state as much as
     /// SwiftUI does. Observing it back keeps the persisted value honest instead of letting the
     /// two drift until the next programmatic toggle snaps the pane back.
+    @MainActor
     final class Coordinator {
         var topController: NSHostingController<TopContent>?
         var bottomController: NSHostingController<BottomContent>?
@@ -99,11 +100,12 @@ struct VerticalCollapsibleSplitView<TopContent: View, BottomContent: View>: NSVi
         private var isApplyingProgrammatically = false
 
         func observeCollapse(of item: NSSplitViewItem) {
-            collapseObservation = item.observe(\.isCollapsed, options: [.new]) { [weak self] item, _ in
+            collapseObservation = item.observe(\.isCollapsed, options: [.new]) { [weak self] observed, _ in
+                nonisolated(unsafe) let observedItem = observed
                 MainActor.assumeIsolated {
                     guard let self, !self.isApplyingProgrammatically else { return }
-                    self.lastCollapsedState = item.isCollapsed
-                    self.onUserCollapseChange?(item.isCollapsed)
+                    self.lastCollapsedState = observedItem.isCollapsed
+                    self.onUserCollapseChange?(observedItem.isCollapsed)
                 }
             }
         }

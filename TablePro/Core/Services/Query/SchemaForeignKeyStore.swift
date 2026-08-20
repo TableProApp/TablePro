@@ -11,7 +11,7 @@ import os
 final class SchemaForeignKeyStore {
     static let shared = SchemaForeignKeyStore()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaForeignKeyStore")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaForeignKeyStore")
 
     private var entries: [String: [String: [ForeignKeyInfo]]] = [:]
     private var loads: [String: Task<Void, Never>] = [:]

@@ -8,7 +8,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private class BasePingDriver {
+private class BasePingDriver: @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
@@ -42,7 +42,7 @@ private class BasePingDriver {
 
 private final class DefaultPingDriver: BasePingDriver, PluginDatabaseDriver {}
 
-private final class PingOverrideDriver: BasePingDriver, PluginDatabaseDriver {
+private final class PingOverrideDriver: BasePingDriver, PluginDatabaseDriver, @unchecked Sendable {
     private(set) var pingCallCount = 0
 
     func ping() async throws {

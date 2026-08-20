@@ -10,7 +10,7 @@ import os
 import Security
 
 /// Verifies RSA-SHA256 signatures on license payloads using the embedded public key
-final class LicenseSignatureVerifier {
+final class LicenseSignatureVerifier: @unchecked Sendable {
     static let shared = LicenseSignatureVerifier()
 
     private let publicKey: SecKey?

@@ -13,7 +13,7 @@ import TableProSyncTransport
 @MainActor
 final class TagStorage {
     static let shared = TagStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "TagStorage")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TagStorage")
 
     private let tagsKey = "com.TablePro.tags"
     private let defaults = AppStorageEnvironment.shared.defaults

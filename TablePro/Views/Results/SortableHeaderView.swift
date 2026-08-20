@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import os
 
 struct HeaderSortTransition: Equatable {
     let newState: SortState
@@ -100,7 +101,7 @@ final class SortableHeaderView: NSTableHeaderView {
         return commentsByColumn[column.identifier]
     }
 
-    private var emphasisObservers: [NSObjectProtocol] = []
+    private let emphasisObservers = OSAllocatedUnfairLock<[any NSObjectProtocol]>(uncheckedState: [])
     private var firstResponderObservation: NSKeyValueObservation?
 
     override init(frame frameRect: NSRect) {
@@ -109,7 +110,7 @@ final class SortableHeaderView: NSTableHeaderView {
     }
 
     deinit {
-        emphasisObservers.forEach(NotificationCenter.default.removeObserver)
+        emphasisObservers.withLockUnchecked { $0.forEach(NotificationCenter.default.removeObserver) }
     }
 
     required init?(coder: NSCoder) {
@@ -119,8 +120,10 @@ final class SortableHeaderView: NSTableHeaderView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        emphasisObservers.forEach(NotificationCenter.default.removeObserver)
-        emphasisObservers.removeAll()
+        emphasisObservers.withLockUnchecked {
+            $0.forEach(NotificationCenter.default.removeObserver)
+            $0.removeAll()
+        }
         firstResponderObservation = nil
         guard let window else {
             applyEmphasis(false)
@@ -134,7 +137,7 @@ final class SortableHeaderView: NSTableHeaderView {
             ) { [weak self] _ in
                 MainActor.assumeIsolated { self?.refreshEmphasis() }
             }
-            emphasisObservers.append(observer)
+            emphasisObservers.withLockUnchecked { $0.append(observer) }
         }
         /// The header and the row bodies are two halves of one selection, so they have to agree on
         /// what emphasis means. `NSTableRowView.isEmphasized` is key window *and* table focus, and

@@ -10,7 +10,7 @@ import os
 final class CursorAgentService {
     static let shared = CursorAgentService()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CursorAgentService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CursorAgentService")
 
     enum AuthState: Sendable, Equatable {
         case notInstalled

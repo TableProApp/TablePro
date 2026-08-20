@@ -11,8 +11,8 @@ import UserNotifications
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AppDelegate")
-    static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AppDelegate")
+    nonisolated static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     private var hasRunPostLaunchActivation = false
 
@@ -270,14 +270,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// Carries a UserNotifications callback from the delegate thread to the main actor.
+/// UNUserNotificationCenter hands each one over exactly once and keeps no reference.
+private struct NotificationDelivery<Payload>: @unchecked Sendable {
+    let payload: Payload
+    let complete: () -> Void
+}
+
+private struct NotificationPresentationRequest: @unchecked Sendable {
+    let notification: UNNotification
+    let respond: (UNNotificationPresentationOptions) -> Void
+}
+
 extension AppDelegate: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let request = NotificationPresentationRequest(notification: notification, respond: completionHandler)
         Task { @MainActor in
-            completionHandler(NotificationRouter.shared.presentationOptions(for: notification))
+            request.respond(NotificationRouter.shared.presentationOptions(for: request.notification))
         }
     }
 
@@ -286,9 +299,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        let delivery = NotificationDelivery(payload: response, complete: completionHandler)
         Task { @MainActor in
-            defer { completionHandler() }
-            NotificationRouter.shared.handle(response)
+            defer { delivery.complete() }
+            NotificationRouter.shared.handle(delivery.payload)
         }
     }
 }

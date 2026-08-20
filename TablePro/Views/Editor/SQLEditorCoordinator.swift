@@ -20,7 +20,7 @@ import TableProPluginKit
 final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     // MARK: - Properties
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SQLEditorCoordinator")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SQLEditorCoordinator")
 
     /// Above this document length inline AI features are suspended, at the same cutoff where syntax highlighting stops,
     /// so a large document does not copy its whole contents to the assistant on every keystroke.

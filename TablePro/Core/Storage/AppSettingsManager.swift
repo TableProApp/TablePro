@@ -275,7 +275,7 @@ final class AppSettingsManager {
         return migrated
     }
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsManager")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsManager")
 
     private func applyHistorySettingsImmediately() async {
         await queryHistoryManager.applySettingsChange()

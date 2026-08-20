@@ -23,8 +23,8 @@ struct StructureEditingSupportBooleanParsingTests {
         .name, .type, .nullable, .defaultValue, .onUpdate, .primaryKey, .autoIncrement, .comment
     ]
 
-    private static let trueTokens = ["YES", "yes", "Yes", "TRUE", "true", "True", "1"]
-    private static let falseTokens = ["NO", "no", "FALSE", "false", "0", "", "maybe"]
+    nonisolated private static let trueTokens = ["YES", "yes", "Yes", "TRUE", "true", "True", "1"]
+    nonisolated private static let falseTokens = ["NO", "no", "FALSE", "false", "0", "", "maybe"]
 
     private func makeColumn() -> EditableColumnDefinition {
         EditableColumnDefinition(

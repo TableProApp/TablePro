@@ -67,7 +67,7 @@ struct AppServices {
     )
 }
 
-private struct AppServicesEnvironmentKey: EnvironmentKey {
+private struct AppServicesEnvironmentKey: @preconcurrency EnvironmentKey {
     @MainActor static var defaultValue: AppServices { .live }
 }
 

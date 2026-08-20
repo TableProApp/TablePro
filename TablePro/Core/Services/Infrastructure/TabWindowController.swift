@@ -52,7 +52,7 @@ extension EditorWindow: CloseCommandNaming {
 
 @MainActor
 internal final class TabWindowController: NSWindowController, NSWindowDelegate {
-    private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
 

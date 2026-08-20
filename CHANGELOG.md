@@ -53,6 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A column value filter survives switching result mode and switching tabs, instead of being dropped the moment the grid left the screen. Running a query, turning a page, refreshing, or moving to another result of the same script still clears it, because the values you picked came from the rows being replaced. (#2251)
 
 - The connection form's Browse button offers the file kinds the driver actually opens instead of every file on disk. It used to allow any file, so picking one the driver could not read looked fine until the connection failed.
+- TablePro is built in the Swift 6 language mode. The Mac app, the iPhone and iPad app, all 31 plugin bundles and the shared packages are now checked for data races by the compiler rather than by review, which closes off a class of crash that only turned up under load.
+
 ### Removed
 
 - MCP remote access is gone. The server binds to this Mac only. The certificate it used named only localhost, so no other device could ever have verified it, and opening a database client to the network is not worth the risk.

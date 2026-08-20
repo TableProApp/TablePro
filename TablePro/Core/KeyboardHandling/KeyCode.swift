@@ -30,7 +30,7 @@ import AppKit
 ///     }
 /// }
 /// ```
-public enum KeyCode: UInt16 {
+public enum KeyCode: UInt16, Sendable {
     // MARK: - Special Keys
 
     /// Escape key (ESC)

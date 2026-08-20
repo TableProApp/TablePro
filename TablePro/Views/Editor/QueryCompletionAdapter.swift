@@ -31,7 +31,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
     private var lastRefilterPrefix: String?
     private var lastRefilterItems: [SQLCompletionItem]?
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "QueryCompletionAdapter")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QueryCompletionAdapter")
 
     init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType? = nil) {
         self.service = QueryCompletionServiceFactory.make(schemaProvider: schemaProvider, databaseType: databaseType)

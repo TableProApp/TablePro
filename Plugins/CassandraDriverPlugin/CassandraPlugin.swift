@@ -189,15 +189,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         )
 
         if let keyspace {
-            stateLock.lock()
-            _currentKeyspace = keyspace
-            stateLock.unlock()
+            stateLock.withLock { _currentKeyspace = keyspace }
         }
 
         if let version = try? await connectionActor.serverVersion() {
-            stateLock.lock()
-            _cachedVersion = version
-            stateLock.unlock()
+            stateLock.withLock { _cachedVersion = version }
         }
 
         let caps = CassandraCapabilities(
@@ -537,9 +533,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func switchDatabase(to database: String) async throws {
         try await connectionActor.switchKeyspace(database)
-        stateLock.lock()
-        _currentKeyspace = database
-        stateLock.unlock()
+        stateLock.withLock { _currentKeyspace = database }
     }
 
     // MARK: - Schemas (Cassandra uses keyspaces, not schemas)

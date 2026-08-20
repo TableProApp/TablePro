@@ -114,6 +114,8 @@ extension PostgreSQLPluginDriver {
             } else {
                 "TABLE \(quoteIdentifier(table))"
             }
+        @unknown default:
+            nil
         }
     }
 

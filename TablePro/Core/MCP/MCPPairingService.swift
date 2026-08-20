@@ -98,7 +98,7 @@ actor PairingExchangeStore {
 final class MCPPairingService {
     static let shared = MCPPairingService()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MCPPairingService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MCPPairingService")
     private static let pruneInterval: Duration = .seconds(60)
     static let exchangeRateLimitPolicy = MCPRateLimitPolicy(
         maxFailedAttempts: 5,

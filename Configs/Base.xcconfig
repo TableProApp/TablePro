@@ -46,7 +46,7 @@ GCC_WARN_UNUSED_VARIABLE = YES
 LOCALIZATION_PREFERS_STRING_CATALOGS = YES
 MTL_FAST_MATH = YES
 STRING_CATALOG_GENERATE_SYMBOLS = YES
-SWIFT_VERSION = 5.0
+SWIFT_VERSION = 6.0
 CODE_SIGN_STYLE = Automatic
 
 // Signing knobs. Only the two app targets read them, so plugin bundles and the helper

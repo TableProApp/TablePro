@@ -35,7 +35,7 @@ internal enum TabRouterError: Error, LocalizedError {
 internal final class TabRouter {
     internal static let shared = TabRouter()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "TabRouter")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TabRouter")
 
     private let externalConnectionGate: ExternalConnectionGate
 

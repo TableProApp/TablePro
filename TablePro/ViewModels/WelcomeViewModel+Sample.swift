@@ -11,7 +11,7 @@ import TableProPluginKit
 
 @MainActor
 internal enum SampleDatabaseLauncher {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SampleDatabase")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SampleDatabase")
 
     private static let sampleOpenedCountKey = "com.TablePro.sample.openedCount"
     private static let sampleAutoSelectTable = "Track"

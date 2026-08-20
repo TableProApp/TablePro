@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public enum Cell: Sendable {
     case null
@@ -15,9 +16,9 @@ public extension Cell {
         case .text(let value):
             return value
         case .truncatedText(let head, let total, _):
-            return head + "... (\(byteCountFormatter.string(fromByteCount: Int64(total))))"
+            return head + "... (\(formattedByteCount(total)))"
         case .binary(let count, _):
-            return "[BLOB \(byteCountFormatter.string(fromByteCount: Int64(count)))]"
+            return "[BLOB \(formattedByteCount(count))]"
         }
     }
 
@@ -105,9 +106,13 @@ public extension Cell {
     }
 }
 
-private let byteCountFormatter: ByteCountFormatter = {
+private let byteCountFormatter = OSAllocatedUnfairLock(uncheckedState: {
     let formatter = ByteCountFormatter()
     formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
     formatter.countStyle = .binary
     return formatter
-}()
+}())
+
+private func formattedByteCount(_ byteCount: Int) -> String {
+    byteCountFormatter.withLock { $0.string(fromByteCount: Int64(byteCount)) }
+}

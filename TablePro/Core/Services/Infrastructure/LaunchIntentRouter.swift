@@ -11,7 +11,7 @@ import os
 internal final class LaunchIntentRouter {
     internal static let shared = LaunchIntentRouter()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LaunchIntentRouter")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LaunchIntentRouter")
 
     private init() {}
 

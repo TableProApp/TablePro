@@ -9,7 +9,7 @@ import Testing
 
 @Suite("Code block height estimation")
 struct CodeBlockHeightEstimatorTests {
-    private static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    private static var font: NSFont { NSFont.monospacedSystemFont(ofSize: 12, weight: .regular) }
 
     private func height(_ code: String, width: CGFloat = 480) -> CGFloat {
         CodeBlockHeightEstimator.height(for: code, font: Self.font, availableWidth: width)

@@ -1,4 +1,5 @@
 import Foundation
+import os
 import TableProPluginKit
 
 extension MCPConnectionBridge {
@@ -327,6 +328,8 @@ extension MCPConnectionBridge {
             return [database, schema, table].compactMap { $0 }.joined(separator: ".")
         case .column(let database, let schema, let table, let column):
             return [database, schema, table, column].compactMap { $0 }.joined(separator: ".")
+        @unknown default:
+            return "*"
         }
     }
 
@@ -339,7 +342,7 @@ extension MCPConnectionBridge {
             "database_type": .string(entry.databaseType.rawValue),
             "source": .string(entry.source.rawValue),
             "statement_type": .string(entry.statementType.rawValue),
-            "executed_at": .string(iso8601.string(from: entry.executedAt)),
+            "executed_at": .string(iso8601.withLockUnchecked { $0.string(from: entry.executedAt) }),
             "execution_time_ms": .double(entry.executionTime * 1_000),
             "row_count": .int(entry.rowCount),
             "was_successful": .bool(entry.wasSuccessful)

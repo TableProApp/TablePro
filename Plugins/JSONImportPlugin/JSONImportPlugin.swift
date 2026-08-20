@@ -8,7 +8,7 @@ import SwiftUI
 import TableProPluginKit
 
 @Observable
-final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
+final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "JSON Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from JSON files"
@@ -27,6 +27,7 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
 
     required init() { loadSettings() }
 
+    @MainActor
     func settingsView() -> AnyView? {
         AnyView(JSONImportOptionsView(plugin: self))
     }

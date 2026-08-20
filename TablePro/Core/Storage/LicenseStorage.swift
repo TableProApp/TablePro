@@ -10,7 +10,7 @@ import IOKit
 import os
 
 /// Persists license data using Keychain (secrets) and UserDefaults (metadata)
-final class LicenseStorage {
+final class LicenseStorage: Sendable {
     static let shared = LicenseStorage()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseStorage")
@@ -81,9 +81,16 @@ final class LicenseStorage {
 
     /// Hardware UUID from IOKit, SHA256-hashed for privacy.
     /// Stable across OS reinstalls (tied to hardware).
-    private lazy var _machineId: String = Self.computeMachineId(defaults: defaults)
+    private let cachedMachineId = OSAllocatedUnfairLock<String?>(initialState: nil)
 
-    var machineId: String { _machineId }
+    var machineId: String {
+        cachedMachineId.withLock { cached in
+            if let cached { return cached }
+            let computed = Self.computeMachineId(defaults: defaults)
+            cached = computed
+            return computed
+        }
+    }
 
     private static func computeMachineId(defaults: UserDefaults) -> String {
         let platformExpert = IOServiceGetMatchingService(

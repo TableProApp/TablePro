@@ -612,17 +612,20 @@ struct TabDisplayState: Equatable {
         return resultSets.first { $0.id == id }
     }
 
+    @MainActor
     var hasPinnedResults: Bool {
-        resultSets.contains(where: \.isPinned)
+        resultSets.contains { $0.isPinned }
     }
 
+    @MainActor
     mutating func replaceUnpinnedResults(with newResults: [ResultSet]) {
-        resultSets = resultSets.filter(\.isPinned) + newResults
+        resultSets = resultSets.filter { $0.isPinned } + newResults
         activeResultSetId = newResults.last?.id ?? resultSets.last?.id
     }
 
+    @MainActor
     mutating func removeUnpinnedResults() {
-        resultSets = resultSets.filter(\.isPinned)
+        resultSets = resultSets.filter { $0.isPinned }
         activeResultSetId = resultSets.last?.id
     }
 

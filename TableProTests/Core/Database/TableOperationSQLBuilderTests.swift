@@ -8,7 +8,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class StubDropDriver: PluginDatabaseDriver {
+private final class StubDropDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }

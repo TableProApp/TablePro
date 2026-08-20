@@ -79,8 +79,8 @@ enum ActiveSheet: Identifiable {
 /// Coordinator managing MainContentView business logic
 @MainActor @Observable
 final class MainContentCoordinator {
-    static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator")
-    static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator")
+    nonisolated static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     /// Monotonic counter for correlating rapid tab-switch/close log entries.
     static var switchSeq: Int = 0
@@ -914,9 +914,10 @@ final class MainContentCoordinator {
         }
 
         if !alreadyHandled {
+            let registry = services.schemaProviderRegistry
             Task { @MainActor in
-                services.schemaProviderRegistry.release(for: connectionId)
-                services.schemaProviderRegistry.purgeUnused()
+                registry.release(for: connectionId)
+                registry.purgeUnused()
             }
         }
     }

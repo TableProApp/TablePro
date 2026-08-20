@@ -6,7 +6,7 @@
 import Foundation
 import SwiftUI
 
-public protocol ImportFormatPlugin: TableProPlugin {
+public protocol ImportFormatPlugin: TableProPlugin, Sendable {
     static var formatId: String { get }
     static var formatDisplayName: String { get }
     static var acceptedFileExtensions: [String] { get }

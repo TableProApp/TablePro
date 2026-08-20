@@ -10,7 +10,7 @@ import CryptoKit
 import Foundation
 import os
 
-final class HostKeyStore: @unchecked Sendable {
+nonisolated final class HostKeyStore: @unchecked Sendable {
     static let shared = HostKeyStore()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "HostKeyStore")

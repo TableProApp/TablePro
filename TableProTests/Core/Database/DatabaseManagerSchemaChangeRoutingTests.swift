@@ -39,7 +39,7 @@ private class SchemaRoutingBaseDriver {
     }
 }
 
-private final class SchemaRoutingDriver: SchemaRoutingBaseDriver, PluginDatabaseDriver {
+private final class SchemaRoutingDriver: SchemaRoutingBaseDriver, PluginDatabaseDriver, @unchecked Sendable {
     private(set) var executedQueries: [String] = []
     private(set) var switchedDatabases: [String] = []
     var switchDatabaseError: Error?

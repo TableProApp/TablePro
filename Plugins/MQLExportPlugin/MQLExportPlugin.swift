@@ -8,7 +8,7 @@ import SwiftUI
 import TableProPluginKit
 
 @Observable
-final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
+final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "MQL Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to MongoDB Query Language format"
@@ -41,6 +41,7 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         optionValues.contains(true)
     }
 
+    @MainActor
     func settingsView() -> AnyView? {
         AnyView(MQLExportOptionsView(plugin: self))
     }

@@ -77,7 +77,7 @@ struct FilterSettings: Codable, Equatable {
 @MainActor
 final class FilterSettingsStorage {
     static let shared = FilterSettingsStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "FilterSettingsStorage")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "FilterSettingsStorage")
 
     private static let legacyLastFiltersKeyPrefix = "com.TablePro.filter.lastFilters."
     private static let legacyKnownFilterKeysKey = "com.TablePro.filter.knownFilterKeys"

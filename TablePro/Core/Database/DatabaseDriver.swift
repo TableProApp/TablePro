@@ -502,7 +502,7 @@ extension DatabaseDriver {
 /// Factory for creating database drivers via plugin lookup
 @MainActor
 enum DatabaseDriverFactory {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
 
     /// Async variant that awaits background plugin loading instead of blocking the main thread.
     /// Preferred for all call sites that are already in an async context.

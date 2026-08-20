@@ -21,7 +21,7 @@ final class QueryDiagnosticsController {
 
     private let debounceNanoseconds: UInt64 = 500_000_000
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "QueryDiagnostics")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QueryDiagnostics")
 
     init(databaseType: DatabaseType?) {
         self.producer = QueryDiagnosticsFactory.make(for: databaseType)

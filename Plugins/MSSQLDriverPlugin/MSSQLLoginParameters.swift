@@ -1,6 +1,6 @@
 import Foundation
 
-enum MSSQLLoginField: Equatable {
+nonisolated enum MSSQLLoginField: Equatable {
     case user
     case password
     case application
@@ -10,12 +10,12 @@ enum MSSQLLoginField: Equatable {
     case database
 }
 
-struct MSSQLLoginParameter: Equatable {
+nonisolated struct MSSQLLoginParameter: Equatable {
     let field: MSSQLLoginField
     let value: String
 }
 
-enum MSSQLLoginParameters {
+nonisolated enum MSSQLLoginParameters {
     static let nationalLanguage = "us_english"
     static let charset = "UTF-8"
 

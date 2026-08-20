@@ -11,16 +11,14 @@ extension ClickHousePluginDriver {
     // MARK: - Private HTTP Layer
 
     func executeRaw(_ query: String, queryId: String? = nil) async throws -> CHQueryResult {
-        lock.lock()
-        guard let session = self.session else {
-            lock.unlock()
-            throw ClickHouseError.notConnected
+        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
+            guard let session = self.session else { throw ClickHouseError.notConnected }
+            let database = _currentDatabase
+            if let queryId {
+                _lastQueryId = queryId
+            }
+            return (session, database)
         }
-        let database = _currentDatabase
-        if let queryId {
-            _lastQueryId = queryId
-        }
-        lock.unlock()
 
         var request = try buildRequest(query: query, database: database, queryId: queryId)
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
@@ -28,16 +26,14 @@ extension ClickHousePluginDriver {
     }
 
     func executeRawWithParams(_ query: String, params: [String: String?], queryId: String? = nil) async throws -> CHQueryResult {
-        lock.lock()
-        guard let session = self.session else {
-            lock.unlock()
-            throw ClickHouseError.notConnected
+        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
+            guard let session = self.session else { throw ClickHouseError.notConnected }
+            let database = _currentDatabase
+            if let queryId {
+                _lastQueryId = queryId
+            }
+            return (session, database)
         }
-        let database = _currentDatabase
-        if let queryId {
-            _lastQueryId = queryId
-        }
-        lock.unlock()
 
         var request = try buildRequest(query: query, database: database, queryId: queryId, params: params)
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
@@ -47,9 +43,7 @@ extension ClickHousePluginDriver {
     private func perform(request: URLRequest, session: URLSession) async throws -> CHQueryResult {
         let (data, response) = try await send(request: request, session: session)
 
-        lock.lock()
-        currentTask = nil
-        lock.unlock()
+        lock.withLock { currentTask = nil }
 
         let httpResponse = response as? HTTPURLResponse
         if let httpResponse, httpResponse.statusCode >= 400 {

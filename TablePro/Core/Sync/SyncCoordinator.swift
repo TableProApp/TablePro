@@ -16,7 +16,7 @@ import TableProSyncTransport
 @MainActor @Observable
 final class SyncCoordinator {
     static let shared = SyncCoordinator()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SyncCoordinator")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SyncCoordinator")
 
     private(set) var syncStatus: SyncStatus = .disabled(.userDisabled)
     private(set) var lastSyncDate: Date?
@@ -27,7 +27,7 @@ final class SyncCoordinator {
     @ObservationIgnored private let changeTracker: SyncChangeTracker
     @ObservationIgnored private let metadataStorage: SyncMetadataStorage
     @ObservationIgnored private let recordCache = SyncRecordCache()
-    @ObservationIgnored private var accountObserver: NSObjectProtocol?
+    @ObservationIgnored private let accountObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     @ObservationIgnored private var changeCancellable: AnyCancellable?
     @ObservationIgnored private var licenseCancellable: AnyCancellable?
     @ObservationIgnored private var syncTask: Task<Void, Never>?
@@ -41,7 +41,7 @@ final class SyncCoordinator {
     }
 
     deinit {
-        if let accountObserver { NotificationCenter.default.removeObserver(accountObserver) }
+        if let observer = accountObserver.withLockUnchecked({ $0 }) { NotificationCenter.default.removeObserver(observer) }
         syncTask?.cancel()
     }
 
@@ -719,7 +719,7 @@ final class SyncCoordinator {
     // MARK: - Observers
 
     private func observeAccountChanges() {
-        accountObserver = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: .CKAccountChanged,
             object: nil,
             queue: .main
@@ -738,6 +738,7 @@ final class SyncCoordinator {
                 }
             }
         }
+        accountObserver.withLockUnchecked { $0 = observer }
     }
 
     private func observeLocalChanges() {

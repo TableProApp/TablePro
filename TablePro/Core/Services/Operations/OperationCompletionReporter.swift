@@ -17,7 +17,7 @@ import UserNotifications
 internal final class OperationCompletionReporter {
     internal static let shared = OperationCompletionReporter()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "OperationNotifications")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "OperationNotifications")
 
     private let presenter: any UserNotificationPresenting
     private let authorization: NotificationAuthorization

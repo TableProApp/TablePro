@@ -184,9 +184,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // MARK: - Connection Management
 
     func connect(reportingStage report: @escaping ConnectionStageReporter = { _ in }) async throws {
-        stateLock.lock()
-        _isConnectCancelled = false
-        stateLock.unlock()
+        stateLock.withLock { _isConnectCancelled = false }
 
         try await withTaskCancellationHandler {
             try await pluginDispatchAsyncCancellable(

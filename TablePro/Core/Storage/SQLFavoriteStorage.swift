@@ -10,7 +10,21 @@ import SQLite3
 internal actor SQLFavoriteStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFavoriteStorage")
 
-    private var db: OpaquePointer?
+    private struct DatabaseHandle: @unchecked Sendable {
+        var pointer: OpaquePointer?
+    }
+
+    private var dbHandle = DatabaseHandle()
+    private var isPrepared = false
+
+    private var db: OpaquePointer? {
+        if !isPrepared {
+            isPrepared = true
+            setupDatabase()
+        }
+        return dbHandle.pointer
+    }
+
 
     private let databaseURL: URL
     private let removeDatabaseOnDeinit: Bool
@@ -21,7 +35,6 @@ internal actor SQLFavoriteStorage {
     ) {
         self.databaseURL = databaseURL
         self.removeDatabaseOnDeinit = removeDatabaseOnDeinit
-        setupDatabase()
     }
 
     static func defaultDatabaseURL() -> URL {
@@ -32,8 +45,8 @@ internal actor SQLFavoriteStorage {
     }
 
     deinit {
-        if let db = db {
-            sqlite3_close_v2(db)
+        if let pointer = dbHandle.pointer {
+            sqlite3_close_v2(pointer)
         }
         if removeDatabaseOnDeinit {
             let path = databaseURL.path(percentEncoded: false)
@@ -52,7 +65,7 @@ internal actor SQLFavoriteStorage {
 
         let dbPath = databaseURL.path(percentEncoded: false)
 
-        if sqlite3_open(dbPath, &db) != SQLITE_OK {
+        if sqlite3_open(dbPath, &dbHandle.pointer) != SQLITE_OK {
             Self.logger.error("Error opening database")
             return
         }

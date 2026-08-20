@@ -14,7 +14,7 @@ import TableProSyncTransport
 @MainActor
 final class ConnectionStorage {
     static let shared = ConnectionStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionStorage")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionStorage")
 
     private let connectionsKey = "com.TablePro.connections"
     private let migratedToFileKey = "com.TablePro.connectionsMigratedToFile"

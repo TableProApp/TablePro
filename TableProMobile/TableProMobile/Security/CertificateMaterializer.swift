@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-struct MaterializedCertificates: Equatable, Sendable {
+nonisolated struct MaterializedCertificates: Equatable, Sendable {
     let caCertificatePath: String?
     let clientCertificatePath: String?
     let clientKeyPath: String?
@@ -11,7 +11,7 @@ struct MaterializedCertificates: Equatable, Sendable {
     }
 }
 
-final class CertificateMaterializer {
+nonisolated final class CertificateMaterializer: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CertificateMaterializer")
     private static let directoryName = "ClientCertificates"
 

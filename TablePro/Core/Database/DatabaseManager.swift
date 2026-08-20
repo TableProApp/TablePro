@@ -15,7 +15,7 @@ import TableProPluginKit
 @MainActor @Observable
 final class DatabaseManager {
     static let shared = DatabaseManager()
-    internal static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
+    nonisolated internal static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
 
     @ObservationIgnored internal let connectionStorage: ConnectionStorage
     @ObservationIgnored internal let appSettingsStorage: AppSettingsStorage

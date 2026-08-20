@@ -1,6 +1,6 @@
 import Foundation
 
-enum PEMLabel: String, CaseIterable, Sendable {
+nonisolated enum PEMLabel: String, CaseIterable, Sendable {
     case certificate = "CERTIFICATE"
     case pkcs8PrivateKey = "PRIVATE KEY"
     case rsaPrivateKey = "RSA PRIVATE KEY"
@@ -10,12 +10,12 @@ enum PEMLabel: String, CaseIterable, Sendable {
     var isPrivateKey: Bool { self != .certificate }
 }
 
-struct PEMBlock: Equatable, Sendable {
+nonisolated struct PEMBlock: Equatable, Sendable {
     let label: PEMLabel
     let text: String
 }
 
-struct PEMInspection: Equatable, Sendable {
+nonisolated struct PEMInspection: Equatable, Sendable {
     let certificates: [PEMBlock]
     let privateKeys: [PEMBlock]
     let usesPassphrase: Bool
@@ -23,7 +23,7 @@ struct PEMInspection: Equatable, Sendable {
     var isEmpty: Bool { certificates.isEmpty && privateKeys.isEmpty }
 }
 
-enum PEMDocument {
+nonisolated enum PEMDocument {
     static let lineLength = 64
 
     static func inspect(_ text: String) -> PEMInspection {

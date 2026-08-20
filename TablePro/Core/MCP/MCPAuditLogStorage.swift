@@ -47,36 +47,45 @@ actor MCPAuditLogStorage {
         NSClassFromString("XCTestCase") != nil
     }
 
-    private var db: OpaquePointer?
+    private struct DatabaseHandle: @unchecked Sendable {
+        var pointer: OpaquePointer?
+    }
+
+    private var dbHandle = DatabaseHandle()
+
+    private var db: OpaquePointer? {
+        if !isPrepared {
+            isPrepared = true
+            setupDatabase()
+            prune(olderThan: Self.retentionDays)
+            loadChainHead()
+        }
+        return dbHandle.pointer
+    }
     private var dbPath: String?
     private let testDatabaseSuffix: String?
     private var nextSequence: Int = 0
     private var lastHash: String = MCPAuditChainLink.genesisHash
+    private var isPrepared = false
 
     init() {
         self.testDatabaseSuffix = nil
-        setupDatabase()
-        prune(olderThan: Self.retentionDays)
-        loadChainHead()
     }
 
     #if DEBUG
     init(isolatedForTesting: Bool) {
         self.testDatabaseSuffix = isolatedForTesting ? "_\(UUID().uuidString)" : nil
-        setupDatabase()
-        prune(olderThan: Self.retentionDays)
-        loadChainHead()
     }
 
     var databaseFilePaths: [String] {
-        guard let dbPath else { return [] }
+        guard db != nil, let dbPath else { return [] }
         return [dbPath, dbPath + "-wal", dbPath + "-shm"]
     }
     #endif
 
     deinit {
-        if let db {
-            sqlite3_close(db)
+        if let pointer = dbHandle.pointer {
+            sqlite3_close(pointer)
         }
         if Self.isRunningTests, let dbPath {
             try? FileManager.default.removeItem(atPath: dbPath)
@@ -112,7 +121,7 @@ actor MCPAuditLogStorage {
         }
         Self.restrict(path: path, to: 0o600)
 
-        if sqlite3_open(path, &db) != SQLITE_OK {
+        if sqlite3_open(path, &dbHandle.pointer) != SQLITE_OK {
             Self.logger.error("Error opening MCP audit database")
             return
         }

@@ -14,11 +14,11 @@ import OSLog
 
 @MainActor
 internal final class WindowLifecycleMonitor {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "WindowLifecycleMonitor")
-    private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WindowLifecycleMonitor")
+    nonisolated private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
     internal static let shared = WindowLifecycleMonitor()
 
-    private struct Entry {
+    private struct Entry: @unchecked Sendable {
         let connectionId: UUID
         weak var window: NSWindow?
         var observers: [NSObjectProtocol]

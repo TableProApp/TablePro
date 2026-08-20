@@ -163,7 +163,7 @@ extension DuckDBActor {
     }
 }
 
-enum HugeIntFormatter {
+nonisolated enum HugeIntFormatter {
     static func format(upper: Int64, lower: UInt64) -> String {
         if upper == 0 {
             return String(lower)

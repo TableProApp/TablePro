@@ -2,7 +2,7 @@
 # https://github.com/nicklockwood/SwiftFormat
 
 # Swift version
---swiftversion 5.9
+--swiftversion 6.0
 
 # File options
 --exclude DerivedData,.build,Packages,Pods,Carthage,vendor

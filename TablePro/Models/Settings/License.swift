@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 
 // MARK: - License Status
 
@@ -267,12 +268,12 @@ struct License: Codable, Equatable {
     }
 
     var expiresAt: Date? {
-        payload.expiresAt.flatMap { Self.iso8601Formatter.date(from: $0) }
+        payload.expiresAt.flatMap { Self.date(fromInternetDateTime: $0) }
     }
 
     /// When the server signed this payload, which is when it last confirmed the license.
     var issuedAt: Date? {
-        Self.iso8601Formatter.date(from: payload.issuedAt)
+        Self.date(fromInternetDateTime: payload.issuedAt)
     }
 
     /// Whether the license has expired based on expiration date
@@ -294,11 +295,15 @@ struct License: Codable, Equatable {
         return max(0, Calendar.current.dateComponents([.day], from: issuedAt, to: Date()).day ?? 0)
     }
 
-    private static let iso8601Formatter: ISO8601DateFormatter = {
+    private static let iso8601Formatter: OSAllocatedUnfairLock<ISO8601DateFormatter> = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter
+        return OSAllocatedUnfairLock(uncheckedState: formatter)
     }()
+
+    private static func date(fromInternetDateTime value: String) -> Date? {
+        iso8601Formatter.withLockUnchecked { $0.date(from: value) }
+    }
 }
 
 // MARK: - License Error

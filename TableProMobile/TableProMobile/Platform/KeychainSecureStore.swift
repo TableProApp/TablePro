@@ -3,16 +3,16 @@ import os
 import Security
 import TableProDatabase
 
-final class KeychainSecureStore: SecureStore {
+nonisolated final class KeychainSecureStore: SecureStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "KeychainSecureStore")
 
     private let serviceName = "com.TablePro"
     private let accessGroup: String?
 
-    private static var cachedAccessGroup: String?
+    private static let cachedAccessGroup = OSAllocatedUnfairLock<String?>(initialState: nil)
 
     private static func resolveAccessGroup() -> String? {
-        if let cached = cachedAccessGroup { return cached }
+        if let cached = cachedAccessGroup.withLock({ $0 }) { return cached }
 
         guard let prefix = Bundle.main.infoDictionary?["AppIdentifierPrefix"] as? String,
               !prefix.isEmpty,
@@ -22,7 +22,7 @@ final class KeychainSecureStore: SecureStore {
         }
 
         let group = "\(prefix)com.TablePro.shared"
-        cachedAccessGroup = group
+        cachedAccessGroup.withLock { $0 = group }
         return group
     }
 
@@ -140,7 +140,7 @@ final class KeychainSecureStore: SecureStore {
     }
 }
 
-enum KeychainError: Error, LocalizedError {
+nonisolated enum KeychainError: Error, LocalizedError {
     case storeFailed(OSStatus)
     case retrieveFailed(OSStatus)
     case deleteFailed(OSStatus)

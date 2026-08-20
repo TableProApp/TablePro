@@ -7,7 +7,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class StubDriver: PluginDatabaseDriver {
+private final class StubDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
@@ -35,7 +35,7 @@ private final class StubDriver: PluginDatabaseDriver {
     }
 }
 
-private final class SqlStandardStubDriver: PluginDatabaseDriver {
+private final class SqlStandardStubDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }

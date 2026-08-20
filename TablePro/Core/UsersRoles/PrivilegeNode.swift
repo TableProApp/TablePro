@@ -88,6 +88,8 @@ final class PrivilegeNode: NSObject {
             } else {
                 .available
             }
+        @unknown default:
+            .none
         }
     }
 }

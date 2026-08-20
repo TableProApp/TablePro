@@ -2,7 +2,7 @@ import Foundation
 import os
 import Security
 
-enum CertificateRole: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum CertificateRole: String, CaseIterable, Identifiable, Sendable {
     case certificateAuthority
     case clientCertificate
     case clientKey
@@ -10,7 +10,7 @@ enum CertificateRole: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
 }
 
-enum CertificateStoreError: Error, LocalizedError {
+nonisolated enum CertificateStoreError: Error, LocalizedError {
     case writeFailed(OSStatus)
 
     var errorDescription: String? {
@@ -18,14 +18,14 @@ enum CertificateStoreError: Error, LocalizedError {
     }
 }
 
-protocol CertificateMaterialStoring: Sendable {
+nonisolated protocol CertificateMaterialStoring: Sendable {
     func store(_ pem: String, role: CertificateRole, for connectionId: UUID) throws
     func pem(role: CertificateRole, for connectionId: UUID) -> String?
     func delete(role: CertificateRole, for connectionId: UUID)
     func deleteAll(for connectionId: UUID)
 }
 
-final class CertificateMaterialStore: CertificateMaterialStoring {
+nonisolated final class CertificateMaterialStore: CertificateMaterialStoring {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CertificateMaterialStore")
     private let serviceName = "com.TablePro.clientCertificates"
 

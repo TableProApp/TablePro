@@ -11,16 +11,16 @@ import Testing
 // MARK: - Mock DriverPlugin for Testing
 
 private final class MockDriverPlugin: NSObject, TableProPlugin, DriverPlugin {
-    static var pluginName = "MockDriver"
-    static var pluginVersion = "1.0.0"
-    static var pluginDescription = "Test plugin"
-    static var capabilities: [PluginCapability] = [.databaseDriver]
-    static var dependencies: [String] = []
+    static let pluginName = "MockDriver"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Test plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+    static let dependencies: [String] = []
 
-    static var databaseTypeId = "mock-db"
-    static var databaseDisplayName = "Mock Database"
-    static var iconName = "cylinder.fill"
-    static var defaultPort = 9999
+    nonisolated(unsafe) static var databaseTypeId = "mock-db"
+    nonisolated(unsafe) static var databaseDisplayName = "Mock Database"
+    static let iconName = "cylinder.fill"
+    static let defaultPort = 9999
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         fatalError("Not used in tests")
@@ -40,7 +40,7 @@ private final class MockDriverPlugin: NSObject, TableProPlugin, DriverPlugin {
         additionalDatabaseTypeIds = additionalIds
     }
 
-    static var additionalDatabaseTypeIds: [String] = []
+    nonisolated(unsafe) static var additionalDatabaseTypeIds: [String] = []
 }
 
 // MARK: - validateDriverDescriptor Tests

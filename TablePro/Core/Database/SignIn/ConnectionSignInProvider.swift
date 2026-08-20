@@ -12,17 +12,17 @@ enum ConnectionSignInKind: String, Equatable, CaseIterable {
 /// provider says which failures it recognises and what to run to recover, so both the connection
 /// form and the real connect path can offer the same recovery without either knowing which driver
 /// is involved.
-struct ConnectionSignInProvider {
+struct ConnectionSignInProvider: Sendable {
     let kind: ConnectionSignInKind
 
     /// Whether this provider recognises the failure. Kept free of UI so it stays testable.
-    let claims: (Error, [String: String]) -> Bool
+    let claims: @Sendable (Error, [String: String]) -> Bool
 
     let title: String
-    let message: ([String: String]) -> String
+    let message: @Sendable ([String: String]) -> String
     let signedInMessage: String
     let failureTitle: String
-    let signIn: @MainActor ([String: String], NSWindow?) async throws -> Void
+    let signIn: @MainActor @Sendable ([String: String], NSWindow?) async throws -> Void
 }
 
 enum ConnectionSignInRegistry {

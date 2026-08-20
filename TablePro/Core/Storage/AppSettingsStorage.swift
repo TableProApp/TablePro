@@ -10,7 +10,7 @@ import Foundation
 import os
 
 /// Persistent storage for app settings
-final class AppSettingsStorage {
+final class AppSettingsStorage: Sendable {
     static let shared = AppSettingsStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsStorage")
 

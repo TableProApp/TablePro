@@ -4,7 +4,7 @@ import TableProModels
 import TableProMSSQLCore
 import TableProPluginKit
 
-private extension MSSQLRawResult {
+nonisolated private extension MSSQLRawResult {
     nonisolated func toQueryResult(executionTime: TimeInterval) -> QueryResult {
         let columnInfos = columns.enumerated().map { idx, col in
             ColumnInfo(name: col.name, typeName: col.type.canonicalName, ordinalPosition: idx)
@@ -19,7 +19,7 @@ private extension MSSQLRawResult {
     }
 }
 
-final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     nonisolated(unsafe) private var conn: FreeTDSConnection
     private let options: MSSQLConnectionOptions
     private let additionalFields: [String: String]
@@ -303,7 +303,7 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 }
 
-private extension Array {
+nonisolated private extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
     }

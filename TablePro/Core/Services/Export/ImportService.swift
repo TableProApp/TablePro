@@ -27,7 +27,7 @@ struct ImportState {
 
 @MainActor @Observable
 final class ImportService {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ImportService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ImportService")
 
     var state = ImportState()
 

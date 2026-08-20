@@ -19,9 +19,7 @@ final class MCPAuditWriteQueue: @unchecked Sendable {
     }
 
     func flush() async {
-        lock.lock()
-        let pending = tail
-        lock.unlock()
+        let pending = lock.withLock { tail }
         await pending?.value
     }
 }

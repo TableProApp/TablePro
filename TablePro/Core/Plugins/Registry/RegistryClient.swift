@@ -16,7 +16,7 @@ final class RegistryClient {
 
     let session: URLSession
     static let supportedSchemaVersion = 2
-    private static let logger = Logger(subsystem: "com.TablePro", category: "RegistryClient")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RegistryClient")
     private static let manifestFreshnessWindow: TimeInterval = 300
 
     private static let defaultRegistryURL = URL(string:
@@ -47,7 +47,7 @@ final class RegistryClient {
         return Self.defaultRegistryURL
     }
 
-    private static let manifestCacheFileName = "registry-manifest.json"
+    nonisolated private static let manifestCacheFileName = "registry-manifest.json"
 
     init(
         userDefaults: UserDefaults = .standard,

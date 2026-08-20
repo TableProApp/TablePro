@@ -8,7 +8,7 @@ description: Clone, configure signing, and build TablePro in Xcode
 | Software | Version | Notes |
 |----------|---------|-------|
 | Xcode | 26.0+ | Ships the macOS 26 SDK the app builds against. Every CI job pins 26.4.1. |
-| Swift | 5 language mode | Comes with Xcode, set by `SWIFT_VERSION` in `Configs/Base.xcconfig` |
+| Swift | 6 language mode | Comes with Xcode, set by `SWIFT_VERSION` in `Configs/Base.xcconfig`. The two local packages under `Packages/` declare it through `swift-tools-version: 6.0` instead. |
 | XcodeGen | 2.46.0 | Generates `TablePro.xcodeproj` from `project.yml`. `brew install xcodegen` |
 
 The app references macOS 26 SDK symbols (`NSGlassEffectView` in the quick switcher), so an older Xcode cannot compile it. The deployment target stays at macOS 14.0 Sonoma, which is what the built app runs on, not what you build on.

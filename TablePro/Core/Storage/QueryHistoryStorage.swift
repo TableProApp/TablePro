@@ -6,7 +6,21 @@ actor QueryHistoryStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryHistoryStorage")
     private static let cleanupInsertInterval = 100
 
-    private var db: OpaquePointer?
+    private struct DatabaseHandle: @unchecked Sendable {
+        var pointer: OpaquePointer?
+    }
+
+    private var dbHandle = DatabaseHandle()
+    private var isPrepared = false
+
+    private var db: OpaquePointer? {
+        if !isPrepared {
+            isPrepared = true
+            setupDatabase()
+        }
+        return dbHandle.pointer
+    }
+
     private var cachedMaxEntries: Int = 10_000
     private var cachedMaxDays: Int = 90
     private var cachedAutoCleanup: Bool = true
@@ -22,7 +36,6 @@ actor QueryHistoryStorage {
     ) {
         self.databaseURL = databaseURL
         self.removeDatabaseOnDeinit = removeDatabaseOnDeinit
-        setupDatabase()
     }
 
     static func defaultDatabaseURL() -> URL {
@@ -32,8 +45,8 @@ actor QueryHistoryStorage {
     }
 
     deinit {
-        if let db {
-            sqlite3_close_v2(db)
+        if let pointer = dbHandle.pointer {
+            sqlite3_close_v2(pointer)
         }
         if removeDatabaseOnDeinit {
             let path = databaseURL.path(percentEncoded: false)
@@ -53,12 +66,12 @@ actor QueryHistoryStorage {
         let dbPath = databaseURL.path(percentEncoded: false)
         protectDatabaseFiles(at: dbPath)
 
-        guard sqlite3_open(dbPath, &db) == SQLITE_OK else {
+        guard sqlite3_open(dbPath, &dbHandle.pointer) == SQLITE_OK else {
             Self.logger.error("Failed to open query history database at \(dbPath, privacy: .public)")
-            if let db {
-                sqlite3_close_v2(db)
+            if let pointer = dbHandle.pointer {
+                sqlite3_close_v2(pointer)
             }
-            db = nil
+            dbHandle.pointer = nil
             return
         }
 

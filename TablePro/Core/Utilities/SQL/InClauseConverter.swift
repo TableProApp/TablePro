@@ -45,6 +45,8 @@ internal struct InClauseConverter {
                 return "TRUE"
             case .isFalse:
                 return "FALSE"
+            @unknown default:
+                return quoted(value)
             }
         }
         guard ColumnTypeSQLQuoting.isNumericLiteral(value, for: type) else { return quoted(value) }

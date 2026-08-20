@@ -20,8 +20,8 @@ final class WelcomeViewModelTests: XCTestCase {
     private var welcomeRouter: WelcomeRouter!
     private var viewModel: WelcomeViewModel!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         let unique = UUID().uuidString
         suiteName = "com.TablePro.tests.WelcomeViewModel.\(unique)"
         syncSuiteName = "com.TablePro.tests.WelcomeViewModel.sync.\(unique)"

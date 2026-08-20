@@ -1,7 +1,7 @@
 import ActivityKit
 import Foundation
 
-struct QueryActivityAttributes: ActivityAttributes {
+nonisolated struct QueryActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         var startedAt: Date
         var endedAt: Date?

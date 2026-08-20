@@ -1,7 +1,7 @@
 import Foundation
 import TableProModels
 
-enum AppPreferences {
+nonisolated enum AppPreferences {
     static let cloudSyncEnabledKey = "com.TablePro.settings.cloudSyncEnabled"
     static let syncPasswordsKey = "com.TablePro.settings.syncPasswords"
     static let defaultPageSizeKey = "com.TablePro.settings.defaultPageSize"

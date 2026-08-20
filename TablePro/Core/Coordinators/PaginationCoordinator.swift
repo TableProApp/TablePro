@@ -299,7 +299,6 @@ final class PaginationCoordinator {
             do {
                 let start = CFAbsoluteTimeGetCurrent()
                 progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .public)")
-                let anyParams: [Any?]? = storedParamValues.map { $0.map { $0 as Any? } }
                 let result = try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: route,
@@ -308,7 +307,7 @@ final class PaginationCoordinator {
                     try await driver.executeUserQuery(
                         query: baseQuery,
                         rowCap: nil,
-                        parameters: anyParams
+                        parameters: storedParamValues.map { $0.map { $0 as Any? } }
                     )
                 }
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start

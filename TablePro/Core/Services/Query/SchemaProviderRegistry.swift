@@ -12,7 +12,7 @@ import os
 
 @MainActor
 final class SchemaProviderRegistry {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaProviderRegistry")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaProviderRegistry")
 
     static let shared = SchemaProviderRegistry()
 

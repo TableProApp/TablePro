@@ -2,8 +2,8 @@ import AppIntents
 import Foundation
 
 struct TableEntity: AppEntity {
-    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Table")
-    static var defaultQuery = TableEntityQuery()
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Table")
+    static let defaultQuery = TableEntityQuery()
 
     var id: String
     var name: String

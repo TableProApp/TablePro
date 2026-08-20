@@ -655,12 +655,12 @@ final class MockHttpServer: @unchecked Sendable {
     }
 
     func stop() async {
-        lock.lock()
-        let listener = self.listener
-        let connections = self.connections
-        self.listener = nil
-        self.connections = []
-        lock.unlock()
+        let (listener, connections) = lock.withLock { () -> (NWListener?, [NWConnection]) in
+            let taken = (self.listener, self.connections)
+            self.listener = nil
+            self.connections = []
+            return taken
+        }
         listener?.cancel()
         for connection in connections {
             connection.cancel()

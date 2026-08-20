@@ -299,6 +299,8 @@ public struct ExportDataTool: MCPToolImplementation {
             return "SELECT * FROM \(quotedTable) LIMIT \(limit)"
         case .none:
             return "SELECT * FROM \(quotedTable)"
+        @unknown default:
+            return "SELECT * FROM \(quotedTable)"
         }
     }
 

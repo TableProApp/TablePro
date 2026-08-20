@@ -3,13 +3,13 @@ import Foundation
 import TableProModels
 import UniformTypeIdentifiers
 
-protocol RowInsertingIntent: AppIntent {
+nonisolated protocol RowInsertingIntent: AppIntent {
     var connection: ConnectionEntity { get }
     var database: DatabaseEntity? { get }
     var table: TableEntity { get }
 }
 
-extension RowInsertingIntent {
+nonisolated extension RowInsertingIntent {
     func insert(rows: [PayloadRow]) async throws -> Int {
         guard let savedConnection = IntentConnectionLoader.connection(id: connection.id) else {
             throw IntentDataError.connectionNotFound
@@ -45,14 +45,14 @@ extension RowInsertingIntent {
 }
 
 struct AddRowToTableIntent: RowInsertingIntent {
-    static var title: LocalizedStringResource = "Add Row to Table"
-    static var description = IntentDescription(
+    static let title: LocalizedStringResource = "Add Row to Table"
+    static let description = IntentDescription(
         "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row.",
         categoryName: "Database",
         searchKeywords: ["TablePro", "database", "SQL", "insert", "row", "table"]
     )
-    static var openAppWhenRun = false
-    static var authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
+    static let openAppWhenRun = false
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
     @Parameter(title: "Connection")
     var connection: ConnectionEntity
@@ -82,14 +82,14 @@ struct AddRowToTableIntent: RowInsertingIntent {
 }
 
 struct AddRowsToTableIntent: RowInsertingIntent {
-    static var title: LocalizedStringResource = "Add Rows to Table"
-    static var description = IntentDescription(
+    static let title: LocalizedStringResource = "Add Rows to Table"
+    static let description = IntentDescription(
         "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file.",
         categoryName: "Database",
         searchKeywords: ["TablePro", "database", "SQL", "insert", "rows", "table", "import"]
     )
-    static var openAppWhenRun = false
-    static var authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
+    static let openAppWhenRun = false
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
     @Parameter(title: "Connection")
     var connection: ConnectionEntity

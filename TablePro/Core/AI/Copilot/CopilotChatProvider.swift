@@ -6,7 +6,7 @@
 import Foundation
 import os
 
-final class CopilotChatProvider: ChatTransport {
+final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotChatProvider")
 
     private var conversationId: String?

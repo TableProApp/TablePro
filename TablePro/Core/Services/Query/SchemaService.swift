@@ -55,7 +55,7 @@ final class SchemaService {
     @ObservationIgnored private var loadGenerations: [UUID: Int] = [:]
     @ObservationIgnored private var refreshWaiters: [UUID: [RefreshWaiter]] = [:]
     @ObservationIgnored private var nextLoadGeneration = 0
-    @ObservationIgnored private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
+    @ObservationIgnored nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
 
     func state(for connectionId: UUID) -> SchemaState {
         states[connectionId] ?? .idle

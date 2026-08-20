@@ -361,7 +361,7 @@ private extension String {
 
 // MARK: - Real Process Runner
 
-final class ProcessPostgresDumpRunner: PostgresDumpRunner {
+final class ProcessPostgresDumpRunner: PostgresDumpRunner, @unchecked Sendable {
     private let process = Process()
     private let stderrPipe = Pipe()
     private let stateLock = NSLock()

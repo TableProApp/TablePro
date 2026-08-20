@@ -1,6 +1,6 @@
 import Foundation
 
-struct FileBookmarkStore: Sendable {
+nonisolated struct FileBookmarkStore: Sendable {
     private let suiteName: String?
     private static let keyPrefix = "com.TablePro.fileBookmark."
 

@@ -3,8 +3,8 @@ import Foundation
 import TableProModels
 
 struct ConnectionEntity: AppEntity {
-    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Connection")
-    static var defaultQuery = ConnectionEntityQuery()
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Connection")
+    static let defaultQuery = ConnectionEntityQuery()
 
     var id: UUID
     var name: String

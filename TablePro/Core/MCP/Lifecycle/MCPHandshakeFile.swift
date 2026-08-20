@@ -243,7 +243,7 @@ public final class MCPServerInstanceIdentity: Sendable {
 
 @MainActor
 internal final class MCPHandshakeFile {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Handshake")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Handshake")
 
     private let directory: URL
     private let fileManager: FileManager

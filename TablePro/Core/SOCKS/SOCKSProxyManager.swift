@@ -279,7 +279,7 @@ actor SOCKSProxyManager: TunnelManaging {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int, Error>) in
                 let resumed = OSAllocatedUnfairLock(initialState: false)
                 let existingHandler = listener.stateUpdateHandler
-                let finish: (Result<Int, Error>) -> Void = { result in
+                let finish: @Sendable (Result<Int, Error>) -> Void = { result in
                     let shouldResume = resumed.withLock { done -> Bool in
                         guard !done else { return false }
                         done = true
@@ -323,7 +323,7 @@ actor SOCKSProxyManager: TunnelManaging {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 let resumed = OSAllocatedUnfairLock(initialState: false)
-                let finish: (Result<Void, Error>) -> Void = { result in
+                let finish: @Sendable (Result<Void, Error>) -> Void = { result in
                     let shouldResume = resumed.withLock { done -> Bool in
                         guard !done else { return false }
                         done = true

@@ -56,7 +56,7 @@ final class MainContentCommandActions {
     /// crosses that boundary; `NSWindow.firstResponder` publishes no change.
     var focusOwnsTextInput = false
 
-    @ObservationIgnored var textInputFocusObserver: NSObjectProtocol?
+    @ObservationIgnored let textInputFocusObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
 
     @ObservationIgnored var isTextInputFocusCheckScheduled = false
 
@@ -95,8 +95,8 @@ final class MainContentCommandActions {
         for task in notificationTasks {
             task.cancel()
         }
-        if let textInputFocusObserver {
-            NotificationCenter.default.removeObserver(textInputFocusObserver)
+        if let observer = textInputFocusObserver.withLockUnchecked({ $0 }) {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 

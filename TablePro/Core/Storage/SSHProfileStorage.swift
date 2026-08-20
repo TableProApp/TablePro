@@ -7,9 +7,10 @@ import Foundation
 import os
 import TableProSyncTransport
 
+@MainActor
 final class SSHProfileStorage {
     static let shared = SSHProfileStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SSHProfileStorage")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SSHProfileStorage")
 
     private let profilesKey = "com.TablePro.sshProfiles"
     private let defaults = AppStorageEnvironment.shared.defaults

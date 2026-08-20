@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 
 // MARK: - ShortcutRecorderNSView
@@ -40,7 +41,7 @@ final class ShortcutRecorderNSView: NSView {
     /// `keyDown` never sees Command W and the menu command fires instead of being recorded. A
     /// local monitor runs earlier than menu dispatch, which is the only place the key is still
     /// interceptable.
-    private var recordingMonitor: Any?
+    private let recordingMonitor = OSAllocatedUnfairLock<Any?>(uncheckedState: nil)
 
     /// Currently held modifier flags during recording (for live display)
     private var activeModifiers: NSEvent.ModifierFlags = []
@@ -112,17 +113,18 @@ final class ShortcutRecorderNSView: NSView {
     }
 
     private func startRecordingMonitor() {
-        guard recordingMonitor == nil else { return }
-        recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+        guard recordingMonitor.withLockUnchecked({ $0 }) == nil else { return }
+        let monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             guard let self else { return event }
             return self.handleRecordingEvent(event)
         }
+        recordingMonitor.withLockUnchecked { $0 = monitor }
     }
 
     private func stopRecordingMonitor() {
-        guard let monitor = recordingMonitor else { return }
+        guard let monitor = recordingMonitor.withLockUnchecked({ $0 }) else { return }
         NSEvent.removeMonitor(monitor)
-        recordingMonitor = nil
+        recordingMonitor.withLockUnchecked { $0 = nil }
     }
 
     /// A local monitor is app-wide, so anything arriving while this view's window is not key
@@ -168,7 +170,7 @@ final class ShortcutRecorderNSView: NSView {
     }
 
     deinit {
-        guard let monitor = recordingMonitor else { return }
+        guard let monitor = recordingMonitor.withLockUnchecked({ $0 }) else { return }
         NSEvent.removeMonitor(monitor)
     }
 

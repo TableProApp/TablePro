@@ -55,7 +55,7 @@ struct InstalledPluginsView: View {
                       let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                 let ext = url.pathExtension.lowercased()
                 guard ext == "zip" || ext == "tableplugin" else { return }
-                Task {
+                Task { @MainActor in
                     installPlugin(from: url)
                 }
             }

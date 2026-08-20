@@ -36,7 +36,7 @@ struct DBeaverImporter: ForeignAppImporter {
     var dbeaverDataRoot: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/DBeaverData")
 
-    var resolveAppURL: (_ bundleIdentifier: String) -> URL? = {
+    var resolveAppURL: @Sendable (_ bundleIdentifier: String) -> URL? = {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
     }
 

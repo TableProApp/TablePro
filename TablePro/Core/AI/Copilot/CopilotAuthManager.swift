@@ -9,7 +9,7 @@ import os
 
 @MainActor
 final class CopilotAuthManager {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotAuth")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotAuth")
 
     struct SignInResult {
         let userCode: String

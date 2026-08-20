@@ -67,14 +67,14 @@ private final class TabDiskConnectionWriteGate: @unchecked Sendable {
         token: UInt64,
         operation work: () throws -> T
     ) rethrows -> T? {
-        try operation.withLock { _ in
+        try operation.withLockUnchecked { _ in
             guard generation.withLock({ $0 == token }) else { return nil }
             return try work()
         }
     }
 
     func perform<T>(_ work: () throws -> T) rethrows -> T {
-        try operation.withLock { _ in
+        try operation.withLockUnchecked { _ in
             try work()
         }
     }

@@ -31,10 +31,10 @@ final class StatementRunController {
     ///
     /// The same threshold syntax highlighting and code folding stop at, so an editor that has given up on colouring a
     /// document does not still be walking it for statement boundaries.
-    static let defaultSizeLimit = 2_000_000
+    nonisolated static let defaultSizeLimit = 2_000_000
 
     /// How long typing has to pause before the run controls are recomputed.
-    static let refreshDelay: Duration = .milliseconds(150)
+    nonisolated static let refreshDelay: Duration = .milliseconds(150)
 
     /// Below this length the controls are recomputed on the keystroke rather than on the pause.
     ///

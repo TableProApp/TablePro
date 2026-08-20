@@ -12,7 +12,7 @@ import os
 final class InlineSuggestionManager {
     // MARK: - Properties
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "InlineSuggestion")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "InlineSuggestion")
 
     private weak var controller: TextViewController?
     private let renderer = GhostTextRenderer()
@@ -21,12 +21,12 @@ final class InlineSuggestionManager {
     private var suggestionOffset: Int = 0
     private var debounceTask: Task<Void, Never>?
     private var requestTask: Task<Void, Never>?
-    private let _keyEventMonitor = OSAllocatedUnfairLock<Any?>(initialState: nil)
+    private let _keyEventMonitor = OSAllocatedUnfairLock<Any?>(uncheckedState: nil)
     private(set) var isEditorFocused = false
     private var isUninstalled = false
 
     deinit {
-        if let monitor = _keyEventMonitor.withLock({ $0 }) { NSEvent.removeMonitor(monitor) }
+        if let monitor = _keyEventMonitor.withLockUnchecked({ $0 }) { NSEvent.removeMonitor(monitor) }
     }
 
     // MARK: - Install / Uninstall
@@ -208,37 +208,38 @@ final class InlineSuggestionManager {
 
     private func installKeyEventMonitor() {
         removeKeyEventMonitor()
-        _keyEventMonitor.withLock { $0 = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
+        let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
             nonisolated(unsafe) let event = nsEvent
-            return MainActor.assumeIsolated {
-                guard let self, self.isEditorFocused else { return event }
+            let acceptsSuggestion = MainActor.assumeIsolated { () -> Bool in
+                guard let self, self.isEditorFocused else { return false }
 
-                guard self.currentSuggestion != nil else { return event }
+                guard self.currentSuggestion != nil else { return false }
 
                 guard let textView = self.controller?.textView,
                       event.window === textView.window,
-                      textView.window?.firstResponder === textView else { return event }
+                      textView.window?.firstResponder === textView else { return false }
 
                 switch event.keyCode {
                 case 48:
                     self.acceptSuggestion()
-                    return nil
+                    return true
 
                 case 53:
                     self.dismissSuggestion()
-                    return event
+                    return false
 
                 default:
                     self.dismissSuggestion()
-                    return event
+                    return false
                 }
             }
+            return acceptsSuggestion ? nil : nsEvent
         }
-        }
+        _keyEventMonitor.withLockUnchecked { $0 = monitor }
     }
 
     private func removeKeyEventMonitor() {
-        _keyEventMonitor.withLock {
+        _keyEventMonitor.withLockUnchecked {
             if let monitor = $0 { NSEvent.removeMonitor(monitor) }
             $0 = nil
         }
