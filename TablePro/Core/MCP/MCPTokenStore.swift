@@ -22,6 +22,20 @@ public enum ConnectionAccess: Sendable, Codable, Equatable {
     }
 }
 
+enum MCPTokenStoreError: Error, Sendable, Equatable {
+    case randomGenerationFailed(OSStatus)
+    case keychainUnavailable(OSStatus)
+
+    var message: String {
+        switch self {
+        case .randomGenerationFailed(let status):
+            return "Secure random generation failed (OSStatus \(status))"
+        case .keychainUnavailable(let status):
+            return "Keychain unavailable (OSStatus \(status))"
+        }
+    }
+}
+
 struct MCPAuthToken: Codable, Identifiable, Sendable {
     let id: UUID
     let name: String
@@ -86,7 +100,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
         self.name = try container.decode(String.self, forKey: .name)
-        self.prefix = try container.decode(String.self, forKey: .prefix)
+        self.prefix = try container.decodeIfPresent(String.self, forKey: .prefix) ?? ""
         self.tokenHash = try container.decode(String.self, forKey: .tokenHash)
         self.salt = try container.decode(String.self, forKey: .salt)
         self.permissions = try container.decode(TokenPermissions.self, forKey: .permissions)
@@ -131,33 +145,37 @@ enum TokenPermissions: String, Codable, Sendable, CaseIterable, Identifiable {
         }
     }
 
-    func satisfies(_ required: TokenPermissions) -> Bool {
-        switch required {
+    var scopes: Set<MCPScope> {
+        switch self {
         case .readOnly:
-            return true
+            MCPScope.readOnlySet
         case .readWrite:
-            return self == .readWrite || self == .fullAccess
+            MCPScope.readWriteSet
         case .fullAccess:
-            return self == .fullAccess
+            MCPScope.fullAccessSet
         }
     }
 }
 
 actor MCPTokenStore {
     static let stdioBridgeTokenName = "__stdio_bridge__"
+    static let bridgeTokenPermissions: TokenPermissions = .readWrite
+    static let defaultTokenLifetime: TimeInterval = 90 * 24 * 60 * 60
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPTokenStore")
 
     private var tokens: [MCPAuthToken] = []
-    private let storageUrl: URL
+    private let credentialStore: any MCPTokenCredentialStoring
+    private let legacyStorageUrl: URL
     private var lastSavedAt: ContinuousClock.Instant = .now
     private static let saveCooldown: Duration = .seconds(60)
 
     private var revocationObservers: [UUID: @Sendable (String) async -> Void] = [:]
 
-    init() {
+    init(credentialStore: any MCPTokenCredentialStoring = MCPTokenKeychainStore()) {
+        self.credentialStore = credentialStore
         let directory = AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro")
-        self.storageUrl = directory.appendingPathComponent("mcp-tokens.json")
+        self.legacyStorageUrl = directory.appendingPathComponent("mcp-tokens.json")
     }
 
     @discardableResult
@@ -174,24 +192,17 @@ actor MCPTokenStore {
     func generate(
         name: String,
         permissions: TokenPermissions,
-        connectionAccess: ConnectionAccess = .all,
-        expiresAt: Date? = nil
-    ) -> (token: MCPAuthToken, plaintext: String) {
-        let key = SymmetricKey(size: .bits256)
-        let keyData = key.withUnsafeBytes { Data($0) }
-        let plaintext = "tp_" + base64UrlEncode(keyData)
-
-        var saltBytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, saltBytes.count, &saltBytes)
-        let saltBase64 = Data(saltBytes).base64EncodedString()
-
-        let hash = computeHash(salt: saltBase64, plaintext: plaintext)
-        let tokenPrefix = String(plaintext.prefix(8))
+        connectionAccess: ConnectionAccess,
+        expiresAt: Date?
+    ) throws -> (token: MCPAuthToken, plaintext: String) {
+        let plaintext = "tp_" + Self.base64UrlEncode(try Self.randomBytes(count: 32))
+        let saltBase64 = try Self.randomBytes(count: 16).base64EncodedString()
+        let hash = Self.computeHash(salt: saltBase64, plaintext: plaintext)
 
         let token = MCPAuthToken(
             id: UUID(),
             name: name,
-            prefix: tokenPrefix,
+            prefix: String(plaintext.prefix(8)),
             tokenHash: hash,
             salt: saltBase64,
             permissions: permissions,
@@ -205,8 +216,8 @@ actor MCPTokenStore {
         tokens.append(token)
         save()
 
-        Self.logger.info("Generated MCP token '\(name, privacy: .public)' with prefix \(tokenPrefix, privacy: .public)")
-        MCPAuditLogger.logTokenCreated(tokenName: name)
+        Self.logger.info("Generated MCP token '\(name, privacy: .public)'")
+        MCPAuditLogger.logTokenCreated(tokenId: token.id, tokenName: name)
         return (token, plaintext)
     }
 
@@ -214,18 +225,13 @@ actor MCPTokenStore {
         for (index, token) in tokens.enumerated() {
             guard token.isActive, !token.isExpired else { continue }
 
-            let candidateHash = computeHash(salt: token.salt, plaintext: bearerToken)
-
-            guard constantTimeCompare(candidateHash, token.tokenHash) else { continue }
+            let candidateHash = Self.computeHash(salt: token.salt, plaintext: bearerToken)
+            guard Self.constantTimeCompare(candidateHash, token.tokenHash) else { continue }
 
             tokens[index].lastUsedAt = Date.now
             saveIfCooldownElapsed()
-
-            Self.logger.info("Validated MCP token '\(token.name, privacy: .public)'")
             return tokens[index]
         }
-
-        Self.logger.warning("MCP token validation failed for bearer token")
         return nil
     }
 
@@ -236,12 +242,12 @@ actor MCPTokenStore {
         }
 
         tokens[index].isActive = false
+        let revokedName = tokens[index].name
         save()
         notifyRevocationObservers(tokenId: tokenId)
 
-        let revokedName = tokens[index].name
         Self.logger.info("Revoked MCP token '\(revokedName, privacy: .public)'")
-        MCPAuditLogger.logTokenRevoked(tokenName: revokedName)
+        MCPAuditLogger.logTokenRevoked(tokenId: tokenId, tokenName: revokedName)
     }
 
     func delete(tokenId: UUID) {
@@ -274,29 +280,48 @@ actor MCPTokenStore {
         tokens.filter { $0.isActive && !$0.isExpired }
     }
 
-    func loadFromDisk() {
-        let fileManager = FileManager.default
+    func token(id: UUID) -> MCPAuthToken? {
+        tokens.first { $0.id == id }
+    }
 
-        guard fileManager.fileExists(atPath: storageUrl.path) else {
-            Self.logger.info("No existing MCP token file found")
-            return
+    func loadFromDisk() {
+        tokens = readCredentialStore() ?? migrateLegacyFileIfPresent()
+
+        let staleCount = tokens.filter { $0.name == Self.stdioBridgeTokenName }.count
+        guard staleCount > 0 else { return }
+        tokens.removeAll { $0.name == Self.stdioBridgeTokenName }
+        save()
+        Self.logger.info("Cleaned up \(staleCount) stale bridge token(s)")
+    }
+
+    private func readCredentialStore() -> [MCPAuthToken]? {
+        guard let data = credentialStore.read() else { return nil }
+        do {
+            let decoded = try Self.decoder.decode([MCPAuthToken].self, from: data)
+            Self.logger.info("Loaded \(decoded.count) MCP tokens from the keychain")
+            return decoded
+        } catch {
+            Self.logger.error("Failed to decode MCP tokens: \(error.localizedDescription, privacy: .public)")
+            return []
         }
+    }
+
+    private func migrateLegacyFileIfPresent() -> [MCPAuthToken] {
+        guard FileManager.default.fileExists(atPath: legacyStorageUrl.path) else { return [] }
+        defer { try? FileManager.default.removeItem(at: legacyStorageUrl) }
 
         do {
-            let data = try Data(contentsOf: storageUrl)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            tokens = try decoder.decode([MCPAuthToken].self, from: data)
-            Self.logger.info("Loaded \(self.tokens.count) MCP tokens from disk")
+            let data = try Data(contentsOf: legacyStorageUrl)
+            let decoded = try Self.decoder.decode([MCPAuthToken].self, from: data)
+            guard let encoded = try? Self.encoder.encode(decoded), credentialStore.write(encoded) else {
+                Self.logger.error("Could not migrate MCP tokens into the keychain")
+                return decoded
+            }
+            Self.logger.info("Migrated \(decoded.count) MCP tokens from the legacy file into the keychain")
+            return decoded
         } catch {
-            Self.logger.error("Failed to load MCP tokens: \(error.localizedDescription, privacy: .public)")
-        }
-
-        let staleCount = tokens.filter({ $0.name == Self.stdioBridgeTokenName }).count
-        if staleCount > 0 {
-            tokens.removeAll { $0.name == Self.stdioBridgeTokenName }
-            save()
-            Self.logger.info("Cleaned up \(staleCount) stale bridge token(s)")
+            Self.logger.error("Failed to read legacy MCP tokens: \(error.localizedDescription, privacy: .public)")
+            return []
         }
     }
 
@@ -308,57 +333,148 @@ actor MCPTokenStore {
 
     private func save() {
         lastSavedAt = .now
-        let fileManager = FileManager.default
-        let directory = storageUrl.deletingLastPathComponent()
-
         do {
-            if !fileManager.fileExists(atPath: directory.path) {
-                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-                try fileManager.setAttributes(
-                    [.posixPermissions: 0o700],
-                    ofItemAtPath: directory.path
-                )
+            let data = try Self.encoder.encode(tokens)
+            guard credentialStore.write(data) else {
+                Self.logger.error("Failed to write MCP tokens to the keychain")
+                return
             }
-
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(tokens)
-
-            try data.write(to: storageUrl, options: [.atomic])
-            try fileManager.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: storageUrl.path
-            )
         } catch {
-            Self.logger.error("Failed to save MCP tokens: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to encode MCP tokens: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    private func computeHash(salt: String, plaintext: String) -> String {
-        let input = salt + plaintext
-        guard let data = input.data(using: .utf8) else { return "" }
-        let digest = SHA256.hash(data: data)
-        return digest.hexEncoded
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
+
+    private static func randomBytes(count: Int) throws -> Data {
+        var bytes = [UInt8](repeating: 0, count: count)
+        let status = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
+        guard status == errSecSuccess else {
+            logger.error("Secure random generation failed (OSStatus \(status, privacy: .public))")
+            throw MCPTokenStoreError.randomGenerationFailed(status)
+        }
+        return Data(bytes)
     }
 
-    private func base64UrlEncode(_ data: Data) -> String {
+    private static func computeHash(salt: String, plaintext: String) -> String {
+        let input = salt + plaintext
+        guard let data = input.data(using: .utf8) else { return "" }
+        return SHA256.hash(data: data).hexEncoded
+    }
+
+    private static func base64UrlEncode(_ data: Data) -> String {
         data.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
     }
 
-    private func constantTimeCompare(_ lhs: String, _ rhs: String) -> Bool {
+    private static func constantTimeCompare(_ lhs: String, _ rhs: String) -> Bool {
         let lhsBytes = Array(lhs.utf8)
         let rhsBytes = Array(rhs.utf8)
 
         guard lhsBytes.count == rhsBytes.count else { return false }
 
         var result: UInt8 = 0
-        for i in 0..<lhsBytes.count {
-            result |= lhsBytes[i] ^ rhsBytes[i]
+        for index in 0..<lhsBytes.count {
+            result |= lhsBytes[index] ^ rhsBytes[index]
         }
         return result == 0
+    }
+}
+
+protocol MCPTokenCredentialStoring: Sendable {
+    func read() -> Data?
+    @discardableResult
+    func write(_ data: Data) -> Bool
+    func delete()
+}
+
+struct MCPTokenKeychainStore: MCPTokenCredentialStoring {
+    private static let service = "com.TablePro"
+    private static let account = "com.TablePro.mcpTokens"
+    private static let isolatedKey = "mcpTokens"
+    private static let logger = Logger(subsystem: "com.TablePro", category: "MCPTokenKeychainStore")
+
+    private static var isolatedStore: (any KeychainStoring)? {
+        AppStorageEnvironment.shared.isIsolated ? AppStorageEnvironment.shared.keychain : nil
+    }
+
+    func read() -> Data? {
+        if let isolatedStore = Self.isolatedStore {
+            guard case .found(let encoded) = isolatedStore.readStringResult(forKey: Self.isolatedKey) else {
+                return nil
+            }
+            return Data(base64Encoded: encoded)
+        }
+
+        var query = Self.baseQuery()
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess else {
+            if status != errSecItemNotFound {
+                Self.logger.error("Keychain read failed (OSStatus \(status, privacy: .public))")
+            }
+            return nil
+        }
+        return result as? Data
+    }
+
+    @discardableResult
+    func write(_ data: Data) -> Bool {
+        if let isolatedStore = Self.isolatedStore {
+            return isolatedStore.writeString(data.base64EncodedString(), forKey: Self.isolatedKey)
+        }
+
+        var addQuery = Self.baseQuery()
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+        var status = SecItemAdd(addQuery as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            status = SecItemUpdate(
+                Self.baseQuery() as CFDictionary,
+                [kSecValueData as String: data] as CFDictionary
+            )
+        }
+        guard status == errSecSuccess else {
+            Self.logger.error("Keychain write failed (OSStatus \(status, privacy: .public))")
+            return false
+        }
+        return true
+    }
+
+    func delete() {
+        if let isolatedStore = Self.isolatedStore {
+            isolatedStore.delete(forKey: Self.isolatedKey)
+            return
+        }
+        let status = SecItemDelete(Self.baseQuery() as CFDictionary)
+        if status != errSecSuccess, status != errSecItemNotFound {
+            Self.logger.error("Keychain delete failed (OSStatus \(status, privacy: .public))")
+        }
+    }
+
+    private static func baseQuery() -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecUseDataProtectionKeychain as String: true
+        ]
     }
 }

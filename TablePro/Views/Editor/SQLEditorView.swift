@@ -34,7 +34,7 @@ struct SQLEditorView: View {
     @Binding var vimMode: VimMode
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
-    var onRunStatement: ((String) -> Void)?
+    var onRunStatement: ((String) -> Bool)?
     /// A tab runs one thing at a time, so the gutter's run controls go dim for the length of a query.
     var isExecuting: Bool = false
     var onAIExplain: ((String) -> Void)?

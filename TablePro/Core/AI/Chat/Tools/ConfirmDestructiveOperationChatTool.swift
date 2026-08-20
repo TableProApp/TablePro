@@ -73,7 +73,7 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             scope: scope,
             maxRows: 0,
             timeoutSeconds: MCPLimitResolver.resolveTimeoutSeconds(requested: nil, settings: mcpSettings),
-            principalLabel: String(localized: "AI Chat")
+            principal: .inAppAssistant
         )
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }

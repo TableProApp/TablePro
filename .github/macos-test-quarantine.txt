@@ -7,9 +7,6 @@
 #
 # Format: one Swift Testing suite type name per line. '#' starts a comment.
 
-# --- Hangs: real Network-framework transport harness with no timeout (blocks forever headless)
-MCPBridgeIntegrationTests
-
 # --- Driver-dependent: bundled .tableplugin drivers do not activate in the headless test
 #     host (only plugin metadata loads), so driver-backed SQL generation returns empty.
 TableOperationsPluginTests
@@ -41,9 +38,6 @@ DatabaseConnectionExternalAccessTests
 DataGridSettingsDefaultSortDecoderTests
 
 # --- Environment-coupled: iCloud entitlement, locally-installed apps, or live network.
-MCPHttpServerTransportTests
-MCPPairingServiceTests
-MCPBearerTokenAuthenticatorTests
 TablePlusImporterTests
 SequelAceImporterTests
 HostKeyStoreTests

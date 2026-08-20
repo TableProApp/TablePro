@@ -1,193 +1,173 @@
+//
+//  ExecuteQueryToolTests.swift
+//  TableProTests
+//
+
 import Foundation
-import TableProPluginKit
 @testable import TablePro
 import Testing
 
 @Suite("ExecuteQueryTool")
 struct ExecuteQueryToolTests {
-    @Test("Tool exposes correct metadata")
+    private let tool = ExecuteQueryTool()
+
+    private func call(
+        _ arguments: JsonValue,
+        context: MCPRequestContext? = nil,
+        settings: MCPSettings = MCPSettings()
+    ) async throws -> MCPToolCallResult {
+        try await tool.call(
+            arguments: arguments,
+            context: context ?? MCPToolTestHarness.context(),
+            services: MCPToolTestHarness.services(settings: settings)
+        )
+    }
+
+    @Test("Reads need only the read scope and the result set schema is declared")
     func metadata() {
         #expect(ExecuteQueryTool.name == "execute_query")
         #expect(ExecuteQueryTool.requiredScopes == [.toolsRead])
-        let schema = ExecuteQueryTool.inputSchema
-        let required = schema["required"]?.arrayValue?.compactMap(\.stringValue) ?? []
-        #expect(required.contains("connection_id"))
-        #expect(required.contains("query"))
+        #expect(ExecuteQueryTool.annotations.readOnlyHint == false)
+        let required = ExecuteQueryTool.inputSchema["required"]?.arrayValue?.compactMap(\.stringValue)
+        #expect(required == ["connection_id", "query"])
+        #expect(ExecuteQueryTool.outputSchema != nil)
+        #expect(ExecuteQueryTool.outputSchema?["properties"]?["rows"] != nil)
+        #expect(ExecuteQueryTool.outputSchema?["properties"]?["is_truncated"] != nil)
     }
 
-    @Test("Multi-statement query is rejected before connection lookup")
-    func multiStatementRejected() async throws {
-        let tool = ExecuteQueryTool()
-        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
-        let services = MCPToolServices(
-            connectionBridge: MCPConnectionBridge(),
-            authPolicy: MCPAuthPolicy()
-        )
-
-        do {
-            _ = try await tool.call(
-                arguments: .object([
-                    "connection_id": .string(UUID().uuidString),
-                    "query": .string("SELECT 1; SELECT 2")
-                ]),
-                context: context,
-                services: services
-            )
-            Issue.record("Expected MCPProtocolError for multi-statement query")
-        } catch let error as MCPProtocolError {
-            #expect(error.code == JsonRpcErrorCode.invalidParams)
+    @Test("Missing connection_id or query is a protocol error")
+    func missingRequiredParameters() async throws {
+        await #expect(throws: MCPProtocolError.self) {
+            _ = try await call(.object(["query": .string("SELECT 1")]))
+        }
+        await #expect(throws: MCPProtocolError.self) {
+            _ = try await call(.object(["connection_id": .string(UUID().uuidString)]))
         }
     }
 
-    @Test("Query exceeding 100KB is rejected with invalidParams")
-    func queryTooLargeRejected() async throws {
-        let tool = ExecuteQueryTool()
-        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
-        let services = MCPToolServices(
-            connectionBridge: MCPConnectionBridge(),
-            authPolicy: MCPAuthPolicy()
-        )
-        let oversized = String(repeating: "a", count: 102_401)
-
-        do {
-            _ = try await tool.call(
-                arguments: .object([
-                    "connection_id": .string(UUID().uuidString),
-                    "query": .string(oversized)
-                ]),
-                context: context,
-                services: services
-            )
-            Issue.record("Expected oversized query to be rejected")
-        } catch let error as MCPProtocolError {
-            #expect(error.code == JsonRpcErrorCode.invalidParams)
+    @Test("A query passed as a number is a protocol error, never coerced")
+    func numericQueryIsRejected() async throws {
+        await #expect(throws: MCPProtocolError.self) {
+            _ = try await call(.object([
+                "connection_id": .string(UUID().uuidString),
+                "query": .int(1)
+            ]))
         }
     }
 
-    @Test("Cancellation propagates as requestCancelled")
-    func cancellationPropagates() async throws {
-        let tool = ExecuteQueryTool()
-        let progressSink = StubProgressSink()
-        let context = await ExecuteQueryToolTestContext.make(
-            progressToken: nil,
-            progressSink: progressSink
-        )
-        let services = MCPToolServices(
-            connectionBridge: MCPConnectionBridge(),
-            authPolicy: MCPAuthPolicy()
-        )
+    @Test("An empty query is reported as a tool error")
+    func emptyQueryIsReported() async throws {
+        let result = try await call(.object([
+            "connection_id": .string(UUID().uuidString),
+            "query": .string("   ")
+        ]))
+        #expect(result.isError)
+        #expect(MCPToolTestHarness.errorText(result)?.hasPrefix("invalid_argument:") == true)
+    }
 
-        await context.cancellation.cancel()
+    @Test("A query past the 100KB limit is reported before anything runs")
+    func oversizedQueryIsReported() async throws {
+        let oversized = String(repeating: "a", count: ExecuteQueryTool.maximumQueryBytes + 1)
+        let result = try await call(.object([
+            "connection_id": .string(UUID().uuidString),
+            "query": .string(oversized)
+        ]))
+        #expect(result.isError)
+        #expect(MCPToolTestHarness.errorText(result)?.contains("100KB") == true)
+    }
 
+    @Test("An out-of-range timeout is reported rather than clamped")
+    func outOfRangeTimeoutIsReported() async throws {
+        let result = try await call(.object([
+            "connection_id": .string(UUID().uuidString),
+            "query": .string("SELECT 1"),
+            "timeout_seconds": .int(100_000)
+        ]))
+        #expect(result.isError)
+        let text = MCPToolTestHarness.errorText(result) ?? ""
+        #expect(text.contains("timeout_seconds"))
+        #expect(text.contains("300"))
+    }
+
+    @Test("An out-of-range max_rows is reported rather than clamped")
+    func outOfRangeRowLimitIsReported() async throws {
+        let result = try await call(
+            .object([
+                "connection_id": .string(UUID().uuidString),
+                "query": .string("SELECT 1"),
+                "max_rows": .int(1_000_000)
+            ]),
+            settings: MCPSettings(defaultRowLimit: 100, maxRowLimit: 1_000)
+        )
+        #expect(result.isError)
+        #expect(MCPToolTestHarness.errorText(result)?.contains("1000") == true)
+    }
+
+    @Test("An unknown connection is reported as not found")
+    func unknownConnectionIsNotFound() async throws {
+        let result = try await call(.object([
+            "connection_id": .string(UUID().uuidString),
+            "query": .string("SELECT 1")
+        ]))
+        #expect(result.isError)
+        #expect(MCPToolTestHarness.errorText(result)?.hasPrefix("not_found:") == true)
+    }
+
+    @Test("An unknown parameter is rejected")
+    func unknownParameterIsRejected() async throws {
+        await #expect(throws: MCPProtocolError.self) {
+            _ = try await call(.object([
+                "connection_id": .string(UUID().uuidString),
+                "query": .string("SELECT 1"),
+                "dry_run": .bool(true)
+            ]))
+        }
+    }
+
+    @Test("A cancelled request is reported as cancelled, not as a query failure")
+    func cancellationIsReported() async throws {
+        let cancellation = MCPCancellationToken()
+        await cancellation.cancel()
         do {
-            _ = try await tool.call(
-                arguments: .object([
+            _ = try await call(
+                .object([
                     "connection_id": .string(UUID().uuidString),
                     "query": .string("SELECT 1")
                 ]),
-                context: context,
-                services: services
+                context: MCPToolTestHarness.context(cancellation: cancellation)
             )
-            Issue.record("Expected cancelled error")
+            Issue.record("Expected the cancelled request to be reported as cancelled")
         } catch let error as MCPProtocolError {
             #expect(error.code == JsonRpcErrorCode.requestCancelled)
         }
     }
 
-    @Test("Progress notifications fire when progressToken is set")
-    func progressEmittedWhenTokenPresent() async throws {
-        let tool = ExecuteQueryTool()
-        let progressSink = StubProgressSink()
-        let context = await ExecuteQueryToolTestContext.make(
-            progressToken: .string("progress-1"),
-            progressSink: progressSink
-        )
-        let services = MCPToolServices(
-            connectionBridge: MCPConnectionBridge(),
-            authPolicy: MCPAuthPolicy()
-        )
-
-        _ = try? await tool.call(
-            arguments: .object([
+    @Test("Progress is streamed only when the client asked for it")
+    func progressFollowsTheProgressToken() async throws {
+        let withToken = ToolTestResponderSink()
+        _ = try? await call(
+            .object([
                 "connection_id": .string(UUID().uuidString),
                 "query": .string("SELECT 1")
             ]),
-            context: context,
-            services: services
+            context: MCPToolTestHarness.context(
+                progressToken: .string("progress-1"),
+                sink: withToken
+            )
         )
-
-        let methods = await progressSink.methods()
+        let methods = await withToken.notificationMethods()
+        #expect(!methods.isEmpty)
         #expect(methods.allSatisfy { $0 == "notifications/progress" })
-        #expect(methods.count >= 1)
-    }
 
-    @Test("Progress notifications are skipped when no progressToken")
-    func progressSkippedWithoutToken() async throws {
-        let tool = ExecuteQueryTool()
-        let progressSink = StubProgressSink()
-        let context = await ExecuteQueryToolTestContext.make(
-            progressToken: nil,
-            progressSink: progressSink
-        )
-        let services = MCPToolServices(
-            connectionBridge: MCPConnectionBridge(),
-            authPolicy: MCPAuthPolicy()
-        )
-
-        _ = try? await tool.call(
-            arguments: .object([
+        let withoutToken = ToolTestResponderSink()
+        _ = try? await call(
+            .object([
                 "connection_id": .string(UUID().uuidString),
                 "query": .string("SELECT 1")
             ]),
-            context: context,
-            services: services
+            context: MCPToolTestHarness.context(sink: withoutToken)
         )
-
-        let count = await progressSink.count()
-        #expect(count == 0)
-    }
-}
-
-enum ExecuteQueryToolTestContext {
-    static func make(
-        progressToken: JsonValue?,
-        progressSink: StubProgressSink
-    ) async -> MCPRequestContext {
-        let sessionStore = MCPSessionStore()
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [],
-            sessionStore: sessionStore,
-            progressSink: progressSink,
-            clock: MCPSystemClock()
-        )
-
-        let session = MCPSession()
-        try? await session.transitionToReady()
-        let resolvedSessionId = await session.id
-
-        let principal = MCPProtocolTestSupport.makePrincipal(scopes: [.toolsRead, .toolsWrite])
-        let request = JsonRpcRequest(id: .number(1), method: "tools/call", params: nil)
-        let (exchange, _) = MCPProtocolTestSupport.makeExchange(
-            message: .request(request),
-            sessionId: resolvedSessionId,
-            principal: principal
-        )
-
-        let cancellation = MCPCancellationToken()
-        let progress = MCPProgressEmitter(
-            progressToken: progressToken,
-            target: progressSink,
-            sessionId: resolvedSessionId
-        )
-
-        return MCPRequestContext(
-            exchange: exchange,
-            session: session,
-            principal: principal,
-            dispatcher: dispatcher,
-            progress: progress,
-            cancellation: cancellation,
-            clock: MCPSystemClock()
-        )
+        #expect(await withoutToken.sseFrames.isEmpty)
+        #expect(await withoutToken.streamOpened == false)
     }
 }

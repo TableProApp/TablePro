@@ -140,6 +140,12 @@ final class MainContentCoordinator {
     /// Direct reference to structure view actions — eliminates notification broadcasts
     weak var structureActions: StructureViewActionHandler?
 
+    /// Raised while a close is applying the staged structure edits of tabs it is about to close.
+    /// Each apply broadcasts a data refresh for its scope, and a mounted structure view on the same
+    /// database answers that by asking whether to discard its own staged edits, which mid-close is
+    /// a question the user cannot usefully answer. Scoped by the caller's `defer`, never latched.
+    var isApplyingStagedStructureEdits = false
+
     /// Direct reference to create-table view actions so the Save Changes menu
     /// (Cmd+S) routes to table creation. Set by `CreateTableView` on appear.
     weak var createTableActions: CreateTableActionHandler?
@@ -546,8 +552,9 @@ final class MainContentCoordinator {
         if displayOrderCache.keys.contains(where: { !openTabIds.contains($0) }) {
             displayOrderCache = displayOrderCache.filter { openTabIds.contains($0.key) }
         }
-        if structureSessions.keys.contains(where: { !openTabIds.contains($0) }) {
-            structureSessions = structureSessions.filter { openTabIds.contains($0.key) }
+        for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
+            session.releaseViewWiring()
+            structureSessions.removeValue(forKey: tabId)
         }
         if createTableDrafts.keys.contains(where: { !openTabIds.contains($0) }) {
             createTableDrafts = createTableDrafts.filter { openTabIds.contains($0.key) }
@@ -591,6 +598,7 @@ final class MainContentCoordinator {
         tabManager.onTabRetargeted = { [weak self] tabId in
             self?.dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
             self?.supersedeExecution(for: tabId)
+            self?.releaseRetargetedTabState(for: tabId)
         }
 
         // Synchronous save at quit time. NotificationCenter with queue: .main
@@ -852,6 +860,12 @@ final class MainContentCoordinator {
         dataTabDelegate?.tableViewCoordinator?.releaseData()
 
         tabSessionRegistry.removeAll()
+        /// The delegate a session owns holds closures the mounted view installed, and those capture
+        /// the view, which holds this coordinator. Dropping the dictionary is not enough to break
+        /// that, so the wiring is released explicitly here as well as at every per-tab drop site.
+        for session in structureSessions.values { session.releaseViewWiring() }
+        structureSessions.removeAll()
+        createTableDrafts.removeAll()
         displayFormatsCache.removeAll()
         displayOrderCache.removeAll()
         schemaColumns.removeAll()
@@ -993,28 +1007,34 @@ final class MainContentCoordinator {
     /// range on purpose: the editor's text and the tab's binding are two strings that can differ for a moment, and a
     /// range resolved against the wrong one truncates silently. Past that it is the ordinary path, so parameters, safe
     /// mode and the execution gate all apply exactly as they do to any other run.
-    func runStatement(_ sql: String) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return }
+    @discardableResult
+    func runStatement(_ sql: String) -> Bool {
+        guard let (tab, index) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return false }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runStatement")
-            return
+            return false
         }
 
-        executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false)
+        return executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false)
     }
 
     /// Everything both run paths do once the SQL to run has been decided.
     ///
     /// Shared so that a statement run from the gutter and a statement run from the caret cannot drift apart on
     /// parameter handling, which is the half of this that is easy to forget.
-    private func executeResolvedSQL(_ sql: String, tabIndex index: Int, bypassRowLimit: Bool) {
+    ///
+    /// Returns whether the SQL was actually dispatched. It is not when the statement carries parameters whose panel
+    /// has yet to be filled in: that opens the panel and runs nothing, and a caller that advances the caret on the
+    /// strength of a run would then be pointing at the wrong statement when the reader presses again.
+    @discardableResult
+    private func executeResolvedSQL(_ sql: String, tabIndex index: Int, bypassRowLimit: Bool) -> Bool {
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return
+            return false
         }
 
         if services.appSettings.editor.queryParametersEnabled {
             let paramStatements = SQLStatementScanner.allStatements(in: sql, dialect: sqlDialect)
-            guard !paramStatements.isEmpty else { return }
+            guard !paramStatements.isEmpty else { return false }
             let combinedSQL = paramStatements.joined(separator: "; ")
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
 
@@ -1027,7 +1047,7 @@ final class MainContentCoordinator {
 
                 if !tabManager.tabs[index].content.isParameterPanelVisible {
                     tabManager.mutate(at: index) { $0.content.isParameterPanelVisible = true }
-                    return
+                    return false
                 }
 
                 tabManager.tabStructureVersion += 1
@@ -1037,15 +1057,16 @@ final class MainContentCoordinator {
                     tabIndex: index,
                     bypassRowLimit: bypassRowLimit
                 )
-                return
+                return true
             }
         }
 
         let statements = SQLStatementScanner.allStatements(in: sql, dialect: sqlDialect)
-        guard !statements.isEmpty else { return }
+        guard !statements.isEmpty else { return false }
 
         tabManager.tabStructureVersion += 1
         dispatchStatements(statements, tabIndex: index, bypassRowLimit: bypassRowLimit)
+        return true
     }
 
     /// Execute table tab query directly.

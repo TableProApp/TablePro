@@ -31,9 +31,59 @@ final class SourceEditorTextView: TextView {
         }
     }
 
+    /// Answers where the statement before or after an offset starts, or `nil` when the host has not supplied one.
+    ///
+    /// The text system has a paragraph selection verb and no paragraph move verb, so the only standard selectors this
+    /// view can implement over statements are the two `AndModifySelection:` ones below. They are dead in an editor
+    /// whose host leaves this unset, which is every editor here that is not showing SQL: the JSON viewer, the DDL
+    /// view, the trigger editor, the SQL preview and the AI chat code blocks all use this class.
+    var statementBoundaryProvider: ((_ offset: Int, _ forward: Bool) -> Int?)?
+
     override func draw(_ dirtyRect: NSRect) {
         drawStatementHighlight(in: dirtyRect)
         super.draw(dirtyRect)
+    }
+
+    /// `Option+Shift+Up`, per AppKit's own standard key bindings.
+    override func moveParagraphBackwardAndModifySelection(_ sender: Any?) {
+        guard extendSelectionToStatement(forward: false) else {
+            super.moveParagraphBackwardAndModifySelection(sender)
+            return
+        }
+    }
+
+    /// `Option+Shift+Down`, per AppKit's own standard key bindings.
+    override func moveParagraphForwardAndModifySelection(_ sender: Any?) {
+        guard extendSelectionToStatement(forward: true) else {
+            super.moveParagraphForwardAndModifySelection(sender)
+            return
+        }
+    }
+
+    /// Grows or shrinks the selection by a statement, keeping the end the reader started from fixed.
+    ///
+    /// The fixed end is the selection's own `pivot`, the same thing every other modifying motion in the text system
+    /// uses. Deriving it from the direction instead would make the two keys both grow the selection rather than undo
+    /// each other, because shrinking means moving the head back past the pivot.
+    ///
+    /// Returns `false` when there is no statement to reach, so the caller falls back to whatever the text system
+    /// would have done and this stays inert wherever no statement source is set.
+    private func extendSelectionToStatement(forward: Bool) -> Bool {
+        guard let provider = statementBoundaryProvider,
+              let selection = selectionManager.textSelections.first else {
+            return false
+        }
+
+        let anchor = selection.pivot ?? (forward ? selection.range.lowerBound : selection.range.upperBound)
+        let head = selection.range.lowerBound == anchor ? selection.range.upperBound : selection.range.lowerBound
+        guard let destination = provider(head, forward) else { return false }
+
+        let lower = min(anchor, destination)
+        let range = NSRange(location: lower, length: max(anchor, destination) - lower)
+        selectionManager.setSelectedRange(range)
+        selectionManager.textSelections.first?.pivot = anchor
+        scrollSelectionToVisible()
+        return true
     }
 
     /// Painted before `super`, which is what draws the caret line highlight and the selection, so those two land on

@@ -190,34 +190,6 @@ extension DatabaseType {
         return raw.isEmpty ? nil : raw
     }
 
-    var brandColor: Color {
-        switch rawValue {
-        case "MySQL": Color(hex: "00758F")
-        case "MariaDB": Color(hex: "C0765A")
-        case "PostgreSQL": Color(hex: "336791")
-        case "Redshift": Color(hex: "527FFF")
-        case "CockroachDB": Color(hex: "6933FF")
-        case "PGlite": Color(hex: "F4B942")
-        case "SQLite": Color(hex: "0F80CC")
-        case "SQL Server": Color(hex: "CC2927")
-        case "Oracle": Color(hex: "C74634")
-        case "Dameng": Color(hex: "C60018")
-        case "MongoDB": Color(hex: "00684A")
-        case "Redis": Color(hex: "FF4438")
-        case "ClickHouse": Color(hex: "FFCC01")
-        case "DuckDB": Color(hex: "FFC827")
-        case "Cassandra": Color(hex: "1287B1")
-        case "ScyllaDB": Color(hex: "00C9C2")
-        case "etcd": Color(hex: "419EDA")
-        case "Cloudflare D1": Color(hex: "F38020")
-        case "libSQL", "Turso": Color(hex: "4FF8D2")
-        case "DynamoDB": Color(hex: "4053D6")
-        case "BigQuery": Color(hex: "4285F4")
-        case "Beancount": Color(hex: "3F7D20")
-        default: Color.accentColor
-        }
-    }
-
     var requiresAuthentication: Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.requiresAuthentication ?? true
     }

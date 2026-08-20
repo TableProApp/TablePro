@@ -1,72 +1,64 @@
+//
+//  GetTableDdlToolTests.swift
+//  TableProTests
+//
+
 import Foundation
-import TableProPluginKit
 @testable import TablePro
 import Testing
 
 @Suite("GetTableDdlTool")
 struct GetTableDdlToolTests {
-    @Test("Tool exposes expected metadata")
-    func metadata() {
+    private let tool = GetTableDdlTool()
+
+    private func call(_ arguments: JsonValue) async throws -> MCPToolCallResult {
+        try await tool.call(
+            arguments: arguments,
+            context: MCPToolTestHarness.context(),
+            services: MCPToolTestHarness.services()
+        )
+    }
+
+    @Test("Reading DDL is read-only and returns the statement it read")
+    func metadata() throws {
         #expect(GetTableDdlTool.name == "get_table_ddl")
         #expect(GetTableDdlTool.requiredScopes == [.toolsRead])
-        let schema = GetTableDdlTool.inputSchema
-        #expect(schema["type"]?.stringValue == "object")
-        let required = schema["required"]?.arrayValue?.compactMap(\.stringValue) ?? []
-        #expect(required == ["connection_id", "table"])
+        #expect(
+            GetTableDdlTool.inputSchema["required"]?.arrayValue?.compactMap(\.stringValue)
+                == ["connection_id", "table"]
+        )
+        let output = try #require(GetTableDdlTool.outputSchema)
+        #expect(output["properties"]?["ddl"] != nil)
     }
 
-    @Test("Tool accepts an explicit database and schema")
-    func declaresScopeParameters() {
-        let properties = GetTableDdlTool.inputSchema["properties"]
-        #expect(properties?["database"]?["type"]?.stringValue == "string")
-        #expect(properties?["schema"]?["type"]?.stringValue == "string")
-    }
-
-    @Test("Missing connection_id returns invalidParams")
-    func missingConnectionId() async throws {
-        let tool = GetTableDdlTool()
-        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
-        let services = MCPToolServices(connectionBridge: MCPConnectionBridge(), authPolicy: MCPAuthPolicy())
-
+    @Test("Missing table or connection_id is a protocol error")
+    func missingRequiredParameters() async throws {
         await #expect(throws: MCPProtocolError.self) {
-            _ = try await tool.call(
-                arguments: .object(["table": .string("users")]),
-                context: context,
-                services: services
-            )
+            _ = try await call(.object(["connection_id": .string(UUID().uuidString)]))
+        }
+        await #expect(throws: MCPProtocolError.self) {
+            _ = try await call(.object(["table": .string("users")]))
         }
     }
 
-    @Test("Missing table returns invalidParams")
-    func missingTable() async throws {
-        let tool = GetTableDdlTool()
-        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
-        let services = MCPToolServices(connectionBridge: MCPConnectionBridge(), authPolicy: MCPAuthPolicy())
-
-        await #expect(throws: MCPProtocolError.self) {
-            _ = try await tool.call(
-                arguments: .object(["connection_id": .string(UUID().uuidString)]),
-                context: context,
-                services: services
-            )
-        }
-    }
-
-    @Test("Malformed connection_id returns invalidParams")
+    @Test("A malformed connection id is a tool error")
     func malformedConnectionId() async throws {
-        let tool = GetTableDdlTool()
-        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
-        let services = MCPToolServices(connectionBridge: MCPConnectionBridge(), authPolicy: MCPAuthPolicy())
+        let result = try await call(.object([
+            "connection_id": .string("not-a-uuid"),
+            "table": .string("users")
+        ]))
+        #expect(result.isError)
+        #expect(MCPToolTestHarness.errorText(result)?.hasPrefix("invalid_argument:") == true)
+    }
 
+    @Test("An unknown parameter is rejected")
+    func unknownParameterIsRejected() async throws {
         await #expect(throws: MCPProtocolError.self) {
-            _ = try await tool.call(
-                arguments: .object([
-                    "connection_id": .string("not-a-uuid"),
-                    "table": .string("users")
-                ]),
-                context: context,
-                services: services
-            )
+            _ = try await call(.object([
+                "connection_id": .string(UUID().uuidString),
+                "table": .string("users"),
+                "pretty": .bool(true)
+            ]))
         }
     }
 }

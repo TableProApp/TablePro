@@ -2,8 +2,12 @@ import Foundation
 
 public struct SearchQueryHistoryTool: MCPToolImplementation {
     public static let name = "search_query_history"
+    public static let title: String? = String(localized: "Search Query History")
     public static let description = String(
-        localized: "Search saved query history. Returns matching entries with execution time, row count, and outcome."
+        localized: """
+        Search the query history TablePro keeps on this Mac. Results cover only connections this client \
+        may reach, whether or not connection_id is given.
+        """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
     public static let annotations = MCPToolAnnotations(
@@ -14,48 +18,75 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
         openWorldHint: false
     )
 
-    public static let inputSchema: JsonValue = .object([
-        "type": .string("object"),
-        "properties": .object([
-            "query": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Search text (full-text matched against the query column)"))
-            ]),
-            "connection_id": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Restrict to a specific connection (UUID, optional)"))
-            ]),
-            "limit": .object([
-                "type": .string("integer"),
-                "description": .string(String(localized: "Maximum number of entries to return (default 50, max 500)"))
-            ]),
-            "since": .object([
-                "type": .string("number"),
-                "description": .string(String(localized: "Earliest executed_at to include, Unix epoch seconds (inclusive, optional)"))
-            ]),
-            "until": .object([
-                "type": .string("number"),
-                "description": .string(String(localized: "Latest executed_at to include, Unix epoch seconds (inclusive, optional)"))
-            ])
-        ]),
-        "required": .array([.string("query")])
-    ])
+    public static let inputSchema = MCPToolSchema.object(
+        properties: [
+            "query": MCPToolSchema.string(String(localized: "Text matched against the recorded statement")),
+            "connection_id": MCPToolSchema.string(String(localized: "Restrict to one connection")),
+            "limit": MCPToolSchema.integer(
+                String(localized: "Maximum entries to return (1-500, default 50)"),
+                minimum: 1,
+                maximum: 500
+            ),
+            "since": MCPToolSchema.number(String(localized: "Earliest executed_at, Unix epoch seconds")),
+            "until": MCPToolSchema.number(String(localized: "Latest executed_at, Unix epoch seconds"))
+        ],
+        required: ["query"]
+    )
+
+    public static let outputSchema: JsonValue? = MCPToolSchema.object(
+        properties: [
+            "entries": MCPToolSchema.array(
+                String(localized: "Matching history entries, newest first"),
+                of: MCPToolSchema.object(
+                    properties: [
+                        "id": MCPToolSchema.string(String(localized: "Entry id")),
+                        "query": MCPToolSchema.string(String(localized: "Statement that ran")),
+                        "connection_id": MCPToolSchema.string(String(localized: "Connection it ran on")),
+                        "database_name": MCPToolSchema.string(String(localized: "Database it ran against")),
+                        "schema_name": MCPToolSchema.string(String(localized: "Schema it ran against")),
+                        "database_type": MCPToolSchema.string(String(localized: "Engine")),
+                        "source": MCPToolSchema.string(String(localized: "What ran it")),
+                        "statement_type": MCPToolSchema.string(String(localized: "Leading keyword class")),
+                        "executed_at": MCPToolSchema.number(String(localized: "Unix epoch seconds")),
+                        "execution_time_ms": MCPToolSchema.number(String(localized: "Duration in milliseconds")),
+                        "row_count": MCPToolSchema.integer(String(localized: "Rows the statement returned")),
+                        "was_successful": MCPToolSchema.boolean(String(localized: "Whether it succeeded")),
+                        "error_message": MCPToolSchema.string(String(localized: "Redacted failure text"))
+                    ],
+                    required: [
+                        "id", "query", "connection_id", "database_name", "database_type",
+                        "source", "statement_type", "executed_at", "execution_time_ms",
+                        "row_count", "was_successful"
+                    ]
+                )
+            )
+        ],
+        required: ["entries"]
+    )
 
     public init() {}
 
-    public func call(
+    public func perform(
         arguments: JsonValue,
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
+        try MCPArgumentDecoder.rejectUnknownKeys(
+            arguments,
+            allowed: ["query", "connection_id", "limit", "since", "until"]
+        )
         let query = try MCPArgumentDecoder.requireString(arguments, key: "query")
         let connectionId = try MCPArgumentDecoder.optionalUuid(arguments, key: "connection_id")
-        let limit = MCPArgumentDecoder.optionalInt(arguments, key: "limit", default: 50, clamp: 1...500) ?? 50
-        let since = MCPArgumentDecoder.optionalDouble(arguments, key: "since").map { Date(timeIntervalSince1970: $0) }
-        let until = MCPArgumentDecoder.optionalDouble(arguments, key: "until").map { Date(timeIntervalSince1970: $0) }
+        let limit = try MCPArgumentDecoder.optionalInt(arguments, key: "limit", range: 1...500) ?? 50
+        let since = try MCPArgumentDecoder.optionalDouble(arguments, key: "since")
+            .map { Date(timeIntervalSince1970: $0) }
+        let until = try MCPArgumentDecoder.optionalDouble(arguments, key: "until")
+            .map { Date(timeIntervalSince1970: $0) }
 
         if let since, let until, since > until {
-            throw MCPProtocolError.invalidParams(detail: "'since' must be less than or equal to 'until'")
+            throw MCPToolExecutionError.invalidArgument(
+                String(localized: "'since' must not be later than 'until'.")
+            )
         }
 
         if let connectionId {
@@ -63,20 +94,17 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
                 principal: context.principal,
                 tool: Self.name,
                 connectionId: connectionId,
-                sessionId: context.sessionId.rawValue
+                sql: nil
             )
         }
 
-        // Query text is the most sensitive thing this store holds, so the unscoped search resolves
-        // the allowlist rather than leaving it open: a token limited to one connection, or a
-        // connection the user marked private, must not be readable by omitting connection_id.
-        let candidates = await MainActor.run {
-            Set(ConnectionStorage.shared.loadConnections().map(\.id))
+        var allowlist = await services.authPolicy.readableConnectionIds(principal: context.principal)
+        if let connectionId {
+            allowlist = allowlist.intersection([connectionId])
         }
-        let allowlist = await services.authPolicy.readableConnectionIds(
-            principal: context.principal,
-            from: connectionId.map { [$0] } ?? candidates
-        )
+        guard !allowlist.isEmpty else {
+            return .structured(.object(["entries": .array([])]))
+        }
 
         let page = await services.queryHistoryManager.fetch(
             QueryHistoryFilter(
@@ -89,8 +117,8 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             limit: limit
         )
 
-        let payload: [JsonValue] = page.entries.map { entry in
-            var dict: [String: JsonValue] = [
+        let payload = page.entries.map { entry -> JsonValue in
+            var fields: [String: JsonValue] = [
                 "id": .string(entry.id.uuidString),
                 "query": .string(entry.query),
                 "connection_id": .string(entry.connectionId.uuidString),
@@ -104,12 +132,12 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
                 "was_successful": .bool(entry.wasSuccessful)
             ]
             if let schemaName = entry.schemaName {
-                dict["schema_name"] = .string(schemaName)
+                fields["schema_name"] = .string(schemaName)
             }
             if let error = entry.errorMessage {
-                dict["error_message"] = .string(error)
+                fields["error_message"] = .string(MCPErrorRedactor.redact(error))
             }
-            return .object(dict)
+            return .object(fields)
         }
 
         return .structured(.object(["entries": .array(payload)]))

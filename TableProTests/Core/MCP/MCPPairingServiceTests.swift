@@ -1,3 +1,13 @@
+//
+//  MCPPairingServiceTests.swift
+//  TableProTests
+//
+//  A pairing code is a bearer credential for the whole grant, so each code allows exactly one
+//  attempt: a verifier that does not match burns the code instead of leaving it alive for the rest
+//  of the five-minute window, which is what turned PKCE into an offline guessing game. The record
+//  carries the token id so a caller that fails the exchange can delete the token it was holding.
+//
+
 import CryptoKit
 import Foundation
 import TableProPluginKit
@@ -7,68 +17,87 @@ import Testing
 
 @Suite("MCP Pairing Exchange Store")
 struct MCPPairingServiceTests {
-    private func base64UrlSha256(of value: String) -> String {
-        PairingExchangeStore.sha256Base64Url(of: value)
+    private func challenge(for verifier: String) -> String {
+        PairingExchangeStore.sha256Base64Url(of: verifier)
     }
 
-    private func makeStore() -> PairingExchangeStore {
-        PairingExchangeStore()
+    private func makeVerifier(_ seed: Character = "a") -> String {
+        String(repeating: seed, count: PairingPkceValidator.minimumVerifierLength)
     }
 
-    private func record(plaintext: String, challenge: String, expiresIn: TimeInterval) -> PairingExchangeRecord {
+    private func makeRecord(
+        plaintext: String = "tp_secret",
+        tokenId: UUID = UUID(),
+        challenge: String,
+        expiresIn: TimeInterval = 60
+    ) -> PairingExchangeRecord {
         PairingExchangeRecord(
             plaintextToken: plaintext,
+            tokenId: tokenId,
             challenge: challenge,
             expiresAt: Date.now.addingTimeInterval(expiresIn)
         )
     }
 
-    @Test("consume returns stored token when challenge and verifier match")
-    func consumeReturnsTokenForValidVerifier() async throws {
-        let verifier = "test-verifier-1"
-        let challenge = base64UrlSha256(of: verifier)
-        let store = makeStore()
-        try await store.insert(code: "code-1", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
+    @Test("A matching verifier releases the token and the id that issued it")
+    func matchingVerifierReleasesTheGrant() async throws {
+        let store = PairingExchangeStore()
+        let verifier = makeVerifier()
+        let tokenId = UUID()
+        try await store.insert(
+            code: "code-1",
+            record: makeRecord(tokenId: tokenId, challenge: challenge(for: verifier))
+        )
 
-        let token = try await store.consume(code: "code-1", verifier: verifier)
+        let record = try await store.consume(code: "code-1", verifier: verifier)
 
-        #expect(token == "tp_secret")
+        #expect(record.plaintextToken == "tp_secret")
+        #expect(record.tokenId == tokenId)
     }
 
-    @Test("consume removes the entry after success (single-use)")
+    @Test("A code is single use")
     func consumeIsSingleUse() async throws {
-        let verifier = "test-verifier-2"
-        let challenge = base64UrlSha256(of: verifier)
-        let store = makeStore()
-        try await store.insert(code: "code-2", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
+        let store = PairingExchangeStore()
+        let verifier = makeVerifier()
+        try await store.insert(code: "code-2", record: makeRecord(challenge: challenge(for: verifier)))
 
         _ = try await store.consume(code: "code-2", verifier: verifier)
 
-        let contains = await store.contains(code: "code-2")
-        #expect(contains == false)
-    }
-
-    @Test("second consume of the same code returns notFound")
-    func duplicateConsumeReturnsNotFound() async throws {
-        let verifier = "test-verifier-3"
-        let challenge = base64UrlSha256(of: verifier)
-        let store = makeStore()
-        try await store.insert(code: "code-3", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
-
-        _ = try await store.consume(code: "code-3", verifier: verifier)
-
+        #expect(await store.contains(code: "code-2") == false)
         await #expect(throws: MCPDataLayerError.self) {
-            try await store.consume(code: "code-3", verifier: verifier)
+            _ = try await store.consume(code: "code-2", verifier: verifier)
         }
     }
 
-    @Test("consume returns notFound for unknown code")
-    func consumeUnknownCodeReturnsNotFound() async {
-        let store = makeStore()
+    @Test("A failed verification burns the code, so the right verifier cannot follow it")
+    func failedVerificationBurnsTheCode() async throws {
+        let store = PairingExchangeStore()
+        let verifier = makeVerifier()
+        try await store.insert(code: "code-3", record: makeRecord(challenge: challenge(for: verifier)))
 
         do {
-            _ = try await store.consume(code: "missing", verifier: "any")
-            Issue.record("Expected notFound error")
+            _ = try await store.consume(code: "code-3", verifier: makeVerifier("b"))
+            Issue.record("Expected the mismatched verifier to be refused")
+        } catch let error as MCPDataLayerError {
+            guard case .forbidden = error else {
+                Issue.record("Expected forbidden, got \(error)")
+                return
+            }
+        }
+
+        #expect(await store.contains(code: "code-3") == false)
+        await #expect(throws: MCPDataLayerError.self) {
+            _ = try await store.consume(code: "code-3", verifier: verifier)
+        }
+    }
+
+    @Test("An unknown code is not found")
+    func unknownCodeIsNotFound() async {
+        let store = PairingExchangeStore()
+
+        do {
+            _ = try await store.consume(code: "missing", verifier: makeVerifier())
+            Issue.record("Expected notFound")
         } catch let error as MCPDataLayerError {
             guard case .notFound = error else {
                 Issue.record("Expected notFound, got \(error)")
@@ -79,141 +108,118 @@ struct MCPPairingServiceTests {
         }
     }
 
-    @Test("consume returns expired when entry has expired")
-    func consumeExpiredEntryReturnsExpired() async throws {
-        let verifier = "test-verifier-4"
-        let challenge = base64UrlSha256(of: verifier)
-        let store = makeStore()
-        try await store.insert(code: "code-4", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: -1))
+    @Test("An expired code is refused and dropped")
+    func expiredCodeIsRefusedAndDropped() async throws {
+        let store = PairingExchangeStore()
+        let verifier = makeVerifier()
+        try await store.insert(
+            code: "code-4",
+            record: makeRecord(challenge: challenge(for: verifier), expiresIn: -1)
+        )
 
         do {
             _ = try await store.consume(code: "code-4", verifier: verifier, now: Date.now)
-            Issue.record("Expected expired error")
+            Issue.record("Expected expired")
         } catch let error as MCPDataLayerError {
             guard case .expired = error else {
                 Issue.record("Expected expired, got \(error)")
                 return
             }
-        } catch {
-            Issue.record("Unexpected error: \(error)")
         }
+
+        #expect(await store.contains(code: "code-4") == false)
     }
 
-    @Test("consume returns forbidden when challenge does not match the verifier")
-    func consumeMismatchedChallengeReturnsForbidden() async throws {
-        let store = makeStore()
-        let challenge = base64UrlSha256(of: "intended-verifier")
-        try await store.insert(code: "code-5", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: 60))
+    @Test("Discarding a code removes it without an exchange")
+    func discardRemovesTheCode() async throws {
+        let store = PairingExchangeStore()
+        let verifier = makeVerifier()
+        try await store.insert(code: "code-5", record: makeRecord(challenge: challenge(for: verifier)))
 
-        do {
-            _ = try await store.consume(code: "code-5", verifier: "attacker-verifier")
-            Issue.record("Expected forbidden error")
-        } catch let error as MCPDataLayerError {
-            guard case .forbidden = error else {
-                Issue.record("Expected forbidden, got \(error)")
-                return
-            }
-        } catch {
-            Issue.record("Unexpected error: \(error)")
-        }
+        await store.discard(code: "code-5")
+
+        #expect(await store.contains(code: "code-5") == false)
+        #expect(await store.count() == 0)
     }
 
-    @Test("consume on expired code removes the entry")
-    func consumeOnExpiredCodeRemovesEntry() async throws {
-        let verifier = "test-verifier-6"
-        let challenge = base64UrlSha256(of: verifier)
-        let store = makeStore()
-        try await store.insert(code: "code-6", record: record(plaintext: "tp_secret", challenge: challenge, expiresIn: -1))
-
-        _ = try? await store.consume(code: "code-6", verifier: verifier)
-
-        let contains = await store.contains(code: "code-6")
-        #expect(contains == false)
-    }
-
-    @Test("pruneExpired removes only expired entries")
+    @Test("Pruning removes the expired codes and keeps the live one")
     func pruneRemovesOnlyExpiredEntries() async throws {
-        let store = makeStore()
-        try await store.insert(
-            code: "alive",
-            record: record(plaintext: "tp_a", challenge: "challenge", expiresIn: 60)
-        )
-        try await store.insert(
-            code: "stale-1",
-            record: record(plaintext: "tp_b", challenge: "challenge", expiresIn: -1)
-        )
-        try await store.insert(
-            code: "stale-2",
-            record: record(plaintext: "tp_c", challenge: "challenge", expiresIn: -10)
-        )
+        let store = PairingExchangeStore()
+        try await store.insert(code: "alive", record: makeRecord(challenge: "challenge", expiresIn: 60))
+        try await store.insert(code: "stale-1", record: makeRecord(challenge: "challenge", expiresIn: -1))
+        try await store.insert(code: "stale-2", record: makeRecord(challenge: "challenge", expiresIn: -10))
 
         await store.pruneExpired()
 
-        let count = await store.count()
-        let containsAlive = await store.contains(code: "alive")
-        let containsStale1 = await store.contains(code: "stale-1")
-        let containsStale2 = await store.contains(code: "stale-2")
-        #expect(count == 1)
-        #expect(containsAlive)
-        #expect(containsStale1 == false)
-        #expect(containsStale2 == false)
+        #expect(await store.count() == 1)
+        #expect(await store.contains(code: "alive"))
+        #expect(await store.contains(code: "stale-1") == false)
+        #expect(await store.contains(code: "stale-2") == false)
     }
 
-    @Test("sha256Base64Url matches CryptoKit output without padding")
-    func sha256Base64UrlMatchesCryptoKit() {
+    @Test("The challenge is the base64url SHA-256 of the verifier, unpadded")
+    func challengeMatchesCryptoKit() {
         let value = "verifier-string"
-        let digest = SHA256.hash(data: Data(value.utf8))
-        let expected = Data(digest).base64EncodedString()
+        let expected = Data(SHA256.hash(data: Data(value.utf8))).base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
 
         #expect(PairingExchangeStore.sha256Base64Url(of: value) == expected)
+        #expect(PairingExchangeStore.sha256Base64Url(of: value).count == PairingPkceValidator.challengeLength)
     }
 
-    @Test("constantTimeEqual returns true for identical strings")
-    func constantTimeEqualIdentical() {
+    @Test("The challenge comparison is length-safe and value-exact")
+    func constantTimeComparison() {
         #expect(PairingExchangeStore.constantTimeEqual("abc", "abc"))
-    }
-
-    @Test("constantTimeEqual returns false for different strings")
-    func constantTimeEqualDifferent() {
         #expect(PairingExchangeStore.constantTimeEqual("abc", "abd") == false)
-    }
-
-    @Test("constantTimeEqual returns false for different lengths")
-    func constantTimeEqualLengthMismatch() {
         #expect(PairingExchangeStore.constantTimeEqual("abc", "abcd") == false)
+        #expect(PairingExchangeStore.constantTimeEqual("", ""))
     }
 
-    @Test("insert throws after maxPendingCodes consecutive inserts")
-    func insertThrowsWhenPendingCapReached() async throws {
-        let store = makeStore()
+    @Test("Pending codes are capped so a caller cannot fill the store")
+    func pendingCodesAreCapped() async throws {
+        let store = PairingExchangeStore()
         for index in 0..<PairingExchangeStore.maxPendingCodes {
-            try await store.insert(
-                code: "code-cap-\(index)",
-                record: record(plaintext: "tp_x", challenge: "challenge", expiresIn: 60)
-            )
+            try await store.insert(code: "code-cap-\(index)", record: makeRecord(challenge: "challenge"))
         }
 
         do {
-            try await store.insert(
-                code: "code-overflow",
-                record: record(plaintext: "tp_x", challenge: "challenge", expiresIn: 60)
-            )
-            Issue.record("Expected forbidden error after exceeding maxPendingCodes")
+            try await store.insert(code: "code-overflow", record: makeRecord(challenge: "challenge"))
+            Issue.record("Expected the pending cap to refuse another code")
         } catch let error as MCPDataLayerError {
             guard case .forbidden = error else {
                 Issue.record("Expected forbidden, got \(error)")
                 return
             }
-        } catch {
-            Issue.record("Unexpected error: \(error)")
         }
 
-        let count = await store.count()
-        let containsOverflow = await store.contains(code: "code-overflow")
-        #expect(count == PairingExchangeStore.maxPendingCodes)
-        #expect(containsOverflow == false)
+        #expect(await store.count() == PairingExchangeStore.maxPendingCodes)
+        #expect(await store.contains(code: "code-overflow") == false)
+    }
+
+    @Test("The exchange window is the five minutes the client is told about")
+    func exchangeWindowIsFiveMinutes() {
+        #expect(PairingExchangeStore.exchangeWindow == 300)
+    }
+
+    @Test("A repeated exchange attempt is rate limited per address")
+    @MainActor
+    func exchangeAttemptsAreRateLimited() async {
+        let limiter = MCPRateLimiter(
+            pairingPolicy: MCPPairingService.exchangeRateLimitPolicy,
+            clock: MCPTestClock()
+        )
+        let key = MCPRateLimitKey.pairingExchange(address: .loopback)
+
+        for _ in 0..<4 {
+            #expect(await limiter.recordAttempt(key: key, success: false) == .allowed)
+        }
+
+        guard case .lockedUntil = await limiter.recordAttempt(key: key, success: false) else {
+            Issue.record("Expected the pairing exchange bucket to lock")
+            return
+        }
+        #expect(await limiter.isLocked(key: key))
     }
 }

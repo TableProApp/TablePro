@@ -92,6 +92,14 @@ A tab can hold many statements, and the editor marks which one it is about to ru
 - A `BEGIN ... END` body counts as one statement, so a trigger or stored procedure gets one button rather than one per line inside it. `BEGIN;` and `BEGIN TRANSACTION;` are statements of their own.
 - Turn either off in **Settings > Editor** with **Highlight current statement** and **Run button beside each statement**.
 
+### Moving Between Statements
+
+- `Ctrl+Cmd+Left` and `Ctrl+Cmd+Right` move the cursor to the previous and next statement. From part-way through a statement, the first press back lands on that statement's own start. Neither wraps: at the last statement, next does nothing.
+- `Ctrl+Cmd+Enter` runs the statement the cursor is in and then moves to the next one, so you can work down a script without reaching for the mouse. The cursor moves first, so you can see what is queued while the current one runs.
+- `Option+Shift+Up` and `Option+Shift+Down` extend the selection by a statement. macOS assigns those keys to paragraph selection, and a statement is the paragraph of a SQL file.
+- A statement hidden inside a collapsed fold is unfolded when the cursor lands on it.
+- All three commands are in the Query menu and rebindable in **Settings > Keyboard**.
+
 <Frame caption="A run control beside each statement, and a band over the one at the cursor">
   <img className="block dark:hidden" src="/images/sql-editor-statement-run.png" alt="Statement run controls in the editor gutter" />
   <img className="hidden dark:block" src="/images/sql-editor-statement-run-dark.png" alt="Statement run controls in the editor gutter" />
