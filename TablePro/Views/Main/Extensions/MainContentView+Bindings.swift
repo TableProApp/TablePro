@@ -102,9 +102,9 @@ extension MainContentView {
             return selectedInspectorRow?.isEditable ?? false
         }
         guard gridSelectionOwner == .dataGrid,
-              !coordinator.safeModeLevel.blocksAllWrites,
               let tab = coordinator.tabManager.selectedTab,
               tab.tabType == .table || tab.tableContext.tableName != nil,
+              coordinator.canEditActiveResult,
               !coordinator.selectionState.indices.isEmpty else {
             return false
         }

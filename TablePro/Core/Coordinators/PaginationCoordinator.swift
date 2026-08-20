@@ -252,11 +252,16 @@ final class PaginationCoordinator {
 
     /// Only the driver work runs inside the lease. Applying the rows to the tab stays
     /// outside it, because the connection's driver gate is not reentrant.
+    ///
+    /// The rows belong to the result the fetch was started on. A result switch leaves the content
+    /// epoch alone, so the fetch is fenced on the result set as well, or the full row set lands on
+    /// whichever result is showing when it arrives, normalized to that result's column count.
     private func performFetchAll(tabId: UUID, baseQuery: String, scope: DatabaseScope) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         guard !parent.tabManager.tabs[idx].pagination.isLoadingMore else { return }
 
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
+        let resultSetId = parent.tabManager.tabs[idx].display.activeResultSetId
         let storedParamValues = parent.tabManager.tabs[idx].pagination.baseQueryParameterValues
 
         parent.tabManager.mutate(at: idx) { $0.pagination.isLoadingMore = true }
@@ -289,7 +294,9 @@ final class PaginationCoordinator {
 
                 await MainActor.run { [weak self] in
                     guard let self, !parent.isTearingDown else { return }
-                    guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else {
+                    let stillSameResult = parent.tabManager.tabs
+                        .contains { $0.id == tabId && $0.display.activeResultSetId == resultSetId }
+                    guard parent.tabExecution.isSameContent(contentEpoch, for: tabId), stillSameResult else {
                         parent.tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
                         parent.retireQueryTask(for: nil)
                         return

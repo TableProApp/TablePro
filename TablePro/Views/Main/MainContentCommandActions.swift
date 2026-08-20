@@ -365,8 +365,10 @@ final class MainContentCommandActions {
     }
 
     var isCurrentTabEditable: Bool {
-        guard let tab = coordinator?.tabManager.selectedTab, selectionOwner != .none else { return false }
-        return tab.tableContext.isEditable
+        guard let coordinator, coordinator.tabManager.selectedTab != nil, selectionOwner != .none else {
+            return false
+        }
+        return coordinator.canEditActiveResult
     }
 
     /// Find and the filter panel act on the result grid, so they need a table tab that is showing

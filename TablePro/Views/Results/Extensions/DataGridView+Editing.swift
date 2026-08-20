@@ -56,13 +56,24 @@ extension TableViewCoordinator {
         false
     }
 
+    /// A grid that will not take a keystroke and says nothing reads as broken. When the refusal has
+    /// a reason the pointer already carries it as the grid's tooltip, and the beep is AppKit's own
+    /// way of saying the attempt was heard and declined.
+    func refuseEditIfExplained() {
+        guard !isEditable, editRefusalMessage != nil else { return }
+        NSSound.beep()
+    }
+
     func beginCellEdit(row: Int, tableColumnIndex: Int) {
         guard let tableView else { return }
         guard tableColumnIndex >= 0, tableColumnIndex < tableView.numberOfColumns else { return }
         let column = tableView.tableColumns[tableColumnIndex]
         guard column.identifier != ColumnIdentitySchema.rowNumberIdentifier else { return }
         guard let columnIndex = dataColumnIndex(from: column.identifier) else { return }
-        guard case .editable(let value) = editEligibility(row: row, columnIndex: columnIndex) else { return }
+        guard case .editable(let value) = editEligibility(row: row, columnIndex: columnIndex) else {
+            refuseEditIfExplained()
+            return
+        }
         showOverlayEditor(
             tableView: tableView,
             row: row,
