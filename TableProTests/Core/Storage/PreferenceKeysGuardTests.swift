@@ -36,6 +36,7 @@ struct PreferenceKeysGuardTests {
         "AppleLanguages": "Apple system default written when switching app language",
         "NSTableViewDefaultSizeMode": "Apple system default read by the workspace rail for Sidebar icon size, never written",
         "blink": "CALayer animation key in VimCursorManager, not a preference",
+        "extensions": "MCP capabilities field stripped by BridgeProxy for legacy clients, not a preference",
         "preConnectScript": "additionalFields dictionary key in ConnectionFormCoordinator, not a preference",
     ]
 
