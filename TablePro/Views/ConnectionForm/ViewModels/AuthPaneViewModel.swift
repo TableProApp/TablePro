@@ -90,8 +90,8 @@ final class AuthPaneViewModel {
 
     func isFieldVisible(_ field: ConnectionField) -> Bool {
         let type = coordinator?.value?.network.type ?? .mysql
-        return PluginManager.shared.additionalConnectionFields(for: type)
-            .isVisible(field, forValues: additionalFieldValues)
+        let values = coordinator?.value?.allAdditionalFieldValues ?? additionalFieldValues
+        return PluginFieldRendering.isFieldVisible(field, type: type, values: values)
     }
 
     func resetForType(_ newType: DatabaseType) {

@@ -372,11 +372,22 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
       - Plugins/RedisDriverPlugin/RedisAuthCommand.swift
+      - Plugins/RedisDriverPlugin/RedisClusterAggregator.swift
+      - Plugins/RedisDriverPlugin/RedisClusterCursor.swift
+      - Plugins/RedisDriverPlugin/RedisClusterRedirect.swift
+      - Plugins/RedisDriverPlugin/RedisClusterTopology.swift
       - Plugins/RedisDriverPlugin/RedisCommandParser.swift
+      - Plugins/RedisDriverPlugin/RedisCommandRouting.swift
+      - Plugins/RedisDriverPlugin/RedisConnectionMode.swift
       - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
+      - Plugins/RedisDriverPlugin/RedisKeySlot.swift
       - Plugins/RedisDriverPlugin/RedisKeySummary.swift
+      - Plugins/RedisDriverPlugin/RedisMultiShardPlanner.swift
       - Plugins/RedisDriverPlugin/RedisQueryBuilder.swift
+      - Plugins/RedisDriverPlugin/RedisReply.swift
+      - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
+      - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeAuth.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeBindingEncoder.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeDDLGenerator.swift

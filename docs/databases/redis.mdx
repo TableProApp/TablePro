@@ -3,7 +3,7 @@ title: Redis
 description: Browse keys by namespace, manage TTLs, and run Redis commands directly from the editor
 ---
 
-TablePro connects to standalone Redis servers with hiredis. Keys are grouped by colon-separated namespaces in the sidebar. Values display with type-aware formatting in the data grid (strings, hashes, lists, sets, sorted sets, streams).
+TablePro connects to standalone Redis servers, Sentinel-managed primaries and Redis Cluster, all through hiredis. Keys are grouped by colon-separated namespaces in the sidebar. Values display with type-aware formatting in the data grid (strings, hashes, lists, sets, sorted sets, streams).
 
 ## Quick Setup
 
@@ -20,8 +20,9 @@ TablePro connects to standalone Redis servers with hiredis. Keys are grouped by 
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| **Host** | `localhost` | |
-| **Port** | `6379` | |
+| **Connection Mode** | `Standalone` | `Sentinel` for a Sentinel-managed primary, `Cluster` for a sharded cluster |
+| **Host** | `localhost` | Standalone only |
+| **Port** | `6379` | Standalone only |
 | **Username** | - | Redis 6 ACL user, sent as `AUTH username password`. Leave empty for `requirepass` auth |
 | **Password** | - | Leave empty for local dev |
 | **Database Index** | `0` | 0-15 stepper, in the Advanced section |
@@ -30,6 +31,48 @@ TablePro connects to standalone Redis servers with hiredis. Keys are grouped by 
 <Tip>
 Open URLs like `redis://:password@host:6379/0` or `rediss://` (TLS) from your browser. See [Connection URL Reference](/databases/connection-urls#redis).
 </Tip>
+
+## Connection Modes
+
+### Standalone
+
+The default. Connects to the one server named by Host and Port.
+
+### Sentinel
+
+For a deployment fronted by [Redis Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/). TablePro asks the quorum which node is currently the primary, then opens the data connection to it.
+
+| Field | Notes |
+|-------|-------|
+| **Sentinel Nodes** | One or more `host:port` entries. Port defaults to `26379`. |
+| **Primary Group Name** | The name after `sentinel monitor` in `sentinel.conf`, usually `mymaster`. |
+| **Sentinel Username** | Under Authentication. Only needed when Sentinel has its own ACL user (Redis 6.2+). |
+| **Sentinel Password** | Under Authentication. Only needed when Sentinel has its own password. Stored in the Keychain. |
+
+Host and Port are ignored in Sentinel mode. The Username and Password under Authentication are the data-plane credentials, used for the primary itself; Sentinel authenticates separately because it is a different plane.
+
+Once connected, TablePro asks one Sentinel for the other Sentinels in the quorum and remembers them, so a later lookup still works when the node you listed is down. It re-checks the primary's address on every health check and reconnects when the quorum reports a new one. It does not infer failover from the data connection: a demoted primary keeps reporting `role:master` and keeps accepting writes for several seconds, and those writes are lost, so the quorum's answer is the only signal worth trusting.
+
+If no Sentinel can be reached, or none of them monitors the group you named, the error says which addresses were tried and which groups they do monitor.
+
+### Cluster
+
+For a sharded [Redis Cluster](https://redis.io/docs/latest/operate/oss_and_stack/management/scaling/). TablePro reads the shard map with `CLUSTER SHARDS` (or `CLUSTER SLOTS` on Redis 6), opens a connection to every primary, and sends each command to the shard that owns its key.
+
+| Field | Notes |
+|-------|-------|
+| **Cluster Seed Nodes** | One or more `host:port` entries. Any reachable member is enough; TablePro discovers the rest. Port defaults to `6379`. |
+
+What changes in Cluster mode:
+
+- **One database.** Redis Cluster serves database 0 only, so the Database Index field is hidden and the sidebar shows a single `db0`.
+- **Key counts are cluster-wide.** `DBSIZE` is summed across every shard, and browsing walks each shard in turn and merges the keys into one tree.
+- **Redirects are followed.** A `MOVED` re-points the slot and retries; an `ASK` retries against the importing node. TablePro follows at most five redirects for one command.
+- **Multi-key commands are split by slot.** `MGET`, `MSET`, `DEL`, `EXISTS`, `TOUCH` and `UNLINK` are sent per shard and recombined, so they work across shards.
+- **Cross-slot commands are refused before they are sent.** `RENAME`, `SMOVE` and the `*STORE` commands need every key in one hash slot. Give the keys a shared hash tag, like `{user}:1` and `{user}:2`.
+- **No transactions.** `MULTI` carries no key, so the client cannot know which shard to open it on, and Redis rejects a queued command that hashes elsewhere. Saving grid edits runs the statements one at a time instead.
+
+If the mode does not match the server, TablePro says so at connect rather than failing later: pointing Standalone at a cluster member, or any data mode at a Sentinel port, names the field to change.
 
 ## Amazon ElastiCache (IAM)
 
@@ -114,6 +157,8 @@ With the Username field empty, TablePro sends `AUTH password`, which Redis and V
 Note that `>password` sets a password and `#hash` sets a SHA-256 hash. A 64-character hex string is valid for both, so `ACL SETUSER myuser on #<64-hex>` is accepted where `>` was meant, and every later login fails with `WRONGPASS`. `ACL LIST` shows stored passwords as hashes, so a value copied from there is a hash, not a password.
 
 **Timeout**: Verify host/port, check network and firewall, whitelist IP for cloud-hosted Redis.
+
+**Sentinel or Cluster over SSH**: a tunnel forwards one local port to one remote address, and the addresses Sentinel returns are the server's own. Over a tunnel TablePro connects straight to the first host in the list as a standalone node, so failover and shard routing are not available.
 
 **Slow key list**: `KEYS` blocks the server on a large keyspace. Browse by namespace instead, and use `SCAN` when you need a pattern match in the CLI. Check memory pressure with `INFO memory`.
 

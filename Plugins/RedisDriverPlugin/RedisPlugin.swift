@@ -23,50 +23,80 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let defaultPort = 6_379
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
-            id: "redisMode",
+            id: RedisConnectionMode.fieldId,
             label: String(localized: "Connection Mode"),
-            defaultValue: "single",
+            defaultValue: RedisConnectionMode.standalone.rawValue,
             fieldType: .dropdown(options: [
-                .init(value: "single", label: String(localized: "Single Node")),
-                .init(value: "sentinel", label: String(localized: "Sentinel")),
+                .init(value: RedisConnectionMode.standalone.rawValue, label: String(localized: "Standalone")),
+                .init(value: RedisConnectionMode.sentinel.rawValue, label: String(localized: "Sentinel")),
+                .init(value: RedisConnectionMode.cluster.rawValue, label: String(localized: "Cluster")),
             ]),
             section: .connection
         ),
         ConnectionField(
-            id: "redisSentinelHosts",
+            id: RedisSentinelFieldKey.hosts,
             label: String(localized: "Sentinel Nodes"),
             placeholder: "127.0.0.1:26379",
             required: true,
             fieldType: .hostList,
             section: .connection,
-            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+            visibleWhen: FieldVisibilityRule(
+                fieldId: RedisConnectionMode.fieldId,
+                values: [RedisConnectionMode.sentinel.rawValue]
+            )
         ),
         ConnectionField(
-            id: "redisSentinelMasterName",
-            label: String(localized: "Master Group Name"),
-            placeholder: "mymaster",
-            defaultValue: "mymaster",
+            id: RedisSentinelFieldKey.masterName,
+            label: String(localized: "Primary Group Name"),
+            placeholder: RedisSentinelFieldKey.defaultMasterName,
+            required: true,
+            defaultValue: RedisSentinelFieldKey.defaultMasterName,
             section: .connection,
-            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+            visibleWhen: FieldVisibilityRule(
+                fieldId: RedisConnectionMode.fieldId,
+                values: [RedisConnectionMode.sentinel.rawValue]
+            )
         ),
         ConnectionField(
-            id: "redisSentinelUsername",
-            label: String(localized: "Sentinel User"),
+            id: RedisClusterFieldKey.hosts,
+            label: String(localized: "Cluster Seed Nodes"),
+            placeholder: "127.0.0.1:6379",
+            required: true,
+            fieldType: .hostList,
             section: .connection,
-            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+            visibleWhen: FieldVisibilityRule(
+                fieldId: RedisConnectionMode.fieldId,
+                values: [RedisConnectionMode.cluster.rawValue]
+            )
         ),
         ConnectionField(
-            id: "redisSentinelPassword",
+            id: RedisSentinelFieldKey.username,
+            label: String(localized: "Sentinel Username"),
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(
+                fieldId: RedisConnectionMode.fieldId,
+                values: [RedisConnectionMode.sentinel.rawValue]
+            )
+        ),
+        ConnectionField(
+            id: RedisSentinelFieldKey.password,
             label: String(localized: "Sentinel Password"),
             fieldType: .secure,
-            section: .connection,
-            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(
+                fieldId: RedisConnectionMode.fieldId,
+                values: [RedisConnectionMode.sentinel.rawValue]
+            )
         ),
         ConnectionField(
             id: "redisDatabase",
             label: String(localized: "Database Index"),
             defaultValue: "0",
-            fieldType: .stepper(range: ConnectionField.IntRange(0...15))
+            fieldType: .stepper(range: ConnectionField.IntRange(0...15)),
+            visibleWhen: FieldVisibilityRule(
+                fieldId: RedisConnectionMode.fieldId,
+                values: [RedisConnectionMode.standalone.rawValue, RedisConnectionMode.sentinel.rawValue]
+            )
         ),
         ConnectionField(
             id: "redisSeparator",
