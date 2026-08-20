@@ -57,7 +57,7 @@ struct CloudflareTunnelPaneView: View {
 
             switch coordinator.cloudflareTunnel.state.authMethod {
             case .browserSSO:
-                Button("Sign In with Browser...") {
+                Button("Sign In with Browser…") {
                     viewModel.signInWithBrowser()
                 }
                 .disabled(coordinator.cloudflareTunnel.state.accessHostname.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -111,7 +111,7 @@ struct CloudflareTunnelPaneView: View {
                 text: $coordinator.cloudflareTunnel.state.binaryPath,
                 prompt: Text("Automatic")
             )
-            Button("Choose...") {
+            Button("Choose…") {
                 chooseBinary()
             }
             .controlSize(.small)

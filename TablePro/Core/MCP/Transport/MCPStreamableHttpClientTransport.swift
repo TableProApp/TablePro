@@ -799,7 +799,7 @@ private final class CertificatePinningDelegate: NSObject, URLSessionDelegate {
         let fingerprint = Self.sha256Fingerprint(of: leaf)
         if fingerprint.caseInsensitiveCompare(expected) != .orderedSame {
             let prefix = String(fingerprint.prefix(8))
-            errorLogger?.log(.error, "TLS pinning: cert mismatch (got \(prefix)...)")
+            errorLogger?.log(.error, "TLS pinning: cert mismatch (got \(prefix)…)")
             return (.cancelAuthenticationChallenge, nil)
         }
         return (.useCredential, URLCredential(trust: trust))

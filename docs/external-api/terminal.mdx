@@ -18,7 +18,7 @@ TablePro uses a saved connection if one matches, otherwise it opens a temporary 
 
 ### Force TablePro over another client
 
-`open "mysql://..."` goes to whichever app owns the `mysql://` scheme. If TablePlus or another client is installed, it may win. Target TablePro by its bundle identifier:
+`open "mysql://…"` goes to whichever app owns the `mysql://` scheme. If TablePlus or another client is installed, it may win. Target TablePro by its bundle identifier:
 
 ```bash
 open -b com.TablePro "mysql://root@127.0.0.1:3306/shop"

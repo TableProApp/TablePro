@@ -222,7 +222,7 @@ final class ShortcutRecorderNSView: NSView {
         if isRecording {
             let modifierString = modifierDisplayString
             if modifierString.isEmpty {
-                return String(localized: "Type shortcut...")
+                return String(localized: "Type shortcut…")
             }
             return modifierString
         }

@@ -28,7 +28,7 @@ Turn on **Settings > General > Sidebar > Show recent tables** to add a **Recent*
 
 Enter a name, the SQL text, and optionally a keyword and scope.
 
-The **+** menu also has **New Query** (opens an empty SQL query tab, same as `Cmd+T`), **New Folder**, and **Add Linked SQL Folder...**
+The **+** menu also has **New Query** (opens an empty SQL query tab, same as `Cmd+T`), **New Folder**, and **Add Linked SQL Folder…**
 
 <Frame caption="Creating a new SQL favorite">
   <img className="block dark:hidden" src="/images/sql-favorite-create.png" alt="Creating a new SQL favorite" />
@@ -64,7 +64,7 @@ Each favorite is either **global** (visible in all connections) or **connection-
 
 ### Managing favorites
 
-Double-click a favorite in the Favorites tab, or select it and press Return, to insert it into the editor. Arrow keys move between rows and typing jumps to a name. `Delete` removes the selected favorite. The right-click menu has **Insert in Editor**, **Run in New Tab**, **Copy Query**, **Edit...**, **Move to** (a folder), and **Delete**.
+Double-click a favorite in the Favorites tab, or select it and press Return, to insert it into the editor. Arrow keys move between rows and typing jumps to a name. `Delete` removes the selected favorite. The right-click menu has **Insert in Editor**, **Run in New Tab**, **Copy Query**, **Edit…**, **Move to** (a folder), and **Delete**.
 
 Organize favorites into folders: create them from the **+** menu, right-click a folder to rename or delete it, and use **Move to** on a favorite to file it. Renaming happens in place, on the row.
 
@@ -72,7 +72,7 @@ Drag a saved query or a linked `.sql` file out of the sidebar to drop its SQL in
 
 ## Team Library
 
-On a Team license, the Favorites tab shows a **Team Library** section with queries shared by your team. Double-click one, or select it and press Return, to run it in a new tab. To share yours, click **+** > **Publish Saved Queries to Team...** See [Team Plan](/features/team).
+On a Team license, the Favorites tab shows a **Team Library** section with queries shared by your team. Double-click one, or select it and press Return, to run it in a new tab. To share yours, click **+** > **Publish Saved Queries to Team…** See [Team Plan](/features/team).
 
 ## Linked SQL Folders
 
@@ -82,7 +82,7 @@ This is a different feature from [Linked Folders](/features/connection-sharing#l
 
 ### Adding a folder
 
-In the Favorites sidebar, click **+** and choose **Add Linked SQL Folder...** Pick any folder. Subfolders nest in the sidebar in the same shape as on disk. You can link as many folders as you want; all linked folders are global and show in every connection's Favorites tab.
+In the Favorites sidebar, click **+** and choose **Add Linked SQL Folder…** Pick any folder. Subfolders nest in the sidebar in the same shape as on disk. You can link as many folders as you want; all linked folders are global and show in every connection's Favorites tab.
 
 ### Editing files
 
@@ -115,13 +115,13 @@ WHERE last_seen > NOW() - INTERVAL 24 HOUR;
 
 The parser stops at the first non-frontmatter line, so put these at the very top. A UTF-8 BOM is handled. Files without frontmatter still appear, with the filename as the display name and no keyword. The `;;` [cursor marker](#cursor-placement) works in linked files too.
 
-To edit frontmatter without opening the file, right-click a linked row and choose **Edit Metadata...** The dialog rewrites only the leading comment block and preserves the rest of the file plus its original encoding.
+To edit frontmatter without opening the file, right-click a linked row and choose **Edit Metadata…** The dialog rewrites only the leading comment block and preserves the rest of the file plus its original encoding.
 
 ### Managing linked files and folders
 
 Drag any row from the Favorites sidebar (linked or DB-stored) onto the SQL editor to insert its content at the cursor.
 
-Press Delete on a linked file or right-click > **Move File to Trash**; the file goes to the macOS Trash and stays recoverable. Right-click a linked folder root for **Disable**, **Reload**, **Copy Path**, **Show in Finder**, **Add Another SQL Folder...**, or **Remove from Sidebar**. Removing only unlinks the folder; files on disk stay where they are.
+Press Delete on a linked file or right-click > **Move File to Trash**; the file goes to the macOS Trash and stays recoverable. Right-click a linked folder root for **Disable**, **Reload**, **Copy Path**, **Show in Finder**, **Add Another SQL Folder…**, or **Remove from Sidebar**. Removing only unlinks the folder; files on disk stay where they are.
 
 ## Storage
 

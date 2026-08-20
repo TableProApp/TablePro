@@ -51,7 +51,7 @@ enum CellDisplayFormatter {
             }
             let nsDisplay = displayValue as NSString
             if nsDisplay.length > maxDisplayLength {
-                displayValue = nsDisplay.substring(to: maxDisplayLength) + "..."
+                displayValue = nsDisplay.substring(to: maxDisplayLength) + "…"
             }
             return displayValue.sanitizedForCellDisplay
         }

@@ -27,7 +27,7 @@ internal struct SetPickerView: View {
 
         Menu {
             Button { isSetPopoverPresented = true } label: {
-                Text("Edit Values...")
+                Text("Edit Values…")
             }
             if onSetNull != nil || onSetDefault != nil {
                 Divider()

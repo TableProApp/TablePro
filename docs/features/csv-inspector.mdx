@@ -15,7 +15,7 @@ TablePro opens `.csv` and `.tsv` files directly as documents. No scratch databas
 - Double-click a `.csv` or `.tsv` in Finder, or right-click and choose Open With > TablePro.
 - Drag a file onto the TablePro Dock icon.
 
-File > Open File... opens SQL files only, so it is not a path into the inspector.
+File > Open File… opens SQL files only, so it is not a path into the inspector.
 
 ## Auto-detection
 
@@ -24,7 +24,7 @@ When a file opens, TablePro detects:
 - **Delimiter**: comma, tab, semicolon, or pipe, whichever appears most often outside quoted regions in the first 64 KB. `.tsv` files always use tab.
 - **Encoding**: a BOM selects UTF-8, UTF-16 BE, or UTF-16 LE. Without a BOM, TablePro probes up to the first 256 KB: valid UTF-8 reads as UTF-8, anything else reads the whole file as Windows-1252.
 - **Line ending**: CRLF, LF, or CR, whichever appears first in the first 64 KB.
-- **Header row**: row one is treated as headers when at least half of its cells are non-empty and not numbers. Otherwise TablePro generates `Column 1`, `Column 2`, ... and treats every row as data.
+- **Header row**: row one is treated as headers when at least half of its cells are non-empty and not numbers. Otherwise TablePro generates `Column 1`, `Column 2`, … and treats every row as data.
 
 When a guess is wrong, choose **Edit > Set CSV Properties…** to pick the delimiter, quote character, escape character, encoding, and line ending by hand, then **Reload** to re-read the file with those settings. The escape character is either a doubled quote (the RFC 4180 default) or a backslash. Reload discards unsaved edits and asks first if you have any.
 

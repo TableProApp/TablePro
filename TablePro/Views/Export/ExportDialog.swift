@@ -239,7 +239,7 @@ struct ExportDialog: View {
                     Spacer()
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text("Loading databases...")
+                    Text("Loading databases…")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
@@ -383,7 +383,7 @@ struct ExportDialog: View {
                 }
             }
 
-            Button("Export...") {
+            Button("Export…") {
                 Task {
                     await performExport()
                 }

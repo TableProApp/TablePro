@@ -30,7 +30,7 @@ struct HistorySection: View {
             Toggle("Auto cleanup", isOn: $settings.autoCleanup)
 
             LabeledContent("Clear all query history") {
-                Button("Clear History...") {
+                Button("Clear History…") {
                     Task { @MainActor in
                         let confirmed = await AlertHelper.confirmDestructive(
                             title: String(localized: "Clear All History?"),

@@ -63,7 +63,7 @@ Open a database connection.
 **Input**:
 
 ```json
-{ "connection_id": "9f1f0c3e-..." }
+{ "connection_id": "9f1f0c3e-…" }
 ```
 
 **Output**:
@@ -85,7 +85,7 @@ Open a database connection.
 
 Close a connection.
 
-**Input**: `{ "connection_id": "..." }`
+**Input**: `{ "connection_id": "…" }`
 
 **Output**: `{ "status": "disconnected" }` on success.
 
@@ -95,7 +95,7 @@ Close a connection.
 
 Return status, active database, server version, connect time, and last-active time for a connection.
 
-**Input**: `{ "connection_id": "..." }`
+**Input**: `{ "connection_id": "…" }`
 
 **Output**:
 
@@ -118,7 +118,7 @@ Return status, active database, server version, connect time, and last-active ti
 
 ### `list_databases`
 
-**Input**: `{ "connection_id": "..." }`
+**Input**: `{ "connection_id": "…" }`
 
 **Output**: `{ "databases": ["app", "analytics"] }` (array of database names)
 
@@ -126,7 +126,7 @@ Return status, active database, server version, connect time, and last-active ti
 
 ### `list_schemas`
 
-**Input**: `{ "connection_id": "...", "database": "app" }` (database optional)
+**Input**: `{ "connection_id": "…", "database": "app" }` (database optional)
 
 **Output**: `{ "schemas": ["public", "reporting"] }` (array of schema names)
 
@@ -138,7 +138,7 @@ Return status, active database, server version, connect time, and last-active ti
 
 ```json
 {
-  "connection_id": "...",
+  "connection_id": "…",
   "database": "app",
   "schema": "public",
   "include_row_counts": false
@@ -168,7 +168,7 @@ Columns, indexes, foreign keys, primary key, DDL.
 
 ```json
 {
-  "connection_id": "...",
+  "connection_id": "…",
   "table": "users",
   "database": "app",
   "schema": "public"
@@ -205,7 +205,7 @@ Columns, indexes, foreign keys, primary key, DDL.
     }
   ],
   "foreign_keys": [],
-  "ddl": "CREATE TABLE users (...)",
+  "ddl": "CREATE TABLE users (…)",
   "approximate_row_count": 12345
 }
 ```
@@ -220,7 +220,7 @@ Just the `CREATE TABLE` statement.
 
 **Input**: same as `describe_table` (`connection_id`, `table`, `database`, `schema`).
 
-**Output**: `{ "ddl": "CREATE TABLE ..." }`
+**Output**: `{ "ddl": "CREATE TABLE …" }`
 
 **Scope**: `readOnly`.
 
@@ -228,13 +228,13 @@ Just the `CREATE TABLE` statement.
 
 ### `execute_query`
 
-Execute a SQL query. All queries are subject to the connection's safe mode policy. DROP, TRUNCATE, and ALTER...DROP must use `confirm_destructive_operation`.
+Execute a SQL query. All queries are subject to the connection's safe mode policy. DROP, TRUNCATE, and ALTER…DROP must use `confirm_destructive_operation`.
 
 **Input**:
 
 ```json
 {
-  "connection_id": "...",
+  "connection_id": "…",
   "query": "SELECT id, email FROM users WHERE active = true LIMIT 100",
   "max_rows": 500,
   "timeout_seconds": 30,
@@ -250,7 +250,7 @@ Defaults for `max_rows` and `timeout_seconds` come from **Settings > Integration
 ```json
 {
   "columns": ["id", "email"],
-  "rows": [["9f1f...", "alice@example.com"]],
+  "rows": [["9f1f…", "alice@example.com"]],
   "row_count": 1,
   "rows_affected": 0,
   "execution_time_ms": 14,
@@ -264,7 +264,7 @@ Defaults for `max_rows` and `timeout_seconds` come from **Settings > Integration
 
 - `readOnly` for SELECT, SHOW, EXPLAIN.
 - `readWrite` for INSERT, UPDATE, DELETE.
-- DROP, TRUNCATE, ALTER...DROP are rejected. Use `confirm_destructive_operation`.
+- DROP, TRUNCATE, ALTER…DROP are rejected. Use `confirm_destructive_operation`.
 
 Safe Mode rules apply on top. A connection in Safe Mode `readOnly` returns `403` for any write SQL.
 
@@ -272,13 +272,13 @@ Safe Mode rules apply on top. A connection in Safe Mode `readOnly` returns `403`
 
 ### `confirm_destructive_operation`
 
-Run a DROP, TRUNCATE, or ALTER...DROP after a typed confirmation.
+Run a DROP, TRUNCATE, or ALTER…DROP after a typed confirmation.
 
 **Input**:
 
 ```json
 {
-  "connection_id": "...",
+  "connection_id": "…",
   "query": "DROP TABLE legacy_events",
   "confirmation_phrase": "I understand this is irreversible"
 }
@@ -298,7 +298,7 @@ Export query or table data as CSV, JSON, or SQL.
 
 ```json
 {
-  "connection_id": "...",
+  "connection_id": "…",
   "format": "csv",
   "tables": ["users", "orders"],
   "max_rows": 5000
@@ -307,13 +307,13 @@ Export query or table data as CSV, JSON, or SQL.
 
 `format` is one of `csv`, `json`, `sql`. Defaults for `max_rows` and the query timeout come from **Settings > Integrations > Server Configuration**, the same as `execute_query`: omitting `max_rows` uses the default row limit (500), and any value you pass is clamped to the maximum row limit (default 10,000). Raise those settings to export more rows. Provide either `tables` or `query`. Table names accept letters, digits, underscore, and `.` for schema-qualified names. Pass `output_path` to write to disk instead of returning data inline; the path must resolve inside the user's `~/Downloads` directory. Anything else fails with JSON-RPC `-32602` over HTTP 200 and message `Invalid params: output_path must be inside the Downloads directory (/Users/you/Downloads)`.
 
-**Output**: when `output_path` is set, returns `{ "path": "...", "rows_exported": N, "is_truncated": false }`. Otherwise returns the export inline. A single export returns `{ "label": "...", "format": "csv", "row_count": N, "is_truncated": false, "data": "..." }`. Multiple exports (multi-table requests) return `{ "exports": [ { "label": "...", "format": "csv", "row_count": N, "is_truncated": false, "data": "..." }, ... ] }`. `is_truncated` is `true` when the row limit clipped the result.
+**Output**: when `output_path` is set, returns `{ "path": "…", "rows_exported": N, "is_truncated": false }`. Otherwise returns the export inline. A single export returns `{ "label": "…", "format": "csv", "row_count": N, "is_truncated": false, "data": "…" }`. Multiple exports (multi-table requests) return `{ "exports": [ { "label": "…", "format": "csv", "row_count": N, "is_truncated": false, "data": "…" }, … ] }`. `is_truncated` is `true` when the row limit clipped the result.
 
 **Scope**: `readOnly`.
 
 ### `switch_database` / `switch_schema`
 
-**Input**: `{ "connection_id": "...", "database": "analytics" }` or `{ "connection_id": "...", "schema": "reporting" }`
+**Input**: `{ "connection_id": "…", "database": "analytics" }` or `{ "connection_id": "…", "schema": "reporting" }`
 
 **Output**: `{ "status": "switched", "current_database": "analytics" }` or `{ "status": "switched", "current_schema": "reporting" }`
 
@@ -327,15 +327,15 @@ These open or focus tabs and windows in the running TablePro app. They require `
 
 Open a connection in TablePro and bring its window to front. If the connection is already open, the existing window is focused.
 
-**Input**: `{ "connection_id": "..." }`
+**Input**: `{ "connection_id": "…" }`
 
 **Output**:
 
 ```json
 {
   "status": "opened",
-  "connection_id": "9f1f...",
-  "window_id": "..."
+  "connection_id": "9f1f…",
+  "window_id": "…"
 }
 ```
 
@@ -349,7 +349,7 @@ Open a table tab.
 
 ```json
 {
-  "connection_id": "...",
+  "connection_id": "…",
   "table_name": "users",
   "database_name": "app",
   "schema_name": "public"
@@ -363,9 +363,9 @@ Open a table tab.
 ```json
 {
   "status": "opened",
-  "connection_id": "9f1f...",
+  "connection_id": "9f1f…",
   "table_name": "users",
-  "window_id": "..."
+  "window_id": "…"
 }
 ```
 
@@ -375,16 +375,16 @@ Open a table tab.
 
 Bring an existing tab to front. The `tab_id` comes from `list_recent_tabs`.
 
-**Input**: `{ "tab_id": "..." }`
+**Input**: `{ "tab_id": "…" }`
 
 **Output**:
 
 ```json
 {
   "status": "focused",
-  "tab_id": "...",
-  "window_id": "...",
-  "connection_id": "9f1f..."
+  "tab_id": "…",
+  "window_id": "…",
+  "connection_id": "9f1f…"
 }
 ```
 
@@ -404,8 +404,8 @@ Read the cross-window tab registry. Tabs from connections with `externalAccess: 
 {
   "tabs": [
     {
-      "tab_id": "...",
-      "connection_id": "9f1f...",
+      "tab_id": "…",
+      "connection_id": "9f1f…",
       "connection_name": "Production",
       "tab_type": "query",
       "display_title": "users by signup date",
@@ -413,7 +413,7 @@ Read the cross-window tab registry. Tabs from connections with `externalAccess: 
       "table_name": "users",
       "database_name": "app",
       "schema_name": "public",
-      "window_id": "..."
+      "window_id": "…"
     }
   ]
 }
@@ -434,7 +434,7 @@ Full-text search over the query history database.
 ```json
 {
   "query": "users active",
-  "connection_id": "9f1f...",
+  "connection_id": "9f1f…",
   "limit": 50,
   "since": 1745577262,
   "until": 1745663662
@@ -449,8 +449,8 @@ Full-text search over the query history database.
 {
   "entries": [
     {
-      "id": "...",
-      "connection_id": "9f1f...",
+      "id": "…",
+      "connection_id": "9f1f…",
       "database_name": "app",
       "query": "SELECT * FROM users WHERE active = true",
       "executed_at": 1745663662.0,

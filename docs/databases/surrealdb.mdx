@@ -21,7 +21,7 @@ SurrealDB nests tables under a namespace and a database. TablePro maps that stra
 
 Set the namespace in the **Namespace** field when you create the connection. Leave **Database** empty to pick one from the sidebar after connecting.
 
-Right-click a namespace for **Drop Namespace...** (`REMOVE NAMESPACE`) or a database for **Drop Database...** (`REMOVE DATABASE`). Select several first with Shift-click or Cmd-click and the menu covers all of them, with one confirmation listing every name. See [Work on Several Databases at Once](/features/table-operations#work-on-several-databases-at-once).
+Right-click a namespace for **Drop Namespace…** (`REMOVE NAMESPACE`) or a database for **Drop Database…** (`REMOVE DATABASE`). Select several first with Shift-click or Cmd-click and the menu covers all of them, with one confirmation listing every name. See [Work on Several Databases at Once](/features/table-operations#work-on-several-databases-at-once).
 
 ## Authentication
 
@@ -29,10 +29,10 @@ SurrealDB cannot infer which level your credentials belong to, so pick the one t
 
 | Auth Level | Use it for | Needs |
 |-------|-------------|-------------|
-| **Root** | A root user, defined with `DEFINE USER ... ON ROOT` | Username, password |
+| **Root** | A root user, defined with `DEFINE USER … ON ROOT` | Username, password |
 | **Namespace** | A namespace user | Username, password, namespace |
 | **Database** | A database user | Username, password, namespace, database |
-| **Record Access** | A record user, defined with `DEFINE ACCESS ... TYPE RECORD` | Namespace, database, access method, and the signin fields |
+| **Record Access** | A record user, defined with `DEFINE ACCESS … TYPE RECORD` | Namespace, database, access method, and the signin fields |
 | **Token** | A JWT you already hold, including SurrealDB Cloud | The token |
 
 Only a root user can list every namespace. With namespace or database credentials, TablePro browses the scope your user is limited to.
@@ -83,7 +83,7 @@ The Explain button in the editor offers **Explain** and **Explain Full**, which 
 
 ## Limitations
 
-- Transactions are not available. Each request is independent over HTTP, so `BEGIN` in one request cannot affect another. Run `BEGIN TRANSACTION; ... COMMIT TRANSACTION;` as a single query in the editor instead.
+- Transactions are not available. Each request is independent over HTTP, so `BEGIN` in one request cannot affect another. Run `BEGIN TRANSACTION; … COMMIT TRANSACTION;` as a single query in the editor instead.
 - The structure editor is read-only. Create and change fields and indexes with `DEFINE FIELD` and `DEFINE INDEX` in the editor.
 - Live queries (`LIVE SELECT`) are not supported.
 - Range values display but cannot be edited.

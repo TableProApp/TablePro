@@ -26,7 +26,7 @@ The database **Host** and **Port** on the General pane are what the SSH server u
 
 A connection uses one connection method at a time. If a Cloudflare tunnel, Cloud SQL Auth Proxy, or SOCKS proxy is already enabled, the pane shows a button to disable it.
 
-To reuse one SSH config across several connections, save it as a profile with **Save Current as Profile...** or pick one from the **Profile** picker. A selected profile replaces the inline fields with a read-only **Profile Details** summary. Switch the picker back to **Inline Configuration** to edit the settings on this connection. See [SSH Profiles](/features/ssh-profiles).
+To reuse one SSH config across several connections, save it as a profile with **Save Current as Profile…** or pick one from the **Profile** picker. A selected profile replaces the inline fields with a read-only **Profile Details** summary. Switch the picker back to **Inline Configuration** to edit the settings on this connection. See [SSH Profiles](/features/ssh-profiles).
 
 <Frame caption="Reusing a saved SSH profile">
   <img className="block dark:hidden" src="/images/ssh-tunnel-config.png" alt="SSH Tunnel pane with a saved profile selected" />
@@ -128,7 +128,7 @@ The SSH server has to allow socket forwarding. It is on by default, but if `sshd
 
 ## Import from URL
 
-Paste a `scheme+ssh://` URL to create a connection with SSH pre-filled. The `+ssh` suffix works with any non-file-based scheme (`mysql+ssh`, `postgres+ssh`, `redis+ssh`, `mongodb+ssh`, ...). TablePlus SSH URLs import directly. See the [Connection URL Reference](/databases/connection-urls#ssh-tunnel-format) for the format and parameters.
+Paste a `scheme+ssh://` URL to create a connection with SSH pre-filled. The `+ssh` suffix works with any non-file-based scheme (`mysql+ssh`, `postgres+ssh`, `redis+ssh`, `mongodb+ssh`, …). TablePlus SSH URLs import directly. See the [Connection URL Reference](/databases/connection-urls#ssh-tunnel-format) for the format and parameters.
 
 ## Troubleshooting
 

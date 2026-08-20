@@ -23,8 +23,8 @@ Open it from **Database** > **Query Insights**. It opens as a tab, one per conne
 | Written | Counted as |
 |---------|------------|
 | `WHERE id = 1` and `WHERE id = 2` | `WHERE id = ?` |
-| `IN (1, 2)` and `IN (1, 2, 3, 4)` | `IN (...)` |
-| `VALUES (1, 'a')` and `VALUES (1, 'a'), (2, 'b')` | `VALUES (...)` |
+| `IN (1, 2)` and `IN (1, 2, 3, 4)` | `IN (…)` |
+| `VALUES (1, 'a')` and `VALUES (1, 'a'), (2, 'b')` | `VALUES (…)` |
 | `select * from t` and `SELECT * FROM t` | one shape |
 | the same query with and without comments | one shape |
 

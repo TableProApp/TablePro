@@ -282,7 +282,7 @@ struct RightSidebarView: View {
         return VStack(spacing: 0) {
             NativeSearchField(
                 text: $searchText,
-                placeholder: String(localized: "Search fields..."),
+                placeholder: String(localized: "Search fields…"),
                 controlSize: .small
             )
             .padding(.horizontal, 6)

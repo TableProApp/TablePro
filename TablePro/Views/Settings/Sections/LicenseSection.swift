@@ -143,7 +143,7 @@ struct LicenseSection: View {
             }
 
             LabeledContent("Remove license from this machine") {
-                Button("Deactivate...") {
+                Button("Deactivate…") {
                     Task { @MainActor in
                         let confirmed = await AlertHelper.confirmDestructive(
                             title: String(localized: "Deactivate License?"),

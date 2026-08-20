@@ -27,7 +27,7 @@ struct ExecutionIndicatorView: View {
                         .font(.system(.subheadline, design: .monospaced).weight(.regular))
                         .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
                 } else {
-                    Text("Executing...")
+                    Text("Executing…")
                         .font(.system(.subheadline, design: .monospaced).weight(.regular))
                         .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
                 }

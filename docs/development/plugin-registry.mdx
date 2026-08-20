@@ -10,7 +10,7 @@ The plugin registry is a JSON manifest (`plugins.json`) hosted at [github.com/Ta
 ```json
 {
   "schemaVersion": 2,
-  "plugins": [ ... ]
+  "plugins": [ … ]
 }
 ```
 
@@ -24,7 +24,7 @@ The current schema version is 2. The app rejects a manifest with a higher `schem
 | `name` | string | Yes | Display name |
 | `version` | string | Yes | Semantic version |
 | `summary` | string | Yes | One-line description |
-| `author` | object | Yes | `{ "name": "...", "url": "..." }`, `url` optional |
+| `author` | object | Yes | `{ "name": "…", "url": "…" }`, `url` optional |
 | `homepage` | string | No | Project URL |
 | `category` | string | Yes | `database-driver`, `export-format`, `import-format`, `theme`, `other` |
 | `databaseTypeIds` | [string] | No | `DatabaseType.pluginTypeId` values. Drives auto-install. |

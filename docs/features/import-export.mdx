@@ -8,14 +8,14 @@ Export data in five formats (CSV, JSON, SQL, MQL, XLSX), import SQL, JSON, and C
 ## Export Data
 
 1. Open a table, or run a query and use its results
-2. Click **Export** in the toolbar (`Cmd+Shift+E`), or right-click the results grid and choose **Export Results...**
+2. Click **Export** in the toolbar (`Cmd+Shift+E`), or right-click the results grid and choose **Export Results…**
 3. Choose a format, select tables in the tree view, configure options
 4. Click **Export**
 
 TablePro remembers the last format and options you exported with. Option changes stick only after a successful export; cancelling the dialog discards them. **Reset to Defaults** under the options restores the stock settings for the current format.
 
 <Note>
-**MongoDB**: SQL export is not available. Use MQL, which generates `db.collection.insertMany([...])` scripts for `mongosh`. **Redis**: SQL and MQL exports are not available.
+**MongoDB**: SQL export is not available. Use MQL, which generates `db.collection.insertMany([…])` scripts for `mongosh`. **Redis**: SQL and MQL exports are not available.
 
 MQL writes top-level typed values as the constructors mongosh understands, so `_id` comes back as an `ObjectId`, a date as an `ISODate`, and binary as `BinData` with its real subtype. A typed value **nested inside a subdocument or array** is written as a string, because the parent is serialized to JSON before the exporter sees it. Re-importing such a script gives you a string where the original held an ObjectId, date, or binary. Export those collections as JSON, or use `mongodump`.
 </Note>
@@ -132,7 +132,7 @@ Import `.sql` and `.sql.gz` files (statements execute directly against your data
 | Wrap in transaction | Execute all statements within a single transaction | Yes |
 | Disable foreign key checks | Temporarily disable FK constraints during import | Yes |
 
-For PostgreSQL the checkbox runs `SET session_replication_role = replica`, which requires superuser (or, on PostgreSQL 15+, a `GRANT SET` on the parameter). If the server rejects the statement, the import stops with that error; uncheck the option to proceed. TablePro's SQL exports emit foreign key constraints with `ALTER TABLE ... ADD CONSTRAINT` after data load, so the dump imports in order without needing the privilege.
+For PostgreSQL the checkbox runs `SET session_replication_role = replica`, which requires superuser (or, on PostgreSQL 15+, a `GRANT SET` on the parameter). If the server rejects the statement, the import stops with that error; uncheck the option to proceed. TablePro's SQL exports emit foreign key constraints with `ALTER TABLE … ADD CONSTRAINT` after data load, so the dump imports in order without needing the privilege.
 
 For MySQL the checkbox runs `SET FOREIGN_KEY_CHECKS = 0` and works on standard accounts. SQLite uses `PRAGMA foreign_keys = OFF`. Drivers without an equivalent (most NoSQL drivers) ignore the option.
 
@@ -148,7 +148,7 @@ In **Skip and Continue** mode, failed statements are collected (up to 1,000) wit
 
 ### Import JSON Data
 
-Choose **File** > **Import** > **From JSON** and pick a `.json`, `.jsonl`, or `.ndjson` file. The sheet accepts an array of objects `[{...}, {...}]`, newline-delimited JSON (one object per line, streamed for large files), and TablePro's own JSON export shape `{ "table": [ {...} ] }`, so an export round-trips back in.
+Choose **File** > **Import** > **From JSON** and pick a `.json`, `.jsonl`, or `.ndjson` file. The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON (one object per line, streamed for large files), and TablePro's own JSON export shape `{ "table": [ {…} ] }`, so an export round-trips back in.
 
 Choose a destination:
 

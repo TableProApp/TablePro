@@ -23,7 +23,7 @@ internal enum JSONValueType {
         case .number: return "num"
         case .boolean: return "bool"
         case .null: return "null"
-        case .truncated: return "..."
+        case .truncated: return "…"
         }
     }
 
@@ -204,7 +204,7 @@ internal enum JSONTreeParser {
             let escaped = decoded.replacingOccurrences(of: "\"", with: "\\\"")
             let display: String
             if (escaped as NSString).length > maxDisplayLength {
-                display = "\"\((escaped as NSString).substring(to: maxDisplayLength))...\""
+                display = "\"\((escaped as NSString).substring(to: maxDisplayLength))…\""
             } else {
                 display = "\"\(escaped)\""
             }

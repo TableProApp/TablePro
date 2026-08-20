@@ -53,7 +53,7 @@ struct ProFeatureGateModifier: ViewModifier {
                     Text(feature.featureDescription)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Button(String(localized: "Activate License...")) {
+                    Button(String(localized: "Activate License…")) {
                         showActivationSheet = true
                     }
                     .buttonStyle(.borderedProminent)
@@ -76,7 +76,7 @@ struct ProFeatureGateModifier: ViewModifier {
                     Text(feature.featureDescription)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Button(String(localized: "Activate License...")) {
+                    Button(String(localized: "Activate License…")) {
                         showActivationSheet = true
                     }
                     .buttonStyle(.borderedProminent)

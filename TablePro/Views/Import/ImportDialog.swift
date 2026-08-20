@@ -169,7 +169,7 @@ struct ImportDialog: View {
 
                     Spacer()
 
-                    Button("Change File...") {
+                    Button("Change File…") {
                         Task {
                             await selectFile()
                         }
@@ -190,7 +190,7 @@ struct ImportDialog: View {
                         HStack(spacing: 4) {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("Counting...")
+                            Text("Counting…")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                         }

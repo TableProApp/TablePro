@@ -28,7 +28,7 @@ protocol DatabaseDriver: AnyObject {
     func disconnect()
     func execute(query: String) async throws -> QueryResult
     func fetchTables() async throws -> [TableInfo]
-    // ...
+    // …
 }
 ```
 
@@ -41,7 +41,7 @@ Thread-safe shared state uses Swift actors:
 ```swift
 actor SSHTunnelManager {
     private var tunnels: [UUID: SSHTunnel] = [:]
-    func createTunnel(connectionId: UUID, ...) async throws -> Int { ... }
+    func createTunnel(connectionId: UUID, …) async throws -> Int { … }
 }
 ```
 

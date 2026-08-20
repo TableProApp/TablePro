@@ -307,7 +307,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             )
         case #selector(openContainerSwitcher(_:)):
             setResolvedTitle(
-                commandActions?.openContainerSwitcherTitle ?? String(localized: "Open Database..."),
+                commandActions?.openContainerSwitcherTitle ?? String(localized: "Open Database…"),
                 on: menuItem
             )
         case #selector(setResultView(_:)):

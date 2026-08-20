@@ -212,7 +212,7 @@ struct CreateTableView: View {
 
             Spacer()
 
-            Button(isCreating ? String(localized: "Creating...") : String(localized: "Create Table")) {
+            Button(isCreating ? String(localized: "Creating…") : String(localized: "Create Table")) {
                 createTable()
             }
             .buttonStyle(.borderedProminent)

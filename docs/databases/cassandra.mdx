@@ -87,7 +87,7 @@ CREATE INDEX ON users (email);
 
 - No JOINs or subqueries: denormalize, or run sequential statements.
 - Every SELECT needs the full partition key in WHERE, or `ALLOW FILTERING` (a cluster scan, slow in production).
-- Lightweight transactions: conditional writes with `IF`, e.g. `INSERT INTO users (...) IF NOT EXISTS;`.
+- Lightweight transactions: conditional writes with `IF`, e.g. `INSERT INTO users (…) IF NOT EXISTS;`.
 - TTL and writetime: `USING TTL 3600`; `SELECT TTL(value), WRITETIME(value) FROM cache WHERE key = 'k1';`.
 
 ## Troubleshooting
@@ -105,5 +105,5 @@ CREATE INDEX ON users (email);
 - Materialized views, UDTs, UDFs, and UDAs do not appear in the sidebar. Query `system_schema` tables in the CQL editor instead.
 - Table options (compaction, compression, gc_grace_seconds) and clustering order are not shown in the structure view.
 - DataStax Astra DB is not supported: the driver cannot load a Secure Connect Bundle.
-- Counter columns cannot be set with a plain `UPDATE`. The grid lets you edit one, but the statement it generates is rejected. Use `UPDATE ... SET c = c + 1` in the CQL editor instead.
+- Counter columns cannot be set with a plain `UPDATE`. The grid lets you edit one, but the statement it generates is rejected. Use `UPDATE … SET c = c + 1` in the CQL editor instead.
 - Multi-DC settings are not configurable.

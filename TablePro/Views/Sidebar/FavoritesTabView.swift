@@ -482,13 +482,13 @@ internal struct FavoritesTabView: View {
             Text("Save frequently used queries, or link a folder of .sql files to share with your team.")
         } actions: {
             VStack(spacing: 8) {
-                Button(String(localized: "New Favorite...")) {
+                Button(String(localized: "New Favorite…")) {
                     viewModel.createFavorite()
                 }
                 Button(String(localized: "New Folder")) {
                     viewModel.createFolder()
                 }
-                Button(String(localized: "Link a Folder...")) {
+                Button(String(localized: "Link a Folder…")) {
                     addLinkedFolder()
                 }
             }

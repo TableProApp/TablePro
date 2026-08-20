@@ -36,9 +36,9 @@ enum ToolbarConnectionState: Equatable {
     var description: String {
         switch self {
         case .disconnected: return String(localized: "Disconnected")
-        case .connecting: return String(localized: "Connecting...")
+        case .connecting: return String(localized: "Connecting…")
         case .connected: return String(localized: "Connected")
-        case .executing: return String(localized: "Executing...")
+        case .executing: return String(localized: "Executing…")
         case .error(let message): return String(format: String(localized: "Error: %@"), message)
         }
     }

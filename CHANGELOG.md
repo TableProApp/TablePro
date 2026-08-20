@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Menu items and buttons spell their trailing ellipsis the way macOS does. The same command could read "New Table..." in the menu bar and "New Table…" in the sidebar's context menu, because the two were written in different places with different spellings. Twelve commands were affected, including New Table, New View, Export, Split Column, Merge Columns and Save as Favorite.
 - Running a trigger, stored procedure or any other `BEGIN ... END` body from the editor sends it whole. The editor split it at every semicolon inside the body, so Execute All and running the statement at the cursor both sent a fragment and the database rejected it. Importing the same file always worked, which is where the difference showed. `BEGIN;` and `BEGIN TRANSACTION;` still read as statements of their own. (#2278)
 - A MySQL `#` comment no longer hides the end of a statement. A semicolon inside one was read as a real statement boundary, so a script commented that way split in the wrong places. (#2278)
 - A failed refresh no longer empties the stored procedure and function lists in the object browser. If either query failed while the rest of the refresh succeeded, the empty result was written over the real list and the sidebar reported it as loaded, so the sections read as though the database had none until the next full reload.

@@ -101,7 +101,7 @@ struct GeneralSettingsView: View {
                         updaterBridge.updater.automaticallyChecksForUpdates = newValue
                     }
 
-                Button("Check for Updates...") {
+                Button("Check for Updates…") {
                     updaterBridge.checkForUpdates()
                 }
                 .disabled(!updaterBridge.canCheckForUpdates)

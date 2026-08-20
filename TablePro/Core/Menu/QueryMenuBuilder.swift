@@ -73,7 +73,7 @@ enum QueryMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "Save as Favorite..."),
+                String(localized: "Save as Favorite…"),
                 action: #selector(MainSplitViewController.saveAsFavorite(_:)),
                 shortcut: .saveAsFavorite,
                 keyboard: keyboard

@@ -265,6 +265,6 @@ enum MCPAuditLogger {
         let nsText = text as NSString
         guard nsText.length > limit else { return text }
         let prefix = nsText.substring(to: limit)
-        return prefix + "..."
+        return prefix + "…"
     }
 }
