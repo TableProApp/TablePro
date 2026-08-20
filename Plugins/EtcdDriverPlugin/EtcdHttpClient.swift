@@ -930,7 +930,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     // MARK: - TLS Delegates
 
-    private class InsecureTlsDelegate: NSObject, URLSessionDelegate {
+    private final class InsecureTlsDelegate: NSObject, URLSessionDelegate {
         func urlSession(
             _ session: URLSession,
             didReceive challenge: URLAuthenticationChallenge,
@@ -945,7 +945,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         }
     }
 
-    private class EtcdTlsDelegate: NSObject, URLSessionDelegate {
+    private final class EtcdTlsDelegate: NSObject, URLSessionDelegate {
         private let caCertPath: String?
         private let clientCertPath: String?
         private let clientKeyPath: String?
