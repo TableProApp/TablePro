@@ -62,7 +62,7 @@ struct FoldCommandBehaviourTests {
     func foldingSurvivesAHiddenGutter() async throws {
         let controller = makeController(
             script,
-            peripherals: EditorPeripherals.make(lineNumbers: false, folding: true)
+            peripherals: EditorPeripherals.editor(lineNumbers: false, folding: true)
         )
         try await waitForFolds(controller)
 

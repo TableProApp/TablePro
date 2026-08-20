@@ -52,7 +52,35 @@ public class GutterView: NSView {
     }
 
     @Invalidating(.display)
-    var edgeInsets: EdgeInsets = EdgeInsets(leading: 20, trailing: 12)
+    var edgeInsets: EdgeInsets = EdgeInsets(leading: GutterView.windowEdgeLeadingInset, trailing: 12)
+
+    /// The margin a gutter keeps to its left when it runs down the side of a window.
+    static let windowEdgeLeadingInset: CGFloat = 20
+
+    /// The digits a gutter reserves room for when it has a document that can still grow.
+    ///
+    /// Reserving three keeps the gutter from changing width as the reader types past line nine and line ninety-nine,
+    /// which would shift the whole document sideways mid-keystroke.
+    static let growingDocumentDigits = 3
+
+    /// Whether the gutter measures itself against the document rather than against a full editor window.
+    ///
+    /// An inline listing has no window edge to keep a margin from, and its line count is whatever it was handed, so
+    /// reserving room for digits it does not have leaves a blank strip where a reader expects the number. A
+    /// single-digit listing paid 20pt of window margin plus 15pt of unused digits: 35pt of nothing to the left of a
+    /// 7pt "1". The view hosting it supplies whatever margin it wants through the editor's content insets.
+    public var fitsContent: Bool = false {
+        didSet {
+            guard fitsContent != oldValue else { return }
+            edgeInsets = EdgeInsets(
+                leading: fitsContent ? 0 : GutterView.windowEdgeLeadingInset,
+                trailing: edgeInsets.trailing
+            )
+            maxLineNumberWidth = 0
+            maxLineLength = 0
+            updateWidthIfNeeded()
+        }
+    }
 
     @Invalidating(.display)
     var backgroundEdgeInsets: EdgeInsets = EdgeInsets(leading: 0, trailing: 8)
@@ -255,8 +283,10 @@ public class GutterView: NSView {
             .font: font,
             .foregroundColor: textColor
         ]
-        // Reserve at least 3 digits of space no matter what
-        let lineStorageDigits = max(3, String(textView.layoutManager.lineCount).count)
+        let documentDigits = String(textView.layoutManager.lineCount).count
+        let lineStorageDigits = fitsContent
+            ? documentDigits
+            : max(GutterView.growingDocumentDigits, documentDigits)
 
         if maxLineLength < lineStorageDigits {
             // Update the max width

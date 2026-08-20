@@ -16,7 +16,7 @@ struct EditorPeripheralsTests {
     @Test("A gutter is shown exactly when line numbers are", arguments: [true, false])
     func gutterFollowsLineNumbers(lineNumbers: Bool) {
         for folding in [true, false] {
-            let peripherals = EditorPeripherals.make(lineNumbers: lineNumbers, folding: folding)
+            let peripherals = EditorPeripherals.editor(lineNumbers: lineNumbers, folding: folding)
 
             #expect(peripherals.showGutter == lineNumbers)
             #expect(peripherals.showLineNumbers == lineNumbers)
@@ -25,13 +25,13 @@ struct EditorPeripheralsTests {
 
     @Test("Folding decides the rail, not the gutter")
     func foldingDrivesTheRibbonOnly() {
-        #expect(EditorPeripherals.make(lineNumbers: true, folding: true).showFoldingRibbon)
-        #expect(EditorPeripherals.make(lineNumbers: true, folding: false).showFoldingRibbon == false)
+        #expect(EditorPeripherals.editor(lineNumbers: true, folding: true).showFoldingRibbon)
+        #expect(EditorPeripherals.editor(lineNumbers: true, folding: false).showFoldingRibbon == false)
     }
 
     @Test("Folds are still calculated when the reader hides the line numbers")
     func foldsSurviveHiddenLineNumbers() {
-        let peripherals = EditorPeripherals.make(lineNumbers: false, folding: true)
+        let peripherals = EditorPeripherals.editor(lineNumbers: false, folding: true)
 
         #expect(peripherals.showGutter == false, "There is no gutter, so there are no chevrons to draw")
         #expect(
@@ -53,9 +53,16 @@ struct EditorPeripheralsTests {
         #expect(plain.showFoldingRibbon == false)
     }
 
-    @Test("The minimap is off unless an editor asks for it")
-    func minimapIsOptedInto() {
-        #expect(EditorPeripherals.make(lineNumbers: true, folding: true).showMinimap == false)
-        #expect(EditorPeripherals.make(lineNumbers: true, folding: true, minimap: true).showMinimap)
+    @Test("Only the editor a reader works in sizes its gutter for a window")
+    func onlyTheEditorReservesWindowRoom() {
+        #expect(EditorPeripherals.editor(lineNumbers: true, folding: true).gutterFitsContent == false)
+        #expect(EditorPeripherals.inline(lineNumbers: true, folding: true).gutterFitsContent)
+        #expect(EditorPeripherals.preview(folding: true).gutterFitsContent)
+    }
+
+    @Test("The minimap is off everywhere")
+    func minimapIsOff() {
+        #expect(EditorPeripherals.editor(lineNumbers: true, folding: true).showMinimap == false)
+        #expect(EditorPeripherals.inline(lineNumbers: true, folding: true).showMinimap == false)
     }
 }

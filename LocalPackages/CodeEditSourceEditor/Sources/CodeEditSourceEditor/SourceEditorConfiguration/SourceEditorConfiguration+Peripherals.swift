@@ -23,6 +23,12 @@ extension SourceEditorConfiguration {
         /// Whether to show the folding ribbon. Only available if ``showGutter`` is `true`.
         public var showFoldingRibbon: Bool
 
+        /// Whether the gutter measures itself against the document rather than against a full editor window.
+        ///
+        /// See ``GutterView/fitsContent``. Set this for a short listing embedded in another view, which has no window
+        /// edge to keep a margin from and a line count that is not going to grow.
+        public var gutterFitsContent: Bool = false
+
         /// The largest document, in UTF-16 units, that folds are calculated for. Fold calculation walks every line in
         /// the document, so past this length the editor stops computing folds instead of blocking on a document it
         /// cannot fold responsively.
@@ -43,6 +49,7 @@ extension SourceEditorConfiguration {
             showMinimap: Bool = true,
             showReformattingGuide: Bool = false,
             showFoldingRibbon: Bool = true,
+            gutterFitsContent: Bool = false,
             foldingSizeLimit: Int = EditorHighlighting.maxHighlightableCharacters,
             invisibleCharactersConfiguration: InvisibleCharactersConfiguration = .empty,
             warningCharacters: Set<UInt16> = []
@@ -52,6 +59,7 @@ extension SourceEditorConfiguration {
             self.showMinimap = showMinimap
             self.showReformattingGuide = showReformattingGuide
             self.showFoldingRibbon = showFoldingRibbon
+            self.gutterFitsContent = gutterFitsContent
             self.foldingSizeLimit = foldingSizeLimit
             self.invisibleCharactersConfiguration = invisibleCharactersConfiguration
             self.warningCharacters = warningCharacters
@@ -83,6 +91,10 @@ extension SourceEditorConfiguration {
 
             if oldConfig?.showFoldingRibbon != showFoldingRibbon {
                 controller.gutterView.showFoldingRibbon = showFoldingRibbon
+            }
+
+            if oldConfig?.gutterFitsContent != gutterFitsContent {
+                controller.gutterView.fitsContent = gutterFitsContent
             }
 
             if oldConfig?.invisibleCharactersConfiguration != invisibleCharactersConfiguration {
