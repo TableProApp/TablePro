@@ -54,6 +54,25 @@ enum QueryMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
+                String(localized: "Previous Statement"),
+                action: #selector(MainSplitViewController.goToPreviousStatement(_:)),
+                shortcut: .previousStatement,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Next Statement"),
+                action: #selector(MainSplitViewController.goToNextStatement(_:)),
+                shortcut: .nextStatement,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Run Statement and Advance"),
+                action: #selector(MainSplitViewController.runStatementAndAdvance(_:)),
+                shortcut: .runStatementAndAdvance,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
                 String(localized: "Toggle Fold"),
                 action: #selector(MainSplitViewController.toggleFold(_:)),
                 shortcut: .toggleFold,

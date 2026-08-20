@@ -3,31 +3,15 @@ import os
 
 public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
     public static let name = "confirm_destructive_operation"
+    public static let title: String? = String(localized: "Confirm Destructive Operation")
     public static let description = String(
-        localized: "Execute a destructive DDL query (DROP, TRUNCATE, ALTER...DROP) after explicit confirmation."
+        localized: """
+        Run one destructive statement (DROP, TRUNCATE, ALTER ... DROP). The user approves it before it \
+        runs: through your elicitation prompt when your client supports elicitation, otherwise through \
+        TablePro's own confirmation dialog on the user's Mac. Needs tools:write and a connection the \
+        user left writable for external clients.
+        """
     )
-    public static let inputSchema: JsonValue = .object([
-        "type": .string("object"),
-        "properties": .object([
-            "connection_id": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "UUID of the active connection"))
-            ]),
-            "query": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "The destructive query to execute"))
-            ]),
-            "confirmation_phrase": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Must be exactly: I understand this is irreversible"))
-            ])
-        ]),
-        "required": .array([
-            .string("connection_id"),
-            .string("query"),
-            .string("confirmation_phrase")
-        ])
-    ])
     public static let requiredScopes: Set<MCPScope> = [.toolsWrite]
     public static let annotations = MCPToolAnnotations(
         title: String(localized: "Confirm Destructive Operation"),
@@ -37,67 +21,74 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
         openWorldHint: true
     )
 
+    public static let inputSchema = MCPToolSchema.object(
+        properties: [
+            "connection_id": MCPToolSchema.connectionId,
+            "query": MCPToolSchema.string(String(localized: "The destructive statement to run")),
+            "timeout_seconds": MCPToolSchema.integer(String(localized: "Statement timeout"), minimum: 1),
+            "database": MCPToolSchema.database,
+            "schema": MCPToolSchema.schema
+        ],
+        required: ["connection_id", "query"]
+    )
+
+    public static let outputSchema: JsonValue? = MCPToolSchema.resultSet
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
-    private static let requiredPhrase = "I understand this is irreversible"
 
     public init() {}
 
-    public func call(
+    public func perform(
         arguments: JsonValue,
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
+        try MCPArgumentDecoder.rejectUnknownKeys(
+            arguments,
+            allowed: MCPScopeArguments.keys.union(["query", "timeout_seconds"])
+        )
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
-        let query = try MCPArgumentDecoder.requireString(arguments, key: "query")
-        let confirmationPhrase = try MCPArgumentDecoder.requireString(arguments, key: "confirmation_phrase")
-
-        guard confirmationPhrase == Self.requiredPhrase else {
-            throw MCPProtocolError.invalidParams(
-                detail: "confirmation_phrase must be exactly: \(Self.requiredPhrase)"
-            )
-        }
-
+        let query = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "query")
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
-        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
-            throw MCPProtocolError.invalidParams(
-                detail: "Multi-statement queries are not supported. Send one statement at a time."
-            )
-        }
-
-        let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
-        guard tier == .destructive else {
-            throw MCPProtocolError.invalidParams(
-                detail: "This tool only accepts destructive queries (DROP, TRUNCATE, ALTER...DROP). Use execute_query for other queries."
-            )
-        }
-
-        try await services.authPolicy.checkSafeModeDialog(
+        let classification = try await MCPStatementGate.authorize(
             sql: query,
-            connectionId: connectionId,
-            databaseType: meta.databaseType,
-            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
+            meta: meta,
+            allowsDestructive: true,
+            operationLabel: String(localized: "a destructive statement"),
+            context: context,
+            services: services
         )
 
-        let mcpSettings = await services.settingsProvider()
-        let timeoutSeconds = MCPLimitResolver.resolveTimeoutSeconds(requested: nil, settings: mcpSettings)
+        guard classification.tier == .destructive else {
+            throw MCPToolExecutionError.invalidArgument(
+                String(
+                    localized: """
+                    This tool only runs destructive statements. Use execute_query for everything else.
+                    """
+                )
+            )
+        }
 
-        Self.logger.debug("confirm_destructive_operation invoked for connection \(connectionId.uuidString, privacy: .public)")
-
-        let scope = try await services.connectionBridge.resolveScope(
+        let settings = await services.settingsProvider()
+        let timeoutSeconds = try MCPLimitResolver.resolveTimeoutSeconds(arguments, settings: settings)
+        let scope = try await MCPScopeArguments.resolve(
+            arguments,
             connectionId: connectionId,
-            database: nil,
-            schema: nil
+            services: services
         )
+
+        Self.logger.debug("confirm_destructive_operation on \(connectionId.uuidString, privacy: .public)")
+
         let result = try await ToolQueryExecutor.executeAndLog(
             services: services,
             query: query,
             scope: scope,
             maxRows: 0,
             timeoutSeconds: timeoutSeconds,
-            principalLabel: context.principal.metadata.label
+            context: context,
+            secrets: meta.redactionSecrets
         )
-
         return .structured(result)
     }
 }

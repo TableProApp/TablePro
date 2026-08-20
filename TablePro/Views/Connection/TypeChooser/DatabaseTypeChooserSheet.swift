@@ -144,7 +144,7 @@ private struct DatabaseTypeChooserRow: View {
         HStack(spacing: 12) {
             type.iconImage
                 .renderingMode(.template)
-                .foregroundStyle(type.brandColor)
+                .foregroundStyle(type.themeColor)
                 .frame(width: 26, height: 26)
 
             VStack(alignment: .leading, spacing: 2) {

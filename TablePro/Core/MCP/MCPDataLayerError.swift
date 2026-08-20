@@ -1,6 +1,6 @@
 import Foundation
 
-enum MCPDataLayerError: Error, Sendable {
+public enum MCPDataLayerError: Error, Sendable {
     case notConnected(UUID)
     case invalidArgument(String)
     case forbidden(String, context: [String: String]? = nil)
@@ -10,7 +10,7 @@ enum MCPDataLayerError: Error, Sendable {
     case userCancelled
     case dataSourceError(String)
 
-    var message: String {
+    public var message: String {
         switch self {
         case .notConnected(let connectionId):
             "Not connected: \(connectionId)"
@@ -38,5 +38,5 @@ enum MCPDataLayerError: Error, Sendable {
 }
 
 extension MCPDataLayerError: LocalizedError {
-    var errorDescription: String? { message }
+    public var errorDescription: String? { message }
 }

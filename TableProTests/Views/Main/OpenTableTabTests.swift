@@ -418,6 +418,56 @@ struct OpenTableTabTests {
         #expect(coordinator.selectedTabHoldsProtectedContent == false)
     }
 
+    /// Single-clicking another table reuses a preview tab in place. The reuse gate consulted the
+    /// data-grid change manager and the query text but never the tab's staged ALTERs, so a preview
+    /// tab holding a renamed column was retargeted with no prompt of any kind and the work was gone.
+    @Test("Staged structure edits hold a preview tab against reuse")
+    @MainActor
+    func stagedStructureEditsAreProtected() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        try coordinator.tabManager.addTableTab(
+            tableName: "users", databaseType: .mysql, databaseName: "db_a", isPreview: true
+        )
+        guard let id = coordinator.tabManager.selectedTabId else {
+            Issue.record("expected a selected tab")
+            return
+        }
+        #expect(coordinator.selectedTabHoldsProtectedContent == false)
+
+        let session = TestFixtures.makeStructureSession()
+        coordinator.structureSessions[id] = session
+        session.changeManager.loadSchema(
+            tableName: "users", columns: [], indexes: [], foreignKeys: [], primaryKey: []
+        )
+        session.changeManager.addNewColumn()
+
+        #expect(coordinator.selectedTabHoldsProtectedContent)
+        #expect(coordinator.isActiveTabReusable == false)
+    }
+
+    /// A retarget keeps the tab id and changes what it means, so the caches keyed on that id
+    /// describe a table the tab no longer shows. The session used to survive, and went on raising
+    /// an unsaved-changes prompt naming the previous table.
+    @Test("Retargeting a tab releases the structure session keyed to it")
+    @MainActor
+    func retargetReleasesTheStructureSession() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        try coordinator.tabManager.addTableTab(
+            tableName: "users", databaseType: .mysql, databaseName: "db_a", isPreview: true
+        )
+        guard let id = coordinator.tabManager.selectedTabId else {
+            Issue.record("expected a selected tab")
+            return
+        }
+        coordinator.structureSessions[id] = TestFixtures.makeStructureSession()
+
+        _ = try coordinator.tabManager.replaceTabContent(tableName: "orders", databaseName: "db_a")
+
+        #expect(coordinator.structureSessions[id] == nil)
+    }
+
     @Test("A table tab with pending cell edits holds protected content")
     @MainActor
     func tableTabWithPendingEditsIsProtected() throws {

@@ -122,6 +122,20 @@ internal final class EditorEventRouter {
         coordinator.unfoldAll()
     }
 
+    internal func moveCursorToStatementForKeyWindow(_ direction: StatementNavigationDirection) {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.moveCursorToStatement(direction)
+    }
+
+    /// Runs the statement the caret is in and advances, entirely inside the editor this resolves to.
+    ///
+    /// Handing the SQL back for someone else to execute would let the text and the connection come from two different
+    /// editors, which a window hosting more than one connection can genuinely do.
+    internal func runStatementAtCursorAndAdvanceForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.runStatementAtCursorAndAdvance()
+    }
+
     /// Called by the SwiftUI "Clear Selection" menu when its bare-Escape key equivalent
     /// fires. A bare-key menu equivalent preempts every local event monitor in the key
     /// window, so the focused editor's completion popup, Vim interceptor, and

@@ -22,7 +22,6 @@ sequenceDiagram
     T->>M: lazy-start server
     T->>U: Approval sheet (client, scopes, connections, expiry)
     U->>T: Approve
-    T->>T: revoke active tokens with the same client name
     T->>T: mint token, hold pending exchange<br/>{ code, plaintext, challenge }, 5 min
     T->>E: open redirect URL with code<br/>(context JSON for raycast://, ?code= otherwise)
     E->>M: POST /v1/integrations/exchange<br/>{ code, code_verifier: verifier }
@@ -73,7 +72,9 @@ const res = await fetch(`http://127.0.0.1:${port}/v1/integrations/exchange`, {
 const { token } = await res.json();
 ```
 
-The exchange endpoint requires no bearer auth. The single-use code plus the verifier is the auth.
+The exchange endpoint requires no bearer auth. The single-use code plus the verifier is the auth. It is the one path other than `/mcp` the server serves, and like `/mcp` it accepts `POST` only.
+
+A failed verification burns the code. That is deliberate: leaving a code alive after a mismatch would turn the five-minute window into an unlimited guessing game against the verifier.
 
 ### 4. Store the token
 
@@ -85,11 +86,12 @@ The approval sheet shows the client name, a scope picker (starts at the requeste
 
 On approve, TablePro:
 
-1. Revokes any existing active token with the same client name. An extension that pairs again must replace its stored token; the old one stops working the moment the user approves.
-2. Mints the token and holds the plaintext in memory as a pending exchange keyed by a UUID code, valid for 5 minutes. Only the SHA-256 hash plus salt reaches `mcp-tokens.json`.
-3. Opens the `redirect` URL with the code.
+1. Mints the token and holds the plaintext in memory as a pending exchange keyed by a UUID code, valid for 5 minutes. Only the salted SHA-256 hash reaches storage.
+2. Opens the `redirect` URL with the code.
 
-At most 50 exchange codes can be pending at once. Beyond that, new pair requests fail until older codes expire.
+Pairing again mints a second token rather than replacing the first. An extension that re-pairs should stop using its old token, and the user can revoke it in **Settings > Integrations > Authentication**.
+
+At most 50 exchange codes can be pending at once. Beyond that, new pair requests fail until older codes expire. If the code cannot be stored, or the redirect cannot be built, the token TablePro just minted is deleted rather than left dangling.
 
 ## Security properties
 
@@ -98,7 +100,7 @@ At most 50 exchange codes can be pending at once. Beyond that, new pair requests
 | Token is never in a URL | The token travels over localhost HTTP, not in a deep link. |
 | Redirect interception is harmless | The intercepted `code` cannot be exchanged without the verifier. |
 | Code is single-use | Successful exchange or 5-minute expiry deletes the pending exchange. |
-| Plaintext token is not persisted by TablePro | Only the SHA-256 hash plus salt is saved to `mcp-tokens.json`. |
+| Plaintext token is not persisted by TablePro | Only the salted SHA-256 hash is saved, in the login keychain. |
 | User sees and approves scopes | The sheet shows what was requested, what is granted, and which connections. |
 | User can revoke any time | **Settings > Integrations > Authentication > Revoke**. |
 
@@ -109,6 +111,7 @@ At most 50 exchange codes can be pending at once. Beyond that, new pair requests
 | `403 Challenge mismatch` | The verifier does not hash to the stored challenge. |
 | `404 Pairing code not found` | The code does not exist or was already exchanged. |
 | `410 Pairing code expired` | The pending exchange is older than 5 minutes. |
+| `429 Too Many Requests` | Five failed exchanges from this address inside 5 minutes. The address is locked out for 15 minutes and the response carries `Retry-After`. |
 
 A failed exchange is recorded in the activity log under the `auth` category with outcome `denied`.
 

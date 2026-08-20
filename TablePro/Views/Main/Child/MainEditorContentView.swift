@@ -585,6 +585,13 @@ struct MainEditorContentView: View {
     /// staged ALTERs live in a session cached here by tab, the same way the Users & Roles, ER
     /// diagram and dashboard view models do. Creating it in `onAppear` rather than inline keeps the
     /// write out of the view-update pass.
+    ///
+    /// The identity is the tab, exactly as it is for every other builder that caches a view model
+    /// under `tab.id`. It used to be `"<database>.<schema>.<table>"`, which two tabs on one table
+    /// share, so switching between them updated the view in place instead of re-creating it: its
+    /// `@State` went on answering for whichever tab mounted first while `session` resolved to the
+    /// other. The `session.identity == identity` branch stays, because flipping it is what forces a
+    /// real remount when a tab is retargeted to a different table.
     @ViewBuilder
     private func structureContent(tab: QueryTab, tableName: String) -> some View {
         let scope = structureScope(for: tab)
@@ -601,14 +608,20 @@ struct MainEditorContentView: View {
                     selectionState: selectionState,
                     session: session
                 )
-                .id(identity)
             } else {
                 Color.clear
                     .onAppear {
-                        coordinator.structureSessions[tab.id] = StructureEditingSession(identity: identity)
+                        coordinator.structureSessions[tab.id] = StructureEditingSession(
+                            identity: identity,
+                            connection: connection,
+                            databaseName: scope?.database ?? "",
+                            schemaName: scope?.schema,
+                            tableName: tableName
+                        )
                     }
             }
         }
+        .id(tab.id)
         .frame(maxHeight: .infinity)
     }
 

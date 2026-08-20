@@ -1,0 +1,160 @@
+---
+title: MCP Prompts
+description: The eight prompts TablePro renders from a live schema, and how completion/complete fills their arguments
+---
+
+A prompt is a task the user picks from their client's prompt menu. TablePro fills it in from the live database before handing it over, so the model gets the real columns, the real indexes and the real row counts instead of a template asking it to guess.
+
+Prompts and completions used to be advertised and return nothing. They are real now.
+
+## Listing and getting
+
+`prompts/list` returns the catalog with each prompt's arguments. `prompts/get` renders one:
+
+```json
+{
+  "method": "prompts/get",
+  "params": {
+    "name": "explain_table",
+    "arguments": { "connection": "Production", "table": "orders", "audience": "analyst" },
+    "_meta": { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {} }
+  }
+}
+```
+
+The result is a `description` and one user message. Argument values must be scalars: a number or a boolean is read as its text, an array or object is rejected. An argument the prompt does not declare is rejected with `-32602`, as is a missing required one.
+
+Rendering reads the database, so `prompts/get` needs `resources:read` and the same connection access every tool call does. The read is recorded in the activity log.
+
+## Shared arguments
+
+Most prompts take these:
+
+| Argument | Required | Meaning |
+|----------|:--------:|---------|
+| `connection` | yes | Connection name or UUID. Name matching is case-insensitive and exact, and two connections sharing a name are ambiguous, so pass the UUID there. |
+| `database` | no | Database to read. The connection's current one when omitted. |
+| `schema` | no | Schema to read. The connection's current one when omitted. |
+| `table` | varies | Table name. Required where the prompt is about one table. |
+
+## The catalog
+
+### `explain_schema`
+
+Tour the tables of a live database and how they relate.
+
+**Arguments**: `connection`, `database`, `schema`, `audience` (`newcomer` (default), `analyst`, `engineer`).
+
+Renders an inventory of up to 200 tables with row counts, then full structure for the 8 largest, and asks for the tour in a fixed order: what the database is for, the core entities and their join keys, which tables are lookups or logs, what looks wrong (missing primary keys, foreign keys the names imply but the schema does not declare), and where to start reading.
+
+### `explain_table`
+
+One table's columns, keys, indexes and DDL, explained to someone who has never used it.
+
+**Arguments**: `connection`, `table` (required), `database`, `schema`, `audience`.
+
+Asks what one row represents, what each non-obvious column holds and what a NULL means there, how the table connects to the rest of the schema through its foreign keys, which access patterns the indexes serve and which obvious filter has none, and three queries someone would actually run.
+
+### `data_quality_audit`
+
+Turn one table's structure into a runnable checklist of data quality queries.
+
+**Arguments**: `connection`, `table` (required), `database`, `schema`.
+
+Covers nullability, uniqueness, referential integrity (including columns named like a foreign key that declare no constraint), domain checks, format checks, and duplicates on the business key. Every check has to come with a runnable query for this engine and a description of a clean result, ordered cheapest first.
+
+### `question_to_sql`
+
+Write a query that answers a question, using the real columns of the named tables.
+
+**Arguments**: `connection`, `question` (required), `tables` (comma-separated; the largest few when omitted), `database`, `schema`.
+
+Renders up to 150 tables as an inventory and full structure for up to 6. The instructions forbid inventing columns, require an explicit `JOIN ... ON` with the join key named, require a `LIMIT` unless the answer is an aggregate, and ask for the engine's own identifier quoting.
+
+### `review_query`
+
+Check a query for correctness, cost and risk against the live schema before running it.
+
+**Arguments**: `connection`, `query` (required), `explain_plan`, `database`, `schema`.
+
+TablePro matches identifiers in the query against the table inventory and renders the structure of up to 6 tables it recognises. Without `explain_plan` the prompt asks the model to name the `EXPLAIN` command to run and what to look for in it. The review is ordered: correctness, cost against the row counts shown, risk (locks, transaction safety, cancellability), and a rewrite only if one is needed.
+
+### `propose_indexes`
+
+Suggest indexes for a slow query from its plan and the indexes the tables already have.
+
+**Arguments**: `connection`, `query` (required), `explain_plan`, `database`, `schema`.
+
+Every candidate has to come with the exact `CREATE INDEX` for this engine, the predicate it serves quoted from the query, why the existing indexes do not already serve it, and what it costs. The model is asked to rank the candidates and to name any index the query makes redundant.
+
+### `write_migration`
+
+Turn a described schema change into migration statements plus the rollback, for this engine.
+
+**Arguments**: `connection`, `change` (required), `table`, `database`, `schema`.
+
+Renders the current structure with DDL when a table is named, and says so plainly when none is. Asks for the forward migration, the rollback to exactly the structure shown, what breaks while it runs, a batched backfill if one is needed, and a query that proves the change landed. It also passes the connection's Safe Mode level through so the model can flag statements a restricted mode would reject.
+
+### `summarize_query_history`
+
+Summarize what was run against a connection over a period.
+
+**Arguments**: `connection`, `period` (`today`, `this_week` (default), `this_month`, `all`), `limit` (1-500, default 50).
+
+Reads the recorded history for that connection and asks for a summary grouped by intent, every write called out, failures with whatever looks like the fix, the slowest statements, and loose ends such as a migration applied to one table but not its sibling.
+
+Query text is limited to 8,000 characters per statement in the rendered prompt.
+
+## Completions
+
+`completion/complete` resolves a prompt argument or a resource-template variable against the live schema. It needs `resources:read`.
+
+```json
+{
+  "method": "completion/complete",
+  "params": {
+    "ref": { "type": "ref/prompt", "name": "explain_table" },
+    "argument": { "name": "table", "value": "ord" },
+    "context": { "arguments": { "connection": "Production", "database": "app" } },
+    "_meta": { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {} }
+  }
+}
+```
+
+```json
+{ "completion": { "values": ["orders", "order_items"], "total": 2, "hasMore": false } }
+```
+
+`ref` is either `{ "type": "ref/prompt", "name": ... }` or `{ "type": "ref/resource", "uri": ... }`. An unknown prompt or an unrecognised template is `-32602`.
+
+### What resolves
+
+| Argument or variable | Resolves to |
+|----------------------|-------------|
+| `connection` | Connection names, falling back to UUIDs when two connections share a name |
+| `connection_id` | Connection UUIDs |
+| `database` | Databases on the connection named in `context.arguments` |
+| `schema` | Schemas in that database |
+| `table` | Tables in that database and schema |
+| `audience` | `newcomer`, `analyst`, `engineer` |
+| `period` | `today`, `this_week`, `this_month`, `all` |
+| `date_filter` | `today`, `thisWeek`, `thisMonth` |
+| `row_counts` | `true`, `false` |
+
+Anything else returns an empty list rather than an error.
+
+### Context matters
+
+`database`, `schema` and `table` need to know which connection to read. Pass it in `context.arguments` under `connection`, `connection_id`, or `id`. Without one, the result is empty.
+
+For a `ref/resource` completion TablePro fills the context from the URI itself, so completing `table` in `tablepro://connections/{id}/tables/{table}` already knows the connection, and the `database` and `schema` query parameters if the URI carries them. Anything you pass in `context.arguments` wins.
+
+### Matching and limits
+
+Values whose name starts with what you typed come first, then values that merely contain it, each group sorted naturally. Matching ignores case. Fixed value lists such as `audience` keep their declared order instead.
+
+At most 100 values come back. `total` is the number of matches before that cap and `hasMore` says whether it applied.
+
+Schema reads are cached for 15 seconds per token and per scope, so typing a table name does not hit the database on every keystroke.
+
+Completing `connection` with a value that matches no name falls back to matching UUIDs, so pasting an id into a field that normally takes a name still works.

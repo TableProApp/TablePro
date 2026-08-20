@@ -178,7 +178,7 @@ struct StatementRunControllerTests {
         let controller = makeController(text: threeStatements)
         let subject = makeSubject()
         var reported: String?
-        subject.onRun = { reported = $0 }
+        subject.onRun = { reported = $0; return true }
         subject.install(on: controller)
 
         controller.setCursorPositions([CursorPosition(range: NSRange(location: 0, length: 0))])
@@ -195,7 +195,7 @@ struct StatementRunControllerTests {
         let controller = makeController(text: threeStatements)
         let subject = makeSubject()
         var reported: String?
-        subject.onRun = { reported = $0 }
+        subject.onRun = { reported = $0; return true }
         subject.install(on: controller)
 
         let third = controller.runnableStatements[2]

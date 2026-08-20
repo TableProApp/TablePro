@@ -100,9 +100,15 @@ struct CreateTableView: View {
             coordinator?.toolbarState.hasCreateTablePending = isReadyToCreate
         }
         .onDisappear {
-            selectionState.indices = []
-            coordinator?.createTableActions = nil
-            coordinator?.toolbarState.hasCreateTablePending = false
+            /// Guarded by identity, like the `inspectorRowSource` clear below it. SwiftUI does not
+            /// order the outgoing view's `onDisappear` before the incoming view's `onAppear`, so an
+            /// unguarded clear that lands second nils the wiring the incoming Create Table tab has
+            /// already installed, leaving its Create button and its close prompt dead.
+            if coordinator?.createTableActions === actionHandler {
+                selectionState.indices = []
+                coordinator?.createTableActions = nil
+                coordinator?.toolbarState.hasCreateTablePending = false
+            }
             if coordinator?.inspectorRowSource === gridDelegate {
                 coordinator?.inspectorRowSource = nil
             }

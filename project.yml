@@ -101,10 +101,9 @@ targets:
     sources:
       - path: TablePro
         excludes:
-          # main() lives here, and it belongs to the tablepro-mcp helper.
+          # main() lives here, and it belongs to the tablepro-mcp helper. The rest of
+          # CLI/ compiles into the app too, so TableProTests can drive the real proxy.
           - CLI/BridgeMain.swift
-          - CLI/BridgeProxy.swift
-          - CLI/Handshake.swift
           # Copied whole below. A plain glob flattens it into Resources/ and the
           # inventory then cannot find its texts/ directory.
           - Resources/ThirdPartyLicenses
@@ -261,32 +260,24 @@ targets:
   mcp-server:
     type: tool
     platform: macOS
-    # The helper shares wire and transport types with the app but compiles its own
-    # entry point. Listed file by file because it takes only part of each directory.
+    # The helper shares the wire format and the per-request metadata types with the
+    # app but compiles its own entry point. Wire and Meta come in whole, so a file
+    # added to either directory reaches this target instead of silently breaking it.
     sources:
       - TablePro/CLI/BridgeMain.swift
       - TablePro/CLI/BridgeProxy.swift
       - TablePro/CLI/Handshake.swift
-      - TablePro/Core/Concurrency/OnceTask.swift
-      - TablePro/Core/MCP/Session/MCPClock.swift
+      - TablePro/Core/MCP/Auth/MCPAuthChallenge.swift
+      - TablePro/Core/MCP/Auth/MCPScope.swift
+      - TablePro/Core/MCP/Lifecycle/MCPHandshakeFile.swift
+      - TablePro/Core/MCP/Meta
+      - TablePro/Core/MCP/Support/MCPBase64Sentinel.swift
       - TablePro/Core/MCP/Transport/MCPBridgeLogger.swift
       - TablePro/Core/MCP/Transport/MCPMessageTransport.swift
       - TablePro/Core/MCP/Transport/MCPProtocolError.swift
-      - TablePro/Core/MCP/Transport/MCPStdioMessageTransport.swift
       - TablePro/Core/MCP/Transport/MCPStreamableHttpClientTransport.swift
       - TablePro/Core/MCP/Transport/MCPUpstreamCredentials.swift
-      - TablePro/Core/MCP/Wire/HttpRequestHead.swift
-      - TablePro/Core/MCP/Wire/HttpResponseHead.swift
-      - TablePro/Core/MCP/Wire/JsonRpcCodec.swift
-      - TablePro/Core/MCP/Wire/JsonRpcError.swift
-      - TablePro/Core/MCP/Wire/JsonRpcErrorCode.swift
-      - TablePro/Core/MCP/Wire/JsonRpcId.swift
-      - TablePro/Core/MCP/Wire/JsonRpcMessage.swift
-      - TablePro/Core/MCP/Wire/JsonRpcVersion.swift
-      - TablePro/Core/MCP/Wire/JsonValue.swift
-      - TablePro/Core/MCP/Wire/SseDecoder.swift
-      - TablePro/Core/MCP/Wire/SseEncoder.swift
-      - TablePro/Core/MCP/Wire/SseFrame.swift
+      - TablePro/Core/MCP/Wire
     scheme: {}
     settings:
       base:

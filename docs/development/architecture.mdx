@@ -54,7 +54,7 @@ actor SSHTunnelManager {
 | Sparkle | SPM, 2.9.0 | Auto-update with EdDSA signing |
 | OracleNIO | SPM, TablePro fork pinned by revision | Oracle wire protocol for OracleDriverPlugin |
 | rust-dameng | Cargo, TablePro fork pinned by revision | DM8 wire protocol for DamengDriverPlugin |
-| swift-certificates | SPM, 1.19.0 | Generates the MCP server's self-signed TLS certificate |
+| swift-certificates | SPM, 1.19.0 | X.509 types, linked by the app target |
 | Yams | SPM, 5.4.0 | YAML parsing for project folder import |
 
 ## Plugin System
@@ -162,7 +162,27 @@ flowchart LR
 
 ### MCP Server
 
-The MCP server lives under `Core/MCP/`. It layers up from Codable JSON-RPC 2.0 and SSE wire types. Two transports sit on top: an `NWListener` HTTP server bound to `127.0.0.1`, and a stdio bridge for the `tablepro-mcp` CLI. Above those are actor-based session, auth, and rate-limit stores, plus a dispatcher that runs each inbound request in its own task. Sessions expire after 15 minutes idle. The dispatcher serves 19 tools and accepts protocol versions `2025-03-26`, `2025-06-18`, and `2025-11-25`. See the [tool catalog](/external-api/mcp-tools) and [Versioning](/external-api/versioning).
+The MCP server lives under `Core/MCP/`, and it speaks Model Context Protocol revision `2026-07-28` plus two legacy revisions.
+
+| Layer | Directory | Role |
+|-------|-----------|------|
+| Wire | `Wire/` | Codable JSON-RPC 2.0, HTTP, and SSE types |
+| Transport | `Transport/` | `NWListener` HTTP server bound to `127.0.0.1`, plus the client transport the `tablepro-mcp` bridge uses |
+| Meta | `Meta/` | Protocol versions, per-request `_meta`, client and server capabilities |
+| Protocol | `Protocol/` | Dispatcher, method handlers, and the 46 tools |
+| Prompts, Completions, Subscriptions | `Prompts/`, `Completions/`, `Subscriptions/` | Prompt catalog rendered from the live schema, argument completion, and `subscriptions/listen` |
+| Legacy | `Legacy/` | `initialize`, `Mcp-Session-Id`, and the era adapter for older clients |
+| Auth and audit | `Auth/`, `RateLimit/`, `MCPAuditLogger.swift` | Bearer tokens, scopes, connection allowlists, lockouts, hash-chained audit log |
+
+`MCPProtocolDispatcher` is an actor. It resolves the era from the request (`_meta` declares the modern one, `Mcp-Session-Id` the legacy one), checks scopes, runs each handler in its own task under a 330-second deadline, and normalizes the result envelope: `resultType`, `serverInfo`, and the cache hints the six cacheable methods carry.
+
+The modern era is stateless, so it has no session store. Legacy sessions still live in `MCPLegacySessionStore`, capped at 16 with least-recently-used eviction, and are dropped when the server stops.
+
+`MCPServerManager` owns the lifecycle on the main actor: it binds a port (falling back to a kernel-assigned one), mints and rotates the bridge credential, writes the handshake file, and tears everything down through `MCPServerComposition`.
+
+Nothing in the server is reachable off the machine. It binds loopback and speaks plain HTTP, which the specification permits for a local server; there is no TLS and no remote mode.
+
+See [MCP Protocol](/external-api/mcp-protocol), the [tool catalog](/external-api/mcp-tools), and [Versioning](/external-api/versioning).
 
 ## Data Flow
 

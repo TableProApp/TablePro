@@ -322,10 +322,23 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         } else {
             _currentSchema = config.username.uppercased()
         }
+        try ensureAlive(connection)
 
         if let result = try? await connection.executeQuery(OracleSchemaQueries.serverVersion),
            let versionStr = result.rows.first?.first?.stringValue {
             _serverVersion = String(versionStr.prefix(60))
+        }
+        try ensureAlive(connection)
+    }
+
+    /// A probe that only failed to answer is survivable, and both have a fallback. One that killed the
+    /// connection is not: the core is left disconnected, so the next call silently redials with the full
+    /// login budget while the caller's own, shorter deadline blames whatever step it happened to be on.
+    /// Checked after each probe, because a redial inside the second one would mask the first's failure.
+    private func ensureAlive(_ connection: OracleCoreConnection) throws {
+        guard connection.isConnected else {
+            core = nil
+            throw OraclePluginError(core: .notConnected)
         }
     }
 

@@ -56,6 +56,76 @@ enum SQLStatementScanner {
         return results
     }
 
+    /// The statements a reader can act on, in document order.
+    ///
+    /// Everything the editor offers per statement is drawn from this one filter: the gutter's run controls, the
+    /// caret-statement band and the navigation commands. A segment that carries nothing, meaning a comment or trailing
+    /// whitespace, is not somewhere a caret should be sent and not something worth offering to run, so it is dropped
+    /// here rather than at each call site where the three could drift apart.
+    static func navigableStatements(in sql: String, dialect: SqlDialect = .generic) -> [LocatedStatement] {
+        locatedStatements(in: sql, dialect: dialect)
+            .filter { $0.hasContent && $0.contentRange.length > 0 }
+    }
+
+    /// Where the caret goes when the reader asks for the statement after the one it is in.
+    ///
+    /// Returns `nil` at the end of the document rather than wrapping. Wrapping a caret to the other end of a script is
+    /// a jump the reader did not ask for and cannot take back with the opposite key.
+    ///
+    /// A caret sitting in the trivia between two statements belongs to neither, so this answers with the next
+    /// statement that starts after it.
+    static func statementStart(
+        after offset: Int,
+        in sql: String,
+        dialect: SqlDialect = .generic
+    ) -> Int? {
+        var found: Int?
+        scan(sql: sql, cursorPosition: nil, dialect: dialect) { rawSQL, statementOffset, hasStatementContent in
+            let statement = LocatedStatement(sql: rawSQL, offset: statementOffset, hasContent: hasStatementContent)
+            guard statement.hasContent, statement.contentRange.length > 0 else { return true }
+            guard statement.contentRange.location > offset else { return true }
+            found = statement.contentRange.location
+            return false
+        }
+        return found
+    }
+
+    /// How far `Option+Shift+Down` reaches.
+    ///
+    /// Selection wants the far edge of the text, not the start of the next statement, or the last statement's own body
+    /// could never be selected: past its start there is no next statement to reach for.
+    static func statementSelectionEnd(
+        after offset: Int,
+        in sql: String,
+        dialect: SqlDialect = .generic
+    ) -> Int? {
+        if let next = statementStart(after: offset, in: sql, dialect: dialect) {
+            return next
+        }
+        let end = navigableStatements(in: sql, dialect: dialect).last?.contentRange.upperBound
+        return end.flatMap { $0 > offset ? $0 : nil }
+    }
+
+    /// Where the caret goes when the reader asks for the statement before the one it is in.
+    ///
+    /// A caret already past the start of its own statement goes to that statement's start first, which is how a
+    /// reader steps back through a script without overshooting the statement they were reading.
+    static func statementStart(
+        before offset: Int,
+        in sql: String,
+        dialect: SqlDialect = .generic
+    ) -> Int? {
+        var found: Int?
+        scan(sql: sql, cursorPosition: nil, dialect: dialect) { rawSQL, statementOffset, hasStatementContent in
+            let statement = LocatedStatement(sql: rawSQL, offset: statementOffset, hasContent: hasStatementContent)
+            guard statement.hasContent, statement.contentRange.length > 0 else { return true }
+            guard statement.contentRange.location < offset else { return false }
+            found = statement.contentRange.location
+            return true
+        }
+        return found
+    }
+
     /// Returns statements with trailing semicolons stripped, for driver execution.
     static func allStatements(in sql: String, dialect: SqlDialect = .generic) -> [String] {
         var results: [String] = []
