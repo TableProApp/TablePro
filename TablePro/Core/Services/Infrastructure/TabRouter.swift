@@ -90,8 +90,17 @@ internal final class TabRouter {
 
     // MARK: - Connection
 
-    private func openConnection(id: UUID) async throws {
-        guard let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == id }) else {
+    internal func openTransientConnection(_ connection: DatabaseConnection) async throws {
+        try await openConnection(id: connection.id, transientConnection: connection)
+    }
+
+    private func openConnection(id: UUID, transientConnection: DatabaseConnection? = nil) async throws {
+        let connection: DatabaseConnection
+        if let stored = ConnectionStorage.shared.loadConnections().first(where: { $0.id == id }) {
+            connection = stored
+        } else if let transientConnection {
+            connection = transientConnection
+        } else {
             throw TabRouterError.connectionNotFound(id)
         }
         if let existing = WindowLifecycleMonitor.shared.mostRecentWindow(for: id)
@@ -110,6 +119,9 @@ internal final class TabRouter {
             return
         }
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
+        if transientConnection != nil {
+            DatabaseManager.shared.registerPendingSession(connection)
+        }
         WindowManager.shared.openTab(payload: payload, autoConnect: true)
         NSApp.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()

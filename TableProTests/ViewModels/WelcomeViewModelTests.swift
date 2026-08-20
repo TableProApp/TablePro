@@ -4,9 +4,10 @@
 //
 
 @testable import TablePro
+import TableProImport
 import TableProPluginKit
-import XCTest
 import TableProSyncTransport
+import XCTest
 
 @MainActor
 final class WelcomeViewModelTests: XCTestCase {
@@ -213,5 +214,103 @@ final class WelcomeViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.urlImportPresented)
         XCTAssertNil(viewModel.pluginInstallConnection)
         XCTAssertEqual(welcomeRouter.pendingPluginInstall?.id, connection.id)
+    }
+
+    func testAFavoritedUngroupedConnectionStaysReachableFromTheKeyboard() {
+        var favorited = DatabaseConnection(name: "Starred", type: .mysql)
+        favorited.isFavorite = true
+        let plain = DatabaseConnection(name: "Plain", type: .mysql)
+        connectionStorage.saveConnections([favorited, plain])
+
+        viewModel.loadConnections()
+
+        XCTAssertEqual(viewModel.favoriteConnections.map(\.id), [favorited.id])
+        XCTAssertFalse(
+            viewModel.treeItems.contains { node in
+                if case .connection(let conn) = node { return conn.id == favorited.id }
+                return false
+            },
+            "A favorited ungrouped connection is rendered in the Favorites section, not the tree"
+        )
+        XCTAssertEqual(
+            Set(viewModel.flatVisibleConnections.map(\.id)),
+            [favorited.id, plain.id],
+            "Select All and Ctrl+J walk flatVisibleConnections, so it must include the Favorites section"
+        )
+    }
+
+    func testFlatVisibleConnectionsListsEachConnectionOnce() {
+        var favorited = DatabaseConnection(name: "Starred", type: .mysql)
+        favorited.isFavorite = true
+        connectionStorage.saveConnections([favorited])
+
+        viewModel.loadConnections()
+
+        let ids = viewModel.flatVisibleConnections.map(\.id)
+        XCTAssertEqual(ids.count, Set(ids).count, "Ctrl+J must never visit the same connection twice")
+    }
+
+    func testDeleteKeepsTheConnectionWhenPersistenceFails() throws {
+        let connection = DatabaseConnection(name: "Prod", type: .mysql)
+        XCTAssertTrue(connectionStorage.saveConnections([connection]))
+        viewModel.loadConnections()
+        XCTAssertEqual(viewModel.connections.map(\.id), [connection.id])
+
+        let directory = connectionFileURL.deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        }
+
+        connectionStorage.invalidateCache()
+        viewModel.connectionsToDelete = [connection]
+        viewModel.deleteSelectedConnections()
+
+        XCTAssertEqual(
+            viewModel.connections.map(\.id),
+            [connection.id],
+            "A connection that could not be persisted as deleted must not disappear from the list"
+        )
+        XCTAssertTrue(viewModel.connectionsToDelete.isEmpty)
+    }
+
+    func testSharedRowIdsAreDerivedFromThePayloadAndAreStable() {
+        let folderId = UUID()
+        let payload = makeExportable(name: "Shared")
+
+        let first = LinkedFolderWatcher.stableId(folderId: folderId, connection: payload)
+        let second = LinkedFolderWatcher.stableId(folderId: folderId, connection: payload)
+        let otherFolder = LinkedFolderWatcher.stableId(folderId: UUID(), connection: payload)
+        let otherPayload = LinkedFolderWatcher.stableId(
+            folderId: folderId,
+            connection: makeExportable(name: "Different")
+        )
+
+        XCTAssertEqual(first, second, "A shared row must keep its identity across launches")
+        XCTAssertNotEqual(first, otherFolder)
+        XCTAssertNotEqual(first, otherPayload)
+    }
+
+    private func makeExportable(name: String) -> ExportableConnection {
+        ExportableConnection(
+            name: name,
+            host: "db.example.com",
+            port: 3_306,
+            database: "app",
+            username: "reader",
+            type: DatabaseType.mysql.rawValue,
+            sshConfig: nil,
+            sslConfig: nil,
+            color: nil,
+            tagName: nil,
+            groupName: nil,
+            sshProfileId: nil,
+            safeModeLevel: nil,
+            aiPolicy: nil,
+            additionalFields: nil,
+            redisDatabase: nil,
+            startupCommands: nil,
+            localOnly: nil
+        )
     }
 }

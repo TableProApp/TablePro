@@ -155,7 +155,10 @@ final class WelcomeViewModel {
     }
 
     var flatVisibleConnections: [DatabaseConnection] {
-        flattenVisibleConnections(tree: treeItems, expandedGroupIds: expandedGroupIds)
+        let inTree = flattenVisibleConnections(tree: treeItems, expandedGroupIds: expandedGroupIds)
+        guard searchText.isEmpty, !favoriteConnections.isEmpty else { return inTree }
+        var seen = Set<UUID>()
+        return (favoriteConnections + inTree).filter { seen.insert($0.id).inserted }
     }
 
     var selectedConnections: [DatabaseConnection] {
@@ -333,7 +336,13 @@ final class WelcomeViewModel {
             username: linked.connection.username,
             type: DatabaseType(rawValue: linked.connection.type)
         )
-        connectToDatabase(connection)
+        Task {
+            do {
+                try await TabRouter.shared.openTransientConnection(connection)
+            } catch {
+                handleConnectError(error, connection: connection)
+            }
+        }
     }
 
     private static let teamLibraryFolderId = UUID(uuidString: "00000000-0000-0000-0000-000000000000") ?? UUID()
@@ -343,7 +352,10 @@ final class WelcomeViewModel {
         let placeholderURL = URL(fileURLWithPath: "/")
         return TeamLibrarySyncCoordinator.shared.library.connections.map { connection in
             LinkedConnection(
-                id: UUID(uuidString: connection.sourceConnectionId ?? "") ?? UUID(),
+                id: LinkedFolderWatcher.stableId(
+                    folderId: teamLibraryFolderId,
+                    connection: connection.payload
+                ),
                 connection: connection.payload,
                 folderId: teamLibraryFolderId,
                 sourceFileURL: placeholderURL
@@ -393,7 +405,12 @@ final class WelcomeViewModel {
 
     func deleteSelectedConnections() {
         let idsToDelete = Set(connectionsToDelete.map(\.id))
-        storage.deleteConnections(connectionsToDelete)
+        guard storage.deleteConnections(connectionsToDelete) else {
+            connectionsToDelete = []
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
+        }
         connections.removeAll { idsToDelete.contains($0.id) }
         selectedConnectionIds.subtract(idsToDelete)
         connectionsToDelete = []

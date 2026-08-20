@@ -75,6 +75,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Deleting a connection you had published to the Team Library no longer deletes your own local copy of it instead. The shared row was reusing the local connection's identity, so its Edit and Delete acted on the wrong one, taking the saved passwords with it.
+- Opening a connection from a linked folder or the Team Library now works. Double-clicking one, or selecting it and pressing Return, used to do nothing at all, with no window, no error, and nothing on screen to say why.
+- A connection whose deletion could not be saved to disk no longer disappears from the list. It vanished until the next launch and then came back.
+- Select All, and stepping through connections with `Ctrl+J` and `Ctrl+K`, no longer skip favorited connections that are not in a group.
 - A column whose cells carry an action button, such as the up and down arrows on a date, no longer cuts its value short. Widths saved before 0.66 were measured with no room for the button and were then treated as widths you had chosen, so they were never measured again. Those columns are now measured from their content, while a width you set yourself, the column order, and which columns are hidden are all left alone. An enum, set or foreign key column whose metadata arrives after the rows widens to fit rather than staying short, and never shrinks under you. (#2303)
 - Size to Fit, Size All Columns to Fit and double-clicking a column edge now measure the loaded page instead of about 30 rows of it, so the longest value is no longer stepped over and the column is no longer still too narrow after you asked it to fit. On a very wide result the scan is bounded so sizing every column at once stays responsive. (#2303)
 - 235 Turkish strings now read in Turkish. They were marked as translated while still holding their English text, so menus, buttons, alerts and error messages across connections, plugins, SSH, sync and the query editor showed English to Turkish users with nothing reporting a gap.

@@ -166,7 +166,7 @@ final class LinkedFolderWatcher {
 
     // MARK: - Stable IDs (SHA-256 based, deterministic across launches)
 
-    nonisolated private static func stableId(folderId: UUID, connection: ExportableConnection) -> UUID {
+    nonisolated static func stableId(folderId: UUID, connection: ExportableConnection) -> UUID {
         let key = "\(folderId.uuidString)|\(connection.name)|\(connection.host)|\(connection.port)|\(connection.type)"
         let digest = SHA256.hash(data: Data(key.utf8))
         var bytes = Array(digest.prefix(16))
