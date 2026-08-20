@@ -425,6 +425,9 @@ extension MainContentCoordinator {
             return true
         } catch {
             navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
+            /// A user who dismissed the password prompt already knows why nothing happened, and
+            /// telling them their own decision failed is noise, not news.
+            guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return false }
             AlertHelper.showErrorSheet(
                 title: String(
                     format: String(localized: "%@ Switch Failed"),

@@ -203,14 +203,22 @@ final class SchemaRefreshService {
             guard let scope = metadataDriverProvider.browseScope(for: connectionId) else {
                 throw DatabaseError.notConnected
             }
-            try await metadataDriverProvider.withMetadataDriver(
+            let reloaded = try await metadataDriverProvider.withMetadataDriver(
                 scope: scope,
                 workload: .bulk
             ) { [schemaService] driver in
-                await schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
-                await schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
+                /// Both run, and neither short circuits the other: a failed procedure fetch must
+                /// not skip the function fetch that would still have succeeded.
+                let procedures = await schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
+                let functions = await schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
+                return procedures && functions
             }
-            schemaService.noteScopeCovered(scope, for: connectionId)
+            /// Recording the new scope says the loaded routines belong to it. A reload that failed
+            /// left the previous schema's routines in place, so claiming coverage there would pin
+            /// them to a schema they never came from, with nothing scheduled to correct it.
+            if reloaded {
+                schemaService.noteScopeCovered(scope, for: connectionId)
+            }
         } catch is CancellationError {
             return
         } catch {

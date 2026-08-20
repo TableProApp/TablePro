@@ -232,35 +232,43 @@ final class SchemaService {
         await runLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)
     }
 
-    func reloadProcedures(connectionId: UUID, driver: DatabaseDriver) async {
+    /// Returns false when the stored list is still the one from before the call, so a caller that
+    /// is about to record what its refresh covered can tell a real reload from a swallowed error.
+    @discardableResult
+    func reloadProcedures(connectionId: UUID, driver: DatabaseDriver) async -> Bool {
         do {
             let routines = try await procedureDedup.execute(key: connectionId) {
                 try await driver.fetchProcedures(schema: nil)
             }
             procedures[connectionId] = routines
             bumpGeneration(connectionId)
+            return true
         } catch is CancellationError {
-            return
+            return false
         } catch {
             Self.logger.warning(
                 "[schema] procedures reload failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
+            return false
         }
     }
 
-    func reloadFunctions(connectionId: UUID, driver: DatabaseDriver) async {
+    @discardableResult
+    func reloadFunctions(connectionId: UUID, driver: DatabaseDriver) async -> Bool {
         do {
             let routines = try await functionDedup.execute(key: connectionId) {
                 try await driver.fetchFunctions(schema: nil)
             }
             functions[connectionId] = routines
             bumpGeneration(connectionId)
+            return true
         } catch is CancellationError {
-            return
+            return false
         } catch {
             Self.logger.warning(
                 "[schema] functions reload failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
+            return false
         }
     }
 
@@ -330,6 +338,11 @@ final class SchemaService {
         }
         bumpGeneration(connectionId)
 
+        /// Keeping the previous routines is only right for a refresh of the same scope. When the
+        /// scope moved, routines fetched from the database being left do not describe the one
+        /// being entered, and showing them is worse than showing none.
+        let scopeChanged = scope != nil && loadedScopes[connectionId] != scope
+
         let supportsSchemas = PluginManager.shared.supportsSchemaSwitching(for: connection.type)
         if !supportsSchemas {
             schemasInOrder.removeValue(forKey: connectionId)
@@ -351,13 +364,13 @@ final class SchemaService {
         ) {
             try await driver.fetchTables()
         }
-        async let proceduresTask: [RoutineInfo] = Self.fetchRoutinesSafely(
+        async let proceduresTask: [RoutineInfo]? = Self.fetchRoutinesSafely(
             connectionId: connectionId,
             kind: .procedure,
             dedup: procedureDedup,
             fetch: { try await driver.fetchProcedures(schema: nil) }
         )
-        async let functionsTask: [RoutineInfo] = Self.fetchRoutinesSafely(
+        async let functionsTask: [RoutineInfo]? = Self.fetchRoutinesSafely(
             connectionId: connectionId,
             kind: .function,
             dedup: functionDedup,
@@ -382,13 +395,21 @@ final class SchemaService {
             guard isCurrentLoadGeneration(generation, for: connectionId, phase: "procedures-loaded") else {
                 return
             }
-            procedures[connectionId] = loadedProcedures
+            if let loadedProcedures {
+                procedures[connectionId] = loadedProcedures
+            } else if scopeChanged {
+                procedures.removeValue(forKey: connectionId)
+            }
 
             let loadedFunctions = await functionsTask
             guard isCurrentLoadGeneration(generation, for: connectionId, phase: "functions-loaded") else {
                 return
             }
-            functions[connectionId] = loadedFunctions
+            if let loadedFunctions {
+                functions[connectionId] = loadedFunctions
+            } else if scopeChanged {
+                functions.removeValue(forKey: connectionId)
+            }
 
             if let loadedSchemas = await schemasTask {
                 guard isCurrentLoadGeneration(generation, for: connectionId, phase: "schemas-loaded") else {
@@ -422,13 +443,14 @@ final class SchemaService {
         generation: Int,
         scope: DatabaseScope?
     ) async {
-        async let proceduresTask: [RoutineInfo] = Self.fetchRoutinesSafely(
+        let scopeChanged = scope != nil && loadedScopes[connectionId] != scope
+        async let proceduresTask: [RoutineInfo]? = Self.fetchRoutinesSafely(
             connectionId: connectionId,
             kind: .procedure,
             dedup: procedureDedup,
             fetch: { try await driver.fetchProcedures(schema: nil) }
         )
-        async let functionsTask: [RoutineInfo] = Self.fetchRoutinesSafely(
+        async let functionsTask: [RoutineInfo]? = Self.fetchRoutinesSafely(
             connectionId: connectionId,
             kind: .function,
             dedup: functionDedup,
@@ -460,8 +482,16 @@ final class SchemaService {
             return
         }
         schemasInOrder[connectionId] = loadedSchemas
-        procedures[connectionId] = loadedProcedures
-        functions[connectionId] = loadedFunctions
+        if let loadedProcedures {
+            procedures[connectionId] = loadedProcedures
+        } else if scopeChanged {
+            procedures.removeValue(forKey: connectionId)
+        }
+        if let loadedFunctions {
+            functions[connectionId] = loadedFunctions
+        } else if scopeChanged {
+            functions.removeValue(forKey: connectionId)
+        }
         states[connectionId] = .loaded([])
         if let scope {
             loadedScopes[connectionId] = scope
@@ -539,21 +569,27 @@ final class SchemaService {
         }
     }
 
+    /// Nil when the fetch did not answer, so the caller keeps what it already had.
+    ///
+    /// Returning an empty list instead made a refresh that failed indistinguishable from a
+    /// database with no routines, and the caller committed it over the loaded one: a single
+    /// dropped connection emptied the sidebar's procedures and functions while the refresh
+    /// reported success, with nothing scheduled to put them back.
     private static func fetchRoutinesSafely(
         connectionId: UUID,
         kind: RoutineInfo.Kind,
         dedup: OnceTask<UUID, [RoutineInfo]>,
         fetch: @Sendable @escaping () async throws -> [RoutineInfo]
-    ) async -> [RoutineInfo] {
+    ) async -> [RoutineInfo]? {
         do {
             return try await dedup.execute(key: connectionId, work: fetch)
         } catch is CancellationError {
-            return []
+            return nil
         } catch {
             logger.warning(
                 "[schema] \(kind.rawValue, privacy: .public) load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
-            return []
+            return nil
         }
     }
 }

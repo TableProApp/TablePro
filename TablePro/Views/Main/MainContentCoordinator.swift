@@ -734,13 +734,13 @@ final class MainContentCoordinator {
 
     func refreshProcedures() async {
         try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
-            await services.schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
+            _ = await services.schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
         }
     }
 
     func refreshFunctions() async {
         try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
-            await services.schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
+            _ = await services.schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
         }
     }
 

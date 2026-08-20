@@ -330,6 +330,35 @@ struct SchemaServiceRoutinesTests {
         }
     }
 
+    /// A refresh never clears the cache it is refreshing. The failed fetch used to come back as an
+    /// empty list, indistinguishable from a database with no routines, and it was written straight
+    /// over the loaded one: a single dropped connection emptied the sidebar's Procedures and
+    /// Functions while the refresh still reported loaded.
+    @Test("a failed routine fetch keeps the routines already loaded")
+    func failedRoutineReloadKeepsPreviousRoutines() async {
+        let service = SchemaService()
+        let connectionId = UUID()
+        let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
+        let driver = RoutineMockDriver(connection: connection)
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
+        driver.proceduresToReturn = [
+            RoutineInfo(name: "p1", schema: nil, kind: .procedure, signature: nil)
+        ]
+        driver.functionsToReturn = [
+            RoutineInfo(name: "f1", schema: nil, kind: .function, signature: nil)
+        ]
+        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+        #expect(service.procedures(for: connectionId).map(\.name) == ["p1"])
+        #expect(service.functions(for: connectionId).map(\.name) == ["f1"])
+
+        let failing = FailingRoutineDriver(connection: connection)
+        await service.reload(connectionId: connectionId, driver: failing, connection: connection)
+
+        #expect(service.procedures(for: connectionId).map(\.name) == ["p1"])
+        #expect(service.functions(for: connectionId).map(\.name) == ["f1"])
+        #expect(service.tables(for: connectionId).map(\.name) == ["users"])
+    }
+
     @Test("invalidate clears tables and routine caches")
     func invalidateClearsAll() async {
         let service = SchemaService()
