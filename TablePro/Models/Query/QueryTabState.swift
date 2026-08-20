@@ -37,6 +37,7 @@ struct PersistedTab: Codable {
     var queryParameters: [QueryParameter]?
     var sortColumns: [PersistedSortColumn]?
     var restoredPage: Int?
+    var restoredPageSize: Int?
     var cursorOffset: Int?
     var cursorLength: Int?
     var collapsedFoldRanges: [Int]?
@@ -61,6 +62,7 @@ struct PersistedTab: Codable {
         queryParameters: [QueryParameter]? = nil,
         sortColumns: [PersistedSortColumn]? = nil,
         restoredPage: Int? = nil,
+        restoredPageSize: Int? = nil,
         cursorOffset: Int? = nil,
         cursorLength: Int? = nil,
         collapsedFoldRanges: [Int]? = nil,
@@ -81,6 +83,7 @@ struct PersistedTab: Codable {
         self.queryParameters = queryParameters
         self.sortColumns = sortColumns
         self.restoredPage = restoredPage
+        self.restoredPageSize = restoredPageSize
         self.cursorOffset = cursorOffset
         self.cursorLength = cursorLength
         self.collapsedFoldRanges = collapsedFoldRanges
@@ -92,7 +95,7 @@ struct PersistedTab: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, title, query, tabType, tableName, isView, databaseName, schemaName
         case sourceFileURL, erDiagramSchemaKey, queryParameters
-        case sortColumns, restoredPage, cursorOffset, cursorLength, collapsedFoldRanges
+        case sortColumns, restoredPage, restoredPageSize, cursorOffset, cursorLength, collapsedFoldRanges
         case columnWidths, columnContentWidths, windowGroupIndex
         case overflowFileName
     }
@@ -112,6 +115,7 @@ struct PersistedTab: Codable {
         queryParameters = try container.decodeIfPresent([QueryParameter].self, forKey: .queryParameters)
         sortColumns = try container.decodeIfPresent([PersistedSortColumn].self, forKey: .sortColumns)
         restoredPage = try container.decodeIfPresent(Int.self, forKey: .restoredPage)
+        restoredPageSize = try container.decodeIfPresent(Int.self, forKey: .restoredPageSize)
         cursorOffset = try container.decodeIfPresent(Int.self, forKey: .cursorOffset)
         cursorLength = try container.decodeIfPresent(Int.self, forKey: .cursorLength)
         collapsedFoldRanges = try container.decodeIfPresent([Int].self, forKey: .collapsedFoldRanges)
@@ -344,10 +348,51 @@ struct ColumnLayoutState: Equatable {
     var columnOrder: [String]?
     var hiddenColumns: Set<String> = []
 
+    /// Splices a captured order into the stored one, keeping names the capture never saw.
+    ///
+    /// A capture only lists the columns the query returned, and hiding a column takes it out of
+    /// that projection. Overwriting with the capture therefore drops the hidden column's position,
+    /// and showing it again appends it at the end, which reorders a grid the user never touched.
+    /// Names the capture does cover take its order; the rest hold their slots.
+    static func mergedColumnOrder(current: [String]?, incoming: [String]?) -> [String]? {
+        guard let incoming else { return current }
+        guard let current, !current.isEmpty else { return incoming }
+
+        let incomingSet = Set(incoming)
+        // Only a narrowing of the same column set is a partial capture worth splicing. Anything
+        // else is a different result, and merging there would accumulate names from a table the
+        // layout no longer describes.
+        guard incomingSet.isSubset(of: Set(current)) else { return incoming }
+        var remaining = incoming.makeIterator()
+        var merged: [String] = []
+        merged.reserveCapacity(max(current.count, incoming.count))
+
+        for name in current {
+            if incomingSet.contains(name) {
+                guard let next = remaining.next() else { continue }
+                merged.append(next)
+            } else {
+                merged.append(name)
+            }
+        }
+
+        let placed = Set(merged)
+        merged.append(contentsOf: incoming.filter { !placed.contains($0) })
+        return merged
+    }
+
     mutating func applyGeometry(from other: ColumnLayoutState) {
         columnWidths = other.columnWidths
         columnContentWidths = other.columnContentWidths
-        columnOrder = other.columnOrder
+        columnOrder = Self.mergedColumnOrder(current: columnOrder, incoming: other.columnOrder)
+    }
+
+    /// Drops the geometry outright. Reset is not a capture, so it must not go through the merge,
+    /// which deliberately keeps a stored order when a capture carries none.
+    mutating func resetGeometry() {
+        columnWidths = [:]
+        columnContentWidths = nil
+        columnOrder = nil
     }
 
     func mergingWidths(_ liveWidths: [String: CGFloat]) -> ColumnLayoutState {

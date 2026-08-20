@@ -62,10 +62,12 @@ for archive in "$MAIN_ROOT"/Libs/*.a; do
 done
 link "$MAIN_ROOT/Libs/dylibs" "$DIR/Libs/dylibs"
 link "$MAIN_ROOT/Libs/ios" "$DIR/Libs/ios"
+link "$MAIN_ROOT/Native/DamengBridge/lib" "$DIR/Native/DamengBridge/lib"
 
 missing=""
 [ -e "$DIR/Secrets.xcconfig" ] || missing="$missing Secrets.xcconfig"
 [ -e "$DIR/Libs/dylibs" ] || missing="$missing Libs/dylibs"
+[ -e "$DIR/Native/DamengBridge/lib" ] || missing="$missing Native/DamengBridge/lib"
 ls "$DIR"/Libs/*.a > /dev/null 2>&1 || missing="$missing Libs/*.a"
 if [ -n "$missing" ]; then
     echo "warning: not linked, the main checkout does not have them:$missing" >&2

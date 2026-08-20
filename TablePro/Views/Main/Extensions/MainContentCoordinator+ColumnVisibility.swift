@@ -89,7 +89,7 @@ extension MainContentCoordinator {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == target.tabId }),
               columnLayoutTableKey(for: tabManager.tabs[index]) == target.tableKey else { return }
         tabManager.mutate(at: index) { tab in
-            tab.columnLayout.applyGeometry(from: ColumnLayoutState())
+            tab.columnLayout.resetGeometry()
         }
     }
 

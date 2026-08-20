@@ -32,6 +32,8 @@ struct GridValueFilterState: Equatable {
 
     func filter(forColumn dataIndex: Int) -> ColumnValueFilter? { filters[dataIndex] }
 
+    func columnName(forColumn dataIndex: Int) -> String? { columnNames[dataIndex] }
+
     mutating func set(_ filter: ColumnValueFilter, columnName: String, forColumn dataIndex: Int) {
         filters[dataIndex] = filter
         columnNames[dataIndex] = columnName

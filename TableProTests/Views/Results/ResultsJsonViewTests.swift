@@ -32,12 +32,14 @@ struct ResultsJsonViewTests {
     private func compute(
         displayIDs: [RowID]? = nil,
         selectedIndices: Set<Int>,
+        deletedIndices: Set<Int> = [],
         columnLayout: ColumnLayoutState = ColumnLayoutState()
-    ) -> (json: String, pretty: String, resolvedCount: Int, parseResult: Result<JSONTreeNode, JSONTreeParseError>) {
+    ) -> ResultsJsonView.RenderedJson {
         ResultsJsonView.computeJson(
             tableRows: makeTableRows(),
             displayIDs: displayIDs,
             selectedIndices: selectedIndices,
+            deletedIndices: deletedIndices,
             columnLayout: columnLayout
         )
     }
@@ -72,6 +74,34 @@ struct ResultsJsonViewTests {
         #expect(result.resolvedCount == 2)
         #expect(!result.json.contains("\"b\""))
         #expect(!result.json.contains("\"d\""))
+    }
+
+    @Test("a row marked for deletion is left out of the document")
+    func pendingDeletionIsExcluded() {
+        let result = compute(selectedIndices: [], deletedIndices: [1])
+
+        #expect(result.resolvedCount == 3)
+        #expect(!result.json.contains("\"b\""))
+        #expect(result.json.contains("\"a\""))
+        #expect(result.json.contains("\"d\""))
+    }
+
+    @Test("a row marked for deletion is left out even when it is part of the selection")
+    func pendingDeletionIsExcludedFromASelection() {
+        let result = compute(selectedIndices: [0, 1], deletedIndices: [1])
+
+        #expect(result.resolvedCount == 1)
+        #expect(result.json.contains("\"a\""))
+        #expect(!result.json.contains("\"b\""))
+    }
+
+    @Test("deletion positions are display positions, resolved through the display order")
+    func pendingDeletionUsesDisplayPositions() {
+        let result = compute(displayIDs: [.existing(2), .existing(0)], selectedIndices: [], deletedIndices: [0])
+
+        #expect(result.resolvedCount == 1)
+        #expect(result.json.contains("\"a\""))
+        #expect(!result.json.contains("\"c\""))
     }
 
     @Test("a hidden column is left out")

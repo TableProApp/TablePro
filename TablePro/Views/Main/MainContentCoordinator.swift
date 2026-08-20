@@ -189,7 +189,8 @@ final class MainContentCoordinator {
     @ObservationIgnored weak var dataTabDelegate: DataTabGridDelegate?
 
     var activeGridDisplayIDs: [RowID]? {
-        dataTabDelegate?.tableViewCoordinator?.displayIDs
+        guard let tabId = tabManager.selectedTab?.id else { return nil }
+        return displayIDs(forTab: tabId)
     }
 
     /// One-shot intent set when the user explicitly opens a table (Return/double-click),
@@ -233,6 +234,7 @@ final class MainContentCoordinator {
     @ObservationIgnored var deferredRestoreLoadTabId: UUID?
 
     @ObservationIgnored var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
+    @ObservationIgnored var displayOrderCache: [UUID: DisplayOrderCacheEntry] = [:]
 
     @ObservationIgnored let schemaColumns = SchemaColumnStore()
     @ObservationIgnored var columnScopeRequeryTask: Task<Void, Never>?
@@ -398,10 +400,13 @@ final class MainContentCoordinator {
                 return named
             }
         }
-        if tab.tabType == .query, tab.id == tabManager.selectedTabId {
-            let range = cursorPositions.first?.range
-            enriched.restoredCursorOffset = range?.location
-            enriched.restoredCursorLength = range.map(\.length)
+        // Only when there is a live caret to write. `cursorPositions` starts empty and is fed by
+        // the editor's own change events, so a tab whose editor never became first responder has
+        // none, and writing that absence over the tab's saved caret discards it.
+        if tab.tabType == .query, tab.id == tabManager.selectedTabId,
+           let range = cursorPositions.first?.range {
+            enriched.restoredCursorOffset = range.location
+            enriched.restoredCursorLength = range.length
         }
         return enriched
     }
@@ -537,6 +542,9 @@ final class MainContentCoordinator {
     func cleanupTabCaches(openTabIds: Set<UUID>) {
         if displayFormatsCache.keys.contains(where: { !openTabIds.contains($0) }) {
             displayFormatsCache = displayFormatsCache.filter { openTabIds.contains($0.key) }
+        }
+        if displayOrderCache.keys.contains(where: { !openTabIds.contains($0) }) {
+            displayOrderCache = displayOrderCache.filter { openTabIds.contains($0.key) }
         }
         if structureSessions.keys.contains(where: { !openTabIds.contains($0) }) {
             structureSessions = structureSessions.filter { openTabIds.contains($0.key) }
@@ -800,7 +808,9 @@ final class MainContentCoordinator {
         }
     }
 
-    /// Explicit cleanup called from `onDisappear`. Releases schema provider
+    /// Explicit cleanup, called when the connection or the window that hosts it goes away, never
+    /// from a view's `onDisappear`: a workspace switch unparents a connection's panes, which is a
+    /// disappearance the connection is expected to come back from. Releases the schema provider
     /// synchronously on MainActor so we don't depend on deinit + Task scheduling.
     func teardown() {
         let start = Date()
@@ -838,6 +848,7 @@ final class MainContentCoordinator {
 
         tabSessionRegistry.removeAll()
         displayFormatsCache.removeAll()
+        displayOrderCache.removeAll()
         schemaColumns.removeAll()
         columnScopeRequeryTask?.cancel()
 

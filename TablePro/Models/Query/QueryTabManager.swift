@@ -408,6 +408,12 @@ final class QueryTabManager {
         tab.filterState = TabFilterState()
         tab.columnLayout = ColumnLayoutState()
         tab.pagination = PaginationState(pageSize: pageSize)
+        // Retargeting points the tab at a different table, so a restore that has not been consumed
+        // yet describes rows this tab no longer shows. Left behind, it is persisted against the new
+        // table and applied to it on the next launch.
+        tab.pendingRestoredSort = nil
+        tab.restoredPage = nil
+        tab.restoredPageSize = nil
         tab.tableContext.databaseName = databaseName
         tab.tableContext.schemaName = schemaName
         tab.isPreview = isPreview

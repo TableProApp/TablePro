@@ -197,7 +197,7 @@ extension TableViewCoordinator {
         menu.addItem(hideItem)
 
         if delegate != nil,
-           tableView.tableColumns.contains(where: { $0.isHidden && $0.identifier != ColumnIdentitySchema.rowNumberIdentifier }) {
+           columnPool.hasUserHiddenColumns {
             let showAllItem = NSMenuItem(
                 title: String(localized: "Show All Columns"),
                 action: #selector(showAllColumns),
@@ -362,8 +362,7 @@ extension TableViewCoordinator {
 
         let tableRows = tableRowsProvider()
         for column in tableView.tableColumns {
-            guard !column.isHidden,
-                  column.identifier != ColumnIdentitySchema.rowNumberIdentifier,
+            guard presentsColumn(column),
                   let dataColumnIndex = dataColumnIndex(from: column.identifier),
                   dataColumnIndex < tableRows.columns.count else { continue }
 

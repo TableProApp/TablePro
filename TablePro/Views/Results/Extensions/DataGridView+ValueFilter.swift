@@ -39,45 +39,32 @@ extension TableViewCoordinator {
         return result
     }
 
+    /// Recomputes what the grid shows, through the same resolver the tab's owner uses.
+    ///
+    /// Both sides run one pure function over the same rows, filter, formats and database type, so
+    /// the grid and the readers that run without it cannot disagree about the display order.
     func recomputeValueFilteredIDs() {
         let tableRows = tableRowsProvider()
-        valueFilterState.prune(againstColumns: tableRows.columns)
-
-        guard valueFilterState.isActive else {
-            valueFilteredIDs = nil
-            return
-        }
-
-        let baseOrder: [RowID] = sortedIDs ?? tableRows.rows.map(\.id)
-        var result: [RowID] = []
-        result.reserveCapacity(baseOrder.count)
-        for id in baseOrder {
-            if id.isInserted {
-                result.append(id)
-                continue
-            }
-            guard let index = tableRows.index(of: id) else { continue }
-            if rowPassesValueFilter(tableRows.rows[index], in: tableRows) {
-                result.append(id)
-            }
-        }
-        valueFilteredIDs = result
+        valueFilteredIDs = GridDisplayOrderResolver.resolve(
+            tableRows: tableRows,
+            valueFilter: valueFilterState,
+            displayFormats: columnDisplayFormats,
+            databaseType: databaseType
+        )
     }
 
-    private func rowPassesValueFilter(_ row: Row, in tableRows: TableRows) -> Bool {
-        for (dataIndex, filter) in valueFilterState.filters {
-            guard dataIndex >= 0, dataIndex < row.values.count else { return false }
-            let rawValue = row.values[dataIndex]
-            if case .null = rawValue {
-                if !filter.includesNull { return false }
-                continue
-            }
-            let columnType = dataIndex < tableRows.columnTypes.count ? tableRows.columnTypes[dataIndex] : nil
-            let display = displayValue(forID: row.id, column: dataIndex, rawValue: rawValue, columnType: columnType)
-                ?? rawValue.asText ?? ""
-            if !filter.selectedValues.contains(display) { return false }
-        }
-        return true
+    /// Forgets filters whose column has moved or gone, so the header stops flagging a column that
+    /// no longer filters anything.
+    ///
+    /// Kept separate from `recomputeValueFilteredIDs` because that one runs on every view update
+    /// and must not write to the filter's owner, while this one only runs on a wholesale
+    /// replacement. The resolver treats a stale entry as inert either way, so a filter that has not
+    /// been pruned yet still narrows nothing.
+    func pruneStaleValueFilters() {
+        guard valueFilterState.isActive else { return }
+        var state = valueFilterState
+        guard state.prune(againstColumns: tableRowsProvider().columns) else { return }
+        valueFilterState = state
     }
 
     func applyValueFilter(_ filter: ColumnValueFilter?, columnName: String, forColumn dataIndex: Int) {
@@ -98,7 +85,7 @@ extension TableViewCoordinator {
     func reloadAfterValueFilterChange() {
         recomputeValueFilteredIDs()
         updateCache()
-        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
         selectionController.clear()
         tableView?.reloadData()
         updateValueFilterHeaderIndicators()

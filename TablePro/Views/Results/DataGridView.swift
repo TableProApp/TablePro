@@ -34,7 +34,6 @@ struct DataGridView: NSViewRepresentable {
     var changeManager: AnyChangeManager
     let isEditable: Bool
     var configuration: DataGridConfiguration = .init()
-    var sortedIDs: [RowID]?
     var displayFormats: [ValueDisplayFormat?] = []
     var delegate: (any DataGridViewDelegate)?
     var layoutPersister: (any ColumnLayoutPersisting)?
@@ -42,6 +41,13 @@ struct DataGridView: NSViewRepresentable {
     @Binding var selectedRowIndices: Set<Int>
     @Binding var sortState: SortState
     @Binding var columnLayout: ColumnLayoutState
+    /// The per-column value filter, bound to an owner that outlives this view.
+    ///
+    /// SwiftUI destroys the coordinator whenever the grid leaves the view tree, and the display
+    /// order this filter produces has to survive that: JSON mode, the row inspector and the Edit
+    /// menu's row commands all read it with no grid mounted. A grid with no owner keeps the filter
+    /// on its own coordinator, which is all a structure or create-table grid ever needs. (#2251)
+    var valueFilter: Binding<GridValueFilterState>?
     var contentRevision: Int = 0
 
     // MARK: - NSViewRepresentable
@@ -95,9 +101,15 @@ struct DataGridView: NSViewRepresentable {
         coordinator.tableRowsProvider = tableRowsProvider
         coordinator.tableRowsMutator = tableRowsMutator
         coordinator.paginationOffsetProvider = paginationOffsetProvider
-        coordinator.sortedIDs = sortedIDs
+        coordinator.valueFilterBinding = valueFilter
+        if let valueFilter {
+            coordinator.adoptValueFilter(valueFilter.wrappedValue)
+        }
         coordinator.delegate = delegate
         coordinator.syncDisplayFormats(displayFormats)
+        // A remount inherits the owner's filter, so resolve the order before the first update
+        // builds its snapshot from it. Otherwise the grid reports the unfiltered count once.
+        coordinator.recomputeValueFilteredIDs()
         coordinator.apply(configuration: configuration, isEditable: isEditable)
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
 
@@ -151,8 +163,17 @@ struct DataGridView: NSViewRepresentable {
         coordinator.paginationOffsetProvider = paginationOffsetProvider
         coordinator.changeManager = changeManager
 
+        // The owner can change the filter while the grid is unmounted, so adopt and re-resolve
+        // before the snapshot is built. A snapshot taken from the stale order would report no
+        // change and skip the reload.
+        coordinator.valueFilterBinding = valueFilter
+        if let valueFilter, coordinator.valueFilterState != valueFilter.wrappedValue {
+            coordinator.adoptValueFilter(valueFilter.wrappedValue)
+            coordinator.recomputeValueFilteredIDs()
+        }
+
         let latestRows = tableRowsProvider()
-        let rowDisplayCount = coordinator.valueFilteredIDs?.count ?? sortedIDs?.count ?? latestRows.count
+        let rowDisplayCount = coordinator.valueFilteredIDs?.count ?? latestRows.count
         let columnCount = latestRows.columns.count
         let settings = AppSettingsManager.shared.dataGrid
         let rowHeight = CGFloat(settings.rowHeight.rawValue)
@@ -163,7 +184,6 @@ struct DataGridView: NSViewRepresentable {
             rowDisplayCount: rowDisplayCount,
             columnCount: columnCount,
             columns: latestRows.columns,
-            sortedIDsCount: sortedIDs?.count,
             valueFilteredIDsCount: coordinator.valueFilteredIDs?.count,
             displayFormats: displayFormats,
             configuration: configuration,
@@ -262,7 +282,6 @@ struct DataGridView: NSViewRepresentable {
             coordinator.preWarmDisplayCache(upTo: visibleRows)
         }
 
-        coordinator.sortedIDs = sortedIDs
         coordinator.updateCache()
         coordinator.delegate = delegate
         let displayFormatsChanged = coordinator.columnDisplayFormats != displayFormats
@@ -270,7 +289,7 @@ struct DataGridView: NSViewRepresentable {
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.recomputeValueFilteredIDs()
         coordinator.updateCache()
-        coordinator.visualIndex.rebuild(from: coordinator.changeManager, sortedIDs: coordinator.displayIDs)
+        coordinator.visualIndex.rebuild(from: coordinator.changeManager, displayIDs: coordinator.displayIDs)
 
         if !latestRows.columns.isEmpty {
             coordinator.isRebuildingColumns = true

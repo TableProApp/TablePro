@@ -10,6 +10,8 @@ internal struct ResultsJsonView: View {
     let tableRows: TableRows
     let selectedRowIndices: Set<Int>
     let displayIDs: [RowID]?
+    let deletedRowIndices: Set<Int>
+    let valueFilter: GridValueFilterState
     let dataRevision: Int
     let displayRevision: Int
     let columnLayout: ColumnLayoutState
@@ -21,6 +23,7 @@ internal struct ResultsJsonView: View {
     @State private var prettyText = ""
     @State private var cachedJson = ""
     @State private var resolvedRowCount: Int
+    @State private var heldBackDeletionCount = 0
     @State private var hasRendered = false
     @State private var copied = false
     @State private var copyCooldownTask: Task<Void, Never>?
@@ -29,6 +32,8 @@ internal struct ResultsJsonView: View {
         tableRows: TableRows,
         selectedRowIndices: Set<Int>,
         displayIDs: [RowID]?,
+        deletedRowIndices: Set<Int>,
+        valueFilter: GridValueFilterState,
         dataRevision: Int,
         displayRevision: Int,
         columnLayout: ColumnLayoutState
@@ -36,12 +41,16 @@ internal struct ResultsJsonView: View {
         self.tableRows = tableRows
         self.selectedRowIndices = selectedRowIndices
         self.displayIDs = displayIDs
+        self.deletedRowIndices = deletedRowIndices
+        self.valueFilter = valueFilter
         self.dataRevision = dataRevision
         self.displayRevision = displayRevision
         self.columnLayout = columnLayout
         self._viewMode = State(initialValue: AppSettingsManager.shared.editor.jsonViewerPreferredMode)
         self._resolvedRowCount = State(
-            initialValue: selectedRowIndices.isEmpty ? tableRows.count : selectedRowIndices.count
+            initialValue: selectedRowIndices.isEmpty
+                ? (displayIDs?.count ?? tableRows.count)
+                : selectedRowIndices.count
         )
     }
 
@@ -49,6 +58,8 @@ internal struct ResultsJsonView: View {
         let dataRevision: Int
         let displayRevision: Int
         let selectedRowIndices: Set<Int>
+        let deletedRowIndices: Set<Int>
+        let valueFilter: GridValueFilterState
         let hiddenColumns: Set<String>
         let columnOrder: [String]?
     }
@@ -58,14 +69,28 @@ internal struct ResultsJsonView: View {
             dataRevision: dataRevision,
             displayRevision: displayRevision,
             selectedRowIndices: selectedRowIndices,
+            deletedRowIndices: deletedRowIndices,
+            valueFilter: valueFilter,
             hiddenColumns: columnLayout.hiddenColumns,
             columnOrder: columnLayout.columnOrder
         )
     }
 
+    /// Says how much of the result is on screen, and why the rest is not.
+    ///
+    /// Rows marked for deletion are left out of the document, so the count has to name them or they
+    /// read as rows that silently went missing.
     private var rowCountText: String {
         let rowCount = tableRows.count
-        if selectedRowIndices.isEmpty || resolvedRowCount == rowCount {
+        if heldBackDeletionCount > 0 {
+            return String(
+                format: String(localized: "%1$d of %2$d rows, %3$d marked for deletion"),
+                resolvedRowCount,
+                rowCount,
+                heldBackDeletionCount
+            )
+        }
+        if resolvedRowCount == rowCount {
             return String(format: String(localized: "%d rows"), rowCount)
         }
         return String(format: String(localized: "%d of %d rows"), resolvedRowCount, rowCount)
@@ -184,6 +209,7 @@ internal struct ResultsJsonView: View {
         let snapshot = tableRows
         let ids = displayIDs
         let selectedIndices = selectedRowIndices
+        let deletedIndices = deletedRowIndices
         let layout = columnLayout
 
         let result = await Task.detached(priority: .userInitiated) {
@@ -191,6 +217,7 @@ internal struct ResultsJsonView: View {
                 tableRows: snapshot,
                 displayIDs: ids,
                 selectedIndices: selectedIndices,
+                deletedIndices: deletedIndices,
                 columnLayout: layout
             )
         }.value
@@ -199,6 +226,7 @@ internal struct ResultsJsonView: View {
         cachedJson = result.json
         prettyText = result.pretty
         resolvedRowCount = result.resolvedCount
+        heldBackDeletionCount = result.skippedDeletedCount
         switch result.parseResult {
         case .success(let node):
             parsedTree = node
@@ -210,24 +238,34 @@ internal struct ResultsJsonView: View {
         hasRendered = true
     }
 
+    struct RenderedJson {
+        let json: String
+        let pretty: String
+        let resolvedCount: Int
+        let skippedDeletedCount: Int
+        let parseResult: Result<JSONTreeNode, JSONTreeParseError>
+    }
+
     /// Renders the rows the grid is showing, through the same serializer as Copy as JSON.
     nonisolated static func computeJson(
         tableRows: TableRows,
         displayIDs: [RowID]?,
         selectedIndices: Set<Int>,
+        deletedIndices: Set<Int> = [],
         columnLayout: ColumnLayoutState
-    ) -> (json: String, pretty: String, resolvedCount: Int, parseResult: Result<JSONTreeNode, JSONTreeParseError>) {
+    ) -> RenderedJson {
         let output = ResultJsonSerializer.serialize(
             tableRows: tableRows,
             displayIDs: displayIDs,
             selectedDisplayIndices: selectedIndices,
+            deletedDisplayIndices: deletedIndices,
             columns: .fromColumnLayout(columnLayout, columns: tableRows.columns)
         )
-        let pretty = output.json.prettyPrintedAsJson() ?? output.json
-        return (
+        return RenderedJson(
             json: output.json,
-            pretty: pretty,
+            pretty: output.json.prettyPrintedAsJson() ?? output.json,
             resolvedCount: output.rowCount,
+            skippedDeletedCount: output.skippedDeletedCount,
             parseResult: JSONTreeParser.parse(output.json)
         )
     }

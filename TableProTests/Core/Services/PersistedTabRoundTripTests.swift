@@ -78,6 +78,179 @@ struct PersistedTabRoundTripTests {
         #expect(tab.toPersistedTab().restoredPage == nil)
     }
 
+    // MARK: - A tab that is restored but never selected
+
+    /// Only the selected tab runs the first load that consumes the pending sort and page, but every
+    /// save maps every tab through toPersistedTab. Re-deriving from live state wrote nil for the
+    /// others, so their sort and page were gone by the third launch without the user touching them.
+    @Test("An unactivated tab re-emits the sort it has not consumed yet")
+    func unconsumedSortSurvivesResave() {
+        var tab = tableTab()
+        tab.sortState = SortState(
+            columns: [SortColumn(columnIndex: 0, direction: .descending, columnName: "created_at")],
+            source: .user
+        )
+
+        let restored = QueryTab(from: tab.toPersistedTab(), defaultPageSize: 1_000)
+        let resaved = restored.toPersistedTab()
+
+        #expect(resaved.sortColumns?.count == 1)
+        #expect(resaved.sortColumns?[0].columnName == "created_at")
+        #expect(resaved.sortColumns?[0].direction == .descending)
+    }
+
+    @Test("An unactivated tab re-emits the page it has not consumed yet")
+    func unconsumedPageSurvivesResave() {
+        var tab = tableTab()
+        tab.pagination.currentPage = 7
+
+        let restored = QueryTab(from: tab.toPersistedTab(), defaultPageSize: 1_000)
+        let resaved = restored.toPersistedTab()
+
+        #expect(resaved.restoredPage == 7)
+    }
+
+    @Test("Repeated saves without activation keep the state indefinitely")
+    func stateSurvivesRepeatedResaves() {
+        var tab = tableTab()
+        tab.pagination.currentPage = 4
+        tab.sortState = SortState(
+            columns: [SortColumn(columnIndex: 0, direction: .ascending, columnName: "id")],
+            source: .user
+        )
+
+        var persisted = tab.toPersistedTab()
+        for _ in 0..<3 {
+            persisted = QueryTab(from: persisted, defaultPageSize: 1_000).toPersistedTab()
+        }
+
+        #expect(persisted.restoredPage == 4)
+        #expect(persisted.sortColumns?[0].columnName == "id")
+    }
+
+    // MARK: - The page size the page index was counted in
+
+    /// A page index means nothing on its own: the offset is recomputed as (page - 1) * pageSize.
+    /// Reading a page counted in 50s as pages of 1000 lands the tab on rows it never showed.
+    @Test("A persisted page carries the page size it was counted in")
+    func persistedPageCarriesItsPageSize() {
+        var tab = tableTab()
+        tab.pagination.pageSize = 50
+        tab.pagination.currentPage = 20
+
+        let persisted = tab.toPersistedTab()
+
+        #expect(persisted.restoredPage == 20)
+        #expect(persisted.restoredPageSize == 50)
+        #expect(QueryTab(from: persisted, defaultPageSize: 1_000).restoredPageSize == 50)
+    }
+
+    @Test("Page 1 carries no page size, so Show All never restores a huge page")
+    func pageOneCarriesNoPageSize() {
+        var tab = tableTab()
+        tab.pagination.pageSize = 5_000_000
+        tab.pagination.currentPage = 1
+
+        let persisted = tab.toPersistedTab()
+
+        #expect(persisted.restoredPage == nil)
+        #expect(persisted.restoredPageSize == nil)
+    }
+
+    @Test("An unactivated tab re-emits its page size along with its page")
+    func unconsumedPageSizeSurvivesResave() {
+        var tab = tableTab()
+        tab.pagination.pageSize = 50
+        tab.pagination.currentPage = 20
+
+        let restored = QueryTab(from: tab.toPersistedTab(), defaultPageSize: 1_000)
+        let resaved = restored.toPersistedTab()
+
+        #expect(resaved.restoredPage == 20)
+        #expect(resaved.restoredPageSize == 50)
+    }
+
+    // MARK: - The fallback must not outlive the restore it stands in for
+
+    /// The pending values stand in for a restore that has not happened yet. Once the tab has run,
+    /// the live state is the truth, or a page the user has since left would be pinned forever with
+    /// nothing able to correct it.
+    @Test("Once the tab has run, live state wins over an unconsumed page")
+    func executedTabPrefersLiveState() {
+        var tab = tableTab()
+        tab.pagination.currentPage = 12
+        let restored = QueryTab(from: tab.toPersistedTab(), defaultPageSize: 1_000)
+
+        var paged = restored
+        paged.execution.lastExecutedAt = Date()
+        paged.pagination.currentPage = 1
+
+        #expect(paged.restoredPage == 12)
+        #expect(paged.toPersistedTab().restoredPage == nil)
+    }
+
+    @Test("Once the tab has run, clearing the sort clears it in persistence too")
+    func executedTabDropsUnconsumedSort() {
+        var tab = tableTab()
+        tab.sortState = SortState(
+            columns: [SortColumn(columnIndex: 0, direction: .ascending, columnName: "id")],
+            source: .user
+        )
+        var restored = QueryTab(from: tab.toPersistedTab(), defaultPageSize: 1_000)
+        restored.execution.lastExecutedAt = Date()
+
+        #expect(restored.toPersistedTab().sortColumns == nil)
+    }
+
+    /// Consumption is gated on table tabs, so a query tab would never clear a pending sort and it
+    /// would reappear in the persisted record after the user cleared it.
+    @Test("A query tab does not carry a pending sort forward")
+    func queryTabDropsPendingSort() {
+        var tab = tableTab()
+        tab.sortState = SortState(
+            columns: [SortColumn(columnIndex: 0, direction: .ascending, columnName: "id")],
+            source: .user
+        )
+        var restored = QueryTab(from: tab.toPersistedTab(), defaultPageSize: 1_000)
+        restored.tabType = .query
+
+        #expect(restored.toPersistedTab().sortColumns == nil)
+    }
+
+    @Test("A restored page size outside the supported range is clamped")
+    func restoredPageSizeIsClamped() {
+        let absurd = PersistedTab(
+            id: UUID(),
+            title: "users",
+            query: "SELECT * FROM users",
+            tabType: .table,
+            tableName: "users",
+            restoredPage: 2,
+            restoredPageSize: 5_000_000
+        )
+
+        let restored = QueryTab(from: absurd, defaultPageSize: 1_000)
+
+        #expect(restored.restoredPageSize == SettingsValidationRules.defaultPageSizeRange.upperBound)
+    }
+
+    @Test("A tab saved before page sizes were persisted still restores its page")
+    func legacyTabWithoutPageSizeStillRestores() {
+        let legacy = PersistedTab(
+            id: UUID(),
+            title: "users",
+            query: "SELECT * FROM users",
+            tabType: .table,
+            tableName: "users",
+            restoredPage: 3
+        )
+
+        let restored = QueryTab(from: legacy, defaultPageSize: 1_000)
+
+        #expect(restored.restoredPage == 3)
+        #expect(restored.restoredPageSize == nil)
+    }
+
     @Test("Cursor offset round-trips for query tabs")
     func cursorOffsetRoundTrip() {
         var tab = QueryTab(id: UUID(), title: "Q", query: "SELECT * FROM users", tabType: .query)

@@ -23,7 +23,8 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         SourceEditor.Coordinator(
             text: .binding(Binding(get: get, set: { set($0) })),
             editorState: .constant(SourceEditorState()),
-            highlightProviders: nil
+            highlightProviders: nil,
+            textCoordinators: []
         )
     }
 

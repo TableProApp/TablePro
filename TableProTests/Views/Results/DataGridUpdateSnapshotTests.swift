@@ -22,7 +22,6 @@ struct DataGridUpdateSnapshotTests {
             rowDisplayCount: rowDisplayCount,
             columnCount: columns.count,
             columns: columns,
-            sortedIDsCount: nil,
             valueFilteredIDsCount: nil,
             displayFormats: displayFormats,
             configuration: DataGridConfiguration(),

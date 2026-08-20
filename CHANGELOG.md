@@ -29,9 +29,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Picking a database in the connections strip returns you to the tab you last used in it, the way picking a connection already returns you to that connection's tab. A database with nothing open just moves the object browser, as before. (#2217)
 - Two tabs showing objects with the same name from different databases now carry the database in their names, so two tabs called `orders` read as `app.orders` and `staging.orders`. A name no other tab uses stays short. Hovering a tab, or reading it with VoiceOver, always names its database. (#2217)
 - Save in the "Do you want to save changes?" prompt now closes what you asked to close once the save lands. Closing a group of tabs, or closing a connection, used to save and then leave everything open.
+- A column value filter survives switching result mode and switching tabs, instead of being dropped the moment the grid left the screen. Running a query, turning a page, refreshing, or moving to another result of the same script still clears it, because the values you picked came from the rows being replaced. (#2251)
 
 ### Fixed
 
+- JSON result mode shows the rows the grid is showing, in the same order, and a row you selected in Data mode resolves to that same row. With a column value filter on, it listed every loaded row in fetch order and a selection pointed somewhere else. The row inspector had the same problem in JSON mode, and editing a field there wrote the change to the wrong row. (#2251)
+- Rows you marked for deletion no longer appear in JSON result mode. They kept rendering unchanged, so Save lit up with nothing visibly different. The count line says how many are held back. Copy as JSON in the grid still copies every row you selected. (#2251)
+- Every restored tab hides the columns you hid for its table, not just the tab that was in front. The others came back showing every column, and hiding one there wrote that single column over the table's saved set, losing the rest.
+- A query tab reopens with the caret where you left it, even if it was not the tab in front when you quit. The position was recorded only for the selected tab, so switching to another tab threw away the position that was already saved, and looking at a restored tab was enough to lose it.
+- Reopening a session keeps the sort and the page number on every restored tab, not just the one that was in front. The others held their saved sort and page until you clicked them, and the next save wrote the tab out without either, so a tab you did not visit lost them for good.
+- A restored tab reopens on the rows it was showing. The page number was saved without the page size it was counted in, so a tab left on page 12 of 100 rows came back as page 12 of the default 1,000 and landed 11,000 rows further down, usually on an empty grid.
+- Scrolling a result with hundreds of columns is no longer slow. Every column built a cell for every row on screen whether or not it was anywhere near the viewport, so a 500-column table carried about 18,000 live cells and laid all of them out on each frame. Only the columns near the viewport are built now, and the rest keep their width so the horizontal scroller still spans the whole result. (#1219)
+- A column you hid keeps its place in the column order. The order was saved from the columns the query returned, and a hidden column is left out of that query, so its position was erased and Show All put it back at the far right of a grid you had arranged.
+- A row you are inserting shows empty values in JSON result mode for the columns the server fills in, instead of printing TablePro's internal marker for them as though it were data.
 - `Cmd+F` no longer opens a find bar in JSON result mode. It searched the data grid's cells through the grid, which is not mounted there, so it always reported no matches whatever you typed. The Tree view keeps its own search field. (#2244)
 - The Filters button and `Cmd+Option+F` now open the filter panel in JSON result mode, where they used to flip a switch and draw nothing. Applying a filter re-runs the query, so the JSON shows the filtered rows. (#2244)
 - Add Row, Duplicate Row, Paste and Delete no longer collapse the JSON view to the single row they touched. Each command selected that row so the grid could scroll to it, and JSON mode reads the same selection as "show only these rows", so the document appeared to empty out. (#2244)
@@ -81,10 +91,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Staged structure changes survive switching tabs, and switching a table tab between Data and Structure. Adding a column or an index and then looking at anything else threw the pending change away, with no prompt and nothing in Undo.
 - A table definition in progress survives switching tabs. Naming a new table and defining its columns, then clicking any other tab, used to discard the whole definition.
 - Closing a tab with staged structure changes or an unfinished table definition asks before discarding them, and they count as unsaved work when you close the window or quit.
-
-### Fixed
-
 - Timestamps written with a space before the time zone offset, or with fractional seconds, are now shown in your chosen date format instead of as raw text. PostgreSQL `timestamptz` and MySQL `DATETIME(6)` values used to slip through unformatted while the same instant written in ISO form was formatted.
+- Switching to another connection no longer empties the SQL editor. Typing into the blank editor replaced the query you had written, and the same switch cleared undo history, turned off syntax highlighting, and left the editor's own shortcuts (comment, indent, duplicate line, delete line, move line, manual completion) and Vim mode dead for the rest of the tab's life. (#2236)
 
 ## [0.66.0] - 2026-08-19
 

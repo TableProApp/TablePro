@@ -124,7 +124,6 @@ struct SQLEditorView: View {
         }
         .onDisappear {
             teardownFavoritesObserver()
-            coordinator.destroy()
         }
         .onChange(of: coordinator.vimMode) { _, newMode in
             vimMode = newMode
@@ -134,9 +133,6 @@ struct SQLEditorView: View {
     // MARK: - Initialization
 
     private func initializeEditor() {
-        if coordinator.isDestroyed {
-            coordinator.revive()
-        }
         completionAdapter.configure(schemaProvider: schemaProvider, databaseType: databaseType)
         setupFavoritesObserver()
     }

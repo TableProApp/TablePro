@@ -22,7 +22,7 @@ struct DataGridCellContent {
         case .null:
             return .null
         case .text(let value):
-            if value == "__DEFAULT__" { return .defaultMarker }
+            if value == PluginCellValue.defaultMarkerText { return .defaultMarker }
             return value.isEmpty ? .empty : nil
         case .bytes:
             return nil
