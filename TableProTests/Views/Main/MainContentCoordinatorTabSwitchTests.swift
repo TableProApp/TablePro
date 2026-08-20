@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import CodeEditSourceEditor
 import Foundation
 import SwiftUI
 import TableProPluginKit
@@ -890,5 +891,63 @@ struct MainContentCoordinatorTabSwitchTests {
             return
         }
         #expect(tabManager.tabs[index].columnLayout.hiddenColumns == ["email", "phone"])
+    }
+
+    // MARK: - The caret of the tab being left
+
+    /// One editor serves every query tab, so the live caret describes the outgoing tab only until
+    /// the switch completes. Persistence writes it for the selected tab alone, and the tab's own
+    /// restored value was already cleared when its editor consumed it, so a caret not captured on
+    /// the way out is simply gone.
+    @Test("Switching away from a query tab keeps its caret on the tab")
+    func switchingAwayCapturesTheCaret() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let first = addQueryTab(to: tabManager, title: "A", query: String(repeating: "SELECT 1;\n", count: 200))
+        let second = addQueryTab(to: tabManager, title: "B")
+
+        coordinator.cursorPositions = [CursorPosition(range: NSRange(location: 120, length: 8))]
+        tabManager.selectedTabId = second
+        coordinator.handleTabChange(from: first, to: second, tabs: tabManager.tabs)
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == first }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        #expect(tabManager.tabs[index].restoredCursorOffset == 120)
+        #expect(tabManager.tabs[index].restoredCursorLength == 8)
+    }
+
+    @Test("A captured caret survives into the persisted record")
+    func capturedCaretIsPersisted() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let first = addQueryTab(to: tabManager, title: "A", query: String(repeating: "SELECT 1;\n", count: 200))
+        let second = addQueryTab(to: tabManager, title: "B")
+
+        coordinator.cursorPositions = [CursorPosition(range: NSRange(location: 90, length: 0))]
+        tabManager.selectedTabId = second
+        coordinator.handleTabChange(from: first, to: second, tabs: tabManager.tabs)
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == first }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        #expect(tabManager.tabs[index].toPersistedTab().cursorOffset == 90)
+    }
+
+    @Test("Leaving a table tab records no caret")
+    func tableTabRecordsNoCaret() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let table = addTableTab(to: tabManager, tableName: "users")
+        let query = addQueryTab(to: tabManager, title: "B")
+
+        coordinator.cursorPositions = [CursorPosition(range: NSRange(location: 42, length: 0))]
+        tabManager.selectedTabId = query
+        coordinator.handleTabChange(from: table, to: query, tabs: tabManager.tabs)
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == table }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        #expect(tabManager.tabs[index].restoredCursorOffset == nil)
     }
 }

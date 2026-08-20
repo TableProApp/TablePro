@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Every restored tab hides the columns you hid for its table, not just the tab that was in front. The others came back showing every column, and hiding one there wrote that single column over the table's saved set, losing the rest.
+- A query tab reopens with the caret where you left it, even if it was not the tab in front when you quit. The position was recorded only for the selected tab, so switching to another tab threw away the position that was already saved, and looking at a restored tab was enough to lose it.
 - Reopening a session keeps the sort and the page number on every restored tab, not just the one that was in front. The others held their saved sort and page until you clicked them, and the next save wrote the tab out without either, so a tab you did not visit lost them for good.
 - A restored tab reopens on the rows it was showing. The page number was saved without the page size it was counted in, so a tab left on page 12 of 100 rows came back as page 12 of the default 1,000 and landed 11,000 rows further down, usually on an empty grid.
 - Scrolling a result with hundreds of columns is no longer slow. Every column built a cell for every row on screen whether or not it was anywhere near the viewport, so a 500-column table carried about 18,000 live cells and laid all of them out on each frame. Only the columns near the viewport are built now, and the rest keep their width so the horizontal scroller still spans the whole result. (#1219)

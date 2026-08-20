@@ -398,10 +398,13 @@ final class MainContentCoordinator {
                 return named
             }
         }
-        if tab.tabType == .query, tab.id == tabManager.selectedTabId {
-            let range = cursorPositions.first?.range
-            enriched.restoredCursorOffset = range?.location
-            enriched.restoredCursorLength = range.map(\.length)
+        // Only when there is a live caret to write. `cursorPositions` starts empty and is fed by
+        // the editor's own change events, so a tab whose editor never became first responder has
+        // none, and writing that absence over the tab's saved caret discards it.
+        if tab.tabType == .query, tab.id == tabManager.selectedTabId,
+           let range = cursorPositions.first?.range {
+            enriched.restoredCursorOffset = range.location
+            enriched.restoredCursorLength = range.length
         }
         return enriched
     }
