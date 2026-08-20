@@ -5,7 +5,7 @@ final class DataSettingsUITests: UITestCase {
         let app = try launchApp()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
 
-        let settingsMenuItem = app.menuBars.menuItems["Settings..."]
+        let settingsMenuItem = app.menuBars.menuItems["Settings…"]
         XCTAssertTrue(settingsMenuItem.waitForExistence(timeout: 10))
         settingsMenuItem.click()
 

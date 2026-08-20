@@ -69,7 +69,7 @@ struct CellDisplayFormatterTests {
     func longTextTruncated() {
         let longString = String(repeating: "a", count: CellDisplayFormatter.maxDisplayLength + 100)
         let result = CellDisplayFormatter.format(.text(longString), columnType: nil)
-        let expected = String(repeating: "a", count: CellDisplayFormatter.maxDisplayLength) + "..."
+        let expected = String(repeating: "a", count: CellDisplayFormatter.maxDisplayLength) + "…"
         #expect(result == expected)
     }
 

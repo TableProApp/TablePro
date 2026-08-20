@@ -48,7 +48,7 @@ final class RedisConnectionModeUITests: UITestCase {
     }
 
     private func openRedisConnectionForm(in app: XCUIApplication) throws {
-        let newConnection = app.menuBars.menuItems["New Connection..."]
+        let newConnection = app.menuBars.menuItems["New Connection…"]
         XCTAssertTrue(newConnection.waitForExistence(timeout: 10))
         newConnection.click()
 

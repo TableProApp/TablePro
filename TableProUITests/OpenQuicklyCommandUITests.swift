@@ -187,7 +187,7 @@ final class OpenQuicklyCommandUITests: UITestCase {
         XCTAssertTrue(fileMenu.waitForExistence(timeout: 10))
         fileMenu.click()
 
-        let openQuickly = app.menuBars.menuItems["Open Quickly..."]
+        let openQuickly = app.menuBars.menuItems["Open Quickly…"]
         XCTAssertTrue(openQuickly.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntilHittable(openQuickly, timeout: 5))
         openQuickly.click()

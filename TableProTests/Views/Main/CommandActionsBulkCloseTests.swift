@@ -218,9 +218,9 @@ struct CommandActionsBulkCloseTests {
         }
 
         #expect(schemaEngine.actions.closeTabsForOtherDatabasesTitle == "Close Tabs for Other Schemas")
-        #expect(schemaEngine.actions.openContainerSwitcherTitle == "Open Schema...")
+        #expect(schemaEngine.actions.openContainerSwitcherTitle == "Open Schema…")
         #expect(databaseEngine.actions.closeTabsForOtherDatabasesTitle == "Close Tabs for Other Databases")
-        #expect(databaseEngine.actions.openContainerSwitcherTitle == "Open Database...")
+        #expect(databaseEngine.actions.openContainerSwitcherTitle == "Open Database…")
     }
 
     // MARK: - Enablement

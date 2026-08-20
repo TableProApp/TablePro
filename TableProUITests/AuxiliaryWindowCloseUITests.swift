@@ -36,12 +36,12 @@ final class AuxiliaryWindowCloseUITests: UITestCase {
 
     func testCommandWClosesTheSettingsWindow() throws {
         let app = try launchShowingWelcome()
-        assertCommandWCloses(openWindow("settings", from: "Settings...", in: app), in: app)
+        assertCommandWCloses(openWindow("settings", from: "Settings…", in: app), in: app)
     }
 
     func testCommandWClosesTheIntegrationsActivityWindow() throws {
         let app = try launchShowingWelcome()
-        assertCommandWCloses(openWindow("integrations-activity", from: "Integrations...", in: app), in: app)
+        assertCommandWCloses(openWindow("integrations-activity", from: "Integrations…", in: app), in: app)
     }
 
     /// The welcome window used to answer the editor's own close command to get Command W back.

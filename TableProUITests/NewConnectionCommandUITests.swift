@@ -11,7 +11,7 @@ final class NewConnectionCommandUITests: UITestCase {
             "The welcome window should close, which is the state that broke New Connection"
         )
 
-        let newConnection = app.menuBars.menuItems["New Connection..."]
+        let newConnection = app.menuBars.menuItems["New Connection…"]
         XCTAssertTrue(newConnection.waitForExistence(timeout: 5))
         XCTAssertTrue(newConnection.isEnabled)
         newConnection.click()
