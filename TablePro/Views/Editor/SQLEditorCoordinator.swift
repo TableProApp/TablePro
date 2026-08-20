@@ -109,7 +109,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored private var vimCursorManager: VimCursorManager?
     @ObservationIgnored var onCloseTab: (() -> Void)?
     @ObservationIgnored var onExecuteQuery: (() -> Void)?
-    @ObservationIgnored var onRunStatement: ((String) -> Void)?
+    @ObservationIgnored var onRunStatement: ((String) -> Bool)?
     @ObservationIgnored var onAIExplain: ((String) -> Void)?
     @ObservationIgnored var onAIOptimize: ((String) -> Void)?
     @ObservationIgnored var onSaveAsFavorite: ((String) -> Void)?
@@ -316,7 +316,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         statementRunController.dialect = SqlDialect.from(databaseTypeId: (databaseType ?? .mysql).rawValue)
         statementRunController.isHighlightEnabled = AppSettingsManager.shared.editor.highlightCurrentStatement
         statementRunController.onRun = { [weak self] sql in
-            self?.onRunStatement?(sql)
+            self?.onRunStatement?(sql) ?? false
         }
         statementRunController.install(on: controller)
     }
@@ -331,6 +331,28 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         guard statementRunController.isHighlightEnabled != isEnabled else { return }
         statementRunController.isHighlightEnabled = isEnabled
         statementRunController.refreshHighlight(in: controller)
+    }
+
+    /// Moves the caret to the neighbouring statement.
+    func moveCursorToStatement(_ direction: StatementNavigationDirection) {
+        statementRunController.moveCursor(direction, in: controller)
+    }
+
+    /// Runs the statement the caret is in, then moves the caret to the next one.
+    ///
+    /// Both halves go through this one editor. Reading the SQL here and executing it somewhere else would let the two
+    /// name different editors: a window hosts a workspace per connection and their editors all stay registered, so a
+    /// command that resolves its text through the window and its execution through the selected workspace can send
+    /// one connection's statement to another connection's database. `onRunStatement` is the same callback the gutter
+    /// control uses, and the view binds it to the coordinator that owns this editor.
+    func runStatementAtCursorAndAdvance() {
+        guard let sql = statementRunController.statementAtCursor(in: controller),
+              let run = onRunStatement else {
+            return
+        }
+
+        guard run(sql) else { return }
+        moveCursorToStatement(.next)
     }
 
     private func installAIContextMenu(controller: TextViewController) {

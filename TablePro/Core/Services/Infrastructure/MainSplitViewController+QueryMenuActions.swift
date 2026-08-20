@@ -42,6 +42,18 @@ extension MainSplitViewController {
         commandActions?.unfoldAll()
     }
 
+    @objc func goToPreviousStatement(_ sender: Any?) {
+        commandActions?.goToPreviousStatement()
+    }
+
+    @objc func goToNextStatement(_ sender: Any?) {
+        commandActions?.goToNextStatement()
+    }
+
+    @objc func runStatementAndAdvance(_ sender: Any?) {
+        commandActions?.runStatementAndAdvance()
+    }
+
     @objc func previewSQL(_ sender: Any?) {
         commandActions?.previewSQL()
     }
