@@ -92,6 +92,11 @@ A tab can hold many statements, and the editor marks which one it is about to ru
 - A `BEGIN ... END` body counts as one statement, so a trigger or stored procedure gets one button rather than one per line inside it. `BEGIN;` and `BEGIN TRANSACTION;` are statements of their own.
 - Turn either off in **Settings > Editor** with **Highlight current statement** and **Run button beside each statement**.
 
+<Frame caption="A run control beside each statement, and a band over the one at the cursor">
+  <img className="block dark:hidden" src="/images/sql-editor-statement-run.png" alt="Statement run controls in the editor gutter" />
+  <img className="hidden dark:block" src="/images/sql-editor-statement-run-dark.png" alt="Statement run controls in the editor gutter" />
+</Frame>
+
 ### Automatic Row Limit
 
 SELECT and WITH queries without their own `LIMIT` or `FETCH FIRST` run with the configured row cap:
