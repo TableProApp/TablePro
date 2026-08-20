@@ -711,9 +711,11 @@ final class MainContentCommandActions {
     /// The save half of a close, shared by the tab close, the window close and the batch close so
     /// the three cannot drift on what Save means. Returns whether the caller may go on to close.
     ///
-    /// False comes back for exactly one case: user and role changes can only be applied after the
-    /// SQL is reviewed, so Save opens the review sheet and stands the close down. Falling through
-    /// there would close over the sheet and destroy every staged change.
+    /// False comes back whenever the work is still staged after the attempt, because the caller
+    /// goes on to close and closing destroys it. User and role changes can only be applied after
+    /// the SQL is reviewed, so Save opens the review sheet and stands the close down; a schema
+    /// change that Safe Mode refused, that the user cancelled at the destructive prompt, or that
+    /// the server rejected stands it down for the same reason.
     func saveSelectedTabWork() async -> Bool {
         guard let coordinator = coordinator else { return true }
 
@@ -722,10 +724,16 @@ final class MainContentCommandActions {
             return false
         }
 
-        // Structure view saves via direct coordinator call
-        if coordinator.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            coordinator.structureActions?.saveChanges?()
-            return true
+        /// Asked of the tab's session rather than of the view on screen. `hasUnsavedWork` reads the
+        /// session too, so the prompt that offered Save can be raised by a tab showing its Data
+        /// view, or by a background tab in a batch close. Keying this on `resultsViewMode` meant
+        /// those answers ran nothing, reported success, and closed over the staged ALTERs.
+        if let tabId = coordinator.tabManager.selectedTabId,
+           let session = coordinator.structureSessions[tabId],
+           session.changeManager.hasChanges {
+            guard await session.applyStagedChanges(coordinator: coordinator).allowsClose else {
+                return false
+            }
         }
 
         // Data grid changes or pending table operations take priority
@@ -755,12 +763,43 @@ final class MainContentCommandActions {
     }
 
     private func saveAndClose(asBatchSurvivor: Bool?) async -> Bool {
-        guard coordinator != nil else {
+        guard let coordinator else {
             finish(asBatchSurvivor: asBatchSurvivor)
             return true
         }
+        guard await applyStagedStructureEdits(in: coordinator.tabManager.tabs) else { return false }
         guard await saveSelectedTabWork() else { return false }
         finish(asBatchSurvivor: asBatchSurvivor)
+        return true
+    }
+
+    /// Save on a prompt raised for the whole window or the whole batch has to reach every tab it
+    /// asked about, not just the selected one. `hasUnsavedWorkInWindow` and
+    /// `hasUnsavedWorkInConnection` both walk every tab's session, so a background tab's staged
+    /// ALTERs are exactly what the user has been asked about. The selected tab is skipped here
+    /// because `saveSelectedTabWork` takes it, along with its data-grid edits.
+    func applyStagedStructureEdits(in tabs: [QueryTab]) async -> Bool {
+        guard let coordinator else { return true }
+        let selectedId = coordinator.tabManager.selectedTabId
+        let victims = tabs.filter { tab in
+            tab.id != selectedId && coordinator.structureSessions[tab.id]?.changeManager.hasChanges == true
+        }
+        guard !victims.isEmpty else { return true }
+
+        /// Every apply broadcasts a data refresh for its scope, and a mounted structure view on the
+        /// same database answers that by asking whether to discard its own staged edits. Mid-close
+        /// that question is both unanswerable and destructive, so the views stand down while this
+        /// runs. Scoped by `defer` rather than latched, because a flag with no exit is how this
+        /// area has gone deaf before.
+        coordinator.isApplyingStagedStructureEdits = true
+        defer { coordinator.isApplyingStagedStructureEdits = false }
+
+        for tab in victims {
+            guard let session = coordinator.structureSessions[tab.id] else { continue }
+            guard await session.applyStagedChanges(coordinator: coordinator).allowsClose else {
+                return false
+            }
+        }
         return true
     }
 
@@ -920,6 +959,19 @@ final class MainContentCommandActions {
 
     // MARK: - Data Operations (Group A — Called Directly)
 
+    /// Cmd+S on a tab showing its structure. Which sub-tab is on screen makes no difference: DDL,
+    /// Parts and Triggers are read-only views of the same table, and refusing to save from them
+    /// used to make Cmd+S silently inert. The results mode still gates this, because Cmd+S saves
+    /// what you are looking at; the close prompt asks a different question and reaches the session
+    /// whatever the tab is showing.
+    private func applyStagedStructureChanges() {
+        guard let coordinator,
+              let tabId = coordinator.tabManager.selectedTabId,
+              let session = coordinator.structureSessions[tabId],
+              session.changeManager.hasChanges else { return }
+        Task { _ = await session.applyStagedChanges(coordinator: coordinator) }
+    }
+
     func saveChanges() {
         if isUsersRolesTab {
             coordinator?.usersRolesActions?.reviewAndApply()
@@ -930,7 +982,7 @@ final class MainContentCommandActions {
             return
         }
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            coordinator?.structureActions?.saveChanges?()
+            applyStagedStructureChanges()
         } else if coordinator?.changeManager.hasChanges == true
             || !pendingTruncates.wrappedValue.isEmpty
             || !pendingDeletes.wrappedValue.isEmpty {

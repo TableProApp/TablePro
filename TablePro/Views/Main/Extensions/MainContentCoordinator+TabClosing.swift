@@ -28,6 +28,21 @@ extension MainContentCoordinator {
         persistence.clearForUserClosedAllTabs()
     }
 
+    /// A retarget keeps the tab's id and throws away everything the id used to mean, so the
+    /// per-tab caches keyed on that id now describe a table the tab no longer shows. Left behind,
+    /// the structure session goes on reporting staged ALTERs, which raises an unsaved-changes prompt
+    /// naming the previous table and offers to apply its statements from a tab that cannot show
+    /// them. `selectedTabHoldsProtectedContent` is what stops a tab holding real work being
+    /// retargeted at all; this is what keeps the caches honest once one without work has been.
+    func releaseRetargetedTabState(for tabId: UUID) {
+        structureSessions.removeValue(forKey: tabId)?.releaseViewWiring()
+        createTableDrafts.removeValue(forKey: tabId)
+        tabsWithStagedPrincipals.remove(tabId)
+        toolbarState.hasStructureChanges = false
+        toolbarState.hasCreateTablePending = false
+        toolbarState.hasPrincipalChanges = false
+    }
+
     /// A closed tab has to take its coordinator-side state with it, and this is the only place that
     /// can: `handleTabChange` snapshots a tab by looking it up in `tabManager.tabs`, and by the time
     /// it runs the tab is already gone. So it must happen before `tabManager.closeTab(id:)`, which
@@ -42,7 +57,7 @@ extension MainContentCoordinator {
             WindowLifecycleMonitor.shared.unregisterSourceFile(url)
         }
         tabsWithStagedPrincipals.remove(tab.id)
-        structureSessions.removeValue(forKey: tab.id)
+        structureSessions.removeValue(forKey: tab.id)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tab.id)
         guard isSelectedTab(tab) else { return }
         changeManager.clearChangesAndUndoHistory()

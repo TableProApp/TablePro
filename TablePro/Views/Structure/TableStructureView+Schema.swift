@@ -26,9 +26,7 @@ extension TableStructureView {
         }
 
         if skipSchemaPreview {
-            Task {
-                await executeSchemaChanges()
-            }
+            Task { _ = await session.applyStagedChanges(coordinator: coordinator) }
             return
         }
 
@@ -52,91 +50,28 @@ extension TableStructureView {
         coordinator?.activeSheet = .sqlPreview
     }
 
-    func executeSchemaChanges() async {
-        let liveSafeModeLevel = coordinator?.safeModeLevel ?? connection.safeModeLevel
-        guard !liveSafeModeLevel.blocksAllWrites else {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Safe Mode Is Read-Only"),
-                message: String(
-                    localized: "Cannot save schema changes: TablePro's Safe Mode is set to read-only for this connection."
-                ),
-                window: coordinator?.contentWindow
-            )
-            return
-        }
-
-        let changes = structureChangeManager.getChangesArray()
-        guard !changes.isEmpty else { return }
-
-        let saveScope = scope
-
-        let destructiveChanges = changes.filter { $0.requiresDataMigration }
-        if !destructiveChanges.isEmpty {
-            let descriptions = destructiveChanges.map { $0.description }
-            let message = String(
-                format: String(localized: "The following changes may cause data loss:\n\n%@\n\nDo you want to proceed?"),
-                descriptions.joined(separator: "\n")
-            )
-
-            let confirmed = await AlertHelper.confirmDestructive(
-                title: String(localized: "Destructive Changes"),
-                message: message,
-                confirmButton: String(localized: "Apply Changes"),
-                cancelButton: String(localized: "Cancel"),
-                window: coordinator?.contentWindow
-            )
-            guard confirmed else { return }
-        }
-
-        /// Started here, not at the top of the function. The destructive-changes prompt sits above
-        /// this and the user can take as long as they like over it, so a clock started earlier
-        /// measures their reading time and reports an instant ALTER as having taken a minute.
-        let operationStart = ContinuousClock.Instant.now
-
-        // Set flag BEFORE calling DatabaseManager (so we ignore its refresh notification)
+    /// The part of a save only a mounted view can do: refetch the sub-tab the user is looking at
+    /// and repaint the grid. Driven by `session.appliedVersion` rather than called from the save,
+    /// so it runs exactly when there is a view to run it and never otherwise.
+    func refreshAfterApply() async {
         isReloadingAfterSave = true
+        await reloadCoreTabs()
+        loadSchemaForEditing()
+        await loadTabDataIfNeeded(selectedTab)
 
-        do {
-            try await DatabaseManager.shared.executeSchemaChanges(
-                tableName: tableName,
-                changes: changes,
-                databaseType: connection.type,
-                scope: saveScope
-            )
+        /// Save resets the manager (pendingChanges cleared, working state refetched from the
+        /// database) but the row count is usually unchanged after a rename or a type change, so
+        /// `DataGridView.updateNSView` does not call `reloadData` on its own. Ask the grid to
+        /// repaint visible cells so the modified tint clears and any value the round trip changed
+        /// shows its canonical post-save form.
+        gridDelegate.reloadAllVisibleRows()
 
-            tabData.markAllStale()
-            await reloadCoreTabs()
-
-            loadSchemaForEditing()
-
-            await loadTabDataIfNeeded(selectedTab)
-
-            // Force clear state after reload (in case it got set during the async process)
-            structureChangeManager.discardChanges()
-
-            // Save resets the manager (pendingChanges cleared, working state
-            // refetched from DB) but row count is usually unchanged after a
-            // rename / type-change, so `DataGridView.updateNSView` does not
-            // call `reloadData` on its own. Ask the grid to repaint visible
-            // cells so the modified yellow tint clears and any value the DB
-            // round-trip changed (collation defaults, etc.) shows the canonical
-            // post-save value.
-            gridDelegate.reloadAllVisibleRows()
-
-            lastSaveTime = Date()
-            isReloadingAfterSave = false
-            reportSchemaChangeFinished(.succeeded(OperationSummary()), startedAt: operationStart)
-        } catch {
-            isReloadingAfterSave = false
-            reportSchemaChangeFinished(
-                .failed(reason: error.localizedDescription), startedAt: operationStart
-            )
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Error Applying Changes"),
-                message: error.localizedDescription,
-                window: coordinator?.contentWindow
-            )
-        }
+        /// The apply cleared this so an unmounted tab refetches on its next mount. This view has
+        /// just done that refetch, so the session is loaded again. Leaving it false would make the
+        /// next remount run `loadInitialData`, and `loadSchemaForEditing` re-baselines the change
+        /// manager, so anything staged since the save would be discarded without a prompt.
+        session.hasLoaded = true
+        isReloadingAfterSave = false
     }
 
     func discardChanges() {
@@ -266,22 +201,5 @@ extension TableStructureView {
                 )
             }
         }
-    }
-
-    private func reportSchemaChangeFinished(
-        _ outcome: OperationOutcome,
-        startedAt: ContinuousClock.Instant
-    ) {
-        OperationCompletionReporter.shared.report(
-            OperationCompletion(
-                kind: .schemaChange,
-                owner: .connection(connection.id),
-                connectionId: connection.id,
-                connectionName: connection.name,
-                databaseName: coordinator?.browseDatabaseName,
-                elapsed: startedAt.duration(to: .now),
-                outcome: outcome
-            )
-        )
     }
 }

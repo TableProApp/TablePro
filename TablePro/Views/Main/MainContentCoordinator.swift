@@ -140,6 +140,12 @@ final class MainContentCoordinator {
     /// Direct reference to structure view actions — eliminates notification broadcasts
     weak var structureActions: StructureViewActionHandler?
 
+    /// Raised while a close is applying the staged structure edits of tabs it is about to close.
+    /// Each apply broadcasts a data refresh for its scope, and a mounted structure view on the same
+    /// database answers that by asking whether to discard its own staged edits, which mid-close is
+    /// a question the user cannot usefully answer. Scoped by the caller's `defer`, never latched.
+    var isApplyingStagedStructureEdits = false
+
     /// Direct reference to create-table view actions so the Save Changes menu
     /// (Cmd+S) routes to table creation. Set by `CreateTableView` on appear.
     weak var createTableActions: CreateTableActionHandler?
@@ -546,8 +552,9 @@ final class MainContentCoordinator {
         if displayOrderCache.keys.contains(where: { !openTabIds.contains($0) }) {
             displayOrderCache = displayOrderCache.filter { openTabIds.contains($0.key) }
         }
-        if structureSessions.keys.contains(where: { !openTabIds.contains($0) }) {
-            structureSessions = structureSessions.filter { openTabIds.contains($0.key) }
+        for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
+            session.releaseViewWiring()
+            structureSessions.removeValue(forKey: tabId)
         }
         if createTableDrafts.keys.contains(where: { !openTabIds.contains($0) }) {
             createTableDrafts = createTableDrafts.filter { openTabIds.contains($0.key) }
@@ -591,6 +598,7 @@ final class MainContentCoordinator {
         tabManager.onTabRetargeted = { [weak self] tabId in
             self?.dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
             self?.supersedeExecution(for: tabId)
+            self?.releaseRetargetedTabState(for: tabId)
         }
 
         // Synchronous save at quit time. NotificationCenter with queue: .main
@@ -852,6 +860,12 @@ final class MainContentCoordinator {
         dataTabDelegate?.tableViewCoordinator?.releaseData()
 
         tabSessionRegistry.removeAll()
+        /// The delegate a session owns holds closures the mounted view installed, and those capture
+        /// the view, which holds this coordinator. Dropping the dictionary is not enough to break
+        /// that, so the wiring is released explicitly here as well as at every per-tab drop site.
+        for session in structureSessions.values { session.releaseViewWiring() }
+        structureSessions.removeAll()
+        createTableDrafts.removeAll()
         displayFormatsCache.removeAll()
         displayOrderCache.removeAll()
         schemaColumns.removeAll()
