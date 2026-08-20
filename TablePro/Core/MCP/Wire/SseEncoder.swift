@@ -27,32 +27,29 @@ public enum SseEncoder {
 
     private static func splitLines(_ value: String) -> [String] {
         var lines: [String] = []
-        var current = ""
-        let characters = Array(value)
-        var index = 0
-        while index < characters.count {
-            let char = characters[index]
-            if char == "\r" {
-                lines.append(current)
-                current = ""
-                let nextIndex = index + 1
-                if nextIndex < characters.count, characters[nextIndex] == "\n" {
-                    index = nextIndex + 1
-                    continue
+        var current = String.UnicodeScalarView()
+        var iterator = value.unicodeScalars.makeIterator()
+        var pending: Unicode.Scalar?
+
+        while let scalar = pending ?? iterator.next() {
+            pending = nil
+            if scalar == "\r" {
+                lines.append(String(current))
+                current = String.UnicodeScalarView()
+                if let next = iterator.next(), next != "\n" {
+                    pending = next
                 }
-                index += 1
                 continue
             }
-            if char == "\n" {
-                lines.append(current)
-                current = ""
-                index += 1
+            if scalar == "\n" {
+                lines.append(String(current))
+                current = String.UnicodeScalarView()
                 continue
             }
-            current.append(char)
-            index += 1
+            current.append(scalar)
         }
-        lines.append(current)
+
+        lines.append(String(current))
         return lines
     }
 }

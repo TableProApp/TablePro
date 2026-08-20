@@ -13,8 +13,8 @@ import Foundation
 internal enum OperationDurationFormatter {
     internal static func string(from duration: Duration) -> String {
         let totalSeconds = max(0, Int(duration.components.seconds))
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
         let seconds = totalSeconds % 60
 
         if hours > 0 {

@@ -7,7 +7,31 @@ enum ToolQueryExecutor {
         scope: DatabaseScope,
         maxRows: Int,
         timeoutSeconds: Int,
-        principalLabel: String?
+        context: MCPRequestContext,
+        secrets: [String]
+    ) async throws -> JsonValue {
+        try await context.cancellation.throwIfCancelled()
+        return try await executeAndLog(
+            services: services,
+            query: query,
+            scope: scope,
+            maxRows: maxRows,
+            timeoutSeconds: timeoutSeconds,
+            principal: context.principal,
+            cancellation: context.cancellation,
+            secrets: secrets
+        )
+    }
+
+    static func executeAndLog(
+        services: MCPToolServices,
+        query: String,
+        scope: DatabaseScope,
+        maxRows: Int,
+        timeoutSeconds: Int,
+        principal: MCPPrincipal,
+        cancellation: MCPCancellationToken? = nil,
+        secrets: [String] = []
     ) async throws -> JsonValue {
         let connectionId = scope.connectionId
         let databaseName = scope.database
@@ -18,14 +42,15 @@ enum ToolQueryExecutor {
                 scope: scope,
                 query: query,
                 maxRows: maxRows,
-                timeoutSeconds: timeoutSeconds
+                timeoutSeconds: timeoutSeconds,
+                cancellation: cancellation
             )
             let elapsed = Date().timeIntervalSince(startTime)
             let rowCount = result["row_count"]?.intValue ?? 0
             await services.authPolicy.logQuery(
                 sql: query,
                 connectionId: connectionId,
-                databaseName: databaseName,
+                databaseName: scope.database,
                 executionTime: elapsed,
                 rowCount: rowCount,
                 wasSuccessful: true,
@@ -38,8 +63,7 @@ enum ToolQueryExecutor {
                 startedAt: operationStart
             )
             MCPAuditLogger.logQueryExecuted(
-                tokenId: nil,
-                tokenName: principalLabel,
+                principal: principal,
                 connectionId: connectionId,
                 sql: query,
                 durationMs: Int(elapsed * 1_000),
@@ -47,35 +71,53 @@ enum ToolQueryExecutor {
                 outcome: .success
             )
             return result
+        } catch let error as CancellationError {
+            throw error
         } catch {
             let elapsed = Date().timeIntervalSince(startTime)
+            let redacted = MCPErrorRedactor.message(for: error, secrets: secrets)
             await services.authPolicy.logQuery(
                 sql: query,
                 connectionId: connectionId,
-                databaseName: databaseName,
+                databaseName: scope.database,
                 executionTime: elapsed,
                 rowCount: 0,
                 wasSuccessful: false,
-                errorMessage: error.localizedDescription
+                errorMessage: redacted
             )
             MCPAuditLogger.logQueryExecuted(
-                tokenId: nil,
-                tokenName: principalLabel,
+                principal: principal,
                 connectionId: connectionId,
                 sql: query,
                 durationMs: Int(elapsed * 1_000),
                 rowCount: 0,
                 outcome: .error,
-                errorMessage: error.localizedDescription
+                errorMessage: redacted
             )
             await reportMcpQueryFinished(
-                .failed(reason: error.localizedDescription),
+                .failed(reason: redacted),
                 connectionId: connectionId,
                 databaseName: databaseName,
                 startedAt: operationStart
             )
-            throw error
+            throw translate(error, secrets: secrets)
         }
+    }
+
+    static func translate(_ error: Error, secrets: [String]) -> Error {
+        if let dataError = error as? MCPDataLayerError {
+            return MCPToolExecutionError.from(dataError, secrets: secrets)
+        }
+        if let toolError = error as? MCPToolExecutionError {
+            return toolError
+        }
+        if let protocolError = error as? MCPProtocolError {
+            return protocolError
+        }
+        if error is CancellationError {
+            return error
+        }
+        return MCPToolExecutionError.queryFailed(MCPErrorRedactor.message(for: error, secrets: secrets))
     }
 
     /// An MCP query has no tab and no window of its own, so its completion is owned by the

@@ -199,8 +199,11 @@
               "external-api/mcp-clients",
               "external-api/pairing",
               "external-api/tokens",
+              "external-api/mcp-protocol",
               "external-api/mcp-tools",
               "external-api/mcp-resources",
+              "external-api/mcp-prompts",
+              "external-api/mcp-subscriptions",
               "external-api/versioning"
             ]
           }

@@ -3,9 +3,9 @@ title: MCP Server
 description: Built-in Model Context Protocol server that lets AI clients query your databases through TablePro
 ---
 
-TablePro includes a built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server. AI clients like Claude Desktop, Claude Code, Cursor, and Zed connect to it and query your databases through TablePro's saved connections, without ever seeing your passwords.
+TablePro includes a built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server. AI clients like Claude Desktop, Claude Code, Cursor, and Zed connect to it and work with your databases through the connections you already saved, without ever seeing your passwords.
 
-This page covers the **Settings > Integrations** pane. Protocol details, the tool catalog, and token scopes live in the [External API](/external-api/index) section.
+This page covers the **Settings > Integrations** pane. The protocol, the 46 tools, the prompts and the token model live in the [External API](/external-api/index) section.
 
 <Frame caption="MCP server settings">
   <img className="block dark:hidden" src="/images/mcp-settings.png" alt="TablePro MCP settings" />
@@ -14,11 +14,11 @@ This page covers the **Settings > Integrations** pane. Protocol details, the too
 
 ## Enabling the server
 
-Open **Settings > Integrations** and turn on **Enable MCP Server**. A status row shows the state and the port the server is running on.
+Open **Settings > Integrations** and turn on **Enable MCP Server**. A status row shows the state and the port.
 
-You can also skip the toggle: the server lazy-starts on demand. The bundled `tablepro-mcp` stdio bridge fires `tablepro://integrations/start-mcp` on cold start, and pairing an extension starts the server too.
+You can also skip the toggle. The server starts on demand: the bundled `tablepro-mcp` bridge fires `tablepro://integrations/start-mcp` when a client launches it, and pairing an extension starts it too.
 
-The server binds the configured port (default **23508**). Starts triggered on demand fall back to a free port in the 51000-52000 range if that port is taken. Starting from Settings does not fall back; a taken port shows a port-in-use error in the status row. The actual port is written to `~/Library/Application Support/TablePro/mcp-handshake.json`, which the stdio bridge reads, so client configs never hardcode a port.
+The server binds `127.0.0.1` on the configured port (default **23508**) and speaks plain HTTP. If that port is taken, TablePro asks the kernel for a free one instead. Either way the real port is written to `~/Library/Application Support/TablePro/mcp-handshake.json`, which the bridge reads, so client configs never carry a port.
 
 ## Server configuration
 
@@ -30,54 +30,60 @@ The server binds the configured port (default **23508**). Starts triggered on de
 | Query timeout | 30 seconds |
 | Log MCP queries in history | on |
 
+Row limits clamp to 1 to 500,000 and the timeout to 1 to 300 seconds. A tool can ask for fewer rows or a shorter timeout, never more than the maximum.
+
 ## Connecting a client
 
-Click **Connect a Client…** in **Settings > Integrations**. The sheet has a **Client** picker with four choices: **Claude Code**, **Claude Desktop**, **Cursor**, and **Zed**. Each shows numbered steps and a copyable config snippet or command that points at the bundled stdio bridge. You paste it into the client's own config; TablePro does not write to other apps' files.
+Click **Connect a Client…**. The sheet has a **Client** picker with four choices: **Claude Code**, **Claude Desktop**, **Cursor**, and **Zed**. Each shows numbered steps and a copyable snippet or command pointing at the bundled bridge. You paste it into the client's own config; TablePro does not write to other apps' files.
 
-For VS Code, Cline, Continue, Windsurf, Goose, the HTTP transport, and troubleshooting, see [MCP Clients](/external-api/mcp-clients).
+For VS Code, Cline, Continue, Windsurf, Antigravity, Goose, the HTTP transport, and troubleshooting, see [MCP Clients](/external-api/mcp-clients).
 
 ## Authentication
 
-**Require authentication** is on by default. Turning it on for the first time, with no tokens yet, generates a full-access "Default token" and shows the plaintext once so you can copy it. Manage tokens (create, scope, allowlist, expire, revoke) in the same section; the details are in [Tokens](/external-api/tokens).
+**Require authentication** is on by default. Turning it on for the first time, with no tokens yet, generates a full-access "Default token" and shows the plaintext once so you can copy it. Create, scope, allowlist, expire and revoke tokens in the same section; the details are in [Tokens](/external-api/tokens).
 
-With the toggle off, requests from your own machine are accepted without a token as long as the server is localhost-only. Remote clients always need a bearer token, regardless of the toggle.
+With the toggle off, a caller on your own machine is accepted without a token, but only as a read-only caller. It can read schema and run `SELECT`. It can never write, drop, or administer, whatever it asks for. Anything beyond reading needs a token you issued.
 
-## Remote access
+## Local only
 
-The server listens on localhost only by default. **Settings > Integrations > Network > Allow remote connections** opens it to other machines. Enabling it turns on authentication and TLS automatically.
+The server listens on `127.0.0.1` and nothing else. There is no remote mode, no TLS certificate, and no setting that opens it to your network. The MCP specification allows plain HTTP for a server on the same machine, which is what this is.
 
-The TLS certificate is self-signed, generated automatically, and valid for 1 year. Its SHA-256 fingerprint is written to the handshake file so the stdio bridge can pin it.
-
-<Warning>
-Remote access exposes the server to your network. Leave it off unless you connect from another machine.
-</Warning>
+If you need to reach it from another machine, forward the port over SSH yourself and understand what that exposes.
 
 ## Activity and connected clients
 
-**View Activity…** opens a separate window with two sections in its sidebar:
+**View Activity…** opens a separate window with two sections:
 
-- **Activity Log**: every authentication, tool call, and resource read, with token, category, connection, and outcome. Filter by time range, category, or token, search, and export the filtered view to CSV. Entries are kept for 90 days.
-- **Connected Clients**: active MCP sessions, with a **Disconnect** button to end one.
+- **Activity Log**: every authentication, tool call, resource read and query, with the token behind it, the category, the connection, and the outcome. Filter by time, category or token, search, and export the filtered view to CSV. Kept for 90 days. Statements are recorded as a SHA-256 digest, not as text.
+- **Connected Clients**: clients that have called in the last five minutes, with the client name, the token, and when they were first and last seen. **Disconnect** revokes that client's token, so the client has to pair again.
 
 ## Security model
 
-- Clients query through TablePro's saved connections; passwords never leave the Keychain and are not readable over MCP.
-- AI access policies are set per connection in each connection's settings, including blocking a connection from external access entirely.
-- Bearer tokens carry scopes and per-connection allowlists; see [Tokens](/external-api/tokens) for what tokens can and cannot do.
-- The reachable surface is the [tool catalog](/external-api/mcp-tools) and [resources](/external-api/mcp-resources), nothing else.
-- Tool calls never change what's open in the app: `list_tables`, `list_schemas`, and `execute_query` query the database or schema you pass them without moving the sidebar's selected database or touching an open tab.
+- Clients work through your saved connections. Passwords never leave the Keychain and are not readable over MCP.
+- AI access is set per connection, including blocking a connection from external clients entirely. A blocked connection is not even listed.
+- Tokens carry scopes and can be limited to named connections. An unauthenticated local caller is read-only and can never be more.
+- Writes go through the connection's Safe Mode. `DROP` and `TRUNCATE` need a full-access token and the user's approval every time.
+- Statements that read or write files, or run server-side code, are refused before they reach the driver.
+- The reachable surface is the [tool catalog](/external-api/mcp-tools), the [resources](/external-api/mcp-resources) and the [prompts](/external-api/mcp-prompts). Nothing else.
+- Tool calls do not move the app around. `list_tables`, `describe_table`, `browse_table` and `execute_query` read whatever database and schema you pass them and leave the sidebar selection and open tabs alone. `switch_database` and `switch_schema` are the only tools that move the selection, which is what they are for.
 
 ## Reference
 
 <CardGroup cols={2}>
-  <Card title="Tool catalog" icon="plug" href="/external-api/mcp-tools">
-    JSON-RPC tools with input and output schemas.
+  <Card title="Protocol" icon="plug" href="/external-api/mcp-protocol">
+    Versions, required metadata, headers, and error codes.
+  </Card>
+  <Card title="Tool catalog" icon="wrench" href="/external-api/mcp-tools">
+    All 46 tools with arguments and result shapes.
+  </Card>
+  <Card title="Prompts" icon="message" href="/external-api/mcp-prompts">
+    Prompts rendered from the live schema, and completions.
   </Card>
   <Card title="Resources" icon="database" href="/external-api/mcp-resources">
-    Read-only resources for connection metadata, schema, and history.
+    Read-only resources for connections, schema, and history.
   </Card>
   <Card title="Tokens" icon="key" href="/external-api/tokens">
-    Scopes, allowlists, expiry, revocation, rate limits.
+    Scopes, allowlists, expiry, revocation, activity log.
   </Card>
   <Card title="MCP Clients" icon="terminal" href="/external-api/mcp-clients">
     Setup for every supported client, plus troubleshooting.

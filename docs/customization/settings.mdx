@@ -12,7 +12,7 @@ Open with `Cmd+,`. Settings are grouped into nine tabs.
   <Card title="Data" icon="table" href="/customization/data-settings">Data grid, pagination, result cap, JSON viewer, and query history.</Card>
   <Card title="Keyboard" icon="keyboard" href="/features/keyboard-shortcuts#customizing-shortcuts">Custom shortcuts.</Card>
   <Card title="AI" icon="sparkles" href="/customization/settings#ai">Providers, inline suggestions, context, slash commands.</Card>
-  <Card title="Integrations" icon="network-wired" href="/customization/settings#integrations">MCP server, tokens, remote access, activity.</Card>
+  <Card title="Integrations" icon="network-wired" href="/customization/settings#integrations">MCP server, tokens, clients, activity.</Card>
   <Card title="Plugins" icon="puzzle-piece" href="/customization/settings#plugins">Manage drivers, exporters, and themes.</Card>
   <Card title="Account" icon="user" href="/customization/settings#account">License, iCloud sync, linked folders.</Card>
 </CardGroup>
@@ -166,7 +166,7 @@ The Privacy section sets the default **Connection policy** (Ask Each Time) appli
 
 ## Integrations
 
-The **Integrations** tab runs the MCP server. **Enable MCP Server** (default off) starts it and shows a live status. See [MCP Server](/features/mcp) for a walkthrough and the [External API](/external-api/index) reference for the tool catalog.
+The **Integrations** tab runs the MCP server. **Enable MCP Server** (default off) starts it and shows a live status. See [MCP Server](/features/mcp) for a walkthrough and the [External API](/external-api/index) reference for the tool catalog. The server binds `127.0.0.1` only.
 
 <Frame caption="Integrations tab with the MCP server enabled">
   <img className="block dark:hidden" src="/images/mcp-settings.png" alt="Integrations settings" />
@@ -177,23 +177,21 @@ The **Integrations** tab runs the MCP server. **Enable MCP Server** (default off
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Port** | 23508 | TCP port the server listens on |
+| **Port** | 23508 | Loopback port the server listens on. If it is taken, TablePro binds a free one instead and records it in the handshake file. |
 | **Default row limit** | 500 | Rows returned when a tool call sets no limit, including `export_data` |
-| **Maximum row limit** | 10,000 | Hard cap on rows per tool call, including `export_data` |
-| **Query timeout** | 30 seconds | Per-query limit for MCP-issued queries |
+| **Maximum row limit** | 10,000 | Hard cap on rows per tool call, including `export_data`. Clamped to 1 to 500,000. |
+| **Query timeout** | 30 seconds | Per-query limit for MCP-issued queries. Clamped to 1 to 300 seconds. |
 | **Log MCP queries in history** | On | Record MCP queries in [query history](/features/query-history) |
 
 ### Authentication
 
 **Require authentication** defaults to on. If you switch it on with no tokens saved, TablePro generates a full-access token named "Default token" and shows it once. Copy it before closing the sheet. Generate, revoke, and delete tokens in the list below the toggle. See [Tokens](/external-api/tokens).
 
-### Network
-
-**Allow remote connections** defaults to off. Enabling it makes the server reachable from other devices and turns on authentication and TLS automatically.
+Switching it off accepts a local caller with no token, but only as a read-only one: it can read schema and run `SELECT`, and can never write, drop, or administer.
 
 ### Clients and Activity
 
-**Connect a Client…** shows setup steps and config snippets for Claude Code, Claude Desktop, Cursor, and Zed. **View Activity…** opens the Integrations Activity window with authentication events, tool calls, and connected clients.
+**Connect a Client…** shows setup steps and config snippets for Claude Code, Claude Desktop, Cursor, and Zed. **View Activity…** opens the Integrations Activity window with the activity log and the clients that have called in the last five minutes. **Disconnect** there revokes that client's token.
 
 ## Plugins
 
