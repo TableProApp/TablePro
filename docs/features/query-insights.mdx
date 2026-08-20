@@ -32,7 +32,7 @@ This is the same idea as PostgreSQL's `pg_stat_statements` and MySQL's statement
 
 Two things are deliberately **not** merged. Table and column names keep their capitalization, because on a case-sensitive server `Orders` and `orders` are different tables and merging them would report a wrong count. And numbers inside a name stay part of the name, so `events_2025` and `events_2026` are counted separately.
 
-Each row shows the shape, not the literal query you ran. **Copy Query** and **Load in Editor** in the right-click menu give you the most recent real query in the group, values and all.
+Each row shows the shape, not the literal query you ran. **Copy Query** and **Load in Editor** in the right-click menu give you the most recent real query in the group, values and all. It always comes from a run the row is actually counting: the connection, the sources and the date range you picked all apply to it, so a matching query run somewhere you filtered out never supplies the values. In **Failures** it comes from a run that failed, which is the one that produced the error shown beside it.
 
 ## The Panels
 

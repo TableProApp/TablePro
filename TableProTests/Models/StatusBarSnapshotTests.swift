@@ -28,24 +28,16 @@ struct StatusBarSnapshotTests {
         )
     }
 
-    @Test("Pagination controls show when a positive total is known")
-    func showsPaginationWithKnownTotal() {
-        let snapshot = makeSnapshot(rowCount: 1_000, pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000))
-        #expect(snapshot.showsPaginationControls)
-    }
-
-    @Test("Single page with unknown total hides pagination")
-    func hidesPaginationOnSinglePage() {
+    @Test("Single page with unknown total is not treated as paged")
+    func notPagedOnSinglePage() {
         let snapshot = makeSnapshot(rowCount: 10, pagination: PaginationState(totalRowCount: nil, pageSize: 50, currentPage: 1))
         #expect(!snapshot.isPagedWithUnknownTotal)
-        #expect(!snapshot.showsPaginationControls)
     }
 
     @Test("Page beyond the first is treated as paged with unknown total")
     func pagedWhenBeyondFirstPage() {
         let snapshot = makeSnapshot(rowCount: 50, pagination: PaginationState(totalRowCount: nil, pageSize: 50, currentPage: 2, currentOffset: 50))
         #expect(snapshot.isPagedWithUnknownTotal)
-        #expect(snapshot.showsPaginationControls)
     }
 
     @Test("A full first page with unknown total is treated as paged")

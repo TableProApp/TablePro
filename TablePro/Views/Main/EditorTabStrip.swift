@@ -263,7 +263,7 @@ private struct EditorTabStripItem: View {
                 .font(.system(size: EditorTabStripLayout.fontSize))
                 .foregroundStyle(titleColor)
                 .frame(maxWidth: .infinity)
-            Color.clear
+            unseenIndicator
                 .frame(width: EditorTabStripLayout.accessoryWidth)
         }
         .padding(.horizontal, EditorTabStripLayout.accessoryInset)
@@ -275,8 +275,25 @@ private struct EditorTabStripItem: View {
         .contentShape(Rectangle())
     }
 
+    /// Work that finished while this tab was not the one on screen. It sits in the trailing
+    /// accessory slot the layout already reserves, so nothing reflows when it appears, and it
+    /// never shows on the selected tab because selecting the tab is what clears it.
+    @ViewBuilder
+    private var unseenIndicator: some View {
+        if tab.execution.finishedUnseenAt != nil, !isSelected {
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: EditorTabStripLayout.unseenDotDiameter)
+                .accessibilityHidden(true)
+        } else {
+            Color.clear
+        }
+    }
+
     private var positionDescription: String {
-        String(format: String(localized: "%1$d of %2$d"), position, count)
+        let place = String(format: String(localized: "%1$d of %2$d"), position, count)
+        guard tab.execution.finishedUnseenAt != nil, !isSelected else { return place }
+        return String(format: String(localized: "%@, finished"), place)
     }
 
     /// The system draws both labels in the same face at the same size and separates them by colour

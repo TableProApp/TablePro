@@ -23,6 +23,7 @@ struct ExportDialog: View {
     @State private var databaseItems: [ExportDatabaseItem] = []
     @State private var isLoading = true
     @State private var isExporting = false
+    @State private var exportStartedAt: ContinuousClock.Instant?
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var exportedFileURL: URL?
@@ -473,6 +474,25 @@ struct ExportDialog: View {
         exportSucceeded = true
         TransferDialogStorage.shared.saveLastExportFormatId(config.formatId)
         settingsSnapshot = nil
+        reportExportFinished(.succeeded(OperationSummary(fileURL: exportedFileURL)))
+    }
+
+    /// Both export entry points converge here, so the completion is reported once whichever route
+    /// ran. Cancellation is caught separately by each and deliberately reports nothing.
+    private func reportExportFinished(_ outcome: OperationOutcome) {
+        guard let startedAt = exportStartedAt else { return }
+        exportStartedAt = nil
+        OperationCompletionReporter.shared.report(
+            OperationCompletion(
+                kind: .dataExport,
+                owner: .connection(connection.id),
+                connectionId: connection.id,
+                connectionName: connection.name,
+                databaseName: exportScope?.database,
+                elapsed: startedAt.duration(to: .now),
+                outcome: outcome
+            )
+        )
     }
 
     /// Instantly populate the current database from sidebar tables (no network).
@@ -767,6 +787,7 @@ struct ExportDialog: View {
     }
 
     private func showExportError(_ error: Error) {
+        reportExportFinished(.failed(reason: error.localizedDescription))
         AlertHelper.showErrorSheet(
             title: String(localized: "Export Error"),
             message: error.localizedDescription,
@@ -783,6 +804,7 @@ struct ExportDialog: View {
         let route = DatabaseManager.shared.executionRoute(for: scope)
 
         isExporting = true
+        exportStartedAt = .now
         exportedFileURL = url
         showProgressDialog = true
 
@@ -835,6 +857,7 @@ struct ExportDialog: View {
     @MainActor
     private func startQueryResultsExport(to url: URL) async {
         isExporting = true
+        exportStartedAt = .now
         exportedFileURL = url
         showProgressDialog = true
 
@@ -858,6 +881,7 @@ struct ExportDialog: View {
             default:
                 showProgressDialog = false
                 isExporting = false
+                exportStartedAt = nil
                 return
             }
 

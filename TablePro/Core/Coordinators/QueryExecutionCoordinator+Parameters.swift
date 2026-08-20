@@ -198,8 +198,14 @@ extension QueryExecutionCoordinator {
                         tab.pagination.isLoadingMore = false
                     }
                     parent.retireQueryTask(for: claim)
-                    if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
+                    if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
+                        parent.reportEndedExecutions([
+                            EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+                        ])
+                        return
+                    }
                     handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
+                    reportOperation(kind: .query, claim: claim, outcome: .failed(reason: error.localizedDescription))
                 }
             }
         }
@@ -280,6 +286,9 @@ extension QueryExecutionCoordinator {
             case .cancelled:
                 guard parent.tabExecution.settle(claim) else { return }
                 parent.retireQueryTask(for: claim)
+                parent.reportEndedExecutions([
+                    EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+                ])
             case .completed(let results):
                 let resultSets = applyExecutedStatements(
                     prepared: prepared,
@@ -471,11 +480,26 @@ extension QueryExecutionCoordinator {
             guard let self else { return }
             guard parent.tabExecution.settle(claim) else { return }
             parent.retireQueryTask(for: claim)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                parent.reportEndedExecutions([
+                    EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+                ])
+                return
+            }
             if PluginManager.shared.supportsQueryProgress(for: parent.connection.type) {
                 parent.clearClickHouseProgress()
             }
             parent.toolbarState.lastQueryDuration = fetchResult.executionTime
+            reportOperation(
+                kind: .query,
+                claim: claim,
+                outcome: .succeeded(
+                    OperationSummary(
+                        rowsReturned: fetchResult.rows.count,
+                        rowsAffected: fetchResult.rowsAffected
+                    )
+                )
+            )
 
             applyPhase1Result(
                 tabId: tabId,
@@ -531,6 +555,11 @@ extension QueryExecutionCoordinator {
             guard let self else { return }
             guard parent.tabExecution.settle(claim) else { return }
             parent.retireQueryTask(for: claim)
+
+            /// Below the settle gate for the same reason the success arm is: a superseded batch
+            /// has its error dropped here, so announcing it would report on work the user has
+            /// already navigated away from.
+            reportOperation(kind: .queryBatch, claim: claim, outcome: .failed(reason: errorDescription))
 
             parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
             parent.tabManager.mutate(tabId: tabId) { tab in

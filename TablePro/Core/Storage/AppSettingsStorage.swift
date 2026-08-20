@@ -31,6 +31,7 @@ final class AppSettingsStorage {
         static let ai = "com.TablePro.settings.ai"
         static let sync = "com.TablePro.settings.sync"
         static let mcp = "com.TablePro.settings.mcp"
+        static let notifications = "com.TablePro.settings.notifications"
         static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
         static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
         static let jsonFieldHeightMigration = "com.TablePro.settings.didMigrateJsonFieldHeightKey"
@@ -155,6 +156,14 @@ final class AppSettingsStorage {
     }
 
     // MARK: - MCP Settings
+
+    func loadNotifications() -> NotificationSettings {
+        load(key: Keys.notifications, default: .default)
+    }
+
+    func saveNotifications(_ settings: NotificationSettings) {
+        save(settings, key: Keys.notifications)
+    }
 
     func loadMCP() -> MCPSettings {
         load(key: Keys.mcp, default: .default)

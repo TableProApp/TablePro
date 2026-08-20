@@ -27,16 +27,12 @@ internal final class AcknowledgementsWindowController: NSWindowController {
         )
         hosting.preferredContentSize = Self.windowSize
 
-        let window = NSWindow(contentViewController: hosting)
-        window.title = String(localized: "Acknowledgements")
+        let window = NSWindow.titled(String(localized: "Acknowledgements"), contentViewController: hosting)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.acknowledgements)
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         window.isRestorable = false
         window.setContentSize(Self.windowSize)
-        window.setFrameAutosaveName(WindowIdentifier.acknowledgements)
-        if !window.setFrameUsingName(WindowIdentifier.acknowledgements) {
-            window.center()
-        }
+        window.applyAutosaveName(WindowIdentifier.acknowledgements)
         self.init(window: window)
     }
 }

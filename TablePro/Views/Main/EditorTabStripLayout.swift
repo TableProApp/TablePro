@@ -12,6 +12,8 @@ import Foundation
 /// a 36pt titlebar accessory holding a 28pt bar, whose track is inset 8pt, then 4pt of gap, then a
 /// 28pt new-tab button, then 8pt to the trailing edge.
 internal enum EditorTabStripLayout {
+    internal static let unseenDotDiameter: CGFloat = 6
+
     /// The titlebar accessory's own height. The track is pinned to its top edge, flush against the
     /// toolbar, and what remains below is the clearance the system leaves before the content.
     internal static let bandHeight: CGFloat = 36

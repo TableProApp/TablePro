@@ -17,7 +17,7 @@ internal final class WindowOpener {
     @ObservationIgnored private var openWelcomeAction: (() -> Void)?
     @ObservationIgnored private var openConnectionFormAction: ((ConnectionFormRequest) -> Void)?
     @ObservationIgnored private var openIntegrationsActivityAction: (() -> Void)?
-    @ObservationIgnored private var openSettingsAction: (() -> Void)?
+    @ObservationIgnored private var openSettingsAction: ((SettingsPane?) -> Void)?
     @ObservationIgnored private var stagedDraftId: UUID?
     @ObservationIgnored private var pendingCalls: [() -> Void] = []
 
@@ -35,12 +35,9 @@ internal final class WindowOpener {
     }
 
     internal func openSettings(tab: SettingsPane? = nil) {
-        if let tab {
-            AppStorageEnvironment.shared.defaults.set(tab.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
-        }
         perform { opener in
             guard let present = opener.openSettingsAction else { return false }
-            present()
+            present(tab)
             return true
         }
     }
@@ -119,7 +116,7 @@ internal final class WindowOpener {
         drainPendingCalls()
     }
 
-    internal func setSettingsPresenter(_ present: @escaping () -> Void) {
+    internal func setSettingsPresenter(_ present: @escaping (SettingsPane?) -> Void) {
         openSettingsAction = present
         drainPendingCalls()
     }
