@@ -31,7 +31,7 @@ struct QueryEditorView: View {
     var onFoldRangesChanged: (([Range<Int>]) -> Void)?
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
-    var onRunStatement: ((String) -> Void)?
+    var onRunStatement: ((String) -> Bool)?
     var isExecuting: Bool = false
     var onExplain: ((ExplainVariant?) -> Void)?
     var onAIExplain: ((String) -> Void)?

@@ -60,11 +60,24 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         }
     }
 
+    /// Tombstones every record it removed, the same as the other delete paths. Deleting a
+    /// connection is the one delete that was keyed on something other than the records themselves,
+    /// and it was the one that never marked them deleted, so a deleted connection's SQL favorites
+    /// and folders outlived it in CloudKit and came back on the next device to sync.
+    ///
+    /// `markDeleted` runs after the storage delete has committed, per the sync ordering rule: it
+    /// posts a change notification that can start a sync, and a sync that reads a file still
+    /// holding the record re-uploads what was just deleted.
     func removeFavoritesAndFolders(for connectionId: UUID) async {
         let removed = await storage.deleteFavoritesAndFolders(connectionId: connectionId)
-        if removed {
-            postUpdateNotification(connectionId: nil)
+        guard !removed.isEmpty else { return }
+        for id in removed.favorites {
+            syncTracker.markDeleted(.favorite, id: id.uuidString)
         }
+        for id in removed.folders {
+            syncTracker.markDeleted(.favoriteFolder, id: id.uuidString)
+        }
+        postUpdateNotification(connectionId: nil)
     }
 
     func pruneOrphaned(activeConnectionIds: Set<UUID>) async {

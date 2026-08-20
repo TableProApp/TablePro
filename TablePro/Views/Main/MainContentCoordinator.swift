@@ -1007,28 +1007,34 @@ final class MainContentCoordinator {
     /// range on purpose: the editor's text and the tab's binding are two strings that can differ for a moment, and a
     /// range resolved against the wrong one truncates silently. Past that it is the ordinary path, so parameters, safe
     /// mode and the execution gate all apply exactly as they do to any other run.
-    func runStatement(_ sql: String) {
-        guard let (tab, index) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return }
+    @discardableResult
+    func runStatement(_ sql: String) -> Bool {
+        guard let (tab, index) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return false }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runStatement")
-            return
+            return false
         }
 
-        executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false)
+        return executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false)
     }
 
     /// Everything both run paths do once the SQL to run has been decided.
     ///
     /// Shared so that a statement run from the gutter and a statement run from the caret cannot drift apart on
     /// parameter handling, which is the half of this that is easy to forget.
-    private func executeResolvedSQL(_ sql: String, tabIndex index: Int, bypassRowLimit: Bool) {
+    ///
+    /// Returns whether the SQL was actually dispatched. It is not when the statement carries parameters whose panel
+    /// has yet to be filled in: that opens the panel and runs nothing, and a caller that advances the caret on the
+    /// strength of a run would then be pointing at the wrong statement when the reader presses again.
+    @discardableResult
+    private func executeResolvedSQL(_ sql: String, tabIndex index: Int, bypassRowLimit: Bool) -> Bool {
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return
+            return false
         }
 
         if services.appSettings.editor.queryParametersEnabled {
             let paramStatements = SQLStatementScanner.allStatements(in: sql, dialect: sqlDialect)
-            guard !paramStatements.isEmpty else { return }
+            guard !paramStatements.isEmpty else { return false }
             let combinedSQL = paramStatements.joined(separator: "; ")
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
 
@@ -1041,7 +1047,7 @@ final class MainContentCoordinator {
 
                 if !tabManager.tabs[index].content.isParameterPanelVisible {
                     tabManager.mutate(at: index) { $0.content.isParameterPanelVisible = true }
-                    return
+                    return false
                 }
 
                 tabManager.tabStructureVersion += 1
@@ -1051,15 +1057,16 @@ final class MainContentCoordinator {
                     tabIndex: index,
                     bypassRowLimit: bypassRowLimit
                 )
-                return
+                return true
             }
         }
 
         let statements = SQLStatementScanner.allStatements(in: sql, dialect: sqlDialect)
-        guard !statements.isEmpty else { return }
+        guard !statements.isEmpty else { return false }
 
         tabManager.tabStructureVersion += 1
         dispatchStatements(statements, tabIndex: index, bypassRowLimit: bypassRowLimit)
+        return true
     }
 
     /// Execute table tab query directly.
