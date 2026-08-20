@@ -309,10 +309,9 @@ fn execute_result(
 ) -> Result<TpDmResult, dameng::Error> {
     let started = Instant::now();
     let mut result = client.execute_statement(sql)?;
-    // A statement the caller did not expect to return rows still has a cursor when it does,
-    // and leaving it undrained truncated the answer to its first batch.
-    drain_cursor(client, &mut result, row_cap)?;
     if result.columns.is_empty() {
+        // Nothing to drain, and this is the DML path: `do_prepare_execute` has already sent the
+        // COMMIT, so a FETCH here would run against a cursor whose transaction is closed.
         return Ok(TpDmResult {
             columns: Vec::new(),
             rows: Vec::new(),
@@ -321,6 +320,9 @@ fn execute_result(
             is_truncated: false,
         });
     }
+    // A statement the caller did not expect to return rows still has a cursor when it does,
+    // and leaving it undrained truncated the answer to its first batch.
+    drain_cursor(client, &mut result, row_cap)?;
     let columns = result
         .columns
         .iter()
@@ -329,8 +331,14 @@ fn execute_result(
             type_name: column.type_name.as_bytes().to_vec(),
         })
         .collect();
-    let mut rows = Vec::with_capacity(result.rows.len());
-    for row in &result.rows {
+    let is_truncated = row_cap > 0 && (result.rows.len() > row_cap || !result.complete);
+    let row_count = if row_cap > 0 {
+        result.rows.len().min(row_cap)
+    } else {
+        result.rows.len()
+    };
+    let mut rows = Vec::with_capacity(row_count);
+    for row in result.rows.iter().take(row_count) {
         let mut cells = Vec::with_capacity(result.columns.len());
         for index in 0..result.columns.len() {
             cells.push(convert_cell(row, &result.columns, index)?);
@@ -343,7 +351,7 @@ fn execute_result(
         rows,
         rows_affected: delivered_row_count,
         execution_time_seconds: started.elapsed().as_secs_f64(),
-        is_truncated: false,
+        is_truncated,
     })
 }
 

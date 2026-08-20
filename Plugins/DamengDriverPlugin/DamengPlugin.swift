@@ -126,6 +126,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Concurrent callers await one rebuild instead of each starting their own, which would
     /// have each retired the connection the previous one had just adopted.
     var reconnectInFlight: Task<Void, any Error>?
+    var reconnectGeneration: UInt64 = 0
 
     var activeSchema: String? {
         get { sessionLock.withLock { sessionState.activeSchema } }
@@ -293,6 +294,14 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         do {
             try await applySchema(normalized)
+        } catch let error as DamengError where error.closedConnection && hasOpenTransaction {
+            // Rebuilding under an open transaction would leave the count raised on a session
+            // that never saw the BEGIN, and the later commit would report success regardless.
+            endTransaction()
+            throw DamengError(message: String(localized: """
+                The Dameng connection was lost, so the open transaction was rolled back. \
+                Run its statements again.
+                """))
         } catch let error as DamengError where error.closedConnection && hasConnectedBefore {
             try await reconnect(restoringSchema: normalized)
         }

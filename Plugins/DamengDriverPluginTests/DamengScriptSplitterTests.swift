@@ -91,6 +91,15 @@ final class DamengScriptSplitterTests: XCTestCase {
         )
     }
 
+    /// A nested block comment closes twice. Counting one close would leave the stray `*/` looking
+    /// like a statement, and sending that to DM8 fails the script after its real work has run.
+    func testANestedCommentOnlySegmentIsNotAStatement() {
+        XCTAssertEqual(
+            DamengScriptSplitter.statements(in: "SELECT 1 FROM DUAL;\n/* a /* b */ */"),
+            ["SELECT 1 FROM DUAL"]
+        )
+    }
+
     func testASemicolonInsideALiteralOrIdentifierIsNotABoundary() {
         XCTAssertEqual(
             DamengScriptSplitter.statements(in: "INSERT INTO t VALUES('a;b')"),
