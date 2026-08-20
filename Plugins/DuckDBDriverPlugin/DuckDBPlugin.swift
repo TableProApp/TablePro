@@ -212,6 +212,16 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return _currentSchema
     }
 
+    /// Every metadata query filters on the catalog, because `duckdb_tables()` and its
+    /// siblings span every attached database and a schema name alone matches all of them.
+    private func requireCatalog() throws -> String {
+        stateLock.lock()
+        let catalog = _currentDatabase
+        stateLock.unlock()
+        guard let catalog, !catalog.isEmpty else { throw DuckDBPluginError.catalogUnresolved }
+        return catalog
+    }
+
     // MARK: - Connection
 
     private var isRemoteMode: Bool {
@@ -248,7 +258,16 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         try await connectionActor.open(path: path)
         await enableExtensionAutoloading()
-        await refreshCurrentCatalog()
+        // DuckDB holds an exclusive lock on the file for as long as the handle is open, and
+        // nothing upstream disconnects a driver whose connect threw: DatabaseManager only
+        // calls disconnect on a cancelled attempt. Without this, one failure here locks the
+        // file against every later attempt until TablePro quits.
+        do {
+            try await refreshCurrentPosition()
+        } catch {
+            await connectionActor.close()
+            throw error
+        }
         await captureInterruptHandle()
     }
 
@@ -289,20 +308,56 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         await captureInterruptHandle()
     }
 
-    /// Every metadata query is anchored to `current_database()`, and the app seeds the
-    /// browsed database from `currentDatabase`, so the driver has to know which catalog
-    /// the file opened as. DuckDB names it after the file stem, which is not derivable
-    /// from the path alone once an alias or a URL is involved.
-    private func refreshCurrentCatalog() async {
-        do {
-            let result = try await connectionActor.executeQuery(DuckDBSchemaQueries.currentCatalog)
-            guard let name = result.rows.first?[safe: 0]?.asText, !name.isEmpty else { return }
-            stateLock.lock()
-            _currentDatabase = name
-            stateLock.unlock()
-        } catch {
-            Self.logger.warning("Failed to resolve the current DuckDB catalog: \(error.localizedDescription)")
+    /// Every metadata query is anchored to the catalog, and the app seeds the browsed
+    /// database from `currentDatabase`, so the driver has to know which catalog the file
+    /// opened as. DuckDB names it after the file stem, which is not derivable from the
+    /// path alone once an alias or a URL is involved.
+    ///
+    /// This throws rather than logging and carrying on. Swallowing it left the connection
+    /// reporting success with no catalog, which every later query then filtered on, so the
+    /// sidebar came up empty and nothing said why.
+    private func refreshCurrentPosition() async throws {
+        let position = try await readPosition()
+        let catalog = try await resolveOpenedCatalog(named: position.catalog)
+
+        stateLock.lock()
+        _currentDatabase = catalog
+        if let schema = position.schema { _currentSchema = schema }
+        stateLock.unlock()
+    }
+
+    /// Nothing has run `USE` yet at connect, so `search_path` is usually empty and the catalog
+    /// comes from the one non-internal database the file opened as. Anything other than exactly
+    /// one is reported rather than guessed at: picking a row would anchor every metadata query
+    /// to a database the connection is not on, which is the empty sidebar this all started from.
+    private func resolveOpenedCatalog(named: String?) async throws -> String {
+        if let named, let canonical = await canonicalCatalogName(matching: named) {
+            return canonical
         }
+
+        let databases = try await connectionActor.executeQuery(DuckDBSchemaQueries.listDatabases)
+        let names = databases.rows.compactMap { $0[safe: 0]?.asText?.nilIfEmpty }
+        guard names.count == 1, let only = names.first else {
+            throw DuckDBPluginError.connectionFailed(
+                names.isEmpty
+                    ? String(localized: "DuckDB opened the file but reported no catalog to browse")
+                    : String(
+                        format: String(localized: "DuckDB opened %d catalogs and none of them is current"),
+                        names.count
+                    )
+            )
+        }
+        return only
+    }
+
+    private func readPosition() async throws -> DuckDBPositionParser.Position {
+        let result = try await connectionActor.executeQuery(DuckDBSchemaQueries.currentPosition)
+        var settings: [String: String] = [:]
+        for row in result.rows {
+            guard let name = row[safe: 0]?.asText, let value = row[safe: 1]?.asText else { continue }
+            settings[name] = value
+        }
+        return DuckDBPositionParser.parse(settings: settings)
     }
 
     private func enableExtensionAutoloading() async {
@@ -404,7 +459,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let schemaName = resolveSchema(schema)
         let result = try await executeParameterized(
-            query: DuckDBSchemaQueries.listTables, parameters: [.text(schemaName)]
+            query: DuckDBSchemaQueries.listTables,
+            parameters: [.text(try requireCatalog()), .text(schemaName)]
         )
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText else { return nil }
@@ -416,12 +472,13 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let schemaName = resolveSchema(schema)
+        let catalog = try requireCatalog()
         let result = try await executeParameterized(
-            query: DuckDBSchemaQueries.columnsForTable, parameters: [.text(schemaName), .text(table)]
+            query: DuckDBSchemaQueries.columnsForTable,
+            parameters: [.text(catalog), .text(schemaName), .text(table)]
         )
 
         let pkColumns = try await fetchPrimaryKeyColumns(table: table, schema: schemaName)
-        let enumMap = try await fetchEnumLabelMap(schema: schemaName)
 
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText,
@@ -429,7 +486,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 return nil
             }
 
-            let isNullable = (row[safe: 2]?.asText) == "YES"
+            let isNullable = Self.isNullableFlag(row[safe: 2]?.asText)
             let defaultValue = row[safe: 3]?.asText
             let isPrimaryKey = pkColumns.contains(name)
 
@@ -439,19 +496,22 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
                 defaultValue: defaultValue,
-                allowedValues: resolveEnumValues(dataType: dataType, enumMap: enumMap)
+                allowedValues: resolveEnumValues(dataType: dataType)
             )
         }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let schemaName = resolveSchema(schema)
+        let catalog = try requireCatalog()
         let result = try await executeParameterized(
-            query: DuckDBSchemaQueries.columnsForSchema, parameters: [.text(schemaName)]
+            query: DuckDBSchemaQueries.columnsForSchema,
+            parameters: [.text(catalog), .text(schemaName)]
         )
 
         let pkResult = try await executeParameterized(
-            query: DuckDBSchemaQueries.primaryKeyColumnsForSchema, parameters: [.text(schemaName)]
+            query: DuckDBSchemaQueries.primaryKeyColumnsForSchema,
+            parameters: [.text(catalog), .text(schemaName)]
         )
         var pkMap: [String: Set<String>] = [:]
         for row in pkResult.rows {
@@ -460,7 +520,6 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
 
-        let enumMap = try await fetchEnumLabelMap(schema: schemaName)
         var allColumns: [String: [PluginColumnInfo]] = [:]
 
         for row in result.rows {
@@ -470,7 +529,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 continue
             }
 
-            let isNullable = (row[safe: 3]?.asText) == "YES"
+            let isNullable = Self.isNullableFlag(row[safe: 3]?.asText)
             let defaultValue = row[safe: 4]?.asText
             let isPrimaryKey = pkMap[tableName]?.contains(columnName) ?? false
 
@@ -480,7 +539,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
                 defaultValue: defaultValue,
-                allowedValues: resolveEnumValues(dataType: dataType, enumMap: enumMap)
+                allowedValues: resolveEnumValues(dataType: dataType)
             )
 
             allColumns[tableName, default: []].append(column)
@@ -489,48 +548,27 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return allColumns
     }
 
-    private func fetchEnumLabelMap(schema: String) async throws -> [String: [String]] {
-        let typeResult: PluginQueryResult
-        do {
-            typeResult = try await executeParameterized(
-                query: DuckDBSchemaQueries.enumTypeNamesForSchema, parameters: [.text(schema)]
-            )
-        } catch {
-            return [:]
-        }
-        let typeNames = typeResult.rows.compactMap { $0[safe: 0]?.asText }
-        guard !typeNames.isEmpty else { return [:] }
-
-        var map: [String: [String]] = [:]
-        for typeName in typeNames {
-            let valuesResult: PluginQueryResult
-            do {
-                valuesResult = try await execute(
-                    query: DuckDBSchemaQueries.enumLabels(schema: schema, typeName: typeName)
-                )
-            } catch {
-                continue
-            }
-            let labels = valuesResult.rows.compactMap { $0[safe: 0]?.asText }
-            if !labels.isEmpty {
-                map[typeName] = labels
-            }
-        }
-        return map
+    /// `duckdb_columns()` types `is_nullable` as BOOLEAN, so the value arrives as `true`.
+    private static func isNullableFlag(_ value: String?) -> Bool {
+        value == "true"
     }
 
-    private func resolveEnumValues(dataType: String, enumMap: [String: [String]]) -> [String]? {
-        if let values = enumMap[dataType], !values.isEmpty {
-            return values
-        }
-        return EnumValueParser.parseMySQLEnumOrSet(from: dataType)
+    /// DuckDB spells an ENUM column's type as `ENUM('ok', 'bad')`, members included, so the
+    /// allowed values are already in hand. The driver used to also query `duckdb_types()` for
+    /// them and key the result on `type_name`, which is `mood`, so that map never matched a
+    /// column and every value came from this parse anyway. The query is gone rather than
+    /// repaired: it cost a round trip per column fetch and answered nothing.
+    private func resolveEnumValues(dataType: String) -> [String]? {
+        EnumValueParser.parseMySQLEnumOrSet(from: dataType)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let schemaName = resolveSchema(schema)
+        let catalog = try requireCatalog()
         do {
             let result = try await executeParameterized(
-                query: DuckDBSchemaQueries.indexesForTable, parameters: [.text(schemaName), .text(table)]
+                query: DuckDBSchemaQueries.indexesForTable,
+                parameters: [.text(catalog), .text(schemaName), .text(table)]
             )
             return result.rows.compactMap { row in
                 guard let name = row[safe: 0]?.asText else { return nil }
@@ -556,9 +594,11 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let schemaName = resolveSchema(schema)
+        let catalog = try requireCatalog()
         do {
             let result = try await executeParameterized(
-                query: DuckDBSchemaQueries.foreignKeysForTable, parameters: [.text(schemaName), .text(table)]
+                query: DuckDBSchemaQueries.foreignKeysForTable,
+                parameters: [.text(catalog), .text(schemaName), .text(table)]
             )
             return result.rows.compactMap { row in
                 guard let name = row[safe: 0]?.asText,
@@ -590,7 +630,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         // Try native DDL from duckdb_tables() first (preserves complex types like LIST, STRUCT, MAP)
         let nativeResult = try await executeParameterized(
-            query: DuckDBSchemaQueries.tableDDL, parameters: [.text(schemaName), .text(table)]
+            query: DuckDBSchemaQueries.tableDDL,
+            parameters: [.text(try requireCatalog()), .text(schemaName), .text(table)]
         )
 
         if let firstRow = nativeResult.rows.first, let sql = firstRow[0].asText {
@@ -656,17 +697,18 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let schemaName = resolveSchema(schema)
         let result = try await executeParameterized(
-            query: DuckDBSchemaQueries.viewDefinition, parameters: [.text(schemaName), .text(view)]
+            query: DuckDBSchemaQueries.viewDefinition,
+            parameters: [.text(try requireCatalog()), .text(schemaName), .text(view)]
         )
 
         guard let firstRow = result.rows.first,
-              let definition = firstRow[0].asText else {
+              let definition = firstRow[0].asText?.nilIfEmpty else {
             throw DuckDBPluginError.queryFailed(
                 "Failed to fetch definition for view '\(view)'"
             )
         }
 
-        return "CREATE VIEW \"\(escapeIdentifier(schemaName))\".\"\(escapeIdentifier(view))\" AS\n\(definition)"
+        return DuckDBViewDefinition.makeReplaceable(definition)
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -690,11 +732,13 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchSchemas() async throws -> [String] {
         let query = DuckDBSchemaQueries.listSchemas
+        let parameters: [PluginCellValue] = [.text(try requireCatalog())]
         if remoteAlias != nil {
-            let schemas = (try? await execute(query: query))?.rows.compactMap { $0[safe: 0]?.asText } ?? []
+            let result = try? await executeParameterized(query: query, parameters: parameters)
+            let schemas = result?.rows.compactMap { $0[safe: 0]?.asText } ?? []
             return schemas.isEmpty ? ["main"] : schemas
         }
-        let result = try await execute(query: query)
+        let result = try await executeParameterized(query: query, parameters: parameters)
         return result.rows.compactMap { $0[safe: 0]?.asText }
     }
 
@@ -711,13 +755,29 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// the tracked schema has to follow or the next `pin` skips a switch it still needs.
     /// The new schema is read back rather than assumed to be `main`: a catalog attached
     /// through the postgres or mysql scanner defaults to that engine's own schema.
+    /// The name is canonicalised against `duckdb_databases()` rather than stored as typed.
+    /// DuckDB resolves a catalog case-insensitively, so `USE "FIXTURE"` moves to `fixture`
+    /// and writes `FIXTURE.main` into `search_path`, but `duckdb_tables()` compares
+    /// `database_name` exactly: every metadata query would then filter on `FIXTURE` and
+    /// return nothing, which is an empty sidebar on a connection that switched fine.
+    ///
+    /// The reads run before the state is committed and each falls back rather than throwing.
+    /// The `USE` has already moved the connection by then, so an early return would leave the
+    /// tracked catalog pointing at the database the connection just left.
     func switchDatabase(to database: String) async throws {
         _ = try await execute(query: DuckDBSchemaQueries.useDatabase(database))
-        let landedSchema = try? await execute(query: DuckDBSchemaQueries.currentSchema)
+        let canonical = await canonicalCatalogName(matching: database) ?? database
+        let landedSchema = try? await readPosition().schema
         stateLock.lock()
-        _currentDatabase = database
-        _currentSchema = landedSchema?.rows.first?[safe: 0]?.asText?.nilIfEmpty ?? "main"
+        _currentDatabase = canonical
+        _currentSchema = landedSchema.flatMap { $0 } ?? "main"
         stateLock.unlock()
+    }
+
+    private func canonicalCatalogName(matching database: String) async -> String? {
+        guard let result = try? await execute(query: DuckDBSchemaQueries.listDatabases) else { return nil }
+        let names = result.rows.compactMap { $0[safe: 0]?.asText }
+        return names.first { $0 == database } ?? names.first { $0.lowercased() == database.lowercased() }
     }
 
     func fetchDatabases() async throws -> [String] {
@@ -753,8 +813,12 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - All Tables Metadata
 
+    /// The app hands this an already escaped schema literal, so it is passed through rather
+    /// than escaped a second time.
     func allTablesMetadataSQL(schema: String?) -> String? {
-        DuckDBSchemaQueries.allTablesMetadata(schema: schema ?? currentSchema ?? "main")
+        guard let catalog = currentDatabase?.nilIfEmpty else { return nil }
+        let escapedSchema = schema ?? escapeStringLiteral(currentSchema ?? "main")
+        return DuckDBSchemaQueries.allTablesMetadata(catalog: catalog, escapedSchema: escapedSchema)
     }
 
     // MARK: - Private Helpers
@@ -781,7 +845,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         schema: String
     ) async throws -> Set<String> {
         let result = try await executeParameterized(
-            query: DuckDBSchemaQueries.primaryKeyColumnsForTable, parameters: [.text(schema), .text(table)]
+            query: DuckDBSchemaQueries.primaryKeyColumnsForTable,
+            parameters: [.text(try requireCatalog()), .text(schema), .text(table)]
         )
         return Set(result.rows.compactMap { $0[safe: 0]?.asText })
     }

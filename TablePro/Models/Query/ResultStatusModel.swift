@@ -12,6 +12,12 @@ import Foundation
 /// in English and translated "row" as two different Vietnamese nouns depending on which branch of the
 /// sentence fired.
 enum ResultStatusReadout: Equatable {
+    /// A fetch is running and there is nothing loaded to describe yet.
+    ///
+    /// Distinct from `noRows`, which is a result: retargeting a tab empties its buffer before the
+    /// replacing fetch starts, and without this case the bar spends every table switch stating that
+    /// the table the user just opened is empty.
+    case loading
     case noRows
     case rowCount(Int)
     /// A query result the row cap trimmed; `Fetch All` completes it.
@@ -79,15 +85,25 @@ struct ResultStatusModel: Equatable {
         controls.showsModeSwitcher = snapshot.availableModes.count > 1
         controls.showsStructureActions = viewMode == .structure && snapshot.hasStructureActions
 
-        /// Gated on columns rather than rows: a result that matched nothing still carries its column
-        /// metadata, and gating on rows made the readout vanish exactly when the user needed to be
-        /// told the result was empty.
-        controls.showsReadout = viewMode.showsResultScope && snapshot.hasColumns
+        /// A table tab describes a table whether or not its rows have arrived, so its controls are
+        /// decided by what the tab IS, never by what its buffer currently holds. Retargeting empties
+        /// that buffer before the replacing fetch starts, and deriving presence from it made the
+        /// readout, the Columns button and the whole pagination cluster leave the layout and come
+        /// back on every table switch. A query tab has no identity until it produces columns, so it
+        /// keeps the content gate.
+        let describesAResult = isTable ? snapshot.hasTableName : snapshot.hasColumns
+
+        controls.showsReadout = viewMode.showsResultScope && describesAResult
         controls.showsLoadingMore = controls.showsReadout && pagination.isLoadingMore
 
+        /// Withheld until nothing is still resolving the total. Offered against a total that is
+        /// about to be replaced, it appears the moment the rows land and disappears again when the
+        /// count arrives, which is the same blink one layer down from the one above.
         if controls.showsReadout, isTable, !pagination.isLoadingMore, !pagination.hasExactRowCount {
             controls.showsCountInProgress = pagination.isCountingExact
             controls.showsExactCountAction = !pagination.isCountingExact
+                && !pagination.isLoading
+                && !pagination.isCountPending
         }
 
         controls.showsFetchAll = controls.showsReadout
@@ -95,12 +111,9 @@ struct ResultStatusModel: Equatable {
             && pagination.hasMoreRows
             && !pagination.isLoadingMore
 
-        controls.showsColumns = viewMode.showsColumnControls && snapshot.hasColumns
+        controls.showsColumns = viewMode.showsColumnControls && describesAResult
         controls.showsFilters = viewMode.showsRowFilters && isTable && snapshot.hasTableName
-        controls.showsPagination = viewMode.showsResultScope
-            && isTable
-            && snapshot.hasTableName
-            && snapshot.showsPaginationControls
+        controls.showsPagination = viewMode.showsResultScope && isTable && snapshot.hasTableName
 
         return controls
     }
@@ -112,6 +125,11 @@ struct ResultStatusModel: Equatable {
             guard selectedRowCount < displayed else { return .allSelected(displayed) }
             return .selection(selected: selectedRowCount, of: displayed)
         }
+
+        /// Ordered ahead of the empty case on purpose. An in-flight fetch with an emptied buffer is
+        /// indistinguishable from a table that returned nothing, and calling it "No rows" states a
+        /// result the app does not have yet.
+        guard !snapshot.pagination.isLoading || displayed > 0 else { return .loading }
 
         guard displayed > 0 else { return .noRows }
 
@@ -134,7 +152,11 @@ struct ResultStatusModel: Equatable {
                     isEstimate: pagination.isApproximateRowCount
                 )
             }
-            if snapshot.isPagedWithUnknownTotal {
+            /// A total that is still being worked out is reported as the range we do know, not as a
+            /// bare row count. Both sentences describe the same rows, but "1,000 rows" reads as the
+            /// whole answer and is then replaced by "1-1,000 of 5,000 rows", which is the blink. The
+            /// range only ever gains its total, so each step adds to the last instead of retracting.
+            if snapshot.isPagedWithUnknownTotal || pagination.isCountPending {
                 return .rangeOfUnknownTotal(
                     start: pagination.rangeStart,
                     end: pagination.rangeEnd(loadedRowCount: snapshot.rowCount)

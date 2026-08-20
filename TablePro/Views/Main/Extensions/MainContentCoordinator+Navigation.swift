@@ -122,11 +122,7 @@ extension MainContentCoordinator {
                 )
                 if replaced {
                     clearFilterState()
-                    if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
-                        setActiveTableRows(TableRows(), for: tab.id)
-                        tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
-                        toolbarState.isTableTab = true
-                    }
+                    discardRowsForRetarget()
                     restoreLastHiddenColumnsForTable()
                     restoreFiltersForTable(tableName)
                     if let dbIndex = Int(currentDatabase) {
@@ -311,14 +307,7 @@ extension MainContentCoordinator {
         }
         if let token { TableLoadTracer.shared.stage(.replaceTabContent, token: token) }
         clearFilterState()
-        if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
-            setActiveTableRows(TableRows(), for: tab.id)
-            tabManager.mutate(at: tabIndex) {
-                $0.display.resultsViewMode = showStructure ? .structure : .data
-                $0.pagination.reset()
-            }
-            toolbarState.isTableTab = true
-        }
+        discardRowsForRetarget(resultsViewMode: showStructure ? .structure : .data)
         restoreLastHiddenColumnsForTable()
         restoreFiltersForTable(tableName)
         if let tabId = tabManager.selectedTab?.id {
@@ -327,6 +316,26 @@ extension MainContentCoordinator {
         }
         lazyLoadCurrentTabIfNeeded()
         return true
+    }
+
+    /// Drops the outgoing table's rows and says, in the same step, that a load is running.
+    ///
+    /// The two belong together. A cleared buffer that nothing has called a load is what the status
+    /// bar reads as "this tab has no result", and it removes every control that depends on one, so
+    /// the bar collapses and then refills as the fetch lands. The execution claim cannot stand in
+    /// for the flag: retargeting only schedules the load, so the claim arrives a main-actor turn
+    /// later and leaves a renderable frame in between.
+    private func discardRowsForRetarget(resultsViewMode: ResultsViewMode? = nil) {
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
+        setActiveTableRows(TableRows(), for: tab.id)
+        tabManager.mutate(at: tabIndex) { tab in
+            if let resultsViewMode {
+                tab.display.resultsViewMode = resultsViewMode
+            }
+            tab.pagination.reset()
+            tab.pagination.isLoading = true
+        }
+        toolbarState.isTableTab = true
     }
 
     // MARK: - Preview Tabs
@@ -477,13 +486,25 @@ extension MainContentCoordinator {
         tabManager.selectedTabId = tabId
     }
 
-    /// Applies both dimensions a link named, in the order this engine can take them.
+    /// Applies both dimensions a caller named, in the order this engine can take them.
     ///
-    /// A link names dimensions, not one container, so choosing between them is what sent a
-    /// database name to `switchSchema` on every engine that has schemas. `switchContainer` cannot
-    /// express this because it carries one container; the planner decides which to apply and in
-    /// what order, and this runs them.
-    func applyLinkedContainers(database: String?, schema: String?) async {
+    /// The one entry point for anything that names a database and a schema together: a link, a
+    /// sidebar row, a restored tab. Naming two dimensions and picking one is what sent a database
+    /// name to `switchSchema` on every engine that has schemas, and what asked a schema-only
+    /// engine to switch a database it does not have, which surfaced the driver's own
+    /// "does not support database switching" as an alert on every table click (#2262).
+    /// `switchContainer` cannot express this because it carries one container.
+    ///
+    /// A step already satisfied is skipped, and that is decided when the step runs rather than
+    /// from a snapshot taken up front, because an earlier step moves what the next one compares
+    /// against: on an engine that groups by schema, switching database resets the session to the
+    /// engine's default schema. Reading both values before either switch drops the schema step as
+    /// redundant and then leaves the session on `dbo`.
+    ///
+    /// Each value comes from the live session, never from `toolbarState`: a database switch moves
+    /// the session schema without touching the toolbar, so comparing against the toolbar skips
+    /// the switch exactly when the session needs it.
+    func switchContainers(database: String?, schema: String?) async {
         let steps = ContainerSwitchPlanner.plan(
             database: database,
             schema: schema,
@@ -491,15 +512,15 @@ extension MainContentCoordinator {
         )
 
         for step in steps {
+            let session = services.databaseManager.session(for: connectionId)
             switch step {
             case .database(let name):
-                guard name != services.databaseManager.session(for: connectionId)?.resolvedBrowseDatabase else {
-                    continue
-                }
+                guard name != session?.resolvedBrowseDatabase else { continue }
                 /// A schema belongs to a database, so a failed database switch stops the plan
                 /// rather than applying the schema against whatever is still open.
                 guard await switchDatabase(to: name) else { return }
             case .schema(let name):
+                guard name != session?.browseSchema else { continue }
                 await switchSchema(to: name)
             }
         }
@@ -581,7 +602,7 @@ extension MainContentCoordinator {
             connectionId: connectionId,
             databaseType: connection.type
         )
-        for database in Set(request.targets.filter { $0.kind == .schema }.map(\.database)) {
+        for database in Set(request.targets.filter { $0.kind == .schema }.compactMap(\.database)) {
             await DatabaseTreeMetadataService.shared.refreshSchemas(
                 connectionId: connectionId,
                 database: database
@@ -643,6 +664,9 @@ extension MainContentCoordinator {
             } catch {
                 if !Task.isCancelled {
                     navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
+                }
+                if let tabId = tabManager.selectedTab?.id {
+                    declineTableLoad(for: tabId)
                 }
                 return
             }

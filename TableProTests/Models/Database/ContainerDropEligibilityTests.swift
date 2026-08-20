@@ -100,4 +100,23 @@ struct ContainerDropEligibilityTests {
 
         #expect(ContainerDropEligibility.droppable(targets, context: context(isReadOnly: true)).isEmpty)
     }
+
+    // MARK: - Engines that browse no database
+
+    /// `database` is optional now, so nil has to compare equal to nil here. No producer feeds a
+    /// nil database in today, which is the only reason the string form never mismatched its way
+    /// into offering the schema in use for dropping, the way the sidebar's own comparison did.
+    @Test("The active schema is not droppable when the engine browses no database")
+    func activeSchemaExcludedWithoutADatabase() {
+        let targets: [DatabaseContainerRef] = [
+            .schema(database: nil, schema: "SYSDBA"),
+            .schema(database: nil, schema: "REPORTING")
+        ]
+
+        let droppable = ContainerDropEligibility.droppable(
+            targets, context: context(activeDatabase: nil, activeSchema: "SYSDBA")
+        )
+
+        #expect(droppable.map(\.name) == ["REPORTING"])
+    }
 }

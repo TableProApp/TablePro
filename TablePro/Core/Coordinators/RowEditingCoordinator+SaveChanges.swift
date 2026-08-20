@@ -244,7 +244,12 @@ extension RowEditingCoordinator {
                     Task { [parent] in await parent.refreshTables() }
                 }
 
-                if parent.tabManager.selectedTabIndex != nil && !parent.tabManager.tabs.isEmpty {
+                if let savedTabIndex = parent.tabManager.selectedTabIndex, !parent.tabManager.tabs.isEmpty {
+                    /// An insert or a delete changes the number this tab is reporting, so a count
+                    /// the user asked for before the save no longer describes the table. Without
+                    /// retiring it the reload's automatic count refuses to replace it, and the bar
+                    /// keeps the pre-save total with no `Count Exactly` offered to correct it.
+                    parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
                     parent.runQuery()
                 }
 

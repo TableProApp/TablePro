@@ -346,4 +346,81 @@ struct PaginationStateTests {
         #expect(state.baseQueryForMore == nil)
         #expect(state.hasMoreRows == false)
     }
+
+    // MARK: - Derived row counts
+
+    @Test("An estimate never replaces a count the user asked for")
+    func estimateDoesNotOverwriteAnExactCount() {
+        var state = PaginationState(pageSize: 1_000)
+        state.totalRowCount = 3_812_004
+        state.isApproximateRowCount = false
+
+        state.applyDerivedRowCount(4_000_000, isApproximate: true)
+
+        #expect(state.totalRowCount == 3_812_004)
+        #expect(state.hasExactRowCount)
+    }
+
+    @Test("An estimate replaces another estimate")
+    func estimateReplacesAnEstimate() {
+        var state = PaginationState(pageSize: 1_000)
+        state.applyDerivedRowCount(4_000_000, isApproximate: true)
+        state.applyDerivedRowCount(4_100_000, isApproximate: true)
+
+        #expect(state.totalRowCount == 4_100_000)
+        #expect(state.isApproximateRowCount)
+    }
+
+    @Test("A derived exact count replaces an estimate")
+    func exactCountReplacesAnEstimate() {
+        var state = PaginationState(pageSize: 1_000)
+        state.applyDerivedRowCount(4_000_000, isApproximate: true)
+        state.applyDerivedRowCount(3_812_004, isApproximate: false)
+
+        #expect(state.totalRowCount == 3_812_004)
+        #expect(state.hasExactRowCount)
+    }
+
+    /// Flagging the count approximate without dropping it left a real count wearing a tilde that
+    /// nothing could remove: past the count threshold the automatic plan skips, so the number stayed
+    /// and `Last page` stayed disabled.
+    @Test("Retiring a count clears the number, not just its exactness")
+    func retiringACountClearsTheNumber() {
+        var state = PaginationState(pageSize: 1_000)
+        state.applyDerivedRowCount(4_873_221, isApproximate: false)
+
+        state.retireDerivedRowCount()
+
+        #expect(state.totalRowCount == nil)
+        #expect(!state.isApproximateRowCount)
+        #expect(!state.hasExactRowCount)
+    }
+
+    @Test("A retired count lets the next estimate land")
+    func retiredCountAcceptsAnEstimate() {
+        var state = PaginationState(pageSize: 1_000)
+        state.applyDerivedRowCount(4_873_221, isApproximate: false)
+        state.retireDerivedRowCount()
+
+        state.applyDerivedRowCount(5_000_000, isApproximate: true)
+
+        #expect(state.totalRowCount == 5_000_000)
+        #expect(state.isApproximateRowCount)
+    }
+
+    @Test("Busy covers every kind of pending work")
+    func busyCoversEveryPendingKind() {
+        #expect(!PaginationState().isBusy)
+
+        for mutate in [
+            { (state: inout PaginationState) in state.isLoading = true },
+            { (state: inout PaginationState) in state.isLoadingMore = true },
+            { (state: inout PaginationState) in state.isCountingExact = true },
+            { (state: inout PaginationState) in state.isCountPending = true },
+        ] {
+            var state = PaginationState()
+            mutate(&state)
+            #expect(state.isBusy)
+        }
+    }
 }

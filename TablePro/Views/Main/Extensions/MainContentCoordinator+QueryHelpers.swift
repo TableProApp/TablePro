@@ -39,8 +39,12 @@ extension MainContentCoordinator {
             traceStaleResultDropped(traceToken)
             return
         }
+        /// Ahead of every early return below. A cancellation leaves through the next line, and a
+        /// disconnected auto-load through the one after, so clearing this alongside the error text
+        /// would leave the two commonest failures reporting a load that is no longer running.
         tabManager.mutate(tabId: tabId) { tab in
             tab.pagination.isLoadingMore = false
+            tab.pagination.isLoading = false
         }
         retireQueryTask(for: claim)
         traceExecutionFailed(traceToken, error: error)

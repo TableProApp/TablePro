@@ -389,7 +389,7 @@ internal final class TabRouter {
     private func applyContainerSwitch(connectionId: UUID, database: String?, schema: String?) async {
         guard let coordinator = MainContentCoordinator.allActiveCoordinators()
             .first(where: { $0.connectionId == connectionId }) else { return }
-        await coordinator.applyLinkedContainers(database: database, schema: schema)
+        await coordinator.switchContainers(database: database, schema: schema)
     }
 
     private func runPreConnectScriptIfNeeded(_ connection: DatabaseConnection) async throws {

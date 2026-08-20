@@ -196,11 +196,11 @@ extension QueryExecutionCoordinator {
             tab.execution.lastExecutedAt = Date()
             tab.tableContext.tableName = tableName
             tab.tableContext.isEditable = isEditable
+            tab.pagination.isLoading = false
 
             if let metadata, let approxCount = metadata.approximateRowCount, approxCount > 0,
                !tab.filterState.hasAppliedFilters {
-                tab.pagination.totalRowCount = approxCount
-                tab.pagination.isApproximateRowCount = true
+                tab.pagination.applyDerivedRowCount(approxCount, isApproximate: true)
             }
             if hasSchema {
                 tab.metadataVersion += 1
@@ -331,7 +331,13 @@ extension QueryExecutionCoordinator {
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let resultSetId = parent.tabManager.tabs.first { $0.id == tabId }?.display.activeResultSetId
         Task(priority: .utility) { [weak self, parent] in
-            guard let self else { return }
+            /// The caller marked the total pending when it committed to this phase. Every way out of
+            /// here that does not reach `resolveRowCount` has to take that back, or the tab reports a
+            /// count that is never coming and never offers `Count Exactly` again.
+            guard let self else {
+                parent.releaseCountPending(for: tabId)
+                return
+            }
             guard !parent.isTearingDown else { return }
 
             let schema = try? await schemaTask?.value
@@ -340,17 +346,21 @@ extension QueryExecutionCoordinator {
             }
 
             await MainActor.run { [weak self] in
-                guard let self else { return }
+                guard let self else {
+                    parent.releaseCountPending(for: tabId)
+                    return
+                }
                 if let schema {
                     applySchemaMetadata(schema, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
                 }
-                if parent.tabExecution.isSameContent(contentEpoch, for: tabId) {
-                    resolveRowCount(
-                        tableName: tableName,
-                        tabId: tabId,
-                        connectionType: connectionType
-                    )
-                }
+                /// A retarget or a re-execution that overtook this one owns the tab's state now, and
+                /// it raised its own pending mark. Clearing here would release the successor's.
+                guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
+                resolveRowCount(
+                    tableName: tableName,
+                    tabId: tabId,
+                    connectionType: connectionType
+                )
             }
 
             guard !isNonSQL, let schema else { return }
@@ -466,8 +476,7 @@ extension QueryExecutionCoordinator {
             }
             if let approxCount = parsed.approximateRowCount, approxCount > 0,
                !tab.filterState.hasAppliedFilters {
-                tab.pagination.totalRowCount = approxCount
-                tab.pagination.isApproximateRowCount = true
+                tab.pagination.applyDerivedRowCount(approxCount, isApproximate: true)
             }
             tab.metadataVersion += 1
         }
@@ -513,6 +522,8 @@ extension QueryExecutionCoordinator {
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let token = UUID()
 
+        parent.tabManager.mutate(tabId: tabId) { $0.pagination.isCountPending = true }
+
         let task = Task(priority: .utility) { [weak self, parent] in
             guard let self else { return }
             guard !parent.isTearingDown else { return }
@@ -541,60 +552,70 @@ extension QueryExecutionCoordinator {
                 return (plan, sql, scope)
             }
 
-            guard let countScope = prepared.scope else { return }
-
-            let outcome: RowCountOutcome?
-            switch prepared.plan {
-            case .skip:
-                outcome = nil
-            case .clear:
-                outcome = .clear
-            case .approximate:
-                if let count = try? await DatabaseManager.shared.withMetadataDriver(scope: countScope, { driver in
-                    try await driver.fetchApproximateRowCount(table: tableName)
-                }) {
-                    outcome = .count(count, isApproximate: true)
-                } else {
-                    outcome = nil
-                }
-            case let .filteredNonSQL(filters, logicMode):
-                if let count = try? await DatabaseManager.shared.withMetadataDriver(scope: countScope, workload: .bulk, { driver in
-                    try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
-                }) {
-                    outcome = .count(count, isApproximate: false)
-                } else {
-                    outcome = .clear
-                }
-            case .exactCount:
-                let count: Int?
-                if let sql = prepared.sql {
-                    do {
-                        count = try await DatabaseManager.shared.withMetadataDriver(scope: countScope, workload: .bulk) { driver in
-                            let result = try await driver.execute(query: sql)
-                            guard let countStr = result.rows.first?.first?.asText else { return Int?.none }
-                            return Int(countStr)
-                        }
-                    } catch {
-                        helpersLogger.warning("COUNT query failed for \(tableName): \(error.localizedDescription)")
-                        count = nil
-                    }
-                } else {
-                    count = nil
-                }
-                outcome = count.map { RowCountOutcome.count($0, isApproximate: false) }
-            }
+            let outcome = await Self.rowCountOutcome(
+                plan: prepared.plan,
+                sql: prepared.sql,
+                scope: prepared.scope,
+                tableName: tableName
+            )
 
             await MainActor.run {
-                guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
-                parent.clearRowCountTask(for: tabId, token: token)
-                guard let applied = outcome?.appliedTotal else { return }
+                /// The flag says a count is running, so it has to clear on every way out, including
+                /// the ones that apply nothing. Only the task that still owns the slot may clear it,
+                /// or a superseded task would release the successor that replaced it.
+                let ownsCount = parent.clearRowCountTask(for: tabId, token: token)
+                let isCurrent = parent.tabExecution.isSameContent(contentEpoch, for: tabId)
                 parent.tabManager.mutate(tabId: tabId) { tab in
-                    tab.pagination.totalRowCount = applied.total
-                    tab.pagination.isApproximateRowCount = applied.isApproximate
+                    if ownsCount {
+                        tab.pagination.isCountPending = false
+                    }
+                    guard isCurrent, let applied = outcome?.appliedTotal else { return }
+                    tab.pagination.applyDerivedRowCount(applied.total, isApproximate: applied.isApproximate)
                 }
             }
         }
         parent.setRowCountTask(task, token: token, for: tabId)
+    }
+
+    /// Runs the plan the caller resolved. Split out so `resolveRowCount` has one exit that clears
+    /// `isCountPending`, rather than an early return per plan that leaves it set.
+    private static func rowCountOutcome(
+        plan: RowCountPlan,
+        sql: String?,
+        scope: DatabaseScope?,
+        tableName: String
+    ) async -> RowCountOutcome? {
+        guard let scope else { return nil }
+
+        switch plan {
+        case .skip:
+            return nil
+        case .clear:
+            return .clear
+        case .approximate:
+            guard let count = try? await DatabaseManager.shared.withMetadataDriver(scope: scope, { driver in
+                try await driver.fetchApproximateRowCount(table: tableName)
+            }) else { return nil }
+            return .count(count, isApproximate: true)
+        case let .filteredNonSQL(filters, logicMode):
+            guard let count = try? await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk, { driver in
+                try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
+            }) else { return .clear }
+            return .count(count, isApproximate: false)
+        case .exactCount:
+            guard let sql else { return nil }
+            do {
+                let count = try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+                    let result = try await driver.execute(query: sql)
+                    guard let countStr = result.rows.first?.first?.asText else { return Int?.none }
+                    return Int(countStr)
+                }
+                return count.map { RowCountOutcome.count($0, isApproximate: false) }
+            } catch {
+                helpersLogger.warning("COUNT query failed for \(tableName): \(error.localizedDescription)")
+                return nil
+            }
+        }
     }
 
     static func rowCountPlan(
@@ -632,6 +653,7 @@ extension QueryExecutionCoordinator {
             tab.execution.errorQuery = sql
             tab.execution.lastExecutedAt = Date()
             tab.execution.executionTime = nil
+            tab.pagination.isLoading = false
 
             // The banner lives at the top of the results pane, so a collapsed pane hides the only
             // thing telling the user their query failed. Every success path opens it the same way.

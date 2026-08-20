@@ -1290,6 +1290,13 @@ final class MainContentCoordinator {
                 }
 
                 if isEditable, let tableName {
+                    /// Committing to phase 2 is what makes the total pending, so it is recorded here
+                    /// rather than inside `resolveRowCount`. On a first open the metadata arm reaches
+                    /// that function only after a Task hop and the schema round trip, and phase 1 has
+                    /// already cleared `isLoading` synchronously, so the tab spends the whole fetch
+                    /// looking settled with no total: the readout states a row count it is about to
+                    /// replace, and `Count Exactly` is offered against a total nobody has yet.
+                    tabManager.mutate(tabId: tabId) { $0.pagination.isCountPending = true }
                     launchPhase2(
                         tableName: tableName,
                         tabId: tabId,

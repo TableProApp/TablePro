@@ -326,8 +326,10 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBPositionParser.swift
       - Plugins/DuckDBDriverPlugin/DuckDBSchemaQueries.swift
       - Plugins/DuckDBDriverPlugin/DuckDBTypeRendering.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBViewDefinition.swift
       - Plugins/DuckDBDriverPlugin/QuackConnectBuilder.swift
       - Plugins/DynamoDBDriverPlugin/DynamoDBQueryBuilder.swift
       - Plugins/DynamoDBDriverPlugin/DynamoDBStatementGenerator.swift

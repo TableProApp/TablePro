@@ -6,13 +6,17 @@
 import SwiftUI
 import TableProPluginKit
 
+/// `database` is nil when the connection browses no database, which is the normal state for
+/// an engine that has none. It stays optional all the way from `browsingDatabase` so it can be
+/// compared against the equally optional active database: an empty string here read as "some
+/// database called nothing", never equal to nil, and fired a database switch on every click.
 struct DatabaseTreeTableRef: Hashable, Identifiable {
-    let database: String
+    let database: String?
     let schema: String?
     let table: TableInfo
 
     var id: String {
-        "\(database)|\(schema ?? "")|\(table.id)"
+        "\(database ?? "")|\(schema ?? "")|\(table.id)"
     }
 
     static func == (lhs: DatabaseTreeTableRef, rhs: DatabaseTreeTableRef) -> Bool {
@@ -25,12 +29,12 @@ struct DatabaseTreeTableRef: Hashable, Identifiable {
 }
 
 struct DatabaseTreeRoutineRef: Identifiable, Equatable {
-    let database: String
+    let database: String?
     let schema: String?
     let routine: RoutineInfo
 
     var id: String {
-        "\(database)|\(schema ?? "")|\(routine.id)"
+        "\(database ?? "")|\(schema ?? "")|\(routine.id)"
     }
 }
 

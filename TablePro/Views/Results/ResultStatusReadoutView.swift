@@ -26,6 +26,13 @@ struct ResultStatusReadoutView: View {
     @ViewBuilder
     private var text: some View {
         switch readout {
+        case .loading:
+            /// Unlabelled, per the HIG: "Avoid labeling a spinning progress indicator." It stands in
+            /// for the sentence rather than sitting beside one, so the readout has a single owner in
+            /// every state and nothing is added to the row.
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel(String(localized: "Loading…"))
         case .noRows:
             Text("No rows")
         case let .rowCount(count):
