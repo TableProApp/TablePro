@@ -68,12 +68,12 @@ final class ResultStatusBarUITests: UITestCase {
         let window = app.windows.firstMatch
 
         for table in ["Album", "Artist", "Track"] {
-            let row = window.outlines.firstMatch.staticTexts[table].firstMatch
+            let row = objectBrowserRow(table, in: window)
             guard row.waitForExistence(timeout: 15) else {
                 XCTFail("The object browser must list \(table)")
                 return
             }
-            row.click()
+            clickAtCenter(row)
 
             let readout = window.staticTexts["result-status-readout"].firstMatch
             XCTAssertTrue(readout.waitForExistence(timeout: 15), "\(table): the readout must survive the switch")

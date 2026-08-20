@@ -143,6 +143,25 @@ internal class UITestCase: XCTestCase {
         waitForPredicate(timeout: timeout) { element.exists && element.isHittable }
     }
 
+    /// The object browser draws its rows as hosted cells, so a row's name arrives as the static
+    /// text's `value`, carrying the object kind the row reads out to VoiceOver, rather than as a
+    /// label or an identifier. Matching on `value` is what finds them.
+    internal func objectBrowserRow(
+        _ name: String,
+        kind: String = "Table",
+        in window: XCUIElement
+    ) -> XCUIElement {
+        window.outlines.firstMatch.staticTexts
+            .matching(NSPredicate(format: "value == %@", "\(kind): \(name)"))
+            .firstMatch
+    }
+
+    /// AppKit reports those rows as disabled, so they never become hittable and a plain `click()`
+    /// waits for a state that cannot arrive. Clicking through a coordinate reaches them.
+    internal func clickAtCenter(_ element: XCUIElement) {
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+    }
+
     /// A defaults suite is a file in the user's preferences directory, so removing the sandbox
     /// directory alone would leave one behind for every test that ever ran.
     private func removeDefaultsSuite(forSandboxAt root: URL) {

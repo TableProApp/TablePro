@@ -14,15 +14,18 @@ final class StructureTabIdentityUITests: UITestCase {
         let app = try launchWithSampleDatabase()
         let window = app.windows.firstMatch
 
-        let row = window.outlines.firstMatch.staticTexts["Album"].firstMatch
+        let row = objectBrowserRow("Album", in: window)
         XCTAssertTrue(row.waitForExistence(timeout: 20), "The object browser must list Album")
-        row.click()
+        clickAtCenter(row)
 
         showStructure(in: window)
         let indexes = subTab(named: "Indexes", in: window)
         XCTAssertTrue(indexes.waitForExistence(timeout: 20), "The structure editor must offer Indexes")
         indexes.click()
-        XCTAssertTrue(indexes.isSelected, "The first tab is on Indexes")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { isSelected(indexes) },
+            "The first tab is on Indexes"
+        )
 
         row.rightClick()
         let openInNewTab = app.menuItems["Open in New Tab"].firstMatch
@@ -33,9 +36,15 @@ final class StructureTabIdentityUITests: UITestCase {
         let columns = subTab(named: "Columns", in: window)
         XCTAssertTrue(columns.waitForExistence(timeout: 20), "The second tab must have its own structure editor")
         XCTAssertTrue(
-            columns.isSelected,
+            waitForPredicate(timeout: 10) { isSelected(columns) },
             "The second tab opens on Columns rather than inheriting the first tab's Indexes"
         )
+    }
+
+    /// A radio button in a hosted picker reports `AXSelected` as nil and answers with `AXValue`
+    /// instead, so `isSelected` reads as false however the picker is set.
+    private func isSelected(_ segment: XCUIElement) -> Bool {
+        (segment.value as? NSNumber)?.intValue == 1
     }
 
     private func showStructure(in window: XCUIElement) {
