@@ -146,11 +146,7 @@ extension WelcomeWindowView {
 
         Divider()
 
-        Button {
-            WindowOpener.shared.openConnectionForm(editing: connection.id)
-        } label: {
-            Label(String(localized: "Edit"), systemImage: "pencil")
-        }
+        editConnectionButton(for: connection)
 
         Button { vm.duplicateConnection(connection) } label: {
             Label(String(localized: "Duplicate"), systemImage: "doc.on.doc")
@@ -262,6 +258,20 @@ extension WelcomeWindowView {
 
         Divider()
 
+        deleteConnectionButton(for: connection)
+    }
+
+    @ViewBuilder
+    func editConnectionButton(for connection: DatabaseConnection) -> some View {
+        Button {
+            WindowOpener.shared.openConnectionForm(editing: connection.id)
+        } label: {
+            Label(String(localized: "Edit"), systemImage: "pencil")
+        }
+    }
+
+    @ViewBuilder
+    func deleteConnectionButton(for connection: DatabaseConnection) -> some View {
         Button(role: .destructive) {
             vm.requestDeleteConnections([connection])
         } label: {

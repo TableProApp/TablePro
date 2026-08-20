@@ -410,6 +410,10 @@ struct WelcomeWindowView: View {
         )
         .tag(connection.id)
         .listRowSeparator(.hidden)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            editConnectionButton(for: connection)
+            deleteConnectionButton(for: connection)
+        }
     }
 
     private func sourceListSectionHeader(_ title: String) -> some View {
