@@ -415,6 +415,8 @@ struct MainEditorContentView: View {
                             coordinator.commandActions?.closeTab()
                         },
                         onExecuteQuery: { coordinator.runQuery() },
+                        onRunStatement: { sql in coordinator.runStatement(sql) },
+                        isExecuting: coordinator.tabExecution.isExecuting(tab.id),
                         onExplain: { variant in coordinator.runExplain(variant: variant) },
                         onAIExplain: { text in
                             coordinator.showAIChatPanel()

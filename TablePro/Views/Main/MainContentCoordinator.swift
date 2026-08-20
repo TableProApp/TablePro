@@ -983,6 +983,31 @@ final class MainContentCoordinator {
             )
         }
 
+        executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: bypassRowLimit)
+    }
+
+    /// Runs one statement, named by its own text rather than by where the caret happens to be.
+    ///
+    /// The gutter's run control draws itself from the same scan this executes through, so the control runs the
+    /// statement it sits beside even when the caret is somewhere else entirely. It hands over the SQL rather than a
+    /// range on purpose: the editor's text and the tab's binding are two strings that can differ for a moment, and a
+    /// range resolved against the wrong one truncates silently. Past that it is the ordinary path, so parameters, safe
+    /// mode and the execution gate all apply exactly as they do to any other run.
+    func runStatement(_ sql: String) {
+        guard let (tab, index) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return }
+        guard !tabExecution.isExecuting(tab.id) else {
+            traceExecutionBlocked(tabId: tab.id, site: "runStatement")
+            return
+        }
+
+        executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false)
+    }
+
+    /// Everything both run paths do once the SQL to run has been decided.
+    ///
+    /// Shared so that a statement run from the gutter and a statement run from the caret cannot drift apart on
+    /// parameter handling, which is the half of this that is easy to forget.
+    private func executeResolvedSQL(_ sql: String, tabIndex index: Int, bypassRowLimit: Bool) {
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }

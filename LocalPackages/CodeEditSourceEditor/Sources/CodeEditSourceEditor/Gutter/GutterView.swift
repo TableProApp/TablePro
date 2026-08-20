@@ -112,6 +112,18 @@ public class GutterView: NSView {
         }
     }
 
+    /// Toggle the visibility of the per-statement run controls.
+    ///
+    /// The column they sit in is reserved for as long as this is on, whether or not the pointer is revealing a
+    /// control, so a document never shifts sideways under the reader.
+    @Invalidating(.display)
+    public var showStatementRunControls: Bool = false {
+        didSet {
+            statementRunRibbon.isHidden = !showStatementRunControls
+            updateWidthIfNeeded()
+        }
+    }
+
     /// Toggle the visibility of the line numbers.
     ///
     /// The gutter stays visible either way, so an editor can show the folding ribbon on its own. That costs a column
@@ -146,10 +158,32 @@ public class GutterView: NSView {
     /// The view that draws the fold decoration in the gutter.
     var foldingRibbon: LineFoldRibbonView
 
+    /// The view that draws the per-statement run controls in the gutter.
+    var statementRunRibbon: StatementRunRibbonView
+
+    /// The padding between a run control and the line number beside it.
+    @Invalidating(.display)
+    var statementRunRibbonPadding: CGFloat = 4
+
+    /// The room the run controls reserve at the gutter's leading edge, control plus padding.
+    var statementRunRibbonWidth: CGFloat {
+        statementRunRibbon.isHidden ? 0 : StatementRunRibbonView.width + statementRunRibbonPadding
+    }
+
+    /// Where the line numbers start.
+    ///
+    /// The run controls live in the margin the gutter already keeps from the window edge rather than being charged
+    /// for a column of their own, which is where Xcode puts its gutter controls too. The margin only grows when the
+    /// controls need more room than it already had.
+    private var lineNumberLeading: CGFloat {
+        guard showLineNumbers else { return statementRunRibbonWidth }
+        return max(edgeInsets.leading, statementRunRibbonWidth)
+    }
+
     /// The leading inset only exists to keep line numbers off the edge, so a gutter without them drops it rather
     /// than leaving a blank margin where the numbers would have been.
     private var horizontalInsets: CGFloat {
-        showLineNumbers ? edgeInsets.horizontal : edgeInsets.trailing
+        lineNumberLeading + edgeInsets.trailing
     }
 
     private var numberAreaWidth: CGFloat {
@@ -170,7 +204,7 @@ public class GutterView: NSView {
         true
     }
 
-    /// We override this variable so we can update the ``foldingRibbon``'s frame to match the gutter.
+    /// We override this variable so we can update the two ribbons' frames to match the gutter.
     override public var frame: NSRect {
         get {
             super.frame
@@ -181,6 +215,12 @@ public class GutterView: NSView {
                 x: newValue.width - edgeInsets.trailing - foldingRibbonWidth + foldingRibbonPadding,
                 y: 0.0,
                 width: foldingRibbonWidth,
+                height: newValue.height
+            )
+            statementRunRibbon.frame = NSRect(
+                x: 0.0,
+                y: 0.0,
+                width: max(0, statementRunRibbonWidth - statementRunRibbonPadding),
                 height: newValue.height
             )
         }
@@ -214,6 +254,7 @@ public class GutterView: NSView {
         self.delegate = delegate
 
         foldingRibbon = LineFoldRibbonView(controller: controller)
+        statementRunRibbon = StatementRunRibbonView(controller: controller)
 
         super.init(frame: .zero)
         clipsToBounds = true
@@ -222,7 +263,9 @@ public class GutterView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         layer?.masksToBounds = true
 
+        statementRunRibbon.isHidden = !showStatementRunControls
         addSubview(foldingRibbon)
+        addSubview(statementRunRibbon)
 
         NotificationCenter.default.addObserver(
             forName: TextSelectionManager.selectionChangedNotification,
@@ -243,6 +286,16 @@ public class GutterView: NSView {
         textView?.menu(for: event)
     }
 
+    /// A positional accessibility lookup lands on the gutter for the same reason a right-click does, so it answers for
+    /// the controls its ribbons draw rather than letting the search fall through to the text view underneath.
+    override public func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        if !statementRunRibbon.isHidden,
+           let hit = statementRunRibbon.accessibilityElement(atScreenPoint: point) {
+            return hit
+        }
+        return super.accessibilityHitTest(point)
+    }
+
     // MARK: - Fold Control Hover
 
     /// The gutter owns the tracking for the fold controls, not the ribbon that draws them.
@@ -256,10 +309,18 @@ public class GutterView: NSView {
         addTrackingArea(
             NSTrackingArea(
                 rect: .zero,
-                options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeInKeyWindow, .inVisibleRect],
                 owner: self
             )
         )
+    }
+
+    /// The gutter holds controls, not text, so the pointer says so by staying an arrow over the whole column.
+    ///
+    /// A tracking area rather than a cursor rect, because `NSView.addCursorRect` is soft deprecated in favour of
+    /// this, and because `.inVisibleRect` keeps it correct as the gutter scrolls without rebuilding anything.
+    override public func cursorUpdate(with event: NSEvent) {
+        NSCursor.arrow.set()
     }
 
     override public func mouseEntered(with event: NSEvent) {
@@ -272,11 +333,16 @@ public class GutterView: NSView {
 
     override public func mouseExited(with event: NSEvent) {
         foldingRibbon.pointerExitedGutter()
+        statementRunRibbon.pointerExitedGutter()
     }
 
     private func forwardPointer(_ event: NSEvent) {
-        guard !foldingRibbon.isHidden else { return }
-        foldingRibbon.pointerMoved(to: foldingRibbon.convert(event.locationInWindow, from: nil))
+        if !foldingRibbon.isHidden {
+            foldingRibbon.pointerMoved(to: foldingRibbon.convert(event.locationInWindow, from: nil))
+        }
+        if !statementRunRibbon.isHidden {
+            statementRunRibbon.pointerMoved(to: statementRunRibbon.convert(event.locationInWindow, from: nil))
+        }
     }
 
     /// Updates the width of the gutter if needed to match the maximum line number found as well as the folding ribbon.
@@ -416,7 +482,7 @@ public class GutterView: NSView {
 
             let yPos = linePosition.yPos + ascent + (fragment?.heightDifference ?? 0)/2 + fontHeightDifference
             // Leading padding + (width - linewidth)
-            let xPos = edgeInsets.leading + (numberAreaWidth - lineNumberWidth)
+            let xPos = lineNumberLeading + (numberAreaWidth - lineNumberWidth)
 
             ContextSetHiddenSmoothingStyle(context, 16)
 

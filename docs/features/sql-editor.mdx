@@ -81,6 +81,17 @@ Match modes: contains, matches word, starts with, ends with, or regular expressi
 | Explain query | `Cmd+Option+E` | Shows the execution plan for the query at cursor as a tree or diagram (see [Explain Visualization](/features/explain-visualization)) |
 | Format query | `Cmd+Shift+L` | Formats the current query |
 
+### Statement Markers
+
+A tab can hold many statements, and the editor marks which one it is about to run.
+
+- The statement your cursor is in gets a faint background, so you can see what `Cmd+Enter` will send before you press it. It is a decoration, not a selection: your next keystroke does not replace it.
+- Move the pointer over the gutter and a run button appears beside every statement. Clicking one runs that statement, even when your cursor is somewhere else. The column the buttons sit in is reserved at all times, so revealing them never shifts the text.
+- A run button takes the same [Safe Mode](/features/safe-mode) checks and [query parameter](/features/query-parameters) prompts as any other run, and goes dim while a query is running.
+- VoiceOver reads each button as a button naming the line its statement starts on.
+- A `BEGIN ... END` body counts as one statement, so a trigger or stored procedure gets one button rather than one per line inside it. `BEGIN;` and `BEGIN TRANSACTION;` are statements of their own.
+- Turn either off in **Settings > Editor** with **Highlight current statement** and **Run button beside each statement**.
+
 ### Automatic Row Limit
 
 SELECT and WITH queries without their own `LIMIT` or `FETCH FIRST` run with the configured row cap:
@@ -163,7 +174,7 @@ Turning line numbers off in **Settings > Editor** removes the gutter, and the ch
 
 ## Editor Settings
 
-**Settings > Editor** covers line numbers, current-line highlight, word wrap, code folding, tab width, auto-uppercase keywords as you type, query parameters, and Vim mode. Editor font family and size are set per theme in **Settings > Appearance**.
+**Settings > Editor** covers line numbers, current-line highlight, current-statement highlight, word wrap, code folding, the per-statement run button, tab width, auto-uppercase keywords as you type, query parameters, and Vim mode. Editor font family and size are set per theme in **Settings > Appearance**.
 
 Editor windows remember their size, position, and font zoom between launches. See [Query Tabs](/features/tabs#windows-and-connections).
 

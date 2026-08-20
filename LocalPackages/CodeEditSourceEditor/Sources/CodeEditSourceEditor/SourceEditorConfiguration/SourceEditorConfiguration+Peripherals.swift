@@ -23,6 +23,11 @@ extension SourceEditorConfiguration {
         /// Whether to show the folding ribbon. Only available if ``showGutter`` is `true`.
         public var showFoldingRibbon: Bool
 
+        /// Whether to show a run control beside each statement. Only available if ``showGutter`` is `true`.
+        ///
+        /// Off by default, because only an editor whose host can run part of a document has anything to put here.
+        public var showStatementRunControls: Bool = false
+
         /// Whether the gutter measures itself against the document rather than against a full editor window.
         ///
         /// See ``GutterView/fitsContent``. Set this for a short listing embedded in another view, which has no window
@@ -49,6 +54,7 @@ extension SourceEditorConfiguration {
             showMinimap: Bool = true,
             showReformattingGuide: Bool = false,
             showFoldingRibbon: Bool = true,
+            showStatementRunControls: Bool = false,
             gutterFitsContent: Bool = false,
             foldingSizeLimit: Int = EditorHighlighting.maxHighlightableCharacters,
             invisibleCharactersConfiguration: InvisibleCharactersConfiguration = .empty,
@@ -59,6 +65,7 @@ extension SourceEditorConfiguration {
             self.showMinimap = showMinimap
             self.showReformattingGuide = showReformattingGuide
             self.showFoldingRibbon = showFoldingRibbon
+            self.showStatementRunControls = showStatementRunControls
             self.gutterFitsContent = gutterFitsContent
             self.foldingSizeLimit = foldingSizeLimit
             self.invisibleCharactersConfiguration = invisibleCharactersConfiguration
@@ -91,6 +98,11 @@ extension SourceEditorConfiguration {
 
             if oldConfig?.showFoldingRibbon != showFoldingRibbon {
                 controller.gutterView.showFoldingRibbon = showFoldingRibbon
+            }
+
+            if oldConfig?.showStatementRunControls != showStatementRunControls {
+                controller.gutterView.showStatementRunControls = showStatementRunControls
+                shouldUpdateInsets = true
             }
 
             if oldConfig?.gutterFitsContent != gutterFitsContent {

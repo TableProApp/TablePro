@@ -34,6 +34,9 @@ struct SQLEditorView: View {
     @Binding var vimMode: VimMode
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
+    var onRunStatement: ((String) -> Void)?
+    /// A tab runs one thing at a time, so the gutter's run controls go dim for the length of a query.
+    var isExecuting: Bool = false
     var onAIExplain: ((String) -> Void)?
     var onAIOptimize: ((String) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
@@ -49,6 +52,9 @@ struct SQLEditorView: View {
         // Keep callbacks fresh on every parent re-render
         coordinator.onCloseTab = onCloseTab
         coordinator.onExecuteQuery = onExecuteQuery
+        coordinator.onRunStatement = onRunStatement
+        coordinator.setStatementRunControlsEnabled(!isExecuting)
+        coordinator.setStatementHighlightEnabled(AppSettingsManager.shared.editor.highlightCurrentStatement)
         coordinator.onAIExplain = onAIExplain
         coordinator.onAIOptimize = onAIOptimize
         coordinator.onSaveAsFavorite = onSaveAsFavorite
@@ -196,7 +202,8 @@ struct SQLEditorView: View {
             ),
             peripherals: EditorPeripherals.editor(
                 lineNumbers: ThemeEngine.shared.showLineNumbers,
-                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled,
+                statementRunControls: AppSettingsManager.shared.editor.showStatementRunControls
             )
         )
     }

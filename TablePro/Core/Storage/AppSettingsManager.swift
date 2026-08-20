@@ -37,6 +37,7 @@ final class AppSettingsManager {
             storage.saveEditor(editor)
             themeEngine.updateEditorSettings(
                 highlightCurrentLine: editor.highlightCurrentLine,
+                highlightCurrentStatement: editor.highlightCurrentStatement,
                 showLineNumbers: editor.showLineNumbers,
                 tabWidth: editor.clampedTabWidth,
 
@@ -248,6 +249,7 @@ final class AppSettingsManager {
 
         themeEngine.updateEditorSettings(
             highlightCurrentLine: editor.highlightCurrentLine,
+            highlightCurrentStatement: editor.highlightCurrentStatement,
             showLineNumbers: editor.showLineNumbers,
             tabWidth: editor.clampedTabWidth,
             wordWrap: editor.wordWrap
