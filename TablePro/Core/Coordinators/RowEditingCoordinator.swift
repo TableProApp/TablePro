@@ -143,7 +143,8 @@ final class RowEditingCoordinator {
             parent.dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
         }
 
-        let displayCount = parent.dataTabDelegate?.tableViewCoordinator?.displayIDs?.count
+        guard selectionPointsTheGrid else { return }
+        let displayCount = parent.activeGridDisplayIDs?.count
             ?? parent.tabSessionRegistry.tableRows(for: tabId).count
         if let minSelected = indices.min(), displayCount > 0 {
             parent.selectionState.indices = [min(minSelected, displayCount - 1)]
@@ -216,7 +217,8 @@ final class RowEditingCoordinator {
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
 
-        let displayCount = parent.dataTabDelegate?.tableViewCoordinator?.displayIDs?.count
+        guard selectionPointsTheGrid else { return }
+        let displayCount = parent.activeGridDisplayIDs?.count
             ?? parent.tabSessionRegistry.tableRows(for: tabId).count
         let newDisplayIndex = displayCount - 1
         guard newDisplayIndex >= 0 else { return }

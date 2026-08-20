@@ -47,7 +47,12 @@ extension MainContentCoordinator {
     /// means nothing once the rows are replaced wholesale. Leaving it in place points every
     /// consumer, the JSON view and the row inspector included, at rows that no longer exist.
     /// Incremental edits go through `mutateActiveTableRows` and keep their selection.
+    ///
+    /// The per-column value filter goes for the same reason: it stores the displayed strings the
+    /// user picked out of the rows being replaced. Kept across a replacement it narrows an
+    /// unrelated result to nothing, with only a header indicator to explain why.
     private func resetSelectionForNewResult(tabId: UUID) {
+        clearValueFilter(forTab: tabId)
         tabManager.mutate(tabId: tabId) { tab in
             guard !tab.selectedRowIndices.isEmpty else { return }
             tab.selectedRowIndices = []

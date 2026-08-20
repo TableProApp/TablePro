@@ -49,6 +49,14 @@ struct QueryTab: Identifiable, Equatable {
     var filterState: TabFilterState
     var findState: TabFindState
     var columnLayout: ColumnLayoutState
+    /// The per-column value filter, which narrows the loaded rows without re-querying.
+    ///
+    /// It belongs to the tab rather than to the grid because it is the only thing that makes the
+    /// displayed order differ from storage order, and every reader of that order has to work while
+    /// the grid is unmounted: JSON mode, the row inspector, and the Edit menu's row commands all
+    /// run with no `DataGridView` in the view tree. Living on the grid's SwiftUI coordinator meant
+    /// switching result mode did not hide the order, it deleted it. (#2251)
+    var valueFilter: GridValueFilterState
     var pagination: PaginationState
     var chartConfiguration: ResultChartConfiguration
     var hasUserInteraction: Bool
@@ -95,6 +103,7 @@ struct QueryTab: Identifiable, Equatable {
         self.filterState = TabFilterState()
         self.findState = TabFindState()
         self.columnLayout = ColumnLayoutState()
+        self.valueFilter = GridValueFilterState()
         self.pagination = PaginationState()
         self.chartConfiguration = ResultChartConfiguration()
         self.hasUserInteraction = false
@@ -136,6 +145,7 @@ struct QueryTab: Identifiable, Equatable {
             columnWidths: persisted.columnWidths ?? [:],
             columnContentWidths: persisted.columnContentWidths
         )
+        self.valueFilter = GridValueFilterState()
         self.pagination = PaginationState(pageSize: defaultPageSize)
         self.chartConfiguration = ResultChartConfiguration()
         self.hasUserInteraction = false
@@ -249,6 +259,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.paginationVersion == rhs.paginationVersion
             && lhs.pagination == rhs.pagination
             && lhs.sortState == rhs.sortState
+            && lhs.valueFilter == rhs.valueFilter
             && lhs.chartConfiguration == rhs.chartConfiguration
             && lhs.display == rhs.display
             && lhs.tableContext.isEditable == rhs.tableContext.isEditable

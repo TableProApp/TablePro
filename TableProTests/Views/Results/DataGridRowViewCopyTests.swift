@@ -186,8 +186,8 @@ struct DataGridRowViewCopyTests {
         #expect(clipboard.hasGridRows == false)
     }
 
-    @Test(arguments: [false, true])
-    func copyUsesDisplayedRowOrder(useValueFilter: Bool) {
+    @Test("Copy resolves the selection through the displayed row order")
+    func copyUsesDisplayedRowOrder() {
         let clipboard = DataGridRowViewCopyClipboard()
         ClipboardService.shared = clipboard
         defer { ClipboardService.shared = NSPasteboardClipboardProvider() }
@@ -199,11 +199,7 @@ struct DataGridRowViewCopyTests {
             columnTypes: [.blob(rawType: "BYTEA")]
         )
         coordinator.updateDisplayFormats([.uuid])
-        if useValueFilter {
-            coordinator.valueFilteredIDs = [.existing(1), .existing(0)]
-        } else {
-            coordinator.sortedIDs = [.existing(1), .existing(0)]
-        }
+        coordinator.valueFilteredIDs = [.existing(1), .existing(0)]
         let tableView = makeTableView(for: coordinator)
         let selectedCell = GridCoord(row: 0, column: 0)
         _ = coordinator.selectionController.beginDrag(at: selectedCell, modifiers: .command)

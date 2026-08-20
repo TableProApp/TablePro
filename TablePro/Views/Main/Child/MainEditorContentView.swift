@@ -625,7 +625,9 @@ struct MainEditorContentView: View {
                 ResultsJsonView(
                     tableRows: resolvedTableRows(for: tab),
                     selectedRowIndices: selectionState.indices,
-                    displayIDs: coordinator.activeGridDisplayIDs,
+                    displayIDs: coordinator.displayIDs(forTab: tab.id),
+                    deletedRowIndices: changeManager.deletedRowIndices,
+                    valueFilter: tab.valueFilter,
                     dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
                     displayRevision: coordinator.gridDisplayRevision,
                     columnLayout: tab.columnLayout
@@ -819,15 +821,15 @@ struct MainEditorContentView: View {
                 showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
                 hiddenColumns: tab.columnLayout.hiddenColumns
             ),
-            sortedIDs: nil,
-            displayFormats: displayFormats(for: tab),
+            displayFormats: coordinator.displayFormats(for: tab),
             delegate: dataTabDelegate,
             selectedRowIndices: Binding(
                 get: { selectionState.indices },
                 set: { selectionState.indices = $0 }
             ),
             sortState: sortStateBinding(for: tab),
-            columnLayout: columnLayoutBinding(for: tab)
+            columnLayout: columnLayoutBinding(for: tab),
+            valueFilter: valueFilterBinding(for: tab)
         )
         .id(tabId)
         .frame(maxHeight: .infinity, alignment: .top)
@@ -837,85 +839,12 @@ struct MainEditorContentView: View {
         coordinator.tabSessionRegistry.existingTableRows(for: tab.id) ?? TableRows()
     }
 
-    private func displayFormats(for tab: QueryTab) -> [ValueDisplayFormat?] {
-        let settings = AppSettingsManager.shared.dataGrid
-        let service = ValueDisplayFormatService.shared
-        let smartDetectionEnabled = settings.enableSmartValueDetection
-        let overridesVersion = service.overridesVersion
-        let resultSetId = tab.display.activeResultSetId
-
-        if let cached = coordinator.displayFormatsCache[tab.id],
-           cached.matches(
-               schemaVersion: tab.schemaVersion,
-               resultSetId: resultSetId,
-               smartDetectionEnabled: smartDetectionEnabled,
-               overridesVersion: overridesVersion
-           ) {
-            return cached.formats
-        }
-
-        let tableRows = coordinator.tabSessionRegistry.existingTableRows(for: tab.id)
-        let columns = tableRows?.columns ?? []
-        let columnTypes = tableRows?.columnTypes ?? []
-        guard !columns.isEmpty else { return [] }
-        let storageKeys = ValueDisplayFormatColumnKey.storageKeys(for: columns)
-
-        var detected: [ValueDisplayFormat?] = Array(repeating: nil, count: columns.count)
-        if smartDetectionEnabled {
-            let sampleRows: [[PluginCellValue]]? = {
-                let rows: [[PluginCellValue]] = tableRows?.rows.prefix(10).map { Array($0.values) } ?? []
-                return rows.isEmpty ? nil : rows
-            }()
-            detected = ValueDisplayDetector.detect(
-                columns: columns,
-                columnTypes: columnTypes,
-                sampleValues: sampleRows
-            )
-            for index in detected.indices {
-                guard let format = detected[index],
-                      !format.isApplicable(
-                          to: index < columnTypes.count ? columnTypes[index] : nil,
-                          databaseType: connection.type
-                      ) else { continue }
-                detected[index] = nil
-            }
-
-            var autoMap: [String: ValueDisplayFormat] = [:]
-            for (i, format) in detected.enumerated() where i < columns.count {
-                if let format {
-                    autoMap[storageKeys[i]] = format
-                }
-            }
-            service.setAutoDetectedFormats(autoMap, scope: tab.tableContext.scope(connectionId: connectionId))
-        } else {
-            service.clearAutoDetectedFormats(scope: tab.tableContext.scope(connectionId: connectionId))
-        }
-
-        var merged = detected
-
-        if let scope = tab.tableContext.scope(connectionId: connectionId),
-           let overrides = ValueDisplayFormatStorage.shared.load(for: scope) {
-            for (i, storageKey) in storageKeys.enumerated() {
-                if let overrideFormat = overrides[storageKey],
-                   overrideFormat.isApplicable(
-                       to: i < columnTypes.count ? columnTypes[i] : nil,
-                       databaseType: connection.type
-                   ) {
-                    while merged.count <= i { merged.append(nil) }
-                    merged[i] = overrideFormat
-                }
-            }
-        }
-
-        let result = merged.contains(where: { $0 != nil }) ? merged : []
-        coordinator.displayFormatsCache[tab.id] = DisplayFormatsCacheEntry(
-            schemaVersion: tab.schemaVersion,
-            resultSetId: resultSetId,
-            smartDetectionEnabled: smartDetectionEnabled,
-            overridesVersion: overridesVersion,
-            formats: result
+    private func valueFilterBinding(for tab: QueryTab) -> Binding<GridValueFilterState> {
+        let tabId = tab.id
+        return Binding(
+            get: { tab.valueFilter },
+            set: { coordinator.setValueFilter($0, forTab: tabId) }
         )
-        return result
     }
 
     private func sortStateBinding(for tab: QueryTab) -> Binding<SortState> {

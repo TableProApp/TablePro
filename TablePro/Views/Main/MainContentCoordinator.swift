@@ -189,7 +189,8 @@ final class MainContentCoordinator {
     @ObservationIgnored weak var dataTabDelegate: DataTabGridDelegate?
 
     var activeGridDisplayIDs: [RowID]? {
-        dataTabDelegate?.tableViewCoordinator?.displayIDs
+        guard let tabId = tabManager.selectedTab?.id else { return nil }
+        return displayIDs(forTab: tabId)
     }
 
     /// One-shot intent set when the user explicitly opens a table (Return/double-click),
@@ -233,6 +234,7 @@ final class MainContentCoordinator {
     @ObservationIgnored var deferredRestoreLoadTabId: UUID?
 
     @ObservationIgnored var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
+    @ObservationIgnored var displayOrderCache: [UUID: DisplayOrderCacheEntry] = [:]
 
     @ObservationIgnored let schemaColumns = SchemaColumnStore()
     @ObservationIgnored var columnScopeRequeryTask: Task<Void, Never>?
@@ -518,6 +520,9 @@ final class MainContentCoordinator {
     func cleanupTabCaches(openTabIds: Set<UUID>) {
         if displayFormatsCache.keys.contains(where: { !openTabIds.contains($0) }) {
             displayFormatsCache = displayFormatsCache.filter { openTabIds.contains($0.key) }
+        }
+        if displayOrderCache.keys.contains(where: { !openTabIds.contains($0) }) {
+            displayOrderCache = displayOrderCache.filter { openTabIds.contains($0.key) }
         }
         if structureSessions.keys.contains(where: { !openTabIds.contains($0) }) {
             structureSessions = structureSessions.filter { openTabIds.contains($0.key) }
@@ -821,6 +826,7 @@ final class MainContentCoordinator {
 
         tabSessionRegistry.removeAll()
         displayFormatsCache.removeAll()
+        displayOrderCache.removeAll()
         schemaColumns.removeAll()
         columnScopeRequeryTask?.cancel()
 

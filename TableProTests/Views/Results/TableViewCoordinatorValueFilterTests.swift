@@ -180,6 +180,7 @@ struct TableViewCoordinatorValueFilterTests {
         coordinator.tableRowsMutator { rows in
             rows.columns = ["other", "name"]
         }
+        coordinator.applyFullReplace()
         coordinator.recomputeValueFilteredIDs()
         coordinator.updateCache()
 

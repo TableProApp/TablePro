@@ -14,7 +14,9 @@ Query results and table data open in a spreadsheet-style grid. Sort and filter c
 
 Switch between **Data**, **Structure**, **JSON**, and **Chart** in the status bar. Query tabs show Data, JSON, and Chart only. The mode is remembered per tab.
 
-JSON mode shows the rows as a JSON array, with **Text** and **Tree** views. Select rows in Data mode first to limit what JSON shows, then use **Copy JSON**.
+JSON mode shows the rows as a JSON array, with **Text** and **Tree** views. It follows the grid: the same rows in the same order, with a column value filter applied and hidden columns left out. Select rows in Data mode first to limit what JSON shows, then use **Copy JSON**.
+
+Rows marked for deletion are held back, since a Save would remove them, and the count line says how many. **Copy as JSON** in the grid's context menu copies every row you selected, including those.
 
 ### Chart mode
 
@@ -40,7 +42,7 @@ If the sort column can't be ordered on the server (a `BLOB`, `JSON`, or spatial 
 
 The header gives you two filters:
 
-- **Filter Values…** (or the funnel icon on hover) filters the loaded rows by picking values, without re-querying. The popover lists each value with its count; search to narrow, check the values to keep, and click **Apply**. NULL and empty values appear as their own entries. `Return` applies, `Escape` cancels. Filter several columns at once and rows must match every filter. Clear from the header menu (**Clear Value Filter**, **Clear All Value Filters**).
+- **Filter Values…** (or the funnel icon on hover) filters the loaded rows by picking values, without re-querying. The popover lists each value with its count; search to narrow, check the values to keep, and click **Apply**. NULL and empty values appear as their own entries. `Return` applies, `Escape` cancels. Filter several columns at once and rows must match every filter. Clear from the header menu (**Clear Value Filter**, **Clear All Value Filters**). The filter belongs to the tab, so it survives switching to JSON or Structure mode and back, and switching to another tab and back. Replacing the result clears it, since the values you picked came from the rows being replaced: running a query, turning a page, refreshing, or moving to another result of the same script. **Fetch All** keeps it and applies it to the rows it loads, because that extends the same result.
 - **Filter with column** adds a filter row for that column to the [Filter Panel](/features/filtering) and opens it. Use this to filter the whole table on the server.
 
 <Frame caption="Filter a column by its values">

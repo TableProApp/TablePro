@@ -37,7 +37,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var paginationOffsetProvider: @MainActor () -> Int = { 0 }
     var changeManager: AnyChangeManager
     var isEditable: Bool
-    var sortedIDs: [RowID]? { didSet { bumpDisplayRevision() } }
     var valueFilteredIDs: [RowID]? { didSet { bumpDisplayRevision() } }
     /// Ticks whenever the displayed row order or the value filter changes.
     ///
@@ -45,8 +44,28 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// produces no signal on its own. Views that render the same rows outside the grid key off this
     /// instead of comparing the id array, which is O(rows) on every body evaluation.
     private(set) var displayRevision: Int = 0
-    var valueFilterState = GridValueFilterState()
-    var displayIDs: [RowID]? { valueFilteredIDs ?? sortedIDs }
+    /// Set by `DataGridView` when the grid has an owner that holds the filter for it. Without one
+    /// the filter lives here alone and dies with this coordinator, which is all a structure or
+    /// create-table grid needs.
+    var valueFilterBinding: Binding<GridValueFilterState>?
+    private var storedValueFilterState = GridValueFilterState()
+    /// Reads never go back through the binding, because a SwiftUI `Binding` built from a captured
+    /// value type returns the pre-write value until the next body pass. The mirror is authoritative
+    /// for this coordinator and `adoptValueFilter(_:)` pulls owner-driven changes in.
+    ///
+    /// A write reaches the owner's observable state, and `remapValueFilters` performs one from
+    /// inside `updateNSView` when a column's display format changes. That is bounded to a single
+    /// extra update: the guard below drops a no-op write, and the next pass finds the formats
+    /// already synced, so `syncDisplayFormats` returns before it can remap again.
+    var valueFilterState: GridValueFilterState {
+        get { storedValueFilterState }
+        set {
+            guard newValue != storedValueFilterState else { return }
+            storedValueFilterState = newValue
+            valueFilterBinding?.wrappedValue = newValue
+        }
+    }
+    var displayIDs: [RowID]? { valueFilteredIDs }
     private(set) var columnDisplayFormats: [ValueDisplayFormat?] = []
     private(set) var currentFindMatch: FindMatch?
     private let displayCache = RowDisplayCache()
@@ -86,6 +105,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard resolved >= 0 else { return nil }
         columnIndexByDataIndex[dataIndex] = resolved
         return resolved
+    }
+
+    /// Takes an owner-driven filter change without writing it back, which a plain assignment would.
+    func adoptValueFilter(_ state: GridValueFilterState) {
+        storedValueFilterState = state
     }
 
     func invalidateColumnIndexCache() {
@@ -430,9 +454,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         cachedRowCount = 0
         cachedColumnCount = 0
         invalidateColumnIndexCache()
-        sortedIDs = nil
         valueFilteredIDs = nil
-        valueFilterState.clearAll()
+        // Local only: this runs while the window is being torn down, and the filter's owner is
+        // either about to go away with it or is deliberately keeping the filter for the next mount.
+        valueFilterBinding = nil
+        adoptValueFilter(GridValueFilterState())
         lastUpdateSnapshot = nil
         columnPool.detachFromTableView()
         if let tableView {
@@ -470,7 +496,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             reloadAfterRowMutationWithValueFilter()
             return
         }
-        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
         updateCache()
         tableView.insertRows(at: indices, withAnimation: Self.rowAnimation(.slideDown))
     }
@@ -487,7 +513,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             reloadAfterRowMutationWithValueFilter()
             return
         }
-        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
         updateCache()
         tableView.removeRows(at: indices, withAnimation: Self.rowAnimation(.slideUp))
     }
@@ -509,6 +535,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func applyFullReplace() {
         dismissPopoversBoundToDisplayPositions()
+        pruneStaleValueFilters()
         guard let tableView else { return }
         invalidateAllDisplayCaches()
         recomputeValueFilteredIDs()
@@ -523,7 +550,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard let tableView else { return }
         recomputeValueFilteredIDs()
         updateCache()
-        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
         tableView.reloadData()
         startBackgroundPrewarm()
     }
@@ -581,7 +608,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func invalidateAllDisplayCaches() {
         displayCache.removeAll()
-        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
     }
 
     @discardableResult
@@ -841,7 +868,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             else { return }
             guard row >= 0, row < tableView.numberOfRows else { return }
             invalidateDisplayCache(forDisplayRow: row, column: column)
-            visualIndex.updateRow(row, from: changeManager, sortedIDs: displayIDs)
+            visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
             tableView.reloadData(
                 forRowIndexes: IndexSet(integer: row),
                 columnIndexes: IndexSet(integer: tableColumn)
@@ -861,7 +888,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
             guard !rowSet.isEmpty, !colSet.isEmpty else { return }
             for row in rowSet {
-                visualIndex.updateRow(row, from: changeManager, sortedIDs: displayIDs)
+                visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
             }
             tableView.reloadData(forRowIndexes: rowSet, columnIndexes: colSet)
         case .rowsInserted(let indices):
@@ -869,40 +896,18 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             overlayEditor?.dismiss(commit: false)
             overlayViewer?.dismiss()
             dismissPopoversBoundToDisplayPositions()
-            appendInsertedIDsToSortedIDs(at: indices)
             applyInsertedRows(indices)
         case .rowsRemoved(let indices):
             guard !indices.isEmpty else { return }
             overlayEditor?.dismiss(commit: false)
             overlayViewer?.dismiss()
             dismissPopoversBoundToDisplayPositions()
-            removeMissingIDsFromSortedIDs()
             applyRemovedRows(indices)
         case .columnsReplaced, .fullReplace:
             overlayEditor?.dismiss(commit: false)
             overlayViewer?.dismiss()
-            sortedIDs = nil
             applyFullReplace()
         }
-    }
-
-    private func appendInsertedIDsToSortedIDs(at indices: IndexSet) {
-        guard sortedIDs != nil else { return }
-        let tableRows = tableRowsProvider()
-        for index in indices where index >= 0 && index < tableRows.count {
-            sortedIDs?.append(tableRows.rows[index].id)
-        }
-    }
-
-    private func removeMissingIDsFromSortedIDs() {
-        guard sortedIDs != nil else { return }
-        let tableRows = tableRowsProvider()
-        var survivingIDs = Set<RowID>()
-        survivingIDs.reserveCapacity(tableRows.count)
-        for row in tableRows.rows {
-            survivingIDs.insert(row.id)
-        }
-        sortedIDs?.removeAll { !survivingIDs.contains($0) }
     }
 
     func invalidateCachesForUndoRedo() {

@@ -11,7 +11,6 @@ struct DataGridUpdateSnapshot: Equatable {
     let rowDisplayCount: Int
     let columnCount: Int
     let columns: [String]
-    let sortedIDsCount: Int?
     let valueFilteredIDsCount: Int?
     let displayFormats: [ValueDisplayFormat?]
     let configuration: DataGridConfiguration
