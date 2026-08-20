@@ -439,8 +439,8 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         let candidates = ["v3", "v3beta", "v3alpha"]
 
         let session = try lock.withLock { () -> URLSession in
-            guard let session else { throw EtcdError.notConnected }
-            return session
+            guard let currentSession = self.session else { throw EtcdError.notConnected }
+            return currentSession
         }
 
         for candidate in candidates {
