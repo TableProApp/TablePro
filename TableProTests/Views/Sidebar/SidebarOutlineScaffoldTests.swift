@@ -732,7 +732,7 @@ struct DatabaseTreeFavoriteRefreshTests {
         )
         settle(window)
 
-        #expect(coordinator.favoriteDatabaseEnvironment(for: "shop") == .production)
+        #expect(coordinator.favoriteDatabaseEnvironments()["shop"] == .production)
         #expect(cell.hostedView === host)
         let favoritePixels = try trailingPixels(of: cell)
         #expect(unfavoritePixels != favoritePixels)
@@ -740,7 +740,7 @@ struct DatabaseTreeFavoriteRefreshTests {
         databaseStorage.removeFavorite(database: "shop", connectionId: connectionId)
         settle(window)
 
-        #expect(coordinator.favoriteDatabaseEnvironment(for: "shop") == nil)
+        #expect(coordinator.favoriteDatabaseEnvironments()["shop"] == nil)
         #expect(cell.hostedView === host)
         #expect(try trailingPixels(of: cell) != favoritePixels)
     }

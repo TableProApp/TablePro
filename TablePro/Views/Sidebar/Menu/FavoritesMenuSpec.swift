@@ -63,21 +63,19 @@ internal enum FavoritesMenuSpec {
                 .useDatabase(entry)
             ))
         }
+        let state = FavoriteDatabaseSelectionState(environments: [entry.environment])
         items.append(.submenu(
-            title: String(localized: "Environment"),
-            items: FavoriteDatabaseEnvironment.allCases.map { environment in
+            title: FavoriteDatabaseMenu.submenuTitle(for: state),
+            items: FavoriteDatabaseMenu.environmentItems(for: state).map { item in
                 .command(SidebarMenuEntry(
-                    title: environment.menuTitle,
-                    command: .setDatabaseEnvironment(entry, environment),
-                    isOn: entry.environment == environment
+                    title: item.title,
+                    command: .setDatabaseEnvironment(entry, item.environment),
+                    isOn: item.isOn
                 ))
             }
         ))
         items.append(.separator)
-        items.append(.destructive(
-            String(localized: "Remove from Favorites"),
-            .removeDatabaseFavorite(entry)
-        ))
+        items.append(.destructive(FavoriteDatabaseMenu.removeTitle, .removeDatabaseFavorite(entry)))
         return items
     }
 

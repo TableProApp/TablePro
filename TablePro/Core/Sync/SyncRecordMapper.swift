@@ -390,6 +390,43 @@ struct SyncRecordMapper {
         )
     }
 
+    // MARK: - Favorite Database
+
+    static func toCKRecord(favoriteDatabase entry: FavoriteDatabaseEntry, in zone: CKRecordZone.ID) -> CKRecord {
+        let favoriteId = FavoriteDatabasesStorage.syncId(for: entry)
+        let recordID = recordID(type: .favoriteDatabase, id: favoriteId, in: zone)
+        let record = CKRecord(recordType: SyncRecordType.favoriteDatabase.rawValue, recordID: recordID)
+
+        let fields = record.fields(FavoriteDatabaseSyncField.self)
+        fields[.connectionId] = entry.connectionId.uuidString
+        fields[.database] = entry.database
+        fields[.environment] = entry.environment.rawValue
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        return record
+    }
+
+    /// An environment this build does not know decodes to `.unassigned` rather than throwing, so a
+    /// device on an older version keeps the favorite instead of dropping the whole record.
+    static func favoriteDatabase(from record: CKRecord) throws -> FavoriteDatabaseEntry {
+        let fields = record.fields(FavoriteDatabaseSyncField.self)
+        guard let database = fields[.database] as? String, !database.isEmpty else {
+            throw SyncDecodeError.missingRequiredField("database")
+        }
+        guard let connectionIdString = fields[.connectionId] as? String,
+              let connectionId = UUID(uuidString: connectionIdString) else {
+            throw SyncDecodeError.missingRequiredField("connectionId")
+        }
+        let environment = (fields[.environment] as? String)
+            .flatMap(FavoriteDatabaseEnvironment.init(rawValue:)) ?? .unassigned
+        return FavoriteDatabaseEntry(
+            connectionId: connectionId,
+            database: database,
+            environment: environment
+        )
+    }
+
     // MARK: - SQL Favorite
 
     static func toCKRecord(sqlFavorite favorite: SQLFavorite, in zone: CKRecordZone.ID) -> CKRecord {

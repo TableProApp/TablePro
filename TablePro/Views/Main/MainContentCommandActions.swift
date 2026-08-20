@@ -319,6 +319,38 @@ final class MainContentCommandActions {
         PluginManager.shared.supportsContainerSwitching(for: connection.type)
     }
 
+    /// An engine with no database dimension has nothing to favorite, and neither has a window whose
+    /// browse database is still empty.
+    var canFavoriteActiveDatabase: Bool {
+        PluginManager.shared.containerSwitchTarget(for: connection.type) == .database
+            && !browseDatabaseName.isEmpty
+    }
+
+    var activeDatabaseFavoriteEnvironment: FavoriteDatabaseEnvironment? {
+        guard canFavoriteActiveDatabase else { return nil }
+        return FavoriteDatabasesStorage.shared
+            .favorites(for: connection.id)
+            .first { $0.database == browseDatabaseName }?
+            .environment
+    }
+
+    func setActiveDatabaseFavorite(environment: FavoriteDatabaseEnvironment) {
+        guard canFavoriteActiveDatabase else { return }
+        FavoriteDatabasesStorage.shared.setFavorite(
+            database: browseDatabaseName,
+            environment: environment,
+            connectionId: connection.id
+        )
+    }
+
+    func removeActiveDatabaseFavorite() {
+        guard canFavoriteActiveDatabase else { return }
+        FavoriteDatabasesStorage.shared.removeFavorite(
+            database: browseDatabaseName,
+            connectionId: connection.id
+        )
+    }
+
     /// Picks between the two spellings a container command has. Each one is a whole localized
     /// string rather than a noun dropped into a format, because System Settings binds an App
     /// Shortcut to a menu item's exact literal title, and because the driver's own entity name

@@ -103,8 +103,8 @@ struct SharedSidebarStateTests {
         let restored = SharedSidebarState.forConnection(id)
         #expect(restored.favoriteDatabaseEnvironmentFilter == .testing)
 
-        restored.favoriteDatabaseEnvironmentFilter = .all
         SharedSidebarState.removeConnection(id)
+        SidebarPersistenceKey.removeAll(connectionId: id)
     }
 
     @Test("filter text is independent across different connections")

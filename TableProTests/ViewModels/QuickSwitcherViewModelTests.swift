@@ -49,6 +49,7 @@ struct QuickSwitcherViewModelTests {
             schemaProviderRegistry: SchemaProviderRegistry(),
             sqlFavoriteManager: sqlFavoriteManager ?? live.sqlFavoriteManager,
             favoriteTablesStorage: live.favoriteTablesStorage,
+            favoriteDatabasesStorage: live.favoriteDatabasesStorage,
             aiChatStorage: live.aiChatStorage,
             aiKeyStorage: live.aiKeyStorage,
             groupStorage: live.groupStorage,

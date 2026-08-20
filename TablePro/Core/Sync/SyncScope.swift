@@ -14,7 +14,8 @@ enum SyncScope: Equatable {
 extension SyncRecordType {
     var syncScope: SyncScope {
         switch self {
-        case .connection, .group, .tag, .settings, .favorite, .favoriteFolder, .tableFavorite, .sshProfile:
+        case .connection, .group, .tag, .settings, .favorite, .favoriteFolder,
+             .tableFavorite, .favoriteDatabase, .sshProfile:
             return .synced
         }
     }

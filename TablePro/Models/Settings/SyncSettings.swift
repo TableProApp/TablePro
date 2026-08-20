@@ -16,6 +16,7 @@ struct SyncSettings: Codable, Equatable {
     var syncPasswords: Bool
     var syncSSHProfiles: Bool
     var syncTableFavorites: Bool
+    var syncDatabaseFavorites: Bool
     var syncSQLFavorites: Bool
 
     init(
@@ -26,6 +27,7 @@ struct SyncSettings: Codable, Equatable {
         syncPasswords: Bool = false,
         syncSSHProfiles: Bool = true,
         syncTableFavorites: Bool = true,
+        syncDatabaseFavorites: Bool = true,
         syncSQLFavorites: Bool = true
     ) {
         self.enabled = enabled
@@ -35,6 +37,7 @@ struct SyncSettings: Codable, Equatable {
         self.syncPasswords = syncPasswords
         self.syncSSHProfiles = syncSSHProfiles
         self.syncTableFavorites = syncTableFavorites
+        self.syncDatabaseFavorites = syncDatabaseFavorites
         self.syncSQLFavorites = syncSQLFavorites
     }
 
@@ -47,6 +50,7 @@ struct SyncSettings: Codable, Equatable {
         syncPasswords = try container.decodeIfPresent(Bool.self, forKey: .syncPasswords) ?? false
         syncSSHProfiles = try container.decodeIfPresent(Bool.self, forKey: .syncSSHProfiles) ?? true
         syncTableFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncTableFavorites) ?? true
+        syncDatabaseFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncDatabaseFavorites) ?? true
         syncSQLFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncSQLFavorites) ?? true
     }
 
@@ -58,6 +62,7 @@ struct SyncSettings: Codable, Equatable {
         syncPasswords: false,
         syncSSHProfiles: true,
         syncTableFavorites: true,
+        syncDatabaseFavorites: true,
         syncSQLFavorites: true
     )
 }

@@ -22,6 +22,7 @@ public extension SyncRecordType {
         case .favorite: return SQLFavoriteSyncField.declaredKeys
         case .favoriteFolder: return SQLFavoriteFolderSyncField.declaredKeys
         case .tableFavorite: return FavoriteTableSyncField.declaredKeys
+        case .favoriteDatabase: return FavoriteDatabaseSyncField.declaredKeys
         case .sshProfile: return SSHProfileSyncField.declaredKeys
         }
     }
@@ -35,6 +36,7 @@ public extension SyncRecordType {
         case .favorite: return SQLFavoriteSyncField.writableKeys
         case .favoriteFolder: return SQLFavoriteFolderSyncField.writableKeys
         case .tableFavorite: return FavoriteTableSyncField.writableKeys
+        case .favoriteDatabase: return FavoriteDatabaseSyncField.writableKeys
         case .sshProfile: return SSHProfileSyncField.writableKeys
         }
     }

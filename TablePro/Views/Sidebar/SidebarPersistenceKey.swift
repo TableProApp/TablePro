@@ -37,4 +37,27 @@ enum SidebarPersistenceKey {
     static func expanded(connectionId: UUID, kind: SidebarObjectKind) -> String {
         "sidebar.\(connectionId.uuidString).\(kind.rawValue).expanded"
     }
+
+    /// Every per-connection key this type can produce. A key added above and forgotten here outlives
+    /// the connection it belongs to for the life of the install.
+    static func all(connectionId: UUID) -> [String] {
+        [
+            tablesExpanded(connectionId: connectionId),
+            redisKeysExpanded(connectionId: connectionId),
+            recentsExpanded(connectionId: connectionId),
+            selectedTab(connectionId: connectionId),
+            selectedFavorite(connectionId: connectionId),
+            favoriteDatabaseEnvironmentFilter(connectionId: connectionId),
+            layout(connectionId: connectionId)
+        ] + SidebarObjectKind.allCases.map { expanded(connectionId: connectionId, kind: $0) }
+    }
+
+    static func removeAll(
+        connectionId: UUID,
+        defaults: UserDefaults = AppStorageEnvironment.shared.defaults
+    ) {
+        for key in all(connectionId: connectionId) {
+            defaults.removeObject(forKey: key)
+        }
+    }
 }

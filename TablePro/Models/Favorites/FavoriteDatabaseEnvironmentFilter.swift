@@ -13,13 +13,8 @@ internal enum FavoriteDatabaseEnvironmentFilter: String, CaseIterable, Sendable 
     case unassigned
 
     internal var title: String {
-        switch self {
-        case .all: String(localized: "All Environments")
-        case .development: FavoriteDatabaseEnvironment.development.title
-        case .testing: FavoriteDatabaseEnvironment.testing.title
-        case .production: FavoriteDatabaseEnvironment.production.title
-        case .unassigned: FavoriteDatabaseEnvironment.none.title
-        }
+        guard let environment else { return String(localized: "All Environments") }
+        return environment.title
     }
 
     internal var environment: FavoriteDatabaseEnvironment? {
@@ -28,7 +23,7 @@ internal enum FavoriteDatabaseEnvironmentFilter: String, CaseIterable, Sendable 
         case .development: .development
         case .testing: .testing
         case .production: .production
-        case .unassigned: FavoriteDatabaseEnvironment.none
+        case .unassigned: .unassigned
         }
     }
 }

@@ -51,6 +51,20 @@ public enum FavoriteTableSyncField: String, SyncSchemaField {
     ]
 }
 
+/// Empty on purpose. `FavoriteDatabase` is not in the Production schema yet, so every field is
+/// unverified and the gated subscript drops every write, which keeps the type inert rather than
+/// letting CloudKit reject the record. Flip this set and `SyncRecordType.verifiedInProduction`
+/// together in the commit that carries the refreshed `production-schema.ckdb`.
+public enum FavoriteDatabaseSyncField: String, SyncSchemaField {
+    case connectionId
+    case database
+    case environment
+    case modifiedAtLocal
+    case schemaVersion
+
+    public static let verifiedInProduction: Set<Self> = []
+}
+
 public enum SQLFavoriteSyncField: String, SyncSchemaField {
     case favoriteId
     case name

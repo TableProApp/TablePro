@@ -199,6 +199,11 @@ final class SyncCoordinator {
             changeTracker.markDirty(.tableFavorite, id: FavoriteTablesStorage.syncId(for: entry))
         }
 
+        let favoriteDatabases = services.favoriteDatabasesStorage.loadFavorites()
+        for entry in favoriteDatabases {
+            changeTracker.markDirty(.favoriteDatabase, id: FavoriteDatabasesStorage.syncId(for: entry))
+        }
+
         for category in AppSettingsCategory.synced + [CustomSlashCommandStorage.syncCategory] {
             changeTracker.markDirty(.settings, id: category)
         }
@@ -336,6 +341,10 @@ final class SyncCoordinator {
             collectDirtyTableFavorites(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
         }
 
+        if settings.syncDatabaseFavorites {
+            collectDirtyDatabaseFavorites(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
+        }
+
         if settings.syncSQLFavorites {
             await collectDirtySQLFavorites(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
         }
@@ -435,6 +444,7 @@ final class SyncCoordinator {
         let tagTombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
         let sshTombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
         let tableFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .tableFavorite).map(\.id))
+        let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
         let sqlFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favorite).map(\.id))
         let sqlFolderTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteFolder).map(\.id))
         var remoteFavorites: [SQLFavorite] = []
@@ -460,6 +470,8 @@ final class SyncCoordinator {
                 applyRemoteSettings(record)
             case SyncRecordType.tableFavorite.rawValue where settings.syncTableFavorites:
                 applyRemoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds)
+            case SyncRecordType.favoriteDatabase.rawValue where settings.syncDatabaseFavorites:
+                applyRemoteDatabaseFavorite(record, tombstoneIds: databaseFavoriteTombstoneIds)
             case SyncRecordType.favorite.rawValue where settings.syncSQLFavorites:
                 if let favorite = try? SyncRecordMapper.sqlFavorite(from: record),
                    !sqlFavoriteTombstoneIds.contains(favorite.id.uuidString) {
@@ -517,11 +529,7 @@ final class SyncCoordinator {
             if !services.connectionStorage.saveConnections(connections) {
                 Self.logger.error("Failed to apply remote connection deletions: persistence error")
             } else {
-                FilterSettingsStorage.shared.removeFilters(for: connectionIdsToDelete)
-                for id in connectionIdsToDelete {
-                    FavoriteDatabasesStorage.shared.removeFavorites(for: id)
-                    FavoritesExpansionState.shared.removeConnection(id)
-                }
+                ConnectionLocalState.purge(connectionIds: connectionIdsToDelete, origin: .remote)
                 let favoriteManager = services.sqlFavoriteManager
                 Task {
                     for id in connectionIdsToDelete {
@@ -718,6 +726,24 @@ final class SyncCoordinator {
         }
         if tombstoneIds.contains(FavoriteTablesStorage.syncId(for: entry)) { return false }
         return services.favoriteTablesStorage.addFavoriteWithoutSync(entry)
+    }
+
+    /// Upserts rather than inserts. A database favorite carries a mutable payload, the environment
+    /// tag, so an insert-if-absent apply would keep the local tag and silently drop the remote one.
+    private func applyRemoteDatabaseFavorite(_ record: CKRecord, tombstoneIds: Set<String>) {
+        let entry: FavoriteDatabaseEntry
+        do {
+            entry = try SyncRecordMapper.favoriteDatabase(from: record)
+        } catch {
+            let recordName = record.recordID.recordName
+            let message = error.localizedDescription
+            Self.logger.error(
+                "Skipping remote favorite database \(recordName, privacy: .public): \(message, privacy: .public)"
+            )
+            return
+        }
+        guard !tombstoneIds.contains(FavoriteDatabasesStorage.syncId(for: entry)) else { return }
+        services.favoriteDatabasesStorage.setFavoriteWithoutSync(entry)
     }
 
     // MARK: - Observers
@@ -983,6 +1009,26 @@ final class SyncCoordinator {
         for tombstone in metadataStorage.tombstones(for: .tableFavorite) {
             deletions.append(
                 SyncRecordMapper.recordID(type: .tableFavorite, id: tombstone.id, in: zoneID)
+            )
+        }
+    }
+
+    private func collectDirtyDatabaseFavorites(
+        into records: inout [CKRecord],
+        deletions: inout [CKRecord.ID],
+        zoneID: CKRecordZone.ID
+    ) {
+        let dirtyIds = changeTracker.dirtyRecords(for: .favoriteDatabase)
+        if !dirtyIds.isEmpty {
+            let favorites = services.favoriteDatabasesStorage.loadFavorites()
+            for entry in favorites where dirtyIds.contains(FavoriteDatabasesStorage.syncId(for: entry)) {
+                records.append(SyncRecordMapper.toCKRecord(favoriteDatabase: entry, in: zoneID))
+            }
+        }
+
+        for tombstone in metadataStorage.tombstones(for: .favoriteDatabase) {
+            deletions.append(
+                SyncRecordMapper.recordID(type: .favoriteDatabase, id: tombstone.id, in: zoneID)
             )
         }
     }

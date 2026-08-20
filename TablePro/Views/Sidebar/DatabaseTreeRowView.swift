@@ -10,6 +10,16 @@ import TableProPluginKit
 /// `SidebarMenuCommand`, so this is only the star, which is a control inside the row.
 struct DatabaseTreeRowActions {
     let toggleFavorite: (DatabaseTreeTableRef) -> Void
+    let toggleFavoriteDatabase: (String) -> Void
+}
+
+/// Row labels are built here rather than inline so the database row reads to VoiceOver in the same
+/// shape `TableRowLogic` already uses for a table, instead of inventing a second phrasing.
+enum DatabaseTreeRowLabel {
+    static func database(name: String, isFavorite: Bool) -> String {
+        guard isFavorite else { return name }
+        return name + ", " + String(localized: "favorite")
+    }
 }
 
 struct DatabaseTreeRowContext {
@@ -33,6 +43,8 @@ struct DatabaseTreeRowView: View {
     let isFavorite: Bool
     let context: DatabaseTreeRowContext
     let actions: DatabaseTreeRowActions
+
+    @State private var isHovered = false
 
     /// No `.contextMenu` here. A menu on the hosted view answers the right-click before the outline
     /// view ever sees it, which cost the clicked-row highlight, `clickedRow`, and any menu at all in
@@ -108,7 +120,8 @@ struct DatabaseTreeRowView: View {
     }
 
     private func databaseRow(_ metadata: DatabaseMetadata) -> some View {
-        HStack(spacing: 6) {
+        let toggle = { actions.toggleFavoriteDatabase(metadata.name) }
+        return HStack(spacing: 6) {
             header(
                 text: metadata.name,
                 systemImage: metadata.isSystemDatabase ? "gearshape" : "cylinder",
@@ -116,17 +129,12 @@ struct DatabaseTreeRowView: View {
                 isSystem: metadata.isSystemDatabase
             )
             Spacer(minLength: 4)
-            if isFavorite {
-                Image(systemName: "star.fill")
-                    .foregroundStyle(.yellow)
-                    .accessibilityHidden(true)
-            }
+            FavoriteStarButton(isFavorite: isFavorite, isRowHovered: isHovered, toggle: toggle)
         }
-        .accessibilityLabel(
-            isFavorite
-                ? String(format: String(localized: "%@, Favorite"), metadata.name)
-                : metadata.name
-        )
+        .onHover { isHovered = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(DatabaseTreeRowLabel.database(name: metadata.name, isFavorite: isFavorite))
+        .modifier(FavoriteAccessibilityAction(isFavorite: isFavorite, toggle: toggle))
     }
 
     private func tableRow(_ ref: DatabaseTreeTableRef) -> some View {

@@ -60,6 +60,7 @@ struct MenuValidationContext: Equatable {
     var supportsUserManagement = false
     var supportsSchemaSwitching = false
     var canFilterDatabases = false
+    var canFavoriteActiveDatabase = false
     var hasDatabaseFilter = false
 }
 
@@ -182,6 +183,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.hasMaintenanceOperations
         case #selector(switchToSchema(_:)):
             return context.isConnected && context.supportsSchemaSwitching
+        case #selector(setFavoriteDatabaseEnvironment(_:)), #selector(removeFavoriteDatabase(_:)):
+            return context.isConnected && context.canFavoriteActiveDatabase
         case #selector(filterDatabases(_:)):
             return context.isConnected && context.canFilterDatabases
         case #selector(showAllDatabases(_:)):
@@ -255,6 +258,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             supportsUserManagement: actions.supportsUserManagement,
             supportsSchemaSwitching: actions.supportsSchemaSwitching,
             canFilterDatabases: actions.canFilterDatabases,
+            canFavoriteActiveDatabase: actions.canFavoriteActiveDatabase,
             hasDatabaseFilter: actions.hasDatabaseFilter
         )
     }

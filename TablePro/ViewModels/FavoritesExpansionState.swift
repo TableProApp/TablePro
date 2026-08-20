@@ -20,7 +20,10 @@ internal final class FavoritesExpansionState {
     @ObservationIgnored private let collapsedDatabaseEnvironmentsKey =
         "com.TablePro.favoritesCollapsedDatabaseEnvironments"
 
-    private init() {
+    @ObservationIgnored private let defaults: UserDefaults
+
+    internal init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
+        self.defaults = defaults
         load()
     }
 
@@ -92,38 +95,50 @@ internal final class FavoritesExpansionState {
     }
 
     private func load() {
-        if let data = AppStorageEnvironment.shared.defaults.data(forKey: foldersKey),
+        if let data = defaults.data(forKey: foldersKey),
            let decoded = try? JSONDecoder().decode([UUID: Set<UUID>].self, from: data) {
             foldersByConnection = decoded
         }
-        if let data = AppStorageEnvironment.shared.defaults.data(forKey: linkedKey),
+        if let data = defaults.data(forKey: linkedKey),
            let decoded = try? JSONDecoder().decode([UUID: Set<String>].self, from: data) {
             linkedNodesByConnection = decoded
         }
-        if let data = AppStorageEnvironment.shared.defaults.data(forKey: collapsedDatabaseEnvironmentsKey),
-           let decoded = try? JSONDecoder().decode(
-               [UUID: Set<FavoriteDatabaseEnvironment>].self,
-               from: data
-           ) {
-            collapsedDatabaseEnvironmentsByConnection = decoded
+        collapsedDatabaseEnvironmentsByConnection = Self.decodeCollapsedEnvironments(
+            defaults.data(forKey: collapsedDatabaseEnvironmentsKey)
+        )
+    }
+
+    /// Decoded per raw value rather than whole. `Set<FavoriteDatabaseEnvironment>` fails the entire
+    /// payload on one case this build does not know, which would silently discard the collapsed
+    /// state of every group of every connection, permanently, from the next write onward.
+    internal static func decodeCollapsedEnvironments(
+        _ data: Data?
+    ) -> [UUID: Set<FavoriteDatabaseEnvironment>] {
+        guard let data,
+              let raw = try? JSONDecoder().decode([UUID: Set<String>].self, from: data)
+        else { return [:] }
+        return raw.compactMapValues { values in
+            let environments = Set(values.compactMap(FavoriteDatabaseEnvironment.init(rawValue:)))
+            return environments.isEmpty ? nil : environments
         }
     }
 
     private func persistFolders() {
         if let data = try? JSONEncoder().encode(foldersByConnection) {
-            AppStorageEnvironment.shared.defaults.set(data, forKey: foldersKey)
+            defaults.set(data, forKey: foldersKey)
         }
     }
 
     private func persistLinkedNodes() {
         if let data = try? JSONEncoder().encode(linkedNodesByConnection) {
-            AppStorageEnvironment.shared.defaults.set(data, forKey: linkedKey)
+            defaults.set(data, forKey: linkedKey)
         }
     }
 
     private func persistCollapsedDatabaseEnvironments() {
-        if let data = try? JSONEncoder().encode(collapsedDatabaseEnvironmentsByConnection) {
-            AppStorageEnvironment.shared.defaults.set(data, forKey: collapsedDatabaseEnvironmentsKey)
+        let raw = collapsedDatabaseEnvironmentsByConnection.mapValues { Set($0.map(\.rawValue)) }
+        if let data = try? JSONEncoder().encode(raw) {
+            defaults.set(data, forKey: collapsedDatabaseEnvironmentsKey)
         }
     }
 }

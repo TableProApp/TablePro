@@ -31,7 +31,9 @@ internal struct DatabaseTreeMenuContext {
     internal let schemaEntityNamePlural: String
     internal let objectKindTitles: [SidebarObjectKind: String]
     internal let isFavorite: Bool
-    internal let favoriteDatabaseEnvironment: FavoriteDatabaseEnvironment?
+    /// Keyed per database rather than resolved for the clicked row alone, because a right-click
+    /// inside a multi-selection acts on the whole selection and those databases need not share a tag.
+    internal var favoriteDatabaseEnvironments: [String: FavoriteDatabaseEnvironment] = [:]
     internal let showObjectIcons: Bool
     internal let showObjectComments: Bool
     internal let rowSize: SidebarRowSizePreference
@@ -220,12 +222,18 @@ internal enum DatabaseTreeMenuSpec {
         items.append(.command(String(localized: "Refresh"), .refreshContainers(targets)))
         items.append(.command(copyNamesTitle(count: targets.count), .copyContainerNames(targets)))
 
-        if targets.count == 1, clicked.kind == .database {
-            items.append(.separator)
-            items += favoriteDatabaseItems(
-                database: clicked.database,
-                currentEnvironment: context.favoriteDatabaseEnvironment
+        let favoriteDatabases = targets.filter { $0.kind == .database }.compactMap(\.database)
+        if !favoriteDatabases.isEmpty {
+            let favoriteItems = favoriteDatabaseItems(
+                databases: favoriteDatabases,
+                state: FavoriteDatabaseSelectionState(
+                    environments: favoriteDatabases.map { context.favoriteDatabaseEnvironments[$0] }
+                )
             )
+            if !favoriteItems.isEmpty {
+                items.append(.separator)
+                items += favoriteItems
+            }
         }
 
         if ExportPreselection.canPreselect(
@@ -243,23 +251,25 @@ internal enum DatabaseTreeMenuSpec {
     }
 
     private static func favoriteDatabaseItems(
-        database: String,
-        currentEnvironment: FavoriteDatabaseEnvironment?
+        databases: [String],
+        state: FavoriteDatabaseSelectionState
     ) -> [DatabaseTreeMenuItem] {
-        let environmentItems: [DatabaseTreeMenuItem] = FavoriteDatabaseEnvironment.allCases.map { environment in
-            .command(SidebarMenuEntry(
-                title: environment.menuTitle,
-                command: .setFavoriteDatabase(database: database, environment: environment),
-                isOn: currentEnvironment == environment
-            ))
-        }
-        guard currentEnvironment != nil else {
-            return [.submenu(title: String(localized: "Add to Favorites"), items: environmentItems)]
-        }
-        return [
-            .submenu(title: String(localized: "Environment"), items: environmentItems),
-            .destructive(String(localized: "Remove from Favorites"), .removeFavoriteDatabase(database))
+        guard !state.isEmpty else { return [] }
+        let environmentItems: [DatabaseTreeMenuItem] = FavoriteDatabaseMenu.environmentItems(for: state)
+            .map { item in
+                .command(SidebarMenuEntry(
+                    title: item.title,
+                    command: .setFavoriteDatabases(databases: databases, environment: item.environment),
+                    isOn: item.isOn
+                ))
+            }
+        var items: [DatabaseTreeMenuItem] = [
+            .submenu(title: FavoriteDatabaseMenu.submenuTitle(for: state), items: environmentItems)
         ]
+        if state.hasFavorite {
+            items.append(.destructive(FavoriteDatabaseMenu.removeTitle, .removeFavoriteDatabases(databases)))
+        }
+        return items
     }
 
     private static func isActive(_ container: DatabaseContainerRef, context: DatabaseTreeMenuContext) -> Bool {

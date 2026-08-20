@@ -59,23 +59,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var tableFavoritesObserver: (any NSObjectProtocol)?
     private var databaseFavoritesObserver: (any NSObjectProtocol)?
 
-    override convenience init() {
-        self.init(
-            favoriteTablesStorage: .shared,
-            favoriteDatabasesStorage: .shared
-        )
-    }
-
-    convenience init(favoriteTablesStorage: FavoriteTablesStorage) {
-        self.init(
-            favoriteTablesStorage: favoriteTablesStorage,
-            favoriteDatabasesStorage: .shared
-        )
-    }
-
     init(
-        favoriteTablesStorage: FavoriteTablesStorage,
-        favoriteDatabasesStorage: FavoriteDatabasesStorage
+        favoriteTablesStorage: FavoriteTablesStorage = .shared,
+        favoriteDatabasesStorage: FavoriteDatabasesStorage = .shared
     ) {
         self.favoriteTablesStorage = favoriteTablesStorage
         self.favoriteDatabasesStorage = favoriteDatabasesStorage
@@ -291,15 +277,27 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private func favoriteState(for node: DatabaseTreeNode) -> Bool {
         switch node.kind {
         case .database(let metadata):
-            return favoriteDatabaseEnvironment(for: metadata.name) != nil
+            return favoriteDatabases.contains { $0.database == metadata.name }
         default:
             guard let ref = DatabaseTreeSelection.tableRef(of: node) else { return false }
             return isFavorite(ref)
         }
     }
 
-    internal func favoriteDatabaseEnvironment(for database: String) -> FavoriteDatabaseEnvironment? {
-        favoriteDatabases.first { $0.database == database }?.environment
+    internal func favoriteDatabaseEnvironments() -> [String: FavoriteDatabaseEnvironment] {
+        Dictionary(favoriteDatabases.map { ($0.database, $0.environment) }) { first, _ in first }
+    }
+
+    internal func toggleFavoriteDatabase(_ database: String) {
+        guard favoriteDatabases.contains(where: { $0.database == database }) else {
+            favoriteDatabasesStorage.setFavorite(
+                database: database,
+                environment: .unassigned,
+                connectionId: connectionId
+            )
+            return
+        }
+        favoriteDatabasesStorage.removeFavorite(database: database, connectionId: connectionId)
     }
 
     internal func toggleFavorite(_ ref: DatabaseTreeTableRef) {
@@ -510,7 +508,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     private func makeRowActions() -> DatabaseTreeRowActions {
         DatabaseTreeRowActions(
-            toggleFavorite: { [weak self] ref in self?.toggleFavorite(ref) }
+            toggleFavorite: { [weak self] ref in self?.toggleFavorite(ref) },
+            toggleFavoriteDatabase: { [weak self] database in self?.toggleFavoriteDatabase(database) }
         )
     }
 

@@ -35,6 +35,6 @@ internal struct FavoriteDatabaseEntry: Codable, Hashable, Identifiable, Sendable
         connectionId = try container.decode(UUID.self, forKey: .connectionId)
         database = try container.decode(String.self, forKey: .database)
         let rawEnvironment = try container.decodeIfPresent(String.self, forKey: .environment)
-        environment = rawEnvironment.flatMap(FavoriteDatabaseEnvironment.init(rawValue:)) ?? .none
+        environment = rawEnvironment.flatMap(FavoriteDatabaseEnvironment.init(rawValue:)) ?? .unassigned
     }
 }

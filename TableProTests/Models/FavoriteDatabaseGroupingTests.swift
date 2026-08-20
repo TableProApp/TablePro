@@ -27,14 +27,14 @@ struct FavoriteDatabaseGroupingTests {
                 entry("prod", .production),
                 entry("dev10", .development),
                 entry("dev2", .development),
-                entry("misc", .none),
+                entry("misc", .unassigned),
                 entry("test", .testing)
             ],
             searchText: "",
             filter: .all
         )
 
-        #expect(groups.map(\.environment) == [.development, .testing, .production, .none])
+        #expect(groups.map(\.environment) == [.development, .testing, .production, .unassigned])
         #expect(groups.first?.entries.map(\.database) == ["dev2", "dev10"])
     }
 
@@ -42,7 +42,7 @@ struct FavoriteDatabaseGroupingTests {
     func filtersByEnvironment() {
         let entries: Set<FavoriteDatabaseEntry> = [
             entry("dev", .development),
-            entry("misc", .none),
+            entry("misc", .unassigned),
             entry("prod", .production)
         ]
         let groups = FavoriteDatabaseGrouping.groups(
@@ -62,8 +62,8 @@ struct FavoriteDatabaseGroupingTests {
         #expect(unassigned.first?.entries.map(\.database) == ["misc"])
     }
 
-    @Test("Search matches a database or its environment title")
-    func searchMatchesNamesAndEnvironment() {
+    @Test("Search matches a database name")
+    func searchMatchesNames() {
         let entries: Set<FavoriteDatabaseEntry> = [
             entry("billing", .development),
             entry("warehouse", .production)
@@ -74,14 +74,27 @@ struct FavoriteDatabaseGroupingTests {
             searchText: "bill",
             filter: .all
         )
-        let environmentMatch = FavoriteDatabaseGrouping.groups(
+
+        #expect(nameMatch.flatMap(\.entries).map(\.database) == ["billing"])
+    }
+
+    /// The search field is shared with saved queries and favorite tables, so matching the localized
+    /// environment title meant typing "product" to find a `products` table also listed every
+    /// Production database. The environment is already selectable in the filter above the list.
+    @Test("Search does not match the environment title")
+    func searchIgnoresEnvironmentTitle() {
+        let entries: Set<FavoriteDatabaseEntry> = [
+            entry("billing", .development),
+            entry("warehouse", .production)
+        ]
+
+        let byTitle = FavoriteDatabaseGrouping.groups(
             entries: entries,
-            searchText: "Production",
+            searchText: FavoriteDatabaseEnvironment.production.title,
             filter: .all
         )
 
-        #expect(nameMatch.flatMap(\.entries).map(\.database) == ["billing"])
-        #expect(environmentMatch.flatMap(\.entries).map(\.database) == ["warehouse"])
+        #expect(byTitle.isEmpty)
     }
 
     @Test("No matches produce no empty groups")

@@ -14,7 +14,7 @@ internal struct FavoritesOutlineInput {
     internal let databaseGroups: [FavoriteDatabaseGroup]
     internal let databaseEntityName: String
     internal let databaseEntityNamePlural: String
-    internal let isFilteringDatabases: Bool
+    internal let isNarrowingDatabases: Bool
     internal let tables: [TableInfo]
     internal let queryNodes: [FavoriteNode]
     internal let teamQueries: [FavoritesOutlineTeamQuery]

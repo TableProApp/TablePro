@@ -286,18 +286,11 @@ final class ConnectionStorage {
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
         deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
 
-        let appSettings = appSettingsProvider()
-        appSettings.saveLastDatabase(nil, for: connection.id)
-        appSettings.saveLastSchema(nil, for: connection.id)
-
-        FavoriteTablesStorage.shared.removeFavorites(for: connection.id)
-        FavoriteDatabasesStorage.shared.removeFavorites(for: connection.id)
-        FavoritesExpansionState.shared.removeConnection(connection.id)
-        FilterSettingsStorage.shared.removeFilters(for: connection.id)
-        DatabaseTreeFilterStorage.shared.removeFilter(for: connection.id)
-        RecentlyClosedTabStore.shared.removeEntries(for: connection.id)
-        HistoryPanelPreferencesStorage.remove(for: connection.id)
-        QueryInsightsPreferencesStorage.remove(for: connection.id)
+        ConnectionLocalState.purge(
+            connectionIds: [connection.id],
+            origin: .local,
+            appSettings: appSettingsProvider()
+        )
         Task {
             await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: connection.id)
             await QueryHistoryManager.shared.clear(
@@ -330,20 +323,12 @@ final class ConnectionStorage {
             deleteSOCKSProxyPassword(for: conn.id)
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
-            let appSettings = appSettingsProvider()
-            appSettings.saveLastDatabase(nil, for: conn.id)
-            appSettings.saveLastSchema(nil, for: conn.id)
-            FavoriteTablesStorage.shared.removeFavorites(for: conn.id)
-            FavoriteDatabasesStorage.shared.removeFavorites(for: conn.id)
-            FavoritesExpansionState.shared.removeConnection(conn.id)
         }
-        FilterSettingsStorage.shared.removeFilters(for: idsToDelete)
-        DatabaseTreeFilterStorage.shared.removeFilters(for: idsToDelete)
-        RecentlyClosedTabStore.shared.removeEntries(for: idsToDelete)
-        for id in idsToDelete {
-            HistoryPanelPreferencesStorage.remove(for: id)
-            QueryInsightsPreferencesStorage.remove(for: id)
-        }
+        ConnectionLocalState.purge(
+            connectionIds: idsToDelete,
+            origin: .local,
+            appSettings: appSettingsProvider()
+        )
         Task {
             for conn in connectionsToDelete {
                 await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: conn.id)

@@ -35,8 +35,8 @@ internal enum SidebarMenuCommand: Equatable {
     case removeRecent(DatabaseTreeTableRef)
     case clearRecents
     case useAsActive(DatabaseContainerRef)
-    case setFavoriteDatabase(database: String, environment: FavoriteDatabaseEnvironment)
-    case removeFavoriteDatabase(String)
+    case setFavoriteDatabases(databases: [String], environment: FavoriteDatabaseEnvironment)
+    case removeFavoriteDatabases([String])
     case refreshContainers([DatabaseContainerRef])
     case copyContainerNames([DatabaseContainerRef])
     case exportContainers([DatabaseContainerRef])

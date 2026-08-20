@@ -55,6 +55,7 @@ enum DatabaseMenuBuilder {
                 action: #selector(MainSplitViewController.editViewDefinition(_:))
             ),
             schemaSubmenu(),
+            favoriteDatabaseSubmenu(),
             maintenanceSubmenu(),
             MenuItemFactory.item(
                 String(localized: "Truncate Table"),
@@ -89,6 +90,17 @@ enum DatabaseMenuBuilder {
                 action: #selector(MainSplitViewController.retryConnection)
             )
         ])
+    }
+
+    private static let favoriteDatabaseDelegate = FavoriteDatabaseMenuDelegate()
+
+    /// A literal title, like every other item here: System Settings binds an App Shortcut to a menu
+    /// item's exact title, so a title that flipped between "Add" and "Remove" would break the bind.
+    /// The submenu reports the current state with a checkmark instead.
+    private static func favoriteDatabaseSubmenu() -> NSMenuItem {
+        let container = MenuItemFactory.submenu(String(localized: "Favorite Database"), items: [])
+        container.submenu?.delegate = favoriteDatabaseDelegate
+        return container
     }
 
     private static let maintenanceDelegate = MaintenanceMenuDelegate()

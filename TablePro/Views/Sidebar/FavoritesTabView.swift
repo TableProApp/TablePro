@@ -86,24 +86,29 @@ internal struct FavoritesTabView: View {
                     ? availableFavoriteTables
                     : availableFavoriteTables.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
 
-                if !viewModel.isInitialLoadComplete
-                    && viewModel.nodes.isEmpty
-                    && filteredTables.isEmpty
-                    && favoriteDatabases.isEmpty {
+                switch FavoritesEmptyState.resolve(FavoritesEmptyState.Input(
+                    isInitialLoadComplete: viewModel.isInitialLoadComplete,
+                    hasAnyFavorite: !viewModel.nodes.isEmpty
+                        || !availableFavoriteTables.isEmpty
+                        || !teamLibraryQueries.isEmpty
+                        || !favoriteDatabases.isEmpty,
+                    hasVisibleContent: !items.isEmpty
+                        || !groups.isEmpty
+                        || !filteredTables.isEmpty
+                        || !teamLibraryQueries.isEmpty,
+                    searchText: searchText,
+                    isEnvironmentFiltered: sharedSidebarState.favoriteDatabaseEnvironmentFilter != .all
+                )) {
+                case .loading:
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if viewModel.nodes.isEmpty
-                    && filteredTables.isEmpty
-                    && teamLibraryQueries.isEmpty
-                    && favoriteDatabases.isEmpty
-                    && searchText.isEmpty {
+                case .noFavorites:
                     emptyState
-                } else if items.isEmpty
-                    && groups.isEmpty
-                    && filteredTables.isEmpty
-                    && teamLibraryQueries.isEmpty {
-                    noMatchState
-                } else {
+                case .noFilterMatch:
+                    noFilterMatchState
+                case .noSearchMatch(let term):
+                    noSearchMatchState(term)
+                case .content:
                     favoritesList(items, databaseGroups: groups, filteredTables: filteredTables)
                 }
             }
@@ -274,7 +279,8 @@ internal struct FavoritesTabView: View {
                 databaseGroups: databaseGroups,
                 databaseEntityName: databaseEntityName,
                 databaseEntityNamePlural: databaseEntityNamePlural,
-                isFilteringDatabases: !searchText.isEmpty,
+                isNarrowingDatabases: !searchText.isEmpty
+                    || sharedSidebarState.favoriteDatabaseEnvironmentFilter != .all,
                 tables: filteredTables,
                 queryNodes: items,
                 teamQueries: teamLibraryQueries.map {
@@ -360,7 +366,7 @@ internal struct FavoritesTabView: View {
             .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
             .lineLimit(1)
             .accessibilityLabel(String(
-                format: String(localized: "Favorite %@, %@"),
+                format: String(localized: "%@: %@"),
                 databaseEntityName,
                 entry.database
             ))
@@ -602,9 +608,20 @@ internal struct FavoritesTabView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var noMatchState: some View {
-        ContentUnavailableView.search(text: searchText)
+    private func noSearchMatchState(_ term: String) -> some View {
+        ContentUnavailableView.search(text: term)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// A filter miss is not a failed search, so it never borrows the search placeholder's "check
+    /// the spelling" advice. The filter control stays on screen above this, which is the reset.
+    private var noFilterMatchState: some View {
+        ContentUnavailableView {
+            Label(String(localized: "No Matching Favorites"), systemImage: "line.3.horizontal.decrease.circle")
+        } description: {
+            Text("No favorites match the selected environment.")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func addLinkedFolder() {

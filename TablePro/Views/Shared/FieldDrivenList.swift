@@ -22,19 +22,41 @@ internal struct FieldDrivenMenuItem {
     internal let title: String
     internal let isSeparator: Bool
     internal let isEnabled: Bool
+    /// Drawn as a checkmark. A menu that reports the current value is how a picker-shaped command
+    /// says which option is already chosen.
+    internal let isOn: Bool
+    internal let submenu: [FieldDrivenMenuItem]
     internal let action: () -> Void
 
-    internal init(title: String, isEnabled: Bool = true, action: @escaping () -> Void) {
+    internal init(
+        title: String,
+        isEnabled: Bool = true,
+        isOn: Bool = false,
+        action: @escaping () -> Void
+    ) {
         self.title = title
         self.isSeparator = false
         self.isEnabled = isEnabled
+        self.isOn = isOn
+        self.submenu = []
         self.action = action
+    }
+
+    internal init(title: String, submenu: [FieldDrivenMenuItem]) {
+        self.title = title
+        self.isSeparator = false
+        self.isEnabled = !submenu.isEmpty
+        self.isOn = false
+        self.submenu = submenu
+        self.action = {}
     }
 
     private init() {
         self.title = ""
         self.isSeparator = true
         self.isEnabled = false
+        self.isOn = false
+        self.submenu = []
         self.action = {}
     }
 
@@ -260,6 +282,10 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
             let targets = owner.selection.contains(id) ? owner.selection : [id]
             let descriptors = build(targets)
             guard !descriptors.isEmpty else { return nil }
+            return makeMenu(from: descriptors)
+        }
+
+        private func makeMenu(from descriptors: [FieldDrivenMenuItem]) -> NSMenu {
             let menu = NSMenu()
             menu.autoenablesItems = false
             for descriptor in descriptors {
@@ -267,9 +293,16 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
                     menu.addItem(.separator())
                     continue
                 }
-                let item = NSMenuItem(title: descriptor.title, action: #selector(performMenuItem(_:)), keyEquivalent: "")
-                item.target = self
+                let item = NSMenuItem(title: descriptor.title, action: nil, keyEquivalent: "")
                 item.isEnabled = descriptor.isEnabled
+                guard descriptor.submenu.isEmpty else {
+                    item.submenu = makeMenu(from: descriptor.submenu)
+                    menu.addItem(item)
+                    continue
+                }
+                item.action = #selector(performMenuItem(_:))
+                item.target = self
+                item.state = descriptor.isOn ? .on : .off
                 item.representedObject = MenuAction(descriptor.action)
                 menu.addItem(item)
             }

@@ -123,21 +123,11 @@ struct TableRow: View {
             Spacer(minLength: 4)
 
             if let onToggleFavorite {
-                let starVisible = isFavorite || isHovered
-                Button(action: onToggleFavorite) {
-                    Image(systemName: isFavorite ? "star.fill" : "star")
-                        .font(.system(size: 11, weight: .regular))
-                        .selectionAwareTint(isFavorite ? Color.yellow : Color.secondary)
-                        .frame(width: 20, height: 20)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .opacity(starVisible ? 1 : 0)
-                .allowsHitTesting(starVisible)
-                .accessibilityHidden(true)
-                .help(isFavorite
-                      ? String(localized: "Remove from Favorites")
-                      : String(localized: "Add to Favorites"))
+                FavoriteStarButton(
+                    isFavorite: isFavorite,
+                    isRowHovered: isHovered,
+                    toggle: onToggleFavorite
+                )
             }
         }
         .onHover { isHovered = $0 }
@@ -151,23 +141,5 @@ struct TableRow: View {
             )
         )
         .modifier(FavoriteAccessibilityAction(isFavorite: isFavorite, toggle: onToggleFavorite))
-    }
-}
-
-private struct FavoriteAccessibilityAction: ViewModifier {
-    let isFavorite: Bool
-    let toggle: (() -> Void)?
-
-    func body(content: Content) -> some View {
-        if let toggle {
-            content.accessibilityAction(
-                named: isFavorite
-                    ? Text("Remove from Favorites")
-                    : Text("Add to Favorites"),
-                toggle
-            )
-        } else {
-            content
-        }
     }
 }

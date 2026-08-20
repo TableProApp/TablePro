@@ -15,7 +15,6 @@ internal enum FavoriteDatabaseGrouping {
             guard filter.environment == nil || entry.environment == filter.environment else { return false }
             guard !searchText.isEmpty else { return true }
             return entry.database.localizedStandardContains(searchText)
-                || entry.environment.title.localizedStandardContains(searchText)
         }
 
         return FavoriteDatabaseEnvironment.allCases.compactMap { environment in

@@ -54,7 +54,7 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
     /// outline reloads only when the set of rows or their nesting changed. Depth is part of the
     /// fingerprint because moving a favorite into a folder can leave the pre-order id list identical.
     private static func fingerprint(of input: FavoritesOutlineInput) -> String {
-        var parts: [String] = [input.activeDatabase ?? "", input.isFilteringDatabases ? "filtering" : ""]
+        var parts: [String] = [input.activeDatabase ?? "", input.isNarrowingDatabases ? "filtering" : ""]
         parts += input.databaseGroups.flatMap { group in
             ["environment|\(group.environment.rawValue)"]
                 + group.entries.map { "\(group.environment.rawValue)|\($0.id)" }
@@ -191,7 +191,7 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
             let shouldExpand: Bool
             switch node.kind {
             case .databaseEnvironment(let group):
-                shouldExpand = owner.input.isFilteringDatabases || FavoritesExpansion
+                shouldExpand = owner.input.isNarrowingDatabases || FavoritesExpansion
                     .isDatabaseEnvironmentExpanded(group.environment, connectionId: owner.input.connectionId)
             case .query(let favoriteNode):
                 shouldExpand = FavoritesExpansion.isExpanded(
@@ -223,7 +223,7 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
               let node = notification.userInfo?["NSObject"] as? FavoritesOutlineNode else { return }
         switch node.kind {
         case .databaseEnvironment(let group):
-            guard !owner.input.isFilteringDatabases else { return }
+            guard !owner.input.isNarrowingDatabases else { return }
             FavoritesExpansion.setDatabaseEnvironmentExpanded(
                 group.environment,
                 expanded: expanded,
