@@ -12,6 +12,13 @@ struct KoreanLocalizationSourceTests {
 
     private static let sharedSafeModeLabels = ["Confirm Writes", "Off", "Read-Only"]
 
+    private static let koreanPlatformTerms = [
+        "Details": "세부사항",
+        "Discard": "폐기",
+        "Redo": "실행 복귀",
+        "Select All": "전체 선택"
+    ]
+
     private static let sharedPackageSourcePaths = [
         "Packages/TableProCore/Sources/TableProImport/ConnectionExportCrypto.swift",
         "Packages/TableProCore/Sources/TableProImport/ConnectionExportEnvelope.swift",
@@ -73,6 +80,45 @@ struct KoreanLocalizationSourceTests {
         }
 
         #expect(mismatches.isEmpty, "Structurally unsafe Korean translations:\n\(mismatches.joined(separator: "\n"))")
+    }
+
+    @Test("Korean UI copy uses a consistent formal register")
+    func koreanCopyUsesFormalRegister() throws {
+        var informal: [String] = []
+
+        for path in Self.catalogPaths {
+            let catalog = try Self.catalog(at: path)
+            for (key, entry) in catalog.strings {
+                guard let translation = entry.localizations?["ko"]?.stringUnit?.value else { continue }
+                let usesInformalImperative = translation.range(
+                    of: #"세요(?:[.!?]|$)"#,
+                    options: .regularExpression
+                ) != nil
+                if usesInformalImperative || translation.contains("할까요?") {
+                    informal.append("\(path): \(key)")
+                }
+            }
+        }
+
+        #expect(informal.isEmpty, "Informal Korean UI copy:\n\(informal.joined(separator: "\n"))")
+    }
+
+    @Test("Korean platform terms match macOS conventions")
+    func koreanPlatformTermsMatchConventions() throws {
+        let strings = try Self.catalog(at: "TablePro/Resources/Localizable.xcstrings").strings
+
+        for (key, expected) in Self.koreanPlatformTerms {
+            #expect(strings[key]?.localizations?["ko"]?.stringUnit?.value == expected)
+        }
+
+        #expect(
+            strings["Created as GitHub issue #%d"]?.localizations?["ko"]?.stringUnit?.value
+                == "GitHub 이슈 #%d(으)로 생성됨"
+        )
+        #expect(
+            strings["Process exited with code %d"]?.localizations?["ko"]?.stringUnit?.value
+                == "프로세스가 코드 %d(으)로 종료되었습니다"
+        )
     }
 
     @Test("Shared Safe Mode labels exist in both app catalogs")
