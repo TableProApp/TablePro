@@ -47,6 +47,13 @@ extension MainContentCoordinator {
         return true
     }
 
+    /// Takes back the pending mark raised when phase 2 was committed to, for an attempt that will
+    /// never reach the count. Only the paths that abandoned the work call this; a superseded attempt
+    /// must not, because its successor has raised a mark of its own.
+    internal func releaseCountPending(for tabId: UUID) {
+        tabManager.mutate(tabId: tabId) { $0.pagination.isCountPending = false }
+    }
+
     /// Cancelling is a way out too, so the tab stops reporting a count that will never land.
     internal func cancelRowCountTask(for tabId: UUID) {
         rowCountTasks.removeValue(forKey: tabId)?.task.cancel()

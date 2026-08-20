@@ -331,7 +331,13 @@ extension QueryExecutionCoordinator {
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let resultSetId = parent.tabManager.tabs.first { $0.id == tabId }?.display.activeResultSetId
         Task(priority: .utility) { [weak self, parent] in
-            guard let self else { return }
+            /// The caller marked the total pending when it committed to this phase. Every way out of
+            /// here that does not reach `resolveRowCount` has to take that back, or the tab reports a
+            /// count that is never coming and never offers `Count Exactly` again.
+            guard let self else {
+                parent.releaseCountPending(for: tabId)
+                return
+            }
             guard !parent.isTearingDown else { return }
 
             let schema = try? await schemaTask?.value
@@ -340,17 +346,21 @@ extension QueryExecutionCoordinator {
             }
 
             await MainActor.run { [weak self] in
-                guard let self else { return }
+                guard let self else {
+                    parent.releaseCountPending(for: tabId)
+                    return
+                }
                 if let schema {
                     applySchemaMetadata(schema, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
                 }
-                if parent.tabExecution.isSameContent(contentEpoch, for: tabId) {
-                    resolveRowCount(
-                        tableName: tableName,
-                        tabId: tabId,
-                        connectionType: connectionType
-                    )
-                }
+                /// A retarget or a re-execution that overtook this one owns the tab's state now, and
+                /// it raised its own pending mark. Clearing here would release the successor's.
+                guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
+                resolveRowCount(
+                    tableName: tableName,
+                    tabId: tabId,
+                    connectionType: connectionType
+                )
             }
 
             guard !isNonSQL, let schema else { return }

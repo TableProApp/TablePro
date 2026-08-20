@@ -152,7 +152,11 @@ struct ResultStatusModel: Equatable {
                     isEstimate: pagination.isApproximateRowCount
                 )
             }
-            if snapshot.isPagedWithUnknownTotal {
+            /// A total that is still being worked out is reported as the range we do know, not as a
+            /// bare row count. Both sentences describe the same rows, but "1,000 rows" reads as the
+            /// whole answer and is then replaced by "1-1,000 of 5,000 rows", which is the blink. The
+            /// range only ever gains its total, so each step adds to the last instead of retracting.
+            if snapshot.isPagedWithUnknownTotal || pagination.isCountPending {
                 return .rangeOfUnknownTotal(
                     start: pagination.rangeStart,
                     end: pagination.rangeEnd(loadedRowCount: snapshot.rowCount)

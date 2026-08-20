@@ -383,6 +383,10 @@ struct PaginationState: Equatable {
         currentPage = 1
         currentOffset = 0
         isLoading = false
+        /// A count belonging to the rows being replaced is not this tab's business any more. Left
+        /// set, a superseded attempt's mark would suppress `Count Exactly` on the new table until
+        /// something else happened to clear it.
+        isCountPending = false
     }
 
     /// Reset result truncation state
