@@ -18,6 +18,10 @@ struct ConnectionAdvancedView: View {
 
     let databaseType: DatabaseType
     let additionalConnectionFields: [ConnectionField]
+    /// Values from every pane, not just this one, so a rule can point at a field in another
+    /// section. The Redis Database Index field is hidden by the Connection Mode field, which the
+    /// Connection pane owns.
+    let visibilityValues: [String: String]
 
     var body: some View {
         Form {
@@ -111,13 +115,7 @@ struct ConnectionAdvancedView: View {
     }
 
     private func isFieldVisible(_ field: ConnectionField) -> Bool {
-        guard let rule = field.visibleWhen else { return true }
-        let currentValue = additionalFieldValues[rule.fieldId] ?? defaultFieldValue(rule.fieldId)
-        return rule.values.contains(currentValue)
-    }
-
-    private func defaultFieldValue(_ fieldId: String) -> String {
-        additionalConnectionFields.first { $0.id == fieldId }?.defaultValue ?? ""
+        PluginFieldRendering.isFieldVisible(field, type: databaseType, values: visibilityValues)
     }
 }
 

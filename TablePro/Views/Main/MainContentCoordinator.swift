@@ -20,6 +20,7 @@ enum DiscardAction {
     case sort
     case pagination
     case filter
+    case resultSwitch
 }
 
 struct DisplayFormatsCacheEntry {

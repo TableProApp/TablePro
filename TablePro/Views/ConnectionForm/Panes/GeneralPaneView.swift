@@ -135,7 +135,7 @@ struct GeneralPaneView: View {
         let connectionFields = coordinator.network.connectionFields
         if coordinator.network.hasHostListField {
             ForEach(connectionFields, id: \.id) { field in
-                if case .hostList = field.fieldType {
+                if case .hostList = field.fieldType, coordinator.network.isFieldVisible(field) {
                     HostListFieldRow(
                         label: field.label,
                         placeholder: field.placeholder,
@@ -346,7 +346,7 @@ struct GeneralPaneView: View {
 
     private var firstHostListValue: String {
         let fieldId = coordinator.network.connectionFields
-            .first(where: isHostListField)?.id
+            .first { isHostListField($0) && coordinator.network.isFieldVisible($0) }?.id
         guard let fieldId else { return "" }
         return coordinator.network.additionalFieldValues[fieldId] ?? ""
     }

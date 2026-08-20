@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProNumberFormatting
 import TableProPluginKit
 
 final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -1097,9 +1098,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func prettyJson(_ value: Any) -> String {
         let sanitized = BsonDocumentFlattener.sanitizeForJson(value, representation: uuidRepresentation)
-        guard JSONSerialization.isValidJSONObject(sanitized),
-              let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys, .prettyPrinted]),
-              let json = String(data: data, encoding: .utf8) else {
+        guard let json = NumberText.json(from: sanitized, prettyPrinted: true) else {
             return String(describing: value)
         }
         return json.replacingOccurrences(of: "    ", with: "  ")

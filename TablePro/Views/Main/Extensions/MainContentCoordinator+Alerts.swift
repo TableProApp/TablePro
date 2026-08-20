@@ -41,6 +41,8 @@ extension MainContentCoordinator {
             return String(localized: "Navigating to another page will discard all unsaved changes.")
         case .filter:
             return String(localized: "Applying or clearing filters will reload data and discard all unsaved changes.")
+        case .resultSwitch:
+            return String(localized: "Showing another result will discard all unsaved changes.")
         }
     }
 

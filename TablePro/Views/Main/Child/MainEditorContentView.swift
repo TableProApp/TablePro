@@ -803,7 +803,8 @@ struct MainEditorContentView: View {
 
     @ViewBuilder
     private func dataGridView(tab: QueryTab) -> some View {
-        let isEditable = tab.tableContext.isEditable && !tab.tableContext.isView && !coordinator.safeModeLevel.blocksAllWrites
+        let refusal = coordinator.activeResultEditRefusal
+        let isEditable = coordinator.canEditActiveResult
 
         let tabId = tab.id
         DataGridView(
@@ -830,7 +831,8 @@ struct MainEditorContentView: View {
                 primaryKeyColumns: changeManager.primaryKeyColumns,
                 tabType: tab.tabType,
                 showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
-                hiddenColumns: tab.columnLayout.hiddenColumns
+                hiddenColumns: tab.columnLayout.hiddenColumns,
+                editRefusalMessage: refusal?.message
             ),
             displayFormats: coordinator.displayFormats(for: tab),
             delegate: dataTabDelegate,

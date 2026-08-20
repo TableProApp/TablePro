@@ -31,7 +31,8 @@ extension QueryExecutionCoordinator {
         sql: String,
         index: Int,
         baseQuery: String,
-        baseQueryParameterValues: [String?]? = nil
+        baseQueryParameterValues: [String?]? = nil,
+        tabId: UUID
     ) -> ResultSet {
         let tableName = parent.extractTableName(from: sql)
         let rows = TableRows.from(
@@ -48,7 +49,27 @@ extension QueryExecutionCoordinator {
             resultSet.baseQuery = baseQuery
             resultSet.baseQueryParameterValues = baseQueryParameterValues
         }
+        resultSet.origin = statementOrigin(sql: sql, tabId: tabId, producesRows: !result.columns.isEmpty)
         return resultSet
+    }
+
+    /// Each statement in a multi-statement run targets its own table, so each result carries its
+    /// own identity. Nothing fetches key columns for these statements, so the origin says so and
+    /// the result is read-only until something does. Inheriting the previous run's keys made an
+    /// UPDATE match by another table's key names, and calling them "no keys" would hand the
+    /// generator a whole-row WHERE that changes every duplicate row.
+    private func statementOrigin(sql: String, tabId: UUID, producesRows: Bool) -> ResultOrigin? {
+        guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return nil }
+        let resolved = parent.resolveTableEditability(tab: tab, sql: sql)
+        return ResultOrigin(
+            tableName: resolved.tableName,
+            schemaName: tab.tableContext.schemaName,
+            databaseName: historyDatabaseName(tabId: tabId),
+            primaryKeyColumns: [],
+            isEditable: resolved.isEditable && producesRows,
+            isView: tab.tableContext.isView,
+            keysResolved: false
+        )
     }
 
     func recordStatementHistory(
@@ -78,8 +99,6 @@ extension QueryExecutionCoordinator {
         claim: TabExecutionClaim,
         cumulativeTime: TimeInterval,
         totalRowsAffected: Int,
-        lastSelectResult: QueryResult?,
-        lastSelectSQL: String?,
         newResultSets: [ResultSet]
     ) {
         guard parent.tabExecution.settle(claim) else { return }
@@ -91,34 +110,19 @@ extension QueryExecutionCoordinator {
         }
 
         let currentTab = parent.tabManager.tabs[idx]
-        let resolvedTableName: String?
-        if let selectResult = lastSelectResult {
-            let safeColumns = selectResult.columns.map { String($0) }
-            let safeColumnTypes = selectResult.columnTypes
-            let safeRows = selectResult.rows
-            if currentTab.tabType == .table, let existing = currentTab.tableContext.tableName {
-                resolvedTableName = existing
-            } else {
-                resolvedTableName = lastSelectSQL.flatMap { parent.extractTableName(from: $0) }
-            }
+        let activeResult = newResultSets.last
+        let activeOrigin = activeResult?.origin
 
-            parent.setActiveTableRows(
-                TableRows.from(queryRows: safeRows, columns: safeColumns, columnTypes: safeColumnTypes),
-                for: currentTab.id
-            )
-        } else {
-            resolvedTableName = nil
-            parent.setActiveTableRows(TableRows(), for: currentTab.id)
-        }
+        parent.flushBufferToActiveResult(tabId: currentTab.id, pinnedOnly: true)
+        parent.setActiveTableRows(activeResult?.tableRows ?? TableRows(), for: currentTab.id)
 
         parent.tabManager.mutate(at: idx) { tab in
-            if lastSelectResult != nil {
-                tab.tableContext.tableName = resolvedTableName
-                tab.tableContext.isEditable = resolvedTableName != nil && tab.tableContext.isEditable
-            } else {
-                if tab.tabType != .table {
-                    tab.tableContext.tableName = nil
-                }
+            if tab.tabType == .query {
+                tab.tableContext.tableName = activeOrigin?.tableName
+                tab.tableContext.schemaName = activeOrigin?.schemaName
+                tab.tableContext.primaryKeyColumns = activeOrigin?.primaryKeyColumns ?? []
+                tab.tableContext.isEditable = activeOrigin?.isEditable ?? false
+            } else if activeOrigin?.tableName == nil {
                 tab.tableContext.isEditable = false
             }
 
@@ -133,7 +137,7 @@ extension QueryExecutionCoordinator {
                 tab.display.isResultsCollapsed = false
             }
 
-            let activeResultSet = newResultSets.last
+            let activeResultSet = activeResult
             if activeResultSet?.isTruncated == true {
                 tab.pagination.hasMoreRows = true
                 tab.pagination.isLoadingMore = false

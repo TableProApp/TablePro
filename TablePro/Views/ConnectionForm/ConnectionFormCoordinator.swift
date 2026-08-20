@@ -682,6 +682,18 @@ final class ConnectionFormCoordinator {
         }
     }
 
+    /// Every additional field value the form currently holds, across all three panes.
+    ///
+    /// The panes each own the values for their own section, so a `visibleWhen` rule that points at
+    /// a field in another section can never see it from inside one pane. Redis needs exactly that:
+    /// the Sentinel credentials live under Authentication and appear only when the Connection
+    /// Mode field, which lives under Connection, says sentinel.
+    var allAdditionalFieldValues: [String: String] {
+        auth.additionalFieldValues
+            .merging(network.additionalFieldValues) { _, network in network }
+            .merging(advanced.additionalFieldValues) { _, advanced in advanced }
+    }
+
     private func targetValues(for section: FieldSection) -> [String: String] {
         switch section {
         case .authentication: return auth.additionalFieldValues

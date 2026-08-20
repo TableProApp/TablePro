@@ -44,7 +44,13 @@ dm://user:password@host:5236/schema
 - Username and password authentication only
 - No native TLS or trigger editor
 - Stopping a query closes its connection. DM8 has no out-of-band cancel request, so TablePro stops
-  reading the reply and reconnects on your next query. A query timeout behaves the same way.
+  reading the reply and reconnects on your next query, back on the schema you were using. A query
+  timeout behaves the same way. A read runs again on the new connection. A statement that writes is
+  reported instead of being run twice, because the stopped attempt may already have been applied,
+  and an open transaction does not survive.
+- The server keeps running a statement you stopped. TablePro stops waiting for it, but DM8 has no
+  way to be told to abandon the work, so a heavy query still finishes on the server. Stopping can
+  take a few seconds to take effect for the same reason.
 - Native binary and off-row LOB reads are not supported by the current transport. Use `RAWTOHEX` for binary
   columns and cast `CLOB` values to `VARCHAR` when reading them.
 - The Database field selects an initial schema; DM8 database switching is not supported

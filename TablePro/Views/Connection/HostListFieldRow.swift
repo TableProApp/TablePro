@@ -44,7 +44,7 @@ struct HostListFieldRow: View {
         LabeledContent {
             List(selection: $selectedId) {
                 ForEach(entries) { entry in
-                    TextField("", text: bindingForEntry(entry), prompt: Text(verbatim: "hostname:\(defaultPort)"))
+                    TextField("", text: bindingForEntry(entry), prompt: Text(verbatim: prompt))
                         .tag(entry.id)
                         .accessibilityLabel(String(localized: "Host"))
                 }
@@ -76,6 +76,12 @@ struct HostListFieldRow: View {
         }
         .onAppear { parseValue() }
         .onChange(of: value) { parseValue() }
+    }
+
+    /// A plugin can declare a per-field example, which matters when one form has two host lists
+    /// on different default ports: Sentinel answers on 26379 and a cluster seed on 6379.
+    private var prompt: String {
+        placeholder.isEmpty ? "hostname:\(defaultPort)" : placeholder
     }
 
     private var listHeight: CGFloat {

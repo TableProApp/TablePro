@@ -34,8 +34,8 @@ final class NetworkPaneViewModel {
 
     var hasHostListField: Bool {
         connectionFields.contains { field in
-            if case .hostList = field.fieldType { return true }
-            return false
+            guard case .hostList = field.fieldType else { return false }
+            return isFieldVisible(field)
         }
     }
 
@@ -131,11 +131,11 @@ final class NetworkPaneViewModel {
     }
 
     func isFieldVisible(_ field: ConnectionField) -> Bool {
-        guard let rule = field.visibleWhen else { return true }
-        let allFields = PluginManager.shared.additionalConnectionFields(for: type)
-        let defaultValue = allFields.first { $0.id == rule.fieldId }?.defaultValue ?? ""
-        let currentValue = additionalFieldValues[rule.fieldId] ?? defaultValue
-        return rule.values.contains(currentValue)
+        PluginFieldRendering.isFieldVisible(field, type: type, values: resolvedFieldValues)
+    }
+
+    private var resolvedFieldValues: [String: String] {
+        coordinator?.value?.allAdditionalFieldValues ?? additionalFieldValues
     }
 
     func load(from connection: DatabaseConnection) {

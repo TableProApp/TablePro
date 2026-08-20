@@ -20,7 +20,7 @@ extension RedisPluginDriver {
 
     func buildKeyTreeResult(
         keys: [String],
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         startTime: Date,
         isTruncated: Bool
     ) async throws -> PluginQueryResult {
@@ -45,7 +45,7 @@ extension RedisPluginDriver {
 
     func buildKeyBrowseResult(
         keys: [String],
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         startTime: Date,
         isTruncated: Bool = false
     ) async throws -> PluginQueryResult {
@@ -66,7 +66,7 @@ extension RedisPluginDriver {
 
     func buildKeySummaryRows(
         keys: [String],
-        connection conn: RedisPluginConnection
+        connection conn: any RedisCommandChannel
     ) async throws -> [PluginRow] {
         guard !keys.isEmpty else { return [] }
 

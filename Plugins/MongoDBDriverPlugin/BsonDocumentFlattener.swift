@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProNumberFormatting
 import TableProPluginKit
 
 enum BsonValueKind: Hashable {
@@ -189,9 +190,7 @@ struct BsonDocumentFlattener {
     /// Serialize a dictionary or array to compact JSON string
     static func serializeToJson(_ value: Any, representation: MongoDBUuidRepresentation) -> String {
         let sanitized = sanitizeForJson(value, representation: representation)
-        guard JSONSerialization.isValidJSONObject(sanitized),
-              let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys]),
-              let json = String(data: data, encoding: .utf8) else {
+        guard let json = NumberText.json(from: sanitized) else {
             return String(describing: value)
         }
         let nsJson = json as NSString
@@ -236,7 +235,7 @@ struct BsonDocumentFlattener {
         if isFloatingPoint(num), !num.doubleValue.isFinite {
             return nonFiniteToken(num.doubleValue)
         }
-        return num.stringValue
+        return NumberText.text(for: num)
     }
 
     private static func sanitizeNumber(_ num: NSNumber) -> Any {
