@@ -56,7 +56,7 @@ Value filters run on the rows already loaded, so they cover the current page onl
 
 ### Resize and Hide
 
-Drag a column border to resize, or double-click it to fit the content. The header menu has **Size to Fit** for one column and **Size All Columns to Fit** for all of them. Fitted columns stop at half the visible grid width, so one long-text column can't push the rest off screen.
+Drag a column border to resize, or double-click it to fit the content. The header menu has **Size to Fit** for one column and **Size All Columns to Fit** for all of them. Fitting reads the loaded page rather than a sample of it, and leaves room for any action button the cells draw, such as the arrows on a date. Sizing every column of a very wide result reads fewer rows per column so the command stays quick. Fitted columns stop at half the visible grid width, so one long-text column can't push the rest off screen.
 
 Hide columns from the columns button in the status bar or the header menu. A hidden column isn't fetched, so hiding a large column makes the table load faster. The primary key is always fetched, so editing still works, and so is the column you are sorting by, so hiding it leaves the order alone.
 

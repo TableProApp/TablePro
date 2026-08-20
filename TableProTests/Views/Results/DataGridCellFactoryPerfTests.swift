@@ -180,6 +180,76 @@ struct ColumnWidthOptimizationTests {
 
         #expect(width - DataGridCellAccessory.chevron.measurementPadding >= displayedWidth)
     }
+
+    @Test("An enum column reserves its dropdown before the allowed values arrive")
+    func enumColumnReservesDropdownBeforeValuesArrive() {
+        let presentation = DataGridColumnPresentation.resolve(
+            columnType: .enumType(rawType: "ENUM", values: nil),
+            isForeignKey: false,
+            isDropdown: false,
+            isTypePicker: false,
+            isEnumOrSet: false,
+            isEditable: true
+        )
+
+        #expect(presentation.kind == .dropdown)
+        #expect(presentation.accessory == .chevron)
+    }
+
+    @Test("A SET column reserves its dropdown before the allowed values arrive")
+    func setColumnReservesDropdownBeforeValuesArrive() {
+        let presentation = DataGridColumnPresentation.resolve(
+            columnType: .set(rawType: "SET", values: nil),
+            isForeignKey: false,
+            isDropdown: false,
+            isTypePicker: false,
+            isEnumOrSet: false,
+            isEditable: true
+        )
+
+        #expect(presentation.kind == .dropdown)
+        #expect(presentation.accessory == .chevron)
+    }
+
+    @Test("A read-only enum column reserves nothing")
+    func readOnlyEnumColumnReservesNothing() {
+        let presentation = DataGridColumnPresentation.resolve(
+            columnType: .enumType(rawType: "ENUM", values: nil),
+            isForeignKey: false,
+            isDropdown: false,
+            isTypePicker: false,
+            isEnumOrSet: false,
+            isEditable: false
+        )
+
+        #expect(presentation.accessory == .none)
+    }
+
+    @Test("An explicit fit measures a value the automatic sample steps over")
+    func explicitFitMeasuresValueTheSampleSkips() {
+        let short = String(repeating: "M", count: 10)
+        let long = String(repeating: "M", count: 60)
+        var values = Array(repeating: short, count: 1_000)
+        values[5] = long
+        let rows = TableRows.from(
+            queryRows: values.map { [PluginCellValue.text($0)] },
+            columns: ["title"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        let factory = DataGridCellFactory()
+        let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
+
+        let automatic = factory.calculateOptimalColumnWidth(for: "title", columnIndex: 0, tableRows: rows)
+        let fitted = factory.calculateFitToContentWidth(
+            for: "title",
+            columnIndex: 0,
+            tableRows: rows,
+            availableWidth: 4_000
+        )
+
+        #expect(automatic < CGFloat(long.count) * charWidth)
+        #expect(fitted >= CGFloat(long.count) * charWidth + DataGridCellAccessory.none.measurementPadding)
+    }
 }
 
 @Suite("Fit To Content Width")

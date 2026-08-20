@@ -974,8 +974,8 @@ struct TableViewCoordinatorLayoutTests {
     /// Both ownership kinds, one rule. An automatic column is sized from its content when the
     /// column is built and a user-sized one is whatever the user dragged it to; the arrow arriving
     /// afterwards re-opens neither decision.
-    @Test("Late accessory metadata leaves automatic and user-sized widths alone")
-    func lateAccessoryMetadataLeavesWidthsAlone() throws {
+    @Test("Late accessory metadata widens the automatic column and leaves the user-sized one alone")
+    func lateAccessoryMetadataWidensAutomaticColumnOnly() throws {
         let coordinator = makeCoordinator(
             tabType: .table,
             connectionId: UUID(),
@@ -1008,19 +1008,25 @@ struct TableViewCoordinatorLayoutTests {
         let parentColumn = try #require(columns["parent_id"])
 
         #expect(idColumn.width == 75)
-        #expect(parentColumn.width == 100)
         #expect(coordinator.userSizedColumnNames == ["id"])
         #expect(coordinator.columnPresentation(for: 1, in: rows).accessory == .foreignKey)
+        #expect(parentColumn.width > 100)
+        #expect(
+            DataGridCellAccessory.foreignKey.availableTextWidth(
+                in: NSRect(x: 0, y: 0, width: parentColumn.width, height: 24)
+            ) >= CGFloat(value.count) * ThemeEngine.shared.dataGridFonts.monoCharWidth
+        )
 
+        let widenedWidth = parentColumn.width
         _ = rows.updateDisplayMetadata(columnForeignKeys: [:])
         coordinator.refreshCellPresentations()
 
         #expect(idColumn.width == 75)
-        #expect(parentColumn.width == 100)
+        #expect(parentColumn.width == widenedWidth)
     }
 
-    @Test("Late enum metadata changes the accessory without resizing the column")
-    func lateEnumMetadataDoesNotResizeItsColumn() throws {
+    @Test("Late enum metadata widens the automatic column it appears in")
+    func lateEnumMetadataWidensItsColumn() throws {
         let coordinator = makeCoordinator(
             tabType: .table,
             connectionId: UUID(),
@@ -1046,13 +1052,19 @@ struct TableViewCoordinatorLayoutTests {
 
         let column = try #require(columns["status"])
 
-        #expect(column.width == 100)
         #expect(coordinator.columnPresentation(for: 0, in: rows).kind == .dropdown)
+        #expect(column.width > 100)
+        #expect(
+            DataGridCellAccessory.chevron.availableTextWidth(
+                in: NSRect(x: 0, y: 0, width: column.width, height: 24)
+            ) >= CGFloat(value.count) * ThemeEngine.shared.dataGridFonts.monoCharWidth
+        )
 
+        let widenedWidth = column.width
         _ = rows.updateDisplayMetadata(columnEnumValues: [:])
         coordinator.refreshCellPresentations()
 
-        #expect(column.width == 100)
+        #expect(column.width == widenedWidth)
         #expect(coordinator.columnPresentation(for: 0, in: rows).kind == .text)
     }
 
@@ -1110,7 +1122,7 @@ struct TableViewCoordinatorLayoutTests {
 
         #expect(!editor.isActive)
         #expect(!coordinator.pendingCellPresentationRefresh)
-        #expect(column.width == originalWidth)
+        #expect(column.width > originalWidth)
         #expect(coordinator.columnPresentation(for: 0, in: rows).accessory == .foreignKey)
         #expect(coordinator.userSizedColumnNames.isEmpty)
     }

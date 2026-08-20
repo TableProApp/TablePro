@@ -203,7 +203,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         binding: ColumnLayoutState,
         liveWidths: [String: CGFloat]
     ) -> ColumnLayoutState? {
-        let saved = savedColumnLayout(binding: binding)
+        resolvedColumnLayout(saved: savedColumnLayout(binding: binding), liveWidths: liveWidths)
+    }
+
+    func resolvedColumnLayout(
+        saved: ColumnLayoutState?,
+        liveWidths: [String: CGFloat]
+    ) -> ColumnLayoutState? {
         guard let saved else {
             guard !liveWidths.isEmpty else { return nil }
             return ColumnLayoutState(columnWidths: liveWidths)
@@ -255,6 +261,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
               let name = identitySchema.columnName(for: dataIndex)
         else { return false }
         userSizedColumnNames.insert(name)
+        unownedRestoredColumnNames.remove(name)
         hasUnpersistedColumnLayoutChanges = true
         return true
     }
@@ -351,6 +358,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var fkColumns: Set<Int> = []
     private(set) var columnPresentations: [DataGridColumnPresentationIdentity: DataGridColumnPresentation] = [:]
     private(set) var userSizedColumnNames: Set<String> = []
+    /// Widths restored from a layout that recorded no ownership, so `userSizedColumnNames` counts
+    /// them only because they were saved at all. An accessory that resolves later is still allowed
+    /// to widen these, because nobody chose their width.
+    var unownedRestoredColumnNames: Set<String> = []
     var isApplyingProgrammaticRowSelection = false
     var isRebuildingColumns: Bool = false
     var hasUnpersistedColumnLayoutChanges = false
@@ -1066,6 +1077,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         rebuildKindSets(from: tableRows)
         let presentationChanges = updateColumnPresentations(from: tableRows)
         guard !presentationChanges.isEmpty else { return }
+
+        applyAccessoryWidthChanges(presentationChanges, tableRows: tableRows)
 
         let changedTableColumnIndices = IndexSet(presentationChanges.indices.compactMap { dataIndex in
             guard let identifier = identitySchema.identifier(for: dataIndex) else { return nil }

@@ -14,6 +14,9 @@ final class DataGridCellFactory {
     private static let minFitToContentWidth: CGFloat = 300
     private static let fitToContentViewportFraction: CGFloat = 0.5
     private static let sampleRowCount = 30
+    private static let wideResultSampleRowCount = 10
+    private static let wideResultColumnCount = 50
+    private static let fitToContentValueBudget = 200_000
     private static let maxMeasureChars = 50
     private static let headerPadding: CGFloat = 48
     private static let headerCharWidthRatio: CGFloat = 0.75
@@ -43,7 +46,8 @@ final class DataGridCellFactory {
             isLargeDataset: isLargeDataset,
             nullDisplayString: nullDisplayString,
             cap: Self.maxColumnWidth,
-            measuredCharLimit: Self.maxMeasureChars
+            measuredCharLimit: Self.maxMeasureChars,
+            sampledRows: Self.automaticSampleRowCount(columnCount: tableRows.columns.count)
         )
     }
 
@@ -56,7 +60,8 @@ final class DataGridCellFactory {
         displayFormat: ValueDisplayFormat? = nil,
         databaseType: DatabaseType? = nil,
         isLargeDataset: Bool = false,
-        nullDisplayString: String? = nil
+        nullDisplayString: String? = nil,
+        fittedColumnCount: Int = 1
     ) -> CGFloat {
         let cap = Self.fitToContentCap(availableWidth: availableWidth)
         let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
@@ -72,8 +77,23 @@ final class DataGridCellFactory {
             isLargeDataset: isLargeDataset,
             nullDisplayString: nullDisplayString,
             cap: cap,
-            measuredCharLimit: measuredCharLimit
+            measuredCharLimit: measuredCharLimit,
+            sampledRows: Self.fitSampleRowCount(fittedColumnCount: fittedColumnCount)
         )
+    }
+
+    /// The first paint samples, because it measures every column of the result before the grid can
+    /// draw a single row.
+    private static func automaticSampleRowCount(columnCount: Int) -> Int {
+        columnCount > wideResultColumnCount ? wideResultSampleRowCount : sampleRowCount
+    }
+
+    /// An explicit fit reads the page rather than a sample, because a sample that stepped over the
+    /// longest value is the reason the user asked twice. The budget is on the whole gesture, not on
+    /// one column, so fitting a single column covers any page a user can configure while fitting
+    /// every column of a wide result stays a bounded amount of formatting on the main thread.
+    private static func fitSampleRowCount(fittedColumnCount: Int) -> Int {
+        max(sampleRowCount, fitToContentValueBudget / max(1, fittedColumnCount))
     }
 
     private func measureColumnWidth(
@@ -86,15 +106,15 @@ final class DataGridCellFactory {
         isLargeDataset: Bool,
         nullDisplayString: String?,
         cap: CGFloat,
-        measuredCharLimit: Int
+        measuredCharLimit: Int,
+        sampledRows: Int
     ) -> CGFloat {
         let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
         let headerCharCount = (columnName as NSString).length
         var maxWidth = CGFloat(headerCharCount) * charWidth * Self.headerCharWidthRatio + Self.headerPadding
 
         let totalRows = tableRows.count
-        let effectiveSampleCount = tableRows.columns.count > 50 ? 10 : Self.sampleRowCount
-        let step = max(1, totalRows / effectiveSampleCount)
+        let step = max(1, totalRows / max(1, sampledRows))
 
         let columnType = columnIndex < tableRows.columnTypes.count
             ? tableRows.columnTypes[columnIndex]
