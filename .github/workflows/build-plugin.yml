@@ -288,12 +288,39 @@ jobs:
         if: ${{ contains(matrix.tag, 'plugin-dameng-') }}
         run: ./scripts/build-dameng.sh both
 
+      # NOTARIZE is not optional. Gatekeeper refuses to load an unnotarized plugin bundle
+      # into TablePro, so a build that skips it publishes a driver no user can open.
       - name: Build plugin binaries
         env:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          NOTARY_PROFILE: TablePro
+          NOTARIZE: "true"
         run: |
           ./scripts/build-plugin.sh "${{ steps.plugin.outputs.target }}" arm64 "${{ steps.plugin.outputs.version }}"
           ./scripts/build-plugin.sh "${{ steps.plugin.outputs.target }}" x86_64 "${{ steps.plugin.outputs.version }}"
+
+      # Assert the result rather than trusting the flag. The previous notarization step was
+      # gated on an environment variable nothing defined, so it never ran and nothing noticed
+      # for every plugin release the registry has ever published.
+      - name: Verify the built bundles are notarized
+        run: |
+          BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
+          for ARCH in arm64 x86_64; do
+            WORK=$(mktemp -d)
+            unzip -oq "build/Plugins/${BUNDLE_NAME}-${ARCH}.zip" -d "$WORK"
+            PLUGIN="$WORK/${BUNDLE_NAME}.tableplugin"
+            if ! xcrun stapler validate "$PLUGIN"; then
+              echo "::error::${BUNDLE_NAME}-${ARCH} carries no stapled notarization ticket. Gatekeeper refuses to load such a bundle into TablePro."
+              exit 1
+            fi
+            if ! spctl -a -vvv -t open --context context:primary-signature "$PLUGIN" 2>&1 | grep -q "source=Notarized Developer ID"; then
+              echo "::error::Gatekeeper rejects ${BUNDLE_NAME}-${ARCH}:"
+              spctl -a -vvv -t open --context context:primary-signature "$PLUGIN" || true
+              exit 1
+            fi
+            echo "Verified ${BUNDLE_NAME}-${ARCH}: notarized, stapled and accepted by Gatekeeper."
+          done
 
       - name: Verify built PluginKit version matches the release label
         env:
@@ -327,14 +354,6 @@ jobs:
             echo "arm64=$ARM64_SHA"
             echo "x86_64=$X86_SHA"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Notarize
-        if: ${{ env.NOTARIZE_PLUGINS == 'true' }}
-        run: |
-          BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
-          for zip in build/Plugins/${BUNDLE_NAME}-*.zip; do
-            xcrun notarytool submit "$zip" --keychain-profile "TablePro" --wait
-          done
 
       - name: Create GitHub Release
         env:

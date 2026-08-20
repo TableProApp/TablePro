@@ -42,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Plugins installed from the registry are notarized, so macOS stops refusing to load them. Gatekeeper had been showing "could not verify this is free of malware" and blocking the driver, which read as a database TablePro could not connect to, and reinstalling made no difference. Every plugin needs to be published again to pick this up.
+- Installing a plugin from a ZIP you downloaded yourself clears the quarantine flag from the whole bundle. Only the top level was cleared, so the file macOS actually checks kept the flag and the plugin would not load.
 - The Settings window is titled after the pane you are on. Switching panes used to leave it reading "Untitled" until the window was closed and reopened.
 - The Settings window refuses to be resized smaller than a pane can draw. It had no minimum, so it could be shrunk until the controls were cut off.
 - Redis Sentinel and Cluster connections show their nodes in the connection list. Because those modes leave Host blank, the list showed nothing but the word "Redis". A connection that names its servers in a host list now shows the first one and how many others there are, and it follows the list the connection's current mode actually uses.

@@ -4,6 +4,7 @@
 //
 
 import CryptoKit
+import Darwin
 import Foundation
 import Testing
 
@@ -95,5 +96,48 @@ struct DownloadedBinaryTests {
         DownloadedBinary.stripQuarantine(at: file)
 
         #expect(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    /// `ditto -xk` flags every extracted file, so clearing the bundle root alone leaves the
+    /// executable inside `Contents/MacOS` quarantined and Gatekeeper refuses to load it.
+    @Test("Stripping quarantine reaches every file inside a bundle, not just its root")
+    func stripQuarantineIsRecursive() throws {
+        let dir = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = dir.appendingPathComponent("Driver.tableplugin", isDirectory: true)
+        let macOS = bundle.appendingPathComponent("Contents/MacOS", isDirectory: true)
+        try FileManager.default.createDirectory(at: macOS, withIntermediateDirectories: true)
+
+        let executable = macOS.appendingPathComponent("Driver")
+        let plist = bundle.appendingPathComponent("Contents/Info.plist")
+        try Data("binary".utf8).write(to: executable)
+        try Data("plist".utf8).write(to: plist)
+
+        let quarantined = [bundle, bundle.appendingPathComponent("Contents"), macOS, executable, plist]
+        for url in quarantined {
+            try setQuarantine(at: url)
+            #expect(hasQuarantine(at: url), "the fixture failed to set the xattr on \(url.lastPathComponent)")
+        }
+
+        DownloadedBinary.stripQuarantine(at: bundle)
+
+        for url in quarantined {
+            #expect(!hasQuarantine(at: url), "\(url.lastPathComponent) is still quarantined")
+        }
+    }
+
+    private func setQuarantine(at url: URL) throws {
+        let value = "0083;00000000;TableProTests;"
+        let result = value.withCString { bytes in
+            url.path.withCString { path in
+                setxattr(path, "com.apple.quarantine", bytes, strlen(bytes), 0, XATTR_NOFOLLOW)
+            }
+        }
+        #expect(result == 0, "setxattr failed with errno \(errno)")
+    }
+
+    private func hasQuarantine(at url: URL) -> Bool {
+        url.path.withCString { getxattr($0, "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW) } >= 0
     }
 }
