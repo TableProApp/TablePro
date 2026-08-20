@@ -15,6 +15,8 @@ DuckDB is an embedded analytical database built for OLAP workloads. TablePro ope
     Click **Browse...** to select an existing `.duckdb` file, or enter a path to create a new database.
 
     Enter `:memory:` instead of a path for an in-memory database. It holds nothing on disk, so everything in it is gone when you disconnect.
+
+    Browse also accepts a `.parquet`, `.csv`, `.tsv`, `.json` or `.ndjson` file. DuckDB opens it read-only: you get an in-memory database holding two views over the file, one named `file` and one named after the file, and the file on disk is never written to. Creating a database at a path that does not exist only works for `.duckdb` and `.ddb`, so a mistyped data-file path is reported instead of turning into an empty database.
   </Step>
   <Step title="Connect">
     Click **Save & Connect** to open the database.

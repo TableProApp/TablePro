@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Double-click a table in the object browser, or press `Return` on it, to keep its tab. Clicking a table opens it in a preview tab that the next click reuses, and until now nothing said "keep this one", so browsing several tables left them all fighting over the first tab. Keeping a tab means the next table you click opens in its own, and double-clicking a table that is already open switches back to its tab rather than making a second one. (#2235)
 - Redis Sentinel and Redis Cluster connections. Pick a Connection Mode in the connection form. Sentinel asks the quorum which node is the primary, learns the other Sentinels so a lookup still works when the one you listed is down, and re-checks the address on every health check so a failover moves the connection with it. Cluster reads the shard map, opens a connection to every primary, routes each command to the shard that owns its key, follows MOVED and ASK redirects, splits multi-key commands across shards and sums key counts cluster-wide. Pointing a mode at the wrong kind of server now says which field to change instead of failing on the first command. (#1021)
 - **View > Result View** switches the results pane between Data, Structure, JSON and Chart from the menu bar. JSON and Chart mode used to be reachable by mouse alone.
+- A DuckDB connection can point at a Parquet, CSV, TSV, JSON or NDJSON file, not only a `.duckdb` database. DuckDB opens the file read-only as two views over it and never writes back, so the file on disk is left exactly as it was.
 
 ### Changed
 
@@ -40,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Save in the "Do you want to save changes?" prompt now closes what you asked to close once the save lands. Closing a group of tabs, or closing a connection, used to save and then leave everything open.
 - A column value filter survives switching result mode and switching tabs, instead of being dropped the moment the grid left the screen. Running a query, turning a page, refreshing, or moving to another result of the same script still clears it, because the values you picked came from the rows being replaced. (#2251)
 
+- The connection form's Browse button offers the file kinds the driver actually opens instead of every file on disk. It used to allow any file, so picking one the driver could not read looked fine until the connection failed.
+
 ### Fixed
 
 - Plugins installed from the registry are notarized, so macOS stops refusing to load them. Gatekeeper had been showing "could not verify this is free of malware" and blocking the driver, which read as a database TablePro could not connect to, and reinstalling made no difference. Every plugin needs to be published again to pick this up.
@@ -53,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening a table no longer puts up a "Switch Failed" alert on an engine that has no databases. Dameng, Oracle, BigQuery, Elasticsearch and etcd browse schemas or indexes instead, and every click asked the driver to switch to a database with no name, which it refused. Clicking a table on those connections now just opens it. (#2262)
 - Switching schema on Dameng, Oracle, BigQuery, Snowflake and Trino no longer reloads the whole object list. The switch re-read every schema you had expanded, one after another, on the same connection the table you clicked was waiting for, so opening a table took an extra round trip per expanded schema. Only the stored procedures and functions are re-read now, which are the only things a schema switch can change. (#2262)
 - Open Quickly lists each schema once on Dameng, Oracle and BigQuery. It showed every schema twice, once labelled Database, and choosing that copy failed with an error.
+- A mistyped Parquet or CSV path in a DuckDB connection says the file is missing. DuckDB used to create an empty database under that name, which connected successfully to nothing.
 - The Settings window is titled after the pane you are on. Switching panes used to leave it reading "Untitled" until the window was closed and reopened.
 - The Settings window refuses to be resized smaller than a pane can draw. It had no minimum, so it could be shrunk until the controls were cut off.
 - Redis Sentinel and Cluster connections show their nodes in the connection list. Because those modes leave Host blank, the list showed nothing but the word "Redis". A connection that names its servers in a host list now shows the first one and how many others there are, and it follows the list the connection's current mode actually uses.

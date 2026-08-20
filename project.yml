@@ -326,6 +326,7 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
       - Plugins/DuckDBDriverPlugin/DuckDBPositionParser.swift
       - Plugins/DuckDBDriverPlugin/DuckDBSchemaQueries.swift
       - Plugins/DuckDBDriverPlugin/DuckDBTypeRendering.swift

@@ -81,7 +81,7 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
         )
     ]
-    static let fileExtensions: [String] = ["duckdb", "ddb"]
+    static let fileExtensions: [String] = DuckDBFileKinds.all
     static let brandColorHex = "#FFD900"
     static let parameterStyle: ParameterStyle = .dollar
 
@@ -247,6 +247,11 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let path = expandPath(rawPath)
 
         if !FileManager.default.fileExists(atPath: path) {
+            guard DuckDBFileKinds.canBeCreated(atPath: path) else {
+                throw DuckDBPluginError.connectionFailed(
+                    String(format: String(localized: "No file at %@"), path)
+                )
+            }
             let directory = (path as NSString).deletingLastPathComponent
             if !directory.isEmpty {
                 try? FileManager.default.createDirectory(
