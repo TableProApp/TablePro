@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-enum SettingsPane: String {
+enum SettingsPane: String, CaseIterable {
     case general, appearance, editor, data, keyboard, ai, mcp, plugins, account
 
     var title: String {

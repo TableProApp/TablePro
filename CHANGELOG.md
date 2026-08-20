@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Settings window is titled after the pane you are on. Switching panes used to leave it reading "Untitled" until the window was closed and reopened.
+- The Settings window refuses to be resized smaller than a pane can draw. It had no minimum, so it could be shrunk until the controls were cut off.
 - Redis Sentinel and Cluster connections show their nodes in the connection list. Because those modes leave Host blank, the list showed nothing but the word "Redis". A connection that names its servers in a host list now shows the first one and how many others there are, and it follows the list the connection's current mode actually uses.
 - Redis Cluster routes `OBJECT`, `MEMORY`, `SORT`, `GEORADIUS`, `ZUNIONSTORE` and `ZINTERSTORE` to the right shard on servers that do not report command tips, which is every Redis 6. The built-in routing table used as the fallback there disagreed with Redis on 32 counts: it hashed a container command on the name of its subcommand, treated the argument count of a store operation as a key, and marked `MSETNX` splittable when splitting it across shards would set some of its keys and not the others.
 - Floating point values show the shortest digits that still identify the stored number exactly. A value inside a sub-document or an array picked up binary floating point noise, so a stored `0.1` read as `0.10000000000000001`, and a top level value that needed 17 digits was cut to 16, so the grid could show a number that was not the one on the server. Affects MongoDB, Elasticsearch, ClickHouse, Snowflake, DynamoDB and Beancount results, and values brought in through JSON import.

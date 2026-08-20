@@ -143,9 +143,8 @@ final class AlertHelper {
         let fitted = host.sizeThatFits(in: NSSize(width: 520, height: CGFloat.greatestFiniteMagnitude))
         host.view.frame = NSRect(origin: .zero, size: fitted)
 
-        let sheetWindow = NSWindow(contentViewController: host)
+        let sheetWindow = NSWindow.titled(String(localized: "Approve Integration"), contentViewController: host)
         sheetWindow.styleMask = [.titled, .closable]
-        sheetWindow.title = String(localized: "Approve Integration")
         sheetWindow.isReleasedWhenClosed = false
 
         guard let parent = resolveWindow(nil) else {

@@ -78,7 +78,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowOpener.shared.setWelcomePresenter { WelcomeWindowController.present() }
         WindowOpener.shared.setConnectionFormPresenter { ConnectionFormWindowController.present($0) }
         WindowOpener.shared.setIntegrationsActivityPresenter { IntegrationsActivityWindowController.present() }
-        WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present() }
+        WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present(pane: $0) }
         KeyRepeatFilter.shared.install()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
