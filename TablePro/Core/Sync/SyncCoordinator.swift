@@ -1013,6 +1013,9 @@ final class SyncCoordinator {
         }
     }
 
+    /// A connection the user marked local only never reaches iCloud, and neither do the database
+    /// names hanging off it. Tombstones are not filtered: a deletion only ever removes something,
+    /// and a connection can be marked local only after its favorites were already pushed.
     private func collectDirtyDatabaseFavorites(
         into records: inout [CKRecord],
         deletions: inout [CKRecord.ID],
@@ -1020,8 +1023,13 @@ final class SyncCoordinator {
     ) {
         let dirtyIds = changeTracker.dirtyRecords(for: .favoriteDatabase)
         if !dirtyIds.isEmpty {
+            let localOnlyIds = Set(
+                services.connectionStorage.loadConnections().filter(\.localOnly).map(\.id)
+            )
             let favorites = services.favoriteDatabasesStorage.loadFavorites()
-            for entry in favorites where dirtyIds.contains(FavoriteDatabasesStorage.syncId(for: entry)) {
+            for entry in favorites
+            where dirtyIds.contains(FavoriteDatabasesStorage.syncId(for: entry))
+                && !localOnlyIds.contains(entry.connectionId) {
                 records.append(SyncRecordMapper.toCKRecord(favoriteDatabase: entry, in: zoneID))
             }
         }
