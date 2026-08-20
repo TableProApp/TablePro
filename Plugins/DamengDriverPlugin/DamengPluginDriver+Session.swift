@@ -67,17 +67,22 @@ extension DamengPluginDriver {
     /// `SQLSchemaProvider` uses for the same reason.
     func reconnect(restoringSchema schema: String? = nil) async throws {
         let target = schema ?? activeSchema
-        let rebuild: Task<Void, any Error> = sessionLock.withLock {
-            if let inFlight = reconnectInFlight { return inFlight }
+        let rebuild: (task: Task<Void, any Error>, isOwn: Bool) = sessionLock.withLock {
+            if let inFlight = reconnectInFlight { return (inFlight, false) }
             let task = Task { [weak self] in
                 guard let self else { return }
                 defer { self.sessionLock.withLock { self.reconnectInFlight = nil } }
                 try await self.rebuildSession(restoringSchema: target)
             }
             reconnectInFlight = task
-            return task
+            return (task, true)
         }
-        try await rebuild.value
+        try await rebuild.task.value
+        // A rebuild started by someone else restored the schema THEY asked for, so a caller
+        // switching to a different one has to apply it itself or it would return success
+        // having left the session resolving names in the old schema.
+        guard !rebuild.isOwn, let target, !target.isEmpty, target != activeSchema else { return }
+        try await applySchema(target)
     }
 
     /// Puts the session back where the statements expect it.
@@ -87,6 +92,7 @@ extension DamengPluginDriver {
     /// connecting and a statement that resolves unqualified names would otherwise land in the
     /// wrong schema.
     private func rebuildSession(restoringSchema schema: String?) async throws {
+        try Task.checkCancellation()
         try await connection.connect(
             host: config.host,
             port: config.port,
