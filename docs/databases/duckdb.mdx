@@ -3,7 +3,7 @@ title: DuckDB
 description: Open local DuckDB files or connect to a remote DuckDB server over Quack
 ---
 
-DuckDB is an embedded analytical database built for OLAP workloads. TablePro opens local DuckDB files and connects to remote DuckDB servers over the Quack protocol. The driver plugin bundles DuckDB 1.5.3 and is a downloadable plugin: TablePro prompts to install it when you pick DuckDB in the connection form.
+DuckDB is an embedded analytical database built for OLAP workloads. TablePro opens local DuckDB files and connects to remote DuckDB servers over the Quack protocol. The driver plugin bundles DuckDB 1.5.2 and is a downloadable plugin: TablePro prompts to install it when you pick DuckDB in the connection form.
 
 ## Connecting to a local DuckDB file
 
@@ -96,7 +96,9 @@ The iOS build statically links the `core_functions`, `json`, `parquet`, `icu`, `
 
 ## Troubleshooting
 
-**Connect fails on a local file**: DuckDB allows one writer per file. Quit anything else holding it, a `duckdb` CLI session, a Python process, or another TablePro window, then reconnect.
+**Connect fails on a local file**: DuckDB allows one writer per file. Quit anything else holding it, a `duckdb` CLI session, a Python process, or another TablePro window, then reconnect. The error names the process that holds the lock.
+
+**Querying a Parquet, CSV or JSON file fails on a restricted network**: the macOS build links no DuckDB extensions, so `read_parquet` and friends come from `parquet`, which DuckDB downloads from `extensions.duckdb.org` the first time you use it. Browsing tables, columns and keys needs no download. Run one query from a network that can reach the registry and DuckDB caches the extension in `~/.duckdb` for later.
 
 **Remote connection fails while attaching**: On macOS the `quack` extension downloads from the DuckDB extension registry the first time you connect. If that download is blocked, the attach step fails. Connect once from a network that can reach the registry.
 

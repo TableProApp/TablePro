@@ -123,7 +123,7 @@ actor DuckDBConnectionActor {
         var result = try runStatement(statement, query: query, parameters: parameters, on: connection)
         let schema = self.schema(of: &result)
 
-        guard let sql = deferredProjection(query: query, schema: schema, projection: projection),
+        guard let sql = rereadProjection(query: query, schema: schema, projection: projection, result: result),
               let projected = projectedResult(sql: sql, schema: schema, parameters: parameters, on: connection)
         else {
             return (result, schema)
@@ -176,12 +176,37 @@ actor DuckDBConnectionActor {
         return .projected(sql: sql, schema: schema)
     }
 
-    private static func deferredProjection(
-        query: String, schema: ColumnSchema, projection: ResultProjection
+    /// A prepared SELECT is planned before it runs, but a statement DuckDB could not prepare,
+    /// and one it typed as anything other than SELECT, arrives here unplanned. Its real column
+    /// types are only known now, and the deprecated value API faults on several of them, so the
+    /// result is re-read through a text projection.
+    ///
+    /// `duckdb_result_statement_type` is the gate, because the projection runs the query a
+    /// second time: re-running `INSERT ... RETURNING` would insert a second row.
+    private static func rereadProjection(
+        query: String, schema: ColumnSchema, projection: ResultProjection, result: duckdb_result
     ) -> String? {
-        guard case .deferred = projection else { return nil }
+        if case .projected = projection { return nil }
         guard DuckDBLogicalType.requiresTextProjection(anyOf: schema.logicalTypes) else { return nil }
+        guard duckdb_result_statement_type(result) == DUCKDB_STATEMENT_TYPE_SELECT else { return nil }
         return DuckDBProjectedQuery.build(originalQuery: query, columns: schema.projectionColumns)
+    }
+
+    /// Reading any column of a result that holds one of these types through `duckdb_value_*`
+    /// crashes the process, not just that column: a UUID at index 0 makes the INTEGER at index 1
+    /// fault with SIGSEGV. `INSERT ... RETURNING a_uuid, id` is the reachable case, because a
+    /// mutation cannot be re-run through a text projection.
+    ///
+    /// A type `logicalType(for:)` does not map counts as faulting, matching what
+    /// `requiresTextProjection` already does with the same `nil`. `duckdb.h` carries several
+    /// the table does not list (`VARINT`, `ANY`, `SQLNULL`, the literal types) and a libduckdb
+    /// bump can add more, so the unknown case has to fail toward the safe side: dropping a row
+    /// is recoverable and taking the process down is not.
+    private static func valueAPIFaultsOnRow(_ types: [duckdb_type]) -> Bool {
+        types.contains { type in
+            guard let logical = logicalType(for: type) else { return true }
+            return DuckDBLogicalType.typesTheValueAPICannotRender.contains(logical)
+        }
     }
 
     private static func preparedColumnName(_ stmt: duckdb_prepared_statement, at index: idx_t) -> String {
@@ -320,6 +345,23 @@ actor DuckDBConnectionActor {
         let rowsChanged = duckdb_rows_changed(&result)
         let resultTypes = storageTypes(of: &result)
 
+        // `INSERT ... RETURNING` reports rows_changed as 0 and puts the count in row_count
+        // (measured: 2 and 0 for a two-row insert), so the row count is what actually
+        // happened. Reporting rows_changed here would tell the user nothing was written.
+        if valueAPIFaultsOnRow(resultTypes) {
+            logger.error(
+                "DuckDB returned a column the value API cannot read from a statement that cannot be re-read through a projection; reporting the row count without the rows"
+            )
+            return DuckDBRawResult(
+                columns: schema.names,
+                columnTypeNames: schema.typeNames,
+                rows: [],
+                rowsAffected: Int(rowsChanged > 0 ? rowsChanged : rowCount),
+                executionTime: Date().timeIntervalSince(startTime),
+                isTruncated: false
+            )
+        }
+
         let maxRows = min(rowCount, UInt64(PluginRowLimits.emergencyMax))
         var rows: [[PluginCellValue]] = []
         rows.reserveCapacity(Int(maxRows))
@@ -354,6 +396,14 @@ actor DuckDBConnectionActor {
             columnTypeNames: schema.typeNames,
             estimatedRowCount: Int(rowCount)
         )))
+
+        if valueAPIFaultsOnRow(resultTypes) {
+            logger.error(
+                "DuckDB returned a column the value API cannot read from an unprojectable statement; streaming no rows"
+            )
+            continuation.finish()
+            return
+        }
 
         let maxRows = min(rowCount, UInt64(PluginRowLimits.emergencyMax))
         if rowCount > UInt64(PluginRowLimits.emergencyMax) {

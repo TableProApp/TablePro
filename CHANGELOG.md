@@ -42,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A DuckDB connection lists its databases, schemas, tables and columns on a Mac that cannot reach the internet. Every metadata query was anchored on a function DuckDB fetches from its extension registry the first time it is used, so behind a firewall, on a filtered network or offline the object browser came up completely empty and reinstalling the plugin changed nothing. The queries now use only what the bundled engine already carries. (#2285)
+- A DuckDB statement that returns a UUID, ENUM, list, struct, map or time zone aware timestamp column no longer crashes TablePro. `INSERT ... RETURNING` on a table with a UUID column took the whole app down as soon as the next column was read.
+- A DuckDB view's definition opens as a statement you can run. DuckDB returns the whole `CREATE VIEW` it stored, and TablePro wrapped a second `CREATE VIEW` header around it, so what you saw was two statements spliced together. It now opens as `CREATE OR REPLACE VIEW`, so editing and running it updates the view instead of failing because it already exists.
+- Switching DuckDB database by a name that differs only in capitalisation lists that database's objects. DuckDB accepts the switch and moves the connection, but its catalog tables match exactly, so the object browser came up empty.
+- A DuckDB connection that fails after opening the file releases it. The file stayed locked against every later attempt until TablePro was quit.
+- A DuckDB connection that opens a file but reports no catalog now fails with that reason instead of connecting to an object browser that stays empty.
 - The Settings window is titled after the pane you are on. Switching panes used to leave it reading "Untitled" until the window was closed and reopened.
 - The Settings window refuses to be resized smaller than a pane can draw. It had no minimum, so it could be shrunk until the controls were cut off.
 - Redis Sentinel and Cluster connections show their nodes in the connection list. Because those modes leave Host blank, the list showed nothing but the word "Redis". A connection that names its servers in a host list now shows the first one and how many others there are, and it follows the list the connection's current mode actually uses.

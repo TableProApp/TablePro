@@ -9,12 +9,22 @@
 
 import Foundation
 
-/// DuckDB's namespace is `catalog.schema.table`, and both `information_schema` and the
-/// `duckdb_*` table functions span every attached catalog. A predicate on the schema
-/// alone therefore matches same-named schemas in other catalogs: with a second database
-/// attached, `WHERE table_schema = 'main'` returns both catalogs' `main` tables. Every
-/// query here is anchored to `current_database()` for that reason, and the driver's
-/// `switchDatabase` is what moves it.
+/// DuckDB's namespace is `catalog.schema.table`, and the `duckdb_*` table functions span
+/// every attached catalog. A predicate on the schema alone therefore matches same-named
+/// schemas in other catalogs: with a second database attached, `WHERE schema_name = 'main'`
+/// returns both catalogs' `main` tables. Every query here takes the catalog as its first
+/// bound parameter for that reason, and the driver's `switchDatabase` is what moves it.
+///
+/// Nothing here may call `current_database()`, `current_schema()`, or read
+/// `information_schema.key_column_usage` or `information_schema.referential_constraints`.
+/// All four live in DuckDB's `core_functions` extension, which the macOS build does not
+/// link statically, so DuckDB fetches it from `extensions.duckdb.org` on first use. A Mac
+/// that cannot reach that host answers every one of them with
+/// `Binder Error: Referenced table "system" not found!`, which left the sidebar with no
+/// databases, schemas, tables or columns at all. The `duckdb_*()` table functions and the
+/// remaining `information_schema` views are part of the core engine and need no download.
+/// `scripts/check-duckdb-offline-metadata.sh` runs every query here against the shipped
+/// static library with the extension directory pointed at an empty folder.
 enum DuckDBSchemaQueries {
     /// `system` and `temp` are DuckDB's built-in catalogs; `internal` marks them and
     /// nothing else. Filtering catalogs is also what keeps `information_schema` and
@@ -26,143 +36,143 @@ enum DuckDBSchemaQueries {
         ORDER BY database_name
         """
 
+    /// `USE` writes the catalog and schema it landed on into the `search_path` setting, and
+    /// the `schema` setting carries the schema on its own. Reading them back is how the
+    /// driver learns its position without `current_database()` or `current_schema()`.
+    static let currentPosition = """
+        SELECT name, value
+        FROM duckdb_settings()
+        WHERE name IN ('search_path', 'schema')
+        """
+
     /// Never filters on the schema's own `internal` flag: DuckDB marks the auto-created
     /// `main` internal in every catalog, so that predicate hides the default schema.
     static let listSchemas = """
         SELECT schema_name
         FROM duckdb_schemas()
-        WHERE database_name = current_database()
+        WHERE database_name = $1
         ORDER BY schema_name
         """
 
     static let listTables = """
-        SELECT table_name, table_type
-        FROM information_schema.tables
-        WHERE table_catalog = current_database()
-          AND table_schema = $1
-        ORDER BY table_name
+        SELECT table_name, 'BASE TABLE' AS table_type
+        FROM duckdb_tables()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND internal = false
+        UNION ALL
+        SELECT view_name, 'VIEW'
+        FROM duckdb_views()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND internal = false
+        ORDER BY 1
         """
 
     static let columnsForTable = """
-        SELECT column_name, data_type, is_nullable, column_default, ordinal_position
-        FROM information_schema.columns
-        WHERE table_catalog = current_database()
-          AND table_schema = $1
-          AND table_name = $2
-        ORDER BY ordinal_position
+        SELECT column_name, data_type, is_nullable, column_default, column_index
+        FROM duckdb_columns()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND table_name = $3
+        ORDER BY column_index
         """
 
     static let columnsForSchema = """
-        SELECT table_name, column_name, data_type, is_nullable, column_default, ordinal_position
-        FROM information_schema.columns
-        WHERE table_catalog = current_database()
-          AND table_schema = $1
-        ORDER BY table_name, ordinal_position
+        SELECT table_name, column_name, data_type, is_nullable, column_default, column_index
+        FROM duckdb_columns()
+        WHERE database_name = $1
+          AND schema_name = $2
+        ORDER BY table_name, column_index
         """
 
+    /// `constraint_column_names` is a LIST, so `UNNEST` turns a composite key into one row
+    /// per column and keeps the caller's row shape flat.
     static let primaryKeyColumnsForSchema = """
-        SELECT tc.table_name, kcu.column_name
-        FROM information_schema.table_constraints tc
-        JOIN information_schema.key_column_usage kcu
-          ON tc.constraint_name = kcu.constraint_name
-          AND tc.table_catalog = kcu.table_catalog
-          AND tc.table_schema = kcu.table_schema
-          AND tc.table_name = kcu.table_name
-        WHERE tc.constraint_type = 'PRIMARY KEY'
-          AND tc.table_catalog = current_database()
-          AND tc.table_schema = $1
+        SELECT table_name, UNNEST(constraint_column_names) AS column_name
+        FROM duckdb_constraints()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND constraint_type = 'PRIMARY KEY'
         """
 
     static let primaryKeyColumnsForTable = """
-        SELECT kcu.column_name
-        FROM information_schema.table_constraints tc
-        JOIN information_schema.key_column_usage kcu
-          ON tc.constraint_name = kcu.constraint_name
-          AND tc.table_catalog = kcu.table_catalog
-          AND tc.table_schema = kcu.table_schema
-          AND tc.table_name = kcu.table_name
-        WHERE tc.constraint_type = 'PRIMARY KEY'
-          AND tc.table_catalog = current_database()
-          AND tc.table_schema = $1
-          AND tc.table_name = $2
+        SELECT UNNEST(constraint_column_names) AS column_name
+        FROM duckdb_constraints()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND table_name = $3
+          AND constraint_type = 'PRIMARY KEY'
         """
 
     static let indexesForTable = """
         SELECT index_name, is_unique, sql, index_oid
         FROM duckdb_indexes()
-        WHERE database_name = current_database()
-          AND schema_name = $1
-          AND table_name = $2
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND table_name = $3
         """
 
+    /// The referencing and referenced column lists are parallel, so unnesting both in one
+    /// SELECT pairs them by position: a two-column key yields `(x, a)` then `(y, b)`.
+    /// DuckDB rejects `CASCADE`, `SET NULL` and `SET DEFAULT` at parse time, so a foreign
+    /// key can only ever be `NO ACTION` and the literals below say exactly what the engine
+    /// reports.
     static let foreignKeysForTable = """
         SELECT
-            rc.constraint_name,
-            kcu.column_name,
-            kcu2.table_name AS referenced_table,
-            kcu2.column_name AS referenced_column,
-            rc.delete_rule,
-            rc.update_rule
-        FROM information_schema.referential_constraints rc
-        JOIN information_schema.key_column_usage kcu
-            ON rc.constraint_name = kcu.constraint_name
-            AND rc.constraint_catalog = kcu.constraint_catalog
-            AND rc.constraint_schema = kcu.constraint_schema
-        JOIN information_schema.key_column_usage kcu2
-            ON rc.unique_constraint_name = kcu2.constraint_name
-            AND rc.unique_constraint_catalog = kcu2.constraint_catalog
-            AND rc.unique_constraint_schema = kcu2.constraint_schema
-            AND kcu.ordinal_position = kcu2.ordinal_position
-        WHERE rc.constraint_catalog = current_database()
-          AND kcu.table_catalog = current_database()
-          AND kcu2.table_catalog = current_database()
-          AND kcu.table_schema = $1
-          AND kcu.table_name = $2
+            constraint_name,
+            UNNEST(constraint_column_names) AS column_name,
+            referenced_table,
+            UNNEST(referenced_column_names) AS referenced_column,
+            'NO ACTION' AS delete_rule,
+            'NO ACTION' AS update_rule
+        FROM duckdb_constraints()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND table_name = $3
+          AND constraint_type = 'FOREIGN KEY'
         """
 
     static let tableDDL = """
         SELECT sql
         FROM duckdb_tables()
-        WHERE database_name = current_database()
-          AND schema_name = $1
-          AND table_name = $2
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND table_name = $3
         """
 
     static let viewDefinition = """
-        SELECT view_definition
-        FROM information_schema.views
-        WHERE table_catalog = current_database()
-          AND table_schema = $1
-          AND table_name = $2
+        SELECT sql
+        FROM duckdb_views()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND view_name = $3
         """
 
-    static let enumTypeNamesForSchema = """
-        SELECT type_name
-        FROM duckdb_types()
-        WHERE database_name = current_database()
-          AND schema_name = $1
-          AND type_category = 'ENUM'
-        """
-
-    static let currentCatalog = "SELECT current_database()"
-
-    static let currentSchema = "SELECT current_schema()"
-
-    static func allTablesMetadata(schema: String) -> String {
-        """
-        SELECT
-            table_schema as schema_name,
-            table_name as name,
-            table_type as kind
-        FROM information_schema.tables
-        WHERE table_catalog = current_database()
-          AND table_schema = '\(escapeLiteral(schema))'
-        ORDER BY table_name
-        """
-    }
-
-    static func enumLabels(schema: String, typeName: String) -> String {
-        "SELECT UNNEST(enum_range(NULL::\(quoteIdentifier(schema)).\(quoteIdentifier(typeName))))::VARCHAR AS value"
+    /// The app runs this one itself rather than through the driver's parameterized path, so
+    /// both values are interpolated.
+    ///
+    /// They need opposite treatment, which is why they are named apart. The schema reaches the
+    /// driver through `SchemaSwitchable.escapedSchema`, which has already run
+    /// `escapeStringLiteral` over it, so escaping it again turns a schema called `it's` into
+    /// `it''''s` and the query matches nothing. The catalog comes from `currentDatabase` raw.
+    static func allTablesMetadata(catalog: String, escapedSchema: String) -> String {
+        let catalogLiteral = quoteLiteral(catalog)
+        let schemaLiteral = "'\(escapedSchema)'"
+        return """
+            SELECT schema_name, table_name AS name, 'BASE TABLE' AS kind
+            FROM duckdb_tables()
+            WHERE database_name = \(catalogLiteral)
+              AND schema_name = \(schemaLiteral)
+              AND internal = false
+            UNION ALL
+            SELECT schema_name, view_name, 'VIEW'
+            FROM duckdb_views()
+            WHERE database_name = \(catalogLiteral)
+              AND schema_name = \(schemaLiteral)
+              AND internal = false
+            ORDER BY 2
+            """
     }
 
     static func rowCountProbe(schema: String, table: String, limit: Int) -> String {
@@ -192,9 +202,10 @@ enum DuckDBSchemaQueries {
         name.replacingOccurrences(of: "\"", with: "\"\"")
     }
 
-    private static func escapeLiteral(_ value: String) -> String {
-        value
+    static func quoteLiteral(_ value: String) -> String {
+        let escaped = value
             .replacingOccurrences(of: "\0", with: "")
             .replacingOccurrences(of: "'", with: "''")
+        return "'\(escaped)'"
     }
 }
