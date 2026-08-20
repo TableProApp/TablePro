@@ -391,11 +391,11 @@ extension RowEditingCoordinator {
     }
 }
 
-extension RowEditingCoordinator {
+fileprivate extension RowEditingCoordinator {
     /// The save is owned by the tab that started it, not by whichever tab is selected when it
     /// lands: `failSave` writes into the selected tab, so keying a completion off that would
     /// attribute a slow save to a tab the user switched to while waiting.
-    fileprivate func reportSaveFinished(
+    func reportSaveFinished(
         _ outcome: OperationOutcome,
         connection: DatabaseConnection,
         database: String?,
