@@ -77,7 +77,7 @@ extension DatabaseTreeOutlineCoordinator {
         guard searchText.isEmpty, let outlineView = self.outlineView, let windowState else { return }
         for tableNode in resolvedChildren(of: parent) {
             guard case .table(let ref) = tableNode.kind, ref.table.type == .partitionedTable else { continue }
-            let key = DatabaseTableKey(database: ref.database, schema: ref.schema, table: ref.table.name)
+            let key = DatabaseTableKey(database: ref.database ?? "", schema: ref.schema, table: ref.table.name)
             guard windowState.expandedTreeTables.contains(key) else { continue }
             setExpanded(tableNode, true)
             guard outlineView.isItemExpanded(tableNode) else { continue }
@@ -156,7 +156,7 @@ extension DatabaseTreeOutlineCoordinator {
                 windowState?.expandedTreeDatabaseSchemas.remove(key)
             }
         case .table(let ref):
-            let key = DatabaseTableKey(database: ref.database, schema: ref.schema, table: ref.table.name)
+            let key = DatabaseTableKey(database: ref.database ?? "", schema: ref.schema, table: ref.table.name)
             if expanded {
                 windowState?.expandedTreeTables.insert(key)
             } else {
@@ -215,13 +215,14 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func loadPartitions(_ ref: DatabaseTreeTableRef) {
         guard ref.table.type == .partitionedTable else { return }
+        let database = ref.database ?? ""
         let state = service.partitionsLoadState(
-            connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
+            connectionId: connectionId, database: database, schema: ref.schema, table: ref.table.name
         )
         guard isIdle(state) else { return }
         Task {
             await service.loadPartitions(
-                connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
+                connectionId: connectionId, database: database, schema: ref.schema, table: ref.table.name
             )
         }
     }

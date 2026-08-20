@@ -284,6 +284,13 @@ extension DatabaseManager {
     // MARK: - Database / Schema Switching
 
     func switchDatabase(to database: String, for connectionId: UUID, persist: Bool = true) async throws {
+        /// An engine that browses no database has nothing to switch to, and asking anyway reached
+        /// the driver and surfaced its own "does not support database switching" as an alert on
+        /// every table click (#2262). Refusing rather than reporting success, because the caller
+        /// writes the toolbar's database on success.
+        guard !database.isEmpty else {
+            throw DatabaseError.unsupportedOperation
+        }
         guard let driver = driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }

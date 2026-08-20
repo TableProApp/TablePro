@@ -60,7 +60,7 @@ extension DatabaseTreeOutlineCoordinator {
     private func partitionNodes(of ref: DatabaseTreeTableRef) -> [DatabaseTreeNode] {
         let parentId = DatabaseTreeNode.tableId(ref)
         let state = service.partitionsLoadState(
-            connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
+            connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
         )
         switch state {
         case .idle, .loading:
@@ -155,7 +155,7 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func flatObjectNodes(for kind: SidebarObjectKind) -> [DatabaseTreeNode] {
         guard let viewModel else { return [] }
-        let database = browsingDatabase ?? ""
+        let database = browsingDatabase
         if kind.isRoutine {
             return viewModel.filteredRoutines(of: kind, from: schemaService.routines(for: connectionId))
                 .map { routine in
@@ -211,7 +211,7 @@ extension DatabaseTreeOutlineCoordinator {
                 schemaService.tables(for: connectionId, schema: schema), schema: schema, searchText: searchText
             )
             guard !tables.isEmpty else { return [statusNode(parentId: parentId, status: .empty)] }
-            let database = browsingDatabase ?? ""
+            let database = browsingDatabase
             return tables.map { table in
                 let ref = DatabaseTreeTableRef(database: database, schema: schema, table: table)
                 return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
@@ -246,7 +246,7 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func recentTableRefs() -> [DatabaseTreeTableRef] {
         guard let sidebarState, showRecentTables else { return [] }
-        let database = mainCoordinator?.browseDatabaseName ?? activeDatabase ?? ""
+        let database = browsingDatabase
         return sidebarState.recentEntries(inDatabase: database).compactMap { entry -> DatabaseTreeTableRef? in
             if !searchText.isEmpty, !DatabaseTreeFilter.matches(searchText, entry.name) { return nil }
             return DatabaseTreeTableRef(database: database, schema: entry.schema, table: entry.tableInfo)

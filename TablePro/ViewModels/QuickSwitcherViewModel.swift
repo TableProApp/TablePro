@@ -230,30 +230,35 @@ internal final class QuickSwitcherViewModel {
                 ).map(\.name)
             )
             : []
-        do {
-            let databases = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-                try await driver.fetchDatabases()
-            }
-            let databaseSubtitle = switchTarget == .database
-                ? services.pluginManager.containerEntityName(for: databaseType)
-                : String(localized: "Database")
-            for db in databases {
-                if switchTarget == .database {
-                    if !visibleDatabaseNames.isEmpty {
-                        if !visibleDatabaseNames.contains(db) { continue }
-                    } else if !databaseFilter.isEmpty, db != activeDatabase, !databaseFilter.contains(db) {
-                        continue
-                    }
+        /// A schema-only engine has no database to switch to, and its driver answers
+        /// `fetchDatabases()` with its schema list, so listing them here showed every schema
+        /// twice and the copy labelled "Database" failed with the driver's own error (#2262).
+        if switchTarget != .schema {
+            do {
+                let databases = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+                    try await driver.fetchDatabases()
                 }
-                items.append(QuickSwitcherItem(
-                    id: "db_\(db)",
-                    name: db,
-                    kind: .database,
-                    subtitle: databaseSubtitle
-                ))
+                let databaseSubtitle = switchTarget == .database
+                    ? services.pluginManager.containerEntityName(for: databaseType)
+                    : String(localized: "Database")
+                for db in databases {
+                    if switchTarget == .database {
+                        if !visibleDatabaseNames.isEmpty {
+                            if !visibleDatabaseNames.contains(db) { continue }
+                        } else if !databaseFilter.isEmpty, db != activeDatabase, !databaseFilter.contains(db) {
+                            continue
+                        }
+                    }
+                    items.append(QuickSwitcherItem(
+                        id: "db_\(db)",
+                        name: db,
+                        kind: .database,
+                        subtitle: databaseSubtitle
+                    ))
+                }
+            } catch {
+                Self.logger.warning("Failed to fetch databases: \(error.localizedDescription, privacy: .public)")
             }
-        } catch {
-            Self.logger.warning("Failed to fetch databases: \(error.localizedDescription, privacy: .public)")
         }
 
         if services.pluginManager.supportsSchemaSwitching(for: databaseType) {

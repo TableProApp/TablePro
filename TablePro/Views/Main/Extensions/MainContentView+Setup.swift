@@ -108,15 +108,8 @@ extension MainContentView {
             return
         }
 
-        let targetDatabase = activeDatabase.flatMap { $0.isEmpty ? nil : $0 }
-
         Task {
-            if let targetDatabase, targetDatabase != session.resolvedBrowseDatabase {
-                await coordinator.switchDatabase(to: targetDatabase)
-            }
-            if let activeSchema, !activeSchema.isEmpty, activeSchema != session.browseSchema {
-                await coordinator.switchSchema(to: activeSchema)
-            }
+            await coordinator.switchContainers(database: activeDatabase, schema: activeSchema)
             if isTableTab {
                 coordinator.lazyLoadCurrentTabIfNeeded(trigger: .restore)
             }
