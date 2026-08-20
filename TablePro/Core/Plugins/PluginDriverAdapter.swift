@@ -79,6 +79,21 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return formatter
     }()
 
+    static func cellValue(for parameter: Any?) -> PluginCellValue {
+        guard let parameter else { return .null }
+        if let data = parameter as? Data { return .bytes(data) }
+        if let f = parameter as? Float {
+            guard f.isFinite else { return .null }
+            return .text(NumberText.text(for: f))
+        }
+        if let f = parameter as? any BinaryFloatingPoint {
+            let d = Double(f)
+            guard d.isFinite else { return .null }
+            return .text(NumberText.text(for: d))
+        }
+        return .text(stringValue(for: parameter))
+    }
+
     private static func stringValue(for parameter: Any) -> String {
         switch parameter {
         case let s as String:
@@ -87,13 +102,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             return b ? "1" : "0"
         case let i as any BinaryInteger:
             return String(i)
-        case let f as Float:
-            guard f.isFinite else { return "NULL" }
-            return NumberText.text(for: f)
         case let f as any BinaryFloatingPoint:
-            let d = Double(f)
-            guard d.isFinite else { return "NULL" }
-            return NumberText.text(for: d)
+            return NumberText.text(for: Double(f))
         case let d as Date:
             return Self.iso8601Formatter.string(from: d)
         case let data as Data:
@@ -148,11 +158,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {
-        let cellParams: [PluginCellValue] = parameters.map { param in
-            guard let p = param else { return .null }
-            if let data = p as? Data { return .bytes(data) }
-            return .text(Self.stringValue(for: p))
-        }
+        let cellParams: [PluginCellValue] = parameters.map(Self.cellValue(for:))
         let pluginResult = try await pluginDriver.executeParameterized(query: query, parameters: cellParams)
         return mapQueryResult(pluginResult)
     }
@@ -160,11 +166,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
         let cellParams: [PluginCellValue]?
         if let parameters {
-            cellParams = parameters.map { param -> PluginCellValue in
-                guard let p = param else { return .null }
-                if let data = p as? Data { return .bytes(data) }
-                return .text(Self.stringValue(for: p))
-            }
+            cellParams = parameters.map(Self.cellValue(for:))
         } else {
             cellParams = nil
         }

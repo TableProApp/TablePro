@@ -21,6 +21,7 @@ enum BsonValueKind: Hashable {
     case null
     case int32
     case int64
+    case decimal128
     case objectId
     case uuid
     case legacyUuid
@@ -113,6 +114,7 @@ struct BsonDocumentFlattener {
     static func typeName(for kind: BsonValueKind, representation: MongoDBUuidRepresentation) -> String {
         switch kind {
         case .double: return "FLOAT"
+        case .decimal128: return MongoDBDecimal128.columnTypeName
         case .string, .null: return "VARCHAR"
         case .document, .array: return "JSON"
         case .binary(let subtype): return MongoDBUuidCodec.columnTypeName(forSubtype: subtype)
@@ -149,6 +151,8 @@ struct BsonDocumentFlattener {
             return iso8601Formatter.string(from: date)
         case let objectId as MongoDBObjectId:
             return objectId.hex
+        case let decimal as MongoDBDecimal128:
+            return decimal.digits
         case let binary as MongoDBBinaryValue:
             return binaryString(for: binary, representation: representation)
         case let data as Data:
@@ -190,15 +194,13 @@ struct BsonDocumentFlattener {
     /// Serialize a dictionary or array to compact JSON string
     static func serializeToJson(_ value: Any, representation: MongoDBUuidRepresentation) -> String {
         let sanitized = sanitizeForJson(value, representation: representation)
-        guard let json = NumberText.json(from: sanitized) else {
+        guard let json = NumberText.json(from: sanitized, preservesFloatingPointForm: true) else {
             return String(describing: value)
         }
-        let nsJson = json as NSString
-        if nsJson.length > 10_000 {
-            return String(json.prefix(10_000)) + "..."
-        }
-        return json
+        return JSONTruncation.truncate(json, maxLength: maxNestedJsonLength)
     }
+
+    static let maxNestedJsonLength = 10_000
 
     /// Recursively convert every value into a JSON-safe representation
     static func sanitizeForJson(_ value: Any, representation: MongoDBUuidRepresentation) -> Any {
@@ -209,6 +211,8 @@ struct BsonDocumentFlattener {
             return array.map { sanitizeForJson($0, representation: representation) }
         case let objectId as MongoDBObjectId:
             return objectId.hex
+        case let decimal as MongoDBDecimal128:
+            return NumberText.RawNumber(decimal.digits) ?? decimal.digits
         case let binary as MongoDBBinaryValue:
             return binaryString(for: binary, representation: representation)
         case let data as Data:
@@ -346,6 +350,8 @@ struct BsonDocumentFlattener {
             return .string
         case is MongoDBObjectId:
             return .objectId
+        case is MongoDBDecimal128:
+            return .decimal128
         case is Date:
             return .date
         case let binary as MongoDBBinaryValue:

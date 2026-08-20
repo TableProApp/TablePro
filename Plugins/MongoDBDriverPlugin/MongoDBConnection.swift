@@ -945,7 +945,7 @@ extension MongoDBConnection {
                 if let s = dict["$numberInt"] as? String, let n = Int32(s) { return n }
                 if let s = dict["$numberLong"] as? String, let n = Int64(s) { return n }
                 if let s = dict["$numberDouble"] as? String, let n = Double(s) { return n }
-                if let s = dict["$numberDecimal"] as? String { return s }
+                if let s = dict["$numberDecimal"] as? String { return MongoDBDecimal128(digits: s) }
                 if let b = dict["$regularExpression"] as? [String: Any],
                    let pattern = b["pattern"] as? String,
                    let options = b["options"] as? String {

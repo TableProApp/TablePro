@@ -55,6 +55,21 @@ final class DamengConnectionRecoveryTests: XCTestCase {
         XCTAssertEqual(tickets.cancel(fresh), .interruptConnection)
     }
 
+    /// Rebuilding the connection clears the cancellations with everything else, so a statement
+    /// whose caller had already cancelled it must not become runnable again. A cancelled Save
+    /// applying after the fact is the failure this prevents.
+    func testARebuildDoesNotResurrectACancelledStatement() {
+        var tickets = DamengStatementTickets()
+        let running = tickets.issue()
+        let queued = tickets.issue()
+        XCTAssertTrue(tickets.beginExecuting(running))
+        XCTAssertEqual(tickets.cancel(queued), .dropQueued)
+
+        tickets.reset()
+
+        XCTAssertFalse(tickets.beginExecuting(queued))
+    }
+
     func testOnlyReadsAreSentAgainOnARebuiltConnection() {
         let driver = DamengPluginDriver(config: DriverConnectionConfig(
             host: "127.0.0.1", port: 5_236, username: "SYSDBA", password: "test-only", database: "APP"

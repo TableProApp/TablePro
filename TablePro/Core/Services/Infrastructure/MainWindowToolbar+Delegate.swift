@@ -107,8 +107,8 @@ extension MainWindowToolbar {
         case Self.refreshSaveGroup:
             return makeNativeGroup(
                 id: itemIdentifier,
-                label: String(localized: "Refresh & Save"),
-                subitems: [subitemRefresh(), subitemSaveChanges()]
+                label: String(localized: "Table Actions"),
+                subitems: [subitemRefresh(), subitemSaveChanges(), subitemAddRow()]
             )
         case Self.exportImportGroup:
             return makeNativeGroup(

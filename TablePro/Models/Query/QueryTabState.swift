@@ -238,9 +238,27 @@ struct PaginationState: Equatable {
     // MARK: - Computed Properties
 
     /// Total number of pages
+    ///
+    /// The ceiling is taken with `quotientAndRemainder` rather than `(total + pageSize - 1) / pageSize`
+    /// because the custom rows-per-page field used to accept `Int.max`, and the addition then trapped
+    /// on overflow the next time the status bar rendered.
     var totalPages: Int {
-        guard let total = totalRowCount, total > 0 else { return 1 }
-        return (total + pageSize - 1) / pageSize  // Ceiling division
+        guard let total = totalRowCount, total > 0, pageSize > 0 else { return 1 }
+        let (quotient, remainder) = total.quotientAndRemainder(dividingBy: pageSize)
+        return remainder == 0 ? quotient : quotient + 1
+    }
+
+    /// Whether the total is a real count rather than a driver estimate.
+    ///
+    /// An estimate cannot bound navigation. MySQL's `TABLE_ROWS` under-reports InnoDB routinely, and
+    /// an estimate kept as the total left every row past it unreachable behind a disabled Next.
+    var hasExactRowCount: Bool {
+        totalRowCount != nil && !isApproximateRowCount
+    }
+
+    /// Whether any total is available, exact or estimated.
+    var hasRowCountTotal: Bool {
+        totalRowCount != nil
     }
 
     /// Whether there is a next page available
@@ -249,12 +267,12 @@ struct PaginationState: Equatable {
     }
 
     var isLastPageKnown: Bool {
-        totalRowCount != nil
+        hasExactRowCount
     }
 
     func canGoToNextPage(loadedRowCount: Int) -> Bool {
-        if hasNextPage { return true }
-        return totalRowCount == nil && loadedRowCount >= pageSize
+        if hasExactRowCount { return hasNextPage }
+        return loadedRowCount >= pageSize
     }
 
     /// Whether there is a previous page available
@@ -267,12 +285,13 @@ struct PaginationState: Equatable {
         currentOffset + 1
     }
 
-    /// Ending row number for current page (1-based)
-    var rangeEnd: Int {
-        guard let total = totalRowCount else {
-            return currentOffset + pageSize
-        }
-        return min(currentOffset + pageSize, total)
+    /// Ending row number for the current page, from the rows the page actually returned.
+    ///
+    /// Deriving it from `pageSize` fabricated a range the grid never showed: a table whose driver
+    /// estimate said a million rows but which returned twelve reported "1-1000 of ~1,000,000 rows".
+    /// The loaded count is the only number that describes what is on screen.
+    func rangeEnd(loadedRowCount: Int) -> Int {
+        currentOffset + max(loadedRowCount, 0)
     }
 
     // MARK: - Navigation Methods
@@ -302,11 +321,15 @@ struct PaginationState: Equatable {
     }
 
     mutating func goToLastPage() {
+        guard hasExactRowCount else { return }
         setPage(totalPages)
     }
 
+    /// A page beyond the last is refused only when the last one is actually known. With an estimate
+    /// there is no trustworthy upper bound, and refusing on one strands the rows past it.
     mutating func goToPage(_ page: Int) {
-        guard page > 0 && page <= totalPages else { return }
+        guard page > 0, hasRowCountTotal else { return }
+        guard !hasExactRowCount || page <= totalPages else { return }
         setPage(page)
     }
 
@@ -326,11 +349,15 @@ struct PaginationState: Equatable {
         sortExecutionOverride = nil
     }
 
-    /// Update page size (limit)
+    /// Update page size (limit), keeping the first visible row inside the new page.
+    ///
+    /// `setPage` is what re-derives the offset. Assigning `currentPage` alone left the old offset in
+    /// place, so changing 20 to 100 on page 3 ran `LIMIT 100 OFFSET 40` while the indicator read
+    /// "1 / N" and First and Previous went inert.
     mutating func updatePageSize(_ newSize: Int) {
         guard newSize > 0 else { return }
         pageSize = newSize
-        currentPage = (currentOffset / pageSize) + 1
+        setPage((currentOffset / pageSize) + 1)
     }
 
     /// Update offset directly and recalculate page

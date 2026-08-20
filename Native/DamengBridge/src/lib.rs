@@ -10,8 +10,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use dameng::{Client, Interrupt};
-use dameng_types::encoding::{decode_from_server, ServerEncoding};
-use dameng_types::DmValue;
+use dameng_types::encoding::ServerEncoding;
+use dameng_types::{DmValue, DmValueType};
 
 const MAX_HOST_BYTES: usize = 1_024;
 const MAX_CREDENTIAL_BYTES: usize = 4_096;
@@ -178,18 +178,11 @@ fn text_cell(value: impl ToString) -> TpDmCell {
     TpDmCell::Text(value.to_string().into_bytes())
 }
 
-fn convert_lob(
-    client: &mut Client,
-    locator: dameng_types::LobLocator,
-) -> Result<TpDmCell, dameng::Error> {
-    let data = client.read_lob(&locator)?;
-    let cell = if locator.is_clob {
-        TpDmCell::Text(decode_from_server(client.server_encoding, &data).into_bytes())
-    } else {
-        TpDmCell::Bytes(data)
-    };
-    client.free_lob(&locator)?;
-    Ok(cell)
+fn is_lob_column(column: &dameng::row::Column) -> bool {
+    matches!(
+        DmValueType::from_type_code(column.type_code),
+        Some(DmValueType::BLOB) | Some(DmValueType::CLOB)
+    )
 }
 
 fn undecoded_cell(row: &dameng::Row, index: usize) -> TpDmCell {
@@ -199,14 +192,25 @@ fn undecoded_cell(row: &dameng::Row, index: usize) -> TpDmCell {
     }
 }
 
+/// A value DM8 stored away from the row arrives as a locator, a pointer the client is meant to
+/// dereference with LOB_GETLEN and LOB_READ. That exchange is not implemented correctly here:
+/// measured against DM8 8.1, reading a 1000 character CLOB makes the server close the
+/// connection. Reporting the cell empty keeps the rest of the row, and the connection, intact.
+/// A small value DM8 sends inline is not a locator and still reads normally.
 fn convert_cell(
-    client: &mut Client,
     row: &dameng::Row,
     columns: &[dameng::row::Column],
     index: usize,
 ) -> Result<TpDmCell, dameng::Error> {
+    let is_lob = columns.get(index).is_some_and(is_lob_column);
     let Some(value) = row.get(index, columns) else {
-        return Ok(undecoded_cell(row, index));
+        // The raw bytes of a large-object cell are its locator, so handing them over would
+        // render a pointer as though it were the stored text.
+        return Ok(if is_lob {
+            TpDmCell::Null
+        } else {
+            undecoded_cell(row, index)
+        });
     };
     match value {
         DmValue::Null => Ok(TpDmCell::Null),
@@ -223,8 +227,34 @@ fn convert_cell(
         DmValue::Date(value) => Ok(text_cell(value)),
         DmValue::Time(value) => Ok(text_cell(value)),
         DmValue::Timestamp(value) => Ok(text_cell(value)),
-        DmValue::LobLocator(locator) => convert_lob(client, locator),
+        DmValue::LobLocator(_) => Ok(TpDmCell::Null),
     }
+}
+
+/// Reads the rest of a result set off the cursor.
+///
+/// DM8 answers a query with one inline batch, around 32KB of it, and holds the rest until the
+/// client asks. Stopping at the first batch silently returned 662 rows of a 20000 row table
+/// while reporting the result complete. `row_cap` fetches one row past the cap so the caller
+/// can tell "exactly this many rows" from "more than the caller asked for".
+fn drain_cursor(
+    client: &mut Client,
+    result: &mut dameng::ResultSet,
+    row_cap: usize,
+) -> Result<(), dameng::Error> {
+    let fetch_limit = if row_cap > 0 {
+        row_cap.saturating_add(1)
+    } else {
+        usize::MAX
+    };
+    while !result.complete && result.rows.len() < fetch_limit {
+        let previous_count = result.rows.len();
+        client.fetch_more(result, previous_count, 65_536)?;
+        if result.rows.len() == previous_count {
+            break;
+        }
+    }
+    Ok(())
 }
 
 fn query_result(
@@ -234,20 +264,7 @@ fn query_result(
 ) -> Result<TpDmResult, dameng::Error> {
     let started = Instant::now();
     let mut result = client.query(sql)?;
-    let fetch_limit = if row_cap > 0 {
-        row_cap.saturating_add(1)
-    } else {
-        usize::MAX
-    };
-    while result.rows.len() < usize::try_from(result.total_row_count).unwrap_or(usize::MAX)
-        && result.rows.len() < fetch_limit
-    {
-        let previous_count = result.rows.len();
-        client.fetch_more(&mut result, previous_count, 65_536)?;
-        if result.rows.len() == previous_count {
-            break;
-        }
-    }
+    drain_cursor(client, &mut result, row_cap)?;
     let columns = result
         .columns
         .iter()
@@ -256,9 +273,7 @@ fn query_result(
             type_name: column.type_name.as_bytes().to_vec(),
         })
         .collect();
-    let is_truncated = row_cap > 0
-        && (result.rows.len() > row_cap
-            || result.total_row_count > u64::try_from(row_cap).unwrap_or(u64::MAX));
+    let is_truncated = row_cap > 0 && (result.rows.len() > row_cap || !result.complete);
     let row_count = if row_cap > 0 {
         result.rows.len().min(row_cap)
     } else {
@@ -268,7 +283,7 @@ fn query_result(
     for row in result.rows.iter().take(row_count) {
         let mut cells = Vec::with_capacity(result.columns.len());
         for index in 0..result.columns.len() {
-            cells.push(convert_cell(client, row, &result.columns, index)?);
+            cells.push(convert_cell(row, &result.columns, index)?);
         }
         rows.push(cells);
     }
@@ -287,10 +302,16 @@ fn query_result(
 /// The caller's expectation only selects the protocol framing path. It does not decide what
 /// the user sees: if the server answered with a result set anyway, the rows are converted and
 /// returned rather than reduced to an affected count.
-fn execute_result(client: &mut Client, sql: &str) -> Result<TpDmResult, dameng::Error> {
+fn execute_result(
+    client: &mut Client,
+    sql: &str,
+    row_cap: usize,
+) -> Result<TpDmResult, dameng::Error> {
     let started = Instant::now();
-    let result = client.execute_statement(sql)?;
+    let mut result = client.execute_statement(sql)?;
     if result.columns.is_empty() {
+        // Nothing to drain, and this is the DML path: `do_prepare_execute` has already sent the
+        // COMMIT, so a FETCH here would run against a cursor whose transaction is closed.
         return Ok(TpDmResult {
             columns: Vec::new(),
             rows: Vec::new(),
@@ -299,6 +320,9 @@ fn execute_result(client: &mut Client, sql: &str) -> Result<TpDmResult, dameng::
             is_truncated: false,
         });
     }
+    // A statement the caller did not expect to return rows still has a cursor when it does,
+    // and leaving it undrained truncated the answer to its first batch.
+    drain_cursor(client, &mut result, row_cap)?;
     let columns = result
         .columns
         .iter()
@@ -307,11 +331,17 @@ fn execute_result(client: &mut Client, sql: &str) -> Result<TpDmResult, dameng::
             type_name: column.type_name.as_bytes().to_vec(),
         })
         .collect();
-    let mut rows = Vec::with_capacity(result.rows.len());
-    for row in &result.rows {
+    let is_truncated = row_cap > 0 && (result.rows.len() > row_cap || !result.complete);
+    let row_count = if row_cap > 0 {
+        result.rows.len().min(row_cap)
+    } else {
+        result.rows.len()
+    };
+    let mut rows = Vec::with_capacity(row_count);
+    for row in result.rows.iter().take(row_count) {
         let mut cells = Vec::with_capacity(result.columns.len());
         for index in 0..result.columns.len() {
-            cells.push(convert_cell(client, row, &result.columns, index)?);
+            cells.push(convert_cell(row, &result.columns, index)?);
         }
         rows.push(cells);
     }
@@ -321,7 +351,7 @@ fn execute_result(client: &mut Client, sql: &str) -> Result<TpDmResult, dameng::
         rows,
         rows_affected: delivered_row_count,
         execution_time_seconds: started.elapsed().as_secs_f64(),
-        is_truncated: false,
+        is_truncated,
     })
 }
 
@@ -460,7 +490,7 @@ pub unsafe extern "C" fn tp_dm_execute(
         if expects_rows {
             query_result(&mut client, &sql, row_cap)
         } else {
-            execute_result(&mut client, &sql)
+            execute_result(&mut client, &sql, row_cap)
         }
     }));
     connection.interrupt.reset();
@@ -766,7 +796,8 @@ mod tests {
     fn unmapped_column() -> dameng::row::Column {
         dameng::row::Column {
             name: "VALUE".to_string(),
-            type_code: 19,
+            // Deliberately a code no DmValueType maps, so the value cannot decode.
+            type_code: 99,
             type_name: "UNKNOWN".to_string(),
             precision: 0,
             scale: 0,
@@ -779,17 +810,59 @@ mod tests {
         }
     }
 
+    /// A large object DM8 stored outside the row arrives as a locator, a pointer into the
+    /// server's LOB store. Handing its bytes to the app would render the pointer as though it
+    /// were the stored text, and dereferencing one makes DM8 8.1 close the connection.
+    /// A small value DM8 keeps in the row is real content and still reads.
+    #[test]
+    fn a_large_object_reads_its_inline_value_and_never_its_locator() {
+        let mut lob = unmapped_column();
+        lob.type_code = 14; // CLOB
+        let columns = vec![lob];
+
+        // NBLOB_HEAD: flag(1) + blob_id(8) + blob_len(4), then the content.
+        let mut in_row = vec![0x01u8];
+        in_row.extend_from_slice(&[0u8; 8]);
+        in_row.extend_from_slice(&3u32.to_le_bytes());
+        in_row.extend_from_slice(b"abc");
+        let inline = dameng::Row {
+            row_id: 0,
+            values: vec![Some(in_row)],
+        };
+        assert_eq!(
+            convert_cell(&inline, &columns, 0).unwrap(),
+            TpDmCell::Text(b"abc".to_vec())
+        );
+
+        let mut out_of_row = vec![0x02u8];
+        out_of_row.extend_from_slice(&[0u8; 16]);
+        let locator = dameng::Row {
+            row_id: 0,
+            values: vec![Some(out_of_row)],
+        };
+        assert_eq!(convert_cell(&locator, &columns, 0).unwrap(), TpDmCell::Null);
+
+        // A locator the decoder cannot read at all must not fall through to its raw bytes.
+        let undecodable = dameng::Row {
+            row_id: 0,
+            values: vec![Some(vec![0x02, 0xFF])],
+        };
+        assert_eq!(
+            convert_cell(&undecodable, &columns, 0).unwrap(),
+            TpDmCell::Null
+        );
+    }
+
     #[test]
     fn an_undecodable_value_keeps_its_raw_bytes() {
         let columns = vec![unmapped_column()];
-        let mut client = Client::new("localhost", 5_236);
 
         let undecodable = dameng::Row {
             row_id: 0,
             values: vec![Some(vec![0xC1, 0x02])],
         };
         assert_eq!(
-            convert_cell(&mut client, &undecodable, &columns, 0).unwrap(),
+            convert_cell(&undecodable, &columns, 0).unwrap(),
             TpDmCell::Bytes(vec![0xC1, 0x02])
         );
 
@@ -798,7 +871,7 @@ mod tests {
             values: vec![None],
         };
         assert_eq!(
-            convert_cell(&mut client, &sql_null, &columns, 0).unwrap(),
+            convert_cell(&sql_null, &columns, 0).unwrap(),
             TpDmCell::Null
         );
 
@@ -807,7 +880,7 @@ mod tests {
             values: vec![Some(vec![])],
         };
         assert_eq!(
-            convert_cell(&mut client, &empty, &columns, 0).unwrap(),
+            convert_cell(&empty, &columns, 0).unwrap(),
             TpDmCell::Null
         );
 
@@ -816,7 +889,7 @@ mod tests {
             values: vec![],
         };
         assert_eq!(
-            convert_cell(&mut client, &out_of_range, &columns, 0).unwrap(),
+            convert_cell(&out_of_range, &columns, 0).unwrap(),
             TpDmCell::Null
         );
     }

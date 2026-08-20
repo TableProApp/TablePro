@@ -12,7 +12,7 @@ Query results and table data open in a spreadsheet-style grid. Sort and filter c
 
 ## View Modes
 
-Switch between **Data**, **Structure**, **JSON**, and **Chart** in the status bar. Query tabs show Data, JSON, and Chart only. The mode is remembered per tab.
+Switch between **Data**, **Structure**, **JSON**, and **Chart** with the switcher at the left of the status bar, or from **View > Result View**. Query tabs show Data, JSON, and Chart only. The mode is remembered per tab.
 
 JSON mode shows the rows as a JSON array, with **Text** and **Tree** views. It follows the grid: the same rows in the same order, with a column value filter applied and hidden columns left out. Select rows in Data mode first to limit what JSON shows, then use **Copy JSON**.
 
@@ -110,7 +110,7 @@ Foreign key cells show an arrow on the right edge. Click it to open the referenc
 
 ### Row Operations
 
-- **Add** (`Cmd+Shift+N`): click **+** in the status bar or use the shortcut.
+- **Add** (`Cmd+Shift+N`): click **+** in the toolbar, use **Edit > Add Row**, or press the shortcut.
 - **Duplicate** (`Cmd+Shift+D`): right-click a row and choose **Duplicate**. The primary key resets to `DEFAULT` so the database assigns a new one.
 - **Delete**: select rows by their row number (`Shift`-click for a range, `Cmd`-click for separate rows) and press `Delete`.
 - **Paste**: copy rows, then right-click and choose **Paste** to insert them as new rows.
@@ -179,11 +179,13 @@ When nothing matches on the page and more rows exist, **Search All Rows** turns 
 
 ## Pagination and Limits
 
-**Table tabs** page through data. The status bar has a rows-per-page menu (5 to 1,000, a custom size, or **All rows**) and First / Previous / Next / Last controls. Click the page indicator (for example `3 / 12`) to type a page number and jump to it. Set the default page size in **Settings > Data**.
+**Table tabs** page through data. The status bar has a rows-per-page menu (5 to 1,000, a custom size up to 1,000,000, or **All rows**) and First / Previous / Next / Last controls. Click the page indicator (for example `3 / 12`) to type a page number and jump to it. Set the default page size in **Settings > Data**.
 
-Large tables show an estimated total instead of running a slow `COUNT(*)`. **Settings > Data > Count rows if estimate less than** sets the threshold below which TablePro counts exactly. An estimated total is prefixed with `~`. **Count exactly** next to the total replaces an estimate, or fills in a total shown as `?`, with a real count. That count can take a while on a large table, so it runs in the background and `Cmd+.` cancels it.
+Large tables show an estimated total instead of running a slow `COUNT(*)`. **Settings > Data > Count rows if estimate less than** sets the threshold below which TablePro counts exactly. An estimated total is prefixed with `~`. **Count Exactly** next to the total replaces an estimate, or fills in a total shown as `?`, with a real count. That count can take a while on a large table, so it runs in the background and `Cmd+.` cancels it.
 
 An estimate of zero from a table the server has never analyzed is treated as unknown rather than as an empty table, so you get no total instead of a wrong one.
+
+While the total is an estimate it never bounds navigation: the page indicator marks it (`3 / ~12`), **Last** and **All rows** stay unavailable, and **Next** keeps working as long as the page came back full. Run **Count Exactly** to turn the estimate into a real count and get all four back.
 
 **Query tabs** cap results at 10,000 rows by default. Your query is sent exactly as you wrote it; TablePro stops reading once it reaches the cap. A query with its own `LIMIT`, `FETCH FIRST`, or `TOP` is not capped. When the cap trims a result, the status bar shows **Fetch All** to load the rest (with a confirmation, since large results use a lot of memory). Run one query without the cap via **Execute Without Limit** (`Option+Cmd+Enter`). Adjust the cap in **Settings > Data** (**Truncate query results**, **Row cap**).
 

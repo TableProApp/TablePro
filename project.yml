@@ -343,6 +343,7 @@ targets:
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBDecimal128.swift
       - Plugins/MongoDBDriverPlugin/MongoDBAuthSourceResolver.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCreateDatabasePlan.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFindLimitPolicy.swift
@@ -598,6 +599,9 @@ targets:
     templateAttributes:
       folder: MQLExportPlugin
       principalClass: MQLExportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MQLExportPlugin

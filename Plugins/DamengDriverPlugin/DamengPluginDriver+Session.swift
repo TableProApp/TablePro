@@ -69,9 +69,18 @@ extension DamengPluginDriver {
         let target = schema ?? activeSchema
         let rebuild: (task: Task<Void, any Error>, isOwn: Bool) = sessionLock.withLock {
             if let inFlight = reconnectInFlight { return (inFlight, false) }
+            reconnectGeneration &+= 1
+            let generation = reconnectGeneration
             let task = Task { [weak self] in
                 guard let self else { return }
-                defer { self.sessionLock.withLock { self.reconnectInFlight = nil } }
+                // Cleared only while this rebuild still owns the slot. A cancelled one that
+                // finishes late would otherwise wipe the rebuild that replaced it, and the next
+                // failure would start a second, which is what the single flight prevents.
+                defer {
+                    self.sessionLock.withLock {
+                        if self.reconnectGeneration == generation { self.reconnectInFlight = nil }
+                    }
+                }
                 try await self.rebuildSession(restoringSchema: target)
             }
             reconnectInFlight = task

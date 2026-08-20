@@ -32,7 +32,8 @@ struct QueryHistoryInsightsTests {
         wasSuccessful: Bool = true,
         errorMessage: String? = nil,
         source: QueryHistorySource = .editor,
-        databaseType: DatabaseType = .postgresql
+        databaseType: DatabaseType = .postgresql,
+        statementType: QueryHistoryStatementType? = nil
     ) async {
         _ = await storage.record(QueryHistoryEntry(
             query: query,
@@ -40,6 +41,7 @@ struct QueryHistoryInsightsTests {
             databaseName: "testdb",
             databaseType: databaseType,
             source: source,
+            statementType: statementType,
             executedAt: executedAt,
             executionTime: executionTime,
             rowCount: rowCount,
@@ -338,6 +340,181 @@ struct QueryHistoryInsightsTests {
 
         let snapshot = await insights(since: now.addingTimeInterval(-7 * 86_400), referenceDate: now)
         #expect(snapshot.totals.totalCount == 1)
+    }
+
+    @Test("Representative queries and errors stay inside every active filter")
+    func representativeRowsRespectFilters() async {
+        let now = Date()
+        let visibleQuery = "SELECT * FROM accounts WHERE token = 'visible'"
+
+        await record(
+            visibleQuery,
+            executedAt: now,
+            wasSuccessful: false,
+            errorMessage: "visible error"
+        )
+        await record(
+            "SELECT * FROM accounts WHERE token = 'hidden source'",
+            executedAt: now.addingTimeInterval(10),
+            wasSuccessful: false,
+            errorMessage: "hidden source error",
+            source: .tableBrowse
+        )
+        _ = await storage.record(QueryHistoryEntry(
+            query: "SELECT * FROM accounts WHERE token = 'hidden connection'",
+            connectionId: UUID(),
+            databaseName: "other",
+            databaseType: .postgresql,
+            source: .editor,
+            executedAt: now.addingTimeInterval(20),
+            executionTime: 0.05,
+            rowCount: 0,
+            wasSuccessful: false,
+            errorMessage: "hidden connection error"
+        ))
+        await record(
+            "SELECT * FROM accounts WHERE token = 'hidden date'",
+            executedAt: now.addingTimeInterval(30),
+            wasSuccessful: false,
+            errorMessage: "hidden date error",
+            databaseType: .mysql,
+            statementType: .insert
+        )
+
+        let snapshot = await storage.insights(
+            QueryInsightsRequest(
+                scope: .connection(connectionId),
+                sources: [.editor],
+                since: now.addingTimeInterval(-1),
+                until: now.addingTimeInterval(25),
+                referenceDate: now.addingTimeInterval(25)
+            ),
+            slowestRanking: .totalTime
+        )
+
+        #expect(snapshot.failures.count == 1)
+        #expect(snapshot.failures.first?.representativeQuery == visibleQuery)
+        #expect(snapshot.failures.first?.databaseType == .postgresql)
+        #expect(snapshot.failures.first?.statementType == .select)
+        #expect(snapshot.failures.first?.latestErrorMessage == "visible error")
+    }
+
+    @Test("The Failures panel shows a query that failed, not a later run that worked")
+    func failuresRepresentativeComesFromAFailedRun() async {
+        let now = Date()
+        let failedQuery = "SELECT * FROM accounts WHERE token = 'failed'"
+        let succeededQuery = "SELECT * FROM accounts WHERE token = 'worked'"
+
+        await record(failedQuery, executedAt: now, wasSuccessful: false, errorMessage: "boom")
+        await record(succeededQuery, executedAt: now.addingTimeInterval(60))
+
+        let snapshot = await insights(
+            since: now.addingTimeInterval(-3_600),
+            referenceDate: now.addingTimeInterval(120)
+        )
+
+        #expect(snapshot.failures.count == 1)
+        #expect(snapshot.failures.first?.representativeQuery == failedQuery)
+        #expect(snapshot.failures.first?.latestErrorMessage == "boom")
+        #expect(snapshot.mostRun.first?.representativeQuery == succeededQuery)
+    }
+
+    @Test("A representative's text and database type come from the same run")
+    func representativeColumnsComeFromOneRow() async {
+        let sameInstant = Date()
+        let postgresQuery = "SELECT * FROM accounts WHERE token = 'postgres'"
+        let mysqlQuery = "SELECT * FROM accounts WHERE token = 'mysql'"
+
+        await record(postgresQuery, executedAt: sameInstant, databaseType: .postgresql)
+        await record(mysqlQuery, executedAt: sameInstant, databaseType: .mysql)
+
+        let snapshot = await insights(
+            since: sameInstant.addingTimeInterval(-3_600),
+            referenceDate: sameInstant.addingTimeInterval(60)
+        )
+
+        let group = snapshot.mostRun.first
+        #expect(group?.callCount == 2)
+        #expect(group?.databaseType == (group?.representativeQuery == postgresQuery ? .postgresql : .mysql))
+    }
+
+    @Test("A range with no span reports no regressions")
+    func zeroLengthRangeReportsNoRegressions() async {
+        let now = Date()
+        let day: TimeInterval = 86_400
+        let query = "SELECT * FROM accounts WHERE token = 'visible'"
+
+        for index in 0..<6 {
+            await record(query, executedAt: now.addingTimeInterval(-10 * day + Double(index) * 3_600), executionTime: 0.05)
+            await record(query, executedAt: now.addingTimeInterval(-2 * day + Double(index) * 3_600), executionTime: 0.40)
+        }
+
+        let snapshot = await storage.insights(
+            QueryInsightsRequest(
+                scope: .connection(connectionId),
+                since: now,
+                until: now,
+                referenceDate: now
+            ),
+            slowestRanking: .totalTime
+        )
+
+        #expect(snapshot.regressions.isEmpty)
+    }
+
+    @Test("Regression representative queries stay inside every active filter")
+    func regressionRepresentativeRowsRespectFilters() async {
+        let now = Date()
+        let day: TimeInterval = 86_400
+        let visibleQuery = "SELECT * FROM accounts WHERE token = 'visible'"
+
+        for index in 0..<6 {
+            await record(
+                visibleQuery,
+                executedAt: now.addingTimeInterval(-10 * day + Double(index) * 3_600),
+                executionTime: 0.05
+            )
+            await record(
+                visibleQuery,
+                executedAt: now.addingTimeInterval(-2 * day + Double(index) * 3_600),
+                executionTime: 0.40
+            )
+        }
+        await record(
+            "SELECT * FROM accounts WHERE token = 'hidden source'",
+            executedAt: now.addingTimeInterval(-1_800),
+            source: .tableBrowse
+        )
+        _ = await storage.record(QueryHistoryEntry(
+            query: "SELECT * FROM accounts WHERE token = 'hidden connection'",
+            connectionId: UUID(),
+            databaseName: "other",
+            databaseType: .mysql,
+            source: .editor,
+            executedAt: now.addingTimeInterval(-900),
+            executionTime: 0.05,
+            rowCount: 0,
+            wasSuccessful: true
+        ))
+        await record(
+            "SELECT * FROM accounts WHERE token = 'hidden date'",
+            executedAt: now.addingTimeInterval(3_600)
+        )
+
+        let snapshot = await storage.insights(
+            QueryInsightsRequest(
+                scope: .connection(connectionId),
+                sources: [.editor],
+                since: now.addingTimeInterval(-7 * day),
+                until: now,
+                referenceDate: now
+            ),
+            slowestRanking: .totalTime
+        )
+
+        #expect(snapshot.regressions.count == 1)
+        #expect(snapshot.regressions.first?.representativeQuery == visibleQuery)
+        #expect(snapshot.regressions.first?.databaseType == .postgresql)
     }
 
     // MARK: - Activity

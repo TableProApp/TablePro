@@ -203,11 +203,7 @@ struct MainEditorContentView: View {
     }
 
     private var currentTabAllowsAddRow: Bool {
-        guard let tab = tabManager.selectedTab else { return false }
-        let isEditable = tab.tableContext.isEditable
-            && !tab.tableContext.isView
-            && !coordinator.safeModeLevel.blocksAllWrites
-        return isEditable && tab.tableContext.tableName != nil
+        coordinator.canAddRow
     }
 
     // MARK: - Tab Content
@@ -665,7 +661,6 @@ struct MainEditorContentView: View {
                 }
             case .data:
                 resultTabBarSection(tab: tab)
-
                 if let explain = tab.display.activeExplainResult {
                     QueryPlanResultView(
                         rawText: explain.explainRawText ?? "",
@@ -725,7 +720,6 @@ struct MainEditorContentView: View {
             }
 
             if tab.display.activeExplainResult == nil {
-                Divider()
                 statusBar(tab: tab)
             }
         }
@@ -895,11 +889,29 @@ struct MainEditorContentView: View {
 
     private func statusBar(tab: QueryTab) -> some View {
         let resolvedRows = resolvedTableRows(for: tab)
-        return MainStatusBarView(
-            snapshot: StatusBarSnapshot(tab: tab, tableRows: resolvedRows),
+        let structureFooter = coordinator.structureSessions[tab.id]?.footer ?? StructureFooterCapability()
+        let snapshot = StatusBarSnapshot(
+            tab: tab,
+            tableRows: resolvedRows,
+            displayRowCount: coordinator.displayIDs(forTab: tab.id)?.count,
+            hasStructureActions: structureFooter.isActive
+        )
+        return ResultStatusBar(
+            model: ResultStatusModel(
+                snapshot: snapshot,
+                viewMode: tab.display.resultsViewMode,
+                selectedRowCount: selectionState.indices.count
+            ),
+            snapshot: snapshot,
             filterState: tab.filterState,
-            selectedRowIndices: selectionState.indices,
-            viewMode: resultsViewModeBinding(for: tab),
+            columnState: StatusBarColumnState(
+                hidden: tab.columnLayout.hiddenColumns,
+                all: coordinator.columnsForVisibilityPicker(for: tab, resultColumns: resolvedRows.columns),
+                onToggle: { coordinator.toggleColumnVisibility($0) },
+                onShowAll: { coordinator.showAllColumns() },
+                onHideAll: { coordinator.hideAllColumns($0) },
+                onReset: { coordinator.resetColumns() }
+            ),
             paginationCallbacks: PaginationCallbacks(
                 onFirst: onFirstPage,
                 onPrevious: onPreviousPage,
@@ -910,22 +922,12 @@ struct MainEditorContentView: View {
                 onGoToPage: onGoToPage,
                 onRequestExactCount: { coordinator.paginationCoordinator.requestExactRowCount() }
             ),
-            columnState: StatusBarColumnState(
-                hidden: tab.columnLayout.hiddenColumns,
-                all: coordinator.columnsForVisibilityPicker(for: tab, resultColumns: resolvedRows.columns),
-                onToggle: { coordinator.toggleColumnVisibility($0) },
-                onShowAll: { coordinator.showAllColumns() },
-                onHideAll: { coordinator.hideAllColumns($0) },
-                onReset: { coordinator.resetColumns() }
-            ),
-            structureState: StatusBarStructureState(
-                footer: coordinator.structureFooterState,
-                onAdd: { coordinator.structureActions?.addRow?() },
-                onRemove: { coordinator.structureActions?.removeRow?() }
-            ),
+            structureFooter: structureFooter,
+            viewMode: resultsViewModeBinding(for: tab),
             onToggleFilters: { coordinator.toggleFilterPanel() },
             onFetchAll: { coordinator.fetchAllRows() },
-            onAddRow: currentTabAllowsAddRow ? { onAddRow() } : nil
+            onStructureAdd: { coordinator.structureActions?.addRow?() },
+            onStructureRemove: { coordinator.structureActions?.removeRow?() }
         )
     }
 

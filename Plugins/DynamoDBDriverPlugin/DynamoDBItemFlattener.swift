@@ -273,10 +273,6 @@ struct DynamoDBItemFlattener {
         guard let json = NumberText.json(from: value) else {
             return String(describing: value)
         }
-        let nsJson = json as NSString
-        if nsJson.length > maxNestedJsonLength {
-            return String(json.prefix(maxNestedJsonLength)) + "..."
-        }
-        return json
+        return JSONTruncation.truncate(json, maxLength: maxNestedJsonLength)
     }
 }

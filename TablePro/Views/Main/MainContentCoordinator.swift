@@ -163,10 +163,6 @@ final class MainContentCoordinator {
     /// continuation the first one is suspended on and leave that task waiting forever.
     @ObservationIgnored internal var tabClosesInFlight: Set<UUID> = []
 
-    /// Published capability/labels for the structure-mode footer in the bottom status bar.
-    /// `TableStructureView` writes to this; `MainStatusBarView` reads from it.
-    let structureFooterState = StructureFooterState()
-
     /// The grid that owns the current selection when it is not the data grid, so the
     /// inspector reads the selected row from it instead of the data tab's rows.
     /// Set by `TableStructureView` and `CreateTableView` on appear.
@@ -276,6 +272,9 @@ final class MainContentCoordinator {
     /// handle and leave B's query with no spinner and no way to stop it.
     @ObservationIgnored internal var currentQueryTaskOwner: TabExecutionClaim?
     @ObservationIgnored internal var rowCountTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
+
+    /// Which user-requested exact count currently owns each tab's counting indicator.
+    @ObservationIgnored internal var exactCountOwners: [UUID: UUID] = [:]
     @ObservationIgnored internal var tableLoadTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
     @ObservationIgnored private var periodicSaveTask: Task<Void, Never>?

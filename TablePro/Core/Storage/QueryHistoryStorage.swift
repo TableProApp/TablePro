@@ -143,14 +143,20 @@ actor QueryHistoryStorage {
 
     /// Kept out of `createIndexes` because that runs before the migration, when a database written
     /// by an older release still has no `fingerprint_hash` column to index.
-    /// Composite rather than `fingerprint_hash` alone, because every representative lookup is
-    /// `WHERE fingerprint_hash = ? ORDER BY executed_at DESC LIMIT 1`, which a single-column index
-    /// answers by sorting every row of that shape. The leftmost column still serves the grouping,
-    /// so the narrower index is redundant once this one exists.
+    /// Composites rather than `fingerprint_hash` alone, because a representative lookup takes the
+    /// newest row of one shape under the panel's own filters. Unscoped, the first index answers that
+    /// in a single step. Scoped to a connection, only the second one does: without it `connection_id`
+    /// is a filter applied after the walk, so the lookup reads every row of that shape belonging to
+    /// every other connection before it reaches one it can return. The leftmost column still serves
+    /// the grouping, so the narrower index is redundant once these exist.
     private func createFingerprintIndex() {
         execute("""
             CREATE INDEX IF NOT EXISTS idx_history_fingerprint_executed
                 ON history(fingerprint_hash, executed_at DESC);
+            """)
+        execute("""
+            CREATE INDEX IF NOT EXISTS idx_history_fingerprint_connection_executed
+                ON history(fingerprint_hash, connection_id, executed_at DESC);
             """)
         execute("DROP INDEX IF EXISTS idx_history_fingerprint;")
     }
@@ -639,14 +645,18 @@ actor QueryHistoryStorage {
         case meanDuration
         case failureCount
 
-        var orderBy: String {
+        func orderBy(columnPrefix prefix: String) -> String {
             switch self {
-            case .callCount: return "call_count DESC, total_duration DESC"
-            case .totalDuration: return "total_duration DESC, call_count DESC"
-            case .meanDuration: return "total_duration / call_count DESC, call_count DESC"
-            case .failureCount: return "failure_count DESC, call_count DESC"
+            case .callCount: return "\(prefix)call_count DESC, \(prefix)total_duration DESC"
+            case .totalDuration: return "\(prefix)total_duration DESC, \(prefix)call_count DESC"
+            case .meanDuration:
+                return "\(prefix)total_duration / \(prefix)call_count DESC, \(prefix)call_count DESC"
+            case .failureCount: return "\(prefix)failure_count DESC, \(prefix)call_count DESC"
             }
         }
+
+        /// Only the Failures panel renders an error, so the other three never pay for the lookup.
+        var needsErrorMessage: Bool { self == .failureCount }
 
         /// The average of a single run is that run, so without a floor one slow one-off statement
         /// outranks the query that actually costs the user time all day. `pg_stat_statements` users
@@ -680,32 +690,54 @@ actor QueryHistoryStorage {
 
     private func appendScopeAndSources(
         _ request: QueryInsightsRequest,
-        to clause: inout QueryHistorySqlClause
+        to clause: inout QueryHistorySqlClause,
+        columnPrefix prefix: String
     ) {
         if let connectionId = request.scope.connectionId {
-            clause.append(" AND connection_id = ?", .text(connectionId.uuidString))
+            clause.append(" AND \(prefix)connection_id = ?", .text(connectionId.uuidString))
         }
 
         let allSources = Set(QueryHistorySource.allCases)
         guard request.sources != allSources else { return }
         let sources = Array(request.sources)
         clause.append(
-            " AND source IN (\(QueryHistorySqlClause.placeholders(count: sources.count)))",
+            " AND \(prefix)source IN (\(QueryHistorySqlClause.placeholders(count: sources.count)))",
             bindings: sources.map { .text($0.rawValue) }
         )
     }
 
     private func appendInsightsFilters(
         _ request: QueryInsightsRequest,
-        to clause: inout QueryHistorySqlClause
+        to clause: inout QueryHistorySqlClause,
+        columnPrefix prefix: String
     ) {
-        appendScopeAndSources(request, to: &clause)
+        appendScopeAndSources(request, to: &clause, columnPrefix: prefix)
         if let since = request.since {
-            clause.append(" AND executed_at >= ?", .double(since.timeIntervalSince1970))
+            clause.append(" AND \(prefix)executed_at >= ?", .double(since.timeIntervalSince1970))
         }
         if let until = request.until {
-            clause.append(" AND executed_at <= ?", .double(until.timeIntervalSince1970))
+            clause.append(" AND \(prefix)executed_at <= ?", .double(until.timeIntervalSince1970))
         }
+    }
+
+    /// Resolves one row per shape and joins it back, instead of a correlated lookup per column. The
+    /// query, its statement type and its database type then always describe the same run: separate
+    /// `LIMIT 1` lookups can each settle a tie on `executed_at` differently, and a shape mixes
+    /// database types because a fingerprint hashes only the normalized text.
+    private func appendRepresentativeJoin(
+        alias: String,
+        correlatedTo groupAlias: String,
+        matching predicate: String,
+        to clause: inout QueryHistorySqlClause,
+        scopedBy appendScope: (inout QueryHistorySqlClause) -> Void
+    ) {
+        clause.append("""
+             LEFT JOIN history \(alias) ON \(alias).rowid = (
+                 SELECT r.rowid FROM history r
+                  WHERE r.fingerprint_hash = \(groupAlias).fingerprint_hash\(predicate)
+            """)
+        appendScope(&clause)
+        clause.append(" ORDER BY r.executed_at DESC, r.rowid DESC LIMIT 1)")
     }
 
     private func fetchTotals(_ request: QueryInsightsRequest) -> QueryInsightsTotals {
@@ -719,7 +751,7 @@ actor QueryHistoryStorage {
             FROM history
             WHERE 1 = 1
             """)
-        appendInsightsFilters(request, to: &clause)
+        appendInsightsFilters(request, to: &clause, columnPrefix: "")
         clause.append(";")
 
         var statement: OpaquePointer?
@@ -739,31 +771,18 @@ actor QueryHistoryStorage {
         )
     }
 
-    /// The representative row is looked up by fingerprint alone rather than through the panel's
-    /// own filters. Every row sharing a fingerprint normalizes to the same text by construction, so
-    /// the filters could only change which identical shape is shown, at the cost of binding the
-    /// whole filter set a second time inside the subquery.
+    /// A fingerprint deliberately erases literal values, so the representative row has to follow
+    /// the same filters as its aggregate. Otherwise a scoped panel can copy or load a query whose
+    /// values came from another connection, source, or date range. The Failures panel narrows it
+    /// further to a run that actually failed, so the query it copies is the one that produced the
+    /// error shown beside it rather than a later run of the same shape that succeeded.
     private func fetchGroups(_ request: QueryInsightsRequest, ranking: InsightsRanking) -> [QueryInsightsGroup] {
+        let failedRuns = " AND r.was_successful = 0"
         var clause = QueryHistorySqlClause()
         clause.append("""
             SELECT g.fingerprint_hash, g.call_count, g.failure_count, g.total_duration, g.max_duration,
-                   g.total_rows,
-                   (SELECT r.query FROM history r
-                     WHERE r.fingerprint_hash = g.fingerprint_hash
-                     ORDER BY r.executed_at DESC LIMIT 1),
-                   (SELECT r.statement_type FROM history r
-                     WHERE r.fingerprint_hash = g.fingerprint_hash
-                     ORDER BY r.executed_at DESC LIMIT 1),
-                   (SELECT r.database_type FROM history r
-                     WHERE r.fingerprint_hash = g.fingerprint_hash
-                     ORDER BY r.executed_at DESC LIMIT 1),
-                   (SELECT r.error_message FROM history r
-                     WHERE r.fingerprint_hash = g.fingerprint_hash
-                       AND r.was_successful = 0 AND r.error_message IS NOT NULL
-            """)
-        appendErrorSubqueryBounds(request, to: &clause)
-        clause.append("""
-                     ORDER BY r.executed_at DESC LIMIT 1)
+                   g.total_rows, rep.query, rep.statement_type, rep.database_type,
+                   \(ranking.needsErrorMessage ? "err.error_message" : "NULL")
             FROM (
                 SELECT fingerprint_hash,
                        COUNT(*) AS call_count,
@@ -774,14 +793,29 @@ actor QueryHistoryStorage {
                 FROM history
                 WHERE 1 = 1
             """)
-        appendInsightsFilters(request, to: &clause)
+        appendInsightsFilters(request, to: &clause, columnPrefix: "")
         clause.append(" GROUP BY fingerprint_hash\(ranking.having)")
-        // Ordered and limited inside the derived table, so the four correlated lookups above run
-        // once per returned row rather than once per distinct shape in the whole history.
+        // Ordered and limited inside the derived table, so the joined lookups below run once per
+        // returned row rather than once per distinct shape in the whole history.
         clause.append(
-            " ORDER BY \(ranking.orderBy) LIMIT ?) g;",
+            " ORDER BY \(ranking.orderBy(columnPrefix: "")) LIMIT ?) g",
             .int(Int32(clamping: request.limit))
         )
+        appendRepresentativeJoin(
+            alias: "rep",
+            correlatedTo: "g",
+            matching: ranking.needsErrorMessage ? failedRuns : "",
+            to: &clause
+        ) { appendInsightsFilters(request, to: &$0, columnPrefix: "r.") }
+        if ranking.needsErrorMessage {
+            appendRepresentativeJoin(
+                alias: "err",
+                correlatedTo: "g",
+                matching: "\(failedRuns) AND r.error_message IS NOT NULL",
+                to: &clause
+            ) { appendInsightsFilters(request, to: &$0, columnPrefix: "r.") }
+        }
+        clause.append(" ORDER BY \(ranking.orderBy(columnPrefix: "g."));")
 
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -810,29 +844,11 @@ actor QueryHistoryStorage {
         return groups
     }
 
-    /// The representative `query` is the same shape whichever row it comes from, but an error
-    /// message is not. Without these bounds the Failures panel could print an error the filtered
-    /// view says does not exist, from a connection the user did not select.
-    private func appendErrorSubqueryBounds(
-        _ request: QueryInsightsRequest,
-        to clause: inout QueryHistorySqlClause
-    ) {
-        if let connectionId = request.scope.connectionId {
-            clause.append(" AND r.connection_id = ?", .text(connectionId.uuidString))
-        }
-        if let since = request.since {
-            clause.append(" AND r.executed_at >= ?", .double(since.timeIntervalSince1970))
-        }
-        if let until = request.until {
-            clause.append(" AND r.executed_at <= ?", .double(until.timeIntervalSince1970))
-        }
-    }
-
     /// Compares two adjacent windows of equal length. Only successful runs count, because a query
     /// that failed fast would otherwise read as one that got quicker.
     private func fetchRegressions(_ request: QueryInsightsRequest) -> [QueryInsightsRegression] {
+        guard let window = request.comparisonWindow else { return [] }
         let end = (request.until ?? request.referenceDate).timeIntervalSince1970
-        let window = request.comparisonWindow
         let middle = end - window
         let start = middle - window
 
@@ -845,7 +861,7 @@ actor QueryHistoryStorage {
                 FROM history
                 WHERE was_successful = 1 AND executed_at >= ? AND executed_at < ?
             """, .double(middle), .double(start), .double(end))
-        appendScopeAndSources(request, to: &clause)
+        appendScopeAndSources(request, to: &clause, columnPrefix: "")
         clause.append("""
             ),
             paired AS (
@@ -858,14 +874,20 @@ actor QueryHistoryStorage {
                 GROUP BY fingerprint_hash
             )
             SELECT p.fingerprint_hash, p.recent_count, p.prior_count, p.recent_mean, p.prior_mean,
-                   (SELECT r.query FROM history r
-                     WHERE r.fingerprint_hash = p.fingerprint_hash
-                     ORDER BY r.executed_at DESC LIMIT 1),
-                   (SELECT r.database_type FROM history r
-                     WHERE r.fingerprint_hash = p.fingerprint_hash
-                     ORDER BY r.executed_at DESC LIMIT 1)
+                   rep.query, rep.database_type
             FROM paired p
-            WHERE p.recent_count >= ? AND p.prior_count >= ?
+            """)
+        appendRepresentativeJoin(
+            alias: "rep",
+            correlatedTo: "p",
+            matching: " AND r.was_successful = 1",
+            to: &clause
+        ) { scoped in
+            appendScopeAndSources(request, to: &scoped, columnPrefix: "r.")
+            scoped.append(" AND r.executed_at >= ? AND r.executed_at < ?", .double(middle), .double(end))
+        }
+        clause.append("""
+             WHERE p.recent_count >= ? AND p.prior_count >= ?
               AND p.prior_mean > 0
               AND p.recent_mean >= p.prior_mean * ?
               AND p.recent_mean - p.prior_mean >= ?
@@ -916,7 +938,7 @@ actor QueryHistoryStorage {
             FROM history
             WHERE 1 = 1
             """)
-        appendInsightsFilters(request, to: &clause)
+        appendInsightsFilters(request, to: &clause, columnPrefix: "")
         clause.append(" GROUP BY bucket ORDER BY bucket;")
 
         var statement: OpaquePointer?

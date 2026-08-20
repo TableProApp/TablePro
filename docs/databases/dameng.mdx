@@ -51,8 +51,10 @@ dm://user:password@host:5236/schema
 - The server keeps running a statement you stopped. TablePro stops waiting for it, but DM8 has no
   way to be told to abandon the work, so a heavy query still finishes on the server. Stopping can
   take a few seconds to take effect for the same reason.
-- Native binary and off-row LOB reads are not supported by the current transport. Use `RAWTOHEX` for binary
-  columns and cast `CLOB` values to `VARCHAR` when reading them.
+- A `CLOB` or `BLOB` value DM8 stored outside the row reads as empty. Small values, which DM8
+  keeps in the row, read normally. The column is listed either way and every other column in the
+  row is correct. Cast `CLOB` values to `VARCHAR`, or use `RAWTOHEX` for binary columns, when you
+  need the contents.
 - The Database field selects an initial schema; DM8 database switching is not supported
 
 If a server value fails to decode, include the DM8 version and column type in a [GitHub issue](https://github.com/TableProApp/TablePro/issues).

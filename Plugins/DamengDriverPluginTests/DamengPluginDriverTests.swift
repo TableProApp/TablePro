@@ -407,6 +407,76 @@ final class DamengPluginDriverTests: XCTestCase {
         XCTAssertEqual(driver.currentSchema, "SYSDBA")
     }
 
+    /// DM8 answers a query with one inline batch and holds the rest on a cursor. The driver
+    /// used to stop at that batch, so a 20000 row table came back as 662 rows while reporting
+    /// itself complete, and the sidebar listed 1159 of 2000 tables.
+    func testLiveDM8ReturnsEveryRowOfALargeResult() async throws {
+        let environment = try liveEnvironment()
+        let driver = DamengPluginDriver(config: environment.config(database: "SYSDBA"))
+        try await checked("connect") { try await driver.connect() }
+        defer { driver.disconnect() }
+
+        let table = "TP_ROWS_\(UUID().uuidString.prefix(8))".uppercased()
+        let quoted = driver.quoteIdentifier(table)
+        _ = try await driver.execute(query: "CREATE TABLE \(quoted)(\"ID\" INT, \"PAD\" VARCHAR(40))")
+        defer { Task { _ = try? await driver.execute(query: "DROP TABLE \(quoted)") } }
+        _ = try await driver.execute(query: """
+            INSERT INTO \(quoted)("ID", "PAD")
+            SELECT LEVEL, 'padpadpadpadpadpadpadpadpad' FROM DUAL CONNECT BY LEVEL <= 5000
+            """)
+        _ = try await driver.execute(query: "COMMIT")
+
+        let all = try await checked("read every row") {
+            try await driver.execute(query: "SELECT \"ID\", \"PAD\" FROM \(quoted) ORDER BY \"ID\"")
+        }
+        XCTAssertEqual(all.rows.count, 5_000)
+        XCTAssertEqual(all.columns.count, 2)
+        XCTAssertFalse(all.isTruncated)
+        XCTAssertEqual(all.rows.first?.first, .text("1"))
+        XCTAssertEqual(all.rows.last?.first, .text("5000"))
+
+        // A row cap still stops early, and says so.
+        let capped = try await checked("read with a cap") {
+            try await driver.executeUserQuery(
+                query: "SELECT \"ID\" FROM \(quoted) ORDER BY \"ID\"", rowCap: 100, parameters: nil
+            )
+        }
+        XCTAssertEqual(capped.rows.count, 100)
+        XCTAssertTrue(capped.isTruncated)
+    }
+
+    /// A LOB column descriptor is longer than the others, and mis-measuring it shifted the
+    /// column list and reparsed the remaining descriptors as rows.
+    func testLiveDM8ReadsATableWithALobColumn() async throws {
+        let environment = try liveEnvironment()
+        let driver = DamengPluginDriver(config: environment.config(database: "SYSDBA"))
+        try await checked("connect") { try await driver.connect() }
+        defer { driver.disconnect() }
+
+        let table = "TP_LOB_\(UUID().uuidString.prefix(8))".uppercased()
+        let quoted = driver.quoteIdentifier(table)
+        _ = try await driver.execute(query: """
+            CREATE TABLE \(quoted)("ID" INT, "NOTE" CLOB, "NAME" VARCHAR(50), "BLOB_COL" BLOB)
+            """)
+        defer { Task { _ = try? await driver.execute(query: "DROP TABLE \(quoted)") } }
+        _ = try await driver.execute(query: "INSERT INTO \(quoted)(\"ID\", \"NAME\") VALUES(1, 'one')")
+        _ = try await driver.execute(query: "INSERT INTO \(quoted)(\"ID\", \"NAME\") VALUES(2, 'two')")
+        _ = try await driver.execute(query: "COMMIT")
+
+        let everyColumn = try await checked("select star") {
+            try await driver.execute(query: "SELECT * FROM \(quoted) ORDER BY \"ID\"")
+        }
+        XCTAssertEqual(everyColumn.columns, ["ID", "NOTE", "NAME", "BLOB_COL"])
+        XCTAssertEqual(everyColumn.rows.count, 2)
+
+        let lobFirst = try await checked("lob as the first column") {
+            try await driver.execute(query: "SELECT \"NOTE\", \"ID\" FROM \(quoted) ORDER BY \"ID\"")
+        }
+        XCTAssertEqual(lobFirst.columns.count, 2)
+        XCTAssertEqual(lobFirst.rows.count, 2)
+        XCTAssertEqual(lobFirst.rows.last?[1], .text("2"))
+    }
+
     func testLiveDM8RejectsBadCredentialsAndInvalidPort() async throws {
         let environment = try liveEnvironment()
         let invalidPortDriver = DamengPluginDriver(config: DriverConnectionConfig(

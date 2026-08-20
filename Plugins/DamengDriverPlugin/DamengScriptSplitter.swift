@@ -173,6 +173,11 @@ enum DamengScriptSplitter {
             case .lineComment:
                 if scalar == "\n" || scalar == "\r" { state = .code }
             case .blockComment(let depth):
+                if scalar == "/", next == "*" {
+                    state = .blockComment(depth + 1)
+                    index += 2
+                    continue
+                }
                 if scalar == "*", next == "/" {
                     state = depth == 1 ? .code : .blockComment(depth - 1)
                     index += 2

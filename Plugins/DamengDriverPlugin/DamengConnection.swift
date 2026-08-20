@@ -135,16 +135,16 @@ final class DamengConnection: @unchecked Sendable {
         return attempt
     }
 
-    /// Freed while holding the lock the cancel path also holds, so a cancellation racing a
-    /// teardown either reaches a live handle or finds none. `tp_dm_disconnect` frees the box
-    /// `tp_dm_cancel` reads its interrupt from.
+    /// Closes a handle no caller can still be holding.
+    ///
+    /// `tp_dm_disconnect` frees the box `tp_dm_cancel` reads its interrupt from, so the two must
+    /// not overlap. The pointer is cleared under `stateLock` before this runs and the cancel path
+    /// reads it under the same lock, so a cancellation either completed before the clear or finds
+    /// nothing. The close itself stays outside the lock: it writes to the socket and waits for the
+    /// reply, and holding a lock across that would let a silent server block Stop and Disconnect.
     private func dispose(_ handle: OpaquePointer?) {
         guard let handle else { return }
-        queue.async {
-            self.stateLock.lock()
-            tp_dm_disconnect(handle)
-            self.stateLock.unlock()
-        }
+        queue.async { tp_dm_disconnect(handle) }
     }
 
     private func adopt(_ connection: OpaquePointer, attempt: UInt64) -> Bool {

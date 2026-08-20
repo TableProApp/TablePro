@@ -51,8 +51,17 @@ extension DatabaseManager {
         let forwardEndpoint = connection.tunnelForwardEndpoint
         effectiveFields[DatabaseConnection.preTunnelHostKey] = forwardEndpoint.host
         effectiveFields[DatabaseConnection.preTunnelPortKey] = String(forwardEndpoint.port)
-        for fieldId in connection.hostListFieldIds {
-            effectiveFields[fieldId] = nil
+        /// A host list names the servers the driver would reach for itself, and behind a tunnel
+        /// there is one forwarded endpoint instead, so the list has to go. An SRV connection is
+        /// the exception: its host is a lookup name rather than a server to dial, the driver
+        /// resolves it and then connects through the forward anyway, and clearing it leaves the
+        /// driver with nothing to resolve. The rule used to live in the MongoDB branch below,
+        /// where the `!usesMongoSrv` guard protected it; generalising the clear to every host-list
+        /// field moved it above that guard and dropped the exception with it.
+        if !connection.usesMongoSrv {
+            for fieldId in connection.hostListFieldIds {
+                effectiveFields[fieldId] = nil
+            }
         }
         if connection.type.pluginTypeId == "MongoDB", !connection.usesMongoSrv {
             effectiveFields["mongoParam_directConnection"] = "true"

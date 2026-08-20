@@ -34,8 +34,12 @@ struct DamengStatementTickets {
         return nextTicket
     }
 
-    /// Returns false when the caller cancelled before the statement reached the socket.
+    /// Returns false when the statement must not reach the socket: the caller cancelled it, or
+    /// the connection it was queued on has since been retired. Checking `live` matters because
+    /// `reset` clears the cancellations too, and without it a rebuild would run work the caller
+    /// had already abandoned.
     mutating func beginExecuting(_ ticket: UInt64) -> Bool {
+        guard live.contains(ticket) else { return false }
         guard cancelled.remove(ticket) == nil else {
             live.remove(ticket)
             return false

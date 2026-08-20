@@ -44,6 +44,7 @@ struct MainWindowToolbarValidationTests {
     private func makeContext(
         connected: Bool = true,
         isTableTab: Bool = false,
+        canAddRow: Bool = false,
         hasPendingChanges: Bool = false,
         hasDataPendingChanges: Bool = false,
         blocksAllWrites: Bool = false,
@@ -55,6 +56,7 @@ struct MainWindowToolbarValidationTests {
         MainWindowToolbar.ValidationContext(
             connected: connected,
             isTableTab: isTableTab,
+            canAddRow: canAddRow,
             hasPendingChanges: hasPendingChanges,
             hasDataPendingChanges: hasDataPendingChanges,
             blocksAllWrites: blocksAllWrites,
@@ -520,5 +522,40 @@ struct MainWindowToolbarRepointTests {
             )
             #expect(item != nil, "\(identifier.rawValue) must still build with no connection")
         }
+    }
+}
+
+@Suite("MainWindowToolbar Add Row validation")
+@MainActor
+struct MainWindowToolbarAddRowValidationTests {
+    private func context(connected: Bool, canAddRow: Bool) -> MainWindowToolbar.ValidationContext {
+        MainWindowToolbar.ValidationContext(
+            connected: connected,
+            isTableTab: true,
+            canAddRow: canAddRow,
+            hasPendingChanges: false,
+            hasDataPendingChanges: false,
+            blocksAllWrites: false,
+            fileBased: false,
+            supportsContainerSwitching: true,
+            supportsImport: true,
+            supportsServerDashboard: true
+        )
+    }
+
+    @Test("Add Row needs a live session and a tab that can take a row")
+    func addRowEnablement() {
+        #expect(MainWindowToolbar.isEnabled(
+            itemIdentifier: MainWindowToolbar.addRow,
+            context: context(connected: true, canAddRow: true)
+        ))
+        #expect(!MainWindowToolbar.isEnabled(
+            itemIdentifier: MainWindowToolbar.addRow,
+            context: context(connected: true, canAddRow: false)
+        ))
+        #expect(!MainWindowToolbar.isEnabled(
+            itemIdentifier: MainWindowToolbar.addRow,
+            context: context(connected: false, canAddRow: true)
+        ))
     }
 }

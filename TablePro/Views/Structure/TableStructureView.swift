@@ -107,7 +107,6 @@ struct TableStructureView: View {
     @State var structureColumnLayouts: [StructureTab: ColumnLayoutState] = [:]
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
-    @State private var footerOwnerId = UUID()
 
     init(
         tableName: String,
@@ -151,11 +150,11 @@ struct TableStructureView: View {
         .task(loadInitialData)
         .onChange(of: selectedRows) { _, newRows in
             selectionState.indices = newRows
-            publishFooterState()
+            publishFooterCapability()
         }
         .onChange(of: selectedTab) { _, newValue in
             onSelectedTabChanged(newValue)
-            publishFooterState()
+            publishFooterCapability()
         }
         .onChange(of: columns) { onColumnsChanged() }
         .onChange(of: indexes) { onIndexesChanged() }
@@ -193,12 +192,11 @@ struct TableStructureView: View {
             actionHandler.removeRow = { self.gridDelegate.dataGridDeleteRows(self.selectedRows) }
             actionHandler.refresh = { self.onRefreshData() }
             coordinator?.structureActions = actionHandler
-            publishFooterState()
+            publishFooterCapability()
         }
         .onDisappear {
             coordinator?.toolbarState.hasStructureChanges = false
             coordinator?.structureActions = nil
-            coordinator?.structureFooterState.deactivate(owner: footerOwnerId)
             if coordinator?.inspectorRowSource === gridDelegate {
                 coordinator?.inspectorRowSource = nil
             }
@@ -259,17 +257,17 @@ struct TableStructureView: View {
         .padding()
     }
 
-    // MARK: - Footer state (rendered by MainStatusBarView)
+    // MARK: - Footer capability
 
-    private func publishFooterState() {
-        guard let footer = coordinator?.structureFooterState else { return }
-        guard connection.type.supportsSchemaEditing,
-              let labels = footerLabels(for: selectedTab) else {
-            footer.deactivate(owner: footerOwnerId)
+    /// Published to the tab's own session, which the bottom bar reads. Nothing is cleared on
+    /// disappear: the session outlives the view by design, and the bar only reads this while the
+    /// tab is showing its structure.
+    private func publishFooterCapability() {
+        guard connection.type.supportsSchemaEditing, let labels = footerLabels(for: selectedTab) else {
+            session.footer = StructureFooterCapability()
             return
         }
-        footer.update(
-            owner: footerOwnerId,
+        session.footer = StructureFooterCapability(
             canAdd: canAdd(for: selectedTab),
             canRemove: canRemove(for: selectedTab),
             addLabel: labels.add,
