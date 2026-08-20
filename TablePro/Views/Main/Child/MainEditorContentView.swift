@@ -614,13 +614,13 @@ struct MainEditorContentView: View {
     private func resultsSection(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
             executionErrorBanner(tab: tab)
-            resultsHeaderSection(tab: tab)
             switch tab.display.resultsViewMode {
             case .structure:
                 if let tableName = tab.tableContext.tableName {
                     structureContent(tab: tab, tableName: tableName)
                 }
             case .json:
+                resultTabBarSection(tab: tab)
                 rowFilterChrome(tab: tab, rows: resolvedTableRows(for: tab))
                 ResultsJsonView(
                     tableRows: resolvedTableRows(for: tab),
@@ -634,6 +634,7 @@ struct MainEditorContentView: View {
                 )
                 .id(tab.id)
             case .chart:
+                resultTabBarSection(tab: tab)
                 if let explain = tab.display.activeExplainResult {
                     QueryPlanResultView(
                         rawText: explain.explainRawText ?? "",
@@ -659,6 +660,7 @@ struct MainEditorContentView: View {
                     )
                 }
             case .data:
+                resultTabBarSection(tab: tab)
                 if let explain = tab.display.activeExplainResult {
                     QueryPlanResultView(
                         rawText: explain.explainRawText ?? "",
@@ -717,7 +719,7 @@ struct MainEditorContentView: View {
                 }
             }
 
-            if Self.showsResultStatusBar(tab: tab) {
+            if tab.display.activeExplainResult == nil {
                 statusBar(tab: tab)
             }
         }
@@ -748,25 +750,10 @@ struct MainEditorContentView: View {
         }
     }
 
-    /// The mode switcher and the result-set tabs share one strip.
-    ///
-    /// Stacking them would have cost a query tab a second 32pt band for a control that only ever
-    /// switches between four views of the same result.
     @ViewBuilder
-    private func resultsHeaderSection(tab: QueryTab) -> some View {
-        let modes = ResultsModeAvailability.modes(
-            tabType: tab.tabType,
-            hasTableName: tab.tableContext.tableName != nil,
-            hasColumns: !resolvedTableRows(for: tab).columns.isEmpty
-        )
-        let showsResultTabs = ResultTabBarPolicy.showsTabBar(tabType: tab.tabType, display: tab.display)
-
-        if modes.count > 1 || showsResultTabs {
-            ResultsHeaderBar(modes: modes, selection: resultsViewModeBinding(for: tab)) {
-                if showsResultTabs {
-                    resultTabBar(tab: tab)
-                }
-            }
+    private func resultTabBarSection(tab: QueryTab) -> some View {
+        if ResultTabBarPolicy.showsTabBar(tabType: tab.tabType, display: tab.display) {
+            resultTabBar(tab: tab)
             Divider()
         }
     }
@@ -898,20 +885,14 @@ struct MainEditorContentView: View {
 
     // MARK: - Status Bar
 
-    /// The structure editor brings its own bottom bar, the footer for the list it is editing, so the
-    /// results bar stands down rather than stacking a second empty strip under it.
-    static func showsResultStatusBar(tab: QueryTab) -> Bool {
-        guard tab.display.activeExplainResult == nil else { return false }
-        guard tab.display.resultsViewMode == .structure else { return true }
-        return tab.tableContext.tableName == nil
-    }
-
     private func statusBar(tab: QueryTab) -> some View {
         let resolvedRows = resolvedTableRows(for: tab)
+        let structureFooter = coordinator.structureSessions[tab.id]?.footer ?? StructureFooterCapability()
         let snapshot = StatusBarSnapshot(
             tab: tab,
             tableRows: resolvedRows,
-            displayRowCount: coordinator.displayIDs(forTab: tab.id)?.count
+            displayRowCount: coordinator.displayIDs(forTab: tab.id)?.count,
+            hasStructureActions: structureFooter.isActive
         )
         return ResultStatusBar(
             model: ResultStatusModel(
@@ -939,8 +920,12 @@ struct MainEditorContentView: View {
                 onGoToPage: onGoToPage,
                 onRequestExactCount: { coordinator.paginationCoordinator.requestExactRowCount() }
             ),
+            structureFooter: structureFooter,
+            viewMode: resultsViewModeBinding(for: tab),
             onToggleFilters: { coordinator.toggleFilterPanel() },
-            onFetchAll: { coordinator.fetchAllRows() }
+            onFetchAll: { coordinator.fetchAllRows() },
+            onStructureAdd: { coordinator.structureActions?.addRow?() },
+            onStructureRemove: { coordinator.structureActions?.removeRow?() }
         )
     }
 

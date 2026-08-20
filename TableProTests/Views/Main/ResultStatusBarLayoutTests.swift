@@ -27,6 +27,11 @@ struct ResultStatusBarLayoutTests {
             hasColumns: hasColumns,
             rowCount: rowCount,
             hasTableName: tabType == .table,
+            availableModes: ResultsModeAvailability.modes(
+                tabType: tabType,
+                hasTableName: tabType == .table,
+                hasColumns: hasColumns
+            ),
             pagination: pagination,
             statusMessage: nil
         )
@@ -52,8 +57,12 @@ struct ResultStatusBarLayoutTests {
                 onGoToPage: { _ in },
                 onRequestExactCount: {}
             ),
+            structureFooter: StructureFooterCapability(),
+            viewMode: .constant(viewMode),
             onToggleFilters: {},
-            onFetchAll: {}
+            onFetchAll: {},
+            onStructureAdd: {},
+            onStructureRemove: {}
         )
     }
 
@@ -93,26 +102,26 @@ struct ResultStatusBarLayoutTests {
         #expect(Set(heights).count == 1, "controls must not change the bar's height when the mode changes")
     }
 
-    /// The structure editor supplies its own bottom bar, so the results bar must stand down there
-    /// rather than stacking an empty second strip beneath the list's footer.
-    @Test("Only one bottom bar is on screen at a time")
-    func structureModeYieldsTheBottomBar() {
-        var tab = QueryTab(title: "orders", tabType: .table, tableName: "orders")
-
-        tab.display.resultsViewMode = .structure
-        #expect(!MainEditorContentView.showsResultStatusBar(tab: tab))
-
-        for mode in [ResultsViewMode.data, .json, .chart] {
-            tab.display.resultsViewMode = mode
-            #expect(MainEditorContentView.showsResultStatusBar(tab: tab))
+    /// The switcher leads the bar in every mode, so leaving Structure never needs a control that
+    /// only Structure renders.
+    @Test("The mode switcher is on the bar in every mode")
+    func modeSwitcherIsAlwaysReachable() {
+        let pagination = PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+        for mode in [ResultsViewMode.data, .structure, .json, .chart] {
+            let snapshot = StatusBarSnapshot(
+                tabId: UUID(),
+                tabType: .table,
+                hasRows: true,
+                hasColumns: true,
+                rowCount: 1_000,
+                hasTableName: true,
+                availableModes: ResultsModeAvailability.modes(tabType: .table, hasTableName: true, hasColumns: true),
+                pagination: pagination,
+                statusMessage: nil
+            )
+            let model = ResultStatusModel(snapshot: snapshot, viewMode: mode, selectedRowCount: 0)
+            #expect(model.controls.showsModeSwitcher)
         }
-
-        tab.display.resultsViewMode = .structure
-        tab.tableContext.tableName = nil
-        #expect(
-            MainEditorContentView.showsResultStatusBar(tab: tab),
-            "with no structure editor to host it, the results bar is the only one"
-        )
     }
 
     @Test("Chart mode keeps the controls that decide which rows it is drawing")

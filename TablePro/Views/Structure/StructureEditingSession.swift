@@ -35,6 +35,13 @@ internal final class StructureEditingSession {
     internal var ddlStatement: String = ""
     internal var tabData = StructureTabDataState()
 
+    /// What the bottom bar offers while this tab is showing its structure.
+    ///
+    /// Keyed by tab through the session, so two structure tabs cannot answer for each other. The
+    /// shape this replaces was one app-wide object with a `currentOwner` guard, and the guard
+    /// existed only to work out which structure view the buttons currently belonged to.
+    internal var footer = StructureFooterCapability()
+
     /// Whether the opening fetch has already run. True only after a real load, so a rebuild adopts
     /// what is here instead of refetching, while a genuine refresh still goes through
     /// `onRefreshData`, which asks before discarding.
@@ -42,5 +49,16 @@ internal final class StructureEditingSession {
 
     internal init(identity: String) {
         self.identity = identity
+    }
+}
+
+internal struct StructureFooterCapability: Equatable {
+    internal var canAdd = false
+    internal var canRemove = false
+    internal var addLabel = ""
+    internal var removeLabel = ""
+
+    internal var isActive: Bool {
+        !addLabel.isEmpty
     }
 }

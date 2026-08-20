@@ -19,6 +19,10 @@ struct StatusBarSnapshot: Equatable {
     let displayRowCount: Int
     let isValueFiltered: Bool
     let hasTableName: Bool
+    /// The modes this tab can switch between, which the bar's leading control offers.
+    let availableModes: [ResultsViewMode]
+    /// Whether the structure editor has published an add/remove pair for this tab.
+    let hasStructureActions: Bool
     let pagination: PaginationState
     let statusMessage: String?
 
@@ -31,6 +35,8 @@ struct StatusBarSnapshot: Equatable {
         displayRowCount: Int? = nil,
         isValueFiltered: Bool = false,
         hasTableName: Bool,
+        availableModes: [ResultsViewMode] = [],
+        hasStructureActions: Bool = false,
         pagination: PaginationState,
         statusMessage: String?
     ) {
@@ -42,11 +48,18 @@ struct StatusBarSnapshot: Equatable {
         self.displayRowCount = displayRowCount ?? rowCount
         self.isValueFiltered = isValueFiltered
         self.hasTableName = hasTableName
+        self.availableModes = availableModes
+        self.hasStructureActions = hasStructureActions
         self.pagination = pagination
         self.statusMessage = statusMessage
     }
 
-    init(tab: QueryTab?, tableRows: TableRows?, displayRowCount: Int? = nil) {
+    init(
+        tab: QueryTab?,
+        tableRows: TableRows?,
+        displayRowCount: Int? = nil,
+        hasStructureActions: Bool = false
+    ) {
         let loaded = tableRows?.rows.count ?? 0
         let displayed = displayRowCount ?? loaded
         self.init(
@@ -58,6 +71,12 @@ struct StatusBarSnapshot: Equatable {
             displayRowCount: displayed,
             isValueFiltered: displayed != loaded,
             hasTableName: tab?.tableContext.tableName != nil,
+            availableModes: ResultsModeAvailability.modes(
+                tabType: tab?.tabType,
+                hasTableName: tab?.tableContext.tableName != nil,
+                hasColumns: !(tableRows?.columns.isEmpty ?? true)
+            ),
+            hasStructureActions: hasStructureActions,
             pagination: tab?.pagination ?? PaginationState(),
             statusMessage: tab?.execution.statusMessage
         )

@@ -28,6 +28,7 @@ enum ResultStatusReadout: Equatable {
 
 /// Which controls the bar offers for a given result.
 struct ResultStatusControls: Equatable {
+    var showsModeSwitcher = false
     var showsReadout = false
     var showsLoadingMore = false
     var showsExactCountAction = false
@@ -36,6 +37,9 @@ struct ResultStatusControls: Equatable {
     var showsColumns = false
     var showsFilters = false
     var showsPagination = false
+    /// The structure editor's add and remove pair, which is this bar's trailing cluster while the
+    /// structure editor is the content.
+    var showsStructureActions = false
 }
 
 /// The whole status bar, resolved from tab state before any view exists.
@@ -71,6 +75,9 @@ struct ResultStatusModel: Equatable {
 
         let pagination = snapshot.pagination
         let isTable = snapshot.tabType == .table
+
+        controls.showsModeSwitcher = snapshot.availableModes.count > 1
+        controls.showsStructureActions = viewMode == .structure && snapshot.hasStructureActions
 
         /// Gated on columns rather than rows: a result that matched nothing still carries its column
         /// metadata, and gating on rows made the readout vanish exactly when the user needed to be

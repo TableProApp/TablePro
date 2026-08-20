@@ -12,21 +12,33 @@ import SwiftUI
 /// centre. Anchoring the readout to the leading edge and the controls to the trailing edge also
 /// keeps the controls still when a mode change removes one of them.
 ///
-/// Nothing here mutates the document. Adding a row and adding or dropping a column are commands
-/// about the data, so they live with the data: the toolbar and the structure list's own footer.
+/// The view switcher leads the bar, the way TablePlus and Postico place theirs. It was briefly a
+/// strip of its own above the result, which cost a band of height in every mode and left the
+/// structure editor with two segmented rows stacked, the child louder than the parent.
+///
+/// Adding a row still belongs to the toolbar: it changes the document. The structure editor's
+/// add and remove pair is this bar's trailing cluster while the structure editor is the content,
+/// because a second bar underneath it would be the stacking problem again, one bar lower.
 struct ResultStatusBar: View {
     let model: ResultStatusModel
     let snapshot: StatusBarSnapshot
     let filterState: TabFilterState
     let columnState: StatusBarColumnState
     let paginationCallbacks: PaginationCallbacks
+    let structureFooter: StructureFooterCapability
+    @Binding var viewMode: ResultsViewMode
     let onToggleFilters: () -> Void
     let onFetchAll: (() -> Void)?
+    let onStructureAdd: () -> Void
+    let onStructureRemove: () -> Void
 
     @State private var showColumnPopover = false
 
     var body: some View {
         HStack(spacing: StatusBarChrome.clusterSpacing) {
+            if model.controls.showsModeSwitcher {
+                modeSwitcher
+            }
             readoutCluster
             Spacer(minLength: StatusBarChrome.clusterSpacing)
             controlCluster
@@ -35,6 +47,19 @@ struct ResultStatusBar: View {
         .onChange(of: snapshot.tabId) { _, _ in
             showColumnPopover = false
         }
+    }
+
+    private var modeSwitcher: some View {
+        Picker(String(localized: "View Mode"), selection: $viewMode) {
+            ForEach(snapshot.availableModes, id: \.self) { mode in
+                Text(mode.displayName).tag(mode)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .controlSize(.small)
+        .fixedSize()
+        .accessibilityIdentifier("results-view-mode-picker")
     }
 
     // MARK: - Readout
@@ -114,6 +139,18 @@ struct ResultStatusBar: View {
             }
             if model.controls.showsPagination {
                 paginationControls
+            }
+            if model.controls.showsStructureActions {
+                AddRemoveControlGroup(
+                    addLabel: structureFooter.addLabel,
+                    removeLabel: structureFooter.removeLabel,
+                    canAdd: structureFooter.canAdd,
+                    canRemove: structureFooter.canRemove,
+                    addIdentifier: "structure-footer-add",
+                    removeIdentifier: "structure-footer-remove",
+                    onAdd: onStructureAdd,
+                    onRemove: onStructureRemove
+                )
             }
         }
         .fixedSize()

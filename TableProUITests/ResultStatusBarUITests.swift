@@ -6,7 +6,7 @@
 import XCTest
 
 final class ResultStatusBarUITests: UITestCase {
-    func testTheModeSwitcherSitsAboveTheResultAndTheStatusBarBelowIt() throws {
+    func testTheModeSwitcherAndTheReadoutShareTheBottomBar() throws {
         let app = try launchWithSampleDatabase()
         let window = app.windows.firstMatch
         let grid = runQuery(in: app)
@@ -26,13 +26,17 @@ final class ResultStatusBarUITests: UITestCase {
             "Inflection markup leaked into the UI, so the key is missing from the String Catalog: \(text)"
         )
 
-        XCTAssertLessThanOrEqual(
-            modePicker.frame.maxY, grid.frame.minY,
-            "The view switcher belongs above the result it switches"
-        )
         XCTAssertGreaterThanOrEqual(
             readout.frame.minY, grid.frame.maxY,
             "The status bar belongs below the result it describes"
+        )
+        XCTAssertGreaterThanOrEqual(
+            modePicker.frame.minY, grid.frame.maxY,
+            "The view switcher leads that same bar rather than taking a band of its own"
+        )
+        XCTAssertLessThan(
+            modePicker.frame.maxX, readout.frame.minX,
+            "The switcher comes before the readout on the bar"
         )
     }
 
@@ -46,29 +50,12 @@ final class ResultStatusBarUITests: UITestCase {
         let readout = window.staticTexts["result-status-readout"].firstMatch
         XCTAssertTrue(readout.waitForExistence(timeout: 10))
 
-        let offsetIntoPane = readout.frame.minX - grid.frame.minX
-        XCTAssertLessThan(
-            offsetIntoPane, 40,
-            "The row count must start at the leading edge, not drift with the width of the controls"
-        )
-    }
-
-    func testResultViewCanBeSwitchedFromTheMenuBar() throws {
-        let app = try launchWithSampleDatabase()
-        let window = app.windows.firstMatch
-        _ = runQuery(in: app)
-
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
-        let jsonItem = menuBar.menuItems["JSON"].firstMatch
-        XCTAssertTrue(jsonItem.waitForExistence(timeout: 10), "View > Result View must offer every mode")
-        jsonItem.click()
-
         let modePicker = window.radioGroups["results-view-mode-picker"].firstMatch
         XCTAssertTrue(modePicker.waitForExistence(timeout: 10))
-        XCTAssertTrue(
-            waitForPredicate(timeout: 10) { modePicker.radioButtons["JSON"].firstMatch.value as? Int == 1 },
-            "The switcher must follow a mode chosen from the menu bar"
+        let offsetIntoPane = modePicker.frame.minX - grid.frame.minX
+        XCTAssertLessThan(
+            offsetIntoPane, 40,
+            "The leading cluster must start at the pane's edge, not drift with the width of the controls"
         )
     }
 

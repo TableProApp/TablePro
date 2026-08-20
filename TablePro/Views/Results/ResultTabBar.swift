@@ -24,7 +24,8 @@ struct ResultTabBar: View {
             }
             .padding(.horizontal, 4)
         }
-        .frame(maxHeight: .infinity)
+        .frame(height: 32)
+        .background(.bar)
     }
 
     private func resultTab(_ rs: ResultSet) -> some View {
