@@ -16,66 +16,9 @@ import TableProPluginKit
 
 private let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisPluginConnection")
 
-// MARK: - Reply Type
-
-enum RedisReply {
-    case string(String)
-    case integer(Int64)
-    case array([RedisReply])
-    case data(Data)
-    case status(String)
-    case error(String)
-    case null
-
-    var stringValue: String? {
-        switch self {
-        case .string(let s), .status(let s): return s
-        case .data(let d): return String(data: d, encoding: .utf8)
-        default: return nil
-        }
-    }
-
-    var intValue: Int? {
-        switch self {
-        case .integer(let i): return Int(i)
-        case .string(let s): return Int(s)
-        default: return nil
-        }
-    }
-
-    var stringArrayValue: [String]? {
-        guard case .array(let items) = self else { return nil }
-        return items.compactMap(\.stringValue)
-    }
-
-    var arrayValue: [RedisReply]? {
-        guard case .array(let items) = self else { return nil }
-        return items
-    }
-}
-
-// MARK: - Error Type
-
-struct RedisPluginError: Error {
-    let code: Int
-    let message: String
-
-    static let notConnected = RedisPluginError(code: 0, message: String(localized: "Not connected to Redis"))
-    static let connectionFailed = RedisPluginError(code: 0, message: String(localized: "Failed to establish connection"))
-    static let hiredisUnavailable = RedisPluginError(
-        code: 0,
-        message: String(localized: "Redis support requires hiredis. Run scripts/build-hiredis.sh first.")
-    )
-}
-
-extension RedisPluginError: PluginDriverError {
-    var pluginErrorMessage: String { message }
-    var pluginErrorCode: Int? { code }
-}
-
 // MARK: - Connection Class
 
-final class RedisPluginConnection: @unchecked Sendable {
+final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     // MARK: - Properties
 
     #if canImport(CRedis)
@@ -91,12 +34,32 @@ final class RedisPluginConnection: @unchecked Sendable {
     #endif
 
     private let queue = DispatchQueue(label: "com.TablePro.redis.plugin", qos: .userInitiated)
-    private let host: String
-    private let port: Int
+    let host: String
+    let port: Int
+
+    var address: RedisNodeAddress { RedisNodeAddress(host: host, port: port) }
     private let username: String?
     private let password: String?
     private let database: Int
     private let sslConfig: SSLConfiguration
+    private let connectTimeout: TimeInterval
+
+    private let routingLock = NSLock()
+    private var _routing = RedisCommandRouting()
+
+    /// Which commands may be replayed after a lost connection. Defaults to the curated table and is
+    /// replaced with the server's own COMMAND answer once a cluster channel has fetched it.
+    var routing: RedisCommandRouting {
+        routingLock.lock()
+        defer { routingLock.unlock() }
+        return _routing
+    }
+
+    func adoptRouting(_ newRouting: RedisCommandRouting) {
+        routingLock.lock()
+        _routing = newRouting
+        routingLock.unlock()
+    }
 
     private let stateLock = NSLock()
     private let cancellationGate = PluginQueryCancellationGate()
@@ -132,7 +95,8 @@ final class RedisPluginConnection: @unchecked Sendable {
         username: String? = nil,
         password: String?,
         database: Int = 0,
-        sslConfig: SSLConfiguration = SSLConfiguration()
+        sslConfig: SSLConfiguration = SSLConfiguration(),
+        connectTimeout: TimeInterval = 10
     ) {
         self.host = host
         self.port = port
@@ -140,6 +104,7 @@ final class RedisPluginConnection: @unchecked Sendable {
         self.password = password
         self.database = database
         self.sslConfig = sslConfig
+        self.connectTimeout = connectTimeout
         self._currentDatabase = database
     }
 
@@ -403,8 +368,11 @@ private extension RedisPluginConnection {
         selectDatabase dbIndex: Int,
         reportingStage report: ConnectionStageReporter = { _ in }
     ) throws {
-        let connectTimeout = timeval(tv_sec: 10, tv_usec: 0)
-        guard let ctx = redisConnectWithTimeout(host, Int32(port), connectTimeout) else {
+        let budget = timeval(
+            tv_sec: Int(connectTimeout),
+            tv_usec: Int32((connectTimeout - connectTimeout.rounded(.down)) * 1_000_000)
+        )
+        guard let ctx = redisConnectWithTimeout(host, Int32(port), budget) else {
             logger.error("Failed to create Redis context")
             throw RedisPluginError.connectionFailed
         }
@@ -476,10 +444,6 @@ private extension RedisPluginConnection {
         stateLock.unlock()
     }
 
-    func isConnectionError(_ error: RedisPluginError) -> Bool {
-        error.code == Int(REDIS_ERR_EOF) || error.code == Int(REDIS_ERR_IO)
-    }
-
     func executeCommandSync(_ args: [String]) throws -> RedisReply {
         try executeCommandSync(args.map { Data($0.utf8) })
     }
@@ -488,24 +452,42 @@ private extension RedisPluginConnection {
         try executeCommandSyncRetrying(args.map { Data($0.utf8) })
     }
 
+    /// A lost connection is only safe to replay over when the command provably never ran.
+    ///
+    /// hiredis reports a read timeout as REDIS_ERR_IO, exactly like a failed write, so the old
+    /// "reconnect and send it again" retried commands the server had already executed: a stalled
+    /// server made one INCR count twice. The write and the read are split so the failure knows
+    /// which side it happened on. An incomplete RESP command is never executed, so a failed write
+    /// is always replayable; once the command is on the wire only a read-only command is.
     func executeCommandSyncRetrying(_ args: [Data]) throws -> RedisReply {
         do {
             return try executeCommandSync(args)
-        } catch let error as RedisPluginError where isConnectionError(error) && !isShuttingDown {
+        } catch let failure as RedisTransportFailure where !isShuttingDown && canReplay(args, after: failure) {
             try reconnectSync()
             return try executeCommandSync(args)
         }
     }
 
+    /// A pipeline puts several commands in one buffer, so a read failure part-way through cannot
+    /// say which of them ran. Replaying is only safe when none of them writes.
     func executePipelineSyncRetrying(_ commands: [[Data]]) throws -> [RedisReply] {
         do {
             return try executePipelineSync(commands)
-        } catch let error as RedisPluginError where isConnectionError(error) && !isShuttingDown {
+        } catch let failure as RedisTransportFailure
+            where !isShuttingDown && (!failure.wasDelivered || commands.allSatisfy({ routing.isReadOnly($0) }))
+        {
             try reconnectSync()
             return try executePipelineSync(commands)
         }
     }
 
+    func canReplay(_ args: [Data], after failure: RedisTransportFailure) -> Bool {
+        !failure.wasDelivered || routing.isReadOnly(args)
+    }
+
+    /// The append/flush/read split that `redisCommandArgv` performs internally, spelled out so a
+    /// failure can say whether the command reached the server. hiredis does exactly these three
+    /// steps, so the behaviour is unchanged.
     func executeCommandSync(_ args: [Data]) throws -> RedisReply {
         stateLock.lock()
         guard let ctx = context else {
@@ -516,19 +498,34 @@ private extension RedisPluginConnection {
 
         let argc = Int32(args.count)
 
-        return try withArgvPointers(args: args) { argv, argvlen in
-            guard let rawReply = redisCommandArgv(ctx, argc, argv, argvlen) else {
-                if ctx.pointee.err != 0 {
-                    throw RedisPluginError(code: Int(ctx.pointee.err), message: Self.contextErrorMessage(ctx))
-                }
-                throw RedisPluginError(code: -1, message: "No reply from Redis")
+        try withArgvPointers(args: args) { argv, argvlen in
+            guard redisAppendCommandArgv(ctx, argc, argv, argvlen) == REDIS_OK else {
+                throw transportFailure(ctx, delivered: false)
             }
-
-            let replyPtr = rawReply.assumingMemoryBound(to: redisReply.self)
-            let parsed = parseReply(replyPtr)
-            freeReplyObject(rawReply)
-            return parsed
         }
+
+        var done: Int32 = 0
+        while done == 0 {
+            guard redisBufferWrite(ctx, &done) == REDIS_OK else {
+                throw transportFailure(ctx, delivered: false)
+            }
+        }
+
+        var rawReply: UnsafeMutableRawPointer?
+        guard redisGetReply(ctx, &rawReply) == REDIS_OK, let reply = rawReply else {
+            throw transportFailure(ctx, delivered: true)
+        }
+
+        let replyPtr = reply.assumingMemoryBound(to: redisReply.self)
+        let parsed = parseReply(replyPtr)
+        freeReplyObject(reply)
+        return parsed
+    }
+
+    func transportFailure(_ ctx: UnsafeMutablePointer<redisContext>, delivered: Bool) -> RedisTransportFailure {
+        let code = Int(ctx.pointee.err)
+        let message = code == 0 ? "No reply from Redis" : Self.contextErrorMessage(ctx)
+        return RedisTransportFailure(code: code == 0 ? -1 : code, message: message, wasDelivered: delivered)
     }
 
     func executePipelineSync(_ commands: [[Data]]) throws -> [RedisReply] {
@@ -551,10 +548,9 @@ private extension RedisPluginConnection {
                         if redisGetReply(ctx, &discard) != REDIS_OK { break }
                         if let d = discard { freeReplyObject(d) }
                     }
-                    let errCode = Int(ctx.pointee.err)
-                    let errMsg = Self.contextErrorMessage(ctx)
+                    let failure = transportFailure(ctx, delivered: false)
                     markDisconnected()
-                    throw RedisPluginError(code: errCode, message: errMsg)
+                    throw failure
                 }
             }
             appendedCount += 1
@@ -566,8 +562,7 @@ private extension RedisPluginConnection {
             var rawReply: UnsafeMutableRawPointer?
             let status = redisGetReply(ctx, &rawReply)
             guard status == REDIS_OK, let reply = rawReply else {
-                let errCode = Int(ctx.pointee.err)
-                let errMsg = Self.contextErrorMessage(ctx)
+                let failure = transportFailure(ctx, delivered: true)
                 for _ in (i + 1) ..< commands.count {
                     var discard: UnsafeMutableRawPointer?
                     if redisGetReply(ctx, &discard) == REDIS_OK, let d = discard {
@@ -575,7 +570,7 @@ private extension RedisPluginConnection {
                     }
                 }
                 markDisconnected()
-                throw RedisPluginError(code: errCode, message: errMsg)
+                throw failure
             }
             let replyPtr = reply.assumingMemoryBound(to: redisReply.self)
             let parsed = parseReply(replyPtr)
@@ -759,7 +754,7 @@ private extension RedisPluginConnection {
         do {
             let reply = try executeCommandSync(["INFO", "server"])
             if case .string(let info) = reply {
-                return parseVersionFromInfo(info)
+                return RedisServerInfo.version(from: info)
             }
         } catch {
             logger.debug("Failed to fetch server version: \(error.localizedDescription)")
@@ -767,15 +762,5 @@ private extension RedisPluginConnection {
         return nil
     }
 
-    func parseVersionFromInfo(_ info: String) -> String? {
-        for line in info.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("redis_version:") {
-                let value = trimmed.dropFirst("redis_version:".count)
-                return String(value).trimmingCharacters(in: .whitespaces)
-            }
-        }
-        return nil
-    }
 }
 #endif

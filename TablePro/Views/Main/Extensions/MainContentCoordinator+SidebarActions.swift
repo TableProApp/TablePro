@@ -35,7 +35,7 @@ extension MainContentCoordinator {
         tabManager.mutate(at: tabIdx) { $0.display.resultSets.removeAll { $0.id == id } }
         if tabManager.tabs[tabIdx].display.activeResultSetId == id {
             let newActiveId = tabManager.tabs[tabIdx].display.resultSets.last?.id
-            switchActiveResultSet(to: newActiveId, in: tabId)
+            applyResultSetSwitch(to: newActiveId, in: tabId)
         }
         if tabManager.tabs[tabIdx].display.resultSets.isEmpty {
             setActiveTableRows(TableRows(), for: tabId)
@@ -61,7 +61,7 @@ extension MainContentCoordinator {
         let tabId = tabManager.tabs[tabIdx].id
 
         if let lastPinned = tabManager.tabs[tabIdx].display.resultSets.last(where: \.isPinned) {
-            switchActiveResultSet(to: lastPinned.id, in: tabId)
+            applyResultSetSwitch(to: lastPinned.id, in: tabId)
             tabManager.mutate(at: tabIdx) { $0.display.removeUnpinnedResults() }
             return
         }

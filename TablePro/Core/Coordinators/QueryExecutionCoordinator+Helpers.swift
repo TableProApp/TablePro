@@ -184,6 +184,8 @@ extension QueryExecutionCoordinator {
             columnComments: columnComments,
             foreignKeysFetched: foreignKeysFetched
         )
+        let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
+        parent.flushBufferToActiveResult(tabId: existingTabId, pinnedOnly: true)
         parent.setActiveTableRows(newTableRows, for: existingTabId)
 
         parent.tabManager.mutate(at: idx) { tab in
@@ -232,13 +234,20 @@ extension QueryExecutionCoordinator {
             resolvedPKs = pks
         } else if let defaultPK = PluginManager.shared.defaultPrimaryKeyColumn(for: conn.type) {
             resolvedPKs = [defaultPK]
-        } else {
+        } else if tableName == previousTableName {
             resolvedPKs = parent.tabManager.tabs[idx].tableContext.primaryKeyColumns
+        } else {
+            resolvedPKs = []
         }
 
-        if !resolvedPKs.isEmpty {
-            parent.tabManager.mutate(at: idx) { $0.tableContext.primaryKeyColumns = resolvedPKs }
-        }
+        parent.tabManager.mutate(at: idx) { $0.tableContext.primaryKeyColumns = resolvedPKs }
+        captureOrigin(
+            tabIndex: idx,
+            tabId: tabId,
+            tableName: tableName,
+            primaryKeyColumns: resolvedPKs,
+            isEditable: isEditable
+        )
 
         if parent.tabManager.selectedTabId == tabId {
             parent.changeManager.configureForTable(
@@ -278,6 +287,7 @@ extension QueryExecutionCoordinator {
         connection conn: DatabaseConnection,
         queryParameterValues: [QueryParameter]?
     ) {
+        parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
         parent.tabManager.mutate(tabId: tabId) { tab in
             tab.execution.executionTime = executionTime
             tab.execution.rowsAffected = 0
@@ -293,6 +303,7 @@ extension QueryExecutionCoordinator {
                 tab.display.isResultsCollapsed = false
             }
         }
+        parent.seedBufferFromActiveResult(tabId: tabId)
         parent.toolbarState.isResultsCollapsed = false
 
         recordHistory(
@@ -318,6 +329,7 @@ extension QueryExecutionCoordinator {
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
+        let resultSetId = parent.tabManager.tabs.first { $0.id == tabId }?.display.activeResultSetId
         Task(priority: .utility) { [weak self, parent] in
             guard let self else { return }
             guard !parent.isTearingDown else { return }
@@ -330,7 +342,7 @@ extension QueryExecutionCoordinator {
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 if let schema {
-                    applySchemaMetadata(schema, tabId: tabId, tableName: tableName)
+                    applySchemaMetadata(schema, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
                 }
                 if parent.tabExecution.isSameContent(contentEpoch, for: tabId) {
                     resolveRowCount(
@@ -352,13 +364,42 @@ extension QueryExecutionCoordinator {
 
             await MainActor.run { [weak self] in
                 guard let self, !Task.isCancelled else { return }
-                applyEnumValues(columnEnumValues, tabId: tabId, tableName: tableName)
+                applyEnumValues(columnEnumValues, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
             }
         }
     }
 
-    private func tabShowsTable(_ tabId: UUID, _ tableName: String) -> Bool {
-        parent.tabManager.tabs.contains { $0.id == tabId && $0.tableContext.tableName == tableName }
+    /// Stamps the active result with the table its rows came from.
+    ///
+    /// `QueryTab.tableContext` always describes the newest execution, so a result the user later
+    /// clicks back to has to carry its own identity or an edit made on it is written against
+    /// whatever ran last (#2243).
+    func captureOrigin(
+        tabIndex: Int,
+        tabId: UUID,
+        tableName: String?,
+        primaryKeyColumns: [String],
+        isEditable: Bool
+    ) {
+        guard tabIndex < parent.tabManager.tabs.count else { return }
+        let context = parent.tabManager.tabs[tabIndex].tableContext
+        parent.tabManager.tabs[tabIndex].display.activeResultSet?.origin = ResultOrigin(
+            tableName: tableName,
+            schemaName: context.schemaName,
+            databaseName: historyDatabaseName(tabId: tabId),
+            primaryKeyColumns: primaryKeyColumns,
+            isEditable: isEditable,
+            isView: context.isView,
+            keysResolved: true
+        )
+    }
+
+    /// Phase-2 metadata belongs to the result its fetch was launched for, not to whatever the tab
+    /// happens to be showing when it lands. A query tab can hold several results and the user can
+    /// switch between them while the schema round trips, so keying on the tab's current table name
+    /// paints one table's foreign keys, defaults and primary keys onto another table's rows.
+    private func resultStillActive(_ tabId: UUID, _ resultSetId: UUID?) -> Bool {
+        parent.tabManager.tabs.contains { $0.id == tabId && $0.display.activeResultSetId == resultSetId }
     }
 
     private func isActiveTab(_ tabId: UUID) -> Bool {
@@ -367,16 +408,26 @@ extension QueryExecutionCoordinator {
         return parent.tabManager.tabs[activeIdx].id == tabId
     }
 
-    private func applySchemaMetadata(_ schema: FetchedTableSchema, tabId: UUID, tableName: String) {
-        guard tabShowsTable(tabId, tableName) else {
+    private func applySchemaMetadata(
+        _ schema: FetchedTableSchema,
+        tabId: UUID,
+        tableName: String,
+        resultSetId: UUID?
+    ) {
+        guard resultStillActive(tabId, resultSetId) else {
             helpersLogger.info("[fk] phase2 apply skipped, tab closed or table changed table=\(tableName, privacy: .public)")
             return
         }
         applyPhase2Metadata(parsed: QueryExecutor.parseSchemaMetadata(schema), tabId: tabId)
     }
 
-    private func applyEnumValues(_ values: [String: [String]], tabId: UUID, tableName: String) {
-        guard tabShowsTable(tabId, tableName) else { return }
+    private func applyEnumValues(
+        _ values: [String: [String]],
+        tabId: UUID,
+        tableName: String,
+        resultSetId: UUID?
+    ) {
+        guard resultStillActive(tabId, resultSetId) else { return }
         let existing = parent.tabSessionRegistry.tableRows(for: tabId)
         let hasNewValues = values.contains { key, value in
             existing.columnEnumValues[key] != value
@@ -410,6 +461,8 @@ extension QueryExecutionCoordinator {
         parent.tabManager.mutate(tabId: tabId) { tab in
             if !parsed.primaryKeyColumns.isEmpty {
                 tab.tableContext.primaryKeyColumns = parsed.primaryKeyColumns
+                tab.display.activeResultSet?.origin?.primaryKeyColumns = parsed.primaryKeyColumns
+                tab.display.activeResultSet?.origin?.keysResolved = true
             }
             if let approxCount = parsed.approximateRowCount, approxCount > 0,
                !tab.filterState.hasAppliedFilters {

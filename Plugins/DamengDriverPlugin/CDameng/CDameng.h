@@ -98,4 +98,11 @@ const uint8_t *tp_dm_error_message(const TpDmError *error, size_t *length_out);
 /* True when the caller stopped the statement, rather than the server or transport failing. */
 bool tp_dm_error_is_cancellation(const TpDmError *error);
 
+/*
+ * True when the failure closed the connection, so the handle can never serve another
+ * statement. A statement the server merely rejected reports false and leaves the
+ * connection usable. The caller must reconnect before its next statement.
+ */
+bool tp_dm_error_is_connection_lost(const TpDmError *error);
+
 #endif /* CDameng_h */

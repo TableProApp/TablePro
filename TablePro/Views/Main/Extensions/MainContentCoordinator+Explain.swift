@@ -148,6 +148,7 @@ extension MainContentCoordinator {
                     retireQueryTask(for: claim)
                     guard !Task.isCancelled else { return }
 
+                    flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
                     tabManager.mutate(tabId: tabId) { tab in
                         tab.execution.executionTime = fetchResult.executionTime
                         tab.execution.rowsAffected = 0
@@ -164,6 +165,7 @@ extension MainContentCoordinator {
                             tab.display.isResultsCollapsed = false
                         }
                     }
+                    seedBufferFromActiveResult(tabId: tabId)
                     toolbarState.isResultsCollapsed = false
 
                     recordHistory(

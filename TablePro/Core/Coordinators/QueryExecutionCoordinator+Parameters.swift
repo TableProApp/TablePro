@@ -288,14 +288,11 @@ extension QueryExecutionCoordinator {
                     connection: conn,
                     tabId: tabId
                 )
-                let lastSelectIndex = results.lastIndex { !$0.columns.isEmpty }
                 applyMultiStatementResults(
                     tabId: tabId,
                     claim: claim,
                     cumulativeTime: results.reduce(0) { $0 + $1.executionTime },
                     totalRowsAffected: results.reduce(0) { $0 + $1.rowsAffected },
-                    lastSelectResult: lastSelectIndex.map { results[$0] },
-                    lastSelectSQL: lastSelectIndex.map { prepared[$0].executableSQL },
                     newResultSets: resultSets
                 )
             case .failed(let results, let failedSQL, let errorDescription):
@@ -443,7 +440,8 @@ extension QueryExecutionCoordinator {
                 sql: statement.originalSQL,
                 index: index,
                 baseQuery: statement.executableSQL,
-                baseQueryParameterValues: statement.parameterValues?.map { $0 as? String }
+                baseQueryParameterValues: statement.parameterValues?.map { $0 as? String },
+                tabId: tabId
             ))
             recordStatementHistory(
                 sql: statement.originalSQL,
@@ -534,6 +532,7 @@ extension QueryExecutionCoordinator {
             guard parent.tabExecution.settle(claim) else { return }
             parent.retireQueryTask(for: claim)
 
+            parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
             parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.execution.errorMessage = contextMsg
                 tab.execution.errorQuery = failedStatement
@@ -545,6 +544,7 @@ extension QueryExecutionCoordinator {
                     tab.display.isResultsCollapsed = false
                 }
             }
+            parent.seedBufferFromActiveResult(tabId: tabId)
             if parent.tabManager.selectedTabId == tabId {
                 parent.toolbarState.isResultsCollapsed = false
                 parent.toolbarState.lastQueryDuration = cumulativeTime

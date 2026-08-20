@@ -250,7 +250,7 @@ struct PluginMetadataSnapshot: Sendable {
             editorLanguage: editorLanguage, connectionMode: connectionMode,
             supportsDatabaseSwitching: supportsDatabaseSwitching,
             supportsColumnReorder: supportsColumnReorder,
-            capabilities: capabilities, schema: schema, editor: editor, connection: source.connection
+            capabilities: capabilities, schema: schema, editor: editor, connection: connection
         )
     }
 
