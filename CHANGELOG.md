@@ -71,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 235 Turkish strings now read in Turkish. They were marked as translated while still holding their English text, so menus, buttons, alerts and error messages across connections, plugins, SSH, sync and the query editor showed English to Turkish users with nothing reporting a gap.
 - Opening an Oracle connection for the first time no longer leaves the object list spinning forever. TablePro was asking the metadata connection to switch to the schema it had just opened on, and that spare statement was the one that timed out. It is no longer sent, on any database. (#2294)
 - An object list that cannot load now says so and offers Retry, instead of spinning. A metadata failure on a connected session was treated as "still connecting", so TablePro retried it silently every 15 seconds with nothing on screen and nothing you could act on. This affected every database type, not only Oracle. (#2294)
 - A metadata connection whose startup commands stall now gives up after a minute and reports it. It used to wait with no deadline, and everything else that needed that database waited behind it with nothing in the log.
