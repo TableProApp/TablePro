@@ -194,6 +194,27 @@ enum TestFixtures {
         )
     }
 
+    /// A structure editing session for one table. The identity has to agree with what
+    /// `MainEditorContentView.structureContent` builds, because a mismatch is what tells the view
+    /// this session belongs to a table the tab no longer shows.
+    @MainActor
+    static func makeStructureSession(
+        connection: DatabaseConnection? = nil,
+        database: String = "db_a",
+        schema: String? = nil,
+        table: String = "users"
+    ) -> StructureEditingSession {
+        let resolved = connection ?? makeConnection(database: database)
+        let scope = DatabaseScope(connectionId: resolved.id, database: database, schema: schema)
+        return StructureEditingSession(
+            identity: "\(scope.qualifiedDescription).\(table)",
+            connection: resolved,
+            databaseName: database,
+            schemaName: schema,
+            tableName: table
+        )
+    }
+
     static func makeConnection(
         id: UUID = UUID(),
         name: String = "Test",

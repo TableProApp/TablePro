@@ -66,7 +66,9 @@ Structure edits queue locally; nothing runs until you save. See [Change Tracking
 - **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queued changes. Changes that can lose data (dropping a column, changing a type, adding NOT NULL, changing the primary key) first show a confirmation that lists each risky change.
 - **Preview SQL** (`Cmd+Shift+P`) shows the generated DDL statements without executing them.
 
-Queued changes stay queued while you look at something else. Switching to another tab, or switching the same tab between Data and Structure, leaves them alone, and so does coming back. They are only discarded when you discard them: closing the tab, closing the window or quitting asks first, and **Refresh** asks before replacing them with what is on the server.
+Queued changes stay queued while you look at something else. Switching to another tab, or switching the same tab between Data and Structure, leaves them alone, and so does coming back. Each tab also keeps its own place in the editor: the sub-tab you were on, the filter you typed and the sort you set, so opening one table in two tabs gives you two independent editors rather than one shared between them.
+
+They are only discarded when you discard them: closing the tab, closing the window or quitting asks first, and **Refresh** asks before replacing them with what is on the server. Answering **Save** on that prompt applies the queued changes wherever the tab happens to be, including from the Data view, from the read-only DDL, Parts and Triggers tabs, and from a background tab caught by **Close All Tabs** or **Close Other Tabs**. If the save cannot run, because Safe Mode is read-only, because you cancelled the data-loss confirmation, or because the server rejected the statement, the tab stays open with the changes still queued.
 
 The same holds for a table you are still defining in a Create Table tab. The name, the options and every column you have added survive switching away and back.
 

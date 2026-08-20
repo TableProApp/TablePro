@@ -74,11 +74,11 @@ extension MainContentCoordinator {
     /// Staged ALTERs read from the tab's own session rather than from `toolbarState`, which only
     /// ever describes the tab on screen. A background tab keeps its session, so this is the only
     /// answer that holds once the user has switched away from it.
-    private func hasStagedStructureEdits(in tab: QueryTab) -> Bool {
+    func hasStagedStructureEdits(in tab: QueryTab) -> Bool {
         structureSessions[tab.id]?.changeManager.hasChanges ?? false
     }
 
-    private func hasTableDraftWork(in tab: QueryTab) -> Bool {
+    func hasTableDraftWork(in tab: QueryTab) -> Bool {
         createTableDrafts[tab.id]?.holdsWork ?? false
     }
 

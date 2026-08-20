@@ -48,7 +48,48 @@ struct TableStructureView: View {
     /// view because the view is destroyed whenever the tab is deselected or switched to Data.
     let session: StructureEditingSession
 
-    @State var selectedTab: StructureTab = .columns
+    /// Where the user was. Two tabs on one table are two editors, and a trip through the Data view
+    /// must not lose the sub-tab, filter or sort either, so all of it lives on the session.
+    var selectedTab: StructureTab {
+        get { session.selectedTab }
+        nonmutating set { session.selectedTab = newValue }
+    }
+
+    var searchText: String {
+        get { session.searchText }
+        nonmutating set { session.searchText = newValue }
+    }
+
+    var sortState: SortState {
+        get { session.sortState }
+        nonmutating set { session.sortState = newValue }
+    }
+
+    var structureSortDescriptor: StructureSortDescriptor? {
+        get { session.sortDescriptor }
+        nonmutating set { session.sortDescriptor = newValue }
+    }
+
+    var structureColumnLayouts: [StructureTab: ColumnLayoutState] {
+        get { session.columnLayouts }
+        nonmutating set { session.columnLayouts = newValue }
+    }
+
+    /// Raised across a write and across the reload that follows it, so the handlers watching
+    /// `columns`, `indexes` and `foreignKeys` do not mistake either for the user editing.
+    var isReloadingAfterSave: Bool {
+        get { session.isApplying }
+        nonmutating set { session.isApplying = newValue }
+    }
+
+    var lastSaveTime: Date? {
+        get { session.lastAppliedAt }
+        nonmutating set { session.lastAppliedAt = newValue }
+    }
+
+    var wrappedChangeManager: AnyChangeManager { session.wrappedChangeManager }
+
+    var gridDelegate: StructureGridDelegate { session.gridDelegate }
 
     /// The loaded schema, forwarded to the session so a rebuild adopts it instead of refetching.
     /// Refetching would re-baseline `structureChangeManager` and clear the staged edits.
@@ -91,22 +132,11 @@ struct TableStructureView: View {
     @State var isInitialLoading = true
     @State var errorMessage: String?
     @State var partsReloadToken = 0
-    @State var isReloadingAfterSave = false  // Prevent onChange loops during save reload
-    @State var lastSaveTime: Date?
     @AppStorage("skipSchemaPreview", store: AppStorageEnvironment.shared.defaults) var skipSchemaPreview = false
 
-    // Search and sort state
-    @State var searchText = ""
-    @State var structureSortDescriptor: StructureSortDescriptor?
     @State var displayVersion: Int = 0
-
-    // DataGridView state
-    @State var wrappedChangeManager: AnyChangeManager
     @State var selectedRows: Set<Int> = []
-    @State var sortState = SortState()
-    @State var structureColumnLayouts: [StructureTab: ColumnLayoutState] = [:]
     @State var actionHandler = StructureViewActionHandler()
-    @State var gridDelegate: StructureGridDelegate
 
     init(
         tableName: String,
@@ -116,8 +146,7 @@ struct TableStructureView: View {
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator?,
         selectionState: GridSelectionState,
-        session: StructureEditingSession,
-        initialSelectedTab: StructureTab = .columns
+        session: StructureEditingSession
     ) {
         self.tableName = tableName
         self.connection = connection
@@ -127,17 +156,6 @@ struct TableStructureView: View {
         self.coordinator = coordinator
         self.selectionState = selectionState
         self.session = session
-        _selectedTab = State(initialValue: initialSelectedTab)
-
-        let manager = session.changeManager
-        _wrappedChangeManager = State(wrappedValue: AnyChangeManager(manager))
-        _gridDelegate = State(wrappedValue: StructureGridDelegate(
-            structureChangeManager: manager,
-            selectedTab: initialSelectedTab,
-            connection: connection,
-            tableName: tableName,
-            coordinator: coordinator
-        ))
     }
 
     var body: some View {
@@ -178,11 +196,6 @@ struct TableStructureView: View {
             }
             updateGridDelegate()
 
-            actionHandler.saveChanges = {
-                if self.structureChangeManager.hasChanges && self.selectedTab != .ddl {
-                    Task { await self.executeSchemaChanges() }
-                }
-            }
             actionHandler.previewSQL = { self.generateStructurePreviewSQL() }
             actionHandler.copyRows = { self.gridDelegate.dataGridCopyRows(self.selectedRows) }
             actionHandler.pasteRows = { self.gridDelegate.dataGridPasteRows() }
@@ -195,16 +208,26 @@ struct TableStructureView: View {
             publishFooterCapability()
         }
         .onDisappear {
-            coordinator?.toolbarState.hasStructureChanges = false
-            coordinator?.structureActions = nil
+            /// Every clear is guarded by identity, because appearance is not lifetime: SwiftUI does
+            /// not order `onDisappear` on the outgoing view before `onAppear` on the incoming one,
+            /// and an unguarded clear that lands second nils the wiring the incoming structure tab
+            /// has already installed. Its Save, Refresh, Preview SQL, undo and footer buttons then
+            /// do nothing at all until something else re-runs `onAppear`.
+            if coordinator?.structureActions === actionHandler {
+                coordinator?.structureActions = nil
+                coordinator?.toolbarState.hasStructureChanges = false
+                selectionState.indices = []
+            }
             if coordinator?.inspectorRowSource === gridDelegate {
                 coordinator?.inspectorRowSource = nil
             }
-            selectionState.indices = []
         }
         .onChange(of: structureChangeManager.hasChanges) { _, newValue in
             coordinator?.toolbarState.hasStructureChanges = newValue
             updateGridDelegate()
+        }
+        .onChange(of: session.appliedVersion) { _, _ in
+            Task { await refreshAfterApply() }
         }
         .onChange(of: structureChangeManager.reloadVersion) { _, _ in
             // Any mutation that does not toggle hasChanges (add row when changes
@@ -218,6 +241,10 @@ struct TableStructureView: View {
         .onReceive(AppCommands.shared.refreshData) { request in
             guard request.connectionId == connection.id else { return }
             guard request.reaches(tabScope: scope) else { return }
+            /// A close applying another tab's staged edits broadcasts a refresh for the same
+            /// database. Answering it here would ask this tab whether to discard the edits the user
+            /// has just asked to save, in a sheet queued behind the close.
+            guard coordinator?.isApplyingStagedStructureEdits != true else { return }
             onRefreshData()
         }
     }
@@ -239,10 +266,11 @@ struct TableStructureView: View {
     }
 
     private var toolbar: some View {
-        HStack {
+        @Bindable var session = session
+        return HStack {
             Spacer()
 
-            Picker("Structure", selection: $selectedTab) {
+            Picker("Structure", selection: $session.selectedTab) {
                 ForEach(availableTabs, id: \.self) { tab in
                     Text(tabLabel(for: tab)).tag(tab)
                 }
@@ -398,8 +426,8 @@ struct TableStructureView: View {
 
     private func columnLayoutBinding(for tab: StructureTab) -> Binding<ColumnLayoutState> {
         Binding(
-            get: { structureColumnLayouts[tab] ?? ColumnLayoutState() },
-            set: { structureColumnLayouts[tab] = $0 }
+            get: { session.columnLayouts[tab] ?? ColumnLayoutState() },
+            set: { session.columnLayouts[tab] = $0 }
         )
     }
 
@@ -466,6 +494,7 @@ struct TableStructureView: View {
     }
 
     private var structureGrid: some View {
+        @Bindable var session = session
         let provider = makeCurrentProvider()
         let canEdit = connection.type.supportsSchemaEditing
         let customOptions = provider.customDropdownOptions
@@ -493,13 +522,13 @@ struct TableStructureView: View {
             ),
             delegate: gridDelegate,
             selectedRowIndices: $selectedRows,
-            sortState: $sortState,
+            sortState: $session.sortState,
             columnLayout: columnLayoutBinding(for: selectedTab),
             contentRevision: displayVersion
         )
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
-                NativeSearchField(text: $searchText, placeholder: String(localized: "Filter"))
+                NativeSearchField(text: $session.searchText, placeholder: String(localized: "Filter"))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 4)
                 Divider()
@@ -535,22 +564,29 @@ struct TableStructureView: View {
 }
 
 #Preview {
-    TableStructureView(
+    let connection = DatabaseConnection(
+        name: "Test",
+        host: "localhost",
+        port: 3_306,
+        database: "test",
+        username: "root",
+        type: .mysql
+    )
+    return TableStructureView(
         tableName: "users",
-        connection: DatabaseConnection(
-            name: "Test",
-            host: "localhost",
-            port: 3_306,
-            database: "test",
-            username: "root",
-            type: .mysql
-        ),
+        connection: connection,
         databaseName: "test",
         schemaName: nil,
         toolbarState: ConnectionToolbarState(),
         coordinator: nil,
         selectionState: GridSelectionState(),
-        session: StructureEditingSession(identity: "test.users")
+        session: StructureEditingSession(
+            identity: "test.users",
+            connection: connection,
+            databaseName: "test",
+            schemaName: nil,
+            tableName: "users"
+        )
     )
     .frame(width: 800, height: 600)
 }
