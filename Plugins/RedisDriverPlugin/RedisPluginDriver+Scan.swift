@@ -9,56 +9,25 @@ import TableProPluginKit
 
 extension RedisPluginDriver {
     func scanAllKeys(
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         pattern: String?,
         typeFilter: String? = nil,
         maxKeys: Int
     ) async throws -> [String] {
         var allKeys: [String] = []
-        var cursor = "0"
+        var cursor = RedisClusterCursor.start
 
         repeat {
-            var args = ["SCAN", cursor]
-            if let p = pattern {
-                args += ["MATCH", p]
-            }
-            args += ["COUNT", "1000"]
-            if let type = typeFilter {
-                args += ["TYPE", type]
-            }
-
-            let result = try await conn.executeCommand(args)
-
-            guard case .array(let scanResult) = result,
-                  scanResult.count == 2 else {
-                break
-            }
-
-            let nextCursor: String
-            switch scanResult[0] {
-            case .string(let s): nextCursor = s
-            case .status(let s): nextCursor = s
-            case .data(let d): nextCursor = String(data: d, encoding: .utf8) ?? "0"
-            default: nextCursor = "0"
-            }
-            cursor = nextCursor
-
-            if case .array(let keyReplies) = scanResult[1] {
-                for reply in keyReplies {
-                    switch reply {
-                    case .string(let k): allKeys.append(k)
-                    case .data(let d):
-                        if let k = String(data: d, encoding: .utf8) { allKeys.append(k) }
-                    default: break
-                    }
-                }
-            }
-
+            try Task.checkCancellation()
+            let page = try await conn.scanKeyspace(
+                cursor: cursor, pattern: pattern, type: typeFilter, count: 1_000
+            )
+            cursor = page.cursor
+            allKeys.append(contentsOf: page.keys)
             if allKeys.count >= maxKeys {
-                allKeys = Array(allKeys.prefix(maxKeys))
-                break
+                return Array(allKeys.prefix(maxKeys)).sorted()
             }
-        } while cursor != "0"
+        } while cursor != RedisClusterCursor.start
 
         return allKeys.sorted()
     }
@@ -68,7 +37,7 @@ extension RedisPluginDriver {
         typeScope: String?,
         limit: Int,
         offset: Int,
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
         let scanCap = RedisPluginDriver.maxKeyBrowseScan
@@ -94,7 +63,7 @@ extension RedisPluginDriver {
     func executeKeyTree(
         pattern: String?,
         limit: Int,
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
         let keys = try await scanAllKeys(
@@ -105,27 +74,15 @@ extension RedisPluginDriver {
         )
     }
 
-    func handleScanResult(
-        _ result: RedisReply,
-        connection conn: RedisPluginConnection,
+    func buildScanPageResult(
+        _ page: RedisKeyspacePage,
+        connection conn: any RedisCommandChannel,
         startTime: Date
     ) async throws -> PluginQueryResult {
-        guard case .array(let scanResult) = result,
-              scanResult.count == 2,
-              case .array(let keyReplies) = scanResult[1] else {
-            return buildEmptyKeyResult(startTime: startTime)
-        }
-
-        let keys = keyReplies.compactMap { reply -> String? in
-            if case .string(let k) = reply { return k }
-            if case .data(let d) = reply { return String(data: d, encoding: .utf8) }
-            return nil
-        }
-
-        let capped = Array(keys.prefix(PluginRowLimits.emergencyMax))
-        let keysTruncated = keys.count > PluginRowLimits.emergencyMax
+        let capped = Array(page.keys.prefix(PluginRowLimits.emergencyMax))
+        let truncated = page.isIncomplete || page.keys.count > PluginRowLimits.emergencyMax
         return try await buildKeyBrowseResult(
-            keys: capped, connection: conn, startTime: startTime, isTruncated: keysTruncated
+            keys: capped, connection: conn, startTime: startTime, isTruncated: truncated
         )
     }
 }

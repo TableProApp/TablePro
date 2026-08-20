@@ -133711,6 +133711,30 @@
           }
         }
       }
+    },
+    "Cluster" : {
+
+    },
+    "Cluster Seed Nodes" : {
+
+    },
+    "Primary Group Name" : {
+
+    },
+    "Sentinel" : {
+
+    },
+    "Sentinel Nodes" : {
+
+    },
+    "Sentinel Password" : {
+
+    },
+    "Sentinel Username" : {
+
+    },
+    "Standalone" : {
+
     }
   },
   "version" : "1.1"

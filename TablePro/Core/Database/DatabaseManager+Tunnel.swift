@@ -48,11 +48,17 @@ extension DatabaseManager {
 
         var effectiveFields = connection.additionalFields
         effectiveFields[DatabaseConnection.sshForwardUnixSocketPathKey] = nil
-        effectiveFields[DatabaseConnection.preTunnelHostKey] = connection.host
-        effectiveFields[DatabaseConnection.preTunnelPortKey] = String(connection.port)
+        let forwardEndpoint = connection.tunnelForwardEndpoint
+        effectiveFields[DatabaseConnection.preTunnelHostKey] = forwardEndpoint.host
+        effectiveFields[DatabaseConnection.preTunnelPortKey] = String(forwardEndpoint.port)
+        for fieldId in connection.hostListFieldIds {
+            effectiveFields[fieldId] = nil
+        }
         if connection.type.pluginTypeId == "MongoDB", !connection.usesMongoSrv {
-            effectiveFields["mongoHosts"] = nil
             effectiveFields["mongoParam_directConnection"] = "true"
+        }
+        if connection.type.pluginTypeId == "Redis" {
+            effectiveFields["redisMode"] = "standalone"
         }
 
         return DatabaseConnection(

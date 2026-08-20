@@ -42,6 +42,10 @@ ARCH="${1:-both}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIBS_DIR="$PROJECT_DIR/Libs"
+# The headers the Redis plugin compiles against. The old path under TablePro/Core/Database was
+# deleted when the driver moved into a plugin bundle, so this script was installing them where
+# nothing read them and leaving the real ones untouched.
+HEADER_DIR="$PROJECT_DIR/Plugins/RedisDriverPlugin/CRedis/include/hiredis"
 BUILD_DIR="$(mktemp -d)"
 NCPU=$(sysctl -n hw.ncpu)
 
@@ -177,7 +181,7 @@ install_libs() {
 install_headers() {
     local arch=$1
     local prefix="$BUILD_DIR/install-hiredis-$arch"
-    local dest="$PROJECT_DIR/TablePro/Core/Database/CRedis/include/hiredis"
+    local dest="$HEADER_DIR"
 
     echo "📦 Installing hiredis headers..."
 
@@ -207,7 +211,7 @@ build_for_arch() {
     build_hiredis "$arch"
     install_libs "$arch"
     # Install headers once (they're arch-independent)
-    if [ ! -f "$PROJECT_DIR/TablePro/Core/Database/CRedis/include/hiredis/hiredis.h" ]; then
+    if [ ! -f "$HEADER_DIR/hiredis.h" ]; then
         install_headers "$arch"
     fi
 }

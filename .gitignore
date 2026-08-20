@@ -168,7 +168,10 @@ Libs/ios/
 # lockfile is the only one cargo writes. lib/ holds the staticlib slices build-dameng.sh
 # links into the plugin; they stay out of Libs/, which download-libs.sh checksum-verifies.
 Native/DamengBridge/**/target/
-Native/DamengBridge/lib/
+# No trailing slash: a pattern ending in one matches a directory only, so a symlink named `lib`
+# slipped past it and was committed, pointing at one machine's absolute path. Every checkout
+# elsewhere then got a dangling link and `mkdir -p` in build-dameng.sh failed on it.
+Native/DamengBridge/lib
 
 # Issue analysis blueprints (local only)
 .analysis/

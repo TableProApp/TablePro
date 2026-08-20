@@ -274,6 +274,27 @@ struct ElasticsearchMappingFlattenerTests {
         #expect(flat["tags"]?.asText?.contains("a") == true)
     }
 
+    @Test("Doubles keep every digit needed to round-trip, nested or not")
+    func doublesRoundTrip() {
+        let source: [String: Any] = [
+            "score": -3.9192320754595876e-07,
+            "total": 1847.27,
+            "counts": ["rate": 0.1, "qty": 3.0],
+        ]
+        let flat = ElasticsearchMappingFlattener.flattenSource(source)
+        #expect(flat["score"] == .text("-3.9192320754595876e-07"))
+        #expect(flat["total"] == .text("1847.27"))
+        #expect(flat["counts.rate"] == .text("0.1"))
+        #expect(flat["counts.qty"] == .text("3"))
+    }
+
+    @Test("An array of doubles serializes without binary floating point noise")
+    func arrayOfDoublesHasNoExcessDigits() {
+        let source: [String: Any] = ["samples": [0.1, 1847.27]]
+        let flat = ElasticsearchMappingFlattener.flattenSource(source)
+        #expect(flat["samples"] == .text("[0.1,1847.27]"))
+    }
+
     @Test("Rows pull meta fields from the hit envelope")
     func rowsWithMeta() {
         let hits: [[String: Any]] = [[

@@ -29,7 +29,7 @@ extension Array where Element == [String] {
 
 final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
-    private var redisConnection: RedisPluginConnection?
+    private var redisConnection: (any RedisCommandChannel)?
 
     private static let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisPluginDriver")
 
@@ -40,11 +40,9 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [
-            .transactions,
-            .truncateTable,
-            .cancelQuery,
-        ]
+        var supported: PluginCapabilities = [.truncateTable, .cancelQuery]
+        if redisConnection?.supportsTransactions ?? true { supported.insert(.transactions) }
+        return supported
     }
 
     func quoteIdentifier(_ name: String) -> String { name }
@@ -64,20 +62,84 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
-        let sslConfig = config.ssl
-        let redisDb = RedisDatabaseIndex.resolve(additionalFields: config.additionalFields, database: config.database)
+        let mode = RedisConnectionMode.resolve(additionalFields: config.additionalFields)
+        let channel = try makeChannel(for: mode)
+        try await channel.connect(reportingStage: report)
+        do {
+            try await verifyServerMode(mode, on: channel)
+        } catch {
+            channel.disconnect()
+            throw error
+        }
+        redisConnection = channel
+    }
 
-        let conn = RedisPluginConnection(
-            host: config.host,
-            port: config.port,
-            username: config.username.isEmpty ? nil : config.username,
-            password: config.password.isEmpty ? nil : config.password,
-            database: redisDb,
-            sslConfig: sslConfig
-        )
+    private func makeChannel(for mode: RedisConnectionMode) throws -> any RedisCommandChannel {
+        let username = config.username.isEmpty ? nil : config.username
+        let password = config.password.isEmpty ? nil : config.password
+        let database = mode.supportsDatabaseSelection
+            ? RedisDatabaseIndex.resolve(additionalFields: config.additionalFields, database: config.database)
+            : 0
 
-        try await conn.connect(reportingStage: report)
-        redisConnection = conn
+        switch mode {
+        case .standalone:
+            return RedisPluginConnection(
+                host: config.host,
+                port: config.port,
+                username: username,
+                password: password,
+                database: database,
+                sslConfig: config.ssl
+            )
+        case .sentinel:
+            let sentinels = RedisHostListParser.parse(
+                config.additionalFields[RedisSentinelFieldKey.hosts] ?? "",
+                defaultPort: RedisSentinelFieldKey.defaultPort
+            )
+            let group = (config.additionalFields[RedisSentinelFieldKey.masterName] ?? "")
+                .trimmingCharacters(in: .whitespaces)
+            let transport = HiredisSentinelTransport(
+                username: trimmedField(RedisSentinelFieldKey.username),
+                password: trimmedField(RedisSentinelFieldKey.password),
+                sslConfig: config.ssl
+            )
+            return RedisSentinelChannel(
+                resolver: RedisSentinelResolver(sentinels: sentinels, group: group, transport: transport),
+                group: group,
+                username: username,
+                password: password,
+                database: database,
+                sslConfig: config.ssl
+            )
+        case .cluster:
+            let seeds = RedisHostListParser.parse(
+                config.additionalFields[RedisClusterFieldKey.hosts] ?? "",
+                defaultPort: RedisClusterFieldKey.defaultPort
+            )
+            return RedisClusterChannel(
+                seeds: seeds,
+                username: username,
+                password: password,
+                sslConfig: config.ssl
+            )
+        }
+    }
+
+    /// Pointing a data mode at a Sentinel port, or Standalone at a cluster member, connects
+    /// cleanly and then fails on every real command. INFO says which kind of server answered, so
+    /// the mismatch is reported once, at connect, naming the field to change.
+    private func verifyServerMode(_ expected: RedisConnectionMode, on channel: any RedisCommandChannel) async throws {
+        guard let info = try? await channel.executeCommand(["INFO", "server"]).stringValue,
+              let actual = RedisServerInfo.mode(from: info) else { return }
+        let isTunneled = config.additionalFields["preTunnelHost"]?.isEmpty == false
+        guard let message = RedisTopologyDiagnostics.mismatch(
+            expected: expected, actual: actual, isTunneled: isTunneled
+        ) else { return }
+        throw RedisPluginError(code: 0, message: message)
+    }
+
+    private func trimmedField(_ key: String) -> String? {
+        config.additionalFields[key]?.trimmingCharacters(in: .whitespaces).nilIfEmpty
     }
 
     func disconnect() {
@@ -89,10 +151,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-        let reply = try await conn.executeCommand(["PING"])
-        if case .error(let msg) = reply {
-            throw RedisPluginError(code: 3, message: "PING failed: \(msg)")
-        }
+        try await conn.run(["PING"])
+        try await conn.verifyStillPrimary()
     }
 
     // MARK: - Query Execution
@@ -128,40 +188,33 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-
-        let result = try await conn.executeCommand(["INFO", "keyspace"])
-        var keyCounts: [String: Int] = [:]
-        if let info = result.stringValue {
-            for line in info.components(separatedBy: .newlines) {
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard trimmed.hasPrefix("db"),
-                      let colonIndex = trimmed.firstIndex(of: ":") else { continue }
-
-                let dbName = String(trimmed[trimmed.startIndex ..< colonIndex])
-                let statsStr = String(trimmed[trimmed.index(after: colonIndex)...])
-
-                for stat in statsStr.components(separatedBy: ",") {
-                    let parts = stat.components(separatedBy: "=")
-                    if parts.count == 2, parts[0] == "keys", let count = Int(parts[1]) {
-                        keyCounts[dbName] = count
-                        break
-                    }
-                }
-            }
+        guard conn.supportsDatabaseSelection else {
+            let count = try await conn.run(["DBSIZE"]).intValue ?? 0
+            return [PluginTableInfo(name: Self.clusterDatabaseName, type: "TABLE", rowCount: count)]
         }
 
-        let configResult = try await conn.executeCommand(["CONFIG", "GET", "databases"])
-        var maxDatabases = 16
-        if let array = configResult.arrayValue, array.count >= 2, let count = Int(redisReplyToString(array[1])) {
-            maxDatabases = count
-        }
+        let databases = try await databaseCount(on: conn)
+        let result = try await conn.run(["INFO", "keyspace"])
+        let info = result.stringValue ?? ""
 
-        // Return all databases (including empty ones) so users can navigate to them
-        return (0 ..< maxDatabases).map { index in
+        return (0 ..< databases).map { index in
             let dbName = "db\(index)"
-            let keyCount = keyCounts[dbName] ?? 0
-            return PluginTableInfo(name: dbName, type: "TABLE", rowCount: keyCount)
+            let count = RedisServerInfo.keyCount(forDatabase: dbName, in: info) ?? 0
+            return PluginTableInfo(name: dbName, type: "TABLE", rowCount: count)
         }
+    }
+
+    static let clusterDatabaseName = "db0"
+
+    /// A cluster node answers CONFIG GET databases with 1, and refuses SELECT with any other
+    /// index, so the tree shows the one keyspace that exists rather than fifteen that do not.
+    private func databaseCount(on conn: any RedisCommandChannel) async throws -> Int {
+        guard conn.supportsDatabaseSelection else { return 1 }
+        let reply = try await conn.run(["CONFIG", "GET", "databases"])
+        guard let array = reply.arrayValue, array.count >= 2, let count = array[1].intValue, count > 0 else {
+            return 16
+        }
+        return count
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
@@ -196,7 +249,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-        let result = try await conn.executeCommand(["DBSIZE"])
+        let result = try await conn.run(["DBSIZE"])
         return result.intValue
     }
 
@@ -205,7 +258,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
-        let result = try await conn.executeCommand(["DBSIZE"])
+        let result = try await conn.run(["DBSIZE"])
         let keyCount = result.intValue ?? 0
 
         var lines: [String] = [
@@ -247,7 +300,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
-        let result = try await conn.executeCommand(["DBSIZE"])
+        let result = try await conn.run(["DBSIZE"])
         let keyCount = result.intValue ?? 0
 
         return PluginTableMetadata(
@@ -261,12 +314,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-        let result = try await conn.executeCommand(["CONFIG", "GET", "databases"])
-        var maxDatabases = 16
-        if let array = result.arrayValue, array.count >= 2, let count = Int(redisReplyToString(array[1])) {
-            maxDatabases = count
-        }
-        return (0 ..< maxDatabases).map { "db\($0)" }
+        return try await (0 ..< databaseCount(on: conn)).map { "db\($0)" }
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
@@ -276,28 +324,19 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let dbName = database.hasPrefix("db") ? database : "db\(database)"
 
-        let infoResult = try await conn.executeCommand(["INFO", "keyspace"])
+        guard conn.supportsDatabaseSelection else {
+            let count = try await conn.run(["DBSIZE"]).intValue ?? 0
+            return PluginDatabaseMetadata(name: Self.clusterDatabaseName, tableCount: count)
+        }
+
+        let infoResult = try await conn.run(["INFO", "keyspace"])
         guard let infoStr = infoResult.stringValue else {
             return PluginDatabaseMetadata(name: dbName, tableCount: 0)
         }
-
-        var keyCount = 0
-        for line in infoStr.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.hasPrefix("\(dbName):") {
-                let statsStr = (trimmed as NSString).substring(from: dbName.count + 1)
-                for stat in statsStr.components(separatedBy: ",") {
-                    let parts = stat.components(separatedBy: "=")
-                    if parts.count == 2, parts[0] == "keys", let count = Int(parts[1]) {
-                        keyCount = count
-                        break
-                    }
-                }
-                break
-            }
-        }
-
-        return PluginDatabaseMetadata(name: dbName, tableCount: keyCount)
+        return PluginDatabaseMetadata(
+            name: dbName,
+            tableCount: RedisServerInfo.keyCount(forDatabase: dbName, in: infoStr) ?? 0
+        )
     }
 
     // MARK: - Schema Support
@@ -309,21 +348,21 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Transactions
 
-    var supportsTransactions: Bool { true }
+    var supportsTransactions: Bool { redisConnection?.supportsTransactions ?? true }
 
     func beginTransaction() async throws {
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
-        _ = try await conn.executeCommand(["MULTI"])
+        try await conn.run(["MULTI"])
     }
 
     func commitTransaction() async throws {
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
-        _ = try await conn.executeCommand(["EXEC"])
+        try await conn.run(["EXEC"])
     }
 
     func rollbackTransaction() async throws {
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
-        _ = try await conn.executeCommand(["DISCARD"])
+        try await conn.run(["DISCARD"])
     }
 
     // MARK: - Database Switching
@@ -336,7 +375,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         } else if database.lowercased().hasPrefix("db"), let idx = Int(database.dropFirst(2)) {
             dbIndex = idx
         } else {
-            throw RedisPluginError(code: 0, message: "Invalid database index: \(database)")
+            let template = String(localized: "%@ is not a Redis database index.")
+            throw RedisPluginError(code: 0, message: String(format: template, database))
         }
         try await conn.selectDatabase(dbIndex)
     }
@@ -453,7 +493,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func streamScanRows(
-        connection conn: RedisPluginConnection,
+        connection conn: any RedisCommandChannel,
         pattern: String?,
         typeFilter: String? = nil,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
@@ -464,62 +504,29 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             estimatedRowCount: nil
         )))
 
-        var cursor = "0"
+        var cursor = RedisClusterCursor.start
         let batchSize = 200
 
         repeat {
             try Task.checkCancellation()
 
-            var args = ["SCAN", cursor]
-            if let p = pattern { args += ["MATCH", p] }
-            args += ["COUNT", "1000"]
-            if let type = typeFilter { args += ["TYPE", type] }
-
-            let result = try await conn.executeCommand(args)
-
-            guard case .array(let scanResult) = result,
-                  scanResult.count == 2 else {
-                break
-            }
-
-            let nextCursor: String
-            switch scanResult[0] {
-            case .string(let s): nextCursor = s
-            case .status(let s): nextCursor = s
-            case .data(let d): nextCursor = String(data: d, encoding: .utf8) ?? "0"
-            default: nextCursor = "0"
-            }
-            cursor = nextCursor
-
-            guard case .array(let keyReplies) = scanResult[1] else { continue }
-
-            var keys: [String] = []
-            for reply in keyReplies {
-                switch reply {
-                case .string(let k): keys.append(k)
-                case .data(let d):
-                    if let k = String(data: d, encoding: .utf8) { keys.append(k) }
-                default: break
-                }
-            }
-
-            guard !keys.isEmpty else { continue }
+            let page = try await conn.scanKeyspace(
+                cursor: cursor, pattern: pattern, type: typeFilter, count: 1_000
+            )
+            cursor = page.cursor
 
             var batchStart = 0
-            while batchStart < keys.count {
+            while batchStart < page.keys.count {
                 try Task.checkCancellation()
-
-                let batchEnd = min(batchStart + batchSize, keys.count)
-                let batchKeys = Array(keys[batchStart..<batchEnd])
-
+                let batchEnd = min(batchStart + batchSize, page.keys.count)
+                let batchKeys = Array(page.keys[batchStart ..< batchEnd])
                 let rowBatch = try await buildKeySummaryRows(keys: batchKeys, connection: conn)
                 if !rowBatch.isEmpty {
                     continuation.yield(.rows(rowBatch))
                 }
-
                 batchStart = batchEnd
             }
-        } while cursor != "0"
+        } while cursor != RedisClusterCursor.start
 
         continuation.finish()
     }

@@ -36,12 +36,9 @@ final class AdvancedPaneViewModel {
     }
 
     func isFieldVisible(_ field: ConnectionField) -> Bool {
-        guard let rule = field.visibleWhen else { return true }
         let type = coordinator?.value?.network.type ?? .mysql
-        let registry = PluginManager.shared.additionalConnectionFields(for: type)
-        let defaultValue = registry.first { $0.id == rule.fieldId }?.defaultValue ?? ""
-        let currentValue = additionalFieldValues[rule.fieldId] ?? defaultValue
-        return rule.values.contains(currentValue)
+        let values = coordinator?.value?.allAdditionalFieldValues ?? additionalFieldValues
+        return PluginFieldRendering.isFieldVisible(field, type: type, values: values)
     }
 
     func resetForType(_ newType: DatabaseType) {
