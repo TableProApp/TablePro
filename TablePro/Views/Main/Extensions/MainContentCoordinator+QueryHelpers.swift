@@ -100,7 +100,8 @@ extension MainContentCoordinator {
         sql: String,
         connection conn: DatabaseConnection,
         isTruncated: Bool = false,
-        queryParameterValues: [QueryParameter]? = nil
+        queryParameterValues: [QueryParameter]? = nil,
+        anchor: StatementAnchor? = nil
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -117,7 +118,8 @@ extension MainContentCoordinator {
             sql: sql,
             connection: conn,
             isTruncated: isTruncated,
-            queryParameterValues: queryParameterValues
+            queryParameterValues: queryParameterValues,
+            anchor: anchor
         )
     }
 

@@ -45,12 +45,16 @@ final class StatementRunController {
     var sizeLimit = StatementRunController.defaultSizeLimit
     var dialect: SqlDialect = .generic
 
-    /// Called with the SQL the pressed control stands for, read from the document at the moment of the press.
+    /// Called with the SQL the pressed control stands for, read from the document at the moment of the press, and
+    /// where that SQL starts in the document.
     ///
-    /// Text rather than a range, because the caller substrings a different string: the SwiftUI binding the tab holds
-    /// lags the text view, and a range resolved against the wrong one silently truncates. A `DELETE ... WHERE ...`
-    /// cut short is still a statement the driver will accept.
-    var onRun: ((String) -> Bool)?
+    /// The text is passed rather than only the range, because the caller substrings a different string: the SwiftUI
+    /// binding the tab holds lags the text view, and a range resolved against the wrong one silently truncates. A
+    /// `DELETE ... WHERE ...` cut short is still a statement the driver will accept. The offset rides alongside so
+    /// the result can point back at the statement, and it is only ever used through ``StatementAnchor``, which
+    /// re-resolves it against the live query and falls back to matching the statement itself. A range that was a
+    /// moment stale therefore corrects itself rather than sending the caret somewhere arbitrary.
+    var onRun: ((String, Int) -> Bool)?
 
     /// Whether the band is drawn at all.
     ///
@@ -155,10 +159,10 @@ final class StatementRunController {
         return SQLStatementScanner.statementSelectionEnd(after: offset, in: text, dialect: dialect)
     }
 
-    /// The SQL of the statement the caret is in, or `nil` when there is nothing to run there.
+    /// The statement the caret is in and where it starts, or `nil` when there is nothing to run there.
     ///
     /// Capped the same way navigation is, so run-and-advance cannot run without also being able to advance.
-    func statementAtCursor(in controller: TextViewController?) -> String? {
+    func statementAtCursor(in controller: TextViewController?) -> (sql: String, offset: Int)? {
         guard let controller, let textView = controller.textView else { return nil }
         let text = textView.string
         guard (text as NSString).length <= sizeLimit else { return nil }
@@ -170,7 +174,10 @@ final class StatementRunController {
             dialect: dialect
         )
         guard statement.hasContent, statement.contentRange.length > 0 else { return nil }
-        return (text as NSString).substring(with: statement.contentRange)
+        return (
+            (text as NSString).substring(with: statement.contentRange),
+            statement.contentRange.location
+        )
     }
 
     private func statementStart(_ direction: StatementNavigationDirection, from offset: Int, in text: String) -> Int? {
@@ -224,7 +231,10 @@ final class StatementRunController {
             return
         }
 
-        _ = onRun?((text as NSString).substring(with: resolved.contentRange))
+        _ = onRun?(
+            (text as NSString).substring(with: resolved.contentRange),
+            resolved.contentRange.location
+        )
     }
 
     /// The span the band covers, or `nil` when there is nothing to mark.

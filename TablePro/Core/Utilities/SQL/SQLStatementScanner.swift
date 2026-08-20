@@ -42,6 +42,27 @@ enum SQLStatementScanner {
         }
     }
 
+    /// One statement as the driver will receive it, with the span of the text it was taken from.
+    ///
+    /// `sql` is the semicolon-stripped, trimmed form; `range` covers exactly those characters, so a caller that keeps
+    /// the range can find its way back to the statement it ran.
+    ///
+    /// The range is relative to the text the scan was given. A run started from a selection or from a single
+    /// statement scans a fragment, so those callers shift the range onto the tab's whole query with ``offset(by:)``
+    /// before it travels any further. Everything downstream may then assume tab coordinates.
+    struct ExecutableStatement {
+        let sql: String
+        let range: NSRange
+
+        func offset(by delta: Int) -> ExecutableStatement {
+            guard delta != 0 else { return self }
+            return ExecutableStatement(
+                sql: sql,
+                range: NSRange(location: range.location + delta, length: range.length)
+            )
+        }
+    }
+
     /// Every statement in the document, with its span, in document order.
     ///
     /// Unlike ``allStatements(in:dialect:)`` this keeps the empty and comment-only segments, flagged by
@@ -128,21 +149,57 @@ enum SQLStatementScanner {
 
     /// Returns statements with trailing semicolons stripped, for driver execution.
     static func allStatements(in sql: String, dialect: SqlDialect = .generic) -> [String] {
-        var results: [String] = []
-        scan(sql: sql, cursorPosition: nil, dialect: dialect) { rawSQL, _, hasStatementContent in
-            guard hasStatementContent else { return true }
-            var trimmed = rawSQL.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.hasSuffix(";") {
-                trimmed = String(trimmed.dropLast())
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            if !trimmed.isEmpty {
-                results.append(trimmed)
-            }
+        executableStatements(in: sql, dialect: dialect).map(\.sql)
+    }
+
+    /// The same statements ``allStatements(in:dialect:)`` returns, each with its span in the document.
+    ///
+    /// One enumeration produces both, because the alternative is two filters that have to agree and that nothing
+    /// checks. ``navigableStatements(in:dialect:)`` is deliberately not that second filter: it trims only
+    /// ``SqlLexer/isWhitespace`` and keeps the terminating semicolon, while execution trims the wider
+    /// `.whitespacesAndNewlines` and strips one semicolon, so a segment can survive one and not the other. Pointing
+    /// execution at the navigation filter would change which text reaches the driver, which is not a change a
+    /// feature about labelling results is allowed to make.
+    static func executableStatements(in sql: String, dialect: SqlDialect = .generic) -> [ExecutableStatement] {
+        var results: [ExecutableStatement] = []
+        scan(sql: sql, cursorPosition: nil, dialect: dialect) { rawSQL, offset, hasStatementContent in
+            guard hasStatementContent,
+                  let statement = executableStatement(rawSQL: rawSQL, offset: offset) else { return true }
+            results.append(statement)
             return true
         }
         return results
     }
+
+    private static func executableStatement(rawSQL: String, offset: Int) -> ExecutableStatement? {
+        let text = rawSQL as NSString
+        guard var range = trimmedRange(in: text, range: NSRange(location: 0, length: text.length)) else { return nil }
+
+        if text.character(at: range.upperBound - 1) == semicolon {
+            range.length -= 1
+            guard let withoutSemicolon = trimmedRange(in: text, range: range) else { return nil }
+            range = withoutSemicolon
+        }
+
+        return ExecutableStatement(
+            sql: text.substring(with: range),
+            range: NSRange(location: offset + range.location, length: range.length)
+        )
+    }
+
+    /// The span of `range` with `.whitespacesAndNewlines` trimmed off both ends, or `nil` when nothing is left.
+    ///
+    /// Matches what `String.trimmingCharacters(in:)` would produce, but in UTF-16 offsets, so the text and the span
+    /// handed to a caller describe the same characters by construction rather than by two separate calculations.
+    private static func trimmedRange(in text: NSString, range: NSRange) -> NSRange? {
+        let content = CharacterSet.whitespacesAndNewlines.inverted
+        let first = text.rangeOfCharacter(from: content, options: [], range: range)
+        guard first.location != NSNotFound else { return nil }
+        let last = text.rangeOfCharacter(from: content, options: .backwards, range: range)
+        return NSRange(location: first.location, length: last.upperBound - first.location)
+    }
+
+    private static let semicolon: unichar = 59
 
     /// Returns statements preserving trailing semicolons, for display/history/favorites.
     static func allStatementsPreservingSemicolons(in sql: String) -> [String] {

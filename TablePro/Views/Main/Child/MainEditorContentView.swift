@@ -407,6 +407,8 @@ struct MainEditorContentView: View {
                             }
                         },
                         restoredCursorRange: coordinator.restoredCursorRange(for: tab.id),
+                        pendingStatementJump: coordinator.pendingStatementJump(for: tab.id),
+                        onStatementJumpHandled: { coordinator.clearPendingStatementJump(for: tab.id) },
                         restoredFoldRanges: coordinator.foldRanges(for: tab.id),
                         onFoldRangesChanged: { ranges in
                             coordinator.recordFoldRanges(ranges, for: tab.id)
@@ -415,7 +417,7 @@ struct MainEditorContentView: View {
                             coordinator.commandActions?.closeTab()
                         },
                         onExecuteQuery: { coordinator.runQuery() },
-                        onRunStatement: { sql in coordinator.runStatement(sql) },
+                        onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset) },
                         isExecuting: coordinator.tabExecution.isExecuting(tab.id),
                         onExplain: { variant in coordinator.runExplain(variant: variant) },
                         onAIExplain: { text in

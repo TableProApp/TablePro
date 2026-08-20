@@ -16,6 +16,7 @@ private struct PreparedStatement {
     let executableSQL: String
     let parameterValues: [Any?]?
     let rowCap: Int?
+    let anchor: StatementAnchor?
 }
 
 /// What a multi-statement transaction left behind. The results travel out of the lease
@@ -31,7 +32,12 @@ extension QueryExecutionCoordinator {
         QueryExecutor.detectAndReconcileParameters(sql: sql, existing: existing)
     }
 
-    func executeQueryWithParameters(_ sql: String, parameters: [QueryParameter], bypassRowLimit: Bool = false) {
+    func executeQueryWithParameters(
+        _ sql: String,
+        parameters: [QueryParameter],
+        bypassRowLimit: Bool = false,
+        anchor: StatementAnchor? = nil
+    ) {
         guard let (_, index) = parent.tabManager.selectedTabAndIndex else { return }
 
         let missing = parameters.filter {
@@ -63,7 +69,8 @@ extension QueryExecutionCoordinator {
             parameters: conversion.values,
             originalParameters: parameters,
             bypassRowLimit: bypassRowLimit,
-            originalSQL: sql
+            originalSQL: sql,
+            anchor: anchor
         )
     }
 
@@ -74,7 +81,8 @@ extension QueryExecutionCoordinator {
         parameters: [Any?],
         originalParameters: [QueryParameter],
         bypassRowLimit: Bool = false,
-        originalSQL: String? = nil
+        originalSQL: String? = nil,
+        anchor: StatementAnchor? = nil
     ) {
         guard let (selectedTab, index) = parent.tabManager.selectedTabAndIndex,
               !parent.tabExecution.isExecuting(selectedTab.id) else { return }
@@ -166,7 +174,8 @@ extension QueryExecutionCoordinator {
                     claim: claim,
                     originalParameters: originalParameters,
                     nativeParameters: parameters,
-                    originalSQL: originalSQL
+                    originalSQL: originalSQL,
+                    anchor: anchor
                 )
 
                 if isEditable, let tableName {
@@ -216,7 +225,7 @@ extension QueryExecutionCoordinator {
     /// transaction and its rollback reach the same handle. Result sets, history and the
     /// error sheet are produced afterwards, outside the lease.
     func executeMultipleStatementsWithParameters(
-        _ statements: [String],
+        _ statements: [SQLStatementScanner.ExecutableStatement],
         parameters: [QueryParameter],
         bypassRowLimit: Bool = false
     ) {
@@ -261,10 +270,10 @@ extension QueryExecutionCoordinator {
         let totalCount = statements.count
         let tabType = parent.tabManager.tabs[index].tabType
 
-        let transactionKind = OperationKind.worst(of: statements, databaseType: conn.type)
-        let prepared = statements.map { statementSQL in
+        let transactionKind = OperationKind.worst(of: statements.map(\.sql), databaseType: conn.type)
+        let prepared = statements.map { statement in
             prepareStatement(
-                sql: statementSQL,
+                statement: statement,
                 parameters: parameters,
                 style: style,
                 tabType: tabType,
@@ -330,12 +339,13 @@ extension QueryExecutionCoordinator {
     }
 
     private func prepareStatement(
-        sql: String,
+        statement: SQLStatementScanner.ExecutableStatement,
         parameters: [QueryParameter],
         style: ParameterStyle,
         tabType: TabType,
         bypassRowLimit: Bool
     ) -> PreparedStatement {
+        let sql = statement.sql
         let parameterNames = parameters.isEmpty ? [] : SQLParameterExtractor.extractParameters(from: sql)
         let conversion = parameterNames.isEmpty
             ? nil
@@ -345,7 +355,8 @@ extension QueryExecutionCoordinator {
             originalSQL: sql,
             executableSQL: executableSQL,
             parameterValues: conversion?.values,
-            rowCap: resolveRowCap(sql: executableSQL, tabType: tabType, bypassLimit: bypassRowLimit)
+            rowCap: resolveRowCap(sql: executableSQL, tabType: tabType, bypassLimit: bypassRowLimit),
+            anchor: StatementAnchor(statement)
         )
     }
 
@@ -450,7 +461,8 @@ extension QueryExecutionCoordinator {
                 index: index,
                 baseQuery: statement.executableSQL,
                 baseQueryParameterValues: statement.parameterValues?.map { $0 as? String },
-                tabId: tabId
+                tabId: tabId,
+                anchor: statement.anchor
             ))
             recordStatementHistory(
                 sql: statement.originalSQL,
@@ -474,7 +486,8 @@ extension QueryExecutionCoordinator {
         claim: TabExecutionClaim,
         originalParameters: [QueryParameter],
         nativeParameters: [Any?],
-        originalSQL: String? = nil
+        originalSQL: String? = nil,
+        anchor: StatementAnchor? = nil
     ) async {
         await MainActor.run { [weak self] in
             guard let self else { return }
@@ -517,7 +530,8 @@ extension QueryExecutionCoordinator {
                 connection: connection,
                 isTruncated: fetchResult.isTruncated,
                 queryParameterValues: originalParameters,
-                historySQL: originalSQL
+                historySQL: originalSQL,
+                anchor: anchor
             )
 
             let parameterValues = nativeParameters.map { $0 as? String }
@@ -535,21 +549,42 @@ extension QueryExecutionCoordinator {
         connection: DatabaseConnection,
         tabId: UUID,
         claim: TabExecutionClaim,
-        statements: [String],
+        statements: [SQLStatementScanner.ExecutableStatement],
         executedCount: Int,
         totalCount: Int,
         cumulativeTime: TimeInterval,
         failedSQL: String?,
         resultSets: inout [ResultSet]
     ) async {
-        let failedStmtIndex = executedCount + 1
-        let contextMsg = "Statement \(failedStmtIndex)/\(totalCount) failed: " + errorDescription
+        /// A statement failure knows which statement it was: `executedCount` counts the ones that finished, so the
+        /// next one is the one that threw. A commit failure knows no such thing. Every statement ran and the
+        /// transaction failed on the way out, so numbering it `executedCount + 1` invented a statement past the end
+        /// of the script and then blamed the last statement that had actually succeeded, which went to the error
+        /// sheet, to Fix with AI, and into history a second time as a failure it never was.
+        let failedStatement = executedCount < statements.count ? statements[executedCount] : nil
+        let contextMsg: String
+        let errorLabel: String
+        if failedSQL != nil {
+            let position = min(executedCount + 1, totalCount)
+            contextMsg = String(
+                format: String(localized: "Statement %1$d/%2$d failed: %3$@"),
+                position, totalCount, errorDescription
+            )
+            errorLabel = String(format: String(localized: "Error %d"), position)
+        } else {
+            contextMsg = String(
+                format: String(localized: "The transaction could not be committed: %@"),
+                errorDescription
+            )
+            errorLabel = String(localized: "Error")
+        }
 
-        let errorRS = ResultSet(label: "Error \(failedStmtIndex)")
+        let errorRS = ResultSet(label: errorLabel)
         errorRS.errorMessage = contextMsg
+        errorRS.statementAnchor = failedSQL == nil ? nil : failedStatement.map(StatementAnchor.init)
         resultSets.append(errorRS)
 
-        let failedStatement = failedSQL ?? statements[min(executedCount, totalCount - 1)]
+        let failedStatementSQL = failedSQL ?? failedStatement?.sql
         let capturedResultSets = resultSets
         await MainActor.run { [weak self] in
             guard let self else { return }
@@ -564,7 +599,7 @@ extension QueryExecutionCoordinator {
             parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
             parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.execution.errorMessage = contextMsg
-                tab.execution.errorQuery = failedStatement
+                tab.execution.errorQuery = failedStatementSQL ?? ""
                 tab.execution.executionTime = cumulativeTime
                 tab.execution.lastExecutedAt = Date()
 
@@ -580,7 +615,9 @@ extension QueryExecutionCoordinator {
                 parent.announceQueryError(contextMsg)
             }
 
-            let rawSQL = failedStatement
+            /// Only a statement that actually failed goes to history. A commit failure would otherwise write the
+            /// last statement that succeeded in a second time, marked as a failure.
+            guard let rawSQL = failedStatementSQL else { return }
             let recordSQL = rawSQL.hasSuffix(";") ? rawSQL : rawSQL + ";"
             recordHistory(
                 QueryHistoryRecordRequest(

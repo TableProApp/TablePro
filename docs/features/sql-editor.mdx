@@ -121,6 +121,15 @@ When the cap trims a result, the status bar reads **Showing N rows** with a **Fe
 Results appear in the data grid below the editor with row count and execution time. Large result sets are paginated.
 
 - **Result tabs**: every result gets a tab above the grid; multi-statement runs produce one tab per statement. Tabs show in JSON view too. Switch with `Cmd+Option+[` / `Cmd+Option+]`, close with `Cmd+Shift+W`. Hover a tab to see its query.
+- **Tab names**: a result is named after the table it came from. When there is no single table, it is named after the statement instead, and a comment written above the statement is used as the name in preference to the SQL:
+
+    ```sql
+    -- monthly totals
+    SELECT count(*) FROM orders;
+    ```
+
+    names its result tab `monthly totals`.
+- **Back to the statement**: picking a result moves the editor cursor to the statement that produced it, and unfolds it if you had it collapsed. Picking the result already showing does nothing, so you can click between pinned results to compare them without the editor moving under you. A statement you have since edited away leaves the cursor where it is.
 - **Pinning**: click the pin on the right of a result tab, press `Cmd+Option+P`, or right-click the tab and choose **Pin Result**. The next query lands in a new tab instead of overwriting the pinned one. Pinned results move to the front of the strip and cannot be closed or cleared until unpinned.
 - **Panel**: toggle the results panel with `Cmd+Option+R` or the toolbar button; it auto-expands when a query executes. The toolbar trash button clears the query and results together; to keep the query, right-click the results and choose **Clear Results**.
 - **Errors**: a red banner above the results shows the database error message with a **Fix with AI** button.

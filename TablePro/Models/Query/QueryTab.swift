@@ -73,6 +73,18 @@ struct QueryTab: Identifiable, Equatable {
     var restoredPageSize: Int?
     var restoredCursorOffset: Int?
     var restoredCursorLength: Int?
+
+    /// A statement the reader has asked to be taken to, set when they select the result it produced.
+    ///
+    /// Deliberately not `restoredCursorOffset`. That pair means "the selection this tab was left with, to apply once
+    /// when its editor mounts": the editor refuses it after its services are installed, and the tab-switch capture
+    /// only records a caret while both are nil, so borrowing them would make the second jump do nothing and stop the
+    /// switch capture forever. This is an event on a mounted editor, and it is cleared the moment one consumes it.
+    ///
+    /// An anchor rather than a range, because it is resolved against the editor's own text, which the tab's binding
+    /// can lag behind.
+    var pendingStatementJump: StatementAnchor?
+
     /// The regions the reader has collapsed in this tab. The editor is a view onto this, not its owner.
     var collapsedFoldRanges: [Range<Int>]?
 
