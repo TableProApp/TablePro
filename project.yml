@@ -177,7 +177,7 @@ targets:
       - package: swift-certificates
         product: X509
       - package: TableProCore
-        products: [TableProAnalytics, TableProImport, TableProSyncTransport]
+        products: [TableProAnalytics, TableProImport, TableProNumberFormatting, TableProSyncTransport]
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -403,7 +403,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProMSSQLCore]
+        products: [TableProMSSQLCore, TableProNumberFormatting]
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1
@@ -514,6 +514,9 @@ targets:
     templateAttributes:
       folder: ClickHouseDriverPlugin
       principalClass: ClickHousePlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
 
   RedisDriver:
     templates: [DriverPlugin]
@@ -602,6 +605,9 @@ targets:
     templateAttributes:
       folder: JSONImportPlugin
       principalClass: JSONImportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.JSONImportPlugin
@@ -628,6 +634,9 @@ targets:
     templateAttributes:
       folder: BeancountDriverPlugin
       principalClass: BeancountPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
     settings:
       base:
         OTHER_LDFLAGS:
@@ -702,6 +711,9 @@ targets:
     templateAttributes:
       folder: DynamoDBDriverPlugin
       principalClass: DynamoDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
 
   DamengDriver:
     templates: [DriverPlugin]
@@ -763,6 +775,9 @@ targets:
     templateAttributes:
       folder: ElasticsearchDriverPlugin
       principalClass: ElasticsearchPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
 
   EtcdDriverPlugin:
     templates: [DriverPlugin]
@@ -819,6 +834,9 @@ targets:
     templateAttributes:
       folder: MongoDBDriverPlugin
       principalClass: MongoDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -860,6 +878,9 @@ targets:
     templateAttributes:
       folder: SnowflakeDriverPlugin
       principalClass: SnowflakePlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
 
   SurrealDBDriverPlugin:
     templates: [DriverPlugin]

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProNumberFormatting
 import TableProPluginKit
 
 struct ElasticsearchColumn: Equatable {
@@ -140,7 +141,10 @@ enum ElasticsearchMappingFlattener {
         case let string as String:
             return .text(string)
         case let number as NSNumber:
-            return .text(stringFromNumber(number))
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return .text(number.boolValue ? "true" : "false")
+            }
+            return .text(NumberText.text(for: number))
         case let array as [Any]:
             return .text(serializeJson(array))
         case let dict as [String: Any]:
@@ -150,18 +154,8 @@ enum ElasticsearchMappingFlattener {
         }
     }
 
-    private static func stringFromNumber(_ number: NSNumber) -> String {
-        if CFGetTypeID(number) == CFBooleanGetTypeID() {
-            return number.boolValue ? "true" : "false"
-        }
-        return number.stringValue
-    }
-
     private static func serializeJson(_ value: Any) -> String {
-        guard JSONSerialization.isValidJSONObject(value),
-              let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
-              let json = String(data: data, encoding: .utf8)
-        else {
+        guard let json = NumberText.json(from: value) else {
             return String(describing: value)
         }
         if (json as NSString).length > maxNestedJsonLength {

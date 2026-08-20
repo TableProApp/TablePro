@@ -11,6 +11,7 @@ import AppKit
 import Compression
 import Foundation
 import os
+import TableProNumberFormatting
 import TableProPluginKit
 
 struct SnowflakeQueryResult: Sendable {
@@ -836,7 +837,7 @@ final class SnowflakeConnection: @unchecked Sendable {
     private static func box(_ value: Any) -> PluginCellValueBox {
         if value is NSNull { return .null }
         if let string = value as? String { return .text(string) }
-        if let number = value as? NSNumber { return .text(number.stringValue) }
+        if let number = value as? NSNumber { return .text(NumberText.text(for: number)) }
         return .text(String(describing: value))
     }
 
