@@ -107,7 +107,6 @@ struct TableStructureView: View {
     @State var structureColumnLayouts: [StructureTab: ColumnLayoutState] = [:]
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
-    @State private var footerOwnerId = UUID()
 
     init(
         tableName: String,
@@ -147,15 +146,14 @@ struct TableStructureView: View {
             Divider()
             contentArea
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            listFooter
         }
         .task(loadInitialData)
         .onChange(of: selectedRows) { _, newRows in
             selectionState.indices = newRows
-            publishFooterState()
         }
         .onChange(of: selectedTab) { _, newValue in
             onSelectedTabChanged(newValue)
-            publishFooterState()
         }
         .onChange(of: columns) { onColumnsChanged() }
         .onChange(of: indexes) { onIndexesChanged() }
@@ -193,12 +191,10 @@ struct TableStructureView: View {
             actionHandler.removeRow = { self.gridDelegate.dataGridDeleteRows(self.selectedRows) }
             actionHandler.refresh = { self.onRefreshData() }
             coordinator?.structureActions = actionHandler
-            publishFooterState()
         }
         .onDisappear {
             coordinator?.toolbarState.hasStructureChanges = false
             coordinator?.structureActions = nil
-            coordinator?.structureFooterState.deactivate(owner: footerOwnerId)
             if coordinator?.inspectorRowSource === gridDelegate {
                 coordinator?.inspectorRowSource = nil
             }
@@ -259,22 +255,32 @@ struct TableStructureView: View {
         .padding()
     }
 
-    // MARK: - Footer state (rendered by MainStatusBarView)
+    // MARK: - List footer
 
-    private func publishFooterState() {
-        guard let footer = coordinator?.structureFooterState else { return }
-        guard connection.type.supportsSchemaEditing,
-              let labels = footerLabels(for: selectedTab) else {
-            footer.deactivate(owner: footerOwnerId)
-            return
+    /// Add and remove sit directly beneath the list they act on, which is where macOS puts a list's
+    /// own +/- pair. Routing them into the window's status bar instead needed a shared owner-guarded
+    /// state object to work out which structure view the buttons currently belonged to.
+    ///
+    /// This strip is the window's bottom bar while the structure editor is on screen, so it wears the
+    /// same chrome and is always present. A sub-tab that edits nothing, DDL and partitions, still
+    /// gets the strip, because taking it away would move the whole editor up by its height.
+    private var listFooter: some View {
+        HStack(spacing: 0) {
+            if connection.type.supportsSchemaEditing, let labels = footerLabels(for: selectedTab) {
+                AddRemoveControlGroup(
+                    addLabel: labels.add,
+                    removeLabel: labels.remove,
+                    canAdd: canAdd(for: selectedTab),
+                    canRemove: canRemove(for: selectedTab),
+                    addIdentifier: "structure-footer-add",
+                    removeIdentifier: "structure-footer-remove",
+                    onAdd: { gridDelegate.dataGridAddRow() },
+                    onRemove: { gridDelegate.dataGridDeleteRows(selectedRows) }
+                )
+            }
+            Spacer(minLength: 0)
         }
-        footer.update(
-            owner: footerOwnerId,
-            canAdd: canAdd(for: selectedTab),
-            canRemove: canRemove(for: selectedTab),
-            addLabel: labels.add,
-            removeLabel: labels.remove
-        )
+        .statusBarChrome()
     }
 
     private func canAdd(for tab: StructureTab) -> Bool {

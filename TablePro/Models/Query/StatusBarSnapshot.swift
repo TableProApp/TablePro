@@ -10,7 +10,14 @@ struct StatusBarSnapshot: Equatable {
     let tabType: TabType?
     let hasRows: Bool
     let hasColumns: Bool
+    /// Rows held in the loaded page buffer.
     let rowCount: Int
+    /// Rows the grid is actually showing, which a per-column value filter narrows without re-querying.
+    ///
+    /// Kept apart from `rowCount` because selection indices are display positions: counting a
+    /// selection against the loaded buffer reported "3 of 100 rows selected" for a grid showing three.
+    let displayRowCount: Int
+    let isValueFiltered: Bool
     let hasTableName: Bool
     let pagination: PaginationState
     let statusMessage: String?
@@ -21,6 +28,8 @@ struct StatusBarSnapshot: Equatable {
         hasRows: Bool,
         hasColumns: Bool,
         rowCount: Int,
+        displayRowCount: Int? = nil,
+        isValueFiltered: Bool = false,
         hasTableName: Bool,
         pagination: PaginationState,
         statusMessage: String?
@@ -30,18 +39,24 @@ struct StatusBarSnapshot: Equatable {
         self.hasRows = hasRows
         self.hasColumns = hasColumns
         self.rowCount = rowCount
+        self.displayRowCount = displayRowCount ?? rowCount
+        self.isValueFiltered = isValueFiltered
         self.hasTableName = hasTableName
         self.pagination = pagination
         self.statusMessage = statusMessage
     }
 
-    init(tab: QueryTab?, tableRows: TableRows?) {
+    init(tab: QueryTab?, tableRows: TableRows?, displayRowCount: Int? = nil) {
+        let loaded = tableRows?.rows.count ?? 0
+        let displayed = displayRowCount ?? loaded
         self.init(
             tabId: tab?.id,
             tabType: tab?.tabType,
             hasRows: !(tableRows?.rows.isEmpty ?? true),
             hasColumns: !(tableRows?.columns.isEmpty ?? true),
-            rowCount: tableRows?.rows.count ?? 0,
+            rowCount: loaded,
+            displayRowCount: displayed,
+            isValueFiltered: displayed != loaded,
             hasTableName: tab?.tableContext.tableName != nil,
             pagination: tab?.pagination ?? PaginationState(),
             statusMessage: tab?.execution.statusMessage

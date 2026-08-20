@@ -40,7 +40,7 @@ final class PaginationCoordinator {
     }
 
     func goToPage(_ page: Int) {
-        paginateIfPossible(where: { $0.isLastPageKnown && page > 0 && page <= $0.totalPages }) { $0.goToPage(page) }
+        paginateIfPossible(where: { $0.hasRowCountTotal && page > 0 }) { $0.goToPage(page) }
     }
 
     func updatePageSize(_ newSize: Int) {
@@ -48,8 +48,15 @@ final class PaginationCoordinator {
         paginateIfPossible { $0.updatePageSize(newSize) }
     }
 
+    /// Only ever sized from a real count.
+    ///
+    /// It used to accept the driver's estimate, so a table MySQL guessed at 420,000 rows loaded
+    /// `LIMIT 420000` and silently dropped the rest while the bar reported the page as complete.
+    /// `Count Exactly` in the status bar is the route to an exact total, and it sits next to the
+    /// estimate that makes this unavailable.
     func showAllRows() {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
+              tab.pagination.hasExactRowCount,
               let total = tab.pagination.totalRowCount, total > 0 else { return }
 
         let tabId = tab.id
@@ -131,6 +138,7 @@ final class PaginationCoordinator {
     func cancelCurrentQuery() {
         parent.cancelInFlightQueryTask()
         parent.cancelAllRowCountTasks()
+        parent.releaseAllExactCounts()
         parent.tabExecution.invalidateAll()
         parent.toolbarState.setExecuting(false)
         for idx in parent.tabManager.tabs.indices
@@ -167,6 +175,7 @@ final class PaginationCoordinator {
 
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let token = UUID()
+        parent.claimExactCount(for: tabId, token: token)
         let task = Task(priority: .userInitiated) { [parent] in
             let count = await Self.exactRowCount(
                 scope: scope,
@@ -176,12 +185,20 @@ final class PaginationCoordinator {
                 countSQL: countSQL
             )
 
-            guard !Task.isCancelled else { return }
-            guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
+            /// The flag says a count is running, so it has to clear on every way out. Returning
+            /// early on cancellation left it set, and a page turn cancels this task, so turning a
+            /// page during a long COUNT(*) used to leave a spinner that never stopped and a
+            /// `Count Exactly` that never came back for that tab.
+            let isCurrent = !Task.isCancelled && parent.tabExecution.isSameContent(contentEpoch, for: tabId)
+            /// Cancelling through `Cmd+.` clears the flag and lets a second count start, so a late
+            /// first task would otherwise stop the second one's spinner while its query still runs.
+            let ownsIndicator = parent.releaseExactCount(for: tabId, token: token)
             parent.clearRowCountTask(for: tabId, token: token)
             parent.tabManager.mutate(tabId: tabId) { tab in
-                tab.pagination.isCountingExact = false
-                guard let count, count >= 0 else { return }
+                if ownsIndicator {
+                    tab.pagination.isCountingExact = false
+                }
+                guard isCurrent, let count, count >= 0 else { return }
                 tab.pagination.totalRowCount = count
                 tab.pagination.isApproximateRowCount = false
             }

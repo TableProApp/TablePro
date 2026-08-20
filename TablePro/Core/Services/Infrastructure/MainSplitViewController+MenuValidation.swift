@@ -265,6 +265,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         if action == #selector(toggleSidebar(_:)) || action == #selector(toggleInspector(_:)) {
             return currentPane == .content
         }
+        if action == #selector(setResultView(_:)) { return canShowResultView(menuItem) }
         if action == #selector(requestDisconnect) { return canDisconnect }
         if action == #selector(retryConnection) { return canReconnect }
         return Self.isEnabled(action, context: menuValidationContext)
@@ -309,6 +310,8 @@ extension MainSplitViewController: NSMenuItemValidation {
                 commandActions?.openContainerSwitcherTitle ?? String(localized: "Open Database..."),
                 on: menuItem
             )
+        case #selector(setResultView(_:)):
+            setState(isCurrentResultView(menuItem) ? .on : .off, on: menuItem)
         case #selector(useFlatSidebarLayout(_:)):
             setState(commandActions?.sidebarLayout == .flat ? .on : .off, on: menuItem)
         case #selector(useTreeSidebarLayout(_:)):
@@ -316,6 +319,19 @@ extension MainSplitViewController: NSMenuItemValidation {
         default:
             return
         }
+    }
+
+    /// The item carries its mode in `representedObject`, so enablement has to see the item rather
+    /// than the selector the shared table keys on.
+    private func canShowResultView(_ menuItem: NSMenuItem) -> Bool {
+        guard let raw = menuItem.representedObject as? String,
+              let mode = ResultsViewMode(rawValue: raw) else { return false }
+        return commandActions?.availableResultsViewModes.contains(mode) ?? false
+    }
+
+    private func isCurrentResultView(_ menuItem: NSMenuItem) -> Bool {
+        guard let raw = menuItem.representedObject as? String else { return false }
+        return commandActions?.resultsViewMode?.rawValue == raw
     }
 
     private func setTitle(_ key: String.LocalizationValue, on menuItem: NSMenuItem) {

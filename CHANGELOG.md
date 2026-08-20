@@ -19,9 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Cmd+F` on a table tab opens a find bar over the results. Type a term and the matching cell is highlighted and scrolled to; `Return` and `Cmd+G` step forward, `Cmd+Shift+G` steps back, `Escape` clears the term and then closes the bar. Matching ignores case and accents and runs over the text as displayed, skipping binary and spatial columns. The counter always says what it searched, reading "3 of 12 on this page" while rows remain unfetched and "3 of 12" once everything is loaded, so a result is never mistaken for an answer about the whole table. When nothing matches on the page and more rows exist, Search All Rows turns the term into a server-side filter.
 - The Execute button's menu in the SQL editor offers Execute All Statements, alongside the `Cmd+Shift+Enter` shortcut and the Query menu. Running every statement in a tab no longer means selecting the whole tab first. (#2230)
 - Double-click a table in the object browser, or press `Return` on it, to keep its tab. Clicking a table opens it in a preview tab that the next click reuses, and until now nothing said "keep this one", so browsing several tables left them all fighting over the first tab. Keeping a tab means the next table you click opens in its own, and double-clicking a table that is already open switches back to its tab rather than making a second one. (#2235)
+- **View > Result View** switches the results pane between Data, Structure, JSON and Chart from the menu bar. JSON and Chart mode used to be reachable by mouse alone.
 
 ### Changed
 
+- The status bar under the results was rebuilt. It now says what you are looking at and holds the controls that change what you see, on a bar of one fixed height that no longer grows and shrinks as a result arrives. The row count sits on the left instead of drifting off centre, the buttons line up at one height, and the controls on the right hold their place when you change result mode. The Data / Structure / JSON / Chart switcher moved above the result, where it sizes to its own labels instead of a fixed width that clipped every translation longer than English. Add Row moved to the toolbar, and the structure editor's add and remove buttons moved directly under the list they act on.
+- Row counts read correctly in every language. One sentence used to be assembled from seven separate phrases, so English said "1 rows" and Vietnamese changed its word for "row" depending on which phrase was in play. Numbers in the same sentence are also grouped the same way now, instead of showing "4975001-4980000 of ~5.000.000 rows".
+- The row count follows what the grid is showing. With a column value filter on, selecting all three visible rows read "3 of 100 rows selected", counting rows you could not see.
+- The status bar keeps its row count on an empty result. It used to disappear entirely, so a filter that matched nothing left you with no confirmation that the query had run.
+- The rows-per-page menu accepts a locale-formatted number. Typing back the "1,000" shown on the button did nothing, because the field only read plain digits. It also says the range it will accept instead of silently ignoring what it will not.
+- While the total row count is only an estimate, the page indicator marks it as one and **Last** and **All rows** stay unavailable until you run **Count Exactly**.
 - The iOS Shortcuts documentation says which app build each action needs and where to find the full action list, so a Mac release note no longer reads as though the iPhone app already has them.
 - `Cmd+F` on a table tab used to toggle the filter panel, which meant it closed the panel when it was already open and never searched anything. The filter panel keeps `Cmd+Option+F` and its funnel button in the status bar.
 - Find Next and Find Previous work on the data grid when its find bar is open, instead of staying dimmed on a table tab.
@@ -33,6 +40,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Setting a custom rows-per-page value large enough to overflow no longer crashes TablePro.
+- Changing the rows-per-page value on any page but the first no longer strands you. Picking 100 while on page 3 of 20 rows left the page indicator reading "1" with First and Previous dimmed, while the grid showed rows 41 to 140.
+- Rows past a driver's row-count estimate are reachable. On a table MySQL estimated at 420,000 rows but which held 500,000, Next and Last went dim at the estimate and the last 80,000 rows could not be opened.
+- **All rows** loads all of them. Sized from an estimate, it ran a query for the estimated number and quietly left the rest behind while the status bar reported the page as complete.
+- Turning a page while **Count Exactly** is running no longer leaves a spinner that never stops. The count was cancelled without clearing its own flag, so that tab could never be counted again.
+- A page number typed for one tab is no longer applied to another. The rows-per-page and go-to-page popovers kept what you typed across a tab switch.
+- A table shows the range it actually loaded. A table whose driver estimated a million rows but which returned twelve read "1-1000 of ~1,000,000 rows".
+- A fresh query tab no longer shows an empty sliver of a status bar that jumps to full height, shifting the grid up, the first time you run something.
+- VoiceOver reads the applied filter count on the Filters button, and no longer reads the separator dots in the status bar as elements of their own.
 - JSON result mode shows the rows the grid is showing, in the same order, and a row you selected in Data mode resolves to that same row. With a column value filter on, it listed every loaded row in fetch order and a selection pointed somewhere else. The row inspector had the same problem in JSON mode, and editing a field there wrote the change to the wrong row. (#2251)
 - Rows you marked for deletion no longer appear in JSON result mode. They kept rendering unchanged, so Save lit up with nothing visibly different. The count line says how many are held back. Copy as JSON in the grid still copies every row you selected. (#2251)
 - Every restored tab hides the columns you hid for its table, not just the tab that was in front. The others came back showing every column, and hiding one there wrote that single column over the table's saved set, losing the rest.

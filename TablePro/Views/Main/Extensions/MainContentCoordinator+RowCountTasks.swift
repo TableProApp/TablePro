@@ -16,6 +16,25 @@ extension MainContentCoordinator {
         rowCountTasks[tabId] = (token, task)
     }
 
+    /// Claims the `isCountingExact` spinner for one user-requested count.
+    ///
+    /// The task slot cannot answer this, because every page turn launches an automatic count that
+    /// takes the slot over. Cancelling through `Cmd+.` releases the claim, so the count the user
+    /// starts next owns the spinner and a late predecessor cannot stop it.
+    internal func claimExactCount(for tabId: UUID, token: UUID) {
+        exactCountOwners[tabId] = token
+    }
+
+    internal func releaseExactCount(for tabId: UUID, token: UUID) -> Bool {
+        guard exactCountOwners[tabId] == token else { return false }
+        exactCountOwners.removeValue(forKey: tabId)
+        return true
+    }
+
+    internal func releaseAllExactCounts() {
+        exactCountOwners.removeAll()
+    }
+
     /// Drops a finished task's handle, and only its own. A superseded task still reaches its
     /// completion path, so without the token it would clear the successor that replaced it and
     /// leave that successor with nothing able to cancel it.
