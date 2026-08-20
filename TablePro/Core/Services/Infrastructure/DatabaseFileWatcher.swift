@@ -71,14 +71,14 @@ final class DatabaseFileWatcher {
             queue: .global(qos: .utility)
         )
 
-        source.setEventHandler { [weak self] in
+        source.setEventHandler { @Sendable [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.handleEvent(connectionId: connectionId)
             }
         }
 
-        source.setCancelHandler {
+        source.setCancelHandler { @Sendable in
             close(fd)
         }
 
