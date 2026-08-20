@@ -60,6 +60,7 @@ final class MetadataConnectionPool {
     private var pending: [Key: Task<Void, Error>] = [:]
     private let maxPerConnection = 6
     private let operationTimeoutSeconds: Double = 15
+    private let preparationTimeoutSeconds: Double = 60
 
     private init() {}
 
@@ -155,9 +156,12 @@ final class MetadataConnectionPool {
         )
         do {
             try await Self.connect(driver, database: plan.connectDatabase, timeoutSeconds: operationTimeoutSeconds)
-            try? await driver.applyQueryTimeout(AppSettingsManager.shared.general.queryTimeoutSeconds)
-            await DatabaseManager.shared.executeStartupCommands(
-                session.connection.startupCommands, on: driver, connectionName: session.connection.name
+            try await Self.prepareSession(
+                driver,
+                queryTimeoutSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds,
+                startupCommands: session.connection.startupCommands,
+                connectionName: session.connection.name,
+                timeoutSeconds: preparationTimeoutSeconds
             )
             if let database = plan.switchDatabase {
                 try await Self.switchDatabase(driver, to: database, timeoutSeconds: operationTimeoutSeconds)
@@ -218,7 +222,30 @@ final class MetadataConnectionPool {
             timeoutSeconds: timeoutSeconds,
             timeoutMessage: String(format: String(localized: "Switching to schema '%@' timed out."), schema)
         ) {
-            try await switchable.switchSchema(to: schema)
+            try await switchable.switchSchemaIfNeeded(to: schema)
+        }
+    }
+
+    /// The startup commands are the user's own SQL and the query timeout can be a statement of its own,
+    /// so neither belongs under the single-round-trip budget the other steps use. They still need a
+    /// deadline: a hang here never resolves `pending[key]`, and a later reader joining that entry stays
+    /// suspended with no error and no log line at all.
+    static func prepareSession(
+        _ driver: DatabaseDriver,
+        queryTimeoutSeconds: Int,
+        startupCommands: String?,
+        connectionName: String,
+        timeoutSeconds: Double
+    ) async throws {
+        try await bounded(
+            driver: driver,
+            timeoutSeconds: timeoutSeconds,
+            timeoutMessage: String(localized: "Preparing the metadata connection timed out.")
+        ) {
+            try? await driver.applyQueryTimeout(queryTimeoutSeconds)
+            await DatabaseManager.shared.executeStartupCommands(
+                startupCommands, on: driver, connectionName: connectionName
+            )
         }
     }
 

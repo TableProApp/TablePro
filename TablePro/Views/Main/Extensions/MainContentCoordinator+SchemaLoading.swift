@@ -8,6 +8,16 @@ import Foundation
 import os
 
 extension MainContentCoordinator {
+    /// Whether the connection is far enough along for the object list to load.
+    ///
+    /// A session is registered with a `.connecting` status before its driver connects, so a browse
+    /// scope exists well before the connection does. The driver is the first thing that only exists
+    /// once the connect succeeded, and every schema load and every failure decision here reads this
+    /// one predicate: the two disagreeing is what turned a failed load into an endless retry (#2294).
+    private var hasLiveDriver: Bool {
+        services.databaseManager.driver(for: connectionId) != nil
+    }
+
     /// Reload the schema once the connection lands.
     ///
     /// The window is created before `ensureConnected` runs, so the first schema load can
@@ -15,7 +25,7 @@ extension MainContentCoordinator {
     /// `databaseDidConnect` can also fire before this is armed, so arming is idempotent and
     /// loads immediately when the session is already there.
     internal func armPostConnectSchemaLoad() {
-        guard services.databaseManager.browseScope(for: connectionId) == nil else {
+        guard !hasLiveDriver else {
             postConnectCancellable = nil
             loadSchemaForNewSession()
             return
@@ -39,8 +49,16 @@ extension MainContentCoordinator {
 
     func loadSchema() async {
         let connection = connection
-        guard let scope = services.databaseManager.browseScope(for: connectionId) else {
+        guard hasLiveDriver else {
             armPostConnectSchemaLoad()
+            return
+        }
+        /// A live driver means a live session, so a missing scope here cannot happen. Arming on it
+        /// anyway would re-enter this method immediately, which is the loop this method exists without.
+        guard let scope = services.databaseManager.browseScope(for: connectionId) else {
+            Self.logger.error(
+                "[schema] no browse scope for a connected session connId=\(self.connectionId, privacy: .public)"
+            )
             return
         }
         do {
@@ -53,12 +71,20 @@ extension MainContentCoordinator {
                 )
             }
         } catch {
-            // No session yet: the object list would sit on an empty schema forever, so wait
-            // for the connection instead of swallowing the failure.
-            Self.logger.info(
-                "[schema] initial load deferred until connect connId=\(self.connectionId, privacy: .public)"
-            )
-            armPostConnectSchemaLoad()
+            switch SchemaLoadPolicy.disposition(for: error, hasLiveDriver: hasLiveDriver) {
+            case .ignore:
+                return
+            case .awaitConnection:
+                Self.logger.info(
+                    "[schema] initial load deferred until connect connId=\(self.connectionId, privacy: .public)"
+                )
+                armPostConnectSchemaLoad()
+            case .surface(let message):
+                Self.logger.error(
+                    "[schema] initial load failed connId=\(self.connectionId, privacy: .public) error=\(message, privacy: .public)"
+                )
+                services.schemaService.markLoadFailed(connectionId: connectionId, message: message)
+            }
             return
         }
         await DatabaseTreeMetadataService.shared.loadDatabases(

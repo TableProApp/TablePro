@@ -247,6 +247,17 @@ protocol SchemaSwitchable: DatabaseDriver {
     func switchSchema(to schema: String) async throws
 }
 
+extension SchemaSwitchable {
+    /// A driver already on the schema needs no statement, and sending one anyway is a round trip that
+    /// can fail on its own. Every schema switch the app issues goes through here, so no two of them can
+    /// disagree about when it is redundant: the pooled metadata driver kept sending an `ALTER SESSION`
+    /// the session driver knew to skip, and on Oracle that spare statement was the one that hung (#2294).
+    func switchSchemaIfNeeded(to schema: String) async throws {
+        guard currentSchema != schema else { return }
+        try await switchSchema(to: schema)
+    }
+}
+
 /// Protocol for drivers that know which database they are on. An embedded engine names
 /// its database from the file it opened, so the session cannot derive it from the
 /// connection definition the way a networked engine can.

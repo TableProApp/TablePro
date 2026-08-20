@@ -212,12 +212,7 @@ extension DatabaseManager {
                 try await adapter.switchDatabase(to: scope.database)
             }
         }
-        guard let schema = scope.schema,
-              let schemaDriver = driver as? SchemaSwitchable,
-              schemaDriver.currentSchema != schema
-        else {
-            return
-        }
-        try await schemaDriver.switchSchema(to: schema)
+        guard let schema = scope.schema, let schemaDriver = driver as? SchemaSwitchable else { return }
+        try await schemaDriver.switchSchemaIfNeeded(to: schema)
     }
 }
