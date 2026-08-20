@@ -52,6 +52,34 @@ final class QueryTabManager {
         selectedTabId = tabs.indices.contains(index) ? tabs[index].id : tabs.last?.id
     }
 
+    /// Reorders the strip. A pure permutation: the same tabs, a different order, and the selection
+    /// stays on whichever tab it was on rather than on the position that tab vacated.
+    ///
+    /// The array is rebuilt and assigned once rather than mutated twice, because `tabs.didSet`
+    /// bumps `tabStructureVersion` and republishes the workspace anchors on every write, and the
+    /// state between a `remove` and an `insert` is a tab list the user never had.
+    func moveTab(id: UUID, to destination: Int) {
+        guard let source = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let clamped = min(max(destination, 0), tabs.count - 1)
+        guard clamped != source else { return }
+
+        var reordered = tabs
+        reordered.insert(reordered.remove(at: source), at: clamped)
+        tabs = reordered
+    }
+
+    /// Whether `tab` can move one place in `offset`'s direction, so a menu item can dim instead of
+    /// being offered and doing nothing.
+    func canMoveTab(id: UUID, by offset: Int) -> Bool {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return false }
+        return tabs.indices.contains(index + offset)
+    }
+
+    func moveTab(id: UUID, by offset: Int) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        moveTab(id: id, to: index + offset)
+    }
+
     func selectTab(at index: Int) {
         guard tabs.indices.contains(index) else { return }
         selectedTabId = tabs[index].id
