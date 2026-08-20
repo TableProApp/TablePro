@@ -188,7 +188,7 @@ struct RedisCommandRouting: Sendable {
                      "llen", "lrange", "smembers", "scard", "srandmember", "sismember", "zcard", "zscore",
                      "zrange", "zrangebyscore", "zrevrange", "zrevrangebyscore", "zcount", "zrank",
                      "zrevrank", "xrange", "xrevrange", "xlen", "hget", "hmget", "hrandfield",
-                     "hscan", "sscan", "zscan", "lpos", "getrange", "bitcount", "object", "memory"] {
+                     "hscan", "sscan", "zscan", "lpos", "getrange", "bitcount"] {
             add(spec(name, 1, 1, 1, readOnly: true))
         }
         for name in ["set", "getset", "getdel", "getex", "append", "setrange", "incr", "decr", "incrby",
@@ -204,7 +204,7 @@ struct RedisCommandRouting: Sendable {
         }
         add(spec("mget", 1, -1, 1, readOnly: true, request: .multiShard))
         add(spec("mset", 1, -1, 2, request: .multiShard, response: .allSucceeded))
-        add(spec("msetnx", 1, -1, 2, request: .multiShard, response: .allSucceeded))
+        add(spec("msetnx", 1, -1, 2))
         for name in ["del", "unlink"] {
             add(spec(name, 1, -1, 1, request: .multiShard, response: .aggSum))
         }
@@ -214,40 +214,55 @@ struct RedisCommandRouting: Sendable {
         for name in ["sunion", "sinter", "sdiff"] {
             add(spec(name, 1, -1, 1, readOnly: true))
         }
-        for name in ["sunionstore", "sinterstore", "sdiffstore", "zunionstore", "zinterstore"] {
+        for name in ["sunionstore", "sinterstore", "sdiffstore"] {
             add(spec(name, 1, -1, 1))
         }
-        for name in ["eval", "evalsha", "fcall", "fcall_ro", "sort", "sort_ro", "georadius",
-                     "georadiusbymember", "lmpop", "zmpop", "xread", "xreadgroup", "zdiff", "zunion",
-                     "zinter", "sintercard"] {
+        for name in ["zunionstore", "zinterstore"] {
+            add(spec(name, 1, 1, 1, movable: true))
+        }
+        for name in ["eval", "evalsha", "fcall", "lmpop", "zmpop", "xreadgroup"] {
             add(spec(name, 0, 0, 0, movable: true))
+        }
+        for name in ["fcall_ro", "xread", "zdiff", "zunion", "zinter", "sintercard"] {
+            add(spec(name, 0, 0, 0, readOnly: true, movable: true))
+        }
+        add(spec("sort", 1, 1, 1, movable: true))
+        add(spec("sort_ro", 1, 1, 1, readOnly: true, movable: true))
+        for name in ["georadius", "georadiusbymember"] {
+            add(spec(name, 1, 1, 1, movable: true))
         }
 
         add(spec("keys", 0, 0, 0, readOnly: true, request: .allShards))
         add(spec("dbsize", 0, 0, 0, readOnly: true, request: .allShards, response: .aggSum))
         add(spec("flushdb", 0, 0, 0, request: .allShards, response: .allSucceeded))
         add(spec("flushall", 0, 0, 0, request: .allShards, response: .allSucceeded))
-        add(spec("info", 0, 0, 0, readOnly: true, request: .allShards, response: .special))
+        add(spec("info", 0, 0, 0, request: .allShards, response: .special))
         add(spec("randomkey", 0, 0, 0, readOnly: true, request: .allShards, response: .special))
         add(spec("scan", 0, 0, 0, readOnly: true, request: .special, response: .special))
-        add(spec("ping", 0, 0, 0, readOnly: true))
+        add(spec("ping", 0, 0, 0, request: .allShards, response: .allSucceeded))
         add(spec("select", 0, 0, 0))
         add(spec("auth", 0, 0, 0))
         add(spec("multi", 0, 0, 0))
         add(spec("exec", 0, 0, 0))
         add(spec("discard", 0, 0, 0))
-        add(spec("command", 0, 0, 0, readOnly: true))
-        add(spec("cluster", 0, 0, 0, readOnly: true))
+        add(spec("command", 0, 0, 0))
+        add(spec("cluster", 0, 0, 0))
         add(spec("config", 0, 0, 0))
-        add(spec("config|get", 0, 0, 0, readOnly: true))
+        add(spec("object", 0, 0, 0))
+        add(spec("object|encoding", 2, 2, 1, readOnly: true))
+        add(spec("object|refcount", 2, 2, 1, readOnly: true))
+        add(spec("object|idletime", 2, 2, 1, readOnly: true))
+        add(spec("object|freq", 2, 2, 1, readOnly: true))
+        add(spec("config|get", 0, 0, 0))
         add(spec("config|set", 0, 0, 0, request: .allNodes, response: .allSucceeded))
         add(spec("config|resetstat", 0, 0, 0, request: .allNodes, response: .allSucceeded))
         add(spec("script", 0, 0, 0))
         add(spec("script|load", 0, 0, 0, request: .allNodes, response: .allSucceeded))
         add(spec("script|flush", 0, 0, 0, request: .allNodes, response: .allSucceeded))
-        add(spec("script|exists", 0, 0, 0, readOnly: true, request: .allShards, response: .aggLogicalAnd))
-        add(spec("memory|stats", 0, 0, 0, readOnly: true, request: .allShards, response: .special))
-        add(spec("memory|usage", 1, 1, 1, readOnly: true))
+        add(spec("script|exists", 0, 0, 0, request: .allShards, response: .aggLogicalAnd))
+        add(spec("memory", 0, 0, 0))
+        add(spec("memory|stats", 0, 0, 0, request: .allShards, response: .special))
+        add(spec("memory|usage", 2, 2, 1, readOnly: true))
         return table
     }()
 }

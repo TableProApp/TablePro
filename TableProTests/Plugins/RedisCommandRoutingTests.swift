@@ -136,10 +136,42 @@ struct RedisCommandRoutingPolicyTests {
 
     @Test("Commands whose keys only COMMAND GETKEYS knows are flagged")
     func movableKeys() {
-        for name in ["EVAL", "SORT", "GEORADIUS", "LMPOP", "XREAD"] {
+        for name in ["EVAL", "SORT", "GEORADIUS", "LMPOP", "XREAD", "ZUNIONSTORE"] {
             #expect(routing.needsServerKeyResolution(for: args(name, "x")), "\(name) should be movablekeys")
         }
         #expect(!routing.needsServerKeyResolution(for: args("GET", "x")))
+    }
+
+    /// `OBJECT ENCODING k` and `MEMORY USAGE k` take a key, but the container itself does not, and
+    /// hashing on the literal subcommand name is the mistake the unknown-command path avoids.
+    /// Redis reports a subcommand's key position against the full argument list, so that key sits
+    /// at index 2, not 1.
+    @Test("A container command takes no key of its own")
+    func containersTakeNoKey() {
+        #expect(routing.keys(in: args("OBJECT", "HELP")).isEmpty)
+        #expect(routing.keys(in: args("MEMORY", "DOCTOR")).isEmpty)
+        let encoding = routing.keys(in: args("OBJECT", "ENCODING", "k"))
+            .compactMap { String(data: $0, encoding: .utf8) }
+        #expect(encoding == ["k"])
+        let usage = routing.keys(in: args("MEMORY", "USAGE", "k"))
+            .compactMap { String(data: $0, encoding: .utf8) }
+        #expect(usage == ["k"])
+    }
+
+    /// MSETNX is all or nothing. Splitting it across shards would set some keys and not others,
+    /// which is the guarantee it exists for.
+    @Test("MSETNX is not split across shards")
+    func msetnxIsNotSplit() {
+        #expect(routing.spec(for: args("MSETNX", "a", "1"))?.requestPolicy == nil)
+    }
+
+    /// ZUNIONSTORE takes a destination and then a count, so treating every argument as a key
+    /// hashed the count and the options and picked the wrong shard.
+    @Test("A store-form set operation does not treat its arguments as keys")
+    func storeFormsDoNotSpanArguments() throws {
+        let spec = try #require(routing.spec(for: args("ZUNIONSTORE", "dst", "2", "a", "b")))
+        #expect(spec.lastKey == 1)
+        #expect(spec.hasMovableKeys)
     }
 }
 

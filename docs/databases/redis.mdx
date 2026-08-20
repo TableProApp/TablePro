@@ -164,7 +164,9 @@ Note that `>password` sets a password and `#hash` sets a SHA-256 hash. A 64-char
 
 ## Limitations
 
-- Cluster mode is not supported. Connect to a single node.
+- Cluster mode has no transactions. `MULTI` carries no key, so a client cannot know which shard to open it on, and Redis rejects a queued command that hashes elsewhere. Grid saves run their statements one at a time instead.
+- Cluster mode serves database 0 only, so the Database Index field is hidden and the sidebar shows a single `db0`.
+- A command whose keys span hash slots, such as `RENAME`, `SMOVE` or the `*STORE` commands, is refused in Cluster mode. Give the keys a shared hash tag, like `{user}:1` and `{user}:2`.
 - Keys must be valid UTF-8 to appear in the grid or the sidebar tree. Values have no such limit.
 - Pub/Sub has no grid support. `PUBLISH` runs in the CLI, but there is no subscriber view.
 - The grid previews the first 100 elements of a hash, list, set, or sorted set, and a stream's newest 5 entries. The Length column shows the real size. Use `HGETALL`, `LRANGE`, or `XRANGE` in the CLI for the rest.

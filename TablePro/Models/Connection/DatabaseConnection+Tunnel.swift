@@ -36,16 +36,21 @@ extension DatabaseConnection {
     ///
     /// Redis declares one for Sentinel and one for Cluster, and a field the form has hidden keeps
     /// its old value, so picking the first declared list would forward a Cluster connection to the
-    /// Sentinel address the user typed before switching modes.
+    /// Sentinel address the user typed before switching modes, and a Standalone connection to a
+    /// list it does not use at all. A list with no visibility rule is always in use.
     var activeHostListFieldIds: [String] {
         let fields = declaredConnectionFields
-        let visible = fields
-            .filter { field in
-                guard case .hostList = field.fieldType else { return false }
-                return fields.isVisible(field, forValues: additionalFields)
+        var unconditional: [String] = []
+        var visible: [String] = []
+        for field in fields {
+            guard case .hostList = field.fieldType else { continue }
+            if field.visibleWhen == nil {
+                unconditional.append(field.id)
+            } else if fields.isVisible(field, forValues: additionalFields) {
+                visible.append(field.id)
             }
-            .map(\.id)
-        return visible.isEmpty ? hostListFieldIds : visible
+        }
+        return visible + unconditional
     }
 
     private var declaredConnectionFields: [ConnectionField] {
