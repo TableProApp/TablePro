@@ -21,6 +21,12 @@ final class DataGridCellFactory {
     private static let headerPadding: CGFloat = 48
     private static let headerCharWidthRatio: CGFloat = 0.75
 
+    private struct ColumnWidthBudget {
+        let cap: CGFloat
+        let measuredCharLimit: Int
+        let sampledRows: Int
+    }
+
     static func fitToContentCap(availableWidth: CGFloat) -> CGFloat {
         let proportional = availableWidth * fitToContentViewportFraction
         return min(max(proportional, minFitToContentWidth), maxColumnWidth)
@@ -45,9 +51,11 @@ final class DataGridCellFactory {
             databaseType: databaseType,
             isLargeDataset: isLargeDataset,
             nullDisplayString: nullDisplayString,
-            cap: Self.maxColumnWidth,
-            measuredCharLimit: Self.maxMeasureChars,
-            sampledRows: Self.automaticSampleRowCount(columnCount: tableRows.columns.count)
+            budget: ColumnWidthBudget(
+                cap: Self.maxColumnWidth,
+                measuredCharLimit: Self.maxMeasureChars,
+                sampledRows: Self.automaticSampleRowCount(columnCount: tableRows.columns.count)
+            )
         )
     }
 
@@ -76,9 +84,11 @@ final class DataGridCellFactory {
             databaseType: databaseType,
             isLargeDataset: isLargeDataset,
             nullDisplayString: nullDisplayString,
-            cap: cap,
-            measuredCharLimit: measuredCharLimit,
-            sampledRows: Self.fitSampleRowCount(fittedColumnCount: fittedColumnCount)
+            budget: ColumnWidthBudget(
+                cap: cap,
+                measuredCharLimit: measuredCharLimit,
+                sampledRows: Self.fitSampleRowCount(fittedColumnCount: fittedColumnCount)
+            )
         )
     }
 
@@ -105,16 +115,14 @@ final class DataGridCellFactory {
         databaseType: DatabaseType?,
         isLargeDataset: Bool,
         nullDisplayString: String?,
-        cap: CGFloat,
-        measuredCharLimit: Int,
-        sampledRows: Int
+        budget: ColumnWidthBudget
     ) -> CGFloat {
         let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
         let headerCharCount = (columnName as NSString).length
         var maxWidth = CGFloat(headerCharCount) * charWidth * Self.headerCharWidthRatio + Self.headerPadding
 
         let totalRows = tableRows.count
-        let step = max(1, totalRows / max(1, sampledRows))
+        let step = max(1, totalRows / max(1, budget.sampledRows))
 
         let columnType = columnIndex < tableRows.columnTypes.count
             ? tableRows.columnTypes[columnIndex]
@@ -137,15 +145,15 @@ final class DataGridCellFactory {
                 nullDisplayString: resolvedNullDisplayString
             )
 
-            let charCount = min((value as NSString).length, measuredCharLimit)
+            let charCount = min((value as NSString).length, budget.measuredCharLimit)
             maxWidth = max(maxWidth, CGFloat(charCount) * charWidth + accessory.measurementPadding)
 
-            if maxWidth >= cap {
-                return cap
+            if maxWidth >= budget.cap {
+                return budget.cap
             }
         }
 
-        return min(max(maxWidth, Self.minColumnWidth), cap)
+        return min(max(maxWidth, Self.minColumnWidth), budget.cap)
     }
 }
 
