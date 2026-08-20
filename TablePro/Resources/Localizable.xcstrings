@@ -10117,7 +10117,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "활동 세부 정보"
+            "value" : "활동 세부사항"
           }
         },
         "tr" : {
@@ -24818,7 +24818,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "열 세부 정보"
+            "value" : "열 세부사항"
           }
         },
         "tr" : {
@@ -28751,7 +28751,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "세부 정보 복사"
+            "value" : "세부사항 복사"
           }
         },
         "tr" : {
@@ -29096,7 +29096,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "노드 세부 정보 복사"
+            "value" : "노드 세부사항 복사"
           }
         },
         "tr" : {
@@ -37302,7 +37302,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "모두 선택 해제"
+            "value" : "전체 선택 해제"
           }
         },
         "tr" : {
@@ -37608,7 +37608,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "세부 정보: %@"
+            "value" : "세부사항: %@"
           }
         },
         "tr" : {
@@ -38018,7 +38018,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "변경 사항을 버리시겠습니까?"
+            "value" : "변경 사항을 폐기하시겠습니까?"
           }
         },
         "tr" : {
@@ -38052,7 +38052,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "저장하지 않은 변경사항을 폐기하시겠습니까?"
+            "value" : "저장하지 않은 변경 사항을 폐기하시겠습니까?"
           }
         },
         "tr" : {
@@ -38735,7 +38735,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "변경사항을 저장하시겠습니까?"
+            "value" : "변경 사항을 저장하시겠습니까?"
           }
         },
         "tr" : {
@@ -41348,7 +41348,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "세부 정보 편집(이중 클릭)"
+            "value" : "세부사항 편집(이중 클릭)"
           }
         },
         "tr" : {
@@ -44033,7 +44033,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "변경사항 적용 오류"
+            "value" : "변경 사항 적용 오류"
           }
         },
         "tr" : {
@@ -44886,7 +44886,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "모든 문을 단일 트랜잭션에서 실행합니다. 문 하나라도 실패하면 모든 변경사항이 롤백됩니다."
+            "value" : "모든 문을 단일 트랜잭션에서 실행합니다. 문 하나라도 실패하면 모든 변경 사항이 롤백됩니다."
           }
         },
         "tr" : {
@@ -85869,7 +85869,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "프로필 세부 정보"
+            "value" : "프로필 세부사항"
           }
         },
         "tr" : {
@@ -95063,7 +95063,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "행 세부 정보"
+            "value" : "행 세부사항"
           }
         },
         "tr" : {
@@ -101543,7 +101543,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "세부 정보를 볼 플러그인을 선택하십시오"
+            "value" : "세부사항을 볼 플러그인을 선택하십시오"
           }
         },
         "tr" : {
@@ -101577,7 +101577,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "전체 텍스트와 세부 정보를 볼 쿼리를 선택하십시오."
+            "value" : "전체 텍스트와 세부사항을 볼 쿼리를 선택하십시오."
           }
         },
         "tr" : {
@@ -101611,7 +101611,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "세부 정보를 볼 행 또는 테이블을 선택하십시오"
+            "value" : "세부사항을 볼 행 또는 테이블을 선택하십시오"
           }
         },
         "tr" : {
@@ -101784,7 +101784,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "세부 정보를 볼 활동 항목을 선택하십시오."
+            "value" : "세부사항을 볼 활동 항목을 선택하십시오."
           }
         },
         "tr" : {
@@ -105066,7 +105066,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "세부 정보 보기"
+            "value" : "세부사항 보기"
           }
         },
         "tr" : {
@@ -112373,7 +112373,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "TablePro가 이 작업을 수행할 수 없습니다. 대신 터미널에서 다음을 실행하세요:"
+            "value" : "TablePro가 이 작업을 수행할 수 없습니다. 대신 터미널에서 다음을 실행하십시오:"
           }
         },
         "tr" : {

@@ -10,14 +10,36 @@ struct KoreanLocalizationSourceTests {
         "TableProMobile/TableProMobile/Localizable.xcstrings"
     ]
 
+    private static let appCatalogPaths = [
+        "TablePro/Resources/Localizable.xcstrings",
+        "TableProMobile/TableProMobile/Localizable.xcstrings"
+    ]
+
+    private static let shortcutCatalogPath = "TableProMobile/TableProMobile/AppShortcuts.xcstrings"
+
     private static let sharedSafeModeLabels = ["Confirm Writes", "Off", "Read-Only"]
 
     private static let koreanPlatformTerms = [
+        "Deselect All": "전체 선택 해제",
         "Details": "세부사항",
         "Discard": "폐기",
         "Redo": "실행 복귀",
-        "Select All": "전체 선택"
+        "Select All": "전체 선택",
+        "Undo": "실행 취소"
     ]
+
+    private static let koreanNumericParticleTerms = [
+        "Created as GitHub issue #%d": "GitHub 이슈 #%d(으)로 생성됨",
+        "Process exited with code %d": "프로세스가 코드 %d(으)로 종료되었습니다"
+    ]
+
+    private static let koreanSupersededSpellings = [
+        "모두 선택 해제": "전체 선택 해제",
+        "변경사항": "변경 사항",
+        "세부 정보": "세부사항"
+    ]
+
+    private static let koreanNounsEndingInPoliteSyllable: Set<String> = ["개요", "소요", "주요", "중요", "필요"]
 
     private static let sharedPackageSourcePaths = [
         "Packages/TableProCore/Sources/TableProImport/ConnectionExportCrypto.swift",
@@ -43,16 +65,10 @@ struct KoreanLocalizationSourceTests {
     func catalogsAreComplete() throws {
         var missing: [String] = []
 
-        for path in Self.catalogPaths {
-            let catalog = try Self.catalog(at: path)
-            for (key, entry) in catalog.strings where !key.isEmpty && entry.shouldTranslate != false {
-                guard let unit = entry.localizations?["ko"]?.stringUnit,
-                      let value = unit.value,
-                      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    missing.append("\(path): \(key)")
-                    continue
-                }
-            }
+        try Self.forEachTranslatableEntry(in: Self.catalogPaths) { path, key, entry in
+            let value = entry.localizations?["ko"]?.stringUnit?.value ?? ""
+            guard value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            missing.append("\(path): \(key)")
         }
 
         #expect(missing.isEmpty, "Missing Korean translations:\n\(missing.joined(separator: "\n"))")
@@ -60,22 +76,20 @@ struct KoreanLocalizationSourceTests {
 
     @Test("Korean translations preserve format arguments and structured line breaks")
     func translationsPreserveStructure() throws {
+        let expression = try Self.formatArgumentExpression()
         var mismatches: [String] = []
 
-        for path in Self.catalogPaths {
-            let catalog = try Self.catalog(at: path)
-            for (key, entry) in catalog.strings where !key.isEmpty && entry.shouldTranslate != false {
-                guard let translation = entry.localizations?["ko"]?.stringUnit?.value else { continue }
-                let source = entry.localizations?["en"]?.stringUnit?.value ?? key
-                let sourceSignature = try Self.formatSignature(source)
-                let translationSignature = try Self.formatSignature(translation)
-                let preservesLines = source.filter { $0.isNewline }.count == translation.filter { $0.isNewline }.count
-                let preservesCodeFences = source.components(separatedBy: "```").count
-                    == translation.components(separatedBy: "```").count
+        try Self.forEachTranslatableEntry(in: Self.catalogPaths) { path, key, entry in
+            guard let translation = entry.localizations?["ko"]?.stringUnit?.value else { return }
+            let source = entry.localizations?["en"]?.stringUnit?.value ?? key
+            let sourceSignature = Self.formatSignature(source, using: expression)
+            let translationSignature = Self.formatSignature(translation, using: expression)
+            let preservesLines = source.filter(\.isNewline).count == translation.filter(\.isNewline).count
+            let preservesCodeFences = source.components(separatedBy: "```").count
+                == translation.components(separatedBy: "```").count
 
-                if sourceSignature != translationSignature || !preservesLines || !preservesCodeFences {
-                    mismatches.append("\(path): \(key)")
-                }
+            if sourceSignature != translationSignature || !preservesLines || !preservesCodeFences {
+                mismatches.append("\(path): \(key)")
             }
         }
 
@@ -84,51 +98,44 @@ struct KoreanLocalizationSourceTests {
 
     @Test("Korean UI copy uses a consistent formal register")
     func koreanCopyUsesFormalRegister() throws {
+        let expression = try Self.politeEndingExpression()
         var informal: [String] = []
 
-        for path in Self.catalogPaths {
-            let catalog = try Self.catalog(at: path)
-            for (key, entry) in catalog.strings {
-                guard let translation = entry.localizations?["ko"]?.stringUnit?.value else { continue }
-                let usesInformalImperative = translation.range(
-                    of: #"세요(?:[.!?]|$)"#,
-                    options: .regularExpression
-                ) != nil
-                if usesInformalImperative || translation.contains("할까요?") {
-                    informal.append("\(path): \(key)")
-                }
-            }
+        try Self.forEachKoreanTranslation(in: Self.catalogPaths) { path, key, translation in
+            let endings = Self.informalPoliteEndings(in: translation, using: expression)
+            guard !endings.isEmpty else { return }
+            informal.append("\(path): \(key) ends a clause with \(endings.joined(separator: ", "))")
         }
 
         #expect(informal.isEmpty, "Informal Korean UI copy:\n\(informal.joined(separator: "\n"))")
     }
 
-    @Test("Korean platform terms match macOS conventions")
-    func koreanPlatformTermsMatchConventions() throws {
-        let strings = try Self.catalog(at: "TablePro/Resources/Localizable.xcstrings").strings
+    @Test("Korean copy spells each term one way")
+    func koreanCopyUsesOneSpellingPerTerm() throws {
+        var drifted: [String] = []
 
-        for (key, expected) in Self.koreanPlatformTerms {
-            #expect(strings[key]?.localizations?["ko"]?.stringUnit?.value == expected)
+        try Self.forEachKoreanTranslation(in: Self.catalogPaths) { path, key, translation in
+            for (superseded, preferred) in Self.koreanSupersededSpellings where translation.contains(superseded) {
+                drifted.append("\(path): \(key) uses \"\(superseded)\", expected \"\(preferred)\"")
+            }
         }
 
-        #expect(
-            strings["Created as GitHub issue #%d"]?.localizations?["ko"]?.stringUnit?.value
-                == "GitHub 이슈 #%d(으)로 생성됨"
-        )
-        #expect(
-            strings["Process exited with code %d"]?.localizations?["ko"]?.stringUnit?.value
-                == "프로세스가 코드 %d(으)로 종료되었습니다"
-        )
+        #expect(drifted.isEmpty, "Korean terms spelled two ways:\n\(drifted.joined(separator: "\n"))")
+    }
+
+    @Test("Korean platform terms match macOS conventions")
+    func koreanPlatformTermsMatchConventions() throws {
+        try Self.expectPinnedTranslations(Self.koreanPlatformTerms)
+    }
+
+    @Test("Korean numeric particles agree with the digit they follow")
+    func koreanNumericParticlesAgreeWithDigits() throws {
+        try Self.expectPinnedTranslations(Self.koreanNumericParticleTerms)
     }
 
     @Test("Shared Safe Mode labels exist in both app catalogs")
     func sharedSafeModeLabelsExistInBothApps() throws {
-        let paths = [
-            "TablePro/Resources/Localizable.xcstrings",
-            "TableProMobile/TableProMobile/Localizable.xcstrings"
-        ]
-
-        for path in paths {
+        for path in Self.appCatalogPaths {
             let strings = try Self.catalog(at: path).strings
             for label in Self.sharedSafeModeLabels {
                 #expect(strings[label]?.localizations?["ko"]?.stringUnit?.value?.isEmpty == false)
@@ -140,12 +147,8 @@ struct KoreanLocalizationSourceTests {
     func sharedPackageStringsExistInBothApps() throws {
         var keys = try Set(Self.sharedPackageSourcePaths.flatMap { try Self.localizedKeys(in: $0) })
         keys.formUnion(Self.sharedPackageMultilineKeys)
-        let paths = [
-            "TablePro/Resources/Localizable.xcstrings",
-            "TableProMobile/TableProMobile/Localizable.xcstrings"
-        ]
 
-        for path in paths {
+        for path in Self.appCatalogPaths {
             let strings = try Self.catalog(at: path).strings
             for key in keys {
                 #expect(
@@ -179,11 +182,12 @@ struct KoreanLocalizationSourceTests {
 
     @Test("Format signatures detect unsafe argument changes")
     func formatSignaturesDetectUnsafeChanges() throws {
-        let source = try Self.formatSignature("Server error (%d): %@")
-        let dropped = try Self.formatSignature("Server error: %@")
-        let duplicated = try Self.formatSignature("Server error (%d): %@ %@")
-        let wrongType = try Self.formatSignature("Server error (%@): %@")
-        let reordered = try Self.formatSignature("Server error (%@): %d")
+        let expression = try Self.formatArgumentExpression()
+        let source = Self.formatSignature("Server error (%d): %@", using: expression)
+        let dropped = Self.formatSignature("Server error: %@", using: expression)
+        let duplicated = Self.formatSignature("Server error (%d): %@ %@", using: expression)
+        let wrongType = Self.formatSignature("Server error (%@): %@", using: expression)
+        let reordered = Self.formatSignature("Server error (%@): %d", using: expression)
 
         #expect(source != dropped)
         #expect(source != duplicated)
@@ -193,12 +197,44 @@ struct KoreanLocalizationSourceTests {
 
     @Test("Format signatures allow safe positional reordering and literals")
     func formatSignaturesAllowSafeForms() throws {
-        let source = try Self.formatSignature("%1$@ used %2$d rows and %3$lld bytes at %.3f%%")
-        let reordered = try Self.formatSignature("%.3f%%: %3$lld bytes, %2$d rows, %1$@")
-        let prosePercent = try Self.formatSignature("Use % to allow any host.")
+        let expression = try Self.formatArgumentExpression()
+        let source = Self.formatSignature("%1$@ used %2$d rows and %3$lld bytes at %.3f%%", using: expression)
+        let reordered = Self.formatSignature("%.3f%%: %3$lld bytes, %2$d rows, %1$@", using: expression)
+        let prosePercent = Self.formatSignature("Use % to allow any host.", using: expression)
 
         #expect(source == reordered)
         #expect(prosePercent.isEmpty)
+    }
+
+    @Test("The register check reads clause endings, not a fixed list of phrases")
+    func registerCheckDetectsEveryInformalEnding() throws {
+        let expression = try Self.politeEndingExpression()
+        let informal = [
+            "터미널에서 다음을 실행하세요:",
+            "브라우저에 코드를 입력하세요.",
+            "이 탭을 닫을까요?",
+            "변경 사항을 덮어쓸까요?",
+            "연결에 실패했어요",
+            "이미 저장되어 있죠",
+            "지금 다시 시도해요 %@"
+        ]
+        let formal = [
+            "터미널에서 다음을 실행하십시오:",
+            "연결에 실패했습니다.",
+            "이 탭을 닫으시겠습니까?",
+            "관리자 권한이 필요합니다.",
+            "인증 필요",
+            "소요 시간",
+            "개요 페이지를 여십시오.",
+            "중요 정보 및 주요 설정"
+        ]
+
+        for copy in informal {
+            #expect(!Self.informalPoliteEndings(in: copy, using: expression).isEmpty, "Missed: \(copy)")
+        }
+        for copy in formal {
+            #expect(Self.informalPoliteEndings(in: copy, using: expression).isEmpty, "False positive: \(copy)")
+        }
     }
 
     @Test("Every README links to the other language versions")
@@ -221,8 +257,7 @@ struct KoreanLocalizationSourceTests {
 
     @Test("Every App Shortcut phrase has a structurally safe Korean variant")
     func appShortcutPhrasesAreComplete() throws {
-        let path = "TableProMobile/TableProMobile/AppShortcuts.xcstrings"
-        let catalog = try Self.catalog(at: path)
+        let catalog = try Self.catalog(at: Self.shortcutCatalogPath)
         let expectedKeys = [
             "Add a row in ${applicationName}",
             "Add rows in ${applicationName}",
@@ -247,9 +282,82 @@ struct KoreanLocalizationSourceTests {
         }
     }
 
+    private static let catalogs: [String: Result<Catalog, SourceError>] = {
+        let root = try? repoRoot()
+        return (catalogPaths + [shortcutCatalogPath]).reduce(into: [:]) { catalogs, path in
+            guard let root else {
+                catalogs[path] = .failure(.repoRootNotFound)
+                return
+            }
+            do {
+                let data = try Data(contentsOf: root.appendingPathComponent(path))
+                catalogs[path] = .success(try JSONDecoder().decode(Catalog.self, from: data))
+            } catch {
+                catalogs[path] = .failure(.unreadableCatalog(path, String(describing: error)))
+            }
+        }
+    }()
+
     private static func catalog(at path: String) throws -> Catalog {
-        let data = try Data(contentsOf: repoRoot().appendingPathComponent(path))
-        return try JSONDecoder().decode(Catalog.self, from: data)
+        guard let result = catalogs[path] else { throw SourceError.unknownCatalog(path) }
+        return try result.get()
+    }
+
+    private static func forEachTranslatableEntry(
+        in paths: [String],
+        _ body: (String, String, Entry) throws -> Void
+    ) throws {
+        for path in paths {
+            let catalog = try catalog(at: path)
+            for (key, entry) in catalog.strings where !key.isEmpty && entry.shouldTranslate != false {
+                try body(path, key, entry)
+            }
+        }
+    }
+
+    private static func forEachKoreanTranslation(
+        in paths: [String],
+        _ body: (String, String, String) throws -> Void
+    ) throws {
+        try forEachTranslatableEntry(in: paths) { path, key, entry in
+            guard let translation = entry.localizations?["ko"]?.stringUnit?.value else { return }
+            try body(path, key, translation)
+        }
+    }
+
+    private static func expectPinnedTranslations(_ pinned: [String: String]) throws {
+        var mismatches: [String] = []
+        var present: Set<String> = []
+
+        for path in appCatalogPaths {
+            let strings = try catalog(at: path).strings
+            for (key, expected) in pinned {
+                guard let translation = strings[key]?.localizations?["ko"]?.stringUnit?.value else { continue }
+                present.insert(key)
+                guard translation != expected else { continue }
+                mismatches.append("\(path): \(key) is \"\(translation)\", expected \"\(expected)\"")
+            }
+        }
+
+        let unpinned = Set(pinned.keys).subtracting(present).sorted()
+        #expect(unpinned.isEmpty, "Pinned Korean terms are in no app catalog:\n\(unpinned.joined(separator: "\n"))")
+        #expect(mismatches.isEmpty, "Korean terms drifted:\n\(mismatches.joined(separator: "\n"))")
+    }
+
+    private static func politeEndingExpression() throws -> NSRegularExpression {
+        try NSRegularExpression(pattern: #"[가-힣][요죠](?![가-힣])"#)
+    }
+
+    private static func informalPoliteEndings(
+        in translation: String,
+        using expression: NSRegularExpression
+    ) -> [String] {
+        let range = NSRange(translation.startIndex ..< translation.endIndex, in: translation)
+        return expression.matches(in: translation, range: range).compactMap { match in
+            guard let matchRange = Range(match.range, in: translation) else { return nil }
+            let ending = String(translation[matchRange])
+            return koreanNounsEndingInPoliteSyllable.contains(ending) ? nil : ending
+        }
     }
 
     private static func propertyList(at path: String) throws -> [String: Any] {
@@ -259,10 +367,11 @@ struct KoreanLocalizationSourceTests {
         return propertyList
     }
 
-    private static func formatSignature(_ value: String) throws -> [String] {
-        let expression = try NSRegularExpression(
-            pattern: #"%(?:(\d+)\$)?((?:\.\d+)?(?:lld|ld|@|d|u|f|%))"#
-        )
+    private static func formatArgumentExpression() throws -> NSRegularExpression {
+        try NSRegularExpression(pattern: #"%(?:(\d+)\$)?((?:\.\d+)?(?:lld|ld|@|d|u|f|%))"#)
+    }
+
+    private static func formatSignature(_ value: String, using expression: NSRegularExpression) -> [String] {
         let range = NSRange(value.startIndex ..< value.endIndex, in: value)
         var implicitIndex = 1
         var signature: [String] = []
@@ -322,30 +431,32 @@ struct KoreanLocalizationSourceTests {
         throw SourceError.repoRootNotFound
     }
 
-    private struct Catalog: Decodable {
+    private struct Catalog: Decodable, Sendable {
         let strings: [String: Entry]
     }
 
-    private struct Entry: Decodable {
+    private struct Entry: Decodable, Sendable {
         let shouldTranslate: Bool?
         let localizations: [String: Localization]?
     }
 
-    private struct Localization: Decodable {
+    private struct Localization: Decodable, Sendable {
         let stringUnit: StringUnit?
         let stringSet: StringSet?
     }
 
-    private struct StringUnit: Decodable {
+    private struct StringUnit: Decodable, Sendable {
         let value: String?
     }
 
-    private struct StringSet: Decodable {
+    private struct StringSet: Decodable, Sendable {
         let values: [String]
     }
 
-    private enum SourceError: Error {
+    private enum SourceError: Error, Sendable {
         case invalidPropertyList
         case repoRootNotFound
+        case unknownCatalog(String)
+        case unreadableCatalog(String, String)
     }
 }
