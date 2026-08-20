@@ -155,4 +155,49 @@ final class NumberTextTests: XCTestCase {
         XCTAssertNil(NumberText.json(from: ["value": Double.nan]))
         XCTAssertNil(NumberText.json(from: ["value": Double.infinity]))
     }
+
+    func testRawNumberIsWrittenVerbatimAtAnyPrecision() {
+        let digits = "12345678901234567890123456789012"
+        let raw = NumberText.RawNumber(digits)
+        XCTAssertNotNil(raw)
+        XCTAssertEqual(NumberText.json(from: ["v": raw as Any]), #"{"v":\#(digits)}"#)
+        XCTAssertEqual(NumberText.json(from: ["v": NumberText.RawNumber("0.100") as Any]), #"{"v":0.100}"#)
+    }
+
+    func testRawNumberRejectsAnythingThatIsNotAJsonNumber() {
+        XCTAssertNil(NumberText.RawNumber("NaN"))
+        XCTAssertNil(NumberText.RawNumber("Infinity"))
+        XCTAssertNil(NumberText.RawNumber("-Infinity"))
+        XCTAssertNil(NumberText.RawNumber(""))
+        XCTAssertNil(NumberText.RawNumber("1.2.3"))
+    }
+
+    func testJsonNumberLiteralAcceptsWidthsBeyondInt64() {
+        XCTAssertTrue(NumberText.isJSONNumberLiteral("12345678901234567890123456789012"))
+        XCTAssertFalse(NumberText.isJSONNumber("12345678901234567890123456789012"))
+        XCTAssertFalse(NumberText.isJSONNumberLiteral("007"))
+        XCTAssertFalse(NumberText.isJSONNumberLiteral("NaN"))
+    }
+
+    func testTruncationOnlyMarksTextItActuallyCut() {
+        let long = String(repeating: "a", count: 50)
+        XCTAssertEqual(JSONTruncation.truncate(#"{"a":1}"#, maxLength: 100), #"{"a":1}"#)
+        XCTAssertTrue(JSONTruncation.truncate(long, maxLength: 10).hasSuffix("..."))
+        XCTAssertEqual((JSONTruncation.truncate(long, maxLength: 10) as NSString).length, 13)
+    }
+
+    func testTruncationCutsInUtf16UnitsNotCharacters() {
+        let emoji = String(repeating: "🎉", count: 50)
+        let cut = JSONTruncation.truncate(emoji, maxLength: 10) as NSString
+        XCTAssertLessThanOrEqual(cut.length, 10 + 3)
+    }
+
+    /// A half-typed brace is a value the user meant, not text this helper shortened.
+    func testIncompleteStructureIgnoresUserTypedText() {
+        XCTAssertFalse(JSONTruncation.isIncompleteStructure("{draft"))
+        XCTAssertFalse(JSONTruncation.isIncompleteStructure("[TODO"))
+        XCTAssertFalse(JSONTruncation.isIncompleteStructure(#"{"a":1}"#))
+        XCTAssertFalse(JSONTruncation.isIncompleteStructure("plain text..."))
+        XCTAssertTrue(JSONTruncation.isIncompleteStructure(#"{"a":1, "b":"xx..."#))
+    }
 }

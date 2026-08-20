@@ -158,9 +158,6 @@ enum ElasticsearchMappingFlattener {
         guard let json = NumberText.json(from: value) else {
             return String(describing: value)
         }
-        if (json as NSString).length > maxNestedJsonLength {
-            return String(json.prefix(maxNestedJsonLength)) + "..."
-        }
-        return json
+        return JSONTruncation.truncate(json, maxLength: maxNestedJsonLength)
     }
 }
