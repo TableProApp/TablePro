@@ -11,9 +11,24 @@ enum DamengStatementClassifier {
         "DESC", "DESCRIBE", "EXPLAIN", "SELECT", "SHOW", "VALUES", "WITH"
     ]
 
+    private static let readOnlyKeywords: Set<String> = [
+        "DESC", "DESCRIBE", "EXPLAIN", "SELECT", "SHOW"
+    ]
+
     static func likelyReturnsRows(_ query: String) -> Bool {
         guard let keyword = firstKeyword(query) else { return false }
         return resultKeywords.contains(keyword)
+    }
+
+    /// Whether running this statement twice is the same as running it once, which is what
+    /// decides if it may be sent again on a rebuilt connection.
+    ///
+    /// The list is an allowlist and deliberately shorter than `resultKeywords`: `WITH` and
+    /// `VALUES` can head a statement that writes, and a replayed write may apply twice
+    /// because the abandoned attempt could already have committed.
+    static func isReadOnly(_ query: String) -> Bool {
+        guard let keyword = firstKeyword(query) else { return false }
+        return readOnlyKeywords.contains(keyword)
     }
 
     private static func firstKeyword(_ query: String) -> String? {

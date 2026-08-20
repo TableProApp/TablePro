@@ -104,12 +104,47 @@ final class DamengPlugin: NSObject, TableProPlugin, DriverPlugin {
 }
 
 final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+    /// The session state a rebuilt connection has to be put back into. Guarded because a
+    /// reconnect now runs from any statement's task, not only from connect and disconnect.
+    struct SessionState {
+        var activeSchema: String?
+        var textEscaping: DamengTextEscaping = .unknown
+        /// A driver that never reached the server has nothing to reconnect to, so a closed
+        /// connection there is the connect failing rather than a session to rebuild.
+        var hasConnectedBefore = false
+        var openTransactions = 0
+    }
+
     let config: DriverConnectionConfig
-    private let connection = DamengConnection()
+    let connection = DamengConnection()
     private let cancellationGate = PluginQueryCancellationGate()
-    private var activeSchema: String?
     private var detectedServerVersion: String?
-    private var textEscaping: DamengTextEscaping = .unknown
+
+    let sessionLock = NSLock()
+    var sessionState = SessionState()
+
+    /// Concurrent callers await one rebuild instead of each starting their own, which would
+    /// have each retired the connection the previous one had just adopted.
+    var reconnectInFlight: Task<Void, any Error>?
+
+    var activeSchema: String? {
+        get { sessionLock.withLock { sessionState.activeSchema } }
+        set { sessionLock.withLock { sessionState.activeSchema = newValue } }
+    }
+
+    var textEscaping: DamengTextEscaping {
+        get { sessionLock.withLock { sessionState.textEscaping } }
+        set { sessionLock.withLock { sessionState.textEscaping = newValue } }
+    }
+
+    var hasConnectedBefore: Bool {
+        get { sessionLock.withLock { sessionState.hasConnectedBefore } }
+        set { sessionLock.withLock { sessionState.hasConnectedBefore = newValue } }
+    }
+
+    var hasOpenTransaction: Bool {
+        sessionLock.withLock { sessionState.openTransactions > 0 }
+    }
 
     var capabilities: PluginCapabilities {
         [.parameterizedQueries, .transactions, .alterTableDDL, .multiSchema]
@@ -133,8 +168,9 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
         textEscaping = await detectTextEscaping()
         do {
-            if !config.database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                try await switchSchema(to: config.database)
+            let initialSchema = config.database.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !initialSchema.isEmpty {
+                try await applySchema(initialSchema)
             } else {
                 activeSchema = try await scalarText("SELECT SF_GET_SCHEMA_NAME_BY_ID(CURRENT_SCHID)")
             }
@@ -144,11 +180,14 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         detectedServerVersion = (try? await scalarText("SELECT BANNER FROM V$VERSION WHERE ROWNUM = 1"))
             .map { String($0.prefix(60)) }
+        hasConnectedBefore = true
     }
 
-    private func detectTextEscaping() async -> DamengTextEscaping {
+    /// Keeps the mode the previous connection established when the probe fails, because
+    /// `.unknown` refuses every value containing a backslash for the rest of the session.
+    func detectTextEscaping() async -> DamengTextEscaping {
         guard let length = try? await scalarText("SELECT LENGTH('\\\\') FROM DUAL") else {
-            return .unknown
+            return textEscaping
         }
         switch length.trimmingCharacters(in: .whitespaces).prefix(1) {
         case "2": return .backslashLiteral
@@ -162,6 +201,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         activeSchema = nil
         detectedServerVersion = nil
         textEscaping = .unknown
+        hasConnectedBefore = false
     }
 
     func ping() async throws {
@@ -180,7 +220,9 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
-        try await executeBound(query: query, parameters: [], rowCap: nil)
+        try await executeWithReconnect(
+            query: query, parameters: [], rowCap: nil, replay: Self.replayPolicy(for: query)
+        )
     }
 
     func executeUserQuery(
@@ -188,23 +230,43 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         rowCap: Int?,
         parameters: [PluginCellValue]?
     ) async throws -> PluginQueryResult {
-        try await executeBound(query: query, parameters: parameters ?? [], rowCap: rowCap)
+        try await executeWithReconnect(
+            query: query,
+            parameters: parameters ?? [],
+            rowCap: rowCap,
+            replay: Self.replayPolicy(for: query)
+        )
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        try await executeBound(query: query, parameters: parameters, rowCap: nil)
+        try await executeWithReconnect(
+            query: query, parameters: parameters, rowCap: nil, replay: Self.replayPolicy(for: query)
+        )
+    }
+
+    static func replayPolicy(for query: String) -> DamengReplayPolicy {
+        DamengStatementClassifier.isReadOnly(query) ? .replayable : .reportFailure
     }
 
     func beginTransaction() async throws {
         try await connection.beginTransaction()
+        sessionLock.withLock { sessionState.openTransactions += 1 }
     }
 
+    /// The count drops whether or not the server accepted the end, because a failure means the
+    /// transaction is over too. Leaving it raised would refuse every later reconnect.
     func commitTransaction() async throws {
+        defer { endTransaction() }
         try await connection.commitTransaction()
     }
 
     func rollbackTransaction() async throws {
+        defer { endTransaction() }
         try await connection.rollbackTransaction()
+    }
+
+    func endTransaction() {
+        sessionLock.withLock { sessionState.openTransactions = max(0, sessionState.openTransactions - 1) }
     }
 
     func switchSchema(to schema: String) async throws {
@@ -212,15 +274,28 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard !normalized.isEmpty else {
             throw DamengError(message: String(localized: "The Dameng schema name cannot be empty."))
         }
-        let setSchema = "SET SCHEMA \(quoteIdentifier(normalized))"
+        do {
+            try await applySchema(normalized)
+        } catch let error as DamengError where error.closedConnection && hasConnectedBefore {
+            try await reconnect(restoringSchema: normalized)
+        }
+    }
+
+    /// Moves the session onto `schema` and confirms the server agrees.
+    ///
+    /// `SET SCHEMA` is wrapped in an anonymous block because DM8 rejects it as a prepared
+    /// statement: sent bare over the wire the server answers with a truncated frame and the
+    /// driver reports "incomplete protocol data", which also desyncs the connection.
+    func applySchema(_ schema: String) async throws {
+        let setSchema = "SET SCHEMA \(quoteIdentifier(schema))"
         let escaped = try DamengParameterBinder.escapedText(setSchema, escaping: textEscaping)
-        _ = try await executeBound(
+        _ = try await executeOnce(
             query: "BEGIN EXECUTE IMMEDIATE '\(escaped)'; END;",
             parameters: [],
             rowCap: nil
         )
         let selected = try await scalarText("SELECT SF_GET_SCHEMA_NAME_BY_ID(CURRENT_SCHID)")
-        guard selected.caseInsensitiveCompare(normalized) == .orderedSame else {
+        guard selected.caseInsensitiveCompare(schema) == .orderedSame else {
             throw DamengError(message: String(localized: "Dameng did not switch to the requested schema."))
         }
         activeSchema = selected
@@ -269,7 +344,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "EXPLAIN \(sql)"
     }
 
-    private func executeBound(
+    func executeOnce(
         query: String,
         parameters: [PluginCellValue],
         rowCap: Int?
@@ -294,8 +369,10 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    /// Session probes run on the connection they are given: they are the statements a
+    /// reconnect is made of, so routing them back through the retry would recurse.
     private func scalarText(_ query: String) async throws -> String {
-        let result = try await executeBound(query: query, parameters: [], rowCap: 1)
+        let result = try await executeOnce(query: query, parameters: [], rowCap: 1)
         guard let value = result.rows.first?.first?.asText else {
             throw DamengError(message: String(localized: "Dameng returned an empty metadata result."))
         }

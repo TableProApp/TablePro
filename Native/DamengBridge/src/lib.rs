@@ -27,6 +27,10 @@ pub struct TpDmConnection {
 pub struct TpDmError {
     message: Vec<u8>,
     cancelled: bool,
+    /// The failure left the connection closed rather than merely rejecting the statement.
+    /// Swift needs this to tell "the server refused this SQL" from "reconnect before the
+    /// next one", which the message text cannot express.
+    connection_lost: bool,
 }
 
 pub struct TpDmResult {
@@ -50,22 +54,40 @@ enum TpDmCell {
 }
 
 fn set_error(error_out: *mut *mut TpDmError, message: impl Into<String>) {
-    store_error(error_out, message.into(), false);
+    store_error(error_out, message.into(), false, false);
+}
+
+/// The handle outlived its client, which an earlier failure disposed. Reported as lost so
+/// the caller reconnects instead of retrying against a handle that can never serve again.
+fn set_closed_error(error_out: *mut *mut TpDmError, message: impl Into<String>) {
+    store_error(error_out, message.into(), false, true);
 }
 
 /// Preserves whether the failure was a caller-requested stop, which Swift reports as a
-/// cancellation rather than as a query error.
+/// cancellation rather than as a query error, and whether it closed the connection, which
+/// is the same classification `dispose` acts on.
 fn set_driver_error(error_out: *mut *mut TpDmError, error: &dameng::Error) {
-    store_error(error_out, error.to_string(), is_cancellation(error));
+    store_error(
+        error_out,
+        error.to_string(),
+        is_cancellation(error),
+        !is_recoverable(error),
+    );
 }
 
-fn store_error(error_out: *mut *mut TpDmError, message: String, cancelled: bool) {
+fn store_error(
+    error_out: *mut *mut TpDmError,
+    message: String,
+    cancelled: bool,
+    connection_lost: bool,
+) {
     if error_out.is_null() {
         return;
     }
     let error = Box::new(TpDmError {
         message: message.into_bytes(),
         cancelled,
+        connection_lost,
     });
     unsafe {
         *error_out = Box::into_raw(error);
@@ -428,7 +450,7 @@ pub unsafe extern "C" fn tp_dm_execute(
     let mut client = match connection_client(connection) {
         Ok(client) => client,
         Err(message) => {
-            set_error(error_out, message);
+            set_closed_error(error_out, message);
             return ptr::null_mut();
         }
     };
@@ -454,7 +476,7 @@ pub unsafe extern "C" fn tp_dm_execute(
         }
         Err(payload) => {
             dispose(connection, client, false);
-            set_error(error_out, panic_message(payload));
+            set_closed_error(error_out, panic_message(payload));
             ptr::null_mut()
         }
     }
@@ -489,7 +511,7 @@ unsafe fn transaction_operation(
     let mut client = match connection_client(connection) {
         Ok(client) => client,
         Err(message) => {
-            set_error(error_out, message);
+            set_closed_error(error_out, message);
             return false;
         }
     };
@@ -501,12 +523,12 @@ unsafe fn transaction_operation(
         }
         Ok(Err(error)) => {
             dispose(connection, client, is_recoverable(&error));
-            set_error(error_out, error.to_string());
+            set_driver_error(error_out, &error);
             false
         }
         Err(payload) => {
             dispose(connection, client, false);
-            set_error(error_out, panic_message(payload));
+            set_closed_error(error_out, panic_message(payload));
             false
         }
     }
@@ -564,6 +586,14 @@ pub unsafe extern "C" fn tp_dm_error_is_cancellation(error: *const TpDmError) ->
         return false;
     }
     (*error).cancelled
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tp_dm_error_is_connection_lost(error: *const TpDmError) -> bool {
+    if error.is_null() {
+        return false;
+    }
+    (*error).connection_lost
 }
 
 #[no_mangle]
@@ -853,6 +883,43 @@ mod tests {
         assert!(!is_recoverable(&dameng::Error::Cancelled));
         assert!(!is_recoverable(&dameng::Error::Timeout("slow".to_string())));
         assert!(is_recoverable(&dameng::Error::QueryFailed("bad sql".to_string())));
+    }
+
+    /// Swift reconnects on this flag, so it has to say the same thing `dispose` acted on.
+    /// A statement the server rejected must not report a lost connection, or every syntax
+    /// error would throw the session away.
+    #[test]
+    fn a_failure_reports_whether_it_closed_the_connection() {
+        unsafe {
+            let mut error = ptr::null_mut();
+            set_driver_error(&mut error, &dameng::Error::Cancelled);
+            assert!(tp_dm_error_is_connection_lost(error));
+            assert!(tp_dm_error_is_cancellation(error));
+            tp_dm_error_free(error);
+
+            let mut error = ptr::null_mut();
+            set_driver_error(&mut error, &dameng::Error::Timeout("slow".to_string()));
+            assert!(tp_dm_error_is_connection_lost(error));
+            assert!(!tp_dm_error_is_cancellation(error));
+            tp_dm_error_free(error);
+
+            let mut error = ptr::null_mut();
+            set_driver_error(&mut error, &dameng::Error::QueryFailed("bad sql".to_string()));
+            assert!(!tp_dm_error_is_connection_lost(error));
+            tp_dm_error_free(error);
+
+            let mut error = ptr::null_mut();
+            set_closed_error(&mut error, "Dameng connection is closed");
+            assert!(tp_dm_error_is_connection_lost(error));
+            tp_dm_error_free(error);
+
+            let mut error = ptr::null_mut();
+            set_error(&mut error, "query length is invalid");
+            assert!(!tp_dm_error_is_connection_lost(error));
+            tp_dm_error_free(error);
+
+            assert!(!tp_dm_error_is_connection_lost(ptr::null()));
+        }
     }
 
     #[test]

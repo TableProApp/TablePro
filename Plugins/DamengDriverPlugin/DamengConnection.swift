@@ -21,8 +21,13 @@ final class DamengConnection: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.TablePro.dameng.connection", qos: .userInitiated)
     private let stateLock = NSLock()
     private var rawConnection: OpaquePointer?
-    private var isShuttingDown = false
     private var queryTimeoutSeconds = 0
+    private var tickets = DamengStatementTickets()
+
+    /// Fences a connect against every state change that happened while it was in flight.
+    /// DM8 connect is several round trips, so a disconnect can land first, and adopting
+    /// afterwards would revive a connection the caller already closed.
+    private var epoch: UInt64 = 0
 
     deinit {
         let handle = rawConnection
@@ -37,7 +42,7 @@ final class DamengConnection: @unchecked Sendable {
         guard let port = UInt16(exactly: port), port > 0 else {
             throw DamengError(message: String(localized: "The Dameng port must be between 1 and 65535."))
         }
-        releaseHandle(shuttingDown: false)
+        let attempt = invalidateAttempts()
         try await run {
             var rawError: OpaquePointer?
             let connection = host.withUTF8Bytes { hostBytes in
@@ -59,15 +64,18 @@ final class DamengConnection: @unchecked Sendable {
             guard let connection else {
                 throw Self.failure(from: rawError)
             }
-            guard self.adopt(connection) else {
+            guard self.adopt(connection, attempt: attempt) else {
                 tp_dm_disconnect(connection)
-                throw DamengError(message: String(localized: "The Dameng connection is closed."))
+                throw DamengError(
+                    message: String(localized: "The Dameng connection is closed."),
+                    closedConnection: true
+                )
             }
         }
     }
 
     func disconnect() {
-        releaseHandle(shuttingDown: true)
+        invalidateAttempts()
     }
 
     /// Stops an in-flight statement. The bridge abandons the server's reply mid-message and
@@ -75,9 +83,8 @@ final class DamengConnection: @unchecked Sendable {
     /// driver reconnects.
     func cancelInFlightStatement() {
         stateLock.lock()
-        let handle = rawConnection
-        stateLock.unlock()
-        guard let handle else { return }
+        defer { stateLock.unlock() }
+        guard let handle = rawConnection else { return }
         tp_dm_cancel(handle)
     }
 
@@ -98,23 +105,66 @@ final class DamengConnection: @unchecked Sendable {
         return min(rowCap, PluginRowLimits.emergencyMax)
     }
 
-    private func adopt(_ connection: OpaquePointer) -> Bool {
+    /// Retires a handle a failure already closed.
+    ///
+    /// The epoch is deliberately untouched: nothing asked the driver to stop, so a reconnect
+    /// already in flight keeps its claim. Bumping here let a second statement failing on the
+    /// same dead connection cancel the rebuild that was recovering it, which is the case with
+    /// two tabs loading at once.
+    private func retireHandle() {
+        stateLock.lock()
+        let handle = rawConnection
+        rawConnection = nil
+        stateLock.unlock()
+        dispose(handle)
+    }
+
+    /// Ends the current handle and every attempt still in flight, which is what a disconnect
+    /// and the start of a fresh connect both mean. Returns the epoch a connect must still own
+    /// to adopt, so it survives the several round trips DM8 needs.
+    @discardableResult
+    private func invalidateAttempts() -> UInt64 {
+        stateLock.lock()
+        let handle = rawConnection
+        rawConnection = nil
+        epoch &+= 1
+        tickets.reset()
+        let attempt = epoch
+        stateLock.unlock()
+        dispose(handle)
+        return attempt
+    }
+
+    /// Freed while holding the lock the cancel path also holds, so a cancellation racing a
+    /// teardown either reaches a live handle or finds none. `tp_dm_disconnect` frees the box
+    /// `tp_dm_cancel` reads its interrupt from.
+    private func dispose(_ handle: OpaquePointer?) {
+        guard let handle else { return }
+        queue.async {
+            self.stateLock.lock()
+            tp_dm_disconnect(handle)
+            self.stateLock.unlock()
+        }
+    }
+
+    private func adopt(_ connection: OpaquePointer, attempt: UInt64) -> Bool {
         stateLock.lock()
         defer { stateLock.unlock() }
-        guard !isShuttingDown, rawConnection == nil else { return false }
+        guard epoch == attempt, rawConnection == nil else { return false }
         rawConnection = connection
         return true
     }
 
-    private func releaseHandle(shuttingDown: Bool) {
-        stateLock.lock()
-        isShuttingDown = shuttingDown
-        let handle = rawConnection
-        rawConnection = nil
-        stateLock.unlock()
-        if let handle {
-            queue.async { tp_dm_disconnect(handle) }
-        }
+    /// The bridge already closed its client, so the handle is retired here to keep the Swift
+    /// state honest. Without this every later call reported a closed connection forever, and
+    /// nothing above could tell that from a server rejecting the statement.
+    ///
+    /// A stop counts too: DM8 has no out-of-band cancel, so interrupting the read abandons the
+    /// reply mid-message and the bridge closes the client for the same reason.
+    private func releaseIfConnectionLost(_ error: any Error) {
+        let lost = error is CancellationError || (error as? DamengError)?.closedConnection == true
+        guard lost else { return }
+        retireHandle()
     }
 
     func ping() async throws {
@@ -185,25 +235,68 @@ final class DamengConnection: @unchecked Sendable {
         stateLock.lock()
         defer { stateLock.unlock() }
         guard let rawConnection else {
-            throw DamengError(message: String(localized: "The Dameng connection is closed."))
+            throw DamengError(
+                message: String(localized: "The Dameng connection is closed."),
+                closedConnection: true
+            )
         }
         return rawConnection
     }
 
+    /// Each call takes a ticket so a cancellation reaches its own statement and no other.
+    /// The connection-wide interrupt is only fired for the statement actually on the wire;
+    /// one still queued behind it is dropped without touching the connection.
     private func run<T: Sendable>(_ operation: @escaping @Sendable () throws -> T) async throws -> T {
-        try await withTaskCancellationHandler {
+        let ticket = issueTicket()
+        return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 queue.async {
-                    do {
-                        continuation.resume(returning: try operation())
-                    } catch {
-                        continuation.resume(throwing: error)
+                    guard self.beginExecuting(ticket) else {
+                        continuation.resume(throwing: CancellationError())
+                        return
                     }
+                    let outcome = Result(catching: operation)
+                    if case .failure(let error) = outcome {
+                        self.releaseIfConnectionLost(error)
+                    }
+                    // Retired before the caller resumes, so a cancellation arriving late
+                    // cannot fire the connection-wide interrupt for a finished statement.
+                    self.finishExecuting(ticket)
+                    continuation.resume(with: outcome)
                 }
             }
         } onCancel: {
-            self.cancelInFlightStatement()
+            self.cancel(ticket)
         }
+    }
+
+    private func issueTicket() -> UInt64 {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return tickets.issue()
+    }
+
+    private func beginExecuting(_ ticket: UInt64) -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return tickets.beginExecuting(ticket)
+    }
+
+    private func finishExecuting(_ ticket: UInt64) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        tickets.finishExecuting(ticket)
+    }
+
+    /// Held across the interrupt rather than around the pointer read, because the handle can
+    /// be freed in between. `tp_dm_cancel` only stores a flag, so the lock is held briefly.
+    private func cancel(_ ticket: UInt64) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard tickets.cancel(ticket) == .interruptConnection, let handle = rawConnection else {
+            return
+        }
+        tp_dm_cancel(handle)
     }
 
     private static func decode(_ result: OpaquePointer) throws -> DamengRawResult {
@@ -270,7 +363,9 @@ final class DamengConnection: @unchecked Sendable {
     }
 
     /// A statement the caller stopped surfaces as `CancellationError`, so the app reports a
-    /// cancelled query instead of an error the user did not cause.
+    /// cancelled query instead of an error the user did not cause. Everything else carries
+    /// whether the connection survived, which decides whether the driver may reconnect and
+    /// retry or has to report the failure.
     private static func failure(from pointer: OpaquePointer?) -> any Error {
         guard let pointer else {
             return DamengError(message: String(localized: "The Dameng operation failed."))
@@ -279,12 +374,16 @@ final class DamengConnection: @unchecked Sendable {
         if tp_dm_error_is_cancellation(pointer) {
             return CancellationError()
         }
+        let closedConnection = tp_dm_error_is_connection_lost(pointer)
         var length = 0
         guard let bytes = tp_dm_error_message(pointer, &length),
               let message = String(bytes: UnsafeBufferPointer(start: bytes, count: length), encoding: .utf8) else {
-            return DamengError(message: String(localized: "The Dameng operation failed."))
+            return DamengError(
+                message: String(localized: "The Dameng operation failed."),
+                closedConnection: closedConnection
+            )
         }
-        return DamengError(message: message)
+        return DamengError(message: message, closedConnection: closedConnection)
     }
 }
 

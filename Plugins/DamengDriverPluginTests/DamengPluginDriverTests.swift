@@ -313,6 +313,97 @@ final class DamengPluginDriverTests: XCTestCase {
         }
     }
 
+    /// The regression test for #2262. Stopping a DM8 statement closes its connection, because
+    /// DM8 has no out-of-band cancel, and every later statement used to fail forever with
+    /// "The Dameng connection is closed": switching schema reported a failure and tables took a
+    /// long time to open or never opened at all.
+    ///
+    /// The stopped statement is a self-contained join over `SYSOBJECTS` that takes a couple of
+    /// seconds and then ends. DM8 keeps running an abandoned statement, so a query chosen to
+    /// run for hours would pin the server long after the test finished.
+    func testLiveDM8RecoversFromAStoppedStatement() async throws {
+        let environment = try liveEnvironment()
+        let driver = DamengPluginDriver(config: environment.config(database: "SYSDBA"))
+        try await checked("connect") { try await driver.connect() }
+        defer { driver.disconnect() }
+
+        let stopped = Task {
+            try await driver.execute(
+                query: """
+                    SELECT COUNT(*) FROM SYSOBJECTS a, SYSOBJECTS b
+                    WHERE a.NAME || b.NAME LIKE '%zzzz%'
+                    """
+            )
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        try driver.cancelQuery()
+        if case .success = await stopped.result {
+            XCTFail("Expected the stopped statement to fail")
+        }
+
+        let recovered = try await checked("statement after the stop") {
+            try await driver.execute(query: "SELECT 1 FROM DUAL")
+        }
+        XCTAssertEqual(recovered.rows.first?.first, .text("1"))
+        XCTAssertEqual(driver.currentSchema, "SYSDBA")
+
+        try await checked("switch schema after the stop") { try await driver.switchSchema(to: "SYSDBA") }
+        try await checked("ping after the stop") { try await driver.ping() }
+    }
+
+    /// A rebuilt connection never saw the transaction's BEGIN, so replaying into it would let
+    /// the later commit report success having written nothing. The loss is reported instead.
+    ///
+    /// A bare `SET SCHEMA` is the deterministic way to lose the connection: DM8 answers it with
+    /// a truncated frame, which desyncs the stream and closes the connection every time. A stop
+    /// would not do, because one that lands after the server already answered leaves the
+    /// connection healthy and there would be nothing to report.
+    func testLiveDM8ReportsATransactionLostWithItsConnection() async throws {
+        let environment = try liveEnvironment()
+        let driver = DamengPluginDriver(config: environment.config(database: "SYSDBA"))
+        try await checked("connect") { try await driver.connect() }
+        defer { driver.disconnect() }
+
+        try await checked("begin") { try await driver.beginTransaction() }
+        do {
+            _ = try await driver.execute(query: "SET SCHEMA \"SYSDBA\"")
+            XCTFail("Expected the statement to lose its connection")
+        } catch {
+            XCTAssertTrue(String(describing: error).contains("transaction"), "\(error)")
+        }
+        XCTAssertFalse(driver.hasOpenTransaction)
+
+        // Reporting it once ends the transaction, so the session recovers from there.
+        let recovered = try await checked("statement after the lost transaction") {
+            try await driver.execute(query: "SELECT 1 FROM DUAL")
+        }
+        XCTAssertEqual(recovered.rows.first?.first, .text("1"))
+        XCTAssertEqual(driver.currentSchema, "SYSDBA")
+    }
+
+    /// Several statements finding the connection dead share one rebuild. Each starting its own
+    /// would retire the connection the previous one had just adopted.
+    func testLiveDM8SharesOneRebuildBetweenConcurrentStatements() async throws {
+        let environment = try liveEnvironment()
+        let driver = DamengPluginDriver(config: environment.config(database: "SYSDBA"))
+        try await checked("connect") { try await driver.connect() }
+        defer { driver.disconnect() }
+
+        try driver.cancelQuery()
+
+        try await withThrowingTaskGroup(of: PluginCellValue?.self) { group in
+            for _ in 0..<8 {
+                group.addTask {
+                    try await driver.execute(query: "SELECT USER FROM DUAL").rows.first?.first
+                }
+            }
+            for try await value in group {
+                XCTAssertEqual(value, .text("SYSDBA"))
+            }
+        }
+        XCTAssertEqual(driver.currentSchema, "SYSDBA")
+    }
+
     func testLiveDM8RejectsBadCredentialsAndInvalidPort() async throws {
         let environment = try liveEnvironment()
         let invalidPortDriver = DamengPluginDriver(config: DriverConnectionConfig(
