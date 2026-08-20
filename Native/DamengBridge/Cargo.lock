@@ -164,7 +164,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 [[package]]
 name = "dameng"
 version = "0.1.0"
-source = "git+https://github.com/TableProApp/rust-dameng?rev=d7a374fe5257228dd3454c36ccbfe3e6bce7a107#d7a374fe5257228dd3454c36ccbfe3e6bce7a107"
+source = "git+https://github.com/TableProApp/rust-dameng?rev=cacd12f08e836446213e9d4062b6437beec77ccd#cacd12f08e836446213e9d4062b6437beec77ccd"
 dependencies = [
  "bytes",
  "chrono",
@@ -178,7 +178,7 @@ dependencies = [
 [[package]]
 name = "dameng-protocol"
 version = "0.1.0"
-source = "git+https://github.com/TableProApp/rust-dameng?rev=d7a374fe5257228dd3454c36ccbfe3e6bce7a107#d7a374fe5257228dd3454c36ccbfe3e6bce7a107"
+source = "git+https://github.com/TableProApp/rust-dameng?rev=cacd12f08e836446213e9d4062b6437beec77ccd#cacd12f08e836446213e9d4062b6437beec77ccd"
 dependencies = [
  "bytes",
  "dameng-types",
@@ -187,7 +187,7 @@ dependencies = [
 [[package]]
 name = "dameng-types"
 version = "0.1.0"
-source = "git+https://github.com/TableProApp/rust-dameng?rev=d7a374fe5257228dd3454c36ccbfe3e6bce7a107#d7a374fe5257228dd3454c36ccbfe3e6bce7a107"
+source = "git+https://github.com/TableProApp/rust-dameng?rev=cacd12f08e836446213e9d4062b6437beec77ccd#cacd12f08e836446213e9d4062b6437beec77ccd"
 dependencies = [
  "bytes",
  "chrono",

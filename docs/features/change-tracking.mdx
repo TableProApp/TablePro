@@ -18,7 +18,7 @@ Changes are queued in memory, not applied immediately. Edit cells, insert rows, 
 Generated columns are read-only: MySQL and MariaDB `STORED` and `VIRTUAL` columns, PostgreSQL `GENERATED ALWAYS AS ... STORED` columns, and ClickHouse `MATERIALIZED` and `ALIAS` columns. The server computes them and rejects any value you send, so TablePro leaves them out of every INSERT and UPDATE it writes, including SQL export.
 </Note>
 
-**Add rows**: click **+ Add** in the status bar or press `Cmd+Shift+N`. A new row appears at the bottom of the grid; columns with default values are pre-filled with `DEFAULT`. Edits to cells in a new row fold into the INSERT, not tracked as separate updates.
+**Add rows**: click **+** in the toolbar, use **Edit > Add Row**, or press `Cmd+Shift+N`. A new row appears at the bottom of the grid; columns with default values are pre-filled with `DEFAULT`. Edits to cells in a new row fold into the INSERT, not tracked as separate updates.
 
 **Delete rows**: select rows and press `Delete`. Deleted rows show a strikethrough and stay visible until you save. Saving asks you to confirm before the rows are permanently deleted.
 

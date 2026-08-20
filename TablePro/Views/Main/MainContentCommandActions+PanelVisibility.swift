@@ -23,3 +23,29 @@ extension MainContentCommandActions {
         return !coordinator.tabManager.tabs[index].display.isResultsCollapsed
     }
 }
+
+/// The result's view mode, which the results header switches and the View menu mirrors.
+///
+/// The switcher used to be the only route to JSON and Chart mode, so those views were reachable by
+/// mouse alone. A menu command is also what the HIG asks of any control that is not in the menu bar.
+extension MainContentCommandActions {
+    var resultsViewMode: ResultsViewMode? {
+        coordinator?.tabManager.selectedTab?.display.resultsViewMode
+    }
+
+    var availableResultsViewModes: [ResultsViewMode] {
+        guard let coordinator, let tab = coordinator.tabManager.selectedTab else { return [] }
+        let columns = coordinator.tabSessionRegistry.existingTableRows(for: tab.id)?.columns ?? []
+        return ResultsModeAvailability.modes(
+            tabType: tab.tabType,
+            hasTableName: tab.tableContext.tableName != nil,
+            hasColumns: !columns.isEmpty
+        )
+    }
+
+    func setResultsViewMode(_ mode: ResultsViewMode) {
+        guard let coordinator, let tabId = coordinator.tabManager.selectedTab?.id else { return }
+        guard availableResultsViewModes.contains(mode) else { return }
+        coordinator.tabManager.mutate(tabId: tabId) { $0.display.resultsViewMode = mode }
+    }
+}

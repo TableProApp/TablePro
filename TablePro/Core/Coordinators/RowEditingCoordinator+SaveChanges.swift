@@ -175,6 +175,8 @@ extension RowEditingCoordinator {
         Task { [weak self, parent] in
             guard let self else { return }
             let overallStartTime = Date()
+            let operationStart = ContinuousClock.Instant.now
+            let savingTabId = parent.tabManager.selectedTabId
 
             do {
                 let executionTimes = try await DatabaseManager.shared.withScopedDriver(
@@ -242,14 +244,33 @@ extension RowEditingCoordinator {
                     Task { [parent] in await parent.refreshTables() }
                 }
 
-                if parent.tabManager.selectedTabIndex != nil && !parent.tabManager.tabs.isEmpty {
+                if let savedTabIndex = parent.tabManager.selectedTabIndex, !parent.tabManager.tabs.isEmpty {
+                    /// An insert or a delete changes the number this tab is reporting, so a count
+                    /// the user asked for before the save no longer describes the table. Without
+                    /// retiring it the reload's automatic count refuses to replace it, and the bar
+                    /// keeps the pre-save total with no `Count Exactly` offered to correct it.
+                    parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
                     parent.runQuery()
                 }
 
                 parent.saveCompletionContinuation?.resume(returning: true)
                 parent.saveCompletionContinuation = nil
+                reportSaveFinished(
+                    .succeeded(OperationSummary(rowsAffected: validStatements.count)),
+                    connection: conn,
+                    database: scope.database,
+                    tabId: savingTabId,
+                    startedAt: operationStart
+                )
             } catch {
                 let executionTime = Date().timeIntervalSince(overallStartTime)
+                reportSaveFinished(
+                    .failed(reason: error.localizedDescription),
+                    connection: conn,
+                    database: scope.database,
+                    tabId: savingTabId,
+                    startedAt: operationStart
+                )
 
                 for statement in validStatements {
                     let historySQL = statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -367,5 +388,27 @@ extension RowEditingCoordinator {
                 session.tableOperationOptions[table] = opts
             }
         }
+    }
+}
+
+fileprivate extension RowEditingCoordinator {
+    /// The save is owned by the tab that started it, not by whichever tab is selected when it
+    /// lands: `failSave` writes into the selected tab, so keying a completion off that would
+    /// attribute a slow save to a tab the user switched to while waiting.
+    func reportSaveFinished(
+        _ outcome: OperationOutcome,
+        connection: DatabaseConnection,
+        database: String?,
+        tabId: UUID?,
+        startedAt: ContinuousClock.Instant
+    ) {
+        guard let tabId else { return }
+        parent.reportOperation(
+            kind: .rowSave,
+            tabId: tabId,
+            startedAt: startedAt,
+            databaseName: database,
+            outcome: outcome
+        )
     }
 }

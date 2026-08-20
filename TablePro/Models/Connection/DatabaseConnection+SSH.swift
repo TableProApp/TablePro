@@ -12,7 +12,8 @@ extension DatabaseConnection {
         if let path = sshForwardUnixSocketPath {
             return .unixSocket(path: path)
         }
-        return .tcp(host: host, port: port)
+        let endpoint = tunnelForwardEndpoint
+        return .tcp(host: endpoint.host, port: endpoint.port)
     }
 
     /// The resolved SSH configuration, derived from `sshTunnelMode`.

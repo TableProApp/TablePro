@@ -186,12 +186,14 @@ struct MCPAuditLogStorageTests {
         let directoryPermissions = try #require(Self.permissions(ofItemAt: directory.path))
         #expect(directoryPermissions & 0o077 == 0)
 
-        let files = Self.auditFileNames()
-        #expect(files.isEmpty == false)
-        for name in files {
-            let path = directory.appendingPathComponent(name).path
+        let paths = await storage.databaseFilePaths
+        #expect(paths.isEmpty == false)
+        for path in paths {
             guard let permissions = Self.permissions(ofItemAt: path) else { continue }
-            #expect(permissions & 0o077 == 0, "\(name) is readable outside its owner")
+            #expect(
+                permissions & 0o077 == 0,
+                "\((path as NSString).lastPathComponent) is readable outside its owner"
+            )
         }
         withExtendedLifetime(storage) {}
     }

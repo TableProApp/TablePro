@@ -13,6 +13,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         /// derives its own `isConnected` from the window phase rather than from execution.
         let connected: Bool
         let isTableTab: Bool
+        let canAddRow: Bool
         let hasPendingChanges: Bool
         let hasDataPendingChanges: Bool
         let blocksAllWrites: Bool
@@ -40,6 +41,8 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             return context.connected && !context.fileBased && context.supportsContainerSwitching
         case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables, Self.sidebarToggle:
             return context.connected
+        case Self.addRow:
+            return context.connected && context.canAddRow
         case Self.saveChanges:
             return context.hasPendingChanges && context.connected && !context.blocksAllWrites
         case Self.previewSQL:
@@ -60,6 +63,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         return ValidationContext(
             connected: Self.hasLiveSession(state.connectionState),
             isTableTab: state.isTableTab,
+            canAddRow: coordinator?.canAddRow ?? false,
             hasPendingChanges: state.hasPendingChanges,
             hasDataPendingChanges: state.hasDataPendingChanges,
             blocksAllWrites: state.safeModeLevel.blocksAllWrites,

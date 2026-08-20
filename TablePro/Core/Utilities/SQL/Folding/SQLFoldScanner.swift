@@ -159,18 +159,24 @@ private struct Scan {
     }
 
     private mutating func consumeKeyword() {
-        let word = readKeyword(from: index)
+        let word = SqlBlockStructure.readKeyword(text, at: index, length: length)
         guard !word.text.isEmpty else {
             index += 1
             return
         }
 
-        switch word.text {
-        case "BEGIN", "CASE":
+        switch SqlBlockStructure.effect(
+            of: word.text,
+            endingAt: word.end,
+            in: text,
+            length: length,
+            allowsBlock: true
+        ) {
+        case .opensBlock:
             pushFrame(.keywordBlock, openingToken: word.end, startLine: line)
-        case "END" where !isControlFlowEnd(after: word.end):
+        case .closesBlock:
             popFrame(.keywordBlock, end: index)
-        default:
+        case .none:
             break
         }
         index = word.end
@@ -254,33 +260,5 @@ private struct Scan {
                 endLine: line
             )
         )
-    }
-
-    // MARK: - Words
-
-    private func readKeyword(from offset: Int) -> (text: String, end: Int) {
-        guard SqlDollarQuote.isIdentifierStart(text.character(at: offset)) else {
-            return ("", offset + 1)
-        }
-        var cursor = offset
-        var scalars = String.UnicodeScalarView()
-        while cursor < length, SqlDollarQuote.isIdentifierPart(text.character(at: cursor)) {
-            if let scalar = UnicodeScalar(text.character(at: cursor)) {
-                scalars.append(scalar)
-            }
-            cursor += 1
-        }
-        return (String(scalars).uppercased(), cursor)
-    }
-
-    /// `END IF`, `END LOOP`, `END WHILE` and `END FOR` close constructs this scanner does not open, so they must not
-    /// pop a `BEGIN` or `CASE` frame.
-    private func isControlFlowEnd(after offset: Int) -> Bool {
-        var cursor = offset
-        while cursor < length, SqlLexer.isWhitespace(text.character(at: cursor)) {
-            cursor += 1
-        }
-        guard cursor < length else { return false }
-        return ["IF", "LOOP", "WHILE", "FOR"].contains(readKeyword(from: cursor).text)
     }
 }

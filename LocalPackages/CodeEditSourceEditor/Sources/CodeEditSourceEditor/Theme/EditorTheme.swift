@@ -30,6 +30,10 @@ public struct EditorTheme: Equatable {
     public var invisibles: Attribute
     public var background: NSColor
     public var lineHighlight: NSColor
+
+    /// The band painted behind the statement the caret sits in. Transparent means no band.
+    public var statementHighlight: NSColor
+
     public var selection: NSColor
     public var keywords: Attribute
     public var commands: Attribute
@@ -48,6 +52,7 @@ public struct EditorTheme: Equatable {
         invisibles: Attribute,
         background: NSColor,
         lineHighlight: NSColor,
+        statementHighlight: NSColor = .clear,
         selection: NSColor,
         keywords: Attribute,
         commands: Attribute,
@@ -65,6 +70,7 @@ public struct EditorTheme: Equatable {
         self.invisibles = invisibles
         self.background = background
         self.lineHighlight = lineHighlight
+        self.statementHighlight = statementHighlight
         self.selection = selection
         self.keywords = keywords
         self.commands = commands

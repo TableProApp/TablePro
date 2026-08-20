@@ -59,6 +59,7 @@ enum ViewMenuBuilder {
                 shortcut: .toggleHistory,
                 keyboard: keyboard
             ),
+            resultViewSubmenu(),
             MenuItemFactory.item(
                 String(localized: "Show Results"),
                 action: #selector(MainSplitViewController.toggleResults(_:)),
@@ -136,6 +137,19 @@ enum ViewMenuBuilder {
             )
         ])
     }
+
+    private static func resultViewSubmenu() -> NSMenuItem {
+        MenuItemFactory.submenu(String(localized: "Result View"), items: allModes.map { mode in
+            let item = MenuItemFactory.item(
+                mode.displayName,
+                action: #selector(MainSplitViewController.setResultView(_:))
+            )
+            item.representedObject = mode.rawValue
+            return item
+        })
+    }
+
+    private static let allModes: [ResultsViewMode] = [.data, .structure, .json, .chart]
 
     private static func sidebarLayoutSubmenu() -> NSMenuItem {
         MenuItemFactory.submenu(String(localized: "Sidebar Layout"), items: [

@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProNumberFormatting
 import TableProPluginKit
 
 final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
@@ -566,10 +567,9 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     } else if let str = value as? String {
                         row.append(.text(str))
                     } else if let num = value as? NSNumber {
-                        row.append(.text(num.stringValue))
+                        row.append(.text(NumberText.text(for: num)))
                     } else {
-                        if let jsonData = try? JSONSerialization.data(withJSONObject: value),
-                           let jsonStr = String(data: jsonData, encoding: .utf8) {
+                        if let jsonStr = NumberText.json(from: value, sortedKeys: false) {
                             row.append(.text(jsonStr))
                         } else {
                             row.append(.text(String(describing: value)))

@@ -20,7 +20,8 @@ import os
 /// It used to mirror the first three of those, along with the tab's table name, editability and
 /// metadata version. Nothing read any of them, and having them here made this look like the
 /// established home for per-result view state, which is how the chart configuration nearly ended
-/// up here (#2243).
+/// up here (#2243). `origin` is the one of those facts that earns its place: it describes this
+/// result rather than the tab, and the switch reads it.
 @MainActor
 @Observable
 final class ResultSet: Identifiable {
@@ -35,6 +36,11 @@ final class ResultSet: Identifiable {
     var isTruncated: Bool = false
     var baseQuery: String?
     var baseQueryParameterValues: [String?]?
+
+    /// The table these rows came from, captured when the statement ran. Nil means the rows have no
+    /// single writable table, which `ResultEditability` treats as a refusal rather than a licence
+    /// to use whatever the tab is pointing at now.
+    var origin: ResultOrigin?
 
     /// An EXPLAIN result is a result set like any other, so it rides the same tab strip, pinning
     /// and history. It carries a plan instead of rows.

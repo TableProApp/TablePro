@@ -206,9 +206,23 @@ struct PaginationState: Equatable {
     var pageSize: Int               // Rows per page (passed from manager/coordinator)
     var currentPage: Int = 1         // Current page number (1-based)
     var currentOffset: Int = 0       // Current OFFSET for SQL query
+    /// A fetch is in flight for the rows this state describes.
+    ///
+    /// Raised synchronously by whatever discards the tab's rows, in the same block that discards
+    /// them, and lowered when the rows land or the attempt fails. It cannot be derived from
+    /// `TabExecutionRegistry.isExecuting`: retargeting a tab clears the row buffer synchronously
+    /// but only *schedules* the load, so the claim arrives a main-actor turn later and the status
+    /// bar can render an empty buffer that nothing has yet called a load.
     var isLoading: Bool = false
     var isApproximateRowCount: Bool = false  // True when totalRowCount is from fast estimate
     var isCountingExact: Bool = false        // True while a user-requested exact count is running
+    /// An automatic row count is running, so the total on screen is not the one this page settles on.
+    ///
+    /// Separate from `isCountingExact`, which the user asked for and which owns the spinner. This
+    /// one is silent: it exists so `Count Exactly` is not offered against a total that is about to
+    /// be replaced anyway. The execution claim cannot answer this, because it settles the moment
+    /// phase 1 applies, before the count is even dispatched.
+    var isCountPending: Bool = false
 
     // Result truncation state (query tabs)
     var hasMoreRows: Bool = false
@@ -238,9 +252,32 @@ struct PaginationState: Equatable {
     // MARK: - Computed Properties
 
     /// Total number of pages
+    ///
+    /// The ceiling is taken with `quotientAndRemainder` rather than `(total + pageSize - 1) / pageSize`
+    /// because the custom rows-per-page field used to accept `Int.max`, and the addition then trapped
+    /// on overflow the next time the status bar rendered.
     var totalPages: Int {
-        guard let total = totalRowCount, total > 0 else { return 1 }
-        return (total + pageSize - 1) / pageSize  // Ceiling division
+        guard let total = totalRowCount, total > 0, pageSize > 0 else { return 1 }
+        let (quotient, remainder) = total.quotientAndRemainder(dividingBy: pageSize)
+        return remainder == 0 ? quotient : quotient + 1
+    }
+
+    /// Any asynchronous work this state is still waiting on.
+    var isBusy: Bool {
+        isLoading || isLoadingMore || isCountingExact || isCountPending
+    }
+
+    /// Whether the total is a real count rather than a driver estimate.
+    ///
+    /// An estimate cannot bound navigation. MySQL's `TABLE_ROWS` under-reports InnoDB routinely, and
+    /// an estimate kept as the total left every row past it unreachable behind a disabled Next.
+    var hasExactRowCount: Bool {
+        totalRowCount != nil && !isApproximateRowCount
+    }
+
+    /// Whether any total is available, exact or estimated.
+    var hasRowCountTotal: Bool {
+        totalRowCount != nil
     }
 
     /// Whether there is a next page available
@@ -249,12 +286,12 @@ struct PaginationState: Equatable {
     }
 
     var isLastPageKnown: Bool {
-        totalRowCount != nil
+        hasExactRowCount
     }
 
     func canGoToNextPage(loadedRowCount: Int) -> Bool {
-        if hasNextPage { return true }
-        return totalRowCount == nil && loadedRowCount >= pageSize
+        if hasExactRowCount { return hasNextPage }
+        return loadedRowCount >= pageSize
     }
 
     /// Whether there is a previous page available
@@ -267,12 +304,13 @@ struct PaginationState: Equatable {
         currentOffset + 1
     }
 
-    /// Ending row number for current page (1-based)
-    var rangeEnd: Int {
-        guard let total = totalRowCount else {
-            return currentOffset + pageSize
-        }
-        return min(currentOffset + pageSize, total)
+    /// Ending row number for the current page, from the rows the page actually returned.
+    ///
+    /// Deriving it from `pageSize` fabricated a range the grid never showed: a table whose driver
+    /// estimate said a million rows but which returned twelve reported "1-1000 of ~1,000,000 rows".
+    /// The loaded count is the only number that describes what is on screen.
+    func rangeEnd(loadedRowCount: Int) -> Int {
+        currentOffset + max(loadedRowCount, 0)
     }
 
     // MARK: - Navigation Methods
@@ -302,12 +340,42 @@ struct PaginationState: Equatable {
     }
 
     mutating func goToLastPage() {
+        guard hasExactRowCount else { return }
         setPage(totalPages)
     }
 
+    /// A page beyond the last is refused only when the last one is actually known. With an estimate
+    /// there is no trustworthy upper bound, and refusing on one strands the rows past it.
     mutating func goToPage(_ page: Int) {
-        guard page > 0 && page <= totalPages else { return }
+        guard page > 0, hasRowCountTotal else { return }
+        guard !hasExactRowCount || page <= totalPages else { return }
         setPage(page)
+    }
+
+    /// Applies a total the app derived on its own, rather than one the user asked for.
+    ///
+    /// An estimate never replaces an exact count. The automatic count re-runs after every execution,
+    /// including a page turn, and on a driver whose cheap count is an estimate that silently undid a
+    /// `Count Exactly` and brought the button back on the next page. Retiring an exact count is a
+    /// deliberate act, so it belongs to the paths that ask for fresh data, not to this one.
+    /// A nil total blanks it, which is what a filter change asks for and is never an estimate.
+    mutating func applyDerivedRowCount(_ total: Int?, isApproximate: Bool) {
+        guard !isApproximate || !hasExactRowCount else { return }
+        totalRowCount = total
+        isApproximateRowCount = isApproximate
+    }
+
+    /// Drops the total so the next execution derives it again from scratch.
+    ///
+    /// For the paths that change the row set or ask for it fresh, where the count on screen is no
+    /// longer describing the table. Clearing the number rather than flagging it approximate matters:
+    /// `rowCountPlan` skips counting a table whose total already exceeds the count threshold, so a
+    /// real count left in place and merely relabelled would keep its `~` forever, with `Last page`
+    /// disabled and no `Count Exactly` to put it right. Cleared, the tab counts exactly the way a
+    /// freshly opened one does.
+    mutating func retireDerivedRowCount() {
+        totalRowCount = nil
+        isApproximateRowCount = false
     }
 
     /// Reset pagination to first page
@@ -315,6 +383,10 @@ struct PaginationState: Equatable {
         currentPage = 1
         currentOffset = 0
         isLoading = false
+        /// A count belonging to the rows being replaced is not this tab's business any more. Left
+        /// set, a superseded attempt's mark would suppress `Count Exactly` on the new table until
+        /// something else happened to clear it.
+        isCountPending = false
     }
 
     /// Reset result truncation state
@@ -326,11 +398,15 @@ struct PaginationState: Equatable {
         sortExecutionOverride = nil
     }
 
-    /// Update page size (limit)
+    /// Update page size (limit), keeping the first visible row inside the new page.
+    ///
+    /// `setPage` is what re-derives the offset. Assigning `currentPage` alone left the old offset in
+    /// place, so changing 20 to 100 on page 3 ran `LIMIT 100 OFFSET 40` while the indicator read
+    /// "1 / N" and First and Previous went inert.
     mutating func updatePageSize(_ newSize: Int) {
         guard newSize > 0 else { return }
         pageSize = newSize
-        currentPage = (currentOffset / pageSize) + 1
+        setPage((currentOffset / pageSize) + 1)
     }
 
     /// Update offset directly and recalculate page
@@ -413,11 +489,20 @@ struct TabExecutionState: Equatable {
     var rowsAffected: Int = 0
     var lastExecutedAt: Date?
 
+    /// Set when work on this tab finished somewhere the user could not see it, cleared when they
+    /// select the tab. This is the channel that survives a missed banner, a denied notification
+    /// permission and a Focus mode, none of which the app can do anything about.
+    var finishedUnseenAt: Date?
+
+    /// Hand-written, and every field the UI draws from has to be in it. `finishedUnseenAt` drives
+    /// a dot in the tab strip, so leaving it out here would mean the dot never appeared: SwiftUI
+    /// compares the tab and sees no change.
     static func == (lhs: TabExecutionState, rhs: TabExecutionState) -> Bool {
         lhs.executionTime == rhs.executionTime
             && lhs.statusMessage == rhs.statusMessage
             && lhs.errorMessage == rhs.errorMessage
             && lhs.rowsAffected == rhs.rowsAffected
+            && lhs.finishedUnseenAt == rhs.finishedUnseenAt
     }
 }
 

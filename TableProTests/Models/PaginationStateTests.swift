@@ -137,13 +137,13 @@ struct PaginationStateTests {
     @Test("Range end calculation on middle page")
     func rangeEndMiddlePage() {
         let state = PaginationState(totalRowCount: 100, pageSize: 10, currentPage: 2, currentOffset: 10)
-        #expect(state.rangeEnd == 20)
+        #expect(state.rangeEnd(loadedRowCount: 10) == 20)
     }
 
     @Test("Range end calculation on last page with partial data")
     func rangeEndLastPagePartial() {
         let state = PaginationState(totalRowCount: 95, pageSize: 10, currentPage: 10, currentOffset: 90)
-        #expect(state.rangeEnd == 95)
+        #expect(state.rangeEnd(loadedRowCount: 5) == 95)
     }
 
     @Test("Reset returns to first page")
@@ -195,7 +195,7 @@ struct PaginationStateTests {
         #expect(state.hasNextPage == false)
         #expect(state.hasPreviousPage == false)
         #expect(state.rangeStart == 1)
-        #expect(state.rangeEnd == 5)
+        #expect(state.rangeEnd(loadedRowCount: 5) == 5)
     }
 
     @Test("Last page is known when total row count is set")
@@ -210,10 +210,79 @@ struct PaginationStateTests {
         #expect(state.isLastPageKnown == false)
     }
 
-    @Test("Range end with unknown total uses offset plus page size")
+    @Test("Range end with unknown total counts the rows the page returned")
     func rangeEndWithNilTotal() {
         let state = PaginationState(totalRowCount: nil, pageSize: 10, currentPage: 2, currentOffset: 10)
-        #expect(state.rangeEnd == 20)
+        #expect(state.rangeEnd(loadedRowCount: 10) == 20)
+    }
+
+    @Test("Range end never claims rows the page did not return")
+    func rangeEndFollowsLoadedRows() {
+        var state = PaginationState(totalRowCount: 1_000_000, pageSize: 1_000, currentPage: 1)
+        state.isApproximateRowCount = true
+        #expect(state.rangeEnd(loadedRowCount: 12) == 12)
+    }
+
+    @Test("Changing page size keeps the offset on a page boundary")
+    func updatePageSizeKeepsOffsetConsistent() {
+        var state = PaginationState(totalRowCount: 500, pageSize: 20, currentPage: 3, currentOffset: 40)
+        state.updatePageSize(100)
+        #expect(state.pageSize == 100)
+        #expect(state.currentPage == 1)
+        #expect(state.currentOffset == 0)
+        #expect(state.currentOffset == (state.currentPage - 1) * state.pageSize)
+        #expect(state.hasPreviousPage == false)
+    }
+
+    @Test("Total pages survives a page size large enough to overflow a sum")
+    func totalPagesDoesNotOverflow() {
+        var state = PaginationState(totalRowCount: 25, pageSize: 10)
+        state.updatePageSize(Int.max)
+        #expect(state.totalPages == 1)
+    }
+
+    @Test("An estimated total never bounds navigation")
+    func estimatedTotalKeepsNextPageReachable() {
+        var state = PaginationState(totalRowCount: 420, pageSize: 100, currentPage: 5, currentOffset: 400)
+        state.isApproximateRowCount = true
+        #expect(state.hasExactRowCount == false)
+        #expect(state.hasRowCountTotal == true)
+        #expect(state.isLastPageKnown == false)
+        #expect(state.canGoToNextPage(loadedRowCount: 100) == true)
+        #expect(state.canGoToNextPage(loadedRowCount: 40) == false)
+    }
+
+    @Test("Last page is refused while the total is only an estimate")
+    func lastPageRefusedOnEstimate() {
+        var state = PaginationState(totalRowCount: 420, pageSize: 100, currentPage: 6, currentOffset: 500)
+        state.isApproximateRowCount = true
+        state.goToLastPage()
+        #expect(state.currentPage == 6)
+        #expect(state.currentOffset == 500)
+    }
+
+    @Test("A page past an estimated last page is still reachable")
+    func goToPageBeyondEstimate() {
+        var state = PaginationState(totalRowCount: 420, pageSize: 100, currentPage: 1)
+        state.isApproximateRowCount = true
+        state.goToPage(9)
+        #expect(state.currentPage == 9)
+        #expect(state.currentOffset == 800)
+    }
+
+    @Test("A page past a known last page is refused")
+    func goToPageBeyondExactTotal() {
+        var state = PaginationState(totalRowCount: 420, pageSize: 100, currentPage: 1)
+        state.goToPage(9)
+        #expect(state.currentPage == 1)
+    }
+
+    @Test("An exact total still bounds navigation")
+    func exactTotalBoundsNavigation() {
+        let state = PaginationState(totalRowCount: 420, pageSize: 100, currentPage: 5, currentOffset: 400)
+        #expect(state.hasExactRowCount == true)
+        #expect(state.isLastPageKnown == true)
+        #expect(state.canGoToNextPage(loadedRowCount: 100) == false)
     }
 
     @Test("Can go to next page with a known total mid-range")
@@ -276,5 +345,82 @@ struct PaginationStateTests {
         #expect(state.sortExecutionOverride == nil)
         #expect(state.baseQueryForMore == nil)
         #expect(state.hasMoreRows == false)
+    }
+
+    // MARK: - Derived row counts
+
+    @Test("An estimate never replaces a count the user asked for")
+    func estimateDoesNotOverwriteAnExactCount() {
+        var state = PaginationState(pageSize: 1_000)
+        state.totalRowCount = 3_812_004
+        state.isApproximateRowCount = false
+
+        state.applyDerivedRowCount(4_000_000, isApproximate: true)
+
+        #expect(state.totalRowCount == 3_812_004)
+        #expect(state.hasExactRowCount)
+    }
+
+    @Test("An estimate replaces another estimate")
+    func estimateReplacesAnEstimate() {
+        var state = PaginationState(pageSize: 1_000)
+        state.applyDerivedRowCount(4_000_000, isApproximate: true)
+        state.applyDerivedRowCount(4_100_000, isApproximate: true)
+
+        #expect(state.totalRowCount == 4_100_000)
+        #expect(state.isApproximateRowCount)
+    }
+
+    @Test("A derived exact count replaces an estimate")
+    func exactCountReplacesAnEstimate() {
+        var state = PaginationState(pageSize: 1_000)
+        state.applyDerivedRowCount(4_000_000, isApproximate: true)
+        state.applyDerivedRowCount(3_812_004, isApproximate: false)
+
+        #expect(state.totalRowCount == 3_812_004)
+        #expect(state.hasExactRowCount)
+    }
+
+    /// Flagging the count approximate without dropping it left a real count wearing a tilde that
+    /// nothing could remove: past the count threshold the automatic plan skips, so the number stayed
+    /// and `Last page` stayed disabled.
+    @Test("Retiring a count clears the number, not just its exactness")
+    func retiringACountClearsTheNumber() {
+        var state = PaginationState(pageSize: 1_000)
+        state.applyDerivedRowCount(4_873_221, isApproximate: false)
+
+        state.retireDerivedRowCount()
+
+        #expect(state.totalRowCount == nil)
+        #expect(!state.isApproximateRowCount)
+        #expect(!state.hasExactRowCount)
+    }
+
+    @Test("A retired count lets the next estimate land")
+    func retiredCountAcceptsAnEstimate() {
+        var state = PaginationState(pageSize: 1_000)
+        state.applyDerivedRowCount(4_873_221, isApproximate: false)
+        state.retireDerivedRowCount()
+
+        state.applyDerivedRowCount(5_000_000, isApproximate: true)
+
+        #expect(state.totalRowCount == 5_000_000)
+        #expect(state.isApproximateRowCount)
+    }
+
+    @Test("Busy covers every kind of pending work")
+    func busyCoversEveryPendingKind() {
+        #expect(!PaginationState().isBusy)
+
+        for mutate in [
+            { (state: inout PaginationState) in state.isLoading = true },
+            { (state: inout PaginationState) in state.isLoadingMore = true },
+            { (state: inout PaginationState) in state.isCountingExact = true },
+            { (state: inout PaginationState) in state.isCountPending = true },
+        ] {
+            var state = PaginationState()
+            mutate(&state)
+            #expect(state.isBusy)
+        }
     }
 }

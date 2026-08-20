@@ -28,8 +28,27 @@ enum DownloadedBinary {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
+    /// `ditto -xk` writes `com.apple.quarantine` onto every file it extracts, not just the
+    /// directory it extracts into, so clearing the bundle root alone leaves the Mach-O inside
+    /// `Contents/MacOS` still quarantined. Gatekeeper reads the flag on the file it is about
+    /// to map, and refuses a quarantined bundle with "library load disallowed by system
+    /// policy" even inside a process that has `com.apple.security.cs.disable-library-validation`.
     static func stripQuarantine(at url: URL) {
-        let removed = url.path.withCString { removexattr($0, "com.apple.quarantine", 0) }
+        stripQuarantineFromSingleItem(at: url)
+
+        guard let enumerator = FileManager.default.enumerator(
+            at: url,
+            includingPropertiesForKeys: nil,
+            options: []
+        ) else { return }
+
+        for case let child as URL in enumerator {
+            stripQuarantineFromSingleItem(at: child)
+        }
+    }
+
+    private static func stripQuarantineFromSingleItem(at url: URL) {
+        let removed = url.path.withCString { removexattr($0, "com.apple.quarantine", XATTR_NOFOLLOW) }
         guard removed != 0 else { return }
         let code = errno
         guard code != ENOATTR else { return }

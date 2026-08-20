@@ -18,7 +18,7 @@ struct TabRetargetInvalidationTests {
 
         let tableA = registry.claim(tabId)
 
-        registry.invalidate(tabId)
+        _ = registry.invalidate(tabId, reason: .supersededNavigation)
 
         #expect(registry.isCurrent(tableA) == false)
     }
@@ -31,7 +31,7 @@ struct TabRetargetInvalidationTests {
         let tabId = UUID()
 
         let tableA = registry.claim(tabId)
-        registry.invalidate(tabId)
+        _ = registry.invalidate(tabId, reason: .supersededNavigation)
 
         #expect(registry.isExecuting(tabId) == false)
 
@@ -48,7 +48,7 @@ struct TabRetargetInvalidationTests {
         let tabId = UUID()
         let tableA = registry.claim(tabId)
 
-        registry.invalidate(tabId)
+        _ = registry.invalidate(tabId, reason: .supersededNavigation)
 
         #expect(registry.isCurrent(tableA) == false)
         #expect(registry.isExecuting(tabId) == false)
@@ -60,7 +60,7 @@ struct TabRetargetInvalidationTests {
         let tabId = UUID()
 
         let tableA = registry.claim(tabId)
-        registry.invalidate(tabId)
+        _ = registry.invalidate(tabId, reason: .supersededNavigation)
         let tableB = registry.claim(tabId)
 
         let settled = registry.settle(tableA)
@@ -83,7 +83,7 @@ struct TabRetargetInvalidationTests {
         let captured = registry.contentEpoch(for: tabId)
         #expect(registry.isSameContent(captured, for: tabId))
 
-        registry.invalidate(tabId)
+        _ = registry.invalidate(tabId, reason: .supersededNavigation)
 
         #expect(registry.isSameContent(captured, for: tabId) == false)
     }
@@ -111,7 +111,7 @@ struct TabRetargetInvalidationTests {
         let capturedA = registry.contentEpoch(for: tabA)
         let capturedB = registry.contentEpoch(for: tabB)
 
-        registry.invalidateAll()
+        _ = registry.invalidateAll(reason: .cancelledByUser)
 
         #expect(registry.isSameContent(capturedA, for: tabA) == false)
         #expect(registry.isSameContent(capturedB, for: tabB) == false)

@@ -32,8 +32,7 @@ internal final class WelcomeWindowController: NSWindowController {
         /// split pane's host, where the same minimum would pin the window's dividers.
         hosting.sizingOptions = [.minSize]
 
-        let window = NSWindow(contentViewController: hosting)
-        window.title = String(localized: "Welcome to TablePro")
+        let window = NSWindow.titled(String(localized: "Welcome to TablePro"), contentViewController: hosting)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.welcome)
         window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true

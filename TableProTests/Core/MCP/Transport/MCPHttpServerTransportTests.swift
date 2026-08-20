@@ -3,7 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCP HTTP Server Transport")
+@Suite("MCP HTTP Server Transport", .serialized)
 struct MCPHttpServerTransportTests {
     private func exchange(port: UInt16, request: Data) async throws -> RawHttpTestResponse {
         let client = RawHttpTestClient(port: port)

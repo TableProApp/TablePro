@@ -2,8 +2,8 @@
 //  AddRemoveControlGroup.swift
 //  TablePro
 //
-//  The add/remove pair that sits under a list. Extracted from MainStatusBarView so the
-//  structure footer and the Users & Roles list share one implementation.
+//  The add/remove pair that sits under a list, which is where macOS puts a list's own +/-.
+//  Shared by the structure editor's footer and the Users & Roles list.
 //
 
 import SwiftUI

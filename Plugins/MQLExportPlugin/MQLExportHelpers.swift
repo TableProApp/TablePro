@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProNumberFormatting
 import TableProPluginKit
 
 enum MQLExportHelpers {
@@ -39,6 +40,9 @@ enum MQLExportHelpers {
         case "TIMESTAMP":
             guard isIso8601(value) else { break }
             return "ISODate(\"\(PluginExportUtilities.escapeJSONString(value))\")"
+        case "DECIMAL":
+            guard NumberText.isJSONNumberLiteral(value) else { break }
+            return "NumberDecimal(\"\(PluginExportUtilities.escapeJSONString(value))\")"
         default:
             break
         }
@@ -60,10 +64,7 @@ enum MQLExportHelpers {
         if value == "null" {
             return "null"
         }
-        if Int64(value) != nil {
-            return value
-        }
-        if Double(value) != nil, value.contains(".") {
+        if NumberText.isJSONNumber(value) {
             return value
         }
         if let binary = MongoDBUuidCodec.parseWrapper(value) {

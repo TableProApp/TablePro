@@ -34,7 +34,9 @@ enum ToolQueryExecutor {
         secrets: [String] = []
     ) async throws -> JsonValue {
         let connectionId = scope.connectionId
+        let databaseName = scope.database
         let startTime = Date()
+        let operationStart = ContinuousClock.Instant.now
         do {
             let result = try await services.connectionBridge.executeQuery(
                 scope: scope,
@@ -53,6 +55,12 @@ enum ToolQueryExecutor {
                 rowCount: rowCount,
                 wasSuccessful: true,
                 errorMessage: nil
+            )
+            await reportMcpQueryFinished(
+                .succeeded(OperationSummary(rowsReturned: rowCount)),
+                connectionId: connectionId,
+                databaseName: databaseName,
+                startedAt: operationStart
             )
             MCPAuditLogger.logQueryExecuted(
                 principal: principal,
@@ -86,6 +94,12 @@ enum ToolQueryExecutor {
                 outcome: .error,
                 errorMessage: redacted
             )
+            await reportMcpQueryFinished(
+                .failed(reason: redacted),
+                connectionId: connectionId,
+                databaseName: databaseName,
+                startedAt: operationStart
+            )
             throw translate(error, secrets: secrets)
         }
     }
@@ -104,5 +118,30 @@ enum ToolQueryExecutor {
             return error
         }
         return MCPToolExecutionError.queryFailed(MCPErrorRedactor.message(for: error, secrets: secrets))
+    }
+
+    /// An MCP query has no tab and no window of its own, so its completion is owned by the
+    /// connection. Clicking the notification brings the connection's most recent window forward
+    /// rather than focusing a tab that never existed.
+    @MainActor
+    private static func reportMcpQueryFinished(
+        _ outcome: OperationOutcome,
+        connectionId: UUID,
+        databaseName: String?,
+        startedAt: ContinuousClock.Instant
+    ) {
+        guard let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId })
+        else { return }
+        OperationCompletionReporter.shared.report(
+            OperationCompletion(
+                kind: .mcpQuery,
+                owner: .connection(connectionId),
+                connectionId: connectionId,
+                connectionName: connection.name,
+                databaseName: databaseName,
+                elapsed: startedAt.duration(to: .now),
+                outcome: outcome
+            )
+        )
     }
 }

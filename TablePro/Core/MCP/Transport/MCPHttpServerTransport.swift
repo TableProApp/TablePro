@@ -12,7 +12,7 @@ public enum MCPHttpServerState: Sendable, Equatable {
 
 public actor MCPHttpServerTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.HttpServer")
-    private static let readyTimeout: Duration = .seconds(5)
+    private static let readyTimeout: Duration = .seconds(15)
     private static let exchangeBufferSize = 1_024
 
     private let configuration: MCPHttpServerConfiguration

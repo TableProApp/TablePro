@@ -135,7 +135,7 @@ struct GeneralPaneView: View {
         let connectionFields = coordinator.network.connectionFields
         if coordinator.network.hasHostListField {
             ForEach(connectionFields, id: \.id) { field in
-                if case .hostList = field.fieldType {
+                if case .hostList = field.fieldType, coordinator.network.isFieldVisible(field) {
                     HostListFieldRow(
                         label: field.label,
                         placeholder: field.placeholder,
@@ -346,7 +346,7 @@ struct GeneralPaneView: View {
 
     private var firstHostListValue: String {
         let fieldId = coordinator.network.connectionFields
-            .first(where: isHostListField)?.id
+            .first { isHostListField($0) && coordinator.network.isFieldVisible($0) }?.id
         guard let fieldId else { return "" }
         return coordinator.network.additionalFieldValues[fieldId] ?? ""
     }
@@ -385,21 +385,26 @@ struct GeneralPaneView: View {
     }
 
     private func browseForFile() {
-        presentFilePanel { path in
+        let types = DatabaseFileTypes.contentTypes(
+            forExtensions: PluginManager.shared.fileExtensions(for: type)
+        )
+        presentFilePanel(contentTypes: types) { path in
             coordinator.network.database = path
         }
     }
 
+    /// Certificates, keys and identity files are not the driver's own file kinds, so this
+    /// panel stays open to any file.
     private func browseForAuthFile(field: ConnectionField) {
-        presentFilePanel { path in
+        presentFilePanel(contentTypes: [.data]) { path in
             coordinator.auth.additionalFieldValues[field.id] = path
         }
     }
 
-    private func presentFilePanel(onSelect: @escaping (String) -> Void) {
+    private func presentFilePanel(contentTypes: [UTType], onSelect: @escaping (String) -> Void) {
         guard let window = NSApp.keyWindow else { return }
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.database, .data]
+        panel.allowedContentTypes = contentTypes
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
 

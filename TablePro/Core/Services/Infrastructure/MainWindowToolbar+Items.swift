@@ -69,6 +69,20 @@ extension MainWindowToolbar {
         )
     }
 
+    /// A row insert is a change to the data, so it belongs with the other data commands rather than
+    /// in the status bar, which reports what is on screen. It ships as a subitem of an existing group
+    /// so a toolbar the user already customized picks it up: `autosavesConfiguration` restores the
+    /// saved identifier list, and a brand new top-level identifier would never appear for them.
+    func subitemAddRow() -> NSToolbarItem {
+        menuOnlyItem(
+            id: Self.addRow,
+            label: String(localized: "Add Row"),
+            symbol: "plus",
+            action: #selector(performAddRow(_:)),
+            shortcut: .addRow
+        )
+    }
+
     func subitemExport() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.exportTables,

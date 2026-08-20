@@ -24,8 +24,19 @@ enum EditorPeripherals {
     ///   - lineNumbers: Whether to number the lines. Also decides whether there is a gutter at all.
     ///   - folding: Whether folds are calculated. The chevrons only appear when there is a gutter to draw them in,
     ///              but folds stay available through the Query menu and the collapsed chips either way.
-    static func editor(lineNumbers: Bool, folding: Bool) -> SourceEditorConfiguration.Peripherals {
-        make(lineNumbers: lineNumbers, folding: folding, fitsContent: false)
+    ///   - statementRunControls: Whether to offer a run control beside each statement. Only the editor a reader works
+    ///                            in can run anything, so a listing or a preview never asks for them.
+    static func editor(
+        lineNumbers: Bool,
+        folding: Bool,
+        statementRunControls: Bool = false
+    ) -> SourceEditorConfiguration.Peripherals {
+        make(
+            lineNumbers: lineNumbers,
+            folding: folding,
+            fitsContent: false,
+            statementRunControls: statementRunControls
+        )
     }
 
     /// The settings for a listing embedded in another view, which sizes its gutter to the lines it was handed.
@@ -42,13 +53,15 @@ enum EditorPeripherals {
     private static func make(
         lineNumbers: Bool,
         folding: Bool,
-        fitsContent: Bool
+        fitsContent: Bool,
+        statementRunControls: Bool = false
     ) -> SourceEditorConfiguration.Peripherals {
         .init(
             showGutter: lineNumbers,
             showLineNumbers: lineNumbers,
             showMinimap: false,
             showFoldingRibbon: folding,
+            showStatementRunControls: lineNumbers && statementRunControls,
             gutterFitsContent: fitsContent
         )
     }

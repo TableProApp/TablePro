@@ -67,6 +67,11 @@ actor MCPAuditLogStorage {
         prune(olderThan: Self.retentionDays)
         loadChainHead()
     }
+
+    var databaseFilePaths: [String] {
+        guard let dbPath else { return [] }
+        return [dbPath, dbPath + "-wal", dbPath + "-shm"]
+    }
     #endif
 
     deinit {

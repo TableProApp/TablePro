@@ -72,7 +72,7 @@ extension MainContentCommandActions {
         guard let coordinator else { return }
         let victims = tabsToClose(kind: kind)
         guard !victims.isEmpty else { return }
-        guard await confirmDiscardingUnsavedWork() else { return }
+        guard await confirmDiscardingUnsavedWork(victims: victims) else { return }
         coordinator.closeTabsByUser(ids: victims.map(\.id))
     }
 
@@ -85,7 +85,7 @@ extension MainContentCommandActions {
     /// Save goes on to close. This used to save and then return false, which left the batch
     /// standing after a successful save and made Save mean "cancel" on this path while it meant
     /// "close" on the window path.
-    func confirmDiscardingUnsavedWork() async -> Bool {
+    func confirmDiscardingUnsavedWork(victims: [QueryTab] = []) async -> Bool {
         guard hasUnsavedWorkInConnection else { return true }
 
         switch await AlertHelper.confirmSaveChanges(
@@ -93,6 +93,7 @@ extension MainContentCommandActions {
             window: closeAnchorWindow
         ) {
         case .save:
+            guard await applyStagedStructureEdits(in: victims) else { return false }
             return await saveSelectedTabWork()
         case .dontSave:
             return true

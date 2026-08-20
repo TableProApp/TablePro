@@ -13,8 +13,10 @@ struct EditorSettingsView: View {
             Section("SQL Editor") {
                 Toggle("Show line numbers", isOn: $settings.showLineNumbers)
                 Toggle("Highlight current line", isOn: $settings.highlightCurrentLine)
+                Toggle("Highlight current statement", isOn: $settings.highlightCurrentStatement)
                 Toggle("Word wrap", isOn: $settings.wordWrap)
                 Toggle("Code folding", isOn: $settings.codeFoldingEnabled)
+                Toggle("Run button beside each statement", isOn: $settings.showStatementRunControls)
                 Picker("Tab width:", selection: $settings.tabWidth) {
                     Text("2 spaces").tag(2)
                     Text("4 spaces").tag(4)

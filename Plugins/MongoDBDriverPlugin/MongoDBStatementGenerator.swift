@@ -8,6 +8,7 @@
 
 import Foundation
 import os
+import TableProNumberFormatting
 import TableProPluginKit
 
 struct MongoDBStatementGenerator {
@@ -15,6 +16,7 @@ struct MongoDBStatementGenerator {
 
     let collectionName: String
     let columns: [String]
+    var columnKinds: [String: BsonValueKind] = [:]
 
     /// Collection accessor using bracket notation for safety with dotted names
     private var collectionAccessor: String {
@@ -104,7 +106,7 @@ struct MongoDBStatementGenerator {
 
         guard !doc.isEmpty else { return nil }
 
-        let docJson = serializeDocument(doc)
+        guard let docJson = serializeDocument(doc) else { return nil }
         let shell = "\(collectionAccessor).insertOne(\(docJson))"
         return (statement: shell, parameters: [])
     }
@@ -141,7 +143,7 @@ struct MongoDBStatementGenerator {
         // Build update document with $set and/or $unset
         var updateParts: [String] = []
         if !setDoc.isEmpty {
-            let setJson = serializeDocument(setDoc)
+            guard let setJson = serializeDocument(setDoc) else { return nil }
             updateParts.append("\"$set\": \(setJson)")
         }
         if !unsetFields.isEmpty {
@@ -218,24 +220,33 @@ struct MongoDBStatementGenerator {
     }
 
     /// Serialize a [String: String] dictionary to JSON-like format
-    private func serializeDocument(_ doc: [String: String]) -> String {
-        let entries = doc.sorted { $0.key < $1.key }.map { key, value in
-            let jsonValue = jsonValue(for: value)
-            return "\"\(escapeJsonString(key))\": \(jsonValue)"
+    private func serializeDocument(_ doc: [String: String]) -> String? {
+        var entries: [String] = []
+        for (key, value) in doc.sorted(by: { $0.key < $1.key }) {
+            guard !JSONTruncation.isIncompleteStructure(value) else {
+                Self.logger.warning(
+                    "Skipping write for '\(self.collectionName).\(key)' - the shown value is truncated"
+                )
+                return nil
+            }
+            entries.append("\"\(escapeJsonString(key))\": \(jsonValue(for: value, kind: columnKinds[key]))")
         }
         return "{\(entries.joined(separator: ", "))}"
     }
 
     /// Convert a string value to its JSON representation (auto-detect type)
-    private func jsonValue(for value: String) -> String {
+    private func jsonValue(for value: String, kind: BsonValueKind? = nil) -> String {
         if value == "true" || value == "false" {
             return value
         }
         if value == "null" {
             return "null"
         }
+        if kind == .decimal128, NumberText.isJSONNumberLiteral(value) {
+            return "{\"$numberDecimal\": \"\(escapeJsonString(value))\"}"
+        }
         if MongoDBJsonNumber.isValid(value) {
-            return value
+            return typedNumberJson(value, kind: kind)
         }
         if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(value) {
             return binary
@@ -246,6 +257,23 @@ struct MongoDBStatementGenerator {
             return value
         }
         return "\"\(escapeJsonString(value))\""
+    }
+
+    /// A bare JSON number is stored as int32 or double, which silently retypes a column that
+    /// holds int64 or decimal128. Extended JSON is the only way to keep the original type.
+    private func typedNumberJson(_ value: String, kind: BsonValueKind?) -> String {
+        switch kind {
+        case .decimal128:
+            return "{\"$numberDecimal\": \"\(escapeJsonString(value))\"}"
+        case .int64:
+            guard Int64(value) != nil else { return value }
+            return "{\"$numberLong\": \"\(escapeJsonString(value))\"}"
+        case .double:
+            guard let parsed = Double(value), parsed.isFinite else { return value }
+            return "{\"$numberDouble\": \"\(escapeJsonString(value))\"}"
+        default:
+            return value
+        }
     }
 
     /// Escape special characters for JSON strings (handles Unicode control chars U+0000-U+001F)

@@ -205,6 +205,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     static let database = NSToolbarItem.Identifier("com.TablePro.toolbar.database")
     static let refresh = NSToolbarItem.Identifier("com.TablePro.toolbar.refresh")
     static let saveChanges = NSToolbarItem.Identifier("com.TablePro.toolbar.saveChanges")
+    static let addRow = NSToolbarItem.Identifier("com.TablePro.toolbar.addRow")
     static let principal = NSToolbarItem.Identifier("com.TablePro.toolbar.principal")
     static let quickSwitcher = NSToolbarItem.Identifier("com.TablePro.toolbar.quickSwitcher")
     static let newTab = NSToolbarItem.Identifier("com.TablePro.toolbar.newTab")

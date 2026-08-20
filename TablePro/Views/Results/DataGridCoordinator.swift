@@ -37,6 +37,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var paginationOffsetProvider: @MainActor () -> Int = { 0 }
     var changeManager: AnyChangeManager
     var isEditable: Bool
+    var editRefusalMessage: String?
     var valueFilteredIDs: [RowID]? { didSet { bumpDisplayRevision() } }
     /// Ticks whenever the displayed row order or the value filter changes.
     ///
@@ -162,6 +163,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             columnLayoutPersistenceGeneration &+= 1
         }
         self.isEditable = isEditable
+        editRefusalMessage = configuration.editRefusalMessage
+        tableView?.toolTip = isEditable ? nil : configuration.editRefusalMessage
         dropdownColumns = configuration.dropdownColumns
         typePickerColumns = configuration.typePickerColumns
         customDropdownOptions = configuration.customDropdownOptions

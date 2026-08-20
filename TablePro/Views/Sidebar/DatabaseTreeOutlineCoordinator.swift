@@ -197,7 +197,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 _ = schemaService.schemaState(for: connectionId, schema: schema)
             case .table(let ref) where ref.table.type == .partitionedTable:
                 _ = service.partitionsLoadState(
-                    connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
+                    connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
                 )
             case .recentSection, .recentTable, .table, .routine, .status,
                  .objectKindSection, .containerObjectKindSection,
@@ -244,7 +244,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private func favoriteEntry(for ref: DatabaseTreeTableRef) -> FavoriteTablesStorage.FavoriteEntry {
         FavoriteTablesStorage.FavoriteEntry(
             connectionId: connectionId,
-            database: ref.database.isEmpty ? nil : ref.database,
+            database: ref.database,
             schema: ref.table.schema,
             name: ref.table.name
         )
@@ -388,36 +388,15 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     }
 
     internal func activate(_ ref: DatabaseTreeTableRef) async {
-        if ref.database != activeDatabase {
-            await mainCoordinator?.switchDatabase(to: ref.database)
-        }
-        guard let schema = ref.schema,
-              PluginManager.shared.supportsSchemaSwitching(for: databaseType),
-              schema != sessionSchema else { return }
-        await mainCoordinator?.switchSchema(to: schema)
-    }
-
-    /// The live session schema, not the window's toolbar mirror. A database switch
-    /// moves the session schema without touching the toolbar, so comparing against
-    /// the toolbar skips the switch exactly when the session needs it.
-    private var sessionSchema: String? {
-        DatabaseManager.shared.session(for: connectionId)?.browseSchema
+        await mainCoordinator?.switchContainers(database: ref.database, schema: ref.schema)
     }
 
     internal func setActiveDatabase(_ database: String) {
-        guard database != activeDatabase else { return }
-        Task { await mainCoordinator?.switchDatabase(to: database) }
+        Task { await mainCoordinator?.switchContainers(database: database, schema: nil) }
     }
 
-    internal func setActiveSchema(database: String, schema: String) {
-        Task { @MainActor in
-            if database != activeDatabase {
-                await mainCoordinator?.switchDatabase(to: database)
-            }
-            if schema != sessionSchema {
-                await mainCoordinator?.switchSchema(to: schema)
-            }
-        }
+    internal func setActiveSchema(database: String?, schema: String) {
+        Task { await mainCoordinator?.switchContainers(database: database, schema: schema) }
     }
 
     private func refreshDatabase(_ database: String) {
@@ -435,8 +414,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal func refreshContainers(_ targets: [DatabaseContainerRef]) {
         for target in targets {
             switch target.kind {
-            case .database: refreshDatabase(target.database)
-            case .schema: refreshObjects(database: target.database, schema: target.schema)
+            case .database: refreshDatabase(target.database ?? "")
+            case .schema: refreshObjects(database: target.database ?? "", schema: target.schema)
             }
         }
     }

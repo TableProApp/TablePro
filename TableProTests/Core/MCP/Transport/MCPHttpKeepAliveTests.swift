@@ -3,7 +3,7 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCP HTTP Keep-Alive")
+@Suite("MCP HTTP Keep-Alive", .serialized)
 struct MCPHttpKeepAliveTests {
     private func shortIdleLimits(_ timeout: Duration) -> MCPHttpServerLimits {
         MCPHttpServerLimits(

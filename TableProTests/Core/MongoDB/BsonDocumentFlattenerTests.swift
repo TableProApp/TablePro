@@ -364,6 +364,81 @@ struct BsonDocumentFlattenerTests {
             #expect(result == "3.14")
         }
 
+        @Test("Double keeps every digit needed to round-trip")
+        func doubleRoundTrips() {
+            let value = -3.9192320754595876e-07
+            let result = BsonDocumentFlattener.stringValue(for: value, representation: .unspecified)
+            #expect(result == "-3.9192320754595876e-07")
+            #expect(Double(result ?? "") == value)
+        }
+
+        @Test("Double never gains binary floating point noise")
+        func doubleHasNoExcessDigits() {
+            #expect(BsonDocumentFlattener.stringValue(for: 1847.27, representation: .unspecified) == "1847.27")
+            #expect(BsonDocumentFlattener.stringValue(for: 0.1, representation: .unspecified) == "0.1")
+        }
+
+        @Test("Integral double keeps its whole number form")
+        func integralDoubleHasNoTrailingZero() {
+            #expect(BsonDocumentFlattener.stringValue(for: 1.0, representation: .unspecified) == "1")
+            #expect(BsonDocumentFlattener.stringValue(for: 100.0, representation: .unspecified) == "100")
+        }
+
+        @Test("Double nested in a sub-document keeps its digits and stays a floating point value")
+        func nestedDoubleMatchesScalar() {
+            let document: [String: Any] = ["rate": 0.1, "total": 1847.27, "qty": 3.0]
+            let result = BsonDocumentFlattener.stringValue(for: document, representation: .unspecified)
+            #expect(result == #"{"qty":3.0,"rate":0.1,"total":1847.27}"#)
+        }
+
+        @Test("Integer nested in a sub-document is not turned into a floating point value")
+        func nestedIntegerStaysInteger() {
+            let document: [String: Any] = ["qty": Int64(3), "small": Int32(7)]
+            let result = BsonDocumentFlattener.stringValue(for: document, representation: .unspecified)
+            #expect(result == #"{"qty":3,"small":7}"#)
+        }
+
+        @Test("A decimal128 that is not a JSON number is quoted rather than emitted bare")
+        func nonFiniteDecimal128StaysValidJson() {
+            for digits in ["NaN", "Infinity", "-Infinity"] {
+                let document: [String: Any] = ["price": MongoDBDecimal128(digits: digits)]
+                let result = BsonDocumentFlattener.stringValue(for: document, representation: .unspecified)
+                #expect(result == "{\"price\":\"\(digits)\"}")
+            }
+        }
+
+        @Test("A decimal128 exponent beyond what Decimal can hold keeps its own digits")
+        func hugeExponentDecimal128KeepsItsDigits() {
+            let document: [String: Any] = ["price": MongoDBDecimal128(digits: "1E+400")]
+            let result = BsonDocumentFlattener.stringValue(for: document, representation: .unspecified)
+            #expect(result == #"{"price":1E+400}"#)
+        }
+
+        @Test("A decimal128 keeps trailing zeros and its own exponent spelling")
+        func decimal128KeepsItsExactSpelling() {
+            let document: [String: Any] = ["a": MongoDBDecimal128(digits: "0.100")]
+            let result = BsonDocumentFlattener.stringValue(for: document, representation: .unspecified)
+            #expect(result == #"{"a":0.100}"#)
+        }
+
+        @Test("Decimal128 keeps all of its digits, in a cell and nested")
+        func decimal128KeepsExactDigits() {
+            let digits = "1847.270000000000000000000000001"
+            let decimal = MongoDBDecimal128(digits: digits)
+            #expect(BsonDocumentFlattener.stringValue(for: decimal, representation: .unspecified) == digits)
+
+            let document: [String: Any] = ["price": decimal]
+            let nested = BsonDocumentFlattener.stringValue(for: document, representation: .unspecified)
+            #expect(nested == "{\"price\":\(digits)}")
+        }
+
+        @Test("Double nested in an array keeps the same digits as a top level one")
+        func nestedArrayDoubleMatchesScalar() {
+            let values: [Any] = [0.1, 1847.27, 1.0 / 3.0]
+            let result = BsonDocumentFlattener.stringValue(for: values, representation: .unspecified)
+            #expect(result == "[0.1,1847.27,0.3333333333333333]")
+        }
+
         @Test("NaN double returns NaN token")
         func nanValue() {
             let result = BsonDocumentFlattener.stringValue(for: Double.nan, representation: .unspecified)

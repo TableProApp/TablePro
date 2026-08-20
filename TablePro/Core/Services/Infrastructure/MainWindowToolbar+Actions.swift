@@ -27,6 +27,10 @@ extension MainWindowToolbar {
         coordinator?.commandActions?.openQuickSwitcher()
     }
 
+    @objc func performAddRow(_ sender: Any?) {
+        NSApp.sendAction(#selector(MainSplitViewController.addRow(_:)), to: nil, from: nil)
+    }
+
     @objc func performNewTab(_ sender: Any?) {
         NSApp.sendAction(#selector(MainSplitViewController.newEditorTab(_:)), to: nil, from: nil)
     }

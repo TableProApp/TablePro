@@ -16,6 +16,31 @@ import Foundation
 internal struct TabExecutionClaim: Hashable, Sendable {
     let tabId: UUID
     let epoch: Int
+
+    /// When the work this claim owns actually started, on a clock that does not move when the
+    /// system clock does. Every terminal point needs the elapsed wall time and none of them can
+    /// recover it afterwards: the driver-reported execution time excludes queueing and tunnel
+    /// setup, and the failure path records zero.
+    let startedAt: ContinuousClock.Instant
+}
+
+/// Why an execution stopped owning its tab. Required rather than defaulted, so that adding a new
+/// way to end one is a compile error at the new call site instead of a silent gap. The parallel
+/// hand-maintained list this replaces was already incomplete when it was written.
+internal enum ExecutionEndReason: Equatable, Sendable {
+    case cancelledByUser
+    case supersededNavigation
+    case sessionEnded
+    case abandoned
+}
+
+/// An execution that was ended by something other than its own completion, handed back so the
+/// caller can report it. Returned rather than pushed through a callback because the registry is a
+/// value type that several coordinators own copies of.
+internal struct EndedExecution: Equatable, Sendable {
+    internal let tabId: UUID
+    internal let startedAt: ContinuousClock.Instant
+    internal let reason: ExecutionEndReason
 }
 
 /// Per-tab owner of "which navigation owns this tab's execution", shaped after
@@ -28,6 +53,7 @@ internal struct TabExecutionClaim: Hashable, Sendable {
 internal struct TabExecutionRegistry {
     private struct Entry {
         let epoch: Int
+        let startedAt: ContinuousClock.Instant
     }
 
     private var entries: [UUID: Entry] = [:]
@@ -36,11 +62,11 @@ internal struct TabExecutionRegistry {
 
     internal init() {}
 
-    internal mutating func claim(_ tabId: UUID) -> TabExecutionClaim {
+    internal mutating func claim(_ tabId: UUID, startedAt: ContinuousClock.Instant = .now) -> TabExecutionClaim {
         lastEpoch += 1
-        entries[tabId] = Entry(epoch: lastEpoch)
+        entries[tabId] = Entry(epoch: lastEpoch, startedAt: startedAt)
         contentEpochs[tabId] = lastEpoch
-        return TabExecutionClaim(tabId: tabId, epoch: lastEpoch)
+        return TabExecutionClaim(tabId: tabId, epoch: lastEpoch, startedAt: startedAt)
     }
 
     /// Identity of what the tab is currently showing, which outlives the claim that produced it.
@@ -72,19 +98,26 @@ internal struct TabExecutionRegistry {
     /// Retarget, explicit cancel, tab close, teardown. Removing the entry rather than bumping a
     /// counter is what makes "no successor execution ever started" still invalidate, which is
     /// precisely the case the old per-window counter could not represent and the bug walked through.
-    internal mutating func invalidate(_ tabId: UUID) {
-        entries.removeValue(forKey: tabId)
+    internal mutating func invalidate(_ tabId: UUID, reason: ExecutionEndReason) -> EndedExecution? {
+        let ended = entries.removeValue(forKey: tabId).map {
+            EndedExecution(tabId: tabId, startedAt: $0.startedAt, reason: reason)
+        }
         lastEpoch += 1
         contentEpochs[tabId] = lastEpoch
+        return ended
     }
 
-    internal mutating func invalidateAll() {
+    internal mutating func invalidateAll(reason: ExecutionEndReason) -> [EndedExecution] {
         let tabIds = Set(entries.keys).union(contentEpochs.keys)
+        let ended = entries.map {
+            EndedExecution(tabId: $0.key, startedAt: $0.value.startedAt, reason: reason)
+        }
         entries.removeAll()
         for tabId in tabIds {
             lastEpoch += 1
             contentEpochs[tabId] = lastEpoch
         }
+        return ended
     }
 
     /// Ends a claim that ran to completion and reports whether it still owned the tab. A claim that

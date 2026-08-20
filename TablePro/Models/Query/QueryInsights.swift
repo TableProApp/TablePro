@@ -86,12 +86,16 @@ struct QueryInsightsRequest: Sendable, Equatable {
     }
 
     /// "Slower than before" compares the selected range against the range immediately preceding it,
-    /// so picking Last 7 Days compares against the 7 days before that.
-    var comparisonWindow: TimeInterval {
+    /// so picking Last 7 Days compares against the 7 days before that. A selected range with no span
+    /// has no preceding range to mirror, and substituting a default one would compare two windows the
+    /// user did not select and report a query they cannot see in any other panel. There is nothing to
+    /// compare, so there are no regressions. An unbounded range keeps the default, because it has no
+    /// span to mirror in the first place.
+    var comparisonWindow: TimeInterval? {
         guard let since else { return Self.defaultComparisonWindow }
         let end = until ?? referenceDate
         let span = end.timeIntervalSince(since)
-        return span > 0 ? span : Self.defaultComparisonWindow
+        return span > 0 ? span : nil
     }
 }
 
