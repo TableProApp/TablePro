@@ -135,10 +135,6 @@ final class AppSettingsManager {
             validated.maxRowLimit = mcp.validatedMaxRowLimit
             validated.defaultRowLimit = mcp.validatedDefaultRowLimit
             validated.queryTimeoutSeconds = mcp.validatedQueryTimeoutSeconds
-            if validated.allowRemoteConnections, !validated.requireAuthentication {
-                validated.requireAuthentication = true
-            }
-
             if validated != mcp {
                 isValidating = true
                 mcp = validated
@@ -149,9 +145,8 @@ final class AppSettingsManager {
             syncTracker.markDirty(.settings, id: "mcp")
             let enabledChanged = mcp.enabled != oldValue.enabled
             let portChanged = mcp.port != oldValue.port
-            let remoteChanged = mcp.allowRemoteConnections != oldValue.allowRemoteConnections
             let authChanged = mcp.requireAuthentication != oldValue.requireAuthentication
-            if enabledChanged || portChanged || remoteChanged || authChanged {
+            if enabledChanged || portChanged || authChanged {
                 if mcp.enabled {
                     mcpServerManager.scheduleRestart(port: UInt16(clamping: mcp.port))
                 } else {
@@ -179,7 +174,12 @@ final class AppSettingsManager {
         }
 
         let defaultName = String(localized: "Default token")
-        let result = await tokenStore.generate(name: defaultName, permissions: .fullAccess)
+        let result = try? await tokenStore.generate(
+            name: defaultName,
+            permissions: .readWrite,
+            connectionAccess: .all,
+            expiresAt: nil
+        )
         mcp.requireAuthentication = value
         return result
     }

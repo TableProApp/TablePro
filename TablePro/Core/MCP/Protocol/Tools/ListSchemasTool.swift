@@ -2,7 +2,8 @@ import Foundation
 
 public struct ListSchemasTool: MCPToolImplementation {
     public static let name = "list_schemas"
-    public static let description = String(localized: "List schemas in a database")
+    public static let title: String? = String(localized: "List Schemas")
+    public static let description = String(localized: "List the schemas inside one database, sorted by name.")
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
     public static let annotations = MCPToolAnnotations(
         title: String(localized: "List Schemas"),
@@ -12,36 +13,34 @@ public struct ListSchemasTool: MCPToolImplementation {
         openWorldHint: false
     )
 
-    public static let inputSchema: JsonValue = .object([
-        "type": .string("object"),
-        "properties": .object([
-            "connection_id": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "UUID of the connection"))
-            ]),
-            "database": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Database name (uses current if omitted)"))
-            ])
-        ]),
-        "required": .array([.string("connection_id")])
-    ])
+    public static let inputSchema = MCPToolSchema.object(
+        properties: [
+            "connection_id": MCPToolSchema.connectionId,
+            "database": MCPToolSchema.database
+        ],
+        required: ["connection_id"]
+    )
+
+    public static let outputSchema: JsonValue? = MCPToolSchema.object(
+        properties: [
+            "schemas": MCPToolSchema.array(
+                String(localized: "Schema names, sorted"),
+                of: MCPToolSchema.stringItem
+            ),
+            "database": MCPToolSchema.string(String(localized: "Database the schemas belong to"))
+        ],
+        required: ["schemas", "database"]
+    )
 
     public init() {}
 
-    public func call(
+    public func perform(
         arguments: JsonValue,
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
-        let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
-        let database = MCPArgumentDecoder.optionalString(arguments, key: "database")
-
-        let scope = try await services.connectionBridge.resolveScope(
-            connectionId: connectionId,
-            database: database,
-            schema: nil
-        )
+        try MCPArgumentDecoder.rejectUnknownKeys(arguments, allowed: ["connection_id", "database"])
+        let scope = try await MCPScopeArguments.resolve(arguments, services: services)
         let payload = try await services.connectionBridge.listSchemas(scope: scope)
         return .structured(payload)
     }

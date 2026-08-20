@@ -8,7 +8,6 @@ struct MCPSettings: Codable, Equatable {
     var queryTimeoutSeconds: Int
     var logQueriesInHistory: Bool
     var requireAuthentication: Bool
-    var allowRemoteConnections: Bool
 
     static let `default` = MCPSettings(
         enabled: false,
@@ -17,8 +16,7 @@ struct MCPSettings: Codable, Equatable {
         maxRowLimit: 10_000,
         queryTimeoutSeconds: 30,
         logQueriesInHistory: true,
-        requireAuthentication: true,
-        allowRemoteConnections: false
+        requireAuthentication: true
     )
 
     init(
@@ -28,8 +26,7 @@ struct MCPSettings: Codable, Equatable {
         maxRowLimit: Int = 10_000,
         queryTimeoutSeconds: Int = 30,
         logQueriesInHistory: Bool = true,
-        requireAuthentication: Bool = true,
-        allowRemoteConnections: Bool = false
+        requireAuthentication: Bool = true
     ) {
         self.enabled = enabled
         self.port = port
@@ -38,7 +35,6 @@ struct MCPSettings: Codable, Equatable {
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.logQueriesInHistory = logQueriesInHistory
         self.requireAuthentication = requireAuthentication
-        self.allowRemoteConnections = allowRemoteConnections
     }
 
     init(from decoder: Decoder) throws {
@@ -51,7 +47,6 @@ struct MCPSettings: Codable, Equatable {
         queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds) ?? 30
         logQueriesInHistory = try container.decodeIfPresent(Bool.self, forKey: .logQueriesInHistory) ?? true
         requireAuthentication = try container.decodeIfPresent(Bool.self, forKey: .requireAuthentication) ?? true
-        allowRemoteConnections = try container.decodeIfPresent(Bool.self, forKey: .allowRemoteConnections) ?? false
 
         maxRowLimit = validatedMaxRowLimit
         defaultRowLimit = validatedDefaultRowLimit

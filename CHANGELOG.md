@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The MCP server speaks the 2026-07-28 protocol revision, which drops the connection handshake and makes every request carry its own version, identity and capabilities. Clients on the two previous revisions keep working unchanged, so nothing you have configured needs to move. Support for the 2024 revision is gone, since it required message batching TablePro never implemented.
+- MCP clients can discover the server in one call instead of probing it. The reply names the protocol versions it speaks, what it offers, and how to use TablePro well.
+- Tool, prompt and resource listings now say how long a client may reuse them, so a client that asks for the same list on every turn stops re-fetching it.
+- MCP grew from 19 tools to 46. New ones read query plans, indexes, foreign keys, triggers, views, functions and procedures, partitions, exact and filtered row counts, table and database statistics, users, roles and grants, server sessions and dashboard metrics, favorites and recent tables. Others browse a table with real pagination, filters and sorting, insert rows, run the maintenance statement the engine actually wants, control a transaction, create and drop databases and objects, search the schema by name, and quote identifiers for the engine in front of you. An agent no longer has to hand-write SQL to do things TablePro already knows how to do safely.
+- MCP prompts are real. There are prompt templates for explaining a schema or a table, turning a question into SQL, reviewing a query before it runs, proposing indexes from a query plan, writing a migration with its rollback, auditing a table for data quality, and summarizing what ran in a period. They are built from the live schema, so they arrive with the actual column list rather than telling the model to go and look.
+- MCP argument completion works. Asking for the values of a table, database, schema or column argument returns what that connection really has, so a client can offer them instead of guessing.
+- MCP clients can subscribe to change notifications over a single long-lived stream and are told which kinds TablePro will actually send.
+- A destructive statement asked for through MCP can now be confirmed in the client, when the client supports it. TablePro still shows its own confirmation when the client does not.
+- Progress updates from a long-running MCP tool call reach the client. They were unreachable for every shipped client before, because they were sent on a stream the bridge never opened.
 - Help › Acknowledgements lists the 38 open source libraries TablePro ships, each with the exact version that shipped, its license, the copyright lines it asks you to reproduce, and the full license text. Several of these licenses require the text to travel with the app, and it had never been included. Two libraries whose own projects publish no license are listed as unresolved rather than being given a guess.
 - Korean localization for macOS, iPhone and iPad, with a 한국어 language option in General settings. (#2219)
 - Query results can be drawn as native bar, line, area and scatter charts from the loaded rows. Date and timestamp columns plot on a real time axis. Axis and series controls stack when the pane is narrow, hover shows exact values, and the chart keeps its type and axes across a page turn, a sort and a re-run. A result past the plotting limit still draws what fits and says how much. The status bar keeps the row count and pagination in Chart mode. This is a Starter feature.
@@ -30,6 +39,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two tabs showing objects with the same name from different databases now carry the database in their names, so two tabs called `orders` read as `app.orders` and `staging.orders`. A name no other tab uses stays short. Hovering a tab, or reading it with VoiceOver, always names its database. (#2217)
 - Save in the "Do you want to save changes?" prompt now closes what you asked to close once the save lands. Closing a group of tabs, or closing a connection, used to save and then leave everything open.
 - A column value filter survives switching result mode and switching tabs, instead of being dropped the moment the grid left the screen. Running a query, turning a page, refreshing, or moving to another result of the same script still clears it, because the values you picked came from the rows being replaced. (#2251)
+
+### Removed
+
+- MCP remote access is gone. The server binds to this Mac only. The certificate it used named only localhost, so no other device could ever have verified it, and opening a database client to the network is not worth the risk.
+
+### Security
+
+- A read-only MCP token can no longer run a statement that writes. Statement classification only recognized a fixed list of keywords, so a PostgreSQL `DO` block, `COPY`, and SQLite's `ATTACH` and `VACUUM INTO` all read as safe. A statement TablePro does not recognize is now treated as a write, and the statements that reach the filesystem or run a program are refused outright.
+- Safe Mode asks again for MCP. Every MCP path used to pre-clear the confirmation, so four of the six Safe Mode levels showed nothing before a write.
+- A token limited to some connections no longer sees the others. The connection list, the open tabs list and the tab focus action all ignored that limit and returned names, hosts, ports and usernames for every connection.
+- With authentication turned off, a local caller is read-only and cannot administer anything. It used to receive full access, and that path never checked the token store, so a revoked token kept working.
+- The activity log records which token made each call and stores statements as a digest rather than as text, so it stops being a second copy of your data. Entries are hash chained, so an edited or removed row can be detected, and the file is no longer readable by other accounts on the Mac.
+- Repeated bad tokens are rate limited. The limit counted repeats of one wrong token rather than an attacker trying many, and a request with no credentials at all was never counted.
+- A pairing link is checked before it is used and the destination is shown before you approve it, a failed exchange burns its code, and approving a request no longer revokes an unrelated token that happened to share a name.
+- A malformed cancellation message no longer crashes the app.
+- An MCP session identifier is no longer usable as a credential. A second token presenting one used to inherit the approvals of the first.
 
 ### Fixed
 

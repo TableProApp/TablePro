@@ -5,10 +5,14 @@ import os
 
 struct PairingExchangeRecord: Sendable, Equatable {
     let plaintextToken: String
+    let tokenId: UUID
     let challenge: String
     let expiresAt: Date
 }
 
+/// A failed verification burns the code. PKCE protects the exchange only while each code allows one
+/// attempt; leaving a code alive after a mismatch turns the five-minute window into an offline
+/// guessing game against a value the caller can retry without limit.
 actor PairingExchangeStore {
     static let exchangeWindow: TimeInterval = 300
     static let maxPendingCodes = 50
@@ -25,26 +29,30 @@ actor PairingExchangeStore {
         pending[code] = record
     }
 
-    func consume(code: String, verifier: String, now: Date = .now) throws -> String {
-        prune(now: now)
-
+    func consume(code: String, verifier: String, now: Date = .now) throws -> PairingExchangeRecord {
         guard let entry = pending[code] else {
+            prune(now: now)
             throw MCPDataLayerError.notFound("pairing code")
         }
 
         guard entry.expiresAt > now else {
             pending.removeValue(forKey: code)
+            prune(now: now)
             throw MCPDataLayerError.expired("pairing code")
         }
 
         let computed = Self.sha256Base64Url(of: verifier)
         guard Self.constantTimeEqual(entry.challenge, computed) else {
+            pending.removeValue(forKey: code)
             throw MCPDataLayerError.forbidden("challenge mismatch")
         }
 
-        let token = entry.plaintextToken
         pending.removeValue(forKey: code)
-        return token
+        return entry
+    }
+
+    func discard(code: String) {
+        pending.removeValue(forKey: code)
     }
 
     func pruneExpired(now: Date = .now) {
@@ -68,8 +76,7 @@ actor PairingExchangeStore {
 
     static func sha256Base64Url(of value: String) -> String {
         let digest = SHA256.hash(data: Data(value.utf8))
-        let data = Data(digest)
-        return data.base64EncodedString()
+        return Data(digest).base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
@@ -93,16 +100,42 @@ final class MCPPairingService {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPPairingService")
     private static let pruneInterval: Duration = .seconds(60)
+    static let exchangeRateLimitPolicy = MCPRateLimitPolicy(
+        maxFailedAttempts: 5,
+        windowDuration: .seconds(300),
+        lockoutDuration: .seconds(900)
+    )
 
     let store: PairingExchangeStore
+    private let rateLimiter: MCPRateLimiter
     private var pruneTask: Task<Void, Never>?
 
-    init(store: PairingExchangeStore = PairingExchangeStore()) {
+    init(
+        store: PairingExchangeStore = PairingExchangeStore(),
+        rateLimiter: MCPRateLimiter = MCPRateLimiter(
+            pairingPolicy: MCPPairingService.exchangeRateLimitPolicy
+        )
+    ) {
         self.store = store
+        self.rateLimiter = rateLimiter
         startPruneLoop()
     }
 
     func startPairing(_ request: PairingRequest) async throws {
+        let target: PairingRedirectTarget
+        do {
+            target = try PairingRedirectValidator.validate(request.redirectURL)
+            try PairingPkceValidator.validateChallenge(request.challenge)
+        } catch let error as PairingValidationError {
+            Self.logger.warning("Pairing rejected: \(error.reason, privacy: .public)")
+            MCPAuditLogger.logPairingRedirectRejected(
+                clientName: request.clientName,
+                ip: MCPClientAddress.loopback.displayValue,
+                reason: error.reason
+            )
+            throw MCPDataLayerError.invalidArgument(error.localizedMessage)
+        }
+
         await MCPServerManager.shared.lazyStart()
 
         guard let tokenStore = MCPServerManager.shared.tokenStore else {
@@ -116,7 +149,7 @@ final class MCPPairingService {
         } catch let error as MCPDataLayerError where error.isUserCancelled {
             Self.logger.info("Pairing denied for client '\(request.clientName, privacy: .public)'")
             if let redirect = buildErrorRedirect(
-                base: request.redirectURL,
+                base: target.url,
                 error: "denied",
                 description: "user_denied"
             ) {
@@ -125,10 +158,8 @@ final class MCPPairingService {
             throw error
         }
 
-        await Self.revokeExistingTokens(named: request.clientName, in: tokenStore)
-
         let connectionAccess: ConnectionAccess = approval.allowedConnectionIds.map { .limited($0) } ?? .all
-        let result = await tokenStore.generate(
+        let result = try await tokenStore.generate(
             name: request.clientName,
             permissions: approval.grantedPermissions,
             connectionAccess: connectionAccess,
@@ -141,6 +172,7 @@ final class MCPPairingService {
                 code: code,
                 record: PairingExchangeRecord(
                     plaintextToken: result.plaintext,
+                    tokenId: result.token.id,
                     challenge: request.challenge,
                     expiresAt: Date.now.addingTimeInterval(PairingExchangeStore.exchangeWindow)
                 )
@@ -150,25 +182,54 @@ final class MCPPairingService {
             throw error
         }
 
-        guard let redirect = buildRedirectURL(base: request.redirectURL, code: code) else {
+        guard let redirect = buildRedirectURL(base: target.url, code: code) else {
             Self.logger.error("Failed to build pairing redirect URL")
+            await store.discard(code: code)
             await tokenStore.delete(tokenId: result.token.id)
             throw MCPDataLayerError.invalidArgument("redirect URL")
         }
 
-        Self.logger.info("Pairing approved for client '\(request.clientName, privacy: .public)'")
+        Self.logger.info(
+            """
+            Pairing approved for client '\(request.clientName, privacy: .public)' \
+            redirect=\(target.displayValue, privacy: .public)
+            """
+        )
         NSWorkspace.shared.open(redirect)
     }
 
-    func exchange(_ exchange: PairingExchange) async throws -> String {
-        try await store.consume(code: exchange.code, verifier: exchange.verifier)
-    }
+    func exchange(_ exchange: PairingExchange, clientAddress: MCPClientAddress) async throws -> String {
+        let key = MCPRateLimitKey.pairingExchange(address: clientAddress)
+        if let unlockDate = await rateLimiter.lockedUntil(key: key) {
+            let retry = await rateLimiter.retryAfterSeconds(until: unlockDate)
+            MCPAuditLogger.logPairingExchange(
+                outcome: .rateLimited,
+                ip: clientAddress.displayValue,
+                details: "retryAfter=\(retry)s"
+            )
+            throw MCPProtocolError.rateLimited(retryAfterSeconds: retry)
+        }
 
-    private static func revokeExistingTokens(named name: String, in store: MCPTokenStore) async {
-        let active = await store.activeTokens()
-        for token in active where token.name == name {
-            await store.revoke(tokenId: token.id)
-            Self.logger.info("Revoked previous token '\(name, privacy: .public)' before re-pairing")
+        do {
+            try PairingPkceValidator.validateVerifier(exchange.verifier)
+        } catch let error as PairingValidationError {
+            await store.discard(code: exchange.code)
+            _ = await rateLimiter.recordAttempt(key: key, success: false)
+            throw MCPDataLayerError.invalidArgument(error.localizedMessage)
+        }
+
+        do {
+            let record = try await store.consume(code: exchange.code, verifier: exchange.verifier)
+            _ = await rateLimiter.recordAttempt(key: key, success: true)
+            MCPAuditLogger.logPairingExchange(
+                outcome: .success,
+                tokenId: record.tokenId,
+                ip: clientAddress.displayValue
+            )
+            return record.plaintextToken
+        } catch {
+            _ = await rateLimiter.recordAttempt(key: key, success: false)
+            throw error
         }
     }
 
