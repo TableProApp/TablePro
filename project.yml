@@ -105,6 +105,12 @@ targets:
           - CLI/BridgeMain.swift
           - CLI/BridgeProxy.swift
           - CLI/Handshake.swift
+          # Copied whole below. A plain glob flattens it into Resources/ and the
+          # inventory then cannot find its texts/ directory.
+          - Resources/ThirdPartyLicenses
+      - path: TablePro/Resources/ThirdPartyLicenses
+        type: folder
+        buildPhase: resources
     configFiles:
       Debug: Configs/Version.xcconfig
       Release: Configs/Version.xcconfig
@@ -171,7 +177,7 @@ targets:
       - package: swift-certificates
         product: X509
       - package: TableProCore
-        products: [TableProAnalytics, TableProImport, TableProSyncTransport]
+        products: [TableProAnalytics, TableProImport, TableProNumberFormatting, TableProSyncTransport]
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -320,8 +326,11 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBPositionParser.swift
       - Plugins/DuckDBDriverPlugin/DuckDBSchemaQueries.swift
       - Plugins/DuckDBDriverPlugin/DuckDBTypeRendering.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBViewDefinition.swift
       - Plugins/DuckDBDriverPlugin/QuackConnectBuilder.swift
       - Plugins/DynamoDBDriverPlugin/DynamoDBQueryBuilder.swift
       - Plugins/DynamoDBDriverPlugin/DynamoDBStatementGenerator.swift
@@ -337,6 +346,7 @@ targets:
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
       - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBDecimal128.swift
       - Plugins/MongoDBDriverPlugin/MongoDBAuthSourceResolver.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCreateDatabasePlan.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFindLimitPolicy.swift
@@ -366,11 +376,22 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
       - Plugins/RedisDriverPlugin/RedisAuthCommand.swift
+      - Plugins/RedisDriverPlugin/RedisClusterAggregator.swift
+      - Plugins/RedisDriverPlugin/RedisClusterCursor.swift
+      - Plugins/RedisDriverPlugin/RedisClusterRedirect.swift
+      - Plugins/RedisDriverPlugin/RedisClusterTopology.swift
       - Plugins/RedisDriverPlugin/RedisCommandParser.swift
+      - Plugins/RedisDriverPlugin/RedisCommandRouting.swift
+      - Plugins/RedisDriverPlugin/RedisConnectionMode.swift
       - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
+      - Plugins/RedisDriverPlugin/RedisKeySlot.swift
       - Plugins/RedisDriverPlugin/RedisKeySummary.swift
+      - Plugins/RedisDriverPlugin/RedisMultiShardPlanner.swift
       - Plugins/RedisDriverPlugin/RedisQueryBuilder.swift
+      - Plugins/RedisDriverPlugin/RedisReply.swift
+      - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
+      - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeAuth.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeBindingEncoder.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeDDLGenerator.swift
@@ -397,7 +418,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProMSSQLCore]
+        products: [TableProMSSQLCore, TableProNumberFormatting]
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1
@@ -508,6 +529,9 @@ targets:
     templateAttributes:
       folder: ClickHouseDriverPlugin
       principalClass: ClickHousePlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
 
   RedisDriver:
     templates: [DriverPlugin]
@@ -578,6 +602,9 @@ targets:
     templateAttributes:
       folder: MQLExportPlugin
       principalClass: MQLExportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MQLExportPlugin
@@ -596,6 +623,9 @@ targets:
     templateAttributes:
       folder: JSONImportPlugin
       principalClass: JSONImportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.JSONImportPlugin
@@ -622,6 +652,9 @@ targets:
     templateAttributes:
       folder: BeancountDriverPlugin
       principalClass: BeancountPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
     settings:
       base:
         OTHER_LDFLAGS:
@@ -696,6 +729,9 @@ targets:
     templateAttributes:
       folder: DynamoDBDriverPlugin
       principalClass: DynamoDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
 
   DamengDriver:
     templates: [DriverPlugin]
@@ -757,6 +793,9 @@ targets:
     templateAttributes:
       folder: ElasticsearchDriverPlugin
       principalClass: ElasticsearchPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
 
   EtcdDriverPlugin:
     templates: [DriverPlugin]
@@ -813,6 +852,9 @@ targets:
     templateAttributes:
       folder: MongoDBDriverPlugin
       principalClass: MongoDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -854,6 +896,9 @@ targets:
     templateAttributes:
       folder: SnowflakeDriverPlugin
       principalClass: SnowflakePlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
 
   SurrealDBDriverPlugin:
     templates: [DriverPlugin]

@@ -18,10 +18,15 @@ extension RowInsertingIntent {
         case .blocked:
             throw IntentDataError.readOnly(savedConnection.name.isEmpty ? savedConnection.host : savedConnection.name)
         case .requiresConfirmation:
-            let noun = rows.count == 1 ? "row" : "rows"
+            let dialog: IntentDialog
+            if rows.count == 1 {
+                dialog = "Add one row to \(table.name)?"
+            } else {
+                dialog = "Add \(rows.count) rows to \(table.name)?"
+            }
             try await requestConfirmation(
                 actionName: .add,
-                dialog: "Add \(rows.count) \(noun) to \(table.name)?"
+                dialog: dialog
             )
         case .proceed:
             break
@@ -30,12 +35,21 @@ extension RowInsertingIntent {
             try await session.insertRows(namespace: database?.id, table: table.name, rows: rows)
         }
     }
+
+    func resultDialog(affectedRows: Int) -> IntentDialog {
+        if affectedRows == 1 {
+            return "Added one row to \(table.name)."
+        }
+        return "Added \(affectedRows) rows to \(table.name)."
+    }
 }
 
 struct AddRowToTableIntent: RowInsertingIntent {
     static var title: LocalizedStringResource = "Add Row to Table"
     static var description = IntentDescription(
-        "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row."
+        "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row.",
+        categoryName: "Database",
+        searchKeywords: ["TablePro", "database", "SQL", "insert", "row", "table"]
     )
     static var openAppWhenRun = false
     static var authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
@@ -63,14 +77,16 @@ struct AddRowToTableIntent: RowInsertingIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
         let rows = try await RowPayload.parseSingle(data: data, file: nil)
         let count = try await insert(rows: rows)
-        return .result(value: count, dialog: "Added \(count) row to \(table.name).")
+        return .result(value: count, dialog: resultDialog(affectedRows: count))
     }
 }
 
 struct AddRowsToTableIntent: RowInsertingIntent {
     static var title: LocalizedStringResource = "Add Rows to Table"
     static var description = IntentDescription(
-        "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file."
+        "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file.",
+        categoryName: "Database",
+        searchKeywords: ["TablePro", "database", "SQL", "insert", "rows", "table", "import"]
     )
     static var openAppWhenRun = false
     static var authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
@@ -102,6 +118,6 @@ struct AddRowsToTableIntent: RowInsertingIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
         let rows = try await RowPayload.parse(data: data, file: file)
         let count = try await insert(rows: rows)
-        return .result(value: count, dialog: "Added \(count) rows to \(table.name).")
+        return .result(value: count, dialog: resultDialog(affectedRows: count))
     }
 }

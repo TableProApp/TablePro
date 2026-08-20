@@ -197,7 +197,7 @@ extension TableViewCoordinator {
         menu.addItem(hideItem)
 
         if delegate != nil,
-           tableView.tableColumns.contains(where: { $0.isHidden && $0.identifier != ColumnIdentitySchema.rowNumberIdentifier }) {
+           columnPool.hasUserHiddenColumns {
             let showAllItem = NSMenuItem(
                 title: String(localized: "Show All Columns"),
                 action: #selector(showAllColumns),
@@ -263,7 +263,11 @@ extension TableViewCoordinator {
     @objc func sortAscending(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
         var state = SortState()
-        state.columns = [SortColumn(columnIndex: columnIndex, direction: .ascending)]
+        state.columns = [SortColumn(
+            columnIndex: columnIndex,
+            direction: .ascending,
+            columnName: identitySchema.columnName(for: columnIndex)
+        )]
         currentSortState = state
         applyCurrentSortStateToHeader()
         delegate?.dataGridSortStateChanged(state)
@@ -272,7 +276,11 @@ extension TableViewCoordinator {
     @objc func sortDescending(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
         var state = SortState()
-        state.columns = [SortColumn(columnIndex: columnIndex, direction: .descending)]
+        state.columns = [SortColumn(
+            columnIndex: columnIndex,
+            direction: .descending,
+            columnName: identitySchema.columnName(for: columnIndex)
+        )]
         currentSortState = state
         applyCurrentSortStateToHeader()
         delegate?.dataGridSortStateChanged(state)
@@ -354,8 +362,7 @@ extension TableViewCoordinator {
 
         let tableRows = tableRowsProvider()
         for column in tableView.tableColumns {
-            guard !column.isHidden,
-                  column.identifier != ColumnIdentitySchema.rowNumberIdentifier,
+            guard presentsColumn(column),
                   let dataColumnIndex = dataColumnIndex(from: column.identifier),
                   dataColumnIndex < tableRows.columns.count else { continue }
 

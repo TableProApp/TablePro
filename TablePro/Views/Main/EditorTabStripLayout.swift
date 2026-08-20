@@ -7,8 +7,16 @@ import CoreGraphics
 import Foundation
 
 /// The geometry and visibility rules of the editor tab strip, kept apart from the view so they
-/// can be tested. Both rules were read off the system tab bar rather than designed.
+/// can be tested. Every number here was measured off `NSTabBar`, the private control Finder's own
+/// tab bar is built from, rather than designed: a runtime probe of its view tree on macOS 27 gives
+/// a 36pt titlebar accessory holding a 28pt bar, whose track is inset 8pt, then 4pt of gap, then a
+/// 28pt new-tab button, then 8pt to the trailing edge.
 internal enum EditorTabStripLayout {
+    internal static let unseenDotDiameter: CGFloat = 6
+
+    /// The titlebar accessory's own height. The track is pinned to its top edge, flush against the
+    /// toolbar, and what remains below is the clearance the system leaves before the content.
+    internal static let bandHeight: CGFloat = 36
     internal static let trackHeight: CGFloat = 28
     internal static let tabHeight: CGFloat = 24
     internal static let trackPadding: CGFloat = 2
@@ -16,10 +24,16 @@ internal enum EditorTabStripLayout {
     internal static let trackSpacing: CGFloat = 4
     internal static let newTabButtonSize: CGFloat = 28
     internal static let minimumTabWidth: CGFloat = 120
-    internal static let separatorHeight: CGFloat = 18
+    internal static let separatorHeight: CGFloat = 16
     internal static let accessoryWidth: CGFloat = 16
     internal static let accessoryInset: CGFloat = 5
     internal static let fontSize: CGFloat = 11
+
+    /// One device pixel on the 2x displays this chrome is drawn for, which is what the system uses
+    /// for both the track's edge and the rule between two tabs.
+    internal static let hairline: CGFloat = 0.5
+
+    internal static var bandBottomClearance: CGFloat { bandHeight - trackHeight }
 
     /// Tabs share the track equally, and stop shrinking at a width that still fits a name so a
     /// long list scrolls instead of collapsing into slivers. The system staggers widths slightly

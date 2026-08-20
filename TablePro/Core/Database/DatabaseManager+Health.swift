@@ -237,9 +237,19 @@ extension DatabaseManager {
         }
     }
 
-    /// Reconnect a specific session by ID
-    func reconnectSession(_ sessionId: UUID) async {
-        guard let session = activeSessions[sessionId] else { return }
+    /// Reconnect a specific session by ID.
+    ///
+    /// Throws rather than reporting its outcome through session status alone, because the caller
+    /// decides what to persist and what to tell the user, and a status write is invisible to it.
+    /// Swallowing the failure here is what let a failed database switch save an unreachable
+    /// database as the connection's default and report success to the window.
+    ///
+    /// A user who declined the password prompt throws `CancellationError`, which callers separate
+    /// from a real failure: someone who gave up is not a server that refused.
+    func reconnectSession(_ sessionId: UUID) async throws {
+        guard let session = activeSessions[sessionId] else {
+            throw DatabaseError.notConnected
+        }
 
         Self.logger.info("Manual reconnect requested for: \(session.connection.name)")
 
@@ -272,18 +282,20 @@ extension DatabaseManager {
                     window: NSApp.keyWindow
                 ) else {
                     updateSession(sessionId) { $0.status = .disconnected }
-                    return
+                    throw CancellationError()
                 }
                 passwordOverride = prompted
             }
 
+            /// A nil result means the user declined the re-prompt after an auth failure, so this
+            /// is the same cancellation as dismissing the first prompt, not a server refusing.
             guard let connectResult = try await connectReconnectDriver(
                 for: session,
                 effectiveConnection: effectiveConnection,
                 passwordOverride: passwordOverride
             ) else {
                 updateSession(sessionId) { $0.status = .disconnected }
-                return
+                throw CancellationError()
             }
             let driver = connectResult.driver
 
@@ -325,12 +337,22 @@ extension DatabaseManager {
 
             Self.logger.info("Manual reconnect succeeded for: \(session.connection.name)")
         } catch {
+            /// A cancellation is the user's own decision, so it lands on `.disconnected` rather
+            /// than being reported back to them as a server failure. It is written here rather
+            /// than left to the two `throw CancellationError()` sites above, because the driver
+            /// can raise one from inside this block too, and a status left at `.connecting` is a
+            /// spinner with no exit.
+            guard !DatabaseCancellationDiagnosis.isCancellation(error) else {
+                updateSession(sessionId) { $0.status = .disconnected }
+                throw error
+            }
             Self.logger.error("Manual reconnect failed: \(error.localizedDescription)")
             updateSession(sessionId) { session in
                 session.status = .error(
                     String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription))
                 session.clearCachedData()
             }
+            throw error
         }
     }
 

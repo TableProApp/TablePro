@@ -44,19 +44,52 @@ struct TableStructureView: View {
         TableStructureLoader(scope: scope, tableName: tableName)
     }
 
+    /// Everything the user has staged, plus the baseline it is staged against. Held outside this
+    /// view because the view is destroyed whenever the tab is deselected or switched to Data.
+    let session: StructureEditingSession
+
     @State var selectedTab: StructureTab = .columns
-    @State var columns: [ColumnInfo] = []
-    @State var indexes: [IndexInfo] = []
-    @State var foreignKeys: [ForeignKeyInfo] = []
-    @State var triggers: [TriggerInfo] = []
-    @State var ddlStatement: String = ""
+
+    /// The loaded schema, forwarded to the session so a rebuild adopts it instead of refetching.
+    /// Refetching would re-baseline `structureChangeManager` and clear the staged edits.
+    var columns: [ColumnInfo] {
+        get { session.columns }
+        nonmutating set { session.columns = newValue }
+    }
+
+    var indexes: [IndexInfo] {
+        get { session.indexes }
+        nonmutating set { session.indexes = newValue }
+    }
+
+    var foreignKeys: [ForeignKeyInfo] {
+        get { session.foreignKeys }
+        nonmutating set { session.foreignKeys = newValue }
+    }
+
+    var triggers: [TriggerInfo] {
+        get { session.triggers }
+        nonmutating set { session.triggers = newValue }
+    }
+
+    var ddlStatement: String {
+        get { session.ddlStatement }
+        nonmutating set { session.ddlStatement = newValue }
+    }
+
+    var tabData: StructureTabDataState {
+        get { session.tabData }
+        nonmutating set { session.tabData = newValue }
+    }
+
+    var structureChangeManager: StructureChangeManager { session.changeManager }
+
     @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) var ddlFontSize: Double = 13
     @State var showCopyConfirmation = false
     @State var copyResetTask: Task<Void, Never>?
     @State var isLoading = true
     @State var isInitialLoading = true
     @State var errorMessage: String?
-    @State var tabData = StructureTabDataState()
     @State var partsReloadToken = 0
     @State var isReloadingAfterSave = false  // Prevent onChange loops during save reload
     @State var lastSaveTime: Date?
@@ -68,14 +101,12 @@ struct TableStructureView: View {
     @State var displayVersion: Int = 0
 
     // DataGridView state
-    @State var structureChangeManager: StructureChangeManager
     @State var wrappedChangeManager: AnyChangeManager
     @State var selectedRows: Set<Int> = []
     @State var sortState = SortState()
     @State var structureColumnLayouts: [StructureTab: ColumnLayoutState] = [:]
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
-    @State private var footerOwnerId = UUID()
 
     init(
         tableName: String,
@@ -85,8 +116,8 @@ struct TableStructureView: View {
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator?,
         selectionState: GridSelectionState,
-        initialSelectedTab: StructureTab = .columns,
-        initialTabData: StructureTabDataState = StructureTabDataState()
+        session: StructureEditingSession,
+        initialSelectedTab: StructureTab = .columns
     ) {
         self.tableName = tableName
         self.connection = connection
@@ -95,11 +126,10 @@ struct TableStructureView: View {
         self.toolbarState = toolbarState
         self.coordinator = coordinator
         self.selectionState = selectionState
+        self.session = session
         _selectedTab = State(initialValue: initialSelectedTab)
-        _tabData = State(initialValue: initialTabData)
 
-        let manager = StructureChangeManager()
-        _structureChangeManager = State(wrappedValue: manager)
+        let manager = session.changeManager
         _wrappedChangeManager = State(wrappedValue: AnyChangeManager(manager))
         _gridDelegate = State(wrappedValue: StructureGridDelegate(
             structureChangeManager: manager,
@@ -120,11 +150,11 @@ struct TableStructureView: View {
         .task(loadInitialData)
         .onChange(of: selectedRows) { _, newRows in
             selectionState.indices = newRows
-            publishFooterState()
+            publishFooterCapability()
         }
         .onChange(of: selectedTab) { _, newValue in
             onSelectedTabChanged(newValue)
-            publishFooterState()
+            publishFooterCapability()
         }
         .onChange(of: columns) { onColumnsChanged() }
         .onChange(of: indexes) { onIndexesChanged() }
@@ -162,12 +192,11 @@ struct TableStructureView: View {
             actionHandler.removeRow = { self.gridDelegate.dataGridDeleteRows(self.selectedRows) }
             actionHandler.refresh = { self.onRefreshData() }
             coordinator?.structureActions = actionHandler
-            publishFooterState()
+            publishFooterCapability()
         }
         .onDisappear {
             coordinator?.toolbarState.hasStructureChanges = false
             coordinator?.structureActions = nil
-            coordinator?.structureFooterState.deactivate(owner: footerOwnerId)
             if coordinator?.inspectorRowSource === gridDelegate {
                 coordinator?.inspectorRowSource = nil
             }
@@ -228,17 +257,17 @@ struct TableStructureView: View {
         .padding()
     }
 
-    // MARK: - Footer state (rendered by MainStatusBarView)
+    // MARK: - Footer capability
 
-    private func publishFooterState() {
-        guard let footer = coordinator?.structureFooterState else { return }
-        guard connection.type.supportsSchemaEditing,
-              let labels = footerLabels(for: selectedTab) else {
-            footer.deactivate(owner: footerOwnerId)
+    /// Published to the tab's own session, which the bottom bar reads. Nothing is cleared on
+    /// disappear: the session outlives the view by design, and the bar only reads this while the
+    /// tab is showing its structure.
+    private func publishFooterCapability() {
+        guard connection.type.supportsSchemaEditing, let labels = footerLabels(for: selectedTab) else {
+            session.footer = StructureFooterCapability()
             return
         }
-        footer.update(
-            owner: footerOwnerId,
+        session.footer = StructureFooterCapability(
             canAdd: canAdd(for: selectedTab),
             canRemove: canRemove(for: selectedTab),
             addLabel: labels.add,
@@ -520,7 +549,8 @@ struct TableStructureView: View {
         schemaName: nil,
         toolbarState: ConnectionToolbarState(),
         coordinator: nil,
-        selectionState: GridSelectionState()
+        selectionState: GridSelectionState(),
+        session: StructureEditingSession(identity: "test.users")
     )
     .frame(width: 800, height: 600)
 }

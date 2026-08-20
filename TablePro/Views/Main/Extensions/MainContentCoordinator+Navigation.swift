@@ -74,6 +74,7 @@ extension MainContentCoordinator {
             schemaName: resolvedSchema,
             showStructure: showStructure,
             activateGridFocus: activateGridFocus,
+            forceNonPreview: forceNonPreview,
             includeSiblings: navigationModel != .inPlace
         ) {
             navigationLogger.debug(
@@ -88,31 +89,6 @@ extension MainContentCoordinator {
         /// the sidebar from the second table on.
         if activateGridFocus {
             requestGridFocus()
-        }
-
-        // During database switch, update the existing tab in-place instead of
-        // opening a new native window tab.
-        if case .loading = SchemaService.shared.state(for: connectionId) {
-            navigationLogger.debug(
-                "[tableload] deferredToSchemaLoad table=\(tableName, privacy: .public) hasTabs=\(!self.tabManager.tabs.isEmpty)"
-            )
-            if tabManager.tabs.isEmpty {
-                do {
-                    try tabManager.addTableTab(
-                        tableName: tableName,
-                        databaseType: connection.type,
-                        databaseName: currentDatabase,
-                        schemaName: resolvedSchema,
-                        isView: isView
-                    )
-                    return .currentCoordinator
-                } catch {
-                    navigationLogger.error("openTableTab addTableTab failed: \(error.localizedDescription, privacy: .public)")
-                }
-            } else {
-                pendingGridFocusOnOpen = false
-            }
-            return nil
         }
 
         if tabManager.tabs.isEmpty {
@@ -146,11 +122,7 @@ extension MainContentCoordinator {
                 )
                 if replaced {
                     clearFilterState()
-                    if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
-                        setActiveTableRows(TableRows(), for: tab.id)
-                        tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
-                        toolbarState.isTableTab = true
-                    }
+                    discardRowsForRetarget()
                     restoreLastHiddenColumnsForTable()
                     restoreFiltersForTable(tableName)
                     if let dbIndex = Int(currentDatabase) {
@@ -189,9 +161,10 @@ extension MainContentCoordinator {
             schemaName: resolvedSchema,
             isView: isView,
             showStructure: showStructure,
-            isPreview: createAsPreview
+            isPreview: createAsPreview,
+            forcesNewTab: forceNewTab
         )
-        WindowManager.shared.openTab(payload: payload)
+        openTabInNewWindow(payload)
         return .focusedElsewhere
     }
 
@@ -201,18 +174,23 @@ extension MainContentCoordinator {
         schemaName: String?,
         showStructure: Bool,
         activateGridFocus: Bool,
+        forceNonPreview: Bool = false,
         includeSiblings: Bool
     ) -> WindowTabOpenDisposition? {
-        func matches(_ tab: QueryTab) -> Bool {
-            tab.tabType == .table
-                && tab.tableContext.tableName == tableName
-                && tab.tableContext.databaseName == databaseName
-                && tab.tableContext.schemaName == schemaName
+        func match(in tabManager: QueryTabManager) -> QueryTab? {
+            tabManager.tabShowingTable(
+                named: tableName, databaseName: databaseName, schemaName: schemaName
+            )
         }
 
-        if let match = tabManager.tabs.first(where: matches) {
+        if let match = match(in: tabManager) {
             if tabManager.selectedTabId != match.id {
                 tabManager.selectedTabId = match.id
+            }
+            /// The gesture that says "keep this one" has to reach a tab that is already open, or
+            /// double-clicking a table the sidebar just previewed would leave it disposable.
+            if forceNonPreview {
+                promotePreviewTab()
             }
             applyStructureMode(showStructure, toTab: match.id, in: tabManager)
             if activateGridFocus {
@@ -225,10 +203,13 @@ extension MainContentCoordinator {
 
         for sibling in MainContentCoordinator.allActiveCoordinators()
             where sibling !== self && sibling.connectionId == connectionId {
-            guard let match = sibling.tabManager.tabs.first(where: matches) else { continue }
+            guard let match = match(in: sibling.tabManager) else { continue }
             sibling.pendingGridFocusOnOpen = activateGridFocus
             applyStructureMode(showStructure, toTab: match.id, in: sibling.tabManager)
             sibling.selectTabAndFocusWindow(match.id)
+            if forceNonPreview {
+                sibling.promotePreviewTab()
+            }
             return .focusedElsewhere
         }
         return nil
@@ -248,23 +229,14 @@ extension MainContentCoordinator {
         isInPlace: Bool
     ) -> Bool {
         do {
-            if createAsPreview {
-                try tabManager.addPreviewTableTab(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    databaseName: currentDatabase,
-                    schemaName: resolvedSchema,
-                    isView: isView
-                )
-            } else {
-                try tabManager.addTableTab(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    databaseName: currentDatabase,
-                    schemaName: resolvedSchema,
-                    isView: isView
-                )
-            }
+            try tabManager.addTableTab(
+                tableName: tableName,
+                databaseType: connection.type,
+                databaseName: currentDatabase,
+                schemaName: resolvedSchema,
+                isView: isView,
+                isPreview: createAsPreview
+            )
         } catch {
             navigationLogger.error("openTableTab tab creation failed: \(error.localizedDescription, privacy: .public)")
             return false
@@ -335,14 +307,7 @@ extension MainContentCoordinator {
         }
         if let token { TableLoadTracer.shared.stage(.replaceTabContent, token: token) }
         clearFilterState()
-        if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
-            setActiveTableRows(TableRows(), for: tab.id)
-            tabManager.mutate(at: tabIndex) {
-                $0.display.resultsViewMode = showStructure ? .structure : .data
-                $0.pagination.reset()
-            }
-            toolbarState.isTableTab = true
-        }
+        discardRowsForRetarget(resultsViewMode: showStructure ? .structure : .data)
         restoreLastHiddenColumnsForTable()
         restoreFiltersForTable(tableName)
         if let tabId = tabManager.selectedTab?.id {
@@ -351,6 +316,26 @@ extension MainContentCoordinator {
         }
         lazyLoadCurrentTabIfNeeded()
         return true
+    }
+
+    /// Drops the outgoing table's rows and says, in the same step, that a load is running.
+    ///
+    /// The two belong together. A cleared buffer that nothing has called a load is what the status
+    /// bar reads as "this tab has no result", and it removes every control that depends on one, so
+    /// the bar collapses and then refills as the fetch lands. The execution claim cannot stand in
+    /// for the flag: retargeting only schedules the load, so the claim arrives a main-actor turn
+    /// later and leaves a renderable frame in between.
+    private func discardRowsForRetarget(resultsViewMode: ResultsViewMode? = nil) {
+        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
+        setActiveTableRows(TableRows(), for: tab.id)
+        tabManager.mutate(at: tabIndex) { tab in
+            if let resultsViewMode {
+                tab.display.resultsViewMode = resultsViewMode
+            }
+            tab.pagination.reset()
+            tab.pagination.isLoading = true
+        }
+        toolbarState.isTableTab = true
     }
 
     // MARK: - Preview Tabs
@@ -393,7 +378,7 @@ extension MainContentCoordinator {
             tabType: .query,
             initialQuery: sql
         )
-        WindowManager.shared.openTab(payload: payload)
+        openTabInNewWindow(payload)
     }
 
     private func allTablesMetadataSQL() -> String? {
@@ -436,9 +421,13 @@ extension MainContentCoordinator {
             await SchemaService.shared.prepareForReload(connectionId: connectionId)
 
             await refreshTables(currentDatabaseOnly: true)
+            syncSidebarObjectSelection()
             return true
         } catch {
             navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
+            /// A user who dismissed the password prompt already knows why nothing happened, and
+            /// telling them their own decision failed is noise, not news.
+            guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return false }
             AlertHelper.showErrorSheet(
                 title: String(
                     format: String(localized: "%@ Switch Failed"),
@@ -453,12 +442,90 @@ extension MainContentCoordinator {
 
     /// Switch the active container (database, or schema for schema-switching-only
     /// engines like BigQuery), routing by the plugin's container switch target.
-    func switchContainer(to container: String) async {
-        switch PluginManager.shared.containerSwitchTarget(for: connection.type) {
+    /// `target` names the dimension the caller opened, because an engine can switch both and the
+    /// engine's primary target cannot tell the two presentations apart.
+    func switchContainer(to container: String, target: ContainerSwitchTarget? = nil) async {
+        switch target ?? PluginManager.shared.containerSwitchTarget(for: connection.type) {
         case .schema:
             await switchSchema(to: container)
         case .database, nil:
             await switchDatabase(to: container)
+        }
+    }
+
+    /// Records which container the tab on screen belongs to, so the connections strip can come
+    /// back to it.
+    ///
+    /// Called on every tab change and again when the window becomes key. A window restoring its
+    /// tabs picks the selected one before anything is watching the selection, so without the second
+    /// call the first thing ever recorded would be whatever the user switched to next, and coming
+    /// back to that database would land on the wrong tab.
+    func recordSelectedTabContainer() {
+        guard let tab = tabManager.selectedTab else { return }
+        containerTabHistory.record(
+            tabId: tab.id,
+            container: WorkspaceAnchoring.containerName(
+                of: tab,
+                target: PluginManager.shared.containerSwitchTarget(for: connection.type)
+            )
+        )
+    }
+
+    /// Land on the work a container already holds.
+    ///
+    /// The connections strip returns to the tab you last used when it moves between two
+    /// connections. A row for a second database of one connection is the same promise, and without
+    /// it the strip moved the object tree while leaving a tab from another database on screen: the
+    /// row said one database, the window title said another (#2217).
+    ///
+    /// A container holding no tab selects nothing. That row is the browse cursor alone, and the
+    /// next thing opened lands there anyway.
+    func selectTab(inContainer container: String) {
+        guard let tabId = containerTabHistory.tabToSelect(
+            inContainer: container,
+            among: tabManager.tabs,
+            target: PluginManager.shared.containerSwitchTarget(for: connection.type)
+        ) else { return }
+        tabManager.selectedTabId = tabId
+    }
+
+    /// Applies both dimensions a caller named, in the order this engine can take them.
+    ///
+    /// The one entry point for anything that names a database and a schema together: a link, a
+    /// sidebar row, a restored tab. Naming two dimensions and picking one is what sent a database
+    /// name to `switchSchema` on every engine that has schemas, and what asked a schema-only
+    /// engine to switch a database it does not have, which surfaced the driver's own
+    /// "does not support database switching" as an alert on every table click (#2262).
+    /// `switchContainer` cannot express this because it carries one container.
+    ///
+    /// A step already satisfied is skipped, and that is decided when the step runs rather than
+    /// from a snapshot taken up front, because an earlier step moves what the next one compares
+    /// against: on an engine that groups by schema, switching database resets the session to the
+    /// engine's default schema. Reading both values before either switch drops the schema step as
+    /// redundant and then leaves the session on `dbo`.
+    ///
+    /// Each value comes from the live session, never from `toolbarState`: a database switch moves
+    /// the session schema without touching the toolbar, so comparing against the toolbar skips
+    /// the switch exactly when the session needs it.
+    func switchContainers(database: String?, schema: String?) async {
+        let steps = ContainerSwitchPlanner.plan(
+            database: database,
+            schema: schema,
+            switchable: PluginManager.shared.switchableContainers(for: connection.type)
+        )
+
+        for step in steps {
+            let session = services.databaseManager.session(for: connectionId)
+            switch step {
+            case .database(let name):
+                guard name != session?.resolvedBrowseDatabase else { continue }
+                /// A schema belongs to a database, so a failed database switch stops the plan
+                /// rather than applying the schema against whatever is still open.
+                guard await switchDatabase(to: name) else { return }
+            case .schema(let name):
+                guard name != session?.browseSchema else { continue }
+                await switchSchema(to: name)
+            }
         }
     }
 
@@ -490,6 +557,7 @@ extension MainContentCoordinator {
 
         do {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
+            syncSidebarObjectSelection()
         } catch {
             toolbarState.currentSchema = previousSchema
 
@@ -537,7 +605,7 @@ extension MainContentCoordinator {
             connectionId: connectionId,
             databaseType: connection.type
         )
-        for database in Set(request.targets.filter { $0.kind == .schema }.map(\.database)) {
+        for database in Set(request.targets.filter { $0.kind == .schema }.compactMap(\.database)) {
             await DatabaseTreeMetadataService.shared.refreshSchemas(
                 connectionId: connectionId,
                 database: database
@@ -599,6 +667,9 @@ extension MainContentCoordinator {
             } catch {
                 if !Task.isCancelled {
                     navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
+                }
+                if let tabId = tabManager.selectedTab?.id {
+                    declineTableLoad(for: tabId)
                 }
                 return
             }

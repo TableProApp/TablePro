@@ -131,12 +131,15 @@ struct DataGridCellAccessoryAppearanceTests {
         #expect(ink.width <= 8)
     }
 
-    /// The unfilled circle covers 0.255 of the accessory rect and the filled one covers 0.594.
-    @Test("The foreign key arrow is the unfilled circle AppKit uses for following a link")
-    func foreignKeyArrowIsNotAFilledBadge() throws {
+    /// The bare arrow covers 0.097 of the accessory rect and measures 11 x 9. Any enclosing shape
+    /// takes it back to the circled variant's square 14 x 14 at 0.255, and a filled badge to 0.594.
+    @Test("The foreign key accessory is a bare arrow with nothing drawn around it")
+    func foreignKeyArrowHasNoEnclosingShape() throws {
         let ink = try accessoryInk(kind: .foreignKey, accessory: .foreignKey, appearanceName: .darkAqua)
 
-        #expect(ink.coverage > 0.1)
-        #expect(ink.coverage < 0.4)
+        #expect(ink.coverage > 0.05)
+        #expect(ink.coverage < 0.18)
+        #expect(ink.width > ink.height)
+        #expect(ink.width <= 12)
     }
 }

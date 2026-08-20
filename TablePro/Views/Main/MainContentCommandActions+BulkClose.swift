@@ -57,12 +57,10 @@ extension MainContentCommandActions {
     }
 
     var closeTabsForOtherDatabasesTitle: String {
-        switch PluginManager.shared.containerSwitchTarget(for: currentDatabaseType) {
-        case .schema:
-            return String(localized: "Close Tabs for Other Schemas")
-        case .database, .none:
-            return String(localized: "Close Tabs for Other Databases")
-        }
+        containerSwitchTitle(
+            schema: String(localized: "Close Tabs for Other Schemas"),
+            database: String(localized: "Close Tabs for Other Databases")
+        )
     }
 
     /// Tabs live in one window now, so a batch close is a list edit rather than a walk over
@@ -80,7 +78,13 @@ extension MainContentCommandActions {
 
     /// A partial close leaves the window open, so it cannot lean on the window's own prompt.
     /// Unsaved work is tracked for the connection rather than per tab, so the question is asked
-    /// once for the batch.
+    /// once for the batch rather than once per tab, which is also what keeps the sheets from
+    /// queueing: `NSWindow.beginSheet` queues a second sheet behind the first rather than
+    /// presenting it, so N prompts would be answered one at a time with no way to see why.
+    ///
+    /// Save goes on to close. This used to save and then return false, which left the batch
+    /// standing after a successful save and made Save mean "cancel" on this path while it meant
+    /// "close" on the window path.
     func confirmDiscardingUnsavedWork() async -> Bool {
         guard hasUnsavedWorkInConnection else { return true }
 
@@ -89,8 +93,7 @@ extension MainContentCommandActions {
             window: closeAnchorWindow
         ) {
         case .save:
-            saveChanges()
-            return false
+            return await saveSelectedTabWork()
         case .dontSave:
             return true
         case .cancel:
@@ -110,7 +113,15 @@ extension MainContentCommandActions {
             return tabs.filter { $0.id != anchor }
         case .otherDatabases:
             let current = browsedContainerName
-            return tabs.filter { WorkspaceAnchoring.containerName(of: $0, target: target) != current }
+            /// A tab that cannot name its container is not in another one, it is in none, and
+            /// `containerName` returning nil compared against a non-optional name made every such
+            /// tab foreign. Only `.table` tabs carry a schema, so on a schema-switching engine that
+            /// swept up every query tab the user had typed into. `container(of:)` is the same
+            /// composition the workspace rail already uses to avoid exactly this.
+            return tabs.filter { tab in
+                guard let name = WorkspaceAnchoring.container(of: tab, target: target) else { return false }
+                return name != current
+            }
         }
     }
 }

@@ -95,12 +95,15 @@ extension MainContentCoordinator {
             tab.pendingRestoredSort ?? [],
             in: effectiveResultColumns(for: tab)
         )
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
+        // The persisted page index counts pages of the size it was taken in, so reading it in
+        // today's default would land the tab on rows it was never showing.
+        let pageSize = tab.restoredPageSize ?? AppSettingsManager.shared.dataGrid.defaultPageSize
         let page = max(1, tab.restoredPage ?? 1)
 
         tabManager.mutate(at: index) { tab in
             tab.pendingRestoredSort = nil
             tab.restoredPage = nil
+            tab.restoredPageSize = nil
             if !resolvedSort.isEmpty {
                 tab.sortState = SortState(columns: resolvedSort, source: .user)
             }

@@ -16,14 +16,22 @@ final class JSONViewerWindowController {
     private var window: NSWindow?
     private var closeObserver: NSObjectProtocol?
 
+    @discardableResult
     static func open(
         text: String?,
         columnName: String?,
         isEditable: Bool,
         onCommit: ((String) -> Void)?
-    ) {
+    ) -> JSONViewerWindowController {
         let controller = JSONViewerWindowController()
         controller.showWindow(text: text, columnName: columnName, isEditable: isEditable, onCommit: onCommit)
+        return controller
+    }
+
+    /// A popped-out editor commits through the display row it was opened from, so whoever opened it
+    /// has to be able to close it once those rows are gone.
+    func close() {
+        window?.close()
     }
 
     private func showWindow(
@@ -39,7 +47,11 @@ final class JSONViewerWindowController {
             defer: false
         )
         window.identifier = NSUserInterfaceItemIdentifier("json-viewer")
-        window.title = columnName.map { "JSON — \($0)" } ?? String(localized: "JSON Viewer")
+        if let columnName {
+            window.title = String(format: String(localized: "JSON: %@"), columnName)
+        } else {
+            window.title = String(localized: "JSON Viewer")
+        }
         window.isReleasedWhenClosed = false
         window.minSize = Self.minSize
         window.collectionBehavior = [.fullScreenPrimary]

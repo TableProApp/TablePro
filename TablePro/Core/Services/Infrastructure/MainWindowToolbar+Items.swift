@@ -24,8 +24,6 @@ extension MainWindowToolbar {
             label: String(localized: "Connection"),
             symbol: "network",
             action: #selector(performOpenConnectionSwitcher(_:)),
-            keyEquivalent: "c",
-            modifiers: [.command, .option],
             shortcut: .switchConnection,
             description: String(localized: "Switch Connection")
         )
@@ -46,8 +44,6 @@ extension MainWindowToolbar {
             label: containerName,
             symbol: "cylinder",
             action: #selector(performOpenDatabaseSwitcher(_:)),
-            keyEquivalent: "k",
-            modifiers: .command,
             shortcut: .openDatabase,
             description: String(format: String(localized: "Open %@"), containerName)
         )
@@ -59,8 +55,6 @@ extension MainWindowToolbar {
             label: String(localized: "Refresh"),
             symbol: "arrow.clockwise",
             action: #selector(performRefresh(_:)),
-            keyEquivalent: "r",
-            modifiers: .command,
             shortcut: .refresh
         )
     }
@@ -71,9 +65,21 @@ extension MainWindowToolbar {
             label: String(localized: "Save Changes"),
             symbol: "checkmark.circle.fill",
             action: #selector(performSaveChanges(_:)),
-            keyEquivalent: "s",
-            modifiers: .command,
             shortcut: .saveChanges
+        )
+    }
+
+    /// A row insert is a change to the data, so it belongs with the other data commands rather than
+    /// in the status bar, which reports what is on screen. It ships as a subitem of an existing group
+    /// so a toolbar the user already customized picks it up: `autosavesConfiguration` restores the
+    /// saved identifier list, and a brand new top-level identifier would never appear for them.
+    func subitemAddRow() -> NSToolbarItem {
+        menuOnlyItem(
+            id: Self.addRow,
+            label: String(localized: "Add Row"),
+            symbol: "plus",
+            action: #selector(performAddRow(_:)),
+            shortcut: .addRow
         )
     }
 
@@ -83,8 +89,6 @@ extension MainWindowToolbar {
             label: String(localized: "Export"),
             symbol: "square.and.arrow.up",
             action: #selector(performExport(_:)),
-            keyEquivalent: "e",
-            modifiers: [.command, .shift],
             shortcut: .export,
             description: String(localized: "Export Data")
         )
@@ -102,7 +106,6 @@ extension MainWindowToolbar {
         let item = NSMenuToolbarItem(itemIdentifier: Self.importTables)
         item.label = label
         item.paletteLabel = label
-        item.toolTip = toolTip(String(localized: "Import Data"), shortcut: .importData)
         item.isBordered = true
         item.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: label)
         item.menu = buildImportSubmenu()
@@ -111,7 +114,9 @@ extension MainWindowToolbar {
         menuItem.image = item.image
         menuItem.submenu = buildImportSubmenu()
         item.menuFormRepresentation = menuItem
+        bindMenuForm(action: #selector(performImportFormat(_:)), to: Self.importTables)
 
+        bindShortcut(.importData, description: String(localized: "Import Data"), to: item)
         return item
     }
 
@@ -161,6 +166,7 @@ extension MainWindowToolbar {
             item.target = self
             item.action = action
             item.autovalidates = true
+            bindMenuForm(action: action, to: id)
             let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: keyEquivalent)
             menuItem.keyEquivalentModifierMask = modifiers
             menuItem.target = self
@@ -178,8 +184,6 @@ extension MainWindowToolbar {
         label: String,
         symbol: String,
         action: Selector,
-        keyEquivalent: String,
-        modifiers: NSEvent.ModifierFlags,
         shortcut: ShortcutAction? = nil,
         description: String? = nil,
         symbolProvider: (@MainActor () -> String)? = nil
@@ -193,20 +197,15 @@ extension MainWindowToolbar {
         item.isBordered = true
         item.symbolAccessibilityDescription = label
         item.symbolProvider = symbolProvider ?? { symbol }
-        item.toolTip = toolTip(description ?? label, shortcut: shortcut)
+        bindMenuForm(action: action, to: id)
 
-        let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: keyEquivalent)
-        menuItem.keyEquivalentModifierMask = modifiers
+        let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: "")
         menuItem.target = self
         menuItem.image = item.image
         item.menuFormRepresentation = menuItem
 
+        bindShortcut(shortcut, description: description ?? label, to: item)
         return item
-    }
-
-    func toolTip(_ label: String, shortcut: ShortcutAction?) -> String {
-        guard let shortcut else { return label }
-        return AppSettingsManager.shared.keyboard.shortcutHint(label, for: shortcut)
     }
 
     /// A group with real subitems and no `view` is drawn by AppKit itself, so it answers display
@@ -249,8 +248,9 @@ extension MainWindowToolbar {
     /// AppKit asks the delegate again with `willBeInsertedIntoToolbar: false` to build the palette
     /// copies shown by Customize Toolbar, and letting those overwrite the slot released the
     /// controllers whose views were on screen. `NSToolbarItem` does not retain its controller, so
-    /// the live items collapsed to zero width the moment the panel opened.
-    static func retainsHostingController(willBeInsertedIntoToolbar: Bool) -> Bool {
+    /// the live items collapsed to zero width the moment the panel opened. The sidebar segmented
+    /// control keeps its live group in a slot of the same shape, so both read this one predicate.
+    static func claimsItemSlot(willBeInsertedIntoToolbar: Bool) -> Bool {
         willBeInsertedIntoToolbar
     }
 

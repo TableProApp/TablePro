@@ -25,12 +25,6 @@ enum DatabaseMenuBuilder {
                 shortcut: .openDatabase,
                 keyboard: keyboard
             ),
-            MenuItemFactory.item(
-                String(localized: "Quick Switcher..."),
-                action: #selector(MainSplitViewController.openQuickSwitcher(_:)),
-                shortcut: .quickSwitcher,
-                keyboard: keyboard
-            ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Refresh"),
@@ -80,6 +74,10 @@ enum DatabaseMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "Users & Roles"),
                 action: #selector(MainSplitViewController.showUsersAndRoles(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Query Insights"),
+                action: #selector(MainSplitViewController.showQueryInsights(_:))
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(

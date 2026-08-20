@@ -20,12 +20,26 @@ extension SourceEditor {
 
         private(set) var highlightProviders: [any HighlightProviding]
 
+        /// Held strongly, unlike ``TextViewController/textCoordinators``, which holds them weakly.
+        /// SwiftUI keeps this coordinator alive for as long as the editor exists, so the teardown in
+        /// ``SourceEditor/dismantleNSViewController(_:coordinator:)`` always has something to
+        /// destroy. Going through the weak list instead would make teardown depend on SwiftUI
+        /// releasing the view's `@State` after the dismantle rather than before it, which nothing
+        /// guarantees.
+        let textCoordinators: [any TextViewCoordinator]
+
         private var cancellables: Set<AnyCancellable> = []
 
-        init(text: TextAPI, editorState: Binding<SourceEditorState>, highlightProviders: [any HighlightProviding]?) {
+        init(
+            text: TextAPI,
+            editorState: Binding<SourceEditorState>,
+            highlightProviders: [any HighlightProviding]?,
+            textCoordinators: [any TextViewCoordinator]
+        ) {
             self.textSync = TextBindingSync(text: text, phase: phase)
             self._editorState = editorState
             self.highlightProviders = highlightProviders ?? [TreeSitterClient()]
+            self.textCoordinators = textCoordinators
             super.init()
         }
 
@@ -36,6 +50,17 @@ extension SourceEditor {
             listenToTextViewNotifications(controller: controller)
             listenToCursorNotifications(controller: controller)
             listenToFindNotifications(controller: controller)
+            listenToFoldNotifications(controller: controller)
+        }
+
+        /// Listen to fold collapse and expand events on the text view controller.
+        func listenToFoldNotifications(controller: TextViewController) {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(textControllerFoldsDidUpdate(_:)),
+                name: TextViewController.foldStateDidChangeNotification,
+                object: controller
+            )
         }
 
         // MARK: - Listeners
@@ -130,6 +155,13 @@ extension SourceEditor {
                 return
             }
             updateState { $0.cursorPositions = controller.cursorPositions }
+        }
+
+        @objc func textControllerFoldsDidUpdate(_ notification: Notification) {
+            guard let controller = notification.object as? TextViewController else {
+                return
+            }
+            updateState { $0.collapsedFoldRanges = controller.collapsedFoldRanges }
         }
 
         func textControllerScrollDidChange(_ notification: Notification) {

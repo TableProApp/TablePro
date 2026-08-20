@@ -29,8 +29,7 @@ internal final class IntegrationsActivityWindowController: NSWindowController {
         /// split pane's host, where the same minimum would pin the window's dividers.
         hosting.sizingOptions = [.minSize]
 
-        let window = NSWindow(contentViewController: hosting)
-        window.title = String(localized: "Integrations Activity")
+        let window = NSWindow.titled(String(localized: "Integrations Activity"), contentViewController: hosting)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.integrationsActivity)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(NSSize(width: 960, height: 600))

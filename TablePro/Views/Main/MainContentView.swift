@@ -145,6 +145,17 @@ struct MainContentView: View {
         return conn
     }
 
+    /// Exporting a container names the database that container lives in, which is not always the
+    /// one being browsed. The dialog scopes every list and the export itself to this connection's
+    /// database, so naming it here is what makes exporting another database show that database.
+    private var exportConnection: DatabaseConnection {
+        var conn = connectionWithCurrentDatabase
+        if let scoped = coordinator.exportPreselection?.scopedDatabase, !scoped.isEmpty {
+            conn.database = scoped
+        }
+        return conn
+    }
+
     /// Returns the appropriate sheet view for the given `ActiveSheet` case.
     /// Uses a dismissal binding that sets `coordinator.activeSheet = nil` when the
     /// child view sets `isPresented = false`.
@@ -175,7 +186,7 @@ struct MainContentView: View {
                 }
             )
         case .exportDialog:
-            let exportConnection = connectionWithCurrentDatabase
+            let exportConnection = exportConnection
             ExportDialog(
                 isPresented: dismissBinding,
                 mode: .tables(
@@ -255,12 +266,20 @@ struct MainContentView: View {
                     ?? connection.database,
                 sourceURL: fileURL
             )
-        case .maintenance(let operation, let tableName):
+        case .maintenance(let operation, let tableName, let database, let schema):
             MaintenanceSheet(
                 operation: operation,
                 tableName: tableName,
                 databaseType: connection.type,
-                onExecute: coordinator.executeMaintenance
+                onExecute: { operation, tableName, options in
+                    coordinator.executeMaintenance(
+                        operation: operation,
+                        tableName: tableName,
+                        options: options,
+                        database: database,
+                        schema: schema
+                    )
+                }
             )
         case .sqlPreview:
             SQLReviewSheet(
@@ -323,7 +342,7 @@ struct MainContentView: View {
     }
 
     private var bodyContentCore: some View {
-        editorTabStripAndContent
+        mainContentView
             .task {
                 let start = Date()
                 Self.lifecycleLogger.info(
@@ -372,43 +391,17 @@ struct MainContentView: View {
                 }
                 handleTableSelectionChange(from: oldTables, to: newTables)
             }
-            .onChange(of: tables) { _, newTables in
-                let syncAction = SidebarSyncAction.resolveOnTablesLoad(
-                    newTables: newTables,
-                    selectedTables: coordinator.windowSidebarState.selectedTables,
-                    currentTabTableName: tabManager.selectedTab?.tableContext.tableName
-                )
-                if case .select(let tableName) = syncAction,
-                    let match = newTables.first(where: { $0.name == tableName })
-                {
-                    coordinator.windowSidebarState.selectTables([match])
-                }
+            /// A background reload of the same container must not take a selection out from under
+            /// the user. Every other input re-asserts unconditionally: a container switch above all,
+            /// because a selection made in the container being left is not one in the container
+            /// arriving.
+            .onChange(of: tables) { _, _ in
+                guard coordinator.windowSidebarState.acceptsObjectMarkRefresh else { return }
+                coordinator.syncSidebarObjectSelection()
             }
     }
 
     // MARK: - Main Content
-
-    /// These tabs belong to one connection's editor pane, not to the window, so they sit above the
-    /// pane the way Xcode places its editor tabs. The titlebar is where a window's own document
-    /// tabs go, and putting a pane-level strip there moves the window's base line below it and
-    /// paints the strip on titlebar material instead of the content background.
-    ///
-    /// The strip is hidden while a connection holds a single tab, so a window that behaves the
-    /// way it always did gains no chrome. It appears the moment a second tab exists.
-    private var editorTabStripAndContent: some View {
-        VStack(spacing: 0) {
-            if tabManager.tabs.count > 1 {
-                EditorTabStrip(
-                    tabManager: tabManager,
-                    onClose: { coordinator.commandActions?.closeTab(id: $0) },
-                    onCloseOthers: { coordinator.commandActions?.closeOtherTabs(anchoredOn: $0) },
-                    onCloseAll: { coordinator.commandActions?.closeAllTabs() },
-                    onNewTab: { coordinator.commandActions?.newTab() }
-                )
-            }
-            mainContentView
-        }
-    }
 
     @ViewBuilder
     private var mainContentView: some View {

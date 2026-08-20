@@ -49,7 +49,10 @@ internal enum ConnectionCloseAction {
             window: presentingWindow
         ) {
         case .save:
-            coordinator?.commandActions?.saveChanges()
+            /// Save closes too, once the save has actually landed. It used to start the save and
+            /// stop there, so the connection the user asked to close stayed open.
+            guard await coordinator?.commandActions?.saveSelectedTabWork() == true else { break }
+            WindowManager.shared.closeWindow(for: connectionId)
         case .dontSave:
             WindowManager.shared.closeWindow(for: connectionId)
         case .cancel:

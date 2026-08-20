@@ -5,12 +5,14 @@
 
 import AppKit
 
-/// A split item's stable view controller, showing one connection's pane at a time.
+/// A stable container showing one connection's pane at a time, used by the split items and by the
+/// titlebar accessory that carries the editor tab strip.
 ///
 /// `NSSplitViewItem.viewController` cannot be reassigned once the item is installed in an
 /// `NSSplitViewController`, so a window that hosts several connections cannot swap the item itself.
 /// It swaps the item's child instead, which is what lets every other connection's view tree stay
-/// alive rather than be rebuilt from scratch on each switch.
+/// alive rather than be rebuilt from scratch on each switch. A titlebar accessory has the same
+/// shape of problem: one accessory per window, one strip per connection.
 ///
 /// The container publishes no size of its own: it owns no intrinsic content size and every pane it
 /// shows is an `NSHostingController` with `sizingOptions = []`. That is the firewall keeping tab

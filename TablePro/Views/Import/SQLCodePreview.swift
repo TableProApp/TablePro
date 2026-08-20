@@ -25,7 +25,8 @@ struct SQLCodePreview: View {
                 $text,
                 language: .sql,
                 configuration: editorConfiguration,
-                state: $editorState
+                state: $editorState,
+                foldProvider: FoldProviderResolver.provider(for: CodeLanguage.sql)
             )
             .onChange(of: colorScheme) {
                 editorConfiguration = Self.makeConfiguration()
@@ -48,10 +49,9 @@ struct SQLCodePreview: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
             ),
-            peripherals: .init(
-                showGutter: true,
-                showMinimap: false,
-                showFoldingRibbon: false
+            peripherals: EditorPeripherals.inline(
+                lineNumbers: true,
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }

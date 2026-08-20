@@ -418,7 +418,7 @@ internal struct FavoritesTabView: View {
     @ViewBuilder
     private func favoriteTableContextMenu(_ table: TableInfo) -> some View {
         Button(String(localized: "Open Table")) {
-            coordinator?.openTableTab(table, activateGridFocus: true)
+            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
         }
 
         Button(String(localized: "Show ER Diagram")) {
@@ -434,6 +434,9 @@ internal struct FavoritesTabView: View {
         }
     }
 
+    /// Selecting a favourite does not open it, so every open from this list is a deliberate one:
+    /// a double-click, Return, or a menu item. None of them may hand back a tab the next sidebar
+    /// click throws away.
     private func handlePrimaryAction(_ kind: FavoritesOutlineNode.Kind) {
         switch kind {
         case .header:
@@ -443,7 +446,7 @@ internal struct FavoritesTabView: View {
         case .database(let entry):
             useDatabase(entry)
         case .table(let table):
-            coordinator?.openTableTab(table, activateGridFocus: true)
+            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
         case .query(let node):
             switch node.content {
             case .favorite(let favorite):
@@ -506,7 +509,7 @@ internal struct FavoritesTabView: View {
                 connectionId: connectionId
             )
         case .openTable(let table):
-            coordinator?.openTableTab(table, activateGridFocus: true)
+            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
         case .showERDiagram:
             coordinator?.showERDiagram()
         case .removeTableFavorite(let table):
@@ -574,20 +577,26 @@ internal struct FavoritesTabView: View {
 
     /// An empty list has no row to right-click, so the commands the background menu carries have to
     /// be here too. They used to live in a bar at the bottom of the sidebar.
+    ///
+    /// The actions are stacked, not left to `ContentUnavailableView`'s default row. On macOS 15 the
+    /// row of three buttons is wider than the sidebar, and the view sizes its whole content to that
+    /// row, so the description and the buttons ran past both edges and were cut off.
     private var emptyState: some View {
         ContentUnavailableView {
             Label(String(localized: "No Favorites"), systemImage: "star")
         } description: {
             Text("Save frequently used queries, or link a folder of .sql files to share with your team.")
         } actions: {
-            Button(String(localized: "New Favorite...")) {
-                viewModel.createFavorite()
-            }
-            Button(String(localized: "New Folder")) {
-                viewModel.createFolder()
-            }
-            Button(String(localized: "Link a Folder...")) {
-                addLinkedFolder()
+            VStack(spacing: 8) {
+                Button(String(localized: "New Favorite...")) {
+                    viewModel.createFavorite()
+                }
+                Button(String(localized: "New Folder")) {
+                    viewModel.createFolder()
+                }
+                Button(String(localized: "Link a Folder...")) {
+                    addLinkedFolder()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -86,15 +86,15 @@ final class ConnectionToolbarState {
 
     /// Active database (always meaningful). For schema-grouped engines like SQL Server,
     /// this is the SQL Server database (e.g. "Sales"); the active schema lives in
-    /// `currentSchema` and is what the toolbar chip shows.
+    /// `currentSchema`, and the toolbar shows both.
     var currentDatabase: String = ""
 
-    /// Active schema for engines whose grouping strategy is `.bySchema`. Nil for
-    /// `.byDatabase` and `.flat` engines, where the database is the primary unit.
+    /// Active schema for engines that browse one schema at a time. Nil for `.byDatabase` and
+    /// `.flat` engines, where the database is the only unit, and until the schema resolves.
     var currentSchema: String?
 
-    /// How the engine groups data. Drives whether `chipText` returns `currentSchema`
-    /// (for schema-grouped engines) or `currentDatabase`.
+    /// How the engine groups data. Decides what a connection that switches nothing displays;
+    /// everything else follows the engine's switchable containers.
     var databaseGroupingStrategy: GroupingStrategy = .byDatabase
 
     /// Custom display color for the connection (uses database type color if not set)
@@ -185,25 +185,18 @@ final class ConnectionToolbarState {
         return databaseType.rawValue
     }
 
-    /// Text shown in the toolbar's database/schema chip. For `.bySchema` engines
-    /// (SQL Server, PostgreSQL) and `.hierarchicalSchema` engines that switch by
-    /// schema (Oracle, BigQuery), this is the active schema; other engines show the
-    /// active database, which is also the fallback while a schema-grouped engine
-    /// has not yet resolved its schema.
-    var chipText: String {
-        switch databaseGroupingStrategy {
-        case .bySchema:
-            if let schema = currentSchema, !schema.isEmpty {
-                return schema
-            }
-            return currentDatabase
-        case .byDatabase, .flat, .hierarchicalSchema:
-            if PluginManager.shared.containerSwitchTarget(for: databaseType) == .schema,
-               let schema = currentSchema, !schema.isEmpty {
-                return schema
-            }
-            return currentDatabase
-        }
+    /// One component per container dimension the engine switches, outermost first, so PostgreSQL
+    /// reads "app › public" and MySQL reads "app". An engine that switches nothing still gets one
+    /// component, which is unclickable.
+    var scopeComponents: [ConnectionScopeComponent] {
+        ConnectionScopeResolver.components(
+            switchable: PluginManager.shared.switchableContainers(for: databaseType),
+            groupingStrategy: databaseGroupingStrategy,
+            currentDatabase: currentDatabase,
+            currentSchema: currentSchema,
+            containerEntityName: PluginManager.shared.containerEntityName(for: databaseType),
+            schemaEntityName: PluginManager.shared.schemaEntityName(for: databaseType)
+        )
     }
 
     /// Tooltip text for the status indicator
@@ -245,8 +238,8 @@ final class ConnectionToolbarState {
     }
 
     /// Resolve `currentDatabase` and `currentSchema` from the active session, falling
-    /// back to the connection's configured database for `currentDatabase`. The chip
-    /// updates automatically via the `chipText` computed property.
+    /// back to the connection's configured database for `currentDatabase`. The toolbar
+    /// updates automatically through `scopeComponents`.
     func syncFromSession(for connection: DatabaseConnection) {
         let resolvedDatabase: String
         if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {

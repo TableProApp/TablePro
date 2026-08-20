@@ -30,7 +30,7 @@ struct RowInserterTests {
             PayloadRow(values: ["name": .text("Grace")])
         ]
         let affected = try await RowInserter.insert(
-            driver: driver, table: "people", type: .postgresql, schema: nil, rows: rows
+            driver: driver, table: "people", type: .postgresql, schema: nil, qualifier: nil, rows: rows
         )
         #expect(affected == 2)
         #expect(driver.didBeginTransaction)
@@ -47,7 +47,7 @@ struct RowInserterTests {
         ]
         await #expect(throws: (any Error).self) {
             _ = try await RowInserter.insert(
-                driver: driver, table: "people", type: .postgresql, schema: nil, rows: rows
+                driver: driver, table: "people", type: .postgresql, schema: nil, qualifier: nil, rows: rows
             )
         }
         #expect(driver.didBeginTransaction)
@@ -60,10 +60,33 @@ struct RowInserterTests {
         let driver = makeDriver(results: [ok()])
         let rows = [PayloadRow(values: ["name": .text("Ada")])]
         let affected = try await RowInserter.insert(
-            driver: driver, table: "people", type: .postgresql, schema: nil, rows: rows
+            driver: driver, table: "people", type: .postgresql, schema: nil, qualifier: nil, rows: rows
         )
         #expect(affected == 1)
         #expect(!driver.didBeginTransaction)
+    }
+
+    @Test("sends the chosen schema in the statement instead of relying on the session default")
+    func qualifiesStatementWithSchema() async throws {
+        let driver = makeDriver(results: [ok()])
+        driver.supportsSchemas = true
+        let rows = [PayloadRow(values: ["name": .text("Ada")])]
+        _ = try await RowInserter.insert(
+            driver: driver, table: "events", type: .postgresql, schema: "reporting", qualifier: "reporting", rows: rows
+        )
+        #expect(driver.executedQueries == [#"INSERT INTO "reporting"."events" ("name") VALUES ('Ada')"#])
+    }
+
+    @Test("leaves the table unqualified when no schema was picked, so the search path still decides")
+    func leavesTableUnqualifiedWithoutAPickedSchema() async throws {
+        let driver = makeDriver(results: [ok()])
+        driver.supportsSchemas = true
+        driver.currentSchema = "public"
+        let rows = [PayloadRow(values: ["name": .text("Ada")])]
+        _ = try await RowInserter.insert(
+            driver: driver, table: "events", type: .postgresql, schema: "public", qualifier: nil, rows: rows
+        )
+        #expect(driver.executedQueries == [#"INSERT INTO "events" ("name") VALUES ('Ada')"#])
     }
 
     @Test("throws when no row produces a value to insert")
@@ -72,7 +95,7 @@ struct RowInserterTests {
         let rows = [PayloadRow(values: ["id": .text("")])]
         await #expect(throws: IntentDataError.self) {
             _ = try await RowInserter.insert(
-                driver: driver, table: "people", type: .postgresql, schema: nil, rows: rows
+                driver: driver, table: "people", type: .postgresql, schema: nil, qualifier: nil, rows: rows
             )
         }
         #expect(driver.executedQueries.isEmpty)

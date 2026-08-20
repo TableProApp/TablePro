@@ -157,11 +157,7 @@ internal final class TabRouter {
             sshPasswordOverride: sshPasswordOverride
         )
 
-        if let schema {
-            await switchSchemaOrDatabase(connectionId: connectionId, target: schema)
-        } else if let database {
-            await switchSchemaOrDatabase(connectionId: connectionId, target: database)
-        }
+        await applyContainerSwitch(connectionId: connectionId, database: database, schema: schema)
     }
 
     private func focusExistingTableTab(
@@ -313,9 +309,9 @@ internal final class TabRouter {
             sshPasswordOverride: sshPasswordOverride
         )
 
-        if let schema = parsed.schema {
-            await switchSchemaOrDatabase(connectionId: connection.id, target: schema)
-        }
+        await applyContainerSwitch(
+            connectionId: connection.id, database: nil, schema: parsed.schema
+        )
     }
 
     // MARK: - Database File
@@ -390,14 +386,10 @@ internal final class TabRouter {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func switchSchemaOrDatabase(connectionId: UUID, target: String) async {
+    private func applyContainerSwitch(connectionId: UUID, database: String?, schema: String?) async {
         guard let coordinator = MainContentCoordinator.allActiveCoordinators()
             .first(where: { $0.connectionId == connectionId }) else { return }
-        if PluginManager.shared.supportsSchemaSwitching(for: coordinator.connection.type) {
-            await coordinator.switchSchema(to: target)
-        } else {
-            await coordinator.switchDatabase(to: target)
-        }
+        await coordinator.switchContainers(database: database, schema: schema)
     }
 
     private func runPreConnectScriptIfNeeded(_ connection: DatabaseConnection) async throws {

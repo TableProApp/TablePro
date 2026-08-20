@@ -22,7 +22,8 @@ prepare_mariadb() {
     echo "📦 Preparing libmariadb.a for $target_arch..."
 
     # If libmariadb.a already exists with the correct architecture, skip preparation.
-    # CI pre-copies the architecture-specific library from Homebrew.
+    # CI pre-copies the architecture-specific slice from Libs via scripts/ci/prepare-libs.sh.
+    # Homebrew is not involved: the whole library is vendored by download-libs.sh.
     if [ -f "Libs/libmariadb.a" ] && lipo -info "Libs/libmariadb.a" 2>/dev/null | grep -q "$target_arch"; then
         local size
         size=$(ls -lh Libs/libmariadb.a 2>/dev/null | awk '{print $5}')

@@ -29,10 +29,16 @@ public protocol DatabaseDriver: AnyObject, Sendable {
     func rollbackTransaction() async throws
 
     var serverVersion: String? { get }
+
+    func escapeStringLiteral(_ value: String) -> String
 }
 
 public extension DatabaseDriver {
     var holdsSuspensionBlockingResource: Bool { false }
+
+    func escapeStringLiteral(_ value: String) -> String {
+        SQLEscaping.ansiStringLiteral(value)
+    }
 
     func executeStreaming(query: String, options: StreamOptions = .default) -> AsyncThrowingStream<StreamElement, Error> {
         AsyncThrowingStream { continuation in

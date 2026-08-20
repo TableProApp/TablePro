@@ -108,15 +108,8 @@ extension MainContentView {
             return
         }
 
-        let targetDatabase = activeDatabase.flatMap { $0.isEmpty ? nil : $0 }
-
         Task {
-            if let targetDatabase, targetDatabase != session.resolvedBrowseDatabase {
-                await coordinator.switchDatabase(to: targetDatabase)
-            }
-            if let activeSchema, !activeSchema.isEmpty, activeSchema != session.browseSchema {
-                await coordinator.switchSchema(to: activeSchema)
-            }
+            await coordinator.switchContainers(database: activeDatabase, schema: activeSchema)
             if isTableTab {
                 coordinator.lazyLoadCurrentTabIfNeeded(trigger: .restore)
             }
@@ -245,7 +238,7 @@ extension MainContentView {
             connectionId: connection.id
         )
         viewWindow?.representedURL = selectedTab?.content.sourceFileURL
-        viewWindow?.isDocumentEdited = selectedTab?.showsUnsavedIndicator ?? false
+        viewWindow?.isDocumentEdited = selectedTab.map(coordinator.showsUnsavedIndicator) ?? false
     }
 
     /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.
@@ -270,13 +263,15 @@ extension MainContentView {
 
         // Native proxy icon (Cmd+click shows path in Finder) and dirty dot
         window.representedURL = tabManager.selectedTab?.content.sourceFileURL
-        window.isDocumentEdited = tabManager.selectedTab?.showsUnsavedIndicator ?? false
+        window.isDocumentEdited = tabManager.selectedTab.map(coordinator.showsUnsavedIndicator) ?? false
 
         commandActions?.window = window
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.installToolbar(coordinator: coordinator)
         }
+
+        ScreenshotEnvironment.pinWindowSize(window)
         MainContentView.lifecycleLogger.info(
             "[open] configureWindow done windowId=\(windowId, privacy: .public) isPreview=\(isPreview) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )

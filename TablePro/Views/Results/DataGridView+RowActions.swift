@@ -15,7 +15,7 @@ extension TableViewCoordinator {
     @MainActor
     func undoDeleteRow(at index: Int) {
         changeManager.undoRowDeletion(rowIndex: index)
-        visualIndex.updateRow(index, from: changeManager, sortedIDs: displayIDs)
+        visualIndex.updateRow(index, from: changeManager, displayIDs: displayIDs)
         tableView?.reloadData(
             forRowIndexes: IndexSet(integer: index),
             columnIndexes: IndexSet(integersIn: 0..<(tableView?.numberOfColumns ?? 0)))

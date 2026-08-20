@@ -26,10 +26,19 @@ public protocol TextAttachment: AnyObject {
     /// The action that should be performed when this attachment is invoked (double-click, enter pressed).
     /// This method is optional, by default the attachment is discarded.
     func attachmentAction() -> TextAttachmentAction
+
+    /// Whether a single click invokes the attachment rather than selecting it.
+    ///
+    /// An attachment that stands in for content the reader wants back, such as a folded region, is quicker to open
+    /// than to select. One that stands in for content of its own is not, so this defaults to `false` and a single
+    /// click keeps selecting the attachment's range.
+    var activatesOnSingleClick: Bool { get }
 }
 
 public extension TextAttachment {
     func attachmentAction() -> TextAttachmentAction { .discard }
+
+    var activatesOnSingleClick: Bool { false }
 }
 
 /// Type-erasing type for ``TextAttachment`` that also contains range information about the attachment.

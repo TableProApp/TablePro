@@ -159,7 +159,7 @@ enum ErrorClassifier {
         // Default
         return AppError(
             category: .system,
-            title: "Error",
+            title: String(localized: "Error"),
             message: error.localizedDescription,
             recovery: nil,
             underlying: error
@@ -190,7 +190,7 @@ enum ErrorClassifier {
     }
 
     private static func auth(_ error: Error, context: ErrorContext) -> AppError {
-        let dbName = context.databaseType?.rawValue ?? "Database"
+        let dbName = context.databaseType?.rawValue ?? String(localized: "Database")
         return AppError(
             category: .auth,
             title: String(localized: "Authentication Failed"),

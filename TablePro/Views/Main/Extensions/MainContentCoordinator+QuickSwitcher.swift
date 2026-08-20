@@ -14,16 +14,25 @@ extension MainContentCoordinator {
             quickSwitcherPanel.dismiss()
             return
         }
-        let openTableNames = Set(
+        let browseSchema = services.databaseManager.session(for: connectionId)?.browseSchema
+        let openTables = Set(
             tabManager.tabs
                 .filter { $0.tabType == .table }
-                .compactMap(\.tableContext.tableName)
+                .compactMap { tab -> QuickSwitcherOpenTable? in
+                    guard let tableName = tab.tableContext.tableName else { return nil }
+                    return QuickSwitcherOpenTable(
+                        schema: tab.tableContext.schemaName,
+                        name: tableName,
+                        browsing: browseSchema
+                    )
+                }
         )
         let panelView = QuickSwitcherPanelView(
             schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connectionId),
             connectionId: connectionId,
             databaseType: connection.type,
-            openTableNames: openTableNames,
+            openTables: openTables,
+            browseSchema: browseSchema,
             onSelect: { [weak self] item, intent in self?.handleQuickSwitcherSelection(item, intent: intent) },
             onDismiss: { [weak self] in self?.quickSwitcherPanel.dismiss() }
         )
@@ -42,7 +51,7 @@ extension MainContentCoordinator {
             return
         }
 
-        let schemaName = item.target?.schemaName
+        let schemaName = item.target?.schemaName ?? item.schemaName
         switch item.kind {
         case .table, .systemTable:
             openTableTab(

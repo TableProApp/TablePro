@@ -348,14 +348,25 @@ extension PluginManager {
             .capabilities.supportsSchemaSwitching ?? false
     }
 
-    func containerSwitchTarget(for databaseType: DatabaseType) -> ContainerSwitchTarget? {
+    /// Every container dimension the engine can switch, ordered outermost first. An engine can have
+    /// both, which is why this is a list: PostgreSQL browses a database and a schema within it, and
+    /// naming only one of them is what left the schema with no control of its own.
+    func switchableContainers(for databaseType: DatabaseType) -> [ContainerSwitchTarget] {
+        var targets: [ContainerSwitchTarget] = []
         if supportsDatabaseSwitching(for: databaseType) {
-            return .database
+            targets.append(.database)
         }
         if supportsSchemaSwitching(for: databaseType) {
-            return .schema
+            targets.append(.schema)
         }
-        return nil
+        return targets
+    }
+
+    /// The dimension a tab and a workspace are anchored to, which is the outermost one the engine
+    /// switches. Derived from `switchableContainers` so the two orderings cannot drift apart.
+    /// This is not "the dimension the user can switch": read `switchableContainers` for that.
+    func containerSwitchTarget(for databaseType: DatabaseType) -> ContainerSwitchTarget? {
+        switchableContainers(for: databaseType).first
     }
 
     func supportsContainerSwitching(for databaseType: DatabaseType) -> Bool {

@@ -32,12 +32,14 @@ struct ResultsJsonViewTests {
     private func compute(
         displayIDs: [RowID]? = nil,
         selectedIndices: Set<Int>,
+        deletedIndices: Set<Int> = [],
         columnLayout: ColumnLayoutState = ColumnLayoutState()
-    ) -> (json: String, pretty: String, resolvedCount: Int, parseResult: Result<JSONTreeNode, JSONTreeParseError>) {
+    ) -> ResultsJsonView.RenderedJson {
         ResultsJsonView.computeJson(
             tableRows: makeTableRows(),
             displayIDs: displayIDs,
             selectedIndices: selectedIndices,
+            deletedIndices: deletedIndices,
             columnLayout: columnLayout
         )
     }
@@ -72,6 +74,34 @@ struct ResultsJsonViewTests {
         #expect(result.resolvedCount == 2)
         #expect(!result.json.contains("\"b\""))
         #expect(!result.json.contains("\"d\""))
+    }
+
+    @Test("a row marked for deletion is left out of the document")
+    func pendingDeletionIsExcluded() {
+        let result = compute(selectedIndices: [], deletedIndices: [1])
+
+        #expect(result.resolvedCount == 3)
+        #expect(!result.json.contains("\"b\""))
+        #expect(result.json.contains("\"a\""))
+        #expect(result.json.contains("\"d\""))
+    }
+
+    @Test("a row marked for deletion is left out even when it is part of the selection")
+    func pendingDeletionIsExcludedFromASelection() {
+        let result = compute(selectedIndices: [0, 1], deletedIndices: [1])
+
+        #expect(result.resolvedCount == 1)
+        #expect(result.json.contains("\"a\""))
+        #expect(!result.json.contains("\"b\""))
+    }
+
+    @Test("deletion positions are display positions, resolved through the display order")
+    func pendingDeletionUsesDisplayPositions() {
+        let result = compute(displayIDs: [.existing(2), .existing(0)], selectedIndices: [], deletedIndices: [0])
+
+        #expect(result.resolvedCount == 1)
+        #expect(result.json.contains("\"a\""))
+        #expect(!result.json.contains("\"c\""))
     }
 
     @Test("a hidden column is left out")
@@ -112,6 +142,43 @@ struct ResultsJsonViewTests {
 
         #expect(result.resolvedCount == 0)
         #expect(result.json == "[]")
+    }
+
+    @Test("wide integers stay exact in JSON text and tree output")
+    func wideIntegersStayExact() throws {
+        let value = "340282366920938463463374607431768211455"
+        let tableRows = TableRows(
+            rows: [Row(id: .existing(0), values: [.text(value)])],
+            columns: ["value"],
+            columnTypes: [.integer(rawType: "UINT128")]
+        )
+
+        let result = ResultsJsonView.computeJson(
+            tableRows: tableRows,
+            displayIDs: nil,
+            selectedIndices: [],
+            columnLayout: ColumnLayoutState()
+        )
+
+        #expect(result.json.contains("\"value\": \(value)"))
+        let reindented = try #require(result.json.prettyPrintedAsJson())
+        #expect(result.pretty == reindented)
+        #expect(reindented.contains(value))
+        guard case .success(let root) = result.parseResult else {
+            if case .failure(let error) = result.parseResult {
+                Issue.record("expected valid JSON tree, got \(error)")
+            }
+            return
+        }
+        guard let numberNode = root.children.first?.children.first else {
+            Issue.record("expected the wide integer node")
+            return
+        }
+        if case .number = numberNode.valueType {} else {
+            Issue.record("expected a JSON number node")
+        }
+        #expect(numberNode.rawValue == value)
+        #expect(numberNode.displayValue == value)
     }
 
     @Test("a selection narrows the output to the selected rows")

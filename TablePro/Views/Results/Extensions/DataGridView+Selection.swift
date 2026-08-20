@@ -8,7 +8,7 @@ import SwiftUI
 
 extension TableViewCoordinator {
     func tableViewColumnDidResize(_ notification: Notification) {
-        guard !isRebuildingColumns, !isApplyingAutomaticColumnWidths else { return }
+        guard !isRebuildingColumns else { return }
         guard let column = notification.userInfo?["NSTableColumn"] as? NSTableColumn else { return }
         guard markColumnWidthUserSized(column) else { return }
         scheduleLayoutPersist()

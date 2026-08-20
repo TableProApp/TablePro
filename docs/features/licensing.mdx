@@ -15,6 +15,8 @@ There are two tiers, Starter and Team. Team includes everything in Starter.
 | [Encrypted connection export](/features/connection-sharing) | Starter |
 | [Environment variables in connection fields](/features/connection-sharing) | Starter |
 | [Linked Folders](/features/connection-sharing) | Starter |
+| [Query Insights](/features/query-insights) | Starter |
+| [Result charts](/features/data-grid#chart-mode) | Starter |
 | [Team Catalog](/features/connection-sharing) | Team |
 | [Team Library](/features/team) | Team |
 
@@ -44,9 +46,10 @@ To move the license to another Mac, click **Deactivate...** in **Settings > Acco
 
 Activation stores a signed license on your Mac. The license key goes in the macOS Keychain.
 
-- On every launch, TablePro re-verifies the license signature offline. No network needed.
+- On every launch, TablePro re-verifies the license signature offline. No network needed. Your tier, status, and expiry all come from the signed license, so editing the copy on disk changes nothing.
 - Every 7 days, the app re-validates with the license server in the background.
 - If the server is unreachable, the license keeps working for 30 days after the last successful validation. After that, the status changes to Validation Failed and Pro features pause until a validation succeeds.
+- If the server replies that the license is suspended, expired, or no longer activated on this Mac, Pro features pause at that check. The offline grace period only covers a server TablePro could not reach. Reopening the app runs on the signed license again until the next check, which is never more than a week after the last successful validation.
 
 **Check Status** in **Settings > Account** re-validates on demand, and gated screens offer **Retry Validation**. When a license expires within 7 days, the Account tab shows a renewal warning with a link to tablepro.app.
 

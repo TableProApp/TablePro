@@ -18,7 +18,7 @@ protocol SupervisedProcessRunner: AnyObject {
     var termination: SubprocessTermination { get async }
 }
 
-final class ProcessSupervisedRunner: SupervisedProcessRunner {
+final class ProcessSupervisedRunner: SupervisedProcessRunner, @unchecked Sendable {
     private let process = Process()
     private let stdoutPipe = Pipe()
     private let stderrPipe = Pipe()
@@ -27,7 +27,7 @@ final class ProcessSupervisedRunner: SupervisedProcessRunner {
     private var partialLine = ""
     private var wasRequested = false
     private var terminationResult: SubprocessTermination?
-    private var terminationContinuation: CheckedContinuation<SubprocessTermination, Never>?
+    private var terminationContinuations: [CheckedContinuation<SubprocessTermination, Never>] = []
 
     let stderrLines: AsyncStream<String>
     private let stderrContinuation: AsyncStream<String>.Continuation
@@ -86,7 +86,7 @@ final class ProcessSupervisedRunner: SupervisedProcessRunner {
                     continuation.resume(returning: cached)
                     return
                 }
-                terminationContinuation = continuation
+                terminationContinuations.append(continuation)
                 stateLock.unlock()
             }
         }
@@ -111,19 +111,33 @@ final class ProcessSupervisedRunner: SupervisedProcessRunner {
         stdoutPipe.fileHandleForReading.readabilityHandler = nil
         stderrPipe.fileHandleForReading.readabilityHandler = nil
 
+        /// The termination handler can run before the pipe delivers its last readability
+        /// callback, and clearing the handler above cancels that callback outright. Whatever is
+        /// still buffered is drained here, because a dropped final line is how a process that
+        /// announced itself ready right before exiting reads as one that never did.
+        if let remaining = try? stderrPipe.fileHandleForReading.readToEnd(), !remaining.isEmpty {
+            ingestStderr(remaining)
+        }
+
         stateLock.lock()
+        guard terminationResult == nil else {
+            stateLock.unlock()
+            return
+        }
         let trailing = partialLine
         partialLine = ""
         let result = SubprocessTermination(exitCode: exitCode, wasRequested: wasRequested)
         terminationResult = result
-        let pending = terminationContinuation
-        terminationContinuation = nil
+        let pending = terminationContinuations
+        terminationContinuations.removeAll()
         stateLock.unlock()
 
         if !trailing.isEmpty {
             stderrContinuation.yield(trailing)
         }
         stderrContinuation.finish()
-        pending?.resume(returning: result)
+        for continuation in pending {
+            continuation.resume(returning: result)
+        }
     }
 }

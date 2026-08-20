@@ -10,6 +10,50 @@ enum SQLStatementScanner {
     struct LocatedStatement {
         let sql: String
         let offset: Int
+        let hasContent: Bool
+
+        init(sql: String, offset: Int, hasContent: Bool = true) {
+            self.sql = sql
+            self.offset = offset
+            self.hasContent = hasContent
+        }
+
+        /// The statement's whole span in the document, in UTF-16 units.
+        var range: NSRange {
+            NSRange(location: offset, length: (sql as NSString).length)
+        }
+
+        /// The span of the statement's own text, with the inherited whitespace trimmed off both ends.
+        ///
+        /// `offset` is the index just past the previous semicolon, so in a script written one statement per line it
+        /// lands on the newline that ended the previous line. A decoration or a gutter anchor placed from ``range``
+        /// therefore starts a line early, and uses this instead.
+        var contentRange: NSRange {
+            let text = sql as NSString
+            var start = 0
+            var end = text.length
+            while start < end, SqlLexer.isWhitespace(text.character(at: start)) {
+                start += 1
+            }
+            while end > start, SqlLexer.isWhitespace(text.character(at: end - 1)) {
+                end -= 1
+            }
+            return NSRange(location: offset + start, length: end - start)
+        }
+    }
+
+    /// Every statement in the document, with its span, in document order.
+    ///
+    /// Unlike ``allStatements(in:dialect:)`` this keeps the empty and comment-only segments, flagged by
+    /// ``LocatedStatement/hasContent``, because a caller drawing per-statement decorations has to be able to tell a
+    /// segment that carries nothing from one that was never scanned.
+    static func locatedStatements(in sql: String, dialect: SqlDialect = .generic) -> [LocatedStatement] {
+        var results: [LocatedStatement] = []
+        scan(sql: sql, cursorPosition: nil, dialect: dialect) { rawSQL, offset, hasStatementContent in
+            results.append(LocatedStatement(sql: rawSQL, offset: offset, hasContent: hasStatementContent))
+            return true
+        }
+        return results
     }
 
     /// Returns statements with trailing semicolons stripped, for driver execution.
@@ -59,34 +103,15 @@ enum SQLStatementScanner {
     }
 
     static func locatedStatementAtCursor(in sql: String, cursorPosition: Int, dialect: SqlDialect = .generic) -> LocatedStatement {
-        var result = LocatedStatement(sql: "", offset: 0)
-        scan(sql: sql, cursorPosition: cursorPosition, dialect: dialect) { rawSQL, offset, _ in
-            result = LocatedStatement(sql: rawSQL, offset: offset)
+        var result = LocatedStatement(sql: "", offset: 0, hasContent: false)
+        scan(sql: sql, cursorPosition: cursorPosition, dialect: dialect) { rawSQL, offset, hasStatementContent in
+            result = LocatedStatement(sql: rawSQL, offset: offset, hasContent: hasStatementContent)
             return false
         }
         return result
     }
 
     // MARK: - Private
-
-    private static let singleQuote = UInt16(UnicodeScalar("'").value)
-    private static let doubleQuote = UInt16(UnicodeScalar("\"").value)
-    private static let backtick = UInt16(UnicodeScalar("`").value)
-    private static let semicolonChar = UInt16(UnicodeScalar(";").value)
-    private static let dash = UInt16(UnicodeScalar("-").value)
-    private static let slash = UInt16(UnicodeScalar("/").value)
-    private static let star = UInt16(UnicodeScalar("*").value)
-    private static let newline = UInt16(UnicodeScalar("\n").value)
-    private static let backslash = UInt16(UnicodeScalar("\\").value)
-    private static let dollar = UInt16(UnicodeScalar("$").value)
-    private static let exclamationMark = UInt16(UnicodeScalar("!").value)
-    private static let space = UInt16(UnicodeScalar(" ").value)
-    private static let tab = UInt16(UnicodeScalar("\t").value)
-    private static let carriageReturn = UInt16(UnicodeScalar("\r").value)
-
-    private static func isWhitespace(_ ch: UInt16) -> Bool {
-        ch == space || ch == tab || ch == newline || ch == carriageReturn
-    }
 
     private static func scan(
         sql: String,
@@ -108,20 +133,24 @@ enum SQLStatementScanner {
         var inDollarQuote = false
         var dollarTag = ""
         var hasStatementContent = false
+        var opensRoutineDefinition = false
+        var sawStatementKeyword = false
+        var blockDepth = 0
         let dollarQuotesEnabled = dialect.supportsDollarQuotes
+        let hashCommentsEnabled = dialect.supportsHashLineComments
         var i = 0
 
         while i < length {
             let ch = nsQuery.character(at: i)
 
             if inLineComment {
-                if ch == newline { inLineComment = false }
+                if ch == SqlLexer.newline { inLineComment = false }
                 i += 1
                 continue
             }
 
             if inBlockComment {
-                if ch == star && i + 1 < length && nsQuery.character(at: i + 1) == slash {
+                if ch == SqlLexer.star && i + 1 < length && nsQuery.character(at: i + 1) == SqlLexer.slash {
                     inBlockComment = false
                     i += 2
                     continue
@@ -131,7 +160,7 @@ enum SQLStatementScanner {
             }
 
             if inDollarQuote {
-                if ch == dollar,
+                if ch == SqlDollarQuote.dollar,
                    SqlDollarQuote.matchesClose(at: i, tag: dollarTag, in: nsQuery, bufLen: length) {
                     inDollarQuote = false
                     i += (dollarTag as NSString).length + 2
@@ -142,14 +171,20 @@ enum SQLStatementScanner {
                 continue
             }
 
-            if !inString && ch == dash && i + 1 < length && nsQuery.character(at: i + 1) == dash {
+            if !inString && SqlLexer.startsLineComment(nsQuery, at: i, length: length) {
                 inLineComment = true
                 i += 2
                 continue
             }
 
-            if !inString && ch == slash && i + 1 < length && nsQuery.character(at: i + 1) == star {
-                if i + 2 < length && nsQuery.character(at: i + 2) == exclamationMark {
+            if !inString && hashCommentsEnabled && ch == SqlLexer.hash {
+                inLineComment = true
+                i += 1
+                continue
+            }
+
+            if !inString && SqlLexer.startsBlockComment(nsQuery, at: i, length: length) {
+                if SqlLexer.startsConditionalComment(nsQuery, at: i, length: length) {
                     hasStatementContent = true
                 }
                 inBlockComment = true
@@ -157,12 +192,12 @@ enum SQLStatementScanner {
                 continue
             }
 
-            if inString && ch == backslash && i + 1 < length {
+            if inString && ch == SqlLexer.backslash && i + 1 < length {
                 i += 2
                 continue
             }
 
-            if ch == singleQuote || ch == doubleQuote || ch == backtick {
+            if SqlLexer.isQuote(ch) {
                 if !inString {
                     inString = true
                     stringCharVal = ch
@@ -175,7 +210,7 @@ enum SQLStatementScanner {
                 }
             }
 
-            if dollarQuotesEnabled, !inString, ch == dollar,
+            if dollarQuotesEnabled, !inString, ch == SqlDollarQuote.dollar,
                case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(at: i, in: nsQuery, bufLen: length) {
                 inDollarQuote = true
                 dollarTag = tag
@@ -184,7 +219,38 @@ enum SQLStatementScanner {
                 continue
             }
 
-            if ch == semicolonChar && !inString {
+            if !inString, SqlDollarQuote.isIdentifierStart(ch) {
+                let word = SqlBlockStructure.readKeyword(nsQuery, at: i, length: length)
+                if !sawStatementKeyword {
+                    sawStatementKeyword = true
+                    opensRoutineDefinition = SqlBlockStructure.opensRoutineDefinition(word.text)
+                }
+                hasStatementContent = true
+                switch SqlBlockStructure.effect(
+                    of: word.text,
+                    endingAt: word.end,
+                    in: nsQuery,
+                    length: length,
+                    allowsBlock: opensRoutineDefinition
+                ) {
+                case .opensBlock:
+                    blockDepth += 1
+                case .closesBlock:
+                    blockDepth = max(0, blockDepth - 1)
+                case .none:
+                    break
+                }
+                i = word.end
+                continue
+            }
+
+            if ch == SqlLexer.semicolon && !inString && blockDepth > 0 {
+                hasStatementContent = true
+                i += 1
+                continue
+            }
+
+            if ch == SqlLexer.semicolon && !inString {
                 let stmtEnd = i + 1
 
                 if let cursor = safePosition {
@@ -200,7 +266,10 @@ enum SQLStatementScanner {
 
                 currentStart = stmtEnd
                 hasStatementContent = false
-            } else if !isWhitespace(ch) {
+                sawStatementKeyword = false
+                opensRoutineDefinition = false
+                blockDepth = 0
+            } else if !SqlLexer.isWhitespace(ch) {
                 hasStatementContent = true
             }
 

@@ -46,8 +46,7 @@ internal final class ConnectionFormWindowController: NSWindowController, NSWindo
         /// split pane's host, where the same minimum would pin the window's dividers.
         hosting.sizingOptions = [.minSize]
 
-        let window = NSWindow(contentViewController: hosting)
-        window.title = Self.initialTitle(for: request)
+        let window = NSWindow.titled(Self.initialTitle(for: request), contentViewController: hosting)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.connectionForm)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isRestorable = false

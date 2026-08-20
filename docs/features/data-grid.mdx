@@ -12,9 +12,19 @@ Query results and table data open in a spreadsheet-style grid. Sort and filter c
 
 ## View Modes
 
-Switch between **Data**, **Structure**, and **JSON** in the status bar. Query tabs show Data and JSON only. The mode is remembered per tab.
+Switch between **Data**, **Structure**, **JSON**, and **Chart** with the switcher at the left of the status bar, or from **View > Result View**. Query tabs show Data, JSON, and Chart only. The mode is remembered per tab.
 
-JSON mode shows the rows as a JSON array, with **Text** and **Tree** views. Select rows in Data mode first to limit what JSON shows, then use **Copy JSON**.
+JSON mode shows the rows as a JSON array, with **Text** and **Tree** views. It follows the grid: the same rows in the same order, with a column value filter applied and hidden columns left out. Select rows in Data mode first to limit what JSON shows, then use **Copy JSON**.
+
+Rows marked for deletion are held back, since a Save would remove them, and the count line says how many. **Copy as JSON** in the grid's context menu copies every row you selected, including those.
+
+### Chart mode
+
+Chart mode is a Starter feature. Pick a bar, line, area, or scatter chart, then choose a numeric Y column. X can use row numbers, another numeric column, a date or timestamp column, or a categorical column; an optional text, boolean, enum, or set column splits the result into series. Date and timestamp columns plot on a real time axis, so points sit at their true spacing whatever order the rows arrive in. Hover the plot to inspect exact X, Y and series values. Controls stack vertically when the result pane is narrow.
+
+Your chart type and axis choices belong to the tab and follow the column names, so they survive a page turn, a sort, a refresh and a re-run. A column that is missing from the next result is remembered rather than cleared, and comes back when the column does.
+
+Charts draw the active result's loaded rows, up to 2,000 points, 20 series, and 50,000 inspected rows. Past a limit the chart still draws what fits and the toolbar says how much, for example "Showing the first 2,000 points of 8,431 loaded rows". Null, binary and unrepresentable axis values are skipped and counted. The status bar keeps the row count, the pagination controls and **Fetch All** in Chart mode, so you can load the rest without leaving the chart. Grid selection, Find, hidden columns and value filters do not narrow the chart.
 
 ## Columns
 
@@ -32,7 +42,7 @@ If the sort column can't be ordered on the server (a `BLOB`, `JSON`, or spatial 
 
 The header gives you two filters:
 
-- **Filter Values…** (or the funnel icon on hover) filters the loaded rows by picking values, without re-querying. The popover lists each value with its count; search to narrow, check the values to keep, and click **Apply**. NULL and empty values appear as their own entries. `Return` applies, `Escape` cancels. Filter several columns at once and rows must match every filter. Clear from the header menu (**Clear Value Filter**, **Clear All Value Filters**).
+- **Filter Values…** (or the funnel icon on hover) filters the loaded rows by picking values, without re-querying. The popover lists each value with its count; search to narrow, check the values to keep, and click **Apply**. NULL and empty values appear as their own entries. `Return` applies, `Escape` cancels. Filter several columns at once and rows must match every filter. Clear from the header menu (**Clear Value Filter**, **Clear All Value Filters**). The filter belongs to the tab, so it survives switching to JSON or Structure mode and back, and switching to another tab and back. Replacing the result clears it, since the values you picked came from the rows being replaced: running a query, turning a page, refreshing, or moving to another result of the same script. **Fetch All** keeps it and applies it to the rows it loads, because that extends the same result.
 - **Filter with column** adds a filter row for that column to the [Filter Panel](/features/filtering) and opens it. Use this to filter the whole table on the server.
 
 <Frame caption="Filter a column by its values">
@@ -48,9 +58,13 @@ Value filters run on the rows already loaded, so they cover the current page onl
 
 Drag a column border to resize, or double-click it to fit the content. The header menu has **Size to Fit** for one column and **Size All Columns to Fit** for all of them. Fitted columns stop at half the visible grid width, so one long-text column can't push the rest off screen.
 
-Hide columns from the columns button in the status bar or the header menu. A hidden column isn't fetched, so hiding a large column makes the table load faster. The primary key is always fetched, so editing still works.
+Hide columns from the columns button in the status bar or the header menu. A hidden column isn't fetched, so hiding a large column makes the table load faster. The primary key is always fetched, so editing still works, and so is the column you are sorting by, so hiding it leaves the order alone.
 
-Column widths, order, and which columns are hidden are remembered per table, scoped to the connection, database, and schema. Click **Reset Columns** in the columns popover to put everything back to defaults.
+On a schemaless store such as MongoDB, the popover lists every field the grid can draw, including ones that only turn up in later documents, so **Hide All** covers all of them.
+
+Column widths, order, and which columns are hidden are remembered per table, scoped to the connection, database, and schema. Hiding a column keeps its place in that order, so showing it again puts it back where it was. Click **Reset Columns** in the columns popover to put everything back to defaults.
+
+A result with hundreds of columns only builds the ones near the viewport, so scrolling stays smooth on very wide tables. The horizontal scroller still covers the whole result, and columns are built as you reach them.
 
 ### Display Format
 
@@ -96,7 +110,7 @@ Foreign key cells show an arrow on the right edge. Click it to open the referenc
 
 ### Row Operations
 
-- **Add** (`Cmd+Shift+N`): click **+** in the status bar or use the shortcut.
+- **Add** (`Cmd+Shift+N`): click **+** in the toolbar, use **Edit > Add Row**, or press the shortcut.
 - **Duplicate** (`Cmd+Shift+D`): right-click a row and choose **Duplicate**. The primary key resets to `DEFAULT` so the database assigns a new one.
 - **Delete**: select rows by their row number (`Shift`-click for a range, `Cmd`-click for separate rows) and press `Delete`.
 - **Paste**: copy rows, then right-click and choose **Paste** to insert them as new rows.
@@ -114,7 +128,7 @@ There is no discard button. Undo your edits, or let the confirmation prompt drop
 
 ## Inspector
 
-Toggle the inspector with `Cmd+Option+I`. With a row selected, it lists every column value with full editors for long text and JSON; see [Cell and Row Viewers](/features/json-viewer) for details. Turn on **Settings > Data > Auto-show inspector on row select** to open it automatically.
+Toggle the inspector with `Cmd+Option+I`, or with the button at the right end of the toolbar. With a row selected, it lists every column value with full editors for long text and JSON; see [Cell and Row Viewers](/features/json-viewer) for details. Turn on **Settings > Data > Auto-show inspector on row select** to open it automatically.
 
 With no row selected, it shows table statistics: data, index, and total size, row count, average row size, engine, collation, and created and updated dates (fields vary by database).
 
@@ -146,13 +160,34 @@ Right-click a row and choose **Copy as** for more formats:
 
 Copies follow the grid as shown: hidden columns are left out and columns keep their current order. When you select specific cells, **Copy as** (JSON, CSV, Markdown, INSERT, and UPDATE) includes only the columns you selected; select whole rows to include every column. The UPDATE format still keys its WHERE clause on the primary key, even when the primary key cell is not part of the selection. Right-click a header and choose **Copy Column Values** to copy a whole column, one value per line.
 
+## Find in Results
+
+`Cmd+F` on a table tab opens a find bar above the grid. Type a term and the matching cell is highlighted and scrolled into view. `Return` and `Cmd+G` step forward, `Cmd+Shift+G` steps back, and `Escape` clears the term, then closes the bar.
+
+Matching is case and accent insensitive, and it runs over the text you see, so a value reads the same in the find bar as it does in the cell. Binary and spatial columns are skipped, since they render as hex rather than as text.
+
+**The find bar searches the rows already loaded, not the whole table.** Results are paginated at the database, so the counter always says which it means:
+
+| What you see | What it means |
+|---|---|
+| `3 of 12` | Every row is loaded, so this is the whole table |
+| `3 of 12 on this page` | More rows exist that were never fetched |
+| `No matches` | Every row is loaded and none match |
+| `Not on this page` | None of the loaded rows match, and more rows exist |
+
+When nothing matches on the page and more rows exist, **Search All Rows** turns the term into a filter that runs on the server, so the answer covers the whole table. That button replaces the filters on the tab, so it only appears when you have none applied. With filters already set, add your search to the filter panel instead.
+
 ## Pagination and Limits
 
-**Table tabs** page through data. The status bar has a rows-per-page menu (5 to 1,000, a custom size, or **All rows**) and First / Previous / Next / Last controls. Click the page indicator (for example `3 / 12`) to type a page number and jump to it. Set the default page size in **Settings > Data**.
+**Table tabs** page through data. The status bar has a rows-per-page menu (5 to 1,000, a custom size up to 1,000,000, or **All rows**) and First / Previous / Next / Last controls. Click the page indicator (for example `3 / 12`) to type a page number and jump to it. Set the default page size in **Settings > Data**.
 
-Large tables show an estimated total instead of running a slow `COUNT(*)`. **Settings > Data > Count rows if estimate less than** sets the threshold below which TablePro counts exactly. An estimated total is prefixed with `~`. **Count exactly** next to the total replaces an estimate, or fills in a total shown as `?`, with a real count. That count can take a while on a large table, so it runs in the background and `Cmd+.` cancels it.
+These controls stay on a table tab whatever it holds. On a table that fits in one page they are dimmed rather than hidden, and while a table is loading they dim until its rows arrive, so the bar keeps the same shape as you move between tables.
+
+Large tables show an estimated total instead of running a slow `COUNT(*)`. **Settings > Data > Count rows if estimate less than** sets the threshold below which TablePro counts exactly. An estimated total is prefixed with `~`. **Count Exactly** next to the total replaces an estimate, or fills in a total shown as `?`, with a real count. That count can take a while on a large table, so it runs in the background and `Cmd+.` cancels it. **Count Exactly** appears once the total has settled, so it does not flicker in and out while a table loads, and a real count stays put: the automatic estimate that runs after each page turn will not overwrite it. **Refresh** works the total out again.
 
 An estimate of zero from a table the server has never analyzed is treated as unknown rather than as an empty table, so you get no total instead of a wrong one.
+
+While the total is an estimate it never bounds navigation: the page indicator marks it (`3 / ~12`), **Last** and **All rows** stay unavailable, and **Next** keeps working as long as the page came back full. Run **Count Exactly** to turn the estimate into a real count and get all four back.
 
 **Query tabs** cap results at 10,000 rows by default. Your query is sent exactly as you wrote it; TablePro stops reading once it reaches the cap. A query with its own `LIMIT`, `FETCH FIRST`, or `TOP` is not capped. When the cap trims a result, the status bar shows **Fetch All** to load the rest (with a confirmation, since large results use a lot of memory). Run one query without the cap via **Execute Without Limit** (`Option+Cmd+Enter`). Adjust the cap in **Settings > Data** (**Truncate query results**, **Row cap**).
 

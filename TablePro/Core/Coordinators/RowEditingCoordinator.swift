@@ -14,6 +14,13 @@ final class RowEditingCoordinator {
         self.parent = parent
     }
 
+    /// A row command selects the row it just made so the grid can highlight it and scroll to it.
+    /// No other mode has a grid to point at, and the JSON view reads the same selection as "show
+    /// only these rows", so writing it there collapses the document to the one new row.
+    private var selectionPointsTheGrid: Bool {
+        parent.tabManager.selectedTab?.display.resultsViewMode == .data
+    }
+
     // MARK: - Row Operations
 
     func addNewRow() {
@@ -41,7 +48,9 @@ final class RowEditingCoordinator {
 
         guard let result = addResult else { return }
 
-        parent.selectionState.indices = [result.rowIndex]
+        if selectionPointsTheGrid {
+            parent.selectionState.indices = [result.rowIndex]
+        }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
@@ -75,10 +84,12 @@ final class RowEditingCoordinator {
         }
 
         let totalRows = parent.tabSessionRegistry.tableRows(for: tabId).count
-        if deleteResult.nextRowToSelect >= 0 && deleteResult.nextRowToSelect < totalRows {
-            parent.selectionState.indices = [deleteResult.nextRowToSelect]
-        } else {
-            parent.selectionState.indices.removeAll()
+        if selectionPointsTheGrid {
+            if deleteResult.nextRowToSelect >= 0 && deleteResult.nextRowToSelect < totalRows {
+                parent.selectionState.indices = [deleteResult.nextRowToSelect]
+            } else {
+                parent.selectionState.indices.removeAll()
+            }
         }
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
@@ -132,7 +143,8 @@ final class RowEditingCoordinator {
             parent.dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
         }
 
-        let displayCount = parent.dataTabDelegate?.tableViewCoordinator?.displayIDs?.count
+        guard selectionPointsTheGrid else { return }
+        let displayCount = parent.activeGridDisplayIDs?.count
             ?? parent.tabSessionRegistry.tableRows(for: tabId).count
         if let minSelected = indices.min(), displayCount > 0 {
             parent.selectionState.indices = [min(minSelected, displayCount - 1)]
@@ -171,7 +183,9 @@ final class RowEditingCoordinator {
 
         guard let result = dupResult else { return }
 
-        parent.selectionState.indices = [result.rowIndex]
+        if selectionPointsTheGrid {
+            parent.selectionState.indices = [result.rowIndex]
+        }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
@@ -203,7 +217,8 @@ final class RowEditingCoordinator {
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
 
-        let displayCount = parent.dataTabDelegate?.tableViewCoordinator?.displayIDs?.count
+        guard selectionPointsTheGrid else { return }
+        let displayCount = parent.activeGridDisplayIDs?.count
             ?? parent.tabSessionRegistry.tableRows(for: tabId).count
         let newDisplayIndex = displayCount - 1
         guard newDisplayIndex >= 0 else { return }
@@ -279,21 +294,16 @@ final class RowEditingCoordinator {
 
     func copySelectedRowsAsJson(indices: Set<Int>) {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
-        let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
-        let displayIDs = parent.activeGridDisplayIDs
-        let projection = VisibleColumnProjection(
-            indices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
+        let output = ResultJsonSerializer.serialize(
+            tableRows: parent.tabSessionRegistry.tableRows(for: tab.id),
+            displayIDs: parent.activeGridDisplayIDs,
+            selectedDisplayIndices: indices,
+            columns: VisibleColumnProjection(
+                indices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
+            )
         )
-        let rows = indices.sorted().compactMap { displayIndex -> [PluginCellValue]? in
-            DisplayRowMapping.row(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows)
-                .map { projection.values(Array($0.values)) }
-        }
-        guard !rows.isEmpty else { return }
-        let converter = JsonRowConverter(
-            columns: projection.columns(tableRows.columns),
-            columnTypes: projection.columnTypes(tableRows.columnTypes)
-        )
-        ClipboardService.shared.writeText(converter.generateJson(rows: rows))
+        guard output.rowCount > 0 else { return }
+        ClipboardService.shared.writeText(output.json)
     }
 
     func pasteRows() {
@@ -318,7 +328,9 @@ final class RowEditingCoordinator {
         guard !pasteResult.pastedRows.isEmpty else { return }
 
         let newIndices = Set(pasteResult.pastedRows.map { $0.rowIndex })
-        parent.selectionState.indices = newIndices
+        if selectionPointsTheGrid {
+            parent.selectionState.indices = newIndices
+        }
 
         parent.tabManager.mutate(at: tabIndex) { tab in
             tab.selectedRowIndices = newIndices

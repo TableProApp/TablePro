@@ -88,6 +88,11 @@ extension TableStructureView {
             guard confirmed else { return }
         }
 
+        /// Started here, not at the top of the function. The destructive-changes prompt sits above
+        /// this and the user can take as long as they like over it, so a clock started earlier
+        /// measures their reading time and reports an instant ALTER as having taken a minute.
+        let operationStart = ContinuousClock.Instant.now
+
         // Set flag BEFORE calling DatabaseManager (so we ignore its refresh notification)
         isReloadingAfterSave = true
 
@@ -120,8 +125,12 @@ extension TableStructureView {
 
             lastSaveTime = Date()
             isReloadingAfterSave = false
+            reportSchemaChangeFinished(.succeeded(OperationSummary()), startedAt: operationStart)
         } catch {
             isReloadingAfterSave = false
+            reportSchemaChangeFinished(
+                .failed(reason: error.localizedDescription), startedAt: operationStart
+            )
             AlertHelper.showErrorSheet(
                 title: String(localized: "Error Applying Changes"),
                 message: error.localizedDescription,
@@ -257,5 +266,22 @@ extension TableStructureView {
                 )
             }
         }
+    }
+
+    private func reportSchemaChangeFinished(
+        _ outcome: OperationOutcome,
+        startedAt: ContinuousClock.Instant
+    ) {
+        OperationCompletionReporter.shared.report(
+            OperationCompletion(
+                kind: .schemaChange,
+                owner: .connection(connection.id),
+                connectionId: connection.id,
+                connectionName: connection.name,
+                databaseName: coordinator?.browseDatabaseName,
+                elapsed: startedAt.duration(to: .now),
+                outcome: outcome
+            )
+        )
     }
 }

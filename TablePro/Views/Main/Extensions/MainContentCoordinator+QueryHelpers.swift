@@ -39,17 +39,29 @@ extension MainContentCoordinator {
             traceStaleResultDropped(traceToken)
             return
         }
+        /// Ahead of every early return below. A cancellation leaves through the next line, and a
+        /// disconnected auto-load through the one after, so clearing this alongside the error text
+        /// would leave the two commonest failures reporting a load that is no longer running.
         tabManager.mutate(tabId: tabId) { tab in
             tab.pagination.isLoadingMore = false
+            tab.pagination.isLoading = false
         }
         retireQueryTask(for: claim)
         traceExecutionFailed(traceToken, error: error)
-        if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
+        if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
+            reportEndedExecutions([
+                EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+            ])
+            return
+        }
         if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
             pendingLoadTrigger = trigger
             return
         }
         handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
+        reportQueryOperation(
+            claim: claim, trigger: trigger, outcome: .failed(reason: error.localizedDescription)
+        )
     }
 
     /// The change manager is one per window and holds whichever tab is selected, so a result that

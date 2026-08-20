@@ -12,6 +12,7 @@ import CodeEditTextView
 import Combine
 import Observation
 import os
+import TableProPluginKit
 
 /// Coordinator for the SQL editor — manages find panel, horizontal scrolling, and scroll-to-match
 @Observable
@@ -29,6 +30,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored private lazy var diagnosticsController = QueryDiagnosticsController(
         databaseType: databaseType
     )
+    @ObservationIgnored private let statementRunController = StatementRunController()
     /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)
     @ObservationIgnored var schemaProvider: SQLSchemaProvider?
     /// Connection-level AI policy for inline suggestions
@@ -49,7 +51,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored private var didDestroy = false
     @ObservationIgnored private var focusClaimPending = false
 
-    /// Test-only accessor for destroy state
+    /// One way. `destroy()` runs when the editor is dismantled, which it never comes back from.
     var isDestroyed: Bool { didDestroy }
 
     @ObservationIgnored private var hasInstalledEditorServices = false
@@ -76,6 +78,29 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         cursorRestorePending = range
     }
 
+    @ObservationIgnored private var foldRestorePending: [Range<Int>]?
+
+    /// Collapsed folds are replayed once, the same way the cursor is, because the fold state the editor reports back
+    /// is written on every collapse the user makes.
+    func scheduleFoldRestore(_ ranges: [Range<Int>]) {
+        guard !hasInstalledEditorServices, !ranges.isEmpty else { return }
+        foldRestorePending = ranges
+    }
+
+    /// Query tabs share one editor, so a tab switch replays the incoming tab's collapsed regions over a document the
+    /// editor has just been handed. The outgoing tab's folds are already gone: replacing the document drops them,
+    /// which is what keeps this from having to clear anything and from reporting a collapse the reader never made.
+    func repointFolds(to ranges: [Range<Int>]?) {
+        guard let controller else {
+            foldRestorePending = ranges
+            return
+        }
+        statementRunController.refreshControls(in: controller)
+        statementRunController.refreshHighlight(in: controller)
+        guard let ranges, !ranges.isEmpty else { return }
+        controller.restoreCollapsedFolds(ranges)
+    }
+
     /// Vim mode for UI observation
     private(set) var vimMode: VimMode = .normal
     @ObservationIgnored private var vimEngine: VimEngine?
@@ -84,6 +109,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored private var vimCursorManager: VimCursorManager?
     @ObservationIgnored var onCloseTab: (() -> Void)?
     @ObservationIgnored var onExecuteQuery: (() -> Void)?
+    @ObservationIgnored var onRunStatement: ((String) -> Void)?
     @ObservationIgnored var onAIExplain: ((String) -> Void)?
     @ObservationIgnored var onAIOptimize: ((String) -> Void)?
     @ObservationIgnored var onSaveAsFavorite: ((String) -> Void)?
@@ -146,6 +172,8 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         hasInstalledEditorServices = true
 
         installAIContextMenu(controller: controller)
+        installFoldPreview(controller: controller)
+        installStatementRunControls(controller: controller)
         installInlineSuggestionManager(controller: controller)
         diagnosticsController.configure(databaseType: databaseType)
         diagnosticsController.scheduleRefresh(for: controller)
@@ -174,10 +202,16 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         } else if controller.cursorPositions.isEmpty {
             controller.setCursorPositions([CursorPosition(range: NSRange(location: 0, length: 0))])
         }
+
+        if let folds = foldRestorePending {
+            foldRestorePending = nil
+            controller.restoreCollapsedFolds(folds)
+        }
     }
 
     func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
         vimEngine?.invalidateLineCache()
+        foldPreview.dismiss()
 
         let isLargeDocument = textView.textStorage.length > Self.languageServiceLengthLimit
 
@@ -201,6 +235,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
 
         uppercaseKeywordIfNeeded(textView: textView, range: range, string: string)
+        statementRunController.scheduleControlsRefresh(in: controller)
 
         if !isLargeDocument {
             diagnosticsController.scheduleRefresh(for: controller)
@@ -210,6 +245,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
         inlineSuggestionManager?.handleSelectionChange()
         vimCursorManager?.updatePosition()
+        statementRunController.refreshHighlight(in: controller)
 
         // When the find panel navigates to a match, it changes the selection
         // but the editor is not first responder. Scroll to the match manually
@@ -224,6 +260,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
     }
 
+    func textViewDidChangeHoveredFold(controller: TextViewController, hit: CollapsedFoldHit?) {
+        foldPreview.hoverDidChange(to: hit)
+    }
+
     func destroy() {
         didDestroy = true
         focusClaimPending = false
@@ -235,6 +275,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             Task { await sync.didCloseTab(tabID: id) }
         }
 
+        foldPreview.destroy()
         inlineSuggestionManager?.uninstall()
         inlineSuggestionManager = nil
         copilotDocumentSync = nil
@@ -245,6 +286,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         releaseWindowSentinel()
         onCloseTab = nil
         onExecuteQuery = nil
+        onRunStatement = nil
+        statementRunController.onRun = nil
+        statementRunController.clear(in: controller)
         onAIExplain = nil
         onAIOptimize = nil
         onSaveAsFavorite = nil
@@ -254,31 +298,40 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         vimEngine = nil
         vimCursorManager = nil
 
-        controller?.releaseHeavyState()
-
         EditorEventRouter.shared.unregister(self)
         Self.logger.debug("SQLEditorCoordinator destroyed")
         cleanupMonitors()
     }
 
-    func revive() {
-        guard didDestroy else { return }
-        didDestroy = false
-        if let controller, let textView = controller.textView {
-            EditorEventRouter.shared.register(self, textView: textView)
-        }
-        if contextMenu == nil, let controller {
-            installAIContextMenu(controller: controller)
-        }
-        if inlineSuggestionManager == nil, let controller {
-            installInlineSuggestionManager(controller: controller)
-        }
-        if let controller {
-            installEditorSettingsObserver(controller: controller)
-        }
+    // MARK: - AI Context Menu
+
+    private func installFoldPreview(controller: TextViewController) {
+        foldPreview.language = PluginManager.shared
+            .editorLanguage(for: databaseType ?? .mysql)
+            .treeSitterLanguage
+        foldPreview.install(controller: controller)
     }
 
-    // MARK: - AI Context Menu
+    private func installStatementRunControls(controller: TextViewController) {
+        statementRunController.dialect = SqlDialect.from(databaseTypeId: (databaseType ?? .mysql).rawValue)
+        statementRunController.isHighlightEnabled = AppSettingsManager.shared.editor.highlightCurrentStatement
+        statementRunController.onRun = { [weak self] sql in
+            self?.onRunStatement?(sql)
+        }
+        statementRunController.install(on: controller)
+    }
+
+    /// Turns the run controls off for the length of a query, because a tab runs one at a time.
+    func setStatementRunControlsEnabled(_ isEnabled: Bool) {
+        statementRunController.setEnabled(isEnabled, in: controller)
+    }
+
+    /// Follows the Settings toggle, so turning the band off also stops resolving the caret's statement for it.
+    func setStatementHighlightEnabled(_ isEnabled: Bool) {
+        guard statementRunController.isHighlightEnabled != isEnabled else { return }
+        statementRunController.isHighlightEnabled = isEnabled
+        statementRunController.refreshHighlight(in: controller)
+    }
 
     private func installAIContextMenu(controller: TextViewController) {
         guard controller.textView != nil else { return }
@@ -300,8 +353,29 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         menu.onOptimizeWithAI = { [weak self] text in self?.onAIOptimize?(text) }
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
         menu.onFormatSQL = { [weak self] in self?.performFormatSQL() }
+        menu.foldStateAtCursor = { [weak controller] in controller?.foldStateAtCursor() }
+        menu.onToggleFold = { [weak controller] in controller?.toggleFoldAtCursor() }
         contextMenu = menu
         controller.textView?.menu = menu
+    }
+
+    @ObservationIgnored private let foldPreview = FoldPreviewController()
+
+    func toggleFoldAtCursor() {
+        controller?.toggleFoldAtCursor()
+    }
+
+    func foldAll() {
+        controller?.foldAll()
+    }
+
+    func unfoldAll() {
+        controller?.unfoldAll()
+    }
+
+    /// Whether the fold containing the cursor is collapsed. `nil` when the cursor is not inside a fold.
+    func foldStateAtCursor() -> Bool? {
+        controller?.foldStateAtCursor()
     }
 
     func performFormatSQL() {

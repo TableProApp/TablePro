@@ -5,8 +5,8 @@
 
 import SwiftUI
 
-enum SettingsPane: String {
-    case general, appearance, editor, data, keyboard, ai, mcp, plugins, account
+enum SettingsPane: String, CaseIterable {
+    case general, appearance, editor, data, keyboard, notifications, ai, mcp, plugins, account
 
     var title: String {
         switch self {
@@ -15,6 +15,7 @@ enum SettingsPane: String {
         case .editor: String(localized: "Editor")
         case .data: String(localized: "Data")
         case .keyboard: String(localized: "Keyboard")
+        case .notifications: String(localized: "Notifications")
         case .ai: String(localized: "AI")
         case .mcp: String(localized: "Integrations")
         case .plugins: String(localized: "Plugins")
@@ -29,6 +30,7 @@ enum SettingsPane: String {
         case .editor: "doc.text"
         case .data: "tablecells"
         case .keyboard: "keyboard"
+        case .notifications: "bell"
         case .ai: "sparkles"
         case .mcp: "network"
         case .plugins: "puzzlepiece.extension"

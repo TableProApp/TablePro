@@ -32,7 +32,11 @@ extension DatabaseTreeOutlineCoordinator {
         case .showStructure(let ref):
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.openTableTab(
-                    ref.table, schema: ref.schema, showStructure: true, activateGridFocus: true
+                    ref.table,
+                    schema: ref.schema,
+                    showStructure: true,
+                    forceNonPreview: true,
+                    activateGridFocus: true
                 )
             }
         case .showERDiagram:
@@ -49,7 +53,12 @@ extension DatabaseTreeOutlineCoordinator {
             }
         case .maintenance(let operation, let tableName, let ref):
             activateThen(ref) { [weak self] in
-                self?.mainCoordinator?.showMaintenanceSheet(operation: operation, tableName: tableName)
+                self?.mainCoordinator?.showMaintenanceSheet(
+                    operation: operation,
+                    tableName: tableName,
+                    database: ref.database,
+                    schema: ref.schema
+                )
             }
         case .truncateTables(let names, let ref):
             activateThen(ref) { [weak self] in
@@ -124,7 +133,8 @@ extension DatabaseTreeOutlineCoordinator {
     private func useAsActive(_ container: DatabaseContainerRef) {
         switch container.kind {
         case .database:
-            setActiveDatabase(container.database)
+            guard let database = container.database else { return }
+            setActiveDatabase(database)
         case .schema:
             guard let schema = container.schema else { return }
             setActiveSchema(database: container.database, schema: schema)

@@ -169,7 +169,7 @@ struct ConnectionFormView: View {
             .alert("Keychain Warning", isPresented: showCredentialError) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(viewModel.credentialError ?? "Failed to save credentials.")
+                Text(viewModel.credentialError ?? String(localized: "Failed to save credentials."))
             }
             .sensoryFeedback(.success, trigger: hapticSuccess)
             .sensoryFeedback(.error, trigger: hapticError)
@@ -421,7 +421,7 @@ struct ConnectionFormView: View {
         Section("Private Key") {
             Picker("Input Method", selection: $viewModel.sshKeyInputMode) {
                 ForEach(ConnectionFormViewModel.KeyInputMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
+                    Text(mode.displayName).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
@@ -432,9 +432,11 @@ struct ConnectionFormView: View {
                     activeFilePicker = .sshKey
                 } label: {
                     HStack {
-                        Text(viewModel.sshKeyPath.isEmpty
-                            ? "Select Private Key"
-                            : URL(fileURLWithPath: viewModel.sshKeyPath).lastPathComponent)
+                        if viewModel.sshKeyPath.isEmpty {
+                            Text("Select Private Key")
+                        } else {
+                            Text(verbatim: URL(fileURLWithPath: viewModel.sshKeyPath).lastPathComponent)
+                        }
                         Spacer()
                         Image(systemName: "folder")
                     }
@@ -496,7 +498,9 @@ struct ConnectionFormView: View {
                             .padding(.leading, 28)
                     }
                     if let suggested = testResult.suggestedOracleMode {
-                        Button(suggested == .sid ? "Use SID Instead" : "Use Service Name Instead") {
+                        Button(suggested == .sid
+                            ? String(localized: "Use SID Instead")
+                            : String(localized: "Use Service Name Instead")) {
                             viewModel.oracleConnectionType = suggested
                             Task { await handleTest() }
                         }

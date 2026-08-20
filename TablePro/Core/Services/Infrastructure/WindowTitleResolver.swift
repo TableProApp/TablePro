@@ -118,6 +118,8 @@ enum WindowTitleResolver {
             return String(localized: "Server Dashboard")
         case .usersRoles:
             return String(localized: "Users & Roles")
+        case .insights:
+            return String(localized: "Query Insights")
         case .erDiagram:
             return String(localized: "ER Diagram")
         case .createTable:

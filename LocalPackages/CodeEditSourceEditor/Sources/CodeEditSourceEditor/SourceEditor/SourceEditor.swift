@@ -26,6 +26,8 @@ public struct SourceEditor: NSViewControllerRepresentable {
     ///   - cursorPositions: The cursor's position in the editor, measured in `(lineNum, columnNum)`
     ///   - highlightProviders: A set of classes you provide to perform syntax highlighting. Leave this as `nil` to use
     ///                         the default `TreeSitterClient` highlighter.
+    ///   - foldProvider: A class you provide to find fold regions in the document. Leave this as `nil` to use the
+    ///                    default indentation-based provider.
     ///   - undoManager: The undo manager for the text view. Defaults to `nil`, which will create a new CEUndoManager
     ///   - coordinators: Any text coordinators for the view to use. See ``TextViewCoordinator`` for more information.
     public init(
@@ -34,6 +36,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
         configuration: SourceEditorConfiguration,
         state: Binding<SourceEditorState>,
         highlightProviders: [any HighlightProviding]? = nil,
+        foldProvider: LineFoldProvider? = nil,
         undoManager: CEUndoManager? = nil,
         coordinators: [any TextViewCoordinator] = [],
         completionDelegate: CodeSuggestionDelegate? = nil,
@@ -44,6 +47,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
         self.configuration = configuration
         self._state = state
         self.highlightProviders = highlightProviders
+        self.foldProvider = foldProvider
         self.undoManager = undoManager
         self.coordinators = coordinators
         self.completionDelegate = completionDelegate
@@ -59,6 +63,8 @@ public struct SourceEditor: NSViewControllerRepresentable {
     ///   - cursorPositions: The cursor's position in the editor, measured in `(lineNum, columnNum)`
     ///   - highlightProviders: A set of classes you provide to perform syntax highlighting. Leave this as `nil` to use
     ///                         the default `TreeSitterClient` highlighter.
+    ///   - foldProvider: A class you provide to find fold regions in the document. Leave this as `nil` to use the
+    ///                    default indentation-based provider.
     ///   - undoManager: The undo manager for the text view. Defaults to `nil`, which will create a new CEUndoManager
     ///   - coordinators: Any text coordinators for the view to use. See ``TextViewCoordinator`` for more information.
     public init(
@@ -67,6 +73,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
         configuration: SourceEditorConfiguration,
         state: Binding<SourceEditorState>,
         highlightProviders: [any HighlightProviding]? = nil,
+        foldProvider: LineFoldProvider? = nil,
         undoManager: CEUndoManager? = nil,
         coordinators: [any TextViewCoordinator] = [],
         completionDelegate: CodeSuggestionDelegate? = nil,
@@ -77,6 +84,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
         self.configuration = configuration
         self._state = state
         self.highlightProviders = highlightProviders
+        self.foldProvider = foldProvider
         self.undoManager = undoManager
         self.coordinators = coordinators
         self.completionDelegate = completionDelegate
@@ -88,6 +96,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
     var configuration: SourceEditorConfiguration
     @Binding var state: SourceEditorState
     var highlightProviders: [any HighlightProviding]?
+    var foldProvider: LineFoldProvider?
     var undoManager: CEUndoManager?
     var coordinators: [any TextViewCoordinator]
     var completionDelegate: CodeSuggestionDelegate?
@@ -102,6 +111,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
             configuration: configuration,
             cursorPositions: state.cursorPositions ?? [],
             highlightProviders: context.coordinator.highlightProviders,
+            foldProvider: foldProvider,
             undoManager: undoManager,
             coordinators: coordinators,
             completionDelegate: completionDelegate,
@@ -125,7 +135,26 @@ public struct SourceEditor: NSViewControllerRepresentable {
     }
 
     public func makeCoordinator() -> Coordinator {
-        Coordinator(text: text, editorState: $state, highlightProviders: highlightProviders)
+        Coordinator(
+            text: text,
+            editorState: $state,
+            highlightProviders: highlightProviders,
+            textCoordinators: coordinators
+        )
+    }
+
+    /// The editor's terminal signal: SwiftUI calls this only when the representable is removed for
+    /// good, never when its host view merely leaves the window.
+    ///
+    /// Appearance is not lifetime. A host that keeps a controller alive while unparenting its view
+    /// fires `onDisappear` and then `onAppear` again on the same identity, so a teardown driven from
+    /// `onDisappear` runs on a live editor and cannot be undone. `TextViewController.deinit` is not
+    /// a usable substitute either, because it is not guaranteed to run promptly. The destroy goes
+    /// through ``Coordinator/textCoordinators``, and `releaseHeavyState` then empties the
+    /// controller's weak list so `deinit` cannot destroy the same coordinators twice.
+    public static func dismantleNSViewController(_ controller: TextViewController, coordinator: Coordinator) {
+        coordinator.textCoordinators.forEach { $0.destroy() }
+        controller.releaseHeavyState()
     }
 
     public func updateNSViewController(_ controller: TextViewController, context: Context) {

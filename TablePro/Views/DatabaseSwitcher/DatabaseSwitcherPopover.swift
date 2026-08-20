@@ -4,12 +4,17 @@ import TableProPluginKit
 
 struct DatabaseSwitcherPopoverHost: View {
     weak var coordinator: MainContentCoordinator?
+    /// Which container dimension this presentation switches. An engine can have both, so the caller
+    /// names the one it opened rather than the popover guessing from the engine's primary target.
+    var target: ContainerSwitchTarget?
 
     var body: some View {
         if let coordinator {
             let connection = coordinator.connection
             let session = DatabaseManager.shared.session(for: connection.id)
-            let switchTarget = PluginManager.shared.containerSwitchTarget(for: connection.type) ?? .database
+            let switchTarget = target
+                ?? PluginManager.shared.containerSwitchTarget(for: connection.type)
+                ?? .database
             let activeContainer: String? = switch switchTarget {
             case .database: session?.browseDatabase ?? connection.database
             case .schema: coordinator.toolbarState.currentSchema ?? session?.browseSchema
@@ -17,11 +22,13 @@ struct DatabaseSwitcherPopoverHost: View {
 
             DatabaseSwitcherPopover(
                 currentDatabase: activeContainer,
+                activeDatabase: session?.browseDatabase ?? connection.database,
+                switchTarget: switchTarget,
                 databaseType: connection.type,
                 connectionId: connection.id,
                 isReadOnly: coordinator.safeModeLevel.blocksAllWrites,
                 onSelect: { [weak coordinator] container in
-                    Task { await coordinator?.switchContainer(to: container) }
+                    Task { await coordinator?.switchContainer(to: container, target: switchTarget) }
                 },
                 onRequestCreate: { [weak coordinator] in
                     coordinator?.activeSheet = .createDatabase
@@ -41,6 +48,10 @@ struct DatabaseSwitcherPopoverHost: View {
 
 struct DatabaseSwitcherPopover: View {
     let currentDatabase: String?
+    /// The database the rows belong to, which is the same thing as `currentDatabase` only when the
+    /// popover is switching databases. In schema mode the rows are schemas inside this database.
+    let activeDatabase: String
+    let switchTarget: ContainerSwitchTarget
     let databaseType: DatabaseType
     let connectionId: UUID
     let isReadOnly: Bool
@@ -59,18 +70,28 @@ struct DatabaseSwitcherPopover: View {
     private var supportsDropDatabase: Bool {
         PluginManager.shared.supportsDropDatabase(for: databaseType)
     }
+    private var supportsDropSchema: Bool {
+        PluginManager.shared.supportsDropSchema(for: databaseType)
+    }
+    /// Creating is a database-only action here, so the row stays out of the schema list rather than
+    /// offering "New Database" from a list of schemas.
     private var showsCreateRow: Bool {
-        supportsCreateDatabase
+        supportsCreateDatabase && switchTarget == .database
     }
     private var containerName: String {
-        PluginManager.shared.containerEntityName(for: databaseType)
+        switch switchTarget {
+        case .database: PluginManager.shared.containerEntityName(for: databaseType)
+        case .schema: PluginManager.shared.schemaEntityName(for: databaseType)
+        }
     }
     private var containerNamePlural: String {
-        PluginManager.shared.containerEntityNamePlural(for: databaseType)
+        containerName + "s"
     }
 
     init(
         currentDatabase: String?,
+        activeDatabase: String,
+        switchTarget: ContainerSwitchTarget,
         databaseType: DatabaseType,
         connectionId: UUID,
         isReadOnly: Bool,
@@ -80,6 +101,8 @@ struct DatabaseSwitcherPopover: View {
         onRequestExport: @escaping ([DatabaseContainerRef]) -> Void
     ) {
         self.currentDatabase = currentDatabase
+        self.activeDatabase = activeDatabase
+        self.switchTarget = switchTarget
         self.databaseType = databaseType
         self.connectionId = connectionId
         self.isReadOnly = isReadOnly
@@ -92,6 +115,7 @@ struct DatabaseSwitcherPopover: View {
                 connectionId: connectionId,
                 currentDatabase: currentDatabase,
                 databaseType: databaseType,
+                switchTarget: switchTarget,
                 sidebarState: SharedSidebarState.forConnection(connectionId)
             ))
     }
@@ -142,7 +166,8 @@ struct DatabaseSwitcherPopover: View {
             loadingView
         } else if let error = viewModel.errorMessage {
             errorView(error)
-        } else if PluginManager.shared.connectionMode(for: databaseType) == .fileBased {
+        } else if switchTarget == .database,
+                  PluginManager.shared.connectionMode(for: databaseType) == .fileBased {
             sqliteState
         } else if viewModel.filteredDatabases.isEmpty {
             emptyState
@@ -176,7 +201,9 @@ struct DatabaseSwitcherPopover: View {
                 .selectionAwareTint(Color.accentColor)
                 .opacity(isCurrent ? 1 : 0)
                 .frame(width: 14)
-                .accessibilityLabel(Text("Current database"))
+                .accessibilityLabel(
+                    Text(String(format: String(localized: "Current %@"), containerName.lowercased()))
+                )
                 .accessibilityHidden(!isCurrent)
 
             Image(systemName: database.icon)
@@ -208,10 +235,19 @@ struct DatabaseSwitcherPopover: View {
             items.append(FieldDrivenMenuItem(title: copyTitle) {
                 ClipboardService.shared.writeText(targets.map(\.name).joined(separator: ","))
             })
-            items.append(FieldDrivenMenuItem(title: String(localized: "Export…")) {
-                dismiss()
-                onRequestExport(targets)
-            })
+            /// The sidebar's menu has always asked whether the dialog can reach these containers
+            /// before offering Export. This list offered it unconditionally, so the two menus for
+            /// the same command could disagree.
+            if ExportPreselection.canPreselect(
+                containers: targets,
+                activeDatabase: activeDatabase,
+                canReachOtherDatabases: databaseType.supportsConnectionPooling
+            ) {
+                items.append(FieldDrivenMenuItem(title: String(localized: "Export…")) {
+                    dismiss()
+                    onRequestExport(targets)
+                })
+            }
         }
 
         if !droppable.isEmpty {
@@ -224,10 +260,21 @@ struct DatabaseSwitcherPopover: View {
         return items
     }
 
+    /// A row's ref has to carry the kind the row actually is. Building a `.database` ref out of a
+    /// schema name sends Drop to `dropDatabase` and gives Export a container it cannot resolve.
     private func containerRefs(for selection: Set<String>) -> [DatabaseContainerRef] {
         viewModel.filteredDatabases
             .filter { selection.contains($0.name) }
-            .map { .database($0.name, isSystem: $0.isSystemDatabase) }
+            .map { item in
+                switch switchTarget {
+                case .database:
+                    return .database(item.name, isSystem: item.isSystemDatabase)
+                case .schema:
+                    return .schema(
+                        database: activeDatabase, schema: item.name, isSystem: item.isSystemDatabase
+                    )
+                }
+            }
     }
 
     private func dropMenuTitle(for targets: [DatabaseContainerRef]) -> String {
@@ -240,10 +287,10 @@ struct DatabaseSwitcherPopover: View {
 
     private var dropEligibilityContext: ContainerDropEligibility.Context {
         ContainerDropEligibility.Context(
-            activeDatabase: currentDatabase,
-            activeSchema: nil,
+            activeDatabase: activeDatabase,
+            activeSchema: switchTarget == .schema ? currentDatabase : nil,
             supportsDropDatabase: supportsDropDatabase,
-            supportsDropSchema: false,
+            supportsDropSchema: supportsDropSchema,
             isReadOnly: isReadOnly
         )
     }

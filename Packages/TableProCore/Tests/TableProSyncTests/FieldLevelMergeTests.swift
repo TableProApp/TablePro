@@ -40,7 +40,7 @@ struct FieldLevelMergeTests {
 
         #expect(serverRecord["aiPolicy"] as? String == "askEachTime")
         #expect(serverRecord["startupCommands"] as? String == "SET search_path TO public")
-        #expect(serverRecord[ConnectionSyncField.name] as? String == "Renamed")
+        #expect(serverRecord.fields(ConnectionSyncField.self)[.name] as? String == "Renamed")
     }
 
     @Test("An equal value is recognised so the field is left untouched")
@@ -82,7 +82,7 @@ struct FieldLevelMergeTests {
 
         SyncRecordMapper.updateRecord(serverRecord, with: connection)
 
-        #expect(serverRecord[ConnectionSyncField.groupId] == nil)
+        #expect(serverRecord.fields(ConnectionSyncField.self)[.groupId] == nil)
     }
 
     @Test("Clearing a field that had a value removes it")
@@ -94,7 +94,7 @@ struct FieldLevelMergeTests {
         connection.groupId = nil
         SyncRecordMapper.updateRecord(serverRecord, with: connection)
 
-        #expect(serverRecord[ConnectionSyncField.groupId] == nil)
+        #expect(serverRecord.fields(ConnectionSyncField.self)[.groupId] == nil)
     }
 }
 

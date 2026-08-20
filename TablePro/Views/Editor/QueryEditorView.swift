@@ -18,6 +18,7 @@ struct QueryEditorView: View {
     @Binding var isParameterPanelVisible: Bool
     var onExecute: () -> Void
     var onExecuteWithoutLimit: (() -> Void)?
+    var onExecuteAllStatements: (() -> Void)?
     var schemaProvider: SQLSchemaProvider?
     var databaseType: DatabaseType?
     var connectionId: UUID?
@@ -26,8 +27,12 @@ struct QueryEditorView: View {
     var claimFocusOnAppear: Bool = false
     var onFocusClaimed: (() -> Void)?
     var restoredCursorRange: NSRange?
+    var restoredFoldRanges: [Range<Int>]?
+    var onFoldRangesChanged: (([Range<Int>]) -> Void)?
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
+    var onRunStatement: ((String) -> Void)?
+    var isExecuting: Bool = false
     var onExplain: ((ExplainVariant?) -> Void)?
     var onAIExplain: ((String) -> Void)?
     var onAIOptimize: ((String) -> Void)?
@@ -70,9 +75,13 @@ struct QueryEditorView: View {
                 claimFocusOnAppear: claimFocusOnAppear,
                 onFocusClaimed: onFocusClaimed,
                 restoredCursorRange: restoredCursorRange,
+                restoredFoldRanges: restoredFoldRanges,
+                onFoldRangesChanged: onFoldRangesChanged,
                 vimMode: $vimMode,
                 onCloseTab: onCloseTab,
                 onExecuteQuery: onExecuteQuery,
+                onRunStatement: onRunStatement,
+                isExecuting: isExecuting,
                 onAIExplain: onAIExplain,
                 onAIOptimize: onAIOptimize,
                 onSaveAsFavorite: onSaveAsFavorite
@@ -140,6 +149,13 @@ struct QueryEditorView: View {
             explainButton(hasQueryText: hasQueryText)
 
             Menu {
+                Button(String(localized: "Execute All Statements")) {
+                    onExecuteAllStatements?()
+                }
+                .optionalKeyboardShortcut(
+                    AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeAllStatements)
+                )
+
                 Button(String(localized: "Execute Without Limit")) {
                     onExecuteWithoutLimit?()
                 }
@@ -160,6 +176,7 @@ struct QueryEditorView: View {
             .fixedSize()
             .help(shortcutHint(String(localized: "Execute"), for: .executeQuery))
             .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeQuery))
+            .accessibilityIdentifier("query-execute-menu")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

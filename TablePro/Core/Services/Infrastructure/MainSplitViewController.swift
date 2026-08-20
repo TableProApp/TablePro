@@ -89,6 +89,22 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private var detailPaneHost: WorkspacePaneHost!
     private var inspectorPaneHost: WorkspacePaneHost!
 
+    /// The editor tab strip's band. It is a titlebar accessory rather than a split item, so it is
+    /// owned here but installed on the window, and it follows the selected workspace the same way
+    /// the two hosts above do.
+    let tabStripAccessory = EditorTabStripAccessoryController()
+
+    /// Re-armed each time it fires, and stale arms are dropped by comparing this against the
+    /// generation captured when they registered.
+    var tabStripObservationGeneration = 0
+
+    /// `withObservationTracking` has no way to cancel a registration, so re-registering blindly
+    /// leaves one live arm per call behind until the next change wakes them all. These two say
+    /// whether the live arm still watches the right tab manager, so a repeated call is free and
+    /// only a workspace switch or a fired arm registers again.
+    var tabStripObservationIsArmed = false
+    var tabStripObservedManager: ObjectIdentifier?
+
     private var chromeState: ChromeState = .unapplied
 
     // MARK: - Panel Layout State
@@ -598,6 +614,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         workspace.panes.sidebar.rootView = AnyView(buildSidebarView(for: workspace))
         workspace.panes.detail.rootView = AnyView(buildDetailView(for: workspace))
         workspace.panes.inspector.rootView = AnyView(buildInspectorView(for: workspace))
+        refreshTabStripPane(of: workspace)
         guard isShowing(workspace) else { return }
         bindSidebarChrome(to: workspace)
     }
@@ -614,6 +631,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         navigationSidebar.objectBrowser.show(selected?.panes.sidebar)
         detailPaneHost.show(selected?.panes.detail)
         inspectorPaneHost.show(selected?.panes.inspector)
+        showSelectedTabStrip()
         if let selected { bindSidebarChrome(to: selected) }
     }
 
@@ -957,7 +975,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         switch tabType {
         case .usersRoles:
             return UsersRolesLayoutMetrics.tabMinimumWidth
-        case .query, .table, .createTable, .erDiagram, .serverDashboard:
+        case .query, .table, .createTable, .erDiagram, .serverDashboard, .insights:
             return defaultDetailMinThickness
         }
     }
@@ -1073,6 +1091,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         } else {
             revealWindowChrome()
         }
+        applyTabStripVisibility()
         toolbarOwner?.managedToolbar.validateVisibleItems()
         recomputeWindowMinSize()
     }

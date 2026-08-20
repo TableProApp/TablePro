@@ -69,7 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let appearanceSettings = AppSettingsManager.shared.appearance
         ThemeEngine.shared.updateAppearanceAndTheme(
-            mode: appearanceSettings.appearanceMode,
+            mode: ScreenshotEnvironment.appearanceMode ?? appearanceSettings.appearanceMode,
             lightThemeId: appearanceSettings.preferredLightThemeId,
             darkThemeId: appearanceSettings.preferredDarkThemeId
         )
@@ -78,7 +78,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowOpener.shared.setWelcomePresenter { WelcomeWindowController.present() }
         WindowOpener.shared.setConnectionFormPresenter { ConnectionFormWindowController.present($0) }
         WindowOpener.shared.setIntegrationsActivityPresenter { IntegrationsActivityWindowController.present() }
-        WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present() }
+        WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present(pane: $0) }
         KeyRepeatFilter.shared.install()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
@@ -92,6 +92,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MemoryPressureAdvisor.startMonitoring()
         UNUserNotificationCenter.current().delegate = self
         PluginNotificationService.shared.setUp()
+        OperationCompletionReporter.shared.setUp()
         ChatToolBootstrap.register()
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -275,11 +276,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        guard notification.request.identifier.hasPrefix(PluginNotificationService.identifierPrefix) else {
-            completionHandler([])
-            return
+        Task { @MainActor in
+            completionHandler(NotificationRouter.shared.presentationOptions(for: notification))
         }
-        completionHandler([.banner])
     }
 
     nonisolated func userNotificationCenter(
@@ -287,16 +286,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        defer { completionHandler() }
-        guard response.notification.request.identifier.hasPrefix(PluginNotificationService.identifierPrefix) else {
-            return
-        }
-        let action = response.actionIdentifier
-        guard action == PluginNotificationService.openPluginSettingsActionId
-            || action == UNNotificationDefaultActionIdentifier
-        else { return }
         Task { @MainActor in
-            WindowOpener.shared.openSettings(tab: .plugins)
+            defer { completionHandler() }
+            NotificationRouter.shared.handle(response)
         }
     }
 }

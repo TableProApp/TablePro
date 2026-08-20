@@ -158,14 +158,77 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: [
                         ConnectionField(
+                            id: "redisMode",
+                            label: String(localized: "Connection Mode"),
+                            defaultValue: "standalone",
+                            fieldType: .dropdown(options: [
+                                .init(value: "standalone", label: String(localized: "Standalone")),
+                                .init(value: "sentinel", label: String(localized: "Sentinel")),
+                                .init(value: "cluster", label: String(localized: "Cluster")),
+                            ]),
+                            section: .connection
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelHosts",
+                            label: String(localized: "Sentinel Nodes"),
+                            placeholder: "127.0.0.1:26379",
+                            required: true,
+                            fieldType: .hostList,
+                            section: .connection,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelMasterName",
+                            label: String(localized: "Primary Group Name"),
+                            placeholder: "mymaster",
+                            required: true,
+                            defaultValue: "mymaster",
+                            section: .connection,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
+                            id: "redisClusterHosts",
+                            label: String(localized: "Cluster Seed Nodes"),
+                            placeholder: "127.0.0.1:6379",
+                            required: true,
+                            fieldType: .hostList,
+                            section: .connection,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["cluster"])
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelUsername",
+                            label: String(localized: "Sentinel Username"),
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelPassword",
+                            label: String(localized: "Sentinel Password"),
+                            fieldType: .secure,
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
                             id: "redisDatabase",
                             label: String(localized: "Database Index"),
                             defaultValue: "0",
-                            fieldType: .stepper(range: ConnectionField.IntRange(0...15))
-                        )
-                    ],
+                            fieldType: .stepper(range: ConnectionField.IntRange(0...15)),
+                            visibleWhen: FieldVisibilityRule(
+                                fieldId: "redisMode",
+                                values: ["standalone", "sentinel"]
+                            )
+                        ),
+                        ConnectionField(
+                            id: "redisSeparator",
+                            label: String(localized: "Key Separator"),
+                            defaultValue: ":",
+                            fieldType: .text,
+                            section: .advanced
+                        ),
+                    ] + AWSAuthFields.standard() + [AWSAuthFields.elastiCacheReplicationGroupField()],
                     category: .keyValue,
                     tagline: String(localized: "In-memory data store and cache"),
+                    hidesBuiltInDatabase: true,
                     defaultUnixSocketPath: "/var/run/redis/redis.sock"
                 )
             )),
@@ -669,7 +732,7 @@ extension PluginMetadataRegistry {
                     immutableColumns: [],
                     systemDatabaseNames: ["system", "temp"],
                     systemSchemaNames: [],
-                    fileExtensions: ["duckdb", "ddb"],
+                    fileExtensions: ["duckdb", "ddb", "parquet", "csv", "tsv", "json", "ndjson"],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
                 ),
@@ -974,7 +1037,8 @@ extension PluginMetadataRegistry {
                         ),
                     ],
                     category: .coordination,
-                    tagline: String(localized: "Distributed key-value store for service discovery")
+                    tagline: String(localized: "Distributed key-value store for service discovery"),
+                    hidesBuiltInDatabase: true
                 )
             )),
             ("Cloudflare D1", PluginMetadataSnapshot(

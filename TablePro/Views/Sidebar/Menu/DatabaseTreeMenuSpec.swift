@@ -16,6 +16,9 @@ internal struct DatabaseTreeMenuContext {
     internal let selectedContainers: [DatabaseContainerRef]
     internal let activeDatabase: String?
     internal let activeSchema: String?
+    /// Whether this engine can open a second connection to another database on the server, which
+    /// is what lets the export dialog scope itself to a database other than the active one.
+    internal let canReachOtherDatabases: Bool
     internal let systemSchemas: Set<String>
     internal let isReadOnly: Bool
     internal let supportsImport: Bool
@@ -225,7 +228,11 @@ internal enum DatabaseTreeMenuSpec {
             )
         }
 
-        if ExportPreselection.canPreselect(containers: targets, activeDatabase: context.activeDatabase) {
+        if ExportPreselection.canPreselect(
+            containers: targets,
+            activeDatabase: context.activeDatabase,
+            canReachOtherDatabases: context.canReachOtherDatabases
+        ) {
             items.append(.separator)
             items.append(.command(String(localized: "Export…"), .exportContainers(targets)))
         }

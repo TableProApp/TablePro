@@ -54,8 +54,8 @@ struct LicenseSection: View {
             }
 
             LabeledContent("Status:") {
-                Text(license.status.displayName)
-                    .foregroundStyle(license.status.isValid ? .green : .red)
+                Text(licenseManager.status.displayName)
+                    .foregroundStyle(licenseManager.status.isValid ? .green : .red)
             }
 
             if let expiresAt = license.expiresAt {
@@ -134,6 +134,12 @@ struct LicenseSection: View {
                     Task { await licenseManager.revalidate() }
                 }
                 .disabled(licenseManager.isValidating)
+            }
+
+            if let lastError = licenseManager.lastError {
+                Label(lastError.friendlyDescription, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.callout)
             }
 
             LabeledContent("Remove license from this machine") {

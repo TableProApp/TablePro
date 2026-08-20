@@ -502,7 +502,7 @@ final class KeyHandlingTableView: NSTableView {
     private func isVisibleDataColumn(at index: Int) -> Bool {
         guard index >= 0, index < numberOfColumns else { return false }
         let column = tableColumns[index]
-        return !column.isHidden && column.identifier != ColumnIdentitySchema.rowNumberIdentifier
+        return coordinator?.presentsColumn(column) ?? !column.isHidden
     }
 
     /// `NSResponder` declares these two but does not implement them, so calling `super` raises

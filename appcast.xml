@@ -3,6 +3,185 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.66.0</title>
+            <pubDate>Tue, 18 Aug 2026 18:46:16 +0000</pubDate>
+            <sparkle:version>119</sparkle:version>
+            <sparkle:shortVersionString>0.66.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Tree sidebar layouts group each database or schema's tables, views, materialized views, foreign tables, procedures and functions into collapsible folders. (#1590)</li>
+<li>Dameng DM8 connections through a downloadable plugin, with schema browsing, table editing, metadata, DDL, transactions, EXPLAIN, query cancellation and a query timeout. Stopping a query closes its connection, and TablePro reconnects on the next one. (#1671, #2003, #2010)</li>
+<li>SQL Server connections can sign in with Microsoft Entra ID on Azure SQL Database, Azure SQL Managed Instance and SQL Server 2022. Sign-in runs in your browser and honours multifactor authentication and Conditional Access. Set it up on the Mac; iPhone and iPad prompt to sign in once the connection syncs over.</li>
+<li>Query Insights, a Starter feature in **Database > Query Insights**, summarizes the query history on your Mac: which queries you run most, which are slowest, which got slower and which fail. Queries that differ only by their values count as one, and nothing leaves the Mac. (#2107)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Five on-screen strings dropped their em dash, including the JSON and PHP viewer titles and the expired-license banner in **Settings > Account**. The JSON viewer title can be translated now.</li>
+<li>The Quick Switcher is now **Open Quickly**, in the **File** menu under Open File. `Cmd+Shift+O` is unchanged and still rebindable in **Settings > Keyboard**. (#2185)</li>
+<li>`Cmd+Return` opens the selected item in a new tab in Open Quickly, alongside `Option+Return`. (#2185)</li>
+<li>Open Quickly is drawn on the system Liquid Glass material on macOS 26 and later, and keeps the blurred popover material on macOS 14 and 15.</li>
+<li>Open Quickly's scope filters are a segmented control inside the panel now, instead of buttons that vanished as soon as anything was listed, which left four of the five scopes unpickable with the mouse.</li>
+<li>Open Quickly has a footer for `Return`, `Cmd+Return`, `Cmd+1` to `Cmd+5` and `Escape`. The `Escape` hint reads **Clear** while the field has text and **Close** when it is empty.</li>
+<li>A connection that fails because a Microsoft Entra ID or AWS SSO sign-in expired now offers to sign in again and reconnects for you, both when you open it and from the connection form's Test button.</li>
+<li>The editor tab bar moved into the window chrome below the toolbar and lines up with the content pane, with its tabs in a filled track and the selected tab raised out of it. It still appears only once a connection has a second tab.</li>
+<li>Tree layout opens a connection with its current database and schema expanded, unless the connection already remembers what you left open.</li>
+<li>DuckDB connections now report a database name, so their saved column widths, per-table filters, favorites and recent tables reset once.</li>
+<li>Turkish, Vietnamese, Simplified Chinese and Traditional Chinese cover 298 strings that were still showing in English, including the Query Insights tab, the Window and Help menus, the query plan viewer, the connection progress steps and the Microsoft Entra ID sign-in prompts.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Right-clicking a database and choosing Export now exports from the database you picked, with everything in it selected, instead of listing another database's tables. On DuckDB and PGlite, where a second connection cannot reach another database, Export is offered only for the active one.</li>
+<li>On Oracle, Dameng and BigQuery, "Close Tabs for Other Databases" closed every query tab; it now closes only tabs in a different schema. The menu item reads "Close Tabs for Other Schemas" there, and Open Database reads "Open Schema".</li>
+<li>A `tablepro://` link applies the database first and the schema second, instead of applying a database name as a schema on connections that have schemas, and ignores a segment the connection has no place for.</li>
+<li>On connections with schemas, the toolbar shows the database and the schema side by side, each opening its own list, and the schema picker is back at the foot of the object list. Clicking the schema name used to open the database list. (#2196)</li>
+<li>Data-grid columns reserve space for their trailing editor and foreign-key actions, so the foreign-key arrow and the enum dropdown chevron no longer widen a column after the rows are drawn, and a value that would otherwise fit is no longer truncated. A column you resized keeps the width you gave it.</li>
+<li>Open Quickly reuses the object list it already built instead of re-querying the database and schema lists and 200 rows of query history each time it opens, which over an SSH tunnel is the whole time the panel sits empty. It rebuilds when the database, schema, database filter, saved queries or query history change, and on disconnect.</li>
+<li>The column value filter, date and time picker, array editor, type picker, binary viewer and sidebar database filter now open against the control they belong to, instead of above and to the left of it.</li>
+<li>The array, JSON, hex, date and type editors and the column value filter close when the rows change, so an editor left open while sorting, refreshing or filtering can no longer save onto a different row.</li>
+<li>Open Quickly's Recent section now includes materialized views, foreign tables, system tables, partitioned tables and external tables, ranks them higher the more you open them, and tells apart two objects with the same name in different schemas.</li>
+<li>Opening a table from Open Quickly reuses the tab that is already open, instead of showing the Open badge and Switch to Tab for a same-named table in another schema and then opening a second tab.</li>
+<li>Open Quickly says it is loading instead of "No results", both while the object list is being fetched and while a search is being ranked.</li>
+<li>Open Quickly's `Cmd+Return`, `Cmd+1` to `Cmd+5`, `Ctrl+J`, `Ctrl+K`, `Ctrl+N` and `Ctrl+P` work with Caps Lock on, and the numeric keypad's Enter works with `Cmd`.</li>
+<li>Toolbar buttons show the shortcut you bound in **Settings > Keyboard** in their tooltip and overflow menu, and the Database and Preview buttons keep their shortcut hint after you switch connection. (#2185)</li>
+<li>JSON results, Copy as JSON and JSON export no longer crash on unsigned or wider-than-64-bit integers, and keep every digit of large integers and high-precision decimals. A value a numeric column cannot represent, such as `Infinity` or digits outside 0-9, is quoted as a string instead of being written as invalid JSON.</li>
+<li>Pasting a large block of text into the query editor no longer crashes the app, and the pasted text keeps its syntax highlighting instead of staying plain for the rest of the session. (#2158, #2172)</li>
+<li>The flat sidebar keeps its Materialized Views, Foreign Tables, Procedures and Functions sections while a connection reconnects after a dropped SSH or proxy tunnel, and the flat and tree layouts show the same object kinds. (#2173)</li>
+<li>`Cmd+C` in the query editor with nothing selected copies the current line instead of emptying the clipboard, and paste accepts RTF and file-path clipboards, fills a grid cell with a single copied value instead of adding a row, and works with focus in the sidebar. (#2172)</li>
+<li>Sixteen-byte SQL binary columns respect their Display As setting in the grid, the row inspector, VoiceOver and single-cell copy, and keep it across a refresh. MongoDB binary UUIDs stay under the driver's Legacy UUID Encoding setting. (#2157)</li>
+<li>A very long single line no longer stalls the app or eats memory, in the JSON value viewer, chat code blocks and the SQL review sheet, and in the SQL editor with Word Wrap on.</li>
+<li>The data grid picks up a theme or appearance change made while it is on screen: an open cell editor repaints, deleted and newly added rows take the new tint in the results and structure grids, and the foreign-key arrow and dropdown chevron follow the window instead of keeping the colour that drew them first. The arrow has no circle now, and the chevron is drawn at its own size.</li>
+<li>Format Query no longer crashes on an unclosed string literal ending in a backslash, as in `select * from t where c like 'C:\`, and leaves an unclosed `/*` comment alone.</li>
+<li>Clicking the right edge of the SQL editor, a strip as wide as 140 points, puts the caret on that line, and text selection works there in the trigger editor, the JSON view, the structure DDL, the SQL review sheet, the import preview and chat code blocks. (#2156)</li>
+<li>Query results are editable again when the `SELECT` aliases its table, as in `select * from users u where u.id = 1`, and when the query spans several lines, starts with a comment, or ends in `FOR UPDATE`. (#2150)</li>
+<li>`UNION`, `EXCEPT` and `INTERSECT` results are read-only now instead of writing an edit into one branch, as are results from a join, a subquery, a CTE, a `FOR SYSTEM_TIME` read, and `FROM ONLY`.</li>
+<li>Results stay editable when you write the schema in front of the table, as in `select * from public.users u`, as long as it is the schema the connection is browsing; naming a different schema stays read-only.</li>
+<li>The connection window no longer draws a rule under its toolbar, which divided two areas of the same colour.</li>
+<li>Empty Structure tabs and structured-value errors keep their toolbar at the top and center the message in the content area below it.</li>
+<li>The sidebar star updates as soon as you add or remove a favorite table, instead of waiting for the sidebar to reopen.</li>
+<li>Save Changes and Preview update as soon as data-grid changes are added, undone, saved or discarded.</li>
+<li>Content stays readable on the blue selection fill in the connection switcher, the database switcher and the query history drawer: the row highlighted when they first open, the failure marker and connection dot, and the connection colour and status marks. (#2140)</li>
+<li>Refreshing the database switcher keeps the list on screen instead of showing a spinner, and a failed refresh no longer hides the databases you were already looking at.</li>
+<li>The database switcher keeps your highlighted database when its details finish loading, and no longer highlights a database the search filter hides, which left Return doing nothing.</li>
+<li>Right-clicking a day heading in the query history drawer no longer clears the selected entry, and right-clicking a row in the connection switcher shows its menu instead of only moving the highlight.</li>
+<li>The query history drawer stops re-reading history once you close it, and a drawer that starts closed does not load until you open it.</li>
+<li>Query History's "Load in Editor" and "Run in New Tab" work again, from the buttons, the right-click menu, and `Return` or a double-click on a row.</li>
+<li>"Run in New Tab" runs the query it opens, and asks first when that query writes, even with safe mode set to Silent.</li>
+<li>A history entry opens in the window of the connection it was recorded against, in a tab bound to its own database, instead of loading into whatever is in front of you.</li>
+<li>DuckDB `TIMESTAMP_S`, `TIMESTAMP_MS` and `TIMESTAMP_NS` columns show their stored value with sub-second digits, not `1970-01-01 00:00:00` on every row. (#2130)</li>
+<li>DuckDB `UUID`, `ENUM`, `BIT`, `LIST`, `STRUCT`, `MAP`, `ARRAY` and `UNION` columns show their value instead of an empty cell. (#2130)</li>
+<li>Querying two DuckDB tables that share a column name no longer repeats one table's value in both columns. (#2130)</li>
+<li>DuckDB tables outside the `main` schema are visible again, with every schema listed in the sidebar and `ATTACH`ed databases shown alongside the one you opened. (#2131)</li>
+<li>An `ATTACH`ed DuckDB file's tables stay out of the database you opened when the two share a schema name.</li>
+<li>A DuckDB table in the default schema is titled `orders` again rather than `main.orders`, and exports preselect the schema you are browsing.</li>
+<li>**File > Save As...** on a table, structure or diagram tab, and **File > Export > Export Results...** with no rows to export, are dimmed now instead of doing nothing when chosen.</li>
+<li>Clearing query history from the drawer says what it will actually delete, instead of promising the connection's whole history when the source filter spares table browsing, row edits, imports and AI queries.</li>
+<li>When TablePro cannot open the query history store, the drawer says so and that your history is still on disk, instead of showing "No Query History".</li>
+<li>A license the server reports as suspended, expired or no longer activated on this Mac pauses Pro features at that check, instead of running on for up to a month because the reply was treated as if the server could not be reached. **Check Status** in **Settings > Account** says what the server replied.</li>
+<li>A license bought with an email address containing a slash can be activated now, instead of telling you to update the app.</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>**Settings > Data** no longer lists saved table layouts and filters. TablePro still remembers both; reset columns from the table's Columns popover and filters from the filter panel.</li>
+</ul>
+<h3>Security</h3>
+<ul>
+<li>Paid features are read from the signed license, so an edited or copied local copy cannot enable them. TablePro honours a machine binding when the server sends one. (#2181)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.66.0/TablePro-0.66.0-arm64.zip" length="22436272" type="application/octet-stream" sparkle:edSignature="irQY2h+An1LXKuCyhTyM+t565mHfuziWCkZJpgEHBnLY1u8fzYWi6s465TNINWEod8OlYqaouxqAgto29/nNAA=="/>
+        </item>
+        <item>
+            <title>0.66.0</title>
+            <pubDate>Tue, 18 Aug 2026 18:46:17 +0000</pubDate>
+            <sparkle:version>119</sparkle:version>
+            <sparkle:shortVersionString>0.66.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Tree sidebar layouts group each database or schema's tables, views, materialized views, foreign tables, procedures and functions into collapsible folders. (#1590)</li>
+<li>Dameng DM8 connections through a downloadable plugin, with schema browsing, table editing, metadata, DDL, transactions, EXPLAIN, query cancellation and a query timeout. Stopping a query closes its connection, and TablePro reconnects on the next one. (#1671, #2003, #2010)</li>
+<li>SQL Server connections can sign in with Microsoft Entra ID on Azure SQL Database, Azure SQL Managed Instance and SQL Server 2022. Sign-in runs in your browser and honours multifactor authentication and Conditional Access. Set it up on the Mac; iPhone and iPad prompt to sign in once the connection syncs over.</li>
+<li>Query Insights, a Starter feature in **Database > Query Insights**, summarizes the query history on your Mac: which queries you run most, which are slowest, which got slower and which fail. Queries that differ only by their values count as one, and nothing leaves the Mac. (#2107)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Five on-screen strings dropped their em dash, including the JSON and PHP viewer titles and the expired-license banner in **Settings > Account**. The JSON viewer title can be translated now.</li>
+<li>The Quick Switcher is now **Open Quickly**, in the **File** menu under Open File. `Cmd+Shift+O` is unchanged and still rebindable in **Settings > Keyboard**. (#2185)</li>
+<li>`Cmd+Return` opens the selected item in a new tab in Open Quickly, alongside `Option+Return`. (#2185)</li>
+<li>Open Quickly is drawn on the system Liquid Glass material on macOS 26 and later, and keeps the blurred popover material on macOS 14 and 15.</li>
+<li>Open Quickly's scope filters are a segmented control inside the panel now, instead of buttons that vanished as soon as anything was listed, which left four of the five scopes unpickable with the mouse.</li>
+<li>Open Quickly has a footer for `Return`, `Cmd+Return`, `Cmd+1` to `Cmd+5` and `Escape`. The `Escape` hint reads **Clear** while the field has text and **Close** when it is empty.</li>
+<li>A connection that fails because a Microsoft Entra ID or AWS SSO sign-in expired now offers to sign in again and reconnects for you, both when you open it and from the connection form's Test button.</li>
+<li>The editor tab bar moved into the window chrome below the toolbar and lines up with the content pane, with its tabs in a filled track and the selected tab raised out of it. It still appears only once a connection has a second tab.</li>
+<li>Tree layout opens a connection with its current database and schema expanded, unless the connection already remembers what you left open.</li>
+<li>DuckDB connections now report a database name, so their saved column widths, per-table filters, favorites and recent tables reset once.</li>
+<li>Turkish, Vietnamese, Simplified Chinese and Traditional Chinese cover 298 strings that were still showing in English, including the Query Insights tab, the Window and Help menus, the query plan viewer, the connection progress steps and the Microsoft Entra ID sign-in prompts.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Right-clicking a database and choosing Export now exports from the database you picked, with everything in it selected, instead of listing another database's tables. On DuckDB and PGlite, where a second connection cannot reach another database, Export is offered only for the active one.</li>
+<li>On Oracle, Dameng and BigQuery, "Close Tabs for Other Databases" closed every query tab; it now closes only tabs in a different schema. The menu item reads "Close Tabs for Other Schemas" there, and Open Database reads "Open Schema".</li>
+<li>A `tablepro://` link applies the database first and the schema second, instead of applying a database name as a schema on connections that have schemas, and ignores a segment the connection has no place for.</li>
+<li>On connections with schemas, the toolbar shows the database and the schema side by side, each opening its own list, and the schema picker is back at the foot of the object list. Clicking the schema name used to open the database list. (#2196)</li>
+<li>Data-grid columns reserve space for their trailing editor and foreign-key actions, so the foreign-key arrow and the enum dropdown chevron no longer widen a column after the rows are drawn, and a value that would otherwise fit is no longer truncated. A column you resized keeps the width you gave it.</li>
+<li>Open Quickly reuses the object list it already built instead of re-querying the database and schema lists and 200 rows of query history each time it opens, which over an SSH tunnel is the whole time the panel sits empty. It rebuilds when the database, schema, database filter, saved queries or query history change, and on disconnect.</li>
+<li>The column value filter, date and time picker, array editor, type picker, binary viewer and sidebar database filter now open against the control they belong to, instead of above and to the left of it.</li>
+<li>The array, JSON, hex, date and type editors and the column value filter close when the rows change, so an editor left open while sorting, refreshing or filtering can no longer save onto a different row.</li>
+<li>Open Quickly's Recent section now includes materialized views, foreign tables, system tables, partitioned tables and external tables, ranks them higher the more you open them, and tells apart two objects with the same name in different schemas.</li>
+<li>Opening a table from Open Quickly reuses the tab that is already open, instead of showing the Open badge and Switch to Tab for a same-named table in another schema and then opening a second tab.</li>
+<li>Open Quickly says it is loading instead of "No results", both while the object list is being fetched and while a search is being ranked.</li>
+<li>Open Quickly's `Cmd+Return`, `Cmd+1` to `Cmd+5`, `Ctrl+J`, `Ctrl+K`, `Ctrl+N` and `Ctrl+P` work with Caps Lock on, and the numeric keypad's Enter works with `Cmd`.</li>
+<li>Toolbar buttons show the shortcut you bound in **Settings > Keyboard** in their tooltip and overflow menu, and the Database and Preview buttons keep their shortcut hint after you switch connection. (#2185)</li>
+<li>JSON results, Copy as JSON and JSON export no longer crash on unsigned or wider-than-64-bit integers, and keep every digit of large integers and high-precision decimals. A value a numeric column cannot represent, such as `Infinity` or digits outside 0-9, is quoted as a string instead of being written as invalid JSON.</li>
+<li>Pasting a large block of text into the query editor no longer crashes the app, and the pasted text keeps its syntax highlighting instead of staying plain for the rest of the session. (#2158, #2172)</li>
+<li>The flat sidebar keeps its Materialized Views, Foreign Tables, Procedures and Functions sections while a connection reconnects after a dropped SSH or proxy tunnel, and the flat and tree layouts show the same object kinds. (#2173)</li>
+<li>`Cmd+C` in the query editor with nothing selected copies the current line instead of emptying the clipboard, and paste accepts RTF and file-path clipboards, fills a grid cell with a single copied value instead of adding a row, and works with focus in the sidebar. (#2172)</li>
+<li>Sixteen-byte SQL binary columns respect their Display As setting in the grid, the row inspector, VoiceOver and single-cell copy, and keep it across a refresh. MongoDB binary UUIDs stay under the driver's Legacy UUID Encoding setting. (#2157)</li>
+<li>A very long single line no longer stalls the app or eats memory, in the JSON value viewer, chat code blocks and the SQL review sheet, and in the SQL editor with Word Wrap on.</li>
+<li>The data grid picks up a theme or appearance change made while it is on screen: an open cell editor repaints, deleted and newly added rows take the new tint in the results and structure grids, and the foreign-key arrow and dropdown chevron follow the window instead of keeping the colour that drew them first. The arrow has no circle now, and the chevron is drawn at its own size.</li>
+<li>Format Query no longer crashes on an unclosed string literal ending in a backslash, as in `select * from t where c like 'C:\`, and leaves an unclosed `/*` comment alone.</li>
+<li>Clicking the right edge of the SQL editor, a strip as wide as 140 points, puts the caret on that line, and text selection works there in the trigger editor, the JSON view, the structure DDL, the SQL review sheet, the import preview and chat code blocks. (#2156)</li>
+<li>Query results are editable again when the `SELECT` aliases its table, as in `select * from users u where u.id = 1`, and when the query spans several lines, starts with a comment, or ends in `FOR UPDATE`. (#2150)</li>
+<li>`UNION`, `EXCEPT` and `INTERSECT` results are read-only now instead of writing an edit into one branch, as are results from a join, a subquery, a CTE, a `FOR SYSTEM_TIME` read, and `FROM ONLY`.</li>
+<li>Results stay editable when you write the schema in front of the table, as in `select * from public.users u`, as long as it is the schema the connection is browsing; naming a different schema stays read-only.</li>
+<li>The connection window no longer draws a rule under its toolbar, which divided two areas of the same colour.</li>
+<li>Empty Structure tabs and structured-value errors keep their toolbar at the top and center the message in the content area below it.</li>
+<li>The sidebar star updates as soon as you add or remove a favorite table, instead of waiting for the sidebar to reopen.</li>
+<li>Save Changes and Preview update as soon as data-grid changes are added, undone, saved or discarded.</li>
+<li>Content stays readable on the blue selection fill in the connection switcher, the database switcher and the query history drawer: the row highlighted when they first open, the failure marker and connection dot, and the connection colour and status marks. (#2140)</li>
+<li>Refreshing the database switcher keeps the list on screen instead of showing a spinner, and a failed refresh no longer hides the databases you were already looking at.</li>
+<li>The database switcher keeps your highlighted database when its details finish loading, and no longer highlights a database the search filter hides, which left Return doing nothing.</li>
+<li>Right-clicking a day heading in the query history drawer no longer clears the selected entry, and right-clicking a row in the connection switcher shows its menu instead of only moving the highlight.</li>
+<li>The query history drawer stops re-reading history once you close it, and a drawer that starts closed does not load until you open it.</li>
+<li>Query History's "Load in Editor" and "Run in New Tab" work again, from the buttons, the right-click menu, and `Return` or a double-click on a row.</li>
+<li>"Run in New Tab" runs the query it opens, and asks first when that query writes, even with safe mode set to Silent.</li>
+<li>A history entry opens in the window of the connection it was recorded against, in a tab bound to its own database, instead of loading into whatever is in front of you.</li>
+<li>DuckDB `TIMESTAMP_S`, `TIMESTAMP_MS` and `TIMESTAMP_NS` columns show their stored value with sub-second digits, not `1970-01-01 00:00:00` on every row. (#2130)</li>
+<li>DuckDB `UUID`, `ENUM`, `BIT`, `LIST`, `STRUCT`, `MAP`, `ARRAY` and `UNION` columns show their value instead of an empty cell. (#2130)</li>
+<li>Querying two DuckDB tables that share a column name no longer repeats one table's value in both columns. (#2130)</li>
+<li>DuckDB tables outside the `main` schema are visible again, with every schema listed in the sidebar and `ATTACH`ed databases shown alongside the one you opened. (#2131)</li>
+<li>An `ATTACH`ed DuckDB file's tables stay out of the database you opened when the two share a schema name.</li>
+<li>A DuckDB table in the default schema is titled `orders` again rather than `main.orders`, and exports preselect the schema you are browsing.</li>
+<li>**File > Save As...** on a table, structure or diagram tab, and **File > Export > Export Results...** with no rows to export, are dimmed now instead of doing nothing when chosen.</li>
+<li>Clearing query history from the drawer says what it will actually delete, instead of promising the connection's whole history when the source filter spares table browsing, row edits, imports and AI queries.</li>
+<li>When TablePro cannot open the query history store, the drawer says so and that your history is still on disk, instead of showing "No Query History".</li>
+<li>A license the server reports as suspended, expired or no longer activated on this Mac pauses Pro features at that check, instead of running on for up to a month because the reply was treated as if the server could not be reached. **Check Status** in **Settings > Account** says what the server replied.</li>
+<li>A license bought with an email address containing a slash can be activated now, instead of telling you to update the app.</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>**Settings > Data** no longer lists saved table layouts and filters. TablePro still remembers both; reset columns from the table's Columns popover and filters from the filter panel.</li>
+</ul>
+<h3>Security</h3>
+<ul>
+<li>Paid features are read from the signed license, so an edited or copied local copy cannot enable them. TablePro honours a machine binding when the server sends one. (#2181)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.66.0/TablePro-0.66.0-x86_64.zip" length="23796203" type="application/octet-stream" sparkle:edSignature="iF0YUPp678V9gPTNu7PVYrfACiW1BIxuVrfh5vrjhTnC5LVyI2b4DqQRaWg0h0qzTqDmYMR8rDABwG859pe0CA=="/>
+        </item>
+        <item>
             <title>0.65.0</title>
             <pubDate>Sat, 15 Aug 2026 20:09:38 +0000</pubDate>
             <sparkle:version>118</sparkle:version>

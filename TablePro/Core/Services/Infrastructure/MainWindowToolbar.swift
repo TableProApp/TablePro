@@ -25,6 +25,20 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     internal let managedToolbar: NSToolbar
     private var pendingChangeObservationGeneration = 0
+    private var cancellables: Set<AnyCancellable> = []
+
+    /// Which shortcut each item advertises, and the wording it advertises it with. The item cannot
+    /// be asked: `NSToolbarItem` has no shortcut of its own, and its `menuFormRepresentation` keeps
+    /// only the resolved key, not the action that produced it. Recorded by the factory that already
+    /// receives both, so this is not a second list anyone has to keep in step by hand.
+    private var shortcutBindings: [NSToolbarItem.Identifier: ToolbarShortcutBinding] = [:]
+
+    /// Which item an overflow-menu entry stands for. AppKit validates an overflowed item as a menu
+    /// item rather than as a toolbar item, so `validateToolbarItem(_:)` never runs for it and the
+    /// entry stayed enabled while the same button was disabled on a wider window. Recorded by the
+    /// factory that already receives both the identifier and the action, for the same reason
+    /// `shortcutBindings` is: a second hand-written table drifts.
+    private var menuFormIdentifiers: [Selector: NSToolbarItem.Identifier] = [:]
 
     /// How a hosted item answers "how wide are you". `.intrinsicContentSize` only overrides the
     /// hosting view's `intrinsicContentSize`, and AppKit measures a view-backed item when it is
@@ -51,6 +65,60 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         self.managedToolbar.allowsUserCustomization = true
         self.managedToolbar.autosavesConfiguration = true
         self.managedToolbar.centeredItemIdentifiers = [Self.principal]
+        /// The hop off `AppSettingsManager.keyboard`'s own `didSet` matters: without it the toolbar
+        /// items are mutated re-entrantly, part way through the settings write that triggered them.
+        AppEvents.shared.keyboardSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.refreshShortcutHints() }
+            .store(in: &cancellables)
+    }
+
+    /// A toolbar item's tooltip and its overflow-menu key equivalent are written once, when the
+    /// delegate vends the item, and AppKit never revisits either. A rebind in Settings therefore
+    /// reaches the menu bar and stops there, leaving the toolbar advertising a key that no longer
+    /// runs the command.
+    private func refreshShortcutHints() {
+        for item in allItems() {
+            applyShortcutBinding(to: item)
+        }
+    }
+
+    /// Records what an item advertises and pushes it onto the item for the first time.
+    internal func bindShortcut(_ shortcut: ShortcutAction?, description: String, to item: NSToolbarItem) {
+        guard let shortcut else {
+            item.toolTip = description
+            return
+        }
+        shortcutBindings[item.itemIdentifier] = ToolbarShortcutBinding(
+            shortcut: shortcut,
+            description: description
+        )
+        applyShortcutBinding(to: item)
+    }
+
+    /// Records which item an overflow-menu action belongs to, so validation can reach it.
+    internal func bindMenuForm(action: Selector, to itemIdentifier: NSToolbarItem.Identifier) {
+        menuFormIdentifiers[action] = itemIdentifier
+    }
+
+    /// Nil for a menu item this toolbar did not build, which is nobody else's item to validate.
+    internal func itemIdentifier(forMenuFormAction action: Selector?) -> NSToolbarItem.Identifier? {
+        action.flatMap { menuFormIdentifiers[$0] }
+    }
+
+    /// Re-words an item whose description follows the connection, keeping its shortcut hint. Setting
+    /// `toolTip` directly at those call sites is what dropped the hint on every connection switch.
+    internal func updateShortcutDescription(_ description: String, for id: NSToolbarItem.Identifier) {
+        shortcutBindings[id]?.description = description
+    }
+
+    internal func applyShortcutBinding(to item: NSToolbarItem) {
+        guard let binding = shortcutBindings[item.itemIdentifier] else { return }
+        let keyboard = AppSettingsManager.shared.keyboard
+        item.toolTip = keyboard.shortcutHint(binding.description, for: binding.shortcut)
+        /// An item that opens a submenu has no key equivalent to carry; its menu form is the menu.
+        guard let menuItem = item.menuFormRepresentation, menuItem.submenu == nil else { return }
+        MenuItemFactory.apply(shortcut: binding.shortcut, keyboard: keyboard, to: menuItem)
     }
 
     /// `@Observable` generates no equality check, so assigning the same coordinator still fires
@@ -99,9 +167,14 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             switch item.itemIdentifier {
             case Self.database:
                 apply(label: containerEntityName, to: item)
-                item.toolTip = String(format: String(localized: "Open %@"), containerEntityName)
+                updateShortcutDescription(
+                    String(format: String(localized: "Open %@"), containerEntityName),
+                    for: Self.database
+                )
+                applyShortcutBinding(to: item)
             case Self.previewSQL:
-                item.toolTip = previewDescription
+                updateShortcutDescription(previewDescription, for: Self.previewSQL)
+                applyShortcutBinding(to: item)
             case Self.importTables:
                 (item as? NSMenuToolbarItem)?.menu = buildImportSubmenu()
                 item.menuFormRepresentation?.submenu = buildImportSubmenu()
@@ -132,6 +205,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     static let database = NSToolbarItem.Identifier("com.TablePro.toolbar.database")
     static let refresh = NSToolbarItem.Identifier("com.TablePro.toolbar.refresh")
     static let saveChanges = NSToolbarItem.Identifier("com.TablePro.toolbar.saveChanges")
+    static let addRow = NSToolbarItem.Identifier("com.TablePro.toolbar.addRow")
     static let principal = NSToolbarItem.Identifier("com.TablePro.toolbar.principal")
     static let quickSwitcher = NSToolbarItem.Identifier("com.TablePro.toolbar.quickSwitcher")
     static let newTab = NSToolbarItem.Identifier("com.TablePro.toolbar.newTab")
@@ -150,6 +224,14 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     /// Items ahead of `.sidebarTrackingSeparator` lay out in the sidebar's own titlebar strip,
     /// so the control that switches what the sidebar shows sits over the pane it drives.
+    ///
+    /// A tracking separator divides the toolbar into pane-aligned sections; it does not align the
+    /// items inside one. Everything after `.inspectorTrackingSeparator` therefore lays out from
+    /// that section's leading edge, which is the inspector divider, so the toggle walked inward as
+    /// the pane opened and only looked right while the inspector was closed. The `.flexibleSpace`
+    /// is what anchors it to the window's trailing edge, and it is the order Apple ships in
+    /// WWDC23 session 10054. Keep the toggle last: ahead of the separator it lands in the content
+    /// section and is wrong in both states.
     internal static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
         sidebarToggle,
         .sidebarTrackingSeparator,
@@ -161,6 +243,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         newTab,
         previewSQL,
         .inspectorTrackingSeparator,
+        .flexibleSpace,
         inspector,
     ]
 
@@ -212,15 +295,25 @@ extension MainWindowToolbar {
         return group
     }
 
-    internal func makeSidebarToggleItem() -> NSToolbarItem {
+    /// `sidebarGroup` is the one handle `syncSidebarSelection()` has on the live control, so only
+    /// the item actually going into the toolbar may claim it. A Customize Toolbar palette copy
+    /// that took the slot left every later sync writing into a discarded group, and the segments
+    /// stopped following the sidebar until the window was reopened.
+    internal func makeSidebarToggleItem(claimsSlot: Bool) -> NSToolbarItem {
         let group = Self.makeSidebarSegmentGroup(target: self, action: #selector(sidebarSegmentChanged(_:)))
+        bindMenuForm(action: #selector(sidebarSegmentChanged(_:)), to: Self.sidebarToggle)
+        guard claimsSlot else { return group }
         sidebarGroup = group
         syncSidebarSelection()
         return group
     }
 
-    @objc fileprivate func sidebarSegmentChanged(_ sender: NSToolbarItemGroup) {
-        let index = sender.selectedIndex
+    /// `@objc` does not type-check the sender, and this action is reachable from the overflow menu
+    /// as well as from the control, where AppKit sends an `NSMenuItem`. A typed parameter would
+    /// read `selectedIndex` off it and trap on `doesNotRecognizeSelector`.
+    @objc fileprivate func sidebarSegmentChanged(_ sender: Any?) {
+        guard let group = sender as? NSToolbarItemGroup else { return }
+        let index = group.selectedIndex
         guard Self.sidebarSegmentTabs.indices.contains(index) else { return }
         coordinator?.splitViewController?.setSidebarTab(Self.sidebarSegmentTabs[index])
     }

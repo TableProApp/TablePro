@@ -6,22 +6,13 @@ import TableProPluginKit
 
 private let fkTraceLogger = Logger(subsystem: "com.TablePro", category: "DataGrid")
 
+/// Which columns need repainting because their accessory changed. Deliberately carries no width
+/// information: a column's width is decided when the column is built or auto-fitted, and metadata
+/// arriving afterwards repaints the cell without moving anything the user is already reading.
 struct DataGridColumnPresentationChanges {
     var indices = IndexSet()
-    var widthDeltas: [Int: CGFloat] = [:]
-    var widthDeltasByName: [String: CGFloat] = [:]
 
     var isEmpty: Bool { indices.isEmpty }
-
-    func widthDelta(for name: String, columns: [String]) -> CGFloat? {
-        if let delta = widthDeltasByName[name] {
-            return delta
-        }
-        guard let index = indices.first(where: { $0 < columns.count && columns[$0] == name }) else {
-            return nil
-        }
-        return widthDeltas[index]
-    }
 }
 
 struct DataGridColumnPresentationIdentity: Hashable {
@@ -46,7 +37,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var paginationOffsetProvider: @MainActor () -> Int = { 0 }
     var changeManager: AnyChangeManager
     var isEditable: Bool
-    var sortedIDs: [RowID]? { didSet { bumpDisplayRevision() } }
+    var editRefusalMessage: String?
     var valueFilteredIDs: [RowID]? { didSet { bumpDisplayRevision() } }
     /// Ticks whenever the displayed row order or the value filter changes.
     ///
@@ -54,13 +45,35 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// produces no signal on its own. Views that render the same rows outside the grid key off this
     /// instead of comparing the id array, which is O(rows) on every body evaluation.
     private(set) var displayRevision: Int = 0
-    var valueFilterState = GridValueFilterState()
-    var displayIDs: [RowID]? { valueFilteredIDs ?? sortedIDs }
+    /// Set by `DataGridView` when the grid has an owner that holds the filter for it. Without one
+    /// the filter lives here alone and dies with this coordinator, which is all a structure or
+    /// create-table grid needs.
+    var valueFilterBinding: Binding<GridValueFilterState>?
+    private var storedValueFilterState = GridValueFilterState()
+    /// Reads never go back through the binding, because a SwiftUI `Binding` built from a captured
+    /// value type returns the pre-write value until the next body pass. The mirror is authoritative
+    /// for this coordinator and `adoptValueFilter(_:)` pulls owner-driven changes in.
+    ///
+    /// A write reaches the owner's observable state, and `remapValueFilters` performs one from
+    /// inside `updateNSView` when a column's display format changes. That is bounded to a single
+    /// extra update: the guard below drops a no-op write, and the next pass finds the formats
+    /// already synced, so `syncDisplayFormats` returns before it can remap again.
+    var valueFilterState: GridValueFilterState {
+        get { storedValueFilterState }
+        set {
+            guard newValue != storedValueFilterState else { return }
+            storedValueFilterState = newValue
+            valueFilterBinding?.wrappedValue = newValue
+        }
+    }
+    var displayIDs: [RowID]? { valueFilteredIDs }
     private(set) var columnDisplayFormats: [ValueDisplayFormat?] = []
+    private(set) var currentFindMatch: FindMatch?
     private let displayCache = RowDisplayCache()
     weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
-    weak var activeArrayEditorPopover: NSPopover?
+    weak var activeCellEditorPopover: NSPopover?
+    weak var activePoppedOutEditor: JSONViewerWindowController?
     weak var activeValueFilterPopover: NSPopover?
     var activeFKPreviewModel: FKPreviewModel?
     var activeFKPreviewColumnIndex: Int?
@@ -95,6 +108,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return resolved
     }
 
+    /// Takes an owner-driven filter change without writing it back, which a plain assignment would.
+    func adoptValueFilter(_ state: GridValueFilterState) {
+        storedValueFilterState = state
+    }
+
     func invalidateColumnIndexCache() {
         guard !columnIndexByDataIndex.isEmpty else { return }
         Self.selectionCacheLogger.debug("invalidate column index cache (had \(self.columnIndexByDataIndex.count))")
@@ -109,10 +127,18 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         identitySchema.dataIndex(from: identifier)
     }
 
+    /// Whether the result presents this column, regardless of whether the window has it mounted.
+    func presentsColumn(_ column: NSTableColumn) -> Bool {
+        columnPool.presentsColumn(column)
+    }
+
+    /// The columns the user is looking at, which is every presented column and not merely the
+    /// mounted ones. Copy, find and size-all all read this, so narrowing it to the window would
+    /// silently drop the columns off screen from a copied row or a search.
     func visibleColumnDataIndices() -> [Int]? {
         guard let tableView else { return nil }
         return tableView.tableColumns
-            .filter { !$0.isHidden && $0.identifier != ColumnIdentitySchema.rowNumberIdentifier }
+            .filter { presentsColumn($0) }
             .compactMap { dataColumnIndex(from: $0.identifier) }
     }
 
@@ -137,6 +163,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             columnLayoutPersistenceGeneration &+= 1
         }
         self.isEditable = isEditable
+        editRefusalMessage = configuration.editRefusalMessage
+        tableView?.toolTip = isEditable ? nil : configuration.editRefusalMessage
         dropdownColumns = configuration.dropdownColumns
         typePickerColumns = configuration.typePickerColumns
         customDropdownOptions = configuration.customDropdownOptions
@@ -168,33 +196,20 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return binding
     }
 
+    /// A saved width is the width the column had, accessory or not. Nothing here re-derives it from
+    /// the accessory, because the accessory no longer contributes to column width: a layout saved
+    /// while the arrow was showing and restored before it is known has to come back the same size.
     func resolvedColumnLayout(
         binding: ColumnLayoutState,
-        liveWidths: [String: CGFloat],
-        tableRows: TableRows? = nil
+        liveWidths: [String: CGFloat]
     ) -> ColumnLayoutState? {
-        let stored = savedColumnLayout(binding: binding)
-        let saved = tableRows.map { materializedColumnLayout(stored, tableRows: $0) } ?? stored
+        let saved = savedColumnLayout(binding: binding)
         guard let saved else {
             guard !liveWidths.isEmpty else { return nil }
             return ColumnLayoutState(columnWidths: liveWidths)
         }
         guard !liveWidths.isEmpty else { return saved }
         return saved.mergingWidths(liveWidths)
-    }
-
-    func materializedColumnLayout(
-        _ layout: ColumnLayoutState?,
-        tableRows: TableRows
-    ) -> ColumnLayoutState? {
-        guard var layout else { return nil }
-        for (name, reservation) in accessoryReservationsByColumnName(in: tableRows) {
-            guard let contentWidth = layout.columnContentWidths?[name] ?? layout.columnWidths[name] else {
-                continue
-            }
-            layout.columnWidths[name] = contentWidth + reservation
-        }
-        return layout
     }
 
     static func liveWidthsForSameTable(
@@ -253,38 +268,19 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         pendingColumnLayoutPersistence = nil
     }
 
-    func liveWidthsForReconciliation(
-        _ liveWidths: [String: CGFloat],
-        presentationChanges: DataGridColumnPresentationChanges,
-        columns: [String]
-    ) -> [String: CGFloat] {
-        var result = liveWidths
-        let indicesToRecalculate = shouldRecalculateAutomaticColumnWidths
-            ? IndexSet(integersIn: columns.indices)
-            : presentationChanges.indices
-        let namesToRecalculate = Set(indicesToRecalculate.compactMap { index in
-            index < columns.count ? columns[index] : nil
-        })
-
-        for name in namesToRecalculate {
-            if userSizedColumnNames.contains(name) {
-                if let width = result[name],
-                   let delta = presentationChanges.widthDelta(for: name, columns: columns) {
-                    result[name] = width + delta
-                }
-            } else {
-                result.removeValue(forKey: name)
-            }
-        }
+    /// Dropping a live width is what asks the reconcile pass to size that column from its content
+    /// again, so only an explicit auto-fit does it. A column the user sized keeps its width even
+    /// then, and no accessory change reaches here at all.
+    func liveWidthsForReconciliation(_ liveWidths: [String: CGFloat]) -> [String: CGFloat] {
+        guard shouldRecalculateAutomaticColumnWidths else { return liveWidths }
         shouldRecalculateAutomaticColumnWidths = false
-        return result
+        return liveWidths.filter { userSizedColumnNames.contains($0.key) }
     }
 
     func captureColumnLayout() -> ColumnLayoutState? {
         guard let tableView else { return nil }
         let tableRows = tableRowsProvider()
         guard !tableRows.columns.isEmpty else { return nil }
-        let reservations = accessoryReservationsByColumnName(in: tableRows)
 
         var legacyWidths: [String: CGFloat] = [:]
         var contentWidths: [String: CGFloat] = [:]
@@ -296,9 +292,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             let name = tableRows.columns[colIndex]
             order.append(name)
             if userSizedColumnNames.contains(name) {
-                let contentWidth = column.width - (reservations[name] ?? 0)
                 legacyWidths[name] = max(legacyWidths[name] ?? 0, column.width)
-                contentWidths[name] = max(contentWidths[name] ?? 0, contentWidth)
+                contentWidths[name] = max(contentWidths[name] ?? 0, column.width)
             }
         }
 
@@ -358,7 +353,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var userSizedColumnNames: Set<String> = []
     var isApplyingProgrammaticRowSelection = false
     var isRebuildingColumns: Bool = false
-    var isApplyingAutomaticColumnWidths = false
     var hasUnpersistedColumnLayoutChanges = false
     var shouldRecalculateAutomaticColumnWidths = false
     var pendingCellPresentationRefresh = false
@@ -463,9 +457,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         cachedRowCount = 0
         cachedColumnCount = 0
         invalidateColumnIndexCache()
-        sortedIDs = nil
         valueFilteredIDs = nil
-        valueFilterState.clearAll()
+        // Local only: this runs while the window is being torn down, and the filter's owner is
+        // either about to go away with it or is deliberately keeping the filter for the next mount.
+        valueFilterBinding = nil
+        adoptValueFilter(GridValueFilterState())
         lastUpdateSnapshot = nil
         columnPool.detachFromTableView()
         if let tableView {
@@ -475,10 +471,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             tableView.reloadData()
         }
         delegate = nil
+        dismissPopoversBoundToDisplayPositions()
         activeFKPreviewPopover?.close()
-        activeValueFilterPopover?.close()
-        activeValueFilterPopover = nil
-        dismissActiveArrayEditorPopover()
         clearFKPreviewState()
     }
 
@@ -505,7 +499,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             reloadAfterRowMutationWithValueFilter()
             return
         }
-        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
         updateCache()
         tableView.insertRows(at: indices, withAnimation: Self.rowAnimation(.slideDown))
     }
@@ -522,7 +516,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             reloadAfterRowMutationWithValueFilter()
             return
         }
-        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
         updateCache()
         tableView.removeRows(at: indices, withAnimation: Self.rowAnimation(.slideUp))
     }
@@ -543,6 +537,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func applyFullReplace() {
+        dismissPopoversBoundToDisplayPositions()
+        pruneStaleValueFilters()
         guard let tableView else { return }
         invalidateAllDisplayCaches()
         recomputeValueFilteredIDs()
@@ -557,7 +553,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard let tableView else { return }
         recomputeValueFilteredIDs()
         updateCache()
-        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
         tableView.reloadData()
         startBackgroundPrewarm()
     }
@@ -615,7 +611,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func invalidateAllDisplayCaches() {
         displayCache.removeAll()
-        visualIndex.rebuild(from: changeManager, sortedIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
     }
 
     @discardableResult
@@ -751,7 +747,36 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 self?.schedulePrewarmResume()
             }
         }
-        scrollObservers = [start, end]
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        let bounds = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateColumnWindow()
+            }
+        }
+        // A bounds change is scrolling; a frame change is the viewport resizing. Widening the
+        // window exposes area the window never covered, and only this fires for that.
+        scrollView.contentView.postsFrameChangedNotifications = true
+        let frame = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateColumnWindow()
+            }
+        }
+        scrollObservers = [start, end, bounds, frame]
+    }
+
+    /// Re-mounts the columns the viewport can now reach. The resolver keeps the range stable while
+    /// the viewport stays inside its margin, so most scroll frames return without touching a column.
+    func updateColumnWindow() {
+        guard let tableView, !isRebuildingColumns else { return }
+        columnPool.applyColumnWindow(in: tableView)
     }
 
     private func detachScrollObservers() {
@@ -846,7 +871,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             else { return }
             guard row >= 0, row < tableView.numberOfRows else { return }
             invalidateDisplayCache(forDisplayRow: row, column: column)
-            visualIndex.updateRow(row, from: changeManager, sortedIDs: displayIDs)
+            visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
             tableView.reloadData(
                 forRowIndexes: IndexSet(integer: row),
                 columnIndexes: IndexSet(integer: tableColumn)
@@ -866,49 +891,26 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
             guard !rowSet.isEmpty, !colSet.isEmpty else { return }
             for row in rowSet {
-                visualIndex.updateRow(row, from: changeManager, sortedIDs: displayIDs)
+                visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
             }
             tableView.reloadData(forRowIndexes: rowSet, columnIndexes: colSet)
         case .rowsInserted(let indices):
             guard !indices.isEmpty else { return }
             overlayEditor?.dismiss(commit: false)
             overlayViewer?.dismiss()
-            dismissFKPreviewOnColumnChange()
-            appendInsertedIDsToSortedIDs(at: indices)
+            dismissPopoversBoundToDisplayPositions()
             applyInsertedRows(indices)
         case .rowsRemoved(let indices):
             guard !indices.isEmpty else { return }
             overlayEditor?.dismiss(commit: false)
             overlayViewer?.dismiss()
-            dismissFKPreviewOnColumnChange()
-            removeMissingIDsFromSortedIDs()
+            dismissPopoversBoundToDisplayPositions()
             applyRemovedRows(indices)
         case .columnsReplaced, .fullReplace:
             overlayEditor?.dismiss(commit: false)
             overlayViewer?.dismiss()
-            dismissFKPreviewOnColumnChange()
-            sortedIDs = nil
             applyFullReplace()
         }
-    }
-
-    private func appendInsertedIDsToSortedIDs(at indices: IndexSet) {
-        guard sortedIDs != nil else { return }
-        let tableRows = tableRowsProvider()
-        for index in indices where index >= 0 && index < tableRows.count {
-            sortedIDs?.append(tableRows.rows[index].id)
-        }
-    }
-
-    private func removeMissingIDsFromSortedIDs() {
-        guard sortedIDs != nil else { return }
-        let tableRows = tableRowsProvider()
-        var survivingIDs = Set<RowID>()
-        survivingIDs.reserveCapacity(tableRows.count)
-        for row in tableRows.rows {
-            survivingIDs.insert(row.id)
-        }
-        sortedIDs?.removeAll { !survivingIDs.contains($0) }
     }
 
     func invalidateCachesForUndoRedo() {
@@ -981,6 +983,68 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return true
     }
 
+    var selectedDisplayRow: Int? {
+        guard let tableView, tableView.selectedRow >= 0 else { return nil }
+        return tableView.selectedRow
+    }
+
+    func runFind(term: String) -> [FindMatch] {
+        let tableRows = tableRowsProvider()
+        let displayCount = displayIDs?.count ?? tableRows.count
+        let columnTypes = tableRows.columnTypes
+        let visible = visibleColumnDataIndices().map(Set.init)
+
+        return FindMatcher.matches(
+            term: term,
+            displayRowCount: displayCount,
+            columnCount: tableRows.columns.count,
+            isColumnSearchable: { column in
+                guard visible?.contains(column) ?? true else { return false }
+                guard column < columnTypes.count else { return true }
+                return FindMatcher.isSearchable(columnTypes[column])
+            },
+            cellText: { [weak self] displayIndex, column in
+                guard let self,
+                      let row = displayRow(at: displayIndex, in: tableRows),
+                      column < row.values.count
+                else { return nil }
+                let rawValue = row.values[column]
+                guard rawValue.asText != nil else { return nil }
+                return displayValue(
+                    forID: row.id,
+                    column: column,
+                    rawValue: rawValue,
+                    columnType: column < columnTypes.count ? columnTypes[column] : nil
+                )
+            }
+        )
+    }
+
+    func applyFindMatch(_ match: FindMatch?) {
+        let previous = currentFindMatch
+        guard previous != match else { return }
+        currentFindMatch = match
+
+        guard let tableView else { return }
+        let affected = IndexSet([previous?.displayRow, match?.displayRow]
+            .compactMap(\.self)
+            .filter { $0 >= 0 && $0 < tableView.numberOfRows })
+        if !affected.isEmpty {
+            tableView.reloadData(
+                forRowIndexes: affected,
+                columnIndexes: IndexSet(integersIn: 0 ..< tableView.numberOfColumns)
+            )
+        }
+
+        guard let match, match.displayRow >= 0, match.displayRow < tableView.numberOfRows else { return }
+        tableView.scrollRowToVisible(match.displayRow)
+        if let displayColumn = tableColumnIndex(for: match.columnIndex),
+           displayColumn < tableView.numberOfColumns {
+            tableView.scrollColumnToVisible(displayColumn)
+        }
+        tableView.selectRowIndexes(IndexSet(integer: match.displayRow), byExtendingSelection: false)
+    }
+
     func beginEditing(displayRow: Int, column: Int) {
         guard let tableView,
               let displayCol = tableColumnIndex(for: column)
@@ -1002,8 +1066,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         rebuildKindSets(from: tableRows)
         let presentationChanges = updateColumnPresentations(from: tableRows)
         guard !presentationChanges.isEmpty else { return }
-
-        applyPresentationWidthChanges(presentationChanges, tableRows: tableRows)
 
         let changedTableColumnIndices = IndexSet(presentationChanges.indices.compactMap { dataIndex in
             guard let identifier = identitySchema.identifier(for: dataIndex) else { return nil }
@@ -1063,7 +1125,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     @discardableResult
     func updateColumnPresentations(from tableRows: TableRows) -> DataGridColumnPresentationChanges {
-        let previousReservations = maximumAccessoryReservations(in: columnPresentations)
         var next: [DataGridColumnPresentationIdentity: DataGridColumnPresentation] = [:]
         next.reserveCapacity(tableRows.columns.count)
         var changes = DataGridColumnPresentationChanges()
@@ -1075,123 +1136,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             let identity = DataGridColumnPresentationIdentity(name: name, occurrence: occurrence)
             let presentation = columnPresentation(for: index, in: tableRows)
             next[identity] = presentation
-            let previous = columnPresentations[identity]
-            if previous != presentation {
+            if columnPresentations[identity] != presentation {
                 changes.indices.insert(index)
-                changes.widthDeltas[index] = presentation.accessory.columnWidthReservation
-                    - (previous?.accessory.columnWidthReservation ?? 0)
             }
         }
 
-        let nextReservations = maximumAccessoryReservations(in: next)
-        for name in Set(previousReservations.keys).union(nextReservations.keys)
-        where nextReservations[name] != nil && previousReservations[name] != nextReservations[name] {
-            for index in tableRows.columns.indices where tableRows.columns[index] == name {
-                changes.indices.insert(index)
-            }
-        }
-        let changedNames = Set(changes.indices.compactMap { index in
-            index < tableRows.columns.count ? tableRows.columns[index] : nil
-        })
-        for name in changedNames {
-            changes.widthDeltasByName[name] = (nextReservations[name] ?? 0)
-                - (previousReservations[name] ?? 0)
-        }
         columnPresentations = next
         return changes
-    }
-
-    func applyPresentationWidthChanges(
-        _ changes: DataGridColumnPresentationChanges,
-        tableRows: TableRows
-    ) {
-        guard let tableView else { return }
-        isApplyingAutomaticColumnWidths = true
-        defer { isApplyingAutomaticColumnWidths = false }
-        var adjustedUserSizedNames = Set<String>()
-
-        for dataIndex in changes.indices {
-            guard dataIndex < tableRows.columns.count else { continue }
-            let name = tableRows.columns[dataIndex]
-            if userSizedColumnNames.contains(name) {
-                guard adjustedUserSizedNames.insert(name).inserted,
-                      let delta = changes.widthDelta(for: name, columns: tableRows.columns)
-                else { continue }
-                for matchingIndex in tableRows.columns.indices where tableRows.columns[matchingIndex] == name {
-                    guard let identifier = identitySchema.identifier(for: matchingIndex) else { continue }
-                    let tableColumnIndex = tableView.column(withIdentifier: identifier)
-                    guard tableColumnIndex >= 0 else { continue }
-                    tableView.tableColumns[tableColumnIndex].width += delta
-                }
-            } else {
-                guard let identifier = identitySchema.identifier(for: dataIndex) else { continue }
-                let tableColumnIndex = tableView.column(withIdentifier: identifier)
-                guard tableColumnIndex >= 0 else { continue }
-                let column = tableView.tableColumns[tableColumnIndex]
-                let presentation = columnPresentation(for: dataIndex, in: tableRows)
-                column.width = cellFactory.calculateOptimalColumnWidth(
-                    for: name,
-                    columnIndex: dataIndex,
-                    tableRows: tableRows,
-                    accessory: presentation.accessory,
-                    displayFormat: dataIndex < columnDisplayFormats.count
-                        ? columnDisplayFormats[dataIndex]
-                        : nil,
-                    databaseType: databaseType,
-                    isLargeDataset: isLargeDataset,
-                    nullDisplayString: cellRegistry.nullDisplayString
-                )
-            }
-        }
-        refreshPendingLayoutAfterPresentationChanges(changes, tableRows: tableRows)
-    }
-
-    private func accessoryReservationsByColumnName(in tableRows: TableRows) -> [String: CGFloat] {
-        var reservations: [String: CGFloat] = [:]
-        for (index, name) in tableRows.columns.enumerated() {
-            let reservation = columnPresentation(for: index, in: tableRows).accessory.columnWidthReservation
-            reservations[name] = max(reservations[name] ?? 0, reservation)
-        }
-        return reservations
-    }
-
-    private func maximumAccessoryReservations(
-        in presentations: [DataGridColumnPresentationIdentity: DataGridColumnPresentation]
-    ) -> [String: CGFloat] {
-        var reservations: [String: CGFloat] = [:]
-        for (identity, presentation) in presentations {
-            reservations[identity.name] = max(
-                reservations[identity.name] ?? 0,
-                presentation.accessory.columnWidthReservation
-            )
-        }
-        return reservations
-    }
-
-    func refreshPendingLayoutAfterPresentationChanges(
-        _ changes: DataGridColumnPresentationChanges,
-        tableRows: TableRows
-    ) {
-        let hasChangedUserSizedName = changes.indices.contains { index in
-            guard index < tableRows.columns.count else { return false }
-            let name = tableRows.columns[index]
-            guard userSizedColumnNames.contains(name),
-                  let delta = changes.widthDelta(for: name, columns: tableRows.columns),
-                  delta != 0
-            else { return false }
-            return true
-        }
-        guard hasChangedUserSizedName else { return }
-        guard let pendingColumnLayoutPersistence else {
-            scheduleLayoutPersist()
-            return
-        }
-        guard let layout = captureColumnLayout() else { return }
-        self.pendingColumnLayoutPersistence = PendingColumnLayoutPersistence(
-            layout: layout,
-            tableKey: pendingColumnLayoutPersistence.tableKey,
-            writesToTableStorage: pendingColumnLayoutPersistence.writesToTableStorage
-        )
     }
 
     private func rebuildKindSets(from tableRows: TableRows) {

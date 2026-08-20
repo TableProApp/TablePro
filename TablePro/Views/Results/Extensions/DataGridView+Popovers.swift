@@ -121,7 +121,8 @@ extension TableViewCoordinator {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
             contentSize: NSSize(width: 560, height: 420)
@@ -135,7 +136,7 @@ extension TableViewCoordinator {
                 onDismiss: dismiss,
                 onPopOut: { currentText in
                     dismiss()
-                    JSONViewerWindowController.open(
+                    self?.activePoppedOutEditor = JSONViewerWindowController.open(
                         text: currentText,
                         columnName: columnName,
                         isEditable: true,
@@ -154,7 +155,8 @@ extension TableViewCoordinator {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
             contentSize: NSSize(width: 520, height: 400)
@@ -178,13 +180,14 @@ extension TableViewCoordinator {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
         let columnType = tableRows.columnTypes[columnIndex]
-        let parsed = DateEditingService.parse(cellValue(at: row, column: columnIndex))
+        let parsed = DatabaseDateParser.parse(cellValue(at: row, column: columnIndex))
         let initialDate = parsed?.date ?? Date()
-        let timeZone = parsed?.timeZone ?? .gmt
+        let timeZone = parsed?.timeZone ?? DateEditingService.defaultTimeZone
         let components = DateEditingService.components(for: columnType)
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView
         ) { [weak self] dismiss in
@@ -267,7 +270,8 @@ extension TableViewCoordinator {
         let isNullable = tableRows.columnNullable[columnName] ?? true
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
 
-        activeArrayEditorPopover = PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
             behavior: .applicationDefined
@@ -279,18 +283,29 @@ extension TableViewCoordinator {
                 onCommit: { newValue in
                     self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
-                onDismiss: {
-                    dismiss()
-                    self?.activeArrayEditorPopover = nil
-                }
+                onDismiss: dismiss
             )
         }
     }
 
-    func dismissActiveArrayEditorPopover() {
-        guard let popover = activeArrayEditorPopover else { return }
-        activeArrayEditorPopover = nil
+    /// Only one cell editor popover is open at a time, and the outgoing one is closed before the
+    /// next is presented rather than after. An `.applicationDefined` popover such as the array
+    /// editor stays on screen until something closes it, so forgetting it would strand an editor
+    /// nothing can dismiss, and closing it once the replacement is already up takes first responder
+    /// back off the editor that just opened.
+    func dismissActiveCellEditorPopover() {
+        guard let popover = activeCellEditorPopover else { return }
+        activeCellEditorPopover = nil
         popover.close()
+    }
+
+    /// The popped-out JSON editor is a window rather than a popover, so it survives everything that
+    /// closes a popover while still committing through the display row it was opened from. Only a
+    /// replaced row set invalidates it, never the user opening a different cell's editor.
+    func dismissPoppedOutCellEditor() {
+        guard let editor = activePoppedOutEditor else { return }
+        activePoppedOutEditor = nil
+        editor.close()
     }
 
     func showDropdownMenu(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {

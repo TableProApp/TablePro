@@ -416,11 +416,13 @@ final class DatabaseTreeMetadataService {
 
     func handleReconnect(connectionId: UUID) async {
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
+        SchemaForeignKeyStore.shared.invalidate(connectionId: connectionId)
         await resetPending(connectionId: connectionId)
     }
 
     func handleDisconnect(connectionId: UUID) async {
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
+        SchemaForeignKeyStore.shared.invalidate(connectionId: connectionId)
         let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }
         let objectKeys = Self.connectionObjectKeys(
             tableKeys: tablesState.keys, routineKeys: routinesState.keys, connectionId: connectionId

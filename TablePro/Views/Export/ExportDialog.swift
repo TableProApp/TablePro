@@ -23,6 +23,7 @@ struct ExportDialog: View {
     @State private var databaseItems: [ExportDatabaseItem] = []
     @State private var isLoading = true
     @State private var isExporting = false
+    @State private var exportStartedAt: ContinuousClock.Instant?
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var exportedFileURL: URL?
@@ -473,6 +474,25 @@ struct ExportDialog: View {
         exportSucceeded = true
         TransferDialogStorage.shared.saveLastExportFormatId(config.formatId)
         settingsSnapshot = nil
+        reportExportFinished(.succeeded(OperationSummary(fileURL: exportedFileURL)))
+    }
+
+    /// Both export entry points converge here, so the completion is reported once whichever route
+    /// ran. Cancellation is caught separately by each and deliberately reports nothing.
+    private func reportExportFinished(_ outcome: OperationOutcome) {
+        guard let startedAt = exportStartedAt else { return }
+        exportStartedAt = nil
+        OperationCompletionReporter.shared.report(
+            OperationCompletion(
+                kind: .dataExport,
+                owner: .connection(connection.id),
+                connectionId: connection.id,
+                connectionName: connection.name,
+                databaseName: exportScope?.database,
+                elapsed: startedAt.duration(to: .now),
+                outcome: outcome
+            )
+        )
     }
 
     /// Instantly populate the current database from sidebar tables (no network).
@@ -482,6 +502,10 @@ struct ExportDialog: View {
     /// on the engines that group by schema, which is a different container.
     private func populateFromSidebarTables() {
         guard !sidebarTables.isEmpty else { return }
+        /// These rows are the sidebar's, so they belong to the database being browsed. When the
+        /// dialog is scoped somewhere else they are the wrong tables under the right name, and a
+        /// failed load would leave them on screen looking like that database's contents.
+        guard preselection.scopedDatabase == nil else { return }
         let dbName = connection.database
         let tableItems = sidebarTables.map { table in
             ExportTableItem(
@@ -490,7 +514,7 @@ struct ExportDialog: View {
                 type: table.type,
                 isSelected: preselection.selects(
                     table: table.name,
-                    inContainer: dbName,
+                    inContainer: .database(dbName),
                     isCurrentContainer: true
                 )
             )
@@ -536,7 +560,7 @@ struct ExportDialog: View {
             let grouping = PluginManager.shared.databaseGroupingStrategy(for: dbType)
             switch grouping {
             case .bySchema, .hierarchicalSchema:
-                let schemas = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                let schemas = try await withExportDriver { driver in
                     try await driver.fetchSchemas()
                 }
                 let defaultSchema = PluginManager.shared.defaultSchemaName(for: dbType)
@@ -548,7 +572,7 @@ struct ExportDialog: View {
                         let selected = priorRow?.isSelected
                             ?? preselection.selects(
                                 table: table.name,
-                                inContainer: schema,
+                                inContainer: .schema(database: exportDatabaseName, schema: schema),
                                 isCurrentContainer: isDefaultSchema
                             )
                         return ExportTableItem(
@@ -580,7 +604,7 @@ struct ExportDialog: View {
                 )
                 if let dbItem { items.append(dbItem) }
             case .byDatabase:
-                let databases = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                let databases = try await withExportDriver { driver in
                     try await driver.fetchDatabases()
                 }
                 let tablesByDatabase = try await fetchTablesGroupedByDatabase()
@@ -592,7 +616,7 @@ struct ExportDialog: View {
                         let selected = priorRow?.isSelected
                             ?? preselection.selects(
                                 table: table.name,
-                                inContainer: dbName,
+                                inContainer: .database(dbName),
                                 isCurrentContainer: isCurrentDB
                             )
                         return ExportTableItem(
@@ -645,7 +669,7 @@ struct ExportDialog: View {
         name: String,
         priorRows: [String: ExportRowSnapshot] = [:]
     ) async throws -> ExportDatabaseItem? {
-        let tables = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        let tables = try await withExportDriver { driver in
             try await driver.fetchTables()
         }
         let tableItems = tables.map { table in
@@ -656,7 +680,7 @@ struct ExportDialog: View {
                 type: table.type,
                 isSelected: priorRow?.isSelected ?? preselection.selects(
                     table: table.name,
-                    inContainer: name,
+                    inContainer: .database(name),
                     isCurrentContainer: true
                 ),
                 optionValues: priorRow?.optionValues ?? []
@@ -667,7 +691,7 @@ struct ExportDialog: View {
     }
 
     private func fetchTablesForSchema(_ schema: String) async throws -> [TableInfo] {
-        try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        try await withExportDriver { driver in
             try await driver.fetchTables(schema: schema)
         }
     }
@@ -677,7 +701,7 @@ struct ExportDialog: View {
     /// database the user can list but not open becomes an empty group instead of an error
     /// that fails the whole dialog.
     private func fetchTablesGroupedByDatabase() async throws -> [String: [TableInfo]] {
-        try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        try await withExportDriver { driver in
             let query = """
                 SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
                 FROM information_schema.TABLES
@@ -745,7 +769,25 @@ struct ExportDialog: View {
         DatabaseManager.shared.resolvedScope(database: connection.database, schema: nil, for: connection.id)
     }
 
+    /// The name of that database, for the container refs the preselection is matched against.
+    private var exportDatabaseName: String {
+        exportScope?.database ?? connection.database
+    }
+
+    /// Every list in this dialog reads from the database it will export from, not from wherever
+    /// the sidebar happens to be browsing. Those were the same connection until a container in
+    /// another database could be exported, and then the dialog listed one database's schemas while
+    /// `exportScope` pointed at another.
+    private func withExportDriver<T: Sendable>(
+        workload: MetadataConnectionPool.Workload = .bulk,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        guard let scope = exportScope else { throw ExportError.notConnected }
+        return try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: workload, body)
+    }
+
     private func showExportError(_ error: Error) {
+        reportExportFinished(.failed(reason: error.localizedDescription))
         AlertHelper.showErrorSheet(
             title: String(localized: "Export Error"),
             message: error.localizedDescription,
@@ -762,6 +804,7 @@ struct ExportDialog: View {
         let route = DatabaseManager.shared.executionRoute(for: scope)
 
         isExporting = true
+        exportStartedAt = .now
         exportedFileURL = url
         showProgressDialog = true
 
@@ -814,6 +857,7 @@ struct ExportDialog: View {
     @MainActor
     private func startQueryResultsExport(to url: URL) async {
         isExporting = true
+        exportStartedAt = .now
         exportedFileURL = url
         showProgressDialog = true
 
@@ -837,6 +881,7 @@ struct ExportDialog: View {
             default:
                 showProgressDialog = false
                 isExporting = false
+                exportStartedAt = nil
                 return
             }
 

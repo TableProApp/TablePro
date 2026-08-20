@@ -68,4 +68,8 @@ extension MainSplitViewController {
     @objc func showUsersAndRoles(_ sender: Any?) {
         commandActions?.showUsersAndRoles()
     }
+
+    @objc func showQueryInsights(_ sender: Any?) {
+        commandActions?.showQueryInsights()
+    }
 }

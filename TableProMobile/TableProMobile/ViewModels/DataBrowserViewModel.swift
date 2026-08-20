@@ -321,7 +321,12 @@ final class DataBrowserViewModel {
         guard let session, let table, !pkValues.isEmpty else { return false }
         do {
             _ = try await session.driver.execute(
-                query: SQLBuilder.buildDelete(table: table.name, type: databaseType, primaryKeys: pkValues)
+                query: SQLBuilder.buildDelete(
+                    table: table.name,
+                    type: databaseType,
+                    driver: session.driver,
+                    primaryKeys: pkValues
+                )
             )
             await load()
             return true
@@ -348,7 +353,7 @@ final class DataBrowserViewModel {
 
     func loadFullValue(driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType) async throws -> String? {
         let predicates = ref.primaryKey.map { component in
-            "\(SQLBuilder.quoteIdentifier(component.column, for: databaseType)) = '\(component.value.replacingOccurrences(of: "'", with: "''"))'"
+            "\(SQLBuilder.quoteIdentifier(component.column, for: databaseType)) = '\(driver.escapeStringLiteral(component.value))'"
         }
         let predicate = predicates.joined(separator: " AND ")
         let column = SQLBuilder.quoteIdentifier(ref.column, for: databaseType)

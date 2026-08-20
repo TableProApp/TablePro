@@ -40,7 +40,7 @@ final class PaginationCoordinator {
     }
 
     func goToPage(_ page: Int) {
-        paginateIfPossible(where: { $0.isLastPageKnown && page > 0 && page <= $0.totalPages }) { $0.goToPage(page) }
+        paginateIfPossible(where: { $0.hasRowCountTotal && page > 0 }) { $0.goToPage(page) }
     }
 
     func updatePageSize(_ newSize: Int) {
@@ -48,8 +48,15 @@ final class PaginationCoordinator {
         paginateIfPossible { $0.updatePageSize(newSize) }
     }
 
+    /// Only ever sized from a real count.
+    ///
+    /// It used to accept the driver's estimate, so a table MySQL guessed at 420,000 rows loaded
+    /// `LIMIT 420000` and silently dropped the rest while the bar reported the page as complete.
+    /// `Count Exactly` in the status bar is the route to an exact total, and it sits next to the
+    /// estimate that makes this unavailable.
     func showAllRows() {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
+              tab.pagination.hasExactRowCount,
               let total = tab.pagination.totalRowCount, total > 0 else { return }
 
         let tabId = tab.id
@@ -131,14 +138,15 @@ final class PaginationCoordinator {
     func cancelCurrentQuery() {
         parent.cancelInFlightQueryTask()
         parent.cancelAllRowCountTasks()
-        parent.tabExecution.invalidateAll()
+        parent.releaseAllExactCounts()
+        parent.reportEndedExecutions(parent.tabExecution.invalidateAll(reason: .cancelledByUser))
         parent.toolbarState.setExecuting(false)
-        for idx in parent.tabManager.tabs.indices
-            where parent.tabManager.tabs[idx].pagination.isLoadingMore
-                || parent.tabManager.tabs[idx].pagination.isCountingExact {
+        for idx in parent.tabManager.tabs.indices where parent.tabManager.tabs[idx].pagination.isBusy {
             parent.tabManager.mutate(at: idx) { tab in
                 tab.pagination.isLoadingMore = false
                 tab.pagination.isCountingExact = false
+                tab.pagination.isCountPending = false
+                tab.pagination.isLoading = false
             }
         }
     }
@@ -163,10 +171,17 @@ final class PaginationCoordinator {
             columns: buffer.columns, columnTypes: buffer.columnTypes
         )
 
-        parent.tabManager.mutate(at: index) { $0.pagination.isCountingExact = true }
+        /// Taking the task slot supersedes whatever automatic count held it, so this claims that
+        /// count's flag too. Leaving it set would strand it: the superseded task's completion finds
+        /// the token changed and correctly declines to clear a successor's state.
+        parent.tabManager.mutate(at: index) { tab in
+            tab.pagination.isCountingExact = true
+            tab.pagination.isCountPending = false
+        }
 
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let token = UUID()
+        parent.claimExactCount(for: tabId, token: token)
         let task = Task(priority: .userInitiated) { [parent] in
             let count = await Self.exactRowCount(
                 scope: scope,
@@ -176,12 +191,20 @@ final class PaginationCoordinator {
                 countSQL: countSQL
             )
 
-            guard !Task.isCancelled else { return }
-            guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
+            /// The flag says a count is running, so it has to clear on every way out. Returning
+            /// early on cancellation left it set, and a page turn cancels this task, so turning a
+            /// page during a long COUNT(*) used to leave a spinner that never stopped and a
+            /// `Count Exactly` that never came back for that tab.
+            let isCurrent = !Task.isCancelled && parent.tabExecution.isSameContent(contentEpoch, for: tabId)
+            /// Cancelling through `Cmd+.` clears the flag and lets a second count start, so a late
+            /// first task would otherwise stop the second one's spinner while its query still runs.
+            let ownsIndicator = parent.releaseExactCount(for: tabId, token: token)
             parent.clearRowCountTask(for: tabId, token: token)
             parent.tabManager.mutate(tabId: tabId) { tab in
-                tab.pagination.isCountingExact = false
-                guard let count, count >= 0 else { return }
+                if ownsIndicator {
+                    tab.pagination.isCountingExact = false
+                }
+                guard isCurrent, let count, count >= 0 else { return }
                 tab.pagination.totalRowCount = count
                 tab.pagination.isApproximateRowCount = false
             }
@@ -252,11 +275,16 @@ final class PaginationCoordinator {
 
     /// Only the driver work runs inside the lease. Applying the rows to the tab stays
     /// outside it, because the connection's driver gate is not reentrant.
+    ///
+    /// The rows belong to the result the fetch was started on. A result switch leaves the content
+    /// epoch alone, so the fetch is fenced on the result set as well, or the full row set lands on
+    /// whichever result is showing when it arrives, normalized to that result's column count.
     private func performFetchAll(tabId: UUID, baseQuery: String, scope: DatabaseScope) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         guard !parent.tabManager.tabs[idx].pagination.isLoadingMore else { return }
 
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
+        let resultSetId = parent.tabManager.tabs[idx].display.activeResultSetId
         let storedParamValues = parent.tabManager.tabs[idx].pagination.baseQueryParameterValues
 
         parent.tabManager.mutate(at: idx) { $0.pagination.isLoadingMore = true }
@@ -264,6 +292,7 @@ final class PaginationCoordinator {
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
 
+        let startedAt = ContinuousClock.Instant.now
         let fetchAllTask = Task { [weak self, parent] in
             guard let self, !parent.isTearingDown else { return }
 
@@ -285,11 +314,26 @@ final class PaginationCoordinator {
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")
 
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else {
+                    /// Every other exit from this function clears the flag, and this one used to
+                    /// bare return, so a fetch-all cancelled after its rows had already arrived
+                    /// left the tab showing "Loading..." for good with Fetch All hidden, healed
+                    /// only by re-running the query. Deterministic on any driver whose
+                    /// `cancelQuery()` is the PluginKit no-op default, because the fetch always
+                    /// runs to completion there and returns straight into this guard.
+                    await MainActor.run { [weak self] in
+                        self?.parent.tabManager.mutate(tabId: tabId) { tab in
+                            tab.pagination.isLoadingMore = false
+                        }
+                    }
+                    return
+                }
 
                 await MainActor.run { [weak self] in
                     guard let self, !parent.isTearingDown else { return }
-                    guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else {
+                    let stillSameResult = parent.tabManager.tabs
+                        .contains { $0.id == tabId && $0.display.activeResultSetId == resultSetId }
+                    guard parent.tabExecution.isSameContent(contentEpoch, for: tabId), stillSameResult else {
                         parent.tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
                         parent.retireQueryTask(for: nil)
                         return
@@ -314,6 +358,13 @@ final class PaginationCoordinator {
 
                     let totalTime = CFAbsoluteTimeGetCurrent() - start
                     progressLog.info("[fetchAll] DONE rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s totalTime=\(String(format: "%.3f", totalTime))s")
+                    parent.reportOperation(
+                        kind: .fetchAll,
+                        tabId: tabId,
+                        startedAt: startedAt,
+                        databaseName: parent.operationDatabaseName(tabId: tabId),
+                        outcome: .succeeded(OperationSummary(rowsReturned: result.rows.count))
+                    )
                 }
             } catch {
                 await MainActor.run { [weak self] in
@@ -327,6 +378,14 @@ final class PaginationCoordinator {
                     }
                     parent.retireQueryTask(for: nil)
                     MainContentCoordinator.logger.error("Fetch all failed: \(error.localizedDescription, privacy: .public)")
+                    guard !isStale, !isCancelled else { return }
+                    parent.reportOperation(
+                        kind: .fetchAll,
+                        tabId: tabId,
+                        startedAt: startedAt,
+                        databaseName: parent.operationDatabaseName(tabId: tabId),
+                        outcome: .failed(reason: error.localizedDescription)
+                    )
                 }
             }
         }

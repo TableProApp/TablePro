@@ -127,6 +127,7 @@ final class ImportService {
 
         let result: PluginImportResult
         let startedAt = Date()
+        let operationStart = ContinuousClock.Instant.now
         do {
             result = try await plugin.performImport(
                 source: source,
@@ -154,6 +155,9 @@ final class ImportService {
                 )
             )
 
+            reportImportFinished(
+                .failed(reason: error.localizedDescription), connection: connection, startedAt: operationStart
+            )
             throw error
         }
 
@@ -175,6 +179,32 @@ final class ImportService {
             )
         )
 
+        reportImportFinished(
+            .succeeded(OperationSummary(statementCount: result.executedStatements)),
+            connection: connection,
+            startedAt: operationStart
+        )
+
         return result
+    }
+
+    /// An import the user cancelled reports nothing, matching what history already does with one
+    /// and for the same reason: they stopped it, so they know.
+    private func reportImportFinished(
+        _ outcome: OperationOutcome,
+        connection: DatabaseConnection,
+        startedAt: ContinuousClock.Instant
+    ) {
+        OperationCompletionReporter.shared.report(
+            OperationCompletion(
+                kind: .dataImport,
+                owner: .connection(connection.id),
+                connectionId: connection.id,
+                connectionName: connection.name,
+                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                elapsed: startedAt.duration(to: .now),
+                outcome: outcome
+            )
+        )
     }
 }

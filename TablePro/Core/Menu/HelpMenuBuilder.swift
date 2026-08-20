@@ -38,6 +38,11 @@ enum HelpMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "Report an Issue"),
                 action: #selector(AppDelegate.reportAnIssue(_:))
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Acknowledgements"),
+                action: #selector(AppDelegate.showAcknowledgements(_:))
             )
         ])
     }

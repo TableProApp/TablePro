@@ -59,6 +59,11 @@ actor LineFoldCalculator {
     private func buildFoldsForDocument() async {
         guard let controller = self.controller, let foldProvider = self.foldProvider else { return }
         let documentRange = await controller.textView.documentRange
+        let sizeLimit = await controller.configuration.peripherals.foldingSizeLimit
+        guard documentRange.length <= sizeLimit else {
+            valueStreamContinuation.yield(LineFoldStorage(documentLength: documentRange.length))
+            return
+        }
         var foldCache: [LineFoldStorage.RawFold] = []
         // Depth: Open range
         var openFolds: [Int: LineFoldStorage.RawFold] = [:]
@@ -165,7 +170,6 @@ actor LineFoldCalculator {
         mutating func next() -> [LineFoldProviderLineInfo]? {
             var results: [LineFoldProviderLineInfo] = []
             var count = 0
-            var previousDepth: Int = previousDepth
             while count < 50, let linePosition = textIterator.next() {
                 let foldInfo = foldProvider.foldLevelAtLine(
                     lineNumber: linePosition.index,

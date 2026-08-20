@@ -287,14 +287,20 @@ internal final class WorkspaceRailViewController: NSViewController {
 
     /// Close means the connection highlighted here while the strip holds the keyboard.
     ///
-    /// The selector is the window's, deliberately: a close command reaching the responder chain
-    /// finds this implementation before `MainSplitViewController`'s whenever the strip is focused,
-    /// which is the same mechanism that gives Cut and Copy a different meaning in each view. The
-    /// window used to ask whether the strip had focus and branch on the answer, which is this rule
-    /// written out by hand.
+    /// The selector is the window's, deliberately: `performClose:` reaching the responder chain
+    /// finds this implementation before the window's whenever the strip is focused, which is the
+    /// same mechanism that gives Cut and Copy a different meaning in each view. The window used to
+    /// ask whether the strip had focus and branch on the answer, which is this rule written out by
+    /// hand.
     @objc
-    internal func closeEditorTab(_ sender: Any?) {
-        guard let workspace = appliedSelection else { return }
+    internal func performClose(_ sender: Any?) {
+        guard let workspace = appliedSelection else {
+            /// Nothing highlighted means the strip has no connection to close, not that Close does
+            /// nothing: swallowing it here would leave the command dead in a window that has tabs,
+            /// which is the failure this whole route exists to prevent.
+            view.window?.performClose(sender)
+            return
+        }
         close(connectionId: workspace.connectionId)
     }
 
@@ -375,16 +381,13 @@ internal final class WorkspaceRailViewController: NSViewController {
         applySelection()
     }
 
+    /// Both halves of going to a workspace: the object tree moves to its container, and the window
+    /// lands on the work that container already holds. They run in one place, in that order,
+    /// because the switch is asynchronous and a second trigger would select a tab against a cursor
+    /// that had not moved yet.
     private func moveBrowseCursor(of window: NSWindow, to workspace: WorkspaceID) {
         guard !workspace.container.isEmpty else {
             Self.logger.debug("moveBrowseCursor skipped: unnamed container")
-            return
-        }
-        let current = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
-        guard current != workspace else {
-            Self.logger.debug(
-                "moveBrowseCursor skipped: already at \(Self.describe(workspace), privacy: .public)"
-            )
             return
         }
         /// Resolved by connection through the window that hosts it, never by window alone.
@@ -401,6 +404,14 @@ internal final class WorkspaceRailViewController: NSViewController {
             )
             return
         }
+        let current = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
+        guard current != workspace else {
+            Self.logger.debug(
+                "moveBrowseCursor skipped: already at \(Self.describe(workspace), privacy: .public)"
+            )
+            coordinator.selectTab(inContainer: workspace.container)
+            return
+        }
         Self.logger.info(
             """
             moveBrowseCursor from=\(current.map(Self.describe) ?? "none", privacy: .public) \
@@ -412,6 +423,10 @@ internal final class WorkspaceRailViewController: NSViewController {
             let landed = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
             if landed == workspace {
                 Self.logger.info("moveBrowseCursor landed \(Self.describe(workspace), privacy: .public)")
+                /// Only once the cursor is really there. A failed switch has already told the user
+                /// why, and selecting that container's tab on top of it would leave the window
+                /// showing one database while the tree lists another.
+                coordinator.selectTab(inContainer: workspace.container)
             } else {
                 Self.logger.error(
                     """
@@ -487,14 +502,18 @@ internal final class WorkspaceRailViewController: NSViewController {
     }
 }
 
-// MARK: - NSMenuItemValidation
+// MARK: - CloseCommandNaming
 
-extension WorkspaceRailViewController: NSMenuItemValidation {
-    /// A responder that claims an action also owns whether it applies. Without this AppKit enables
-    /// the item on the strip's behalf even when no row is highlighted.
-    internal func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        guard menuItem.action == #selector(closeEditorTab(_:)) else { return true }
-        return appliedSelection != nil
+extension WorkspaceRailViewController: CloseCommandNaming {
+    /// The strip's own contextual menu names the connection it would close, and the menu bar has to
+    /// agree with it: the command is the same one.
+    /// nil while nothing is highlighted, so the resolver falls back to the window, which is where
+    /// the command goes in that state too.
+    internal var closeCommandTitle: String? {
+        guard let workspace = appliedSelection,
+              let entry = entries.first(where: { $0.workspace == workspace })
+        else { return nil }
+        return String(format: String(localized: "Close “%@”"), entry.connection.name)
     }
 }
 

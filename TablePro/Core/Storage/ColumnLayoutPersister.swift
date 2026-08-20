@@ -67,7 +67,10 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         )
         entry.columnWidths = layout.columnWidths
         entry.columnContentWidths = layout.columnContentWidths
-        entry.columnOrder = layout.columnOrder
+        entry.columnOrder = ColumnLayoutState.mergedColumnOrder(
+            current: entry.columnOrder,
+            incoming: layout.columnOrder
+        )
         entries[key.storageKey] = entry
         cache[key.connectionId] = entries
         writeEntries(entries, for: key.connectionId)

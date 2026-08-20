@@ -28,6 +28,7 @@ struct DatabaseTreeMenuSpecTests {
         favoriteDatabaseEnvironment: FavoriteDatabaseEnvironment? = nil,
         activeDatabase: String? = "app",
         activeSchema: String? = "public",
+        canReachOtherDatabases: Bool = true,
         canFilterDatabases: Bool = false,
         hasDatabaseFilter: Bool = false
     ) -> DatabaseTreeMenuContext {
@@ -37,6 +38,7 @@ struct DatabaseTreeMenuSpecTests {
             selectedContainers: selectedContainers,
             activeDatabase: activeDatabase,
             activeSchema: activeSchema,
+            canReachOtherDatabases: canReachOtherDatabases,
             systemSchemas: ["information_schema"],
             isReadOnly: isReadOnly,
             supportsImport: false,
@@ -130,6 +132,29 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(issued.contains(.refreshContainerObjectKind(group)))
         #expect(!issued.contains(.refreshObjectKind(.view)))
+    }
+
+    /// Export scopes the dialog to the database it was asked about, so a database other than the
+    /// active one is offered wherever a second connection can reach it, and withheld where it
+    /// cannot rather than opening a dialog listing something else.
+    @Test("Exporting another database is offered only where the dialog can reach it")
+    func exportOfferedOnlyWhereReachable() {
+        let target = DatabaseContainerRef.database("analytics")
+        let reachable = commands(DatabaseTreeMenuSpec.items(for: context(
+            clicked: .database(DatabaseMetadata.minimal(name: "analytics")),
+            selectedContainers: [target],
+            activeDatabase: "app",
+            canReachOtherDatabases: true
+        )))
+        let unreachable = commands(DatabaseTreeMenuSpec.items(for: context(
+            clicked: .database(DatabaseMetadata.minimal(name: "analytics")),
+            selectedContainers: [target],
+            activeDatabase: "app",
+            canReachOtherDatabases: false
+        )))
+
+        #expect(reachable.contains(.exportContainers([target])))
+        #expect(!unreachable.contains(.exportContainers([target])))
     }
 
     @Test("The database filter is offered only where a database list exists")

@@ -37,12 +37,37 @@ final class SingleWindowMenuContractUITests: UITestCase {
     func testFileMenuOffersTheEditorTabCommands() throws {
         let app = try launchAppShowingAWindow()
 
-        for title in ["New Tab", "Close Tab"] {
-            XCTAssertTrue(
-                app.menuBars.menuItems[title].waitForExistence(timeout: 5),
-                "File menu must offer \(title), which now acts on the editor tab list"
-            )
-        }
+        XCTAssertTrue(
+            app.menuBars.menuItems["New Tab"].waitForExistence(timeout: 5),
+            "File menu must offer New Tab, which now acts on the editor tab list"
+        )
+    }
+
+    /// Close is one item named after the window in front, the way Xcode, Terminal and Finder all
+    /// ship it. Launch shows the welcome window, which has no tabs, so it reads Close Window.
+    func testCloseIsNamedForTheKeyWindow() throws {
+        let app = try launchAppShowingAWindow()
+
+        XCTAssertTrue(
+            app.menuBars.menuItems["Close Window"].waitForExistence(timeout: 5),
+            "A window with no tabs must name the close command Close Window"
+        )
+    }
+
+    /// The retitle itself. "Close Window" is the title the menu is built with, so asserting only
+    /// that would pass even if the title were never resolved from the key window.
+    func testCloseIsNamedCloseTabOnceATabIsOpen() throws {
+        let app = try launchWithSampleDatabase()
+        app.typeKey("t", modifierFlags: .command)
+
+        XCTAssertTrue(
+            app.menuBars.menuItems["Close Tab"].waitForExistence(timeout: 15),
+            "A window with a tab open must name the close command Close Tab"
+        )
+        XCTAssertFalse(
+            app.menuBars.menuItems["Close Window"].exists,
+            "The close command is one item, so the built title must be gone once it resolves"
+        )
     }
 
     /// The connections strip offers Close on a row, and the HIG requires every context-menu command

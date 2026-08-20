@@ -13,56 +13,66 @@ import Testing
 @MainActor
 @Suite("ConnectionToolbarState")
 struct ConnectionToolbarStateTests {
-    // MARK: - chipText
+    // MARK: - scopeComponents
 
-    @Test("chipText returns currentDatabase when grouping is byDatabase")
-    func chipTextByDatabase() {
+    @Test("A database-only engine shows just its database")
+    func scopeComponentsByDatabase() {
         let state = ConnectionToolbarState()
+        state.databaseType = .mysql
         state.databaseGroupingStrategy = .byDatabase
         state.currentDatabase = "myappdb"
         state.currentSchema = "ignored"
 
-        #expect(state.chipText == "myappdb")
+        #expect(state.scopeComponents.map(\.name) == ["myappdb"])
+        #expect(state.scopeComponents.map(\.kind) == [.database])
     }
 
-    @Test("chipText returns currentSchema when grouping is bySchema and schema is set")
-    func chipTextBySchemaWithSchema() {
+    /// The chip used to show only the schema here while its click switched the database. Both
+    /// scopes are now present, each with its own chooser (#2196).
+    @Test("A schema-grouped engine shows its database and its schema")
+    func scopeComponentsBySchema() {
         let state = ConnectionToolbarState()
+        state.databaseType = .postgresql
         state.databaseGroupingStrategy = .bySchema
         state.currentDatabase = "Sales"
         state.currentSchema = "dbo"
 
-        #expect(state.chipText == "dbo")
+        #expect(state.scopeComponents.map(\.name) == ["Sales", "dbo"])
+        #expect(state.scopeComponents.map(\.kind) == [.database, .schema])
     }
 
-    @Test("chipText falls back to currentDatabase when grouping is bySchema and schema is nil")
-    func chipTextBySchemaWithNilSchema() {
+    @Test("An unresolved schema leaves only the database component")
+    func scopeComponentsBySchemaWithNilSchema() {
         let state = ConnectionToolbarState()
+        state.databaseType = .postgresql
         state.databaseGroupingStrategy = .bySchema
         state.currentDatabase = "Sales"
         state.currentSchema = nil
 
-        #expect(state.chipText == "Sales")
+        #expect(state.scopeComponents.map(\.name) == ["Sales"])
     }
 
-    @Test("chipText falls back to currentDatabase when grouping is bySchema and schema is empty")
-    func chipTextBySchemaWithEmptySchema() {
+    @Test("An empty schema leaves only the database component")
+    func scopeComponentsBySchemaWithEmptySchema() {
         let state = ConnectionToolbarState()
+        state.databaseType = .postgresql
         state.databaseGroupingStrategy = .bySchema
         state.currentDatabase = "Sales"
         state.currentSchema = ""
 
-        #expect(state.chipText == "Sales")
+        #expect(state.scopeComponents.map(\.name) == ["Sales"])
     }
 
-    @Test("chipText returns currentDatabase when grouping is flat (Redis, MongoDB)")
-    func chipTextFlat() {
+    @Test("A flat engine shows just its database (Redis, MongoDB)")
+    func scopeComponentsFlat() {
         let state = ConnectionToolbarState()
+        state.databaseType = .redis
         state.databaseGroupingStrategy = .flat
         state.currentDatabase = "0"
         state.currentSchema = "ignored"
 
-        #expect(state.chipText == "0")
+        #expect(state.scopeComponents.map(\.name) == ["0"])
+        #expect(state.scopeComponents.map(\.isSwitchable) == [false])
     }
 
     // MARK: - reset
@@ -79,7 +89,7 @@ struct ConnectionToolbarStateTests {
         #expect(state.currentDatabase == "")
         #expect(state.currentSchema == nil)
         #expect(state.databaseGroupingStrategy == .byDatabase)
-        #expect(state.chipText == "")
+        #expect(state.scopeComponents.isEmpty)
     }
 
     // MARK: - syncFromSession

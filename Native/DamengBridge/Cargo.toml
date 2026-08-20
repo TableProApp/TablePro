@@ -14,11 +14,11 @@ crate-type = ["staticlib"]
 # OracleNIO fork. Cargo.lock pins this rev, so --locked builds stay reproducible.
 [dependencies.dameng]
 git = "https://github.com/TableProApp/rust-dameng"
-rev = "d7a374fe5257228dd3454c36ccbfe3e6bce7a107"
+rev = "cacd12f08e836446213e9d4062b6437beec77ccd"
 
 [dependencies.dameng-types]
 git = "https://github.com/TableProApp/rust-dameng"
-rev = "d7a374fe5257228dd3454c36ccbfe3e6bce7a107"
+rev = "cacd12f08e836446213e9d4062b6437beec77ccd"
 
 [profile.release]
 codegen-units = 1

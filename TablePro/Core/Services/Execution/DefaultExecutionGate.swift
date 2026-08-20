@@ -10,20 +10,31 @@ internal actor DefaultExecutionGate: ExecutionGate {
     private let authenticating: OperationAuthenticating
     private let safeModeLevelResolver: @Sendable (UUID) async -> SafeModeLevel
     private let forcesWriteResolver: @Sendable (DatabaseType) async -> Bool
+    private let auditLog: any ExecutionAuditLogging
 
     init(
         confirming: OperationConfirming,
         authenticating: OperationAuthenticating,
         safeModeLevelResolver: @escaping @Sendable (UUID) async -> SafeModeLevel,
-        forcesWriteResolver: @escaping @Sendable (DatabaseType) async -> Bool
+        forcesWriteResolver: @escaping @Sendable (DatabaseType) async -> Bool,
+        auditLog: any ExecutionAuditLogging = ExecutionAuditLog.shared
     ) {
         self.confirming = confirming
         self.authenticating = authenticating
         self.safeModeLevelResolver = safeModeLevelResolver
         self.forcesWriteResolver = forcesWriteResolver
+        self.auditLog = auditLog
     }
 
+    /// A thin wrapper so every outcome is recorded once. `decide` has seven return points, and a
+    /// log call at each is one `return` away from a gap the next change opens silently.
     func authorize(_ request: OperationRequest) async -> OperationDecision {
+        let decision = await decide(request)
+        await auditLog.record(request: request, decision: decision)
+        return decision
+    }
+
+    private func decide(_ request: OperationRequest) async -> OperationDecision {
         let level = await safeModeLevelResolver(request.connectionId)
         let caps = request.capabilities
 

@@ -22,7 +22,7 @@ struct DataGridCellContent {
         case .null:
             return .null
         case .text(let value):
-            if value == "__DEFAULT__" { return .defaultMarker }
+            if value == PluginCellValue.defaultMarkerText { return .defaultMarker }
             return value.isEmpty ? .empty : nil
         case .bytes:
             return nil
@@ -53,6 +53,25 @@ struct DataGridCellState {
     let isFocused: Bool
     let isEditable: Bool
     let isLargeDataset: Bool
+    let isCurrentFindMatch: Bool
     let row: Int
     let columnIndex: Int
+
+    init(
+        visualState: RowVisualState,
+        isFocused: Bool,
+        isEditable: Bool,
+        isLargeDataset: Bool,
+        isCurrentFindMatch: Bool = false,
+        row: Int,
+        columnIndex: Int
+    ) {
+        self.visualState = visualState
+        self.isFocused = isFocused
+        self.isEditable = isEditable
+        self.isLargeDataset = isLargeDataset
+        self.isCurrentFindMatch = isCurrentFindMatch
+        self.row = row
+        self.columnIndex = columnIndex
+    }
 }

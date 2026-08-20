@@ -13,6 +13,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         /// derives its own `isConnected` from the window phase rather than from execution.
         let connected: Bool
         let isTableTab: Bool
+        let canAddRow: Bool
         let hasPendingChanges: Bool
         let hasDataPendingChanges: Bool
         let blocksAllWrites: Bool
@@ -40,6 +41,8 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             return context.connected && !context.fileBased && context.supportsContainerSwitching
         case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables, Self.sidebarToggle:
             return context.connected
+        case Self.addRow:
+            return context.connected && context.canAddRow
         case Self.saveChanges:
             return context.hasPendingChanges && context.connected && !context.blocksAllWrites
         case Self.previewSQL:
@@ -60,6 +63,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         return ValidationContext(
             connected: Self.hasLiveSession(state.connectionState),
             isTableTab: state.isTableTab,
+            canAddRow: coordinator?.canAddRow ?? false,
             hasPendingChanges: state.hasPendingChanges,
             hasDataPendingChanges: state.hasDataPendingChanges,
             blocksAllWrites: state.safeModeLevel.blocksAllWrites,
@@ -76,21 +80,15 @@ extension MainWindowToolbar: NSToolbarItemValidation {
     }
 }
 
-/// AppKit validates toolbar overflow entries as menu items rather than visible toolbar items.
-/// Keep their state aligned with the predicates used by `validateToolbarItem(_:)`.
+/// AppKit validates toolbar overflow entries as menu items rather than visible toolbar items, so
+/// `validateToolbarItem(_:)` never sees them and every entry it does not answer for stays enabled.
+/// A hand-written selector list here only covered three of the twelve actions, which left Refresh,
+/// New Tab, Open Quickly, Export, Database, Results and Dashboard live in the overflow menu of a
+/// narrow window while the same buttons were disabled on a wide one, and clicking one did nothing.
+/// The mapping now comes from the factory that built the item, so it cannot fall behind again.
 extension MainWindowToolbar: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        let itemIdentifier: NSToolbarItem.Identifier
-        switch menuItem.action {
-        case #selector(performSaveChanges(_:)):
-            itemIdentifier = Self.saveChanges
-        case #selector(performPreviewSQL(_:)):
-            itemIdentifier = Self.previewSQL
-        case #selector(performImportFormat(_:)):
-            itemIdentifier = Self.importTables
-        default:
-            return true
-        }
+        guard let itemIdentifier = itemIdentifier(forMenuFormAction: menuItem.action) else { return true }
         guard let context = validationContext() else { return false }
         return Self.isEnabled(itemIdentifier: itemIdentifier, context: context)
     }

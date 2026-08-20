@@ -1,4 +1,5 @@
 import Foundation
+import TableProDatabase
 import TableProModels
 import TableProPluginKit
 import TableProQuery
@@ -31,16 +32,6 @@ enum SQLBuilder {
         }
     }
 
-    static func escapeString(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\0", with: "\\0")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\u{1a}", with: "\\Z")
-            .replacingOccurrences(of: "'", with: "''")
-    }
-
     static func buildCount(table: String, type: DatabaseType) -> String {
         let quoted = quoteIdentifier(table, for: type)
         return "SELECT COUNT(*) FROM \(quoted)"
@@ -55,46 +46,56 @@ enum SQLBuilder {
     static func buildDelete(
         table: String,
         type: DatabaseType,
+        driver: any DatabaseDriver,
         primaryKeys: [(column: String, value: String)]
     ) -> String {
         let quotedTable = quoteIdentifier(table, for: type)
-        let where_ = primaryKeys.map {
-            "\(quoteIdentifier($0.column, for: type)) = '\(escapeString($0.value))'"
+        let predicate = primaryKeys.map {
+            "\(quoteIdentifier($0.column, for: type)) = '\(driver.escapeStringLiteral($0.value))'"
         }.joined(separator: " AND ")
-        return "DELETE FROM \(quotedTable) WHERE \(where_)"
+        return "DELETE FROM \(quotedTable) WHERE \(predicate)"
     }
 
     static func buildUpdate(
         table: String,
         type: DatabaseType,
+        driver: any DatabaseDriver,
         changes: [(column: String, value: String?)],
         primaryKeys: [(column: String, value: String)]
     ) -> String {
         let quotedTable = quoteIdentifier(table, for: type)
-        let set_ = changes.map { col, val in
+        let assignments = changes.map { col, val in
             let qcol = quoteIdentifier(col, for: type)
-            if let val { return "\(qcol) = '\(escapeString(val))'" }
+            if let val { return "\(qcol) = '\(driver.escapeStringLiteral(val))'" }
             return "\(qcol) = NULL"
         }.joined(separator: ", ")
-        let where_ = primaryKeys.map {
-            "\(quoteIdentifier($0.column, for: type)) = '\(escapeString($0.value))'"
+        let predicate = primaryKeys.map {
+            "\(quoteIdentifier($0.column, for: type)) = '\(driver.escapeStringLiteral($0.value))'"
         }.joined(separator: " AND ")
-        return "UPDATE \(quotedTable) SET \(set_) WHERE \(where_)"
+        return "UPDATE \(quotedTable) SET \(assignments) WHERE \(predicate)"
     }
 
     static func buildInsert(
         table: String,
+        schema: String?,
         type: DatabaseType,
+        driver: any DatabaseDriver,
         columns: [String],
         values: [String?]
     ) -> String {
-        let quotedTable = quoteIdentifier(table, for: type)
+        let qualifiedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
         let cols = columns.map { quoteIdentifier($0, for: type) }.joined(separator: ", ")
         let vals = values.map { val in
-            if let val { return "'\(escapeString(val))'" }
+            if let val { return "'\(driver.escapeStringLiteral(val))'" }
             return "NULL"
         }.joined(separator: ", ")
-        return "INSERT INTO \(quotedTable) (\(cols)) VALUES (\(vals))"
+        return "INSERT INTO \(qualifiedTable) (\(cols)) VALUES (\(vals))"
+    }
+
+    static func qualifiedIdentifier(table: String, schema: String?, for type: DatabaseType) -> String {
+        let quotedTable = quoteIdentifier(table, for: type)
+        guard let schema, !schema.isEmpty else { return quotedTable }
+        return "\(quoteIdentifier(schema, for: type)).\(quotedTable)"
     }
 
     static func buildSelect(

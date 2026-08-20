@@ -19,7 +19,7 @@ private enum ToolbarPrincipalLayout {
 struct ToolbarPrincipalContent: View {
     var state: ConnectionToolbarState
     var connectionId: UUID?
-    var onSwitchDatabase: (() -> Void)?
+    weak var coordinator: MainContentCoordinator?
     var onCancelQuery: (() -> Void)?
     var onSafeModeChange: ((SafeModeLevel) -> Void)?
 
@@ -43,12 +43,11 @@ struct ToolbarPrincipalContent: View {
             ConnectionStatusView(
                 databaseType: state.databaseType,
                 databaseVersion: state.databaseVersion,
-                chipText: state.chipText,
-                databaseGroupingStrategy: state.databaseGroupingStrategy,
+                scopeComponents: state.scopeComponents,
                 connectionName: state.connectionName,
                 displayColor: state.displayColor,
                 safeModeLevel: state.safeModeLevel,
-                onSwitchDatabase: onSwitchDatabase
+                coordinator: coordinator
             )
 
             SafeModeBadgeView(safeModeLevel: Binding(

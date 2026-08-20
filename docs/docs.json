@@ -25,6 +25,10 @@
     {
       "source": "/customization/overview",
       "destination": "/customization/settings"
+    },
+    {
+      "source": "/features/quick-switcher",
+      "destination": "/features/open-quickly"
     }
   ],
   "navigation": {
@@ -34,7 +38,7 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": ["index", "quickstart", "installation", "changelog"]
+            "pages": ["index", "quickstart", "installation", "switching", "changelog"]
           },
           {
             "group": "Database Connections",
@@ -143,8 +147,9 @@
                 "pages": [
                   "features/tabs",
                   "features/workspace-rail",
-                  "features/quick-switcher",
+                  "features/open-quickly",
                   "features/query-history",
+                  "features/query-insights",
                   "features/favorites",
                   "features/project-folder-import",
                   "features/keyboard-shortcuts"
@@ -170,7 +175,8 @@
                 "group": "Team & Licensing",
                 "pages": ["features/team", "features/licensing"]
               },
-              "features/plugins"
+              "features/plugins",
+              "features/acknowledgements"
             ]
           },
           {

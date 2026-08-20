@@ -431,6 +431,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         "DROP TRIGGER IF EXISTS \(quoteIdentifier(name)) ON \(qualifiedTable(table, schema: schema))"
     }
 
+    var providesBulkForeignKeyFetch: Bool { true }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """

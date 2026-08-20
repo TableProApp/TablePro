@@ -11,18 +11,31 @@ import TableProPluginKit
 /// The results pane's JSON view and the grid's Copy as JSON render the same rows, so they share
 /// this rather than each deciding for itself which rows and columns to include. Both follow the
 /// grid as shown: display order, no hidden columns, current column order.
+///
+/// They part company on pending deletions, because they answer different questions. The JSON view
+/// shows what a Save would leave behind, so it excludes rows marked for deletion; a JSON document
+/// has no way to mark one, and leaving it in is what made a delete look like it did nothing. Copy
+/// as JSON copies the rows you selected, the same as every other Copy as, so it passes no deletions
+/// and keeps them all.
 internal enum ResultJsonSerializer {
     internal struct Output {
         let json: String
         let rowCount: Int
+        /// How many rows were left out because they are marked for deletion. Counted here rather
+        /// than derived by the caller, so the disclosure can never claim a row was held back that
+        /// was not in the document to begin with.
+        let skippedDeletedCount: Int
     }
 
     /// - Parameter selectedDisplayIndices: display positions to narrow to. Empty means every
     ///   displayed row, which is what an untouched result set shows.
+    /// - Parameter deletedDisplayIndices: display positions marked for deletion but not yet saved.
+    ///   Empty, the default, serialises every row.
     internal static func serialize(
         tableRows: TableRows,
         displayIDs: [RowID]?,
         selectedDisplayIndices: Set<Int>,
+        deletedDisplayIndices: Set<Int> = [],
         columns projection: VisibleColumnProjection
     ) -> Output {
         let positions: [Int]
@@ -32,16 +45,27 @@ internal enum ResultJsonSerializer {
             positions = selectedDisplayIndices.sorted()
         }
 
+        var skippedDeleted = 0
         let rows: [[PluginCellValue]] = positions.compactMap { displayIndex in
-            DisplayRowMapping.row(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows)
-                .map { projection.values(Array($0.values)) }
+            guard let row = DisplayRowMapping.row(
+                forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows
+            ) else { return nil }
+            guard !deletedDisplayIndices.contains(displayIndex) else {
+                skippedDeleted += 1
+                return nil
+            }
+            return projection.values(Array(row.values))
         }
 
         let converter = JsonRowConverter(
             columns: projection.columns(tableRows.columns),
             columnTypes: projection.columnTypes(tableRows.columnTypes)
         )
-        return Output(json: converter.generateJson(rows: rows), rowCount: rows.count)
+        return Output(
+            json: converter.generateJson(rows: rows),
+            rowCount: rows.count,
+            skippedDeletedCount: skippedDeleted
+        )
     }
 }
 

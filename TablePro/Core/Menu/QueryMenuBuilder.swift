@@ -54,6 +54,25 @@ enum QueryMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
+                String(localized: "Toggle Fold"),
+                action: #selector(MainSplitViewController.toggleFold(_:)),
+                shortcut: .toggleFold,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Fold All"),
+                action: #selector(MainSplitViewController.foldAll(_:)),
+                shortcut: .foldAll,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Unfold All"),
+                action: #selector(MainSplitViewController.unfoldAll(_:)),
+                shortcut: .unfoldAll,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
                 String(localized: "Save as Favorite..."),
                 action: #selector(MainSplitViewController.saveAsFavorite(_:)),
                 shortcut: .saveAsFavorite,

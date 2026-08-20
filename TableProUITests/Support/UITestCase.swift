@@ -12,7 +12,7 @@ import XCTest
 /// Application Support root, its defaults domain and its keychain from it, so nothing a test does
 /// can reach the real ones, and nothing it leaves behind outlives the run.
 internal class UITestCase: XCTestCase {
-    private var sandboxRoot: URL?
+    internal private(set) var sandboxRoot: URL?
     private var launchedApps: [XCUIApplication] = []
     private var privacyAlertMonitor: (any NSObjectProtocol)?
 
@@ -82,11 +82,22 @@ internal class UITestCase: XCTestCase {
         }
     }
 
-    internal func launchApp() throws -> XCUIApplication {
+    /// `arguments` is separate from `environment` because the two are not interchangeable. A
+    /// defaults override such as `-AppleLanguages` only takes effect as a launch argument: passed
+    /// in the environment it is an ordinary variable nothing reads, so the pin silently does
+    /// nothing and the test passes only on a machine that was already in that language.
+    internal func launchApp(
+        environment: [String: String] = [:],
+        arguments: [String] = []
+    ) throws -> XCUIApplication {
         let root = try XCTUnwrap(sandboxRoot, "setUpWithError did not prepare a sandbox")
         let app = XCUIApplication()
         app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
         app.launchEnvironment["TABLEPRO_UI_TEST_SANDBOX"] = root.path
+        for (key, value) in environment {
+            app.launchEnvironment[key] = value
+        }
+        app.launchArguments.append(contentsOf: arguments)
         app.launch()
         launchedApps.append(app)
         return app
@@ -100,8 +111,11 @@ internal class UITestCase: XCTestCase {
     /// menu during menu traversal"; XCUITest then falls back to hovering and resolves the item to an
     /// unhittable zero-size frame. That failed every suite this helper serves.
     @discardableResult
-    internal func launchWithSampleDatabase() throws -> XCUIApplication {
-        let app = try launchApp()
+    internal func launchWithSampleDatabase(
+        environment: [String: String] = [:],
+        arguments: [String] = []
+    ) throws -> XCUIApplication {
+        let app = try launchApp(environment: environment, arguments: arguments)
         let menuBar = app.menuBars.firstMatch
         XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
         let openSample = menuBar.menuItems["Open Sample Database"]

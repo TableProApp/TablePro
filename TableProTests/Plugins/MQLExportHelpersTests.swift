@@ -96,4 +96,30 @@ struct MQLExportHelpersTests {
         )
     }
 
+    @Test("An exponential double exports as a number, not a quoted string")
+    func exponentialDoubleStaysNumeric() {
+        #expect(MQLExportHelpers.mqlTextValue(for: "1e-05", columnTypeName: "FLOAT") == "1e-05")
+        #expect(MQLExportHelpers.mqlTextValue(for: "1e+20", columnTypeName: "FLOAT") == "1e+20")
+        #expect(MQLExportHelpers.mqlTextValue(for: "-3.9192320754595876e-07", columnTypeName: "FLOAT")
+            == "-3.9192320754595876e-07")
+    }
+
+    @Test("A decimal column exports as NumberDecimal so it does not land as a double")
+    func decimalColumnExportsAsNumberDecimal() {
+        #expect(
+            MQLExportHelpers.mqlTextValue(for: "1847.270000000000000000000000001", columnTypeName: "DECIMAL")
+                == "NumberDecimal(\"1847.270000000000000000000000001\")"
+        )
+    }
+
+    @Test("A non-number in a decimal column falls back to a quoted string")
+    func invalidDecimalFallsBack() {
+        #expect(MQLExportHelpers.mqlTextValue(for: "n/a", columnTypeName: "DECIMAL") == "\"n/a\"")
+    }
+
+    @Test("A value that is not a JSON number stays a quoted string")
+    func nonNumericStaysQuoted() {
+        #expect(MQLExportHelpers.mqlTextValue(for: "007", columnTypeName: "VARCHAR") == "\"007\"")
+        #expect(MQLExportHelpers.mqlTextValue(for: "1.2.3", columnTypeName: "VARCHAR") == "\"1.2.3\"")
+    }
 }

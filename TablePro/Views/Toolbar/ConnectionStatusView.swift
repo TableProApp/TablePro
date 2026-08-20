@@ -13,12 +13,14 @@ import TableProPluginKit
 struct ConnectionStatusView: View {
     let databaseType: DatabaseType
     let databaseVersion: String?
-    let chipText: String
-    let databaseGroupingStrategy: GroupingStrategy
+    let scopeComponents: [ConnectionScopeComponent]
     let connectionName: String
     let displayColor: Color
     var safeModeLevel: SafeModeLevel = .silent
-    var onSwitchDatabase: (() -> Void)?
+    /// The chooser each component opens needs a live connection, and a component anchors its own
+    /// popover so the list appears against the word it belongs to rather than against the toolbar
+    /// button at the other end of the titlebar (#2194).
+    weak var coordinator: MainContentCoordinator?
 
     @ScaledMetric private var engineIconSize: CGFloat = 14
 
@@ -26,11 +28,11 @@ struct ConnectionStatusView: View {
         HStack(spacing: 10) {
             connectionIdentitySection
 
-            if !chipText.isEmpty {
+            if !scopeComponents.isEmpty {
                 Divider()
                     .frame(height: 12)
 
-                chipSection
+                scopeSection
             }
         }
     }
@@ -56,29 +58,64 @@ struct ConnectionStatusView: View {
         .accessibilityLabel(connectionAccessibilityLabel)
     }
 
-    @ViewBuilder
-    private var chipSection: some View {
-        if !PluginManager.shared.supportsContainerSwitching(for: databaseType) {
-            chipLabel
-                .help(staticChipTooltip)
-        } else {
-            Button {
-                onSwitchDatabase?()
-            } label: {
-                chipLabel
+    /// Nested scopes read outermost first with a chevron between them, the way Xcode separates its
+    /// scheme from its destination. Each component owns its own label, tooltip and chooser, so the
+    /// word on screen and the list that opens always name the same thing.
+    private var scopeSection: some View {
+        HStack(spacing: 4) {
+            ForEach(scopeComponents) { component in
+                if component.id != scopeComponents.first?.id {
+                    Image(systemName: "chevron.compact.right")
+                        .imageScale(.small)
+                        .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
+                        .accessibilityHidden(true)
+                }
+                scopeComponentView(component)
             }
-            .buttonStyle(.plain)
-            .help(switchableChipTooltip)
         }
     }
 
-    private var chipLabel: some View {
+    @ViewBuilder
+    private func scopeComponentView(_ component: ConnectionScopeComponent) -> some View {
+        if component.isSwitchable {
+            Button {
+                coordinator?.commandActions?.openScopeSwitcher(component.kind)
+            } label: {
+                scopeLabel(component)
+            }
+            .buttonStyle(.plain)
+            .help(switchableTooltip(component))
+            .accessibilityLabel(accessibilityLabel(component))
+            .popover(isPresented: presentation(of: component.kind), arrowEdge: .bottom) {
+                DatabaseSwitcherPopoverHost(coordinator: coordinator, target: component.kind)
+            }
+        } else {
+            scopeLabel(component)
+                .help(staticTooltip(component))
+                .accessibilityLabel(accessibilityLabel(component))
+        }
+    }
+
+    private func presentation(of kind: ContainerSwitchTarget) -> Binding<Bool> {
+        Binding(
+            get: { coordinator?.presentedScopeSwitcher == kind },
+            set: { [weak coordinator] isShown in
+                guard !isShown else { return }
+                if coordinator?.presentedScopeSwitcher == kind {
+                    coordinator?.presentedScopeSwitcher = nil
+                }
+            }
+        )
+    }
+
+    private func scopeLabel(_ component: ConnectionScopeComponent) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: "cylinder")
+            Image(systemName: icon(for: component.kind))
                 .imageScale(.small)
                 .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
+                .accessibilityHidden(true)
 
-            Text(chipText)
+            Text(component.name)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -86,34 +123,31 @@ struct ConnectionStatusView: View {
         }
     }
 
-    private var chipKindLabel: String {
-        switch databaseGroupingStrategy {
-        case .bySchema: return String(localized: "Schema")
-        case .byDatabase, .flat, .hierarchicalSchema:
-            return PluginManager.shared.containerEntityName(for: databaseType)
+    private func icon(for kind: ContainerSwitchTarget) -> String {
+        switch kind {
+        case .database: return "cylinder"
+        case .schema: return "square.stack.3d.up"
         }
     }
 
-    private var staticChipTooltip: String {
-        String(format: String(localized: "%@: %@"), chipKindLabel, chipText)
+    private func staticTooltip(_ component: ConnectionScopeComponent) -> String {
+        String(format: String(localized: "%1$@: %2$@"), component.label, component.name)
     }
 
-    private var switchableChipTooltip: String {
-        let switchVerb: String = switch databaseGroupingStrategy {
-        case .bySchema: String(localized: "switch schema")
-        case .byDatabase, .flat, .hierarchicalSchema:
-            String(format: String(localized: "switch %@"), chipKindLabel.lowercased())
-        }
-        if safeModeLevel == .readOnly {
-            return String(
-                format: String(localized: "Current %@: %@ (read only, ⌘K to %@)"),
-                chipKindLabel.lowercased(), chipText, switchVerb
-            )
-        }
-        return String(
-            format: String(localized: "Current %@: %@ (⌘K to %@)"),
-            chipKindLabel.lowercased(), chipText, switchVerb
-        )
+    /// Only the outermost scope has a shortcut, so the inner one says nothing about a key rather
+    /// than advertising one that does nothing. The key comes from the user's own binding, because a
+    /// hint that names a shortcut nobody bound is the same defect in a smaller place (#2185).
+    private func switchableTooltip(_ component: ConnectionScopeComponent) -> String {
+        let scope = component.label.lowercased()
+        let base = safeModeLevel == .readOnly
+            ? String(format: String(localized: "Current %1$@: %2$@ (read only)"), scope, component.name)
+            : String(format: String(localized: "Current %1$@: %2$@"), scope, component.name)
+        guard component.kind == scopeComponents.first?.kind else { return base }
+        return AppSettingsManager.shared.keyboard.shortcutHint(base, for: .openDatabase)
+    }
+
+    private func accessibilityLabel(_ component: ConnectionScopeComponent) -> String {
+        String(format: String(localized: "Current %1$@: %2$@"), component.label.lowercased(), component.name)
     }
 
     // MARK: - Computed Properties
@@ -136,12 +170,20 @@ struct ConnectionStatusView: View {
 
 // MARK: - Preview
 
+private func previewComponent(
+    _ kind: ContainerSwitchTarget,
+    _ name: String,
+    _ label: String,
+    switchable: Bool = true
+) -> ConnectionScopeComponent {
+    ConnectionScopeComponent(kind: kind, name: name, label: label, isSwitchable: switchable)
+}
+
 #Preview("MariaDB") {
     ConnectionStatusView(
         databaseType: .mariadb,
         databaseVersion: "11.1.2",
-        chipText: "production_db",
-        databaseGroupingStrategy: .byDatabase,
+        scopeComponents: [previewComponent(.database, "production_db", "Database")],
         connectionName: "Production Database",
         displayColor: .cyan
     )
@@ -153,8 +195,7 @@ struct ConnectionStatusView: View {
     ConnectionStatusView(
         databaseType: .mysql,
         databaseVersion: "8.0.35",
-        chipText: "dev_db",
-        databaseGroupingStrategy: .byDatabase,
+        scopeComponents: [previewComponent(.database, "dev_db", "Database")],
         connectionName: "Development",
         displayColor: .orange
     )
@@ -166,8 +207,10 @@ struct ConnectionStatusView: View {
     ConnectionStatusView(
         databaseType: .postgresql,
         databaseVersion: "16.1",
-        chipText: "public",
-        databaseGroupingStrategy: .bySchema,
+        scopeComponents: [
+            previewComponent(.database, "analytics", "Database"),
+            previewComponent(.schema, "public", "Schema"),
+        ],
         connectionName: "Analytics DB",
         displayColor: .blue
     )
@@ -176,12 +219,11 @@ struct ConnectionStatusView: View {
     .preferredColorScheme(.dark)
 }
 
-#Preview("Empty Database") {
+#Preview("SQLite") {
     ConnectionStatusView(
-        databaseType: .mysql,
-        databaseVersion: "9.5.0",
-        chipText: "",
-        databaseGroupingStrategy: .byDatabase,
+        databaseType: .sqlite,
+        databaseVersion: "3.45.0",
+        scopeComponents: [previewComponent(.database, "chinook.db", "Database", switchable: false)],
         connectionName: "Local",
         displayColor: .green
     )

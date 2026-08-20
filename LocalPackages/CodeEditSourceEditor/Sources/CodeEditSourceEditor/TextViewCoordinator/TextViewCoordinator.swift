@@ -43,6 +43,16 @@ public protocol TextViewCoordinator: AnyObject {
     /// - Parameter newPositions: The new positions of the cursors.
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition])
 
+    /// Called when the pointer comes to rest on a collapsed fold's placeholder, and again when it leaves one.
+    ///
+    /// The editor resolves this itself because it is the only thing that knows where a placeholder is drawn: a
+    /// placeholder is painted by the layout manager rather than being a view, so there is nothing for an app to
+    /// attach its own tracking to. What to show for the fold, and after how long, is left to the receiver.
+    /// - Parameters:
+    ///   - controller: The text controller.
+    ///   - hit: The collapsed fold under the pointer, or `nil` when the pointer is on none.
+    func textViewDidChangeHoveredFold(controller: TextViewController, hit: CollapsedFoldHit?)
+
     /// Called when the text controller is being destroyed. Use to free any necessary resources.
     func destroy()
 }
@@ -53,5 +63,6 @@ public extension TextViewCoordinator {
     func controllerDidDisappear(controller: TextViewController) { }
     func textViewDidChangeText(controller: TextViewController) { }
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) { }
+    func textViewDidChangeHoveredFold(controller: TextViewController, hit: CollapsedFoldHit?) { }
     func destroy() { }
 }

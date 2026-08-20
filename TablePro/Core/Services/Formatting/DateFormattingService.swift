@@ -23,13 +23,6 @@ final class DateFormattingService {
     /// Current date format option
     private(set) var currentFormat: DateFormatOption
 
-    /// Parsers for common database date formats (ISO 8601, MySQL, PostgreSQL, SQLite)
-    private let parsers: [DateFormatter]
-
-    /// Index of the parser that succeeded most recently. Tried first on the next parse
-    /// because consecutive cells in the same column share the same wire format.
-    private var lastSuccessfulParserIndex: Int = 0
-
     /// Cache for formatted date strings to avoid repeated parsing
     private let formatCache = NSCache<NSString, NSString>()
 
@@ -41,7 +34,6 @@ final class DateFormattingService {
         self.formatter = Self.createFormatter(format: DateFormatOption.iso8601.formatString)
         self.dateOnlyFormatter = Self.createFormatter(format: DateFormatOption.iso8601.dateOnlyFormatString)
         self.timeOnlyFormatter = Self.createFormatter(format: DateFormatOption.iso8601.timeOnlyFormatString)
-        self.parsers = Self.createParsers()
         formatCache.countLimit = 100_000
     }
 
@@ -76,22 +68,13 @@ final class DateFormattingService {
             return cached.length == 0 ? nil : cached as String
         }
 
-        if let date = parsers[lastSuccessfulParserIndex].date(from: dateString) {
-            let result = targetFormatter.string(from: date)
-            formatCache.setObject(result as NSString, forKey: cacheKey)
-            return result
+        guard let date = DatabaseDateParser.date(from: dateString) else {
+            formatCache.setObject("" as NSString, forKey: cacheKey)
+            return nil
         }
-        for index in parsers.indices where index != lastSuccessfulParserIndex {
-            if let date = parsers[index].date(from: dateString) {
-                lastSuccessfulParserIndex = index
-                let result = targetFormatter.string(from: date)
-                formatCache.setObject(result as NSString, forKey: cacheKey)
-                return result
-            }
-        }
-
-        formatCache.setObject("" as NSString, forKey: cacheKey)
-        return nil
+        let result = targetFormatter.string(from: date)
+        formatCache.setObject(result as NSString, forKey: cacheKey)
+        return result
     }
 
     private func formatter(for columnType: ColumnType?) -> DateFormatter {
@@ -127,32 +110,5 @@ final class DateFormattingService {
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.timeZone = TimeZone.current
         return formatter
-    }
-
-    /// Create parsers for common database date formats
-    /// Parsers are tried in order until one successfully parses the input.
-    /// Formats WITHOUT explicit timezone info use the user's local timezone
-    /// (database values like `2024-03-01 12:00:00` are naive — display as-is).
-    /// Formats WITH timezone markers (`Z`, `+0000`) parse the embedded offset.
-    /// - Returns: Array of DateFormatters for parsing
-    private static func createParsers() -> [DateFormatter] {
-        // (format, hasTimezone) — formats with timezone markers parse UTC/offset;
-        // naive formats use user's local timezone so display matches the raw value.
-        let formats: [(String, Bool)] = [
-            ("yyyy-MM-dd HH:mm:ss", false),        // MySQL/PostgreSQL timestamp (most common)
-            ("yyyy-MM-dd'T'HH:mm:ss", false),       // ISO 8601 (no timezone)
-            ("yyyy-MM-dd'T'HH:mm:ssZ", true),       // ISO 8601 with timezone
-            ("yyyy-MM-dd'T'HH:mm:ss.SSSZ", true),   // ISO 8601 with milliseconds and timezone
-            ("yyyy-MM-dd", false),                   // Date only (MySQL DATE, PostgreSQL DATE)
-            ("HH:mm:ss", false),                     // Time only (MySQL TIME)
-        ]
-
-        return formats.map { format, hasTimezone in
-            let parser = DateFormatter()
-            parser.dateFormat = format
-            parser.locale = Locale(identifier: "en_US_POSIX")
-            parser.timeZone = hasTimezone ? TimeZone(secondsFromGMT: 0) : TimeZone.current
-            return parser
-        }
     }
 }

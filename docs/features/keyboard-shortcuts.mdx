@@ -11,7 +11,7 @@ Defaults are listed below. Most shortcuts are rebindable in **Settings > Keyboar
 |--------|----------|
 | Execute query | `Cmd+Enter` |
 | New connection | `Cmd+N` |
-| [Quick Switcher](/features/quick-switcher) | `Cmd+Shift+O` |
+| [Open Quickly](/features/open-quickly) | `Cmd+Shift+O` |
 | Open database switcher | `Cmd+K` |
 | Query history | `Cmd+Y` |
 | Settings | `Cmd+,` |
@@ -32,6 +32,9 @@ Defaults are listed below. Most shortcuts are rebindable in **Settings > Keyboar
 | Explain with AI | `Cmd+L` |
 | Optimize with AI | `Cmd+Option+L` |
 | Format query | `Cmd+Shift+L` |
+| Toggle fold at cursor | `Cmd+Option+Left` |
+| Fold all | `Cmd+Option+Shift+Left` |
+| Unfold all | `Cmd+Option+Shift+Right` |
 | Preview SQL | `Cmd+Shift+P` |
 | Save as favorite | `Cmd+D` |
 
@@ -127,7 +130,10 @@ With a drag-selected cell range, `Cmd+C` copies the range as TSV. With a single 
 
 | Action | Shortcut |
 |--------|----------|
-| Find, which filters rows in a table tab and searches the text in the editor | `Cmd+F` |
+| Find, which searches the loaded rows in a table tab and the text in the editor | `Cmd+F` |
+| Next match | `Return` or `Cmd+G` |
+| Previous match | `Cmd+Shift+G` |
+| Close the find bar | `Escape` |
 | Toggle filter bar (table tab) | `Cmd+Option+F` |
 | Apply filters | `Cmd+Enter` |
 
@@ -141,6 +147,8 @@ See [Filtering](/features/filtering) for the filter panel itself.
 | Import | `Cmd+Shift+I` |
 
 ## Tabs and Windows
+
+`Cmd+W` closes whatever is in front. In a connection window it closes the current editor tab, and the File menu names it **Close Tab**. In Settings, Integrations, a JSON or PHP viewer, or the welcome window there are no tabs, so it closes the window and the menu reads **Close Window**. While the connections strip has keyboard focus it closes the highlighted connection, and the menu names that connection.
 
 | Action | Shortcut |
 |--------|----------|
@@ -180,6 +188,8 @@ See [Filtering](/features/filtering) for the filter panel itself.
 | Move from the sidebar filter into the object list | `Down` |
 | Move between objects in the sidebar | `Up` / `Down` |
 | Jump to an object by name | type its first letters with the sidebar focused |
+| Keep the selected table's tab (same as double-clicking it) | `Return` |
+| Expand or collapse the selected container | `Right` / `Left` |
 | Clear the sidebar selection | `Escape` |
 | Toggle inspector panel | `Cmd+Option+I` |
 | Toggle results | `Cmd+Option+R` |
@@ -214,7 +224,7 @@ With the drawer open (`Cmd+Y`) and its entry list focused: `Return` loads the se
 | Collapse group | `Ctrl+H` |
 | Expand group | `Ctrl+L` |
 
-`Ctrl+J`/`Ctrl+N` and `Ctrl+K`/`Ctrl+P` also move the selection in the [Quick Switcher](/features/quick-switcher).
+`Ctrl+J`/`Ctrl+N` and `Ctrl+K`/`Ctrl+P` also move the selection in [Open Quickly](/features/open-quickly), where `Cmd+Return` and `Option+Return` open the selected item in a new tab.
 
 ## CSV Inspector
 

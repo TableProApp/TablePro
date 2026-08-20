@@ -7,6 +7,7 @@ import Dispatch
 import Foundation
 import OSLog
 import SQLite3
+import TableProNumberFormatting
 import TableProPluginKit
 
 enum BeancountDriverError: LocalizedError {
@@ -633,7 +634,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static func rowIdentifier(_ value: Any?) -> String? {
         if let number = value as? NSNumber {
-            return number.stringValue
+            return NumberText.text(for: number)
         }
         return value as? String
     }
@@ -945,7 +946,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return string
         }
         if let number = value as? NSNumber {
-            return number.stringValue
+            return NumberText.text(for: number)
         }
         if let amount = value as? [String: Any],
            let number = amount["number"] as? String,
@@ -962,9 +963,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 return "\(number) \(currency)"
             }.joined(separator: ", ")
         }
-        if JSONSerialization.isValidJSONObject(value),
-           let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
-           let string = String(data: data, encoding: .utf8) {
+        if let string = NumberText.json(from: value) {
             return string
         }
         return String(describing: value)

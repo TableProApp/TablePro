@@ -30,6 +30,18 @@ extension MainSplitViewController {
         commandActions?.formatQuery()
     }
 
+    @objc func toggleFold(_ sender: Any?) {
+        commandActions?.toggleFold()
+    }
+
+    @objc func foldAll(_ sender: Any?) {
+        commandActions?.foldAll()
+    }
+
+    @objc func unfoldAll(_ sender: Any?) {
+        commandActions?.unfoldAll()
+    }
+
     @objc func previewSQL(_ sender: Any?) {
         commandActions?.previewSQL()
     }

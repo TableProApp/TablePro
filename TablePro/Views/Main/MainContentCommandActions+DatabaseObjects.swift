@@ -15,7 +15,9 @@ extension MainContentCommandActions {
 
     func showTableStructure() {
         guard let object = selectedObject else { return }
-        coordinator?.openTableTab(object, showStructure: true, activateGridFocus: true)
+        coordinator?.openTableTab(
+            object, showStructure: true, forceNonPreview: true, activateGridFocus: true
+        )
     }
 
     var canEditViewDefinition: Bool {
@@ -32,9 +34,14 @@ extension MainContentCommandActions {
         return coordinator?.supportedMaintenanceOperations() ?? []
     }
 
+    /// The menu acts on the object browser's selection, and `TableInfo` carries a schema but no
+    /// database, so this names only the schema and the command falls back to the database being
+    /// browsed. The sidebar's own contextual menu carries the clicked row's database and does not.
     func runMaintenanceOperation(_ operation: String) {
         guard let object = selectedObject else { return }
-        coordinator?.showMaintenanceSheet(operation: operation, tableName: object.name)
+        coordinator?.showMaintenanceSheet(
+            operation: operation, tableName: object.name, schema: object.schema
+        )
     }
 
     var canCreateDatabase: Bool {
