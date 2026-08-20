@@ -732,7 +732,7 @@ extension PluginMetadataRegistry {
                     immutableColumns: [],
                     systemDatabaseNames: ["system", "temp"],
                     systemSchemaNames: [],
-                    fileExtensions: ["duckdb", "ddb"],
+                    fileExtensions: ["duckdb", "ddb", "parquet", "csv", "tsv", "json", "ndjson"],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
                 ),
