@@ -3,39 +3,15 @@ import os
 
 public struct ExecuteQueryTool: MCPToolImplementation {
     public static let name = "execute_query"
+    public static let title: String? = String(localized: "Execute Query")
     public static let description = String(
-        localized: "Execute a SQL query. All queries are subject to the connection's safe mode policy. DROP/TRUNCATE/ALTER...DROP must use the confirm_destructive_operation tool."
+        localized: """
+        Run one statement. Reads need tools:read; anything that writes needs tools:write and is subject \
+        to the connection's Safe Mode, which asks the user to approve it. DROP and TRUNCATE go through \
+        confirm_destructive_operation instead. Statements that read or write files, or run server-side \
+        code, are refused. Send one statement per call.
+        """
     )
-    public static let inputSchema: JsonValue = .object([
-        "type": .string("object"),
-        "properties": .object([
-            "connection_id": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "UUID of the connection"))
-            ]),
-            "query": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "SQL or NoSQL query text"))
-            ]),
-            "max_rows": .object([
-                "type": .string("integer"),
-                "description": .string(String(localized: "Maximum rows to return. Defaults to the server's configured default row limit and is capped at its maximum row limit."))
-            ]),
-            "timeout_seconds": .object([
-                "type": .string("integer"),
-                "description": .string(String(localized: "Query timeout in seconds (max 300). Defaults to the server's configured query timeout."))
-            ]),
-            "database": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Run against this database (uses current if omitted)"))
-            ]),
-            "schema": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Run against this schema (uses current if omitted)"))
-            ])
-        ]),
-        "required": .array([.string("connection_id"), .string("query")])
-    ])
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
     public static let annotations = MCPToolAnnotations(
         title: String(localized: "Execute Query"),
@@ -45,72 +21,77 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         openWorldHint: true
     )
 
+    static let maximumQueryBytes = 102_400
+
+    public static let inputSchema = MCPToolSchema.object(
+        properties: [
+            "connection_id": MCPToolSchema.connectionId,
+            "query": MCPToolSchema.string(String(localized: "One SQL or NoSQL statement")),
+            "max_rows": MCPToolSchema.integer(
+                String(localized: "Maximum rows to return. Defaults to the server's configured row limit."),
+                minimum: 1
+            ),
+            "timeout_seconds": MCPToolSchema.integer(
+                String(localized: "Statement timeout. Defaults to the server's configured timeout."),
+                minimum: 1
+            ),
+            "database": MCPToolSchema.database,
+            "schema": MCPToolSchema.schema
+        ],
+        required: ["connection_id", "query"]
+    )
+
+    public static let outputSchema: JsonValue? = MCPToolSchema.resultSet
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
 
     public init() {}
 
-    public func call(
+    public func perform(
         arguments: JsonValue,
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
+        try MCPArgumentDecoder.rejectUnknownKeys(
+            arguments,
+            allowed: MCPScopeArguments.keys.union(["query", "max_rows", "timeout_seconds"])
+        )
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
-        let query = try MCPArgumentDecoder.requireString(arguments, key: "query")
+        let query = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "query")
 
-        let mcpSettings = await services.settingsProvider()
-        let maxRows = MCPLimitResolver.resolveMaxRows(
-            requested: MCPArgumentDecoder.optionalInt(arguments, key: "max_rows"),
-            settings: mcpSettings
-        )
-        let timeoutSeconds = MCPLimitResolver.resolveTimeoutSeconds(
-            requested: MCPArgumentDecoder.optionalInt(arguments, key: "timeout_seconds"),
-            settings: mcpSettings
-        )
-        let database = MCPArgumentDecoder.optionalString(arguments, key: "database")
-        let schema = MCPArgumentDecoder.optionalString(arguments, key: "schema")
-
-        guard (query as NSString).length <= 102_400 else {
-            throw MCPProtocolError.invalidParams(detail: "Query exceeds 100KB limit")
-        }
-
-        try await throwIfCancelled(context)
-        await context.progress.emit(progress: 0.0, total: 1.0, message: "Connecting")
-
-        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
-
-        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
-            throw MCPProtocolError.invalidParams(
-                detail: "Multi-statement queries are not supported. Send one statement at a time."
+        guard (query as NSString).length <= Self.maximumQueryBytes else {
+            throw MCPToolExecutionError.invalidArgument(
+                String(localized: "The query exceeds the 100KB limit.")
             )
         }
 
-        let scope = try await services.connectionBridge.resolveScope(
-            connectionId: connectionId,
-            database: database,
-            schema: schema
-        )
+        let settings = await services.settingsProvider()
+        let maxRows = try MCPLimitResolver.resolveMaxRows(arguments, settings: settings)
+        let timeoutSeconds = try MCPLimitResolver.resolveTimeoutSeconds(arguments, settings: settings)
 
-        try await throwIfCancelled(context)
-        await context.progress.emit(progress: 0.2, total: 1.0, message: "Executing")
+        try await context.throwIfCancelled()
+        await context.progress.emit(progress: 0.0, total: 1.0, message: "Resolving connection")
 
-        let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
-        try classifyAndAuthorize(
-            tier: tier,
-            query: query,
-            connectionId: connectionId,
-            meta: meta,
-            services: services,
-            context: context
-        )
-
-        try await services.authPolicy.checkSafeModeDialog(
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+        try await MCPStatementGate.authorize(
             sql: query,
-            connectionId: connectionId,
-            databaseType: meta.databaseType,
-            capabilities: [.mayWrite, .confirmationPreCleared]
+            meta: meta,
+            allowsDestructive: false,
+            operationLabel: String(localized: "a query"),
+            context: context,
+            services: services
         )
 
-        Self.logger.debug("execute_query invoked for connection \(connectionId.uuidString, privacy: .public)")
+        let scope = try await MCPScopeArguments.resolve(
+            arguments,
+            connectionId: connectionId,
+            services: services
+        )
+
+        try await context.throwIfCancelled()
+        await context.progress.emit(progress: 0.3, total: 1.0, message: "Executing")
+
+        Self.logger.debug("execute_query on \(connectionId.uuidString, privacy: .public)")
 
         let result = try await ToolQueryExecutor.executeAndLog(
             services: services,
@@ -118,46 +99,11 @@ public struct ExecuteQueryTool: MCPToolImplementation {
             scope: scope,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
-            principalLabel: context.principal.metadata.label
+            context: context,
+            secrets: meta.redactionSecrets
         )
-
-        try await throwIfCancelled(context)
-        await context.progress.emit(progress: 0.8, total: 1.0, message: "Formatting result")
 
         await context.progress.emit(progress: 1.0, total: 1.0, message: "Done")
         return .structured(result)
-    }
-
-    private func classifyAndAuthorize(
-        tier: QueryTier,
-        query: String,
-        connectionId: UUID,
-        meta: ToolConnectionMetadata,
-        services: MCPToolServices,
-        context: MCPRequestContext
-    ) throws {
-        switch tier {
-        case .destructive:
-            throw MCPProtocolError.forbidden(
-                reason: "Destructive queries (DROP, TRUNCATE, ALTER...DROP) cannot be executed via execute_query. Use the confirm_destructive_operation tool instead."
-            )
-        case .write:
-            guard context.principal.scopes.contains(.toolsWrite) else {
-                throw MCPProtocolError.forbidden(
-                    reason: "Principal lacks tools:write scope required for write queries"
-                )
-            }
-        case .safe:
-            return
-        }
-    }
-
-    private func throwIfCancelled(_ context: MCPRequestContext) async throws {
-        guard await context.cancellation.isCancelled() else { return }
-        throw MCPProtocolError(
-            code: JsonRpcErrorCode.requestCancelled,
-            message: "Cancelled",
-            httpStatus: .ok
-        )
     }
 }

@@ -6,127 +6,67 @@
 import Foundation
 import TableProPluginKit
 
-enum QueryTier {
+enum QueryTier: Sendable, Equatable {
     case safe
     case write
     case destructive
 }
 
+struct QueryClassification: Sendable, Equatable {
+    let tier: QueryTier
+    let reachesFilesystemOrExecutesCode: Bool
+
+    static let safe = QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: false)
+
+    func escalated(to other: QueryTier) -> QueryClassification {
+        QueryClassification(
+            tier: QueryClassification.worse(tier, other),
+            reachesFilesystemOrExecutesCode: reachesFilesystemOrExecutesCode
+        )
+    }
+
+    func markingUnsafeSurface() -> QueryClassification {
+        QueryClassification(
+            tier: QueryClassification.worse(tier, .write),
+            reachesFilesystemOrExecutesCode: true
+        )
+    }
+
+    static func worse(_ lhs: QueryTier, _ rhs: QueryTier) -> QueryTier {
+        if lhs == .destructive || rhs == .destructive { return .destructive }
+        if lhs == .write || rhs == .write { return .write }
+        return .safe
+    }
+}
+
 enum QueryClassifier {
-    private static let writeQueryKeywords: Set<String> = [
-        "INSERT", "UPDATE", "DELETE", "REPLACE",
-        "DROP", "TRUNCATE", "ALTER", "CREATE",
-        "RENAME", "GRANT", "REVOKE",
-        "MERGE", "UPSERT", "CALL", "EXEC", "EXECUTE", "LOAD",
-    ]
-
-    private static let redisWriteCommands: Set<String> = [
-        "SET", "DEL", "HSET", "HDEL", "HMSET", "LPUSH", "RPUSH", "LPOP", "RPOP",
-        "SADD", "SREM", "ZADD", "ZREM", "EXPIRE", "PERSIST", "RENAME",
-        "FLUSHDB", "FLUSHALL", "MSET", "APPEND", "INCR", "DECR", "INCRBY",
-        "DECRBY", "SETEX", "PSETEX", "SETNX", "GETSET", "GETDEL",
-        "XADD", "XTRIM", "XDEL",
-    ]
-
-    private static let redisDangerousCommands: Set<String> = [
-        "FLUSHDB", "FLUSHALL", "DEBUG", "SHUTDOWN",
-    ]
-
-    private static let explainPrefixes: [String] = ["EXPLAIN", "ANALYZE"]
-
-    private static let whereClauseRegex = try? NSRegularExpression(pattern: "\\sWHERE\\s", options: [])
+    static func classify(_ sql: String, databaseType: DatabaseType) -> QueryClassification {
+        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .safe }
+        if let redis = redisClassification(trimmed, databaseType: databaseType) { return redis }
+        if let document = documentStoreClassification(trimmed, databaseType: databaseType) { return document }
+        return sqlClassification(trimmed)
+    }
 
     static func isWriteQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
-        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if databaseType == .redis {
-            let firstToken = trimmed.prefix(while: { !$0.isWhitespace }).uppercased()
-            if firstToken == "CONFIG" {
-                let rest = trimmed.dropFirst(firstToken.count).trimmingCharacters(in: .whitespaces)
-                return rest.uppercased().hasPrefix("SET")
-            }
-            return redisWriteCommands.contains(firstToken)
-        }
-
-        let keyword = leadingKeyword(of: trimmed)
-        if writeQueryKeywords.contains(keyword) {
-            return true
-        }
-
-        if keyword == "WITH" {
-            let uppercased = trimmed.uppercased()
-            let dmlKeywords = ["INSERT ", "UPDATE ", "DELETE ", "MERGE "]
-            for dmlKeyword in dmlKeywords where uppercased.contains(dmlKeyword) {
-                return true
-            }
-        }
-
-        return false
+        classify(sql, databaseType: databaseType).tier != .safe
     }
 
     static func isDangerousQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
+        let classification = classify(sql, databaseType: databaseType)
+        if classification.tier == .destructive { return true }
+        guard databaseType != .redis else { return false }
         let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if databaseType == .redis {
-            let firstToken = trimmed.prefix(while: { !$0.isWhitespace }).uppercased()
-            if firstToken == "CONFIG" {
-                let rest = trimmed.dropFirst(firstToken.count).trimmingCharacters(in: .whitespaces)
-                return rest.uppercased().hasPrefix("SET")
-            }
-            return redisDangerousCommands.contains(firstToken)
-        }
-
-        let keyword = leadingKeyword(of: trimmed)
-
-        if keyword == "DROP" || keyword == "TRUNCATE" {
-            return true
-        }
-
-        if keyword == "DELETE" {
-            let uppercased = trimmed.uppercased()
-            let range = NSRange(uppercased.startIndex..., in: uppercased)
-            let hasWhere = whereClauseRegex?.firstMatch(in: uppercased, options: [], range: range) != nil
-            return !hasWhere
-        }
-
-        return false
+        guard leadingKeyword(of: trimmed) == "DELETE" else { return false }
+        return !hasWhereClause(trimmed)
     }
 
     static func classifyTier(_ sql: String, databaseType: DatabaseType) -> QueryTier {
-        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
+        classify(sql, databaseType: databaseType).tier
+    }
 
-        if databaseType == .redis {
-            let firstToken = trimmed.prefix(while: { !$0.isWhitespace }).uppercased()
-            if firstToken == "FLUSHDB" || firstToken == "FLUSHALL" {
-                return .destructive
-            }
-        } else {
-            let keyword = leadingKeyword(of: trimmed)
-            if keyword == "DROP" || keyword == "TRUNCATE" {
-                return .destructive
-            }
-            if keyword == "ALTER", trimmed.uppercased().range(of: " DROP ", options: .literal) != nil {
-                return .destructive
-            }
-
-            if keyword == "WITH" {
-                let uppercased = trimmed.uppercased()
-                let destructiveKeywords = ["DROP ", "TRUNCATE "]
-                for destructiveKeyword in destructiveKeywords where uppercased.contains(destructiveKeyword) {
-                    return .destructive
-                }
-                let writeKeywords = ["INSERT ", "UPDATE ", "DELETE ", "MERGE "]
-                for writeKeyword in writeKeywords where uppercased.contains(writeKeyword) {
-                    return .write
-                }
-            }
-        }
-
-        if isWriteQuery(sql, databaseType: databaseType) {
-            return .write
-        }
-
-        return .safe
+    static func reachesFilesystemOrExecutesCode(_ sql: String, databaseType: DatabaseType) -> Bool {
+        classify(sql, databaseType: databaseType).reachesFilesystemOrExecutesCode
     }
 
     static func isMultiStatement(_ sql: String, databaseType: DatabaseType) -> Bool {
@@ -165,5 +105,451 @@ enum QueryClassifier {
                 return String(trimmed)
             }
         }
+    }
+
+    static func strippingStringLiterals(_ sql: String) -> String {
+        var output = ""
+        output.reserveCapacity(sql.count)
+        var characters = Array(sql)
+        var index = 0
+        while index < characters.count {
+            let character = characters[index]
+            if character == "'" || character == "\"" || character == "`" {
+                index = skipQuoted(characters, from: index, quote: character, into: &output)
+                continue
+            }
+            if character == "$", let end = skipDollarQuoted(characters, from: index) {
+                output.append(" ")
+                index = end
+                continue
+            }
+            if character == "-", index + 1 < characters.count, characters[index + 1] == "-" {
+                while index < characters.count, characters[index] != "\n" { index += 1 }
+                continue
+            }
+            if character == "/", index + 1 < characters.count, characters[index + 1] == "*" {
+                index += 2
+                while index + 1 < characters.count, !(characters[index] == "*" && characters[index + 1] == "/") {
+                    index += 1
+                }
+                index = min(index + 2, characters.count)
+                output.append(" ")
+                continue
+            }
+            output.append(character)
+            index += 1
+        }
+        return output
+    }
+
+    private static func skipQuoted(
+        _ characters: [Character],
+        from start: Int,
+        quote: Character,
+        into output: inout String
+    ) -> Int {
+        var index = start + 1
+        while index < characters.count {
+            let character = characters[index]
+            if character == "\\", index + 1 < characters.count {
+                index += 2
+                continue
+            }
+            if character == quote {
+                if index + 1 < characters.count, characters[index + 1] == quote {
+                    index += 2
+                    continue
+                }
+                index += 1
+                break
+            }
+            index += 1
+        }
+        output.append(" ")
+        return index
+    }
+
+    private static func skipDollarQuoted(_ characters: [Character], from start: Int) -> Int? {
+        var cursor = start + 1
+        var tag = ""
+        while cursor < characters.count, characters[cursor] != "$" {
+            let character = characters[cursor]
+            guard character.isLetter || character.isNumber || character == "_" else { return nil }
+            tag.append(character)
+            cursor += 1
+        }
+        guard cursor < characters.count else { return nil }
+        let delimiter = Array("$\(tag)$")
+        var index = cursor + 1
+        while index + delimiter.count <= characters.count {
+            if Array(characters[index..<(index + delimiter.count)]) == delimiter {
+                return index + delimiter.count
+            }
+            index += 1
+        }
+        return characters.count
+    }
+}
+
+private extension QueryClassifier {
+    static let explainPrefixes: [String] = ["EXPLAIN", "ANALYZE"]
+
+    static let whereClauseRegex = try? NSRegularExpression(pattern: "\\sWHERE\\s", options: [])
+
+    static let destructiveKeywords: Set<String> = ["DROP", "TRUNCATE"]
+
+    static let filesystemOrCodeKeywords: Set<String> = [
+        "COPY", "ATTACH", "DETACH", "DO", "LOAD", "INSTALL", "IMPORT", "EXPORT",
+        "BACKUP", "RESTORE", "DUMP", "SOURCE", "UNLOAD"
+    ]
+
+    static let writeKeywords: Set<String> = [
+        "INSERT", "UPDATE", "DELETE", "REPLACE", "MERGE", "UPSERT",
+        "ALTER", "CREATE", "RENAME", "GRANT", "REVOKE", "COMMENT", "DENY",
+        "CALL", "EXEC", "EXECUTE", "PREPARE", "DEALLOCATE",
+        "SET", "RESET", "LOCK", "UNLOCK", "USE", "PRAGMA",
+        "VACUUM", "REINDEX", "CLUSTER", "REFRESH", "ANALYZE", "OPTIMIZE", "REPAIR", "CHECK",
+        "BEGIN", "START", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE", "END", "ABORT",
+        "DECLARE", "FETCH", "CLOSE", "MOVE", "DISCARD", "CHECKPOINT", "FLUSH",
+        "KILL", "SHUTDOWN", "PURGE", "MSCK", "BATCH", "APPLY",
+        "DEFINE", "REMOVE", "RELATE", "LET", "SECURITY", "LISTEN", "UNLISTEN", "NOTIFY"
+    ]
+
+    static let readOnlyKeywords: Set<String> = [
+        "SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "VALUES", "TABLE",
+        "HELP", "INFO", "PRINT", "EXPLAIN", "ANALYZE"
+    ]
+
+    static let statementStartKeywords: Set<String> = [
+        "SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "MERGE", "REPLACE", "UPSERT",
+        "CREATE", "ALTER", "DROP", "TRUNCATE", "TABLE", "VALUES", "CALL", "EXECUTE", "COPY", "DO"
+    ]
+
+    static let filesystemMarkers: [String] = [
+        "INTO OUTFILE", "INTO DUMPFILE", "TO PROGRAM", "FROM PROGRAM", "VACUUM INTO",
+        "LOAD_FILE(", "PG_READ_FILE(", "PG_READ_BINARY_FILE(", "PG_LS_DIR(",
+        "LO_IMPORT(", "LO_EXPORT(", "PG_FILE_WRITE(", "LOAD_EXTENSION(",
+        "READFILE(", "WRITEFILE(", "FN_GET_AUDIT_FILE(", "XP_CMDSHELL", "SP_OACREATE"
+    ]
+
+    static func hasWhereClause(_ trimmed: String) -> Bool {
+        let uppercased = strippingStringLiterals(trimmed).uppercased()
+        let range = NSRange(uppercased.startIndex..., in: uppercased)
+        return whereClauseRegex?.firstMatch(in: uppercased, options: [], range: range) != nil
+    }
+
+    static func sqlClassification(_ trimmed: String) -> QueryClassification {
+        let body = strippingStringLiterals(trimmed).uppercased()
+        let touchesUnsafeSurface = filesystemMarkers.contains { body.contains($0) }
+        let base = keywordClassification(trimmed, body: body)
+        return touchesUnsafeSurface ? base.markingUnsafeSurface() : base
+    }
+
+    static func keywordClassification(_ trimmed: String, body: String) -> QueryClassification {
+        let keyword = leadingKeyword(of: trimmed)
+
+        if keyword == "EXPLAIN" || keyword == "ANALYZE" {
+            return explainClassification(trimmed, body: body, keyword: keyword)
+        }
+
+        if filesystemOrCodeKeywords.contains(keyword) {
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: true)
+        }
+
+        if destructiveKeywords.contains(keyword) {
+            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
+        }
+
+        if keyword == "ALTER" {
+            let tier: QueryTier = body.range(of: " DROP ", options: .literal) != nil ? .destructive : .write
+            return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: false)
+        }
+
+        if keyword == "WITH" {
+            return commonTableExpressionClassification(body)
+        }
+
+        if keyword == "SELECT" || keyword == "TABLE" || keyword == "VALUES" {
+            guard containsWord(body, "INTO") else { return .safe }
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        }
+
+        if writeKeywords.contains(keyword) {
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        }
+
+        if readOnlyKeywords.contains(keyword) {
+            return .safe
+        }
+
+        return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+    }
+
+    static func commonTableExpressionClassification(_ body: String) -> QueryClassification {
+        for keyword in ["DROP", "TRUNCATE"] where containsWord(body, keyword) {
+            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
+        }
+        for keyword in ["INSERT", "UPDATE", "DELETE", "MERGE"] where containsWord(body, keyword) {
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        }
+        return .safe
+    }
+
+    static func explainClassification(
+        _ trimmed: String,
+        body: String,
+        keyword: String
+    ) -> QueryClassification {
+        guard let inner = explainInnerStatement(trimmed, keyword: keyword) else {
+            let tier: QueryTier = keyword == "ANALYZE" ? .write : .safe
+            return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: false)
+        }
+        let innerClassification = sqlClassification(inner.statement)
+        guard inner.executesStatement else {
+            return QueryClassification(
+                tier: .safe,
+                reachesFilesystemOrExecutesCode: innerClassification.reachesFilesystemOrExecutesCode
+            )
+        }
+        return innerClassification
+    }
+
+    static func explainInnerStatement(
+        _ trimmed: String,
+        keyword: String
+    ) -> (statement: String, executesStatement: Bool)? {
+        var remainder = Substring(trimmed).dropFirst(keyword.count)
+        var options = keyword == "ANALYZE" ? "ANALYZE" : ""
+        while true {
+            remainder = remainder.drop { $0.isWhitespace }
+            guard let first = remainder.first else { return nil }
+            if first == "(" {
+                var depth = 0
+                var index = remainder.startIndex
+                while index < remainder.endIndex {
+                    if remainder[index] == "(" { depth += 1 }
+                    if remainder[index] == ")" {
+                        depth -= 1
+                        if depth == 0 {
+                            index = remainder.index(after: index)
+                            break
+                        }
+                    }
+                    index = remainder.index(after: index)
+                }
+                options += " " + remainder[remainder.startIndex..<index].uppercased()
+                remainder = remainder[index...]
+                continue
+            }
+            let token = remainder.prefix { $0.isLetter || $0.isNumber || $0 == "_" }
+            guard !token.isEmpty else {
+                if first == "=" || first == "," {
+                    remainder = remainder.dropFirst()
+                    continue
+                }
+                return nil
+            }
+            let upperToken = token.uppercased()
+            if statementStartKeywords.contains(upperToken) {
+                return (String(remainder), options.contains("ANALYZE"))
+            }
+            options += " " + upperToken
+            remainder = remainder.dropFirst(token.count)
+        }
+    }
+
+    static func containsWord(_ body: String, _ word: String) -> Bool {
+        var searchRange = body.startIndex..<body.endIndex
+        while let found = body.range(of: word, options: .literal, range: searchRange) {
+            let beforeOk = found.lowerBound == body.startIndex
+                || !isIdentifierCharacter(body[body.index(before: found.lowerBound)])
+            let afterOk = found.upperBound == body.endIndex
+                || !isIdentifierCharacter(body[found.upperBound])
+            if beforeOk, afterOk { return true }
+            guard found.upperBound < body.endIndex else { return false }
+            searchRange = found.upperBound..<body.endIndex
+        }
+        return false
+    }
+
+    static func isIdentifierCharacter(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber || character == "_"
+    }
+}
+
+private extension QueryClassifier {
+    static let redisReadCommands: Set<String> = [
+        "GET", "MGET", "STRLEN", "GETRANGE", "SUBSTR", "EXISTS", "TYPE", "TTL", "PTTL",
+        "EXPIRETIME", "PEXPIRETIME", "KEYS", "SCAN", "RANDOMKEY", "DBSIZE", "DUMP",
+        "HGET", "HMGET", "HGETALL", "HKEYS", "HVALS", "HLEN", "HEXISTS", "HRANDFIELD",
+        "HSCAN", "HSTRLEN", "LRANGE", "LLEN", "LINDEX", "LPOS",
+        "SMEMBERS", "SISMEMBER", "SMISMEMBER", "SCARD", "SRANDMEMBER", "SSCAN",
+        "SDIFF", "SINTER", "SUNION", "SINTERCARD",
+        "ZRANGE", "ZRANGEBYSCORE", "ZRANGEBYLEX", "ZREVRANGE", "ZREVRANGEBYSCORE",
+        "ZREVRANGEBYLEX", "ZRANK", "ZREVRANK", "ZSCORE", "ZMSCORE", "ZCARD", "ZCOUNT",
+        "ZLEXCOUNT", "ZSCAN", "ZRANDMEMBER", "ZDIFF", "ZINTER", "ZUNION", "ZINTERCARD",
+        "XRANGE", "XREVRANGE", "XLEN", "XREAD", "XINFO", "XPENDING", "XAUTOCLAIM",
+        "PFCOUNT", "BITCOUNT", "BITPOS", "GETBIT", "BITFIELD_RO",
+        "GEOPOS", "GEODIST", "GEOHASH", "GEOSEARCH", "GEORADIUS_RO", "GEORADIUSBYMEMBER_RO",
+        "SORT_RO", "OBJECT", "COMMAND", "INFO", "TIME", "LASTSAVE", "PING", "ECHO", "LOLWUT",
+        "JSON.GET", "JSON.MGET", "JSON.TYPE", "JSON.OBJKEYS", "JSON.ARRLEN", "JSON.STRLEN",
+        "TS.RANGE", "TS.REVRANGE", "TS.GET", "TS.MGET", "TS.INFO", "FT.SEARCH", "FT.INFO"
+    ]
+
+    static let redisDestructiveCommands: Set<String> = [
+        "FLUSHDB", "FLUSHALL", "SHUTDOWN", "MIGRATE", "SWAPDB", "REPLICAOF", "SLAVEOF",
+        "CLUSTER", "FAILOVER", "RESET"
+    ]
+
+    static let redisCodeExecutionCommands: Set<String> = [
+        "EVAL", "EVALSHA", "EVAL_RO", "EVALSHA_RO", "FCALL", "FCALL_RO",
+        "FUNCTION", "SCRIPT", "MODULE", "DEBUG"
+    ]
+
+    static let redisFilesystemCommands: Set<String> = [
+        "SAVE", "BGSAVE", "BGREWRITEAOF", "DEBUG"
+    ]
+
+    static func redisClassification(
+        _ trimmed: String,
+        databaseType: DatabaseType
+    ) -> QueryClassification? {
+        guard databaseType == .redis else { return nil }
+        let command = trimmed.prefix { !$0.isWhitespace }.uppercased()
+        guard !command.isEmpty else { return .safe }
+
+        let touchesUnsafeSurface = redisCodeExecutionCommands.contains(command)
+            || redisFilesystemCommands.contains(command)
+
+        if command == "CONFIG" {
+            let rest = trimmed.dropFirst(command.count).trimmingCharacters(in: .whitespaces).uppercased()
+            let tier: QueryTier = rest.hasPrefix("GET") ? .safe : .destructive
+            return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: false)
+        }
+
+        if redisDestructiveCommands.contains(command) || command == "DEBUG" {
+            return QueryClassification(
+                tier: .destructive,
+                reachesFilesystemOrExecutesCode: touchesUnsafeSurface
+            )
+        }
+
+        if redisReadCommands.contains(command) {
+            return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: false)
+        }
+
+        return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+    }
+
+    static let mongoReadMethods: Set<String> = [
+        "find", "findone", "aggregate", "count", "countdocuments", "estimateddocumentcount",
+        "distinct", "explain", "getindexes", "listindexes", "listcollections", "getcollectionnames",
+        "getcollectioninfos", "stats", "totalsize", "datasize", "watch", "getindexkeys", "help",
+        "hello", "ismaster", "serverstatus", "dbstats", "collstats", "validate", "getshardversion"
+    ]
+
+    static let mongoDestructiveMethods: Set<String> = [
+        "drop", "dropdatabase", "dropindex", "dropindexes", "dropcollection", "deletemany",
+        "removeall", "renamecollection"
+    ]
+
+    static let mongoCodeExecutionMarkers: [String] = [
+        "$where", "$function", "$accumulator", "mapreduce", ".eval(", "$out", "$merge"
+    ]
+
+    static func documentStoreClassification(
+        _ trimmed: String,
+        databaseType: DatabaseType
+    ) -> QueryClassification? {
+        switch databaseType {
+        case .mongodb:
+            return mongoClassification(trimmed)
+        case .etcd:
+            return etcdClassification(trimmed)
+        case .elasticsearch:
+            return elasticsearchClassification(trimmed)
+        default:
+            return nil
+        }
+    }
+
+    static func mongoClassification(_ trimmed: String) -> QueryClassification {
+        let lowered = trimmed.lowercased()
+        let touchesUnsafeSurface = mongoCodeExecutionMarkers.contains { lowered.contains($0) }
+        let methods = invokedMethodNames(in: lowered)
+        guard !methods.isEmpty else {
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+        }
+        if methods.contains(where: { mongoDestructiveMethods.contains($0) }) {
+            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+        }
+        let allRead = methods.allSatisfy { mongoReadMethods.contains($0) }
+        let writesThroughPipeline = lowered.contains("$out") || lowered.contains("$merge")
+        guard allRead, !writesThroughPipeline else {
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+        }
+        return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+    }
+
+    static func invokedMethodNames(in lowered: String) -> [String] {
+        var names: [String] = []
+        var current = ""
+        var sawDot = false
+        for character in lowered {
+            if character == "." {
+                sawDot = true
+                current = ""
+                continue
+            }
+            if character.isLetter || character.isNumber || character == "_" || character == "$" {
+                current.append(character)
+                continue
+            }
+            if character == "(", sawDot, !current.isEmpty {
+                names.append(current)
+            }
+            if !character.isWhitespace {
+                sawDot = false
+            }
+            current = ""
+        }
+        return names
+    }
+
+    static let etcdReadCommands: Set<String> = ["GET", "RANGE", "WATCH", "LIST", "STATUS", "VERSION", "ENDPOINT"]
+
+    static func etcdClassification(_ trimmed: String) -> QueryClassification {
+        let command = trimmed.prefix { !$0.isWhitespace }.uppercased()
+        if command == "SNAPSHOT" || command == "DEFRAG" {
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: true)
+        }
+        if command == "DEL" || command == "DELETE" || command == "COMPACT" || command == "COMPACTION" {
+            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
+        }
+        if etcdReadCommands.contains(command) {
+            return .safe
+        }
+        return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+    }
+
+    static let elasticsearchReadPaths: [String] = [
+        "_SEARCH", "_COUNT", "_MSEARCH", "_EXPLAIN", "_ANALYZE", "_FIELD_CAPS",
+        "_VALIDATE", "_RENDER", "_MAPPING", "_SETTINGS", "_STATS", "_CAT", "_SQL"
+    ]
+
+    static func elasticsearchClassification(_ trimmed: String) -> QueryClassification {
+        let upper = trimmed.uppercased()
+        let verb = upper.prefix { !$0.isWhitespace }
+        let touchesUnsafeSurface = upper.contains("_SCRIPTS") || upper.contains("_PAINLESS_EXECUTE")
+        if verb == "GET" || verb == "HEAD" {
+            return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+        }
+        if verb == "POST", elasticsearchReadPaths.contains(where: { upper.contains($0) }) {
+            return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+        }
+        if verb == "DELETE" {
+            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+        }
+        return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
     }
 }

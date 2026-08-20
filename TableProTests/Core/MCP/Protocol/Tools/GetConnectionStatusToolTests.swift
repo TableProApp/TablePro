@@ -1,43 +1,52 @@
+//
+//  GetConnectionStatusToolTests.swift
+//  TableProTests
+//
+
 import Foundation
-import TableProPluginKit
 @testable import TablePro
 import Testing
 
 @Suite("GetConnectionStatusTool")
 struct GetConnectionStatusToolTests {
-    @Test("Tool exposes expected metadata")
-    func metadata() {
+    private let tool = GetConnectionStatusTool()
+
+    private func call(_ arguments: JsonValue) async throws -> MCPToolCallResult {
+        try await tool.call(
+            arguments: arguments,
+            context: MCPToolTestHarness.context(),
+            services: MCPToolTestHarness.services()
+        )
+    }
+
+    @Test("Reading status is read-only and reports the session fields")
+    func metadata() throws {
         #expect(GetConnectionStatusTool.name == "get_connection_status")
         #expect(GetConnectionStatusTool.requiredScopes == [.toolsRead])
-        let schema = GetConnectionStatusTool.inputSchema
-        #expect(schema["type"]?.stringValue == "object")
-        let required = schema["required"]?.arrayValue?.compactMap(\.stringValue) ?? []
-        #expect(required == ["connection_id"])
+        #expect(GetConnectionStatusTool.annotations.readOnlyHint == true)
+        let output = try #require(GetConnectionStatusTool.outputSchema)
+        #expect(output["properties"]?["status"] != nil)
+        #expect(output["properties"]?["current_database"] != nil)
     }
 
-    @Test("Missing connection_id returns invalidParams")
+    @Test("Missing connection_id is a protocol error")
     func missingConnectionId() async throws {
-        let tool = GetConnectionStatusTool()
-        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
-        let services = MCPToolServices(connectionBridge: MCPConnectionBridge(), authPolicy: MCPAuthPolicy())
-
         await #expect(throws: MCPProtocolError.self) {
-            _ = try await tool.call(arguments: .object([:]), context: context, services: services)
+            _ = try await call(.object([:]))
         }
     }
 
-    @Test("Malformed connection_id returns invalidParams")
+    @Test("A malformed connection id is a tool error")
     func malformedConnectionId() async throws {
-        let tool = GetConnectionStatusTool()
-        let context = await MCPProtocolHandlerTestSupport.makeContext(method: "tools/call")
-        let services = MCPToolServices(connectionBridge: MCPConnectionBridge(), authPolicy: MCPAuthPolicy())
+        let result = try await call(.object(["connection_id": .string("not-a-uuid")]))
+        #expect(result.isError)
+        #expect(MCPToolTestHarness.errorText(result)?.hasPrefix("invalid_argument:") == true)
+    }
 
-        await #expect(throws: MCPProtocolError.self) {
-            _ = try await tool.call(
-                arguments: .object(["connection_id": .string("not-a-uuid")]),
-                context: context,
-                services: services
-            )
-        }
+    @Test("A session that is not open reports that rather than inventing a status")
+    func closedSessionIsReported() async throws {
+        let result = try await call(.object(["connection_id": .string(UUID().uuidString)]))
+        #expect(result.isError)
+        #expect(MCPToolTestHarness.errorText(result)?.hasPrefix("not_connected:") == true)
     }
 }

@@ -184,7 +184,7 @@ struct TabCloseProtectionTests {
         tab.tabType = .table
         tab.tableContext.tableName = "users"
 
-        let session = StructureEditingSession(identity: "db_a.users")
+        let session = TestFixtures.makeStructureSession()
         coordinator.structureSessions[tab.id] = session
         #expect(!coordinator.hasUnsavedWork(in: tab))
 
@@ -206,7 +206,7 @@ struct TabCloseProtectionTests {
     /// what would clear the staged edits.
     @Test("A structure session keeps its staged edits across a rebuild")
     func structureSessionSurvivesRebuild() {
-        let session = StructureEditingSession(identity: "db_a.users")
+        let session = TestFixtures.makeStructureSession()
         session.changeManager.loadSchema(
             tableName: "users", columns: [], indexes: [], foreignKeys: [], primaryKey: []
         )
@@ -360,7 +360,7 @@ struct TabCloseProtectionTests {
             Issue.record("expected a selected tab")
             return
         }
-        coordinator.structureSessions[id] = StructureEditingSession(identity: "db_a.users")
+        coordinator.structureSessions[id] = TestFixtures.makeStructureSession()
         coordinator.createTableDrafts[id] = CreateTableDraft()
 
         coordinator.closeTabsByUser(ids: [id])

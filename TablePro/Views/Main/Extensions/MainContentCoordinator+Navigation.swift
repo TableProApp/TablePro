@@ -346,7 +346,14 @@ extension MainContentCoordinator {
         guard let tab = tabManager.selectedTab else { return false }
         if changeManager.hasChanges { return true }
         if tab.holdsQueryWork { return true }
-        if tab.tabType == .createTable { return toolbarState.hasCreateTablePending }
+        if hasStagedStructureEdits(in: tab) { return true }
+        /// The draft is consulted alongside the toolbar flag because the two answer different
+        /// questions: the flag says the draft is complete enough to run, `hasTableDraftWork` says
+        /// the user has typed something. A retarget now deletes the draft, so a half-written table
+        /// would go with it. `hasUnsavedWork` has always asked the second question.
+        if tab.tabType == .createTable {
+            return toolbarState.hasCreateTablePending || hasTableDraftWork(in: tab)
+        }
         return false
     }
 

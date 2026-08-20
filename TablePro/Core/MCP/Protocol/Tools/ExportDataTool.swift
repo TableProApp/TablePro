@@ -4,41 +4,15 @@ import TableProPluginKit
 
 public struct ExportDataTool: MCPToolImplementation {
     public static let name = "export_data"
+    public static let title: String? = String(localized: "Export Data")
     public static let description = String(
-        localized: "Export query results or table data to CSV, JSON, or SQL"
+        localized: """
+        Export the result of a query, or whole tables, as CSV, JSON, or SQL INSERT statements. \
+        With output_path the file is written inside the user's Downloads folder and never overwrites an \
+        existing file; without it the text comes back inline. SQL output uses the connection's own \
+        quoting and literal rules, so exporting a query needs 'sql_table' to name the target table.
+        """
     )
-    public static let inputSchema: JsonValue = .object([
-        "type": .string("object"),
-        "properties": .object([
-            "connection_id": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "UUID of the connection"))
-            ]),
-            "format": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Export format: csv, json, or sql")),
-                "enum": .array([.string("csv"), .string("json"), .string("sql")])
-            ]),
-            "query": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "SQL query to export results from"))
-            ]),
-            "tables": .object([
-                "type": .string("array"),
-                "description": .string(String(localized: "Table names to export (alternative to query)")),
-                "items": .object(["type": .string("string")])
-            ]),
-            "output_path": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "File path inside the user's Downloads directory (returns inline data if omitted). Paths outside Downloads are rejected."))
-            ]),
-            "max_rows": .object([
-                "type": .string("integer"),
-                "description": .string(String(localized: "Maximum rows to export. Defaults to the server's configured default row limit and is capped at its maximum row limit."))
-            ])
-        ]),
-        "required": .array([.string("connection_id"), .string("format")])
-    ])
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
     public static let annotations = MCPToolAnnotations(
         title: String(localized: "Export Data"),
@@ -48,324 +22,319 @@ public struct ExportDataTool: MCPToolImplementation {
         openWorldHint: true
     )
 
+    public static let inputSchema = MCPToolSchema.object(
+        properties: [
+            "connection_id": MCPToolSchema.connectionId,
+            "format": MCPToolSchema.string(
+                String(localized: "Output format"),
+                enumValues: MCPExportFormat.allCases.map(\.rawValue)
+            ),
+            "query": MCPToolSchema.string(String(localized: "A SELECT to export. Use instead of 'tables'.")),
+            "tables": MCPToolSchema.array(
+                String(localized: "Tables to export. Use instead of 'query'."),
+                of: MCPToolSchema.stringItem
+            ),
+            "sql_table": MCPToolSchema.string(
+                String(localized: "Target table for SQL output when exporting a query")
+            ),
+            "output_path": MCPToolSchema.string(
+                String(localized: "File name or path inside Downloads. Omit to get the text inline.")
+            ),
+            "max_rows": MCPToolSchema.integer(
+                String(localized: "Maximum rows per export. Defaults to the server's configured row limit."),
+                minimum: 1
+            ),
+            "database": MCPToolSchema.database,
+            "schema": MCPToolSchema.schema
+        ],
+        required: ["connection_id", "format"]
+    )
+
+    public static let outputSchema: JsonValue? = MCPToolSchema.object(
+        properties: [
+            "format": MCPToolSchema.string(String(localized: "Format that was produced")),
+            "rows_exported": MCPToolSchema.integer(String(localized: "Total rows written")),
+            "is_truncated": MCPToolSchema.boolean(String(localized: "Whether the row limit clipped any export")),
+            "path": MCPToolSchema.string(String(localized: "File that was written, when output_path was given")),
+            "exports": MCPToolSchema.array(
+                String(localized: "One entry per query or table"),
+                of: MCPToolSchema.object(
+                    properties: [
+                        "label": MCPToolSchema.string(String(localized: "Table name, or 'query'")),
+                        "row_count": MCPToolSchema.integer(String(localized: "Rows in this export")),
+                        "is_truncated": MCPToolSchema.boolean(String(localized: "Whether this export was clipped")),
+                        "data": MCPToolSchema.string(
+                            String(localized: "Exported text. Omitted when the export was written to a file.")
+                        )
+                    ],
+                    required: ["label", "row_count", "is_truncated"]
+                )
+            )
+        ],
+        required: ["format", "rows_exported", "is_truncated", "exports"]
+    )
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
-    private static let allowedFormats: Set<String> = ["csv", "json", "sql"]
-    private static let exportTableNamePattern = "^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*$"
+    static let tableNamePattern = "^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*$"
 
     public init() {}
 
-    public func call(
+    public func perform(
         arguments: JsonValue,
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
-        let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
-        let format = try MCPArgumentDecoder.requireString(arguments, key: "format")
-        let query = MCPArgumentDecoder.optionalString(arguments, key: "query")
-        let tables = MCPArgumentDecoder.optionalStringArray(arguments, key: "tables")
-        let outputPath = MCPArgumentDecoder.optionalString(arguments, key: "output_path")
-        let settings = await services.settingsProvider()
-        let maxRows = MCPLimitResolver.resolveMaxRows(
-            requested: MCPArgumentDecoder.optionalInt(arguments, key: "max_rows"),
-            settings: settings
+        try MCPArgumentDecoder.rejectUnknownKeys(
+            arguments,
+            allowed: MCPScopeArguments.keys.union([
+                "format", "query", "tables", "sql_table", "output_path", "max_rows"
+            ])
         )
-        let timeoutSeconds = MCPLimitResolver.resolveTimeoutSeconds(requested: nil, settings: settings)
-        let fetchLimit = maxRows + 1
-
-        guard Self.allowedFormats.contains(format) else {
-            throw MCPProtocolError.invalidParams(
-                detail: "Unsupported format: \(format). Must be csv, json, or sql"
-            )
+        let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
+        let rawFormat = try MCPArgumentDecoder.requireEnum(
+            arguments,
+            key: "format",
+            allowed: MCPExportFormat.allCases.map(\.rawValue)
+        )
+        guard let format = MCPExportFormat(rawValue: rawFormat) else {
+            throw MCPToolExecutionError.invalidArgument(String(localized: "Unsupported export format."))
         }
+
+        let query = try MCPArgumentDecoder.optionalString(arguments, key: "query")
+        let tables = try MCPArgumentDecoder.optionalStringArray(arguments, key: "tables")
+        let sqlTable = try MCPArgumentDecoder.optionalString(arguments, key: "sql_table")
+        let outputPath = try MCPArgumentDecoder.optionalString(arguments, key: "output_path")
 
         guard query != nil || tables != nil else {
-            throw MCPProtocolError.invalidParams(detail: "Either 'query' or 'tables' must be provided")
-        }
-
-        if let tables {
-            for table in tables {
-                try Self.validateExportTableName(table)
-            }
-        }
-
-        if let outputPath {
-            _ = try Self.sandboxedDownloadsURL(for: outputPath)
-        }
-
-        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
-        var queries: [(label: String, sql: String)] = []
-
-        if let query {
-            try await services.authPolicy.checkSafeModeDialog(
-                sql: query,
-                connectionId: connectionId,
-                databaseType: meta.databaseType,
-                capabilities: [.confirmationPreCleared]
+            throw MCPToolExecutionError.invalidArgument(
+                String(localized: "Pass either 'query' or 'tables'.")
             )
-            queries.append((label: "query", sql: query))
-        } else if let tables {
-            let quoteIdentifier = Self.identifierQuoter(for: meta.databaseType)
-            let autoLimitStyle = Self.autoLimitStyle(for: meta.databaseType)
-            for table in tables {
-                let quoted = try Self.quoteQualifiedIdentifier(table, quoter: quoteIdentifier)
-                let sql = Self.limitedSelectAll(from: quoted, limit: fetchLimit, autoLimitStyle: autoLimitStyle)
-                try await services.authPolicy.checkSafeModeDialog(
-                    sql: sql,
-                    connectionId: connectionId,
-                    databaseType: meta.databaseType,
-                    capabilities: [.confirmationPreCleared]
-                )
-                queries.append((label: table, sql: sql))
-            }
+        }
+        guard query == nil || tables == nil else {
+            throw MCPToolExecutionError.invalidArgument(
+                String(localized: "Pass 'query' or 'tables', not both.")
+            )
         }
 
-        var exportResults: [JsonValue] = []
-        var totalRowsExported = 0
-        var anyTruncated = false
+        let settings = await services.settingsProvider()
+        let maxRows = try MCPLimitResolver.resolveMaxRows(arguments, settings: settings)
+        let timeoutSeconds = try MCPLimitResolver.resolveTimeoutSeconds(arguments, settings: settings)
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
-        let scope = try await services.connectionBridge.resolveScope(
-            connectionId: connectionId,
-            database: nil,
-            schema: nil
+        var sqlDialect: MCPSqlExportDialect?
+        if format == .sql {
+            guard let dialect = MCPSqlExportDialect.resolve(for: meta.databaseType) else {
+                throw MCPToolExecutionError.unsupported(
+                    String(localized: "This engine has no SQL dialect, so it cannot produce SQL output.")
+                )
+            }
+            sqlDialect = dialect
+            if query != nil, sqlTable == nil {
+                throw MCPToolExecutionError.invalidArgument(
+                    String(localized: "Pass 'sql_table' to name the table the INSERT statements target.")
+                )
+            }
+        }
+        if let sqlTable {
+            try Self.validateTableName(sqlTable)
+        }
+
+        let destination = try outputPath.map {
+            try MCPExportDestination.resolveDownloadsURL(for: $0, format: format)
+        }
+
+        let statements = try await Self.buildStatements(
+            query: query,
+            tables: tables,
+            sqlTable: sqlTable,
+            maxRows: maxRows,
+            meta: meta
         )
 
-        for (label, sql) in queries {
+        let scope = try await MCPScopeArguments.resolve(
+            arguments,
+            connectionId: connectionId,
+            services: services
+        )
+
+        var exports: [JsonValue] = []
+        var documents: [String] = []
+        var totalRows = 0
+        var anyTruncated = false
+
+        for statement in statements {
+            try await MCPStatementGate.authorize(
+                sql: statement.sql,
+                meta: meta,
+                allowsDestructive: false,
+                operationLabel: String(localized: "an export"),
+                context: context,
+                services: services
+            )
+
             let result = try await ToolQueryExecutor.executeAndLog(
                 services: services,
-                query: sql,
+                query: statement.sql,
                 scope: scope,
-                maxRows: fetchLimit,
+                maxRows: maxRows + 1,
                 timeoutSeconds: timeoutSeconds,
-                principalLabel: context.principal.metadata.label
+                context: context,
+                secrets: meta.redactionSecrets
             )
 
-            guard let columns = result["columns"]?.arrayValue,
-                  let fetched = result["rows"]?.arrayValue
+            guard let rawColumns = result["columns"]?.arrayValue,
+                  let rawRows = result["rows"]?.arrayValue
             else {
-                throw MCPProtocolError.internalError(detail: "Unexpected query result structure")
+                throw MCPToolExecutionError.queryFailed(
+                    String(localized: "The engine returned no result set to export.")
+                )
             }
 
-            let limited = Self.applyRowLimit(
-                to: fetched,
-                maxRows: maxRows,
-                driverReportedTruncation: result["is_truncated"]?.boolValue ?? false
+            let columns = rawColumns.compactMap(\.stringValue)
+            let rows = Array(rawRows.prefix(maxRows))
+            let isTruncated = rawRows.count > maxRows || (result["is_truncated"]?.boolValue ?? false)
+            let document = Self.render(
+                format: format,
+                label: statement.label,
+                columns: columns,
+                rows: rows,
+                dialect: sqlDialect
             )
-            let rows = limited.rows
-            let isTruncated = limited.isTruncated
-            let columnNames = columns.compactMap(\.stringValue)
-            let formatted: String
 
-            switch format {
-            case "csv":
-                formatted = Self.formatCSV(columns: columnNames, rows: rows)
-            case "json":
-                formatted = Self.formatJSON(columns: columnNames, rows: rows)
-            case "sql":
-                formatted = Self.formatSQL(table: label, columns: columnNames, rows: rows)
-            default:
-                formatted = Self.formatCSV(columns: columnNames, rows: rows)
-            }
-
-            totalRowsExported += rows.count
+            totalRows += rows.count
             anyTruncated = anyTruncated || isTruncated
+            documents.append(document)
 
-            exportResults.append(.object([
-                "label": .string(label),
-                "format": .string(format),
+            var entry: [String: JsonValue] = [
+                "label": .string(statement.label),
                 "row_count": .int(rows.count),
-                "is_truncated": .bool(isTruncated),
-                "data": .string(formatted)
-            ]))
-        }
-
-        if let outputPath {
-            let fileURL = try Self.sandboxedDownloadsURL(for: outputPath)
-            let fullContent: String
-            if exportResults.count == 1,
-               let data = exportResults.first?["data"]?.stringValue
-            {
-                fullContent = data
-            } else {
-                fullContent = exportResults
-                    .compactMap { $0["data"]?.stringValue }
-                    .joined(separator: "\n\n")
+                "is_truncated": .bool(isTruncated)
+            ]
+            if destination == nil {
+                entry["data"] = .string(document)
             }
-            try fullContent.write(to: fileURL, atomically: true, encoding: .utf8)
-
-            let response: JsonValue = .object([
-                "path": .string(fileURL.path),
-                "rows_exported": .int(totalRowsExported),
-                "is_truncated": .bool(anyTruncated)
-            ])
-            return .structured(response)
+            exports.append(.object(entry))
         }
 
-        let response: JsonValue
-        if exportResults.count == 1, let single = exportResults.first {
-            response = single
-        } else {
-            response = .object(["exports": .array(exportResults)])
+        var payload: [String: JsonValue] = [
+            "format": .string(format.rawValue),
+            "rows_exported": .int(totalRows),
+            "is_truncated": .bool(anyTruncated),
+            "exports": .array(exports)
+        ]
+
+        guard let destination else {
+            return .structured(.object(payload))
         }
-        return .structured(response)
+
+        try MCPExportDestination.write(documents.joined(separator: "\n\n"), to: destination)
+        payload["path"] = .string(destination.path)
+        Self.logger.debug("export_data wrote \(destination.lastPathComponent, privacy: .public)")
+
+        return .structured(
+            .object(payload),
+            attaching: [
+                .resourceLink(
+                    uri: destination.absoluteString,
+                    name: destination.lastPathComponent,
+                    description: String(
+                        format: String(localized: "%d exported row(s)"),
+                        totalRows
+                    ),
+                    mimeType: format.mimeType
+                )
+            ]
+        )
     }
 
-    static func validateExportTableName(_ table: String) throws {
-        guard table.range(of: exportTableNamePattern, options: .regularExpression) != nil else {
-            throw MCPProtocolError.invalidParams(
-                detail: "Invalid table name: '\(table)'. Allowed characters: letters, digits, underscore, and '.' for schema-qualified names."
+    struct ExportStatement {
+        let label: String
+        let sql: String
+    }
+
+    static func buildStatements(
+        query: String?,
+        tables: [String]?,
+        sqlTable: String?,
+        maxRows: Int,
+        meta: ToolConnectionMetadata
+    ) async throws -> [ExportStatement] {
+        if let query {
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                throw MCPToolExecutionError.invalidArgument(String(localized: "The query is empty."))
+            }
+            return [ExportStatement(label: sqlTable ?? "query", sql: trimmed)]
+        }
+        guard let tables, !tables.isEmpty else {
+            throw MCPToolExecutionError.invalidArgument(String(localized: "Pass at least one table."))
+        }
+        let dialect = try? resolveSQLDialect(for: meta.databaseType)
+        guard let dialect else {
+            throw MCPToolExecutionError.unsupported(
+                String(localized: "This engine has no SQL dialect, so tables cannot be selected generically.")
+            )
+        }
+        let quoter = quoteIdentifierFromDialect(dialect)
+        return try tables.map { table in
+            try validateTableName(table)
+            let quoted = table
+                .split(separator: ".", omittingEmptySubsequences: true)
+                .map { quoter(String($0)) }
+                .joined(separator: ".")
+            return ExportStatement(
+                label: table,
+                sql: limitedSelect(from: quoted, limit: maxRows + 1, style: dialect.autoLimitStyle)
             )
         }
     }
 
-    static func applyRowLimit(
-        to fetched: [JsonValue],
-        maxRows: Int,
-        driverReportedTruncation: Bool
-    ) -> (rows: [JsonValue], isTruncated: Bool) {
-        (Array(fetched.prefix(maxRows)), fetched.count > maxRows || driverReportedTruncation)
-    }
-
-    static func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {
-        (try? resolveSQLDialect(for: databaseType))?.autoLimitStyle ?? .limit
-    }
-
-    static func limitedSelectAll(from quotedTable: String, limit: Int, autoLimitStyle: AutoLimitStyle) -> String {
-        switch autoLimitStyle {
+    static func limitedSelect(from quotedTable: String, limit: Int, style: AutoLimitStyle) -> String {
+        switch style {
         case .top:
             return "SELECT TOP \(limit) * FROM \(quotedTable)"
         case .fetchFirst:
             return "SELECT * FROM \(quotedTable) FETCH FIRST \(limit) ROWS ONLY"
+        case .limit:
+            return "SELECT * FROM \(quotedTable) LIMIT \(limit)"
         case .none:
             return "SELECT * FROM \(quotedTable)"
-        default:
-            return "SELECT * FROM \(quotedTable) LIMIT \(limit)"
         }
     }
 
-    static func identifierQuoter(for databaseType: DatabaseType) -> (String) -> String {
-        if let dialect = try? resolveSQLDialect(for: databaseType) {
-            return quoteIdentifierFromDialect(dialect)
-        }
-        return { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }
-    }
-
-    static func quoteQualifiedIdentifier(_ identifier: String, quoter: (String) -> String) throws -> String {
-        let segments = identifier.split(separator: ".", omittingEmptySubsequences: true)
-        let segmentsWithEmpty = identifier.split(separator: ".", omittingEmptySubsequences: false)
-        guard !segments.isEmpty, segments.count == segmentsWithEmpty.count else {
-            throw MCPProtocolError.invalidParams(
-                detail: "Invalid qualified identifier: '\(identifier)'. Empty components are not allowed."
+    static func render(
+        format: MCPExportFormat,
+        label: String,
+        columns: [String],
+        rows: [JsonValue],
+        dialect: MCPSqlExportDialect?
+    ) -> String {
+        switch format {
+        case .csv:
+            return MCPCsvWriter.write(columns: columns, rows: rows)
+        case .json:
+            return MCPJsonExportWriter.write(columns: columns, rows: rows)
+        case .sql:
+            guard let dialect else { return "" }
+            return MCPSqlExportWriter.write(
+                table: label,
+                columns: columns,
+                rows: rows,
+                dialect: dialect
             )
         }
-        return segments.map { quoter(String($0)) }.joined(separator: ".")
     }
 
-    static func sandboxedDownloadsURL(for path: String) throws -> URL {
-        guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
-            throw MCPProtocolError.invalidParams(detail: "Downloads directory is not available")
-        }
-        let downloadsRoot = downloads.standardizedFileURL.resolvingSymlinksInPath().path
-        let candidate = path.hasPrefix("/") ? URL(fileURLWithPath: path) : downloads.appendingPathComponent(path)
-        let resolvedPath = candidate.standardizedFileURL.resolvingSymlinksInPath().path
-        let prefix = downloadsRoot.hasSuffix("/") ? downloadsRoot : downloadsRoot + "/"
-        guard resolvedPath == downloadsRoot || resolvedPath.hasPrefix(prefix) else {
-            throw MCPProtocolError.invalidParams(
-                detail: "output_path must be inside the Downloads directory (\(downloadsRoot))"
+    static func validateTableName(_ table: String) throws {
+        guard table.range(of: tableNamePattern, options: .regularExpression) != nil else {
+            throw MCPToolExecutionError.invalidArgument(
+                String(
+                    format: String(
+                        localized: "Table name '%@' may only contain letters, digits, underscore, and '.'."
+                    ),
+                    table
+                )
             )
         }
-        return URL(fileURLWithPath: resolvedPath)
-    }
-
-    static func formatCSV(columns: [String], rows: [JsonValue]) -> String {
-        var lines: [String] = []
-        lines.append(columns.map { escapeCSVField($0) }.joined(separator: ","))
-        for row in rows {
-            guard let cells = row.arrayValue else { continue }
-            let line = cells.map { cell -> String in
-                switch cell {
-                case .string(let value):
-                    return escapeCSVField(value)
-                case .null:
-                    return ""
-                case .int(let value):
-                    return String(value)
-                case .double(let value):
-                    return String(value)
-                case .bool(let value):
-                    return value ? "true" : "false"
-                default:
-                    return escapeCSVField(encodeJSON(cell))
-                }
-            }
-            lines.append(line.joined(separator: ","))
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    static func escapeCSVField(_ field: String) -> String {
-        if field.contains(",") || field.contains("\"") || field.contains("\n") {
-            return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-        }
-        return field
-    }
-
-    static func formatJSON(columns: [String], rows: [JsonValue]) -> String {
-        var objects: [JsonValue] = []
-        for row in rows {
-            guard let cells = row.arrayValue else { continue }
-            var dict: [String: JsonValue] = [:]
-            for (index, column) in columns.enumerated() where index < cells.count {
-                dict[column] = cells[index]
-            }
-            objects.append(.object(dict))
-        }
-        return encodeJSON(.array(objects))
-    }
-
-    static func formatSQL(table: String, columns: [String], rows: [JsonValue]) -> String {
-        guard !columns.isEmpty else { return "" }
-        var statements: [String] = []
-        let escapedTable = "`\(table.replacingOccurrences(of: "`", with: "``"))`"
-        let escapedColumns = columns.map { "`\($0.replacingOccurrences(of: "`", with: "``"))`" }
-        let columnList = escapedColumns.joined(separator: ", ")
-
-        for row in rows {
-            guard let cells = row.arrayValue else { continue }
-            let values = cells.map { cell -> String in
-                switch cell {
-                case .null:
-                    return "NULL"
-                case .string(let value):
-                    let escaped = value
-                        .replacingOccurrences(of: "\\", with: "\\\\")
-                        .replacingOccurrences(of: "'", with: "\\'")
-                    return "'\(escaped)'"
-                case .int(let value):
-                    return String(value)
-                case .double(let value):
-                    return String(value)
-                case .bool(let value):
-                    return value ? "1" : "0"
-                default:
-                    let escaped = encodeJSON(cell)
-                        .replacingOccurrences(of: "\\", with: "\\\\")
-                        .replacingOccurrences(of: "'", with: "\\'")
-                    return "'\(escaped)'"
-                }
-            }
-            statements.append("INSERT INTO \(escapedTable) (\(columnList)) VALUES (\(values.joined(separator: ", ")));")
-        }
-        return statements.joined(separator: "\n")
-    }
-
-    static func encodeJSON(_ value: JsonValue) -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(value),
-              let string = String(data: data, encoding: .utf8)
-        else {
-            return "{}"
-        }
-        return string
     }
 }

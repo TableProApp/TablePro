@@ -1,20 +1,49 @@
+import CryptoKit
 import Foundation
 import os
 
+final class MCPAuditWriteQueue: @unchecked Sendable {
+    static let shared = MCPAuditWriteQueue()
+
+    private let lock = NSLock()
+    private var tail: Task<Void, Never>?
+
+    func enqueue(_ entry: AuditEntry, into storage: MCPAuditLogStorage) {
+        lock.lock()
+        defer { lock.unlock() }
+        let previous = tail
+        tail = Task {
+            await previous?.value
+            await storage.addEntry(entry)
+        }
+    }
+
+    func flush() async {
+        lock.lock()
+        let pending = tail
+        lock.unlock()
+        await pending?.value
+    }
+}
+
 enum MCPAuditLogger {
     private static let serverAuth = Logger(subsystem: "com.TablePro", category: "MCPAuth")
-    private static let serverAccess = Logger(subsystem: "com.TablePro", category: "MCPAccess")
     private static let serverAdmin = Logger(subsystem: "com.TablePro", category: "MCPAdmin")
     private static let serverQuery = Logger(subsystem: "com.TablePro", category: "MCPQuery")
     private static let serverTool = Logger(subsystem: "com.TablePro", category: "MCPTool")
     private static let serverResource = Logger(subsystem: "com.TablePro", category: "MCPResource")
 
-    private static let sqlExcerptLimit = 256
+    private static let messageExcerptLimit = 256
 
-    static func logAuthSuccess(tokenName: String, ip: String) {
-        serverAuth.info("Auth success: token=\(tokenName, privacy: .public) ip=\(ip, privacy: .public)")
+    static func flush() async {
+        await MCPAuditWriteQueue.shared.flush()
+    }
+
+    static func logAuthSuccess(tokenId: UUID, tokenName: String?, ip: String) {
+        serverAuth.info("Auth success: token=\(tokenId.uuidString, privacy: .public) ip=\(ip, privacy: .public)")
         record(
             category: .auth,
+            tokenId: tokenId,
             tokenName: tokenName,
             action: "auth.success",
             outcome: .success,
@@ -56,11 +85,11 @@ enum MCPAuditLogger {
 
     static func logPairingExchange(
         outcome: AuditOutcome,
+        tokenId: UUID? = nil,
         tokenName: String? = nil,
         ip: String,
         details: String? = nil
     ) {
-        let resolvedDetails = Self.composePairingDetails(ip: ip, extra: details)
         switch outcome {
         case .success:
             serverAuth.info(
@@ -79,49 +108,60 @@ enum MCPAuditLogger {
         }
         record(
             category: .auth,
+            tokenId: tokenId,
             tokenName: tokenName,
             action: "pairing.exchange",
             outcome: outcome,
-            details: resolvedDetails
+            details: composeDetails(ip: ip, extra: details)
         )
     }
 
-    private static func composePairingDetails(ip: String, extra: String?) -> String {
-        guard let extra, !extra.isEmpty else {
-            return "ip=\(ip)"
-        }
-        return "ip=\(ip) \(extra)"
+    static func logPairingRedirectRejected(clientName: String, ip: String, reason: String) {
+        serverAuth.warning(
+            "Pairing redirect rejected: client=\(clientName, privacy: .public) reason=\(reason, privacy: .public)"
+        )
+        record(
+            category: .auth,
+            tokenName: clientName,
+            action: "pairing.redirectRejected",
+            outcome: .denied,
+            details: composeDetails(ip: ip, extra: "reason=\(reason)")
+        )
     }
 
-    static func logTokenCreated(tokenName: String) {
+    static func logTokenCreated(tokenId: UUID, tokenName: String) {
         serverAdmin.info("Token created: \(tokenName, privacy: .public)")
         record(
             category: .admin,
+            tokenId: tokenId,
             tokenName: tokenName,
             action: "token.created",
             outcome: .success
         )
     }
 
-    static func logTokenRevoked(tokenName: String) {
+    static func logTokenRevoked(tokenId: UUID, tokenName: String) {
         serverAdmin.info("Token revoked: \(tokenName, privacy: .public)")
         record(
             category: .admin,
+            tokenId: tokenId,
             tokenName: tokenName,
             action: "token.revoked",
             outcome: .success
         )
     }
 
-    static func logServerStarted(port: UInt16, remoteAccess: Bool, tlsEnabled: Bool) {
+    static func logServerStarted(port: UInt16) {
         serverAdmin.info(
-            "MCP server started: port=\(port, privacy: .public) remote=\(remoteAccess, privacy: .public) tls=\(tlsEnabled, privacy: .public)"
+            """
+            MCP server started: port=\(port, privacy: .public)
+            """
         )
         record(
             category: .admin,
             action: "server.started",
             outcome: .success,
-            details: "port=\(port) remote=\(remoteAccess) tls=\(tlsEnabled)"
+            details: "port=\(port)"
         )
     }
 
@@ -135,8 +175,7 @@ enum MCPAuditLogger {
     }
 
     static func logQueryExecuted(
-        tokenId: UUID?,
-        tokenName: String?,
+        principal: MCPPrincipal,
         connectionId: UUID,
         sql: String,
         durationMs: Int,
@@ -144,30 +183,31 @@ enum MCPAuditLogger {
         outcome: AuditOutcome,
         errorMessage: String? = nil
     ) {
+        let digest = statementDigest(sql)
         serverQuery.info(
             """
-            Query: token=\(tokenName ?? "-", privacy: .public) \
+            Query: token=\(principal.auditLabel ?? "-", privacy: .public) \
             connection=\(connectionId, privacy: .public) \
             duration=\(durationMs, privacy: .public)ms \
             rows=\(rowCount, privacy: .public) \
             outcome=\(outcome.rawValue, privacy: .public) \
-            sql=\(sql, privacy: .private)
+            sqlDigest=\(digest, privacy: .public)
             """
         )
 
         var detailParts: [String] = [
             "duration=\(durationMs)ms",
             "rows=\(rowCount)",
-            "sql=\(truncate(sql, to: sqlExcerptLimit))"
+            "sqlDigest=\(digest)"
         ]
         if let errorMessage {
-            detailParts.append("error=\(truncate(errorMessage, to: 256))")
+            detailParts.append("error=\(truncate(errorMessage, to: messageExcerptLimit))")
         }
 
         record(
             category: .query,
-            tokenId: tokenId,
-            tokenName: tokenName,
+            tokenId: principal.tokenId,
+            tokenName: principal.auditLabel,
             connectionId: connectionId,
             action: "query.executed",
             outcome: outcome,
@@ -176,8 +216,7 @@ enum MCPAuditLogger {
     }
 
     static func logToolCalled(
-        tokenId: UUID?,
-        tokenName: String?,
+        principal: MCPPrincipal,
         toolName: String,
         connectionId: UUID? = nil,
         outcome: AuditOutcome,
@@ -185,7 +224,7 @@ enum MCPAuditLogger {
     ) {
         serverTool.info(
             """
-            Tool: token=\(tokenName ?? "-", privacy: .public) \
+            Tool: token=\(principal.auditLabel ?? "-", privacy: .public) \
             tool=\(toolName, privacy: .public) \
             connection=\(connectionId?.uuidString ?? "-", privacy: .public) \
             outcome=\(outcome.rawValue, privacy: .public)
@@ -194,13 +233,13 @@ enum MCPAuditLogger {
 
         var detailParts: [String] = ["tool=\(toolName)"]
         if let errorMessage {
-            detailParts.append("error=\(truncate(errorMessage, to: 256))")
+            detailParts.append("error=\(truncate(errorMessage, to: messageExcerptLimit))")
         }
 
         record(
             category: .tool,
-            tokenId: tokenId,
-            tokenName: tokenName,
+            tokenId: principal.tokenId,
+            tokenName: principal.auditLabel,
             connectionId: connectionId,
             action: "tool.\(toolName)",
             outcome: outcome,
@@ -209,15 +248,14 @@ enum MCPAuditLogger {
     }
 
     static func logResourceRead(
-        tokenId: UUID?,
-        tokenName: String?,
+        principal: MCPPrincipal,
         uri: String,
         outcome: AuditOutcome,
         errorMessage: String? = nil
     ) {
         serverResource.info(
             """
-            Resource: token=\(tokenName ?? "-", privacy: .public) \
+            Resource: token=\(principal.auditLabel ?? "-", privacy: .public) \
             uri=\(uri, privacy: .public) \
             outcome=\(outcome.rawValue, privacy: .public)
             """
@@ -225,17 +263,26 @@ enum MCPAuditLogger {
 
         var detailParts: [String] = ["uri=\(uri)"]
         if let errorMessage {
-            detailParts.append("error=\(truncate(errorMessage, to: 256))")
+            detailParts.append("error=\(truncate(errorMessage, to: messageExcerptLimit))")
         }
 
         record(
             category: .resource,
-            tokenId: tokenId,
-            tokenName: tokenName,
+            tokenId: principal.tokenId,
+            tokenName: principal.auditLabel,
             action: "resource.read",
             outcome: outcome,
             details: detailParts.joined(separator: " ")
         )
+    }
+
+    static func statementDigest(_ sql: String) -> String {
+        SHA256.hash(data: Data(sql.utf8)).hexEncoded
+    }
+
+    private static func composeDetails(ip: String, extra: String?) -> String {
+        guard let extra, !extra.isEmpty else { return "ip=\(ip)" }
+        return "ip=\(ip) \(extra)"
     }
 
     private static func record(
@@ -256,15 +303,12 @@ enum MCPAuditLogger {
             outcome: outcome,
             details: details
         )
-        Task {
-            await MCPAuditLogStorage.shared.addEntry(entry)
-        }
+        MCPAuditWriteQueue.shared.enqueue(entry, into: MCPAuditLogStorage.shared)
     }
 
     private static func truncate(_ text: String, to limit: Int) -> String {
         let nsText = text as NSString
         guard nsText.length > limit else { return text }
-        let prefix = nsText.substring(to: limit)
-        return prefix + "..."
+        return nsText.substring(to: limit) + "..."
     }
 }

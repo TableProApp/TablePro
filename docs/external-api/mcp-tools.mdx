@@ -1,506 +1,525 @@
 ---
 title: MCP Tools
-description: JSON-RPC tool catalog with input schemas, output schemas, scope requirements, and examples
+description: The 46 tools TablePro's MCP server exposes, with arguments, defaults, result shapes, and scope requirements
 ---
 
-The MCP server exposes tools and resources over JSON-RPC. The tools are grouped by category below. Every tool is scope-gated: a request must come with a token whose scope and connection allowlist permit the call.
+TablePro exposes 46 tools over MCP. They cover connections, schema, data, server administration, and the app's own windows and tabs. Every tool declares a JSON Schema for its input and its output, so a client can validate both sides without reading this page.
 
-## Transports
+For the wire format, headers and error codes see [MCP Protocol](/external-api/mcp-protocol). For prompts see [MCP Prompts](/external-api/mcp-prompts).
 
-The same tool catalog is available over two transports:
+## How to read this page
 
-- **HTTP**: MCP Streamable HTTP at `http://127.0.0.1:<port>/mcp` (port from the handshake file). POST for JSON-RPC requests, GET for the SSE stream that carries server-initiated notifications. Bearer token in `Authorization` header.
-- **stdio**: bundled `tablepro-mcp` CLI bridges stdio JSON-RPC to localhost HTTP. No token needed because the bridge reuses the in-app handshake.
+Each entry lists arguments and the result. Unless stated otherwise:
 
-The server accepts `2025-03-26`, `2025-06-18`, and `2025-11-25`. On `initialize` it echoes whichever version the client requested. If the client asks for something else, the server returns `2025-11-25`. See [Versioning](/external-api/versioning).
+- `connection_id` is a connection UUID from `list_connections` and is required.
+- `database` and `schema` are optional. Omitted, they use the database and schema the connection is currently browsing. Passing them targets somewhere else **without moving the app's selection**.
+- An unknown argument is rejected with `-32602`. There is no silent ignoring.
+- The result comes back twice: as JSON text in `content[0]`, and as a typed object in `structuredContent`. Read `structuredContent`.
 
-## Scopes and access
+Row limits default to the server's **Default row limit** setting (500) and are capped by **Maximum row limit** (10,000). Timeouts default to **Query timeout** (30 seconds) and are capped at 300. Both are in **Settings > Integrations**.
 
-Each tool entry below lists its minimum token scope. The effective permission is `MIN(token.scope, connection.externalAccess)`; see [Tokens](/external-api/tokens) for the full scope table.
+## Scopes and gates
 
-Two per-connection settings gate every call on top of the token:
+Each entry lists the scope it needs. A call has to clear four gates:
 
-- **External access**. `blocked` hides the connection entirely: `list_connections` omits it, `list_recent_tabs` filters its tabs, and any tool that targets it returns `403 forbidden`. `readOnly` blocks write SQL: `execute_query` with a write statement and any `confirm_destructive_operation` call return `403`, even with a `readWrite` token. The session-state tools `disconnect`, `switch_database`, and `switch_schema` are gated by token scope only.
-- **AI policy `askEachTime`**. The first tool call per session that targets the connection shows an in-app approval dialog. TablePro waits up to 30 seconds. Deny returns `403 forbidden` with message "User denied MCP access to this connection"; no answer fails the call with a timeout error. An approval covers that connection for the rest of the session.
+1. **Token scope.** `tools:read` for a read, `tools:write` for anything that changes state, `admin` for `confirm_destructive_operation`. An unauthenticated loopback caller has `tools:read` and `resources:read` and can never be granted more.
+2. **Connection allowlist.** A token limited to named connections gets `-33007` for anything else.
+3. **Connection policy.** `externalAccess: blocked` hides the connection: `list_connections` omits it and any tool that names it is refused. AI policy `never` does the same. AI policy `askEachTime` shows an approval dialog on the first call per session that touches the connection, and the answer is remembered for the rest of the session.
+4. **Safe Mode.** A write goes through the connection's Safe Mode, which may ask the user to confirm it or to authenticate. See [Approvals](/external-api/mcp-protocol#approvals-and-input-required).
 
-`list_tables`, `list_schemas`, `describe_table`, `get_table_ddl`, and `execute_query` query exactly the `database` and `schema` you pass them and leave the app alone: the sidebar's selected database and every open tab stay where they are, and a tab keeps querying the database and schema it was opened on. `switch_database` and `switch_schema` are the only tools that move the app's selection, which is what they are for.
+`externalAccess: readOnly` rejects write SQL sent through `execute_query`, and rejects `confirm_destructive_operation` outright, even with a `readWrite` token.
 
-## Connection tools
+Statements that read or write files, or that run server-side code, are refused on every tool. So is more than one statement in a single call.
+
+## Connections
 
 ### `list_connections`
 
-List saved connections. Connections with `externalAccess: blocked` are silently omitted.
+Every saved connection this client may use, with live status. Connections blocked for external clients, or with AI policy `never`, are omitted, as are connections outside the token's allowlist.
 
-**Input**: none.
+**Arguments**: none.
 
-**Output**:
+**Returns** `connections[]` with `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `ai_policy`, `external_access`, `safe_mode`. `database` is the session's browsed database when connected, the saved default otherwise.
 
-```json
-{
-  "connections": [
-    {
-      "id": "9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1",
-      "name": "Production",
-      "type": "PostgreSQL",
-      "host": "db.example.com",
-      "port": 5432,
-      "database": "app",
-      "username": "app",
-      "is_connected": false,
-      "ai_policy": "askEachTime",
-      "safe_mode": "silent"
-    }
-  ]
-}
-```
-
-**Scope**: `readOnly`.
+**Scope**: `tools:read`.
 
 ### `connect`
 
-Open a database connection.
+Open a session for a saved connection. Returns only once the driver is connected.
 
-**Input**:
+**Arguments**: `connection_id`.
 
-```json
-{ "connection_id": "9f1f0c3e-..." }
-```
+**Returns** `status` (`"connected"`), `connection_id`, `current_database`, and `current_schema` and `server_version` when known.
 
-**Output**:
-
-```json
-{
-  "status": "connected",
-  "current_database": "app",
-  "current_schema": "public",
-  "server_version": "PostgreSQL 16.2"
-}
-```
-
-`current_schema` and `server_version` are present when known.
-
-**Scope**: `readOnly`.
+**Scope**: `tools:write`.
 
 ### `disconnect`
 
-Close a connection.
+Close the open session.
 
-**Input**: `{ "connection_id": "..." }`
+**Arguments**: `connection_id`.
 
-**Output**: `{ "status": "disconnected" }` on success.
+**Returns** `status` (`"disconnected"`), `connection_id`.
 
-**Scope**: `readWrite`.
+**Scope**: `tools:write`.
 
 ### `get_connection_status`
 
-Return status, active database, server version, connect time, and last-active time for a connection.
+**Arguments**: `connection_id`.
 
-**Input**: `{ "connection_id": "..." }`
+**Returns** `status` (`connected`, `connecting`, `disconnected`, `error`), `connection_id`, `current_database`, plus `current_schema`, `server_version`, `connected_at`, `last_active_at` and `error` when they apply. Timestamps are ISO 8601. `error` text is redacted.
 
-**Output**:
+**Scope**: `tools:read`.
 
-```json
-{
-  "status": "connected",
-  "current_database": "app",
-  "current_schema": "public",
-  "server_version": "PostgreSQL 16.2",
-  "connected_at": "2026-04-26T10:14:22Z",
-  "last_active_at": "2026-04-26T10:14:22Z"
-}
-```
+### `switch_database`
 
-`status` is one of `connected`, `connecting`, `disconnected`, `error`. When `error`, an `error` object with a `message` field is included.
+Move the connection's browse cursor to another database. This changes what the user sees in TablePro. To run one statement elsewhere, pass `database` to that tool instead.
 
-**Scope**: `readOnly`.
+**Arguments**: `connection_id`, `database`.
 
-## Schema tools
+**Returns** `status` (`"switched"`), `connection_id`, `current_database`.
+
+**Scope**: `tools:write`.
+
+### `switch_schema`
+
+Same, for the schema.
+
+**Arguments**: `connection_id`, `schema`.
+
+**Returns** `status`, `connection_id`, `current_schema`.
+
+**Scope**: `tools:write`.
+
+## Schema discovery
 
 ### `list_databases`
 
-**Input**: `{ "connection_id": "..." }`
+**Arguments**: `connection_id`.
 
-**Output**: `{ "databases": ["app", "analytics"] }` (array of database names)
+**Returns** `databases[]`, sorted.
 
-**Scope**: `readOnly`.
+**Scope**: `tools:read`.
 
 ### `list_schemas`
 
-**Input**: `{ "connection_id": "...", "database": "app" }` (database optional)
+**Arguments**: `connection_id`, `database`.
 
-**Output**: `{ "schemas": ["public", "reporting"] }` (array of schema names)
+**Returns** `schemas[]` and `database`.
 
-**Scope**: `readOnly`.
+**Scope**: `tools:read`.
 
 ### `list_tables`
 
-**Input**:
+Tables and views, sorted by schema then name.
 
-```json
-{
-  "connection_id": "...",
-  "database": "app",
-  "schema": "public",
-  "include_row_counts": false
-}
-```
+**Arguments**: `connection_id`, `database`, `schema`, `include_row_counts` (default `false`).
 
-**Output**:
+**Returns** `tables[]` (`name`, `type`, `schema`, `comment`, `row_count`), `database`, `schema`, `row_counts_included`, `row_counts_are_approximate`.
 
-```json
-{
-  "tables": [
-    { "name": "users", "type": "TABLE" },
-    { "name": "orders_view", "type": "VIEW" }
-  ]
-}
-```
+Row counts are fetched one table at a time, so they are skipped when the schema holds more than 200 objects. They come from engine statistics, not `COUNT(*)`.
 
-`type` is one of `TABLE`, `VIEW`, `MATERIALIZED VIEW`, `FOREIGN TABLE`, or `SYSTEM TABLE`. When `include_row_counts` is true and the driver supports it, each entry also includes `row_count`.
-
-**Scope**: `readOnly`.
+**Scope**: `tools:read`.
 
 ### `describe_table`
 
-Columns, indexes, foreign keys, primary key, DDL.
+The one call to make before writing SQL against an unfamiliar table. Columns, indexes, foreign keys, DDL and an approximate row count, all read against the same database and schema.
 
-**Input**:
+**Arguments**: `connection_id`, `table`, `database`, `schema`.
 
-```json
-{
-  "connection_id": "...",
-  "table": "users",
-  "database": "app",
-  "schema": "public"
-}
-```
+**Returns** `table`, `database`, `schema`, `columns[]`, `indexes[]`, `foreign_keys[]`, `ddl`, `approximate_row_count`.
 
-`database` and `schema` are optional. The connection's current database and schema are used when omitted.
+A column carries `name`, `data_type`, `is_nullable`, `is_primary_key`, and where the engine reports them `is_generated`, `default_value`, `extra`, `comment`, `allowed_values`. An index carries `name`, `columns`, `is_unique`, `is_primary`, `type`, `where_clause`. A foreign key carries `name`, `column`, `referenced_table`, `referenced_column`, `referenced_schema`, `on_delete`, `on_update`.
 
-**Output**:
-
-```json
-{
-  "columns": [
-    {
-      "name": "id",
-      "data_type": "uuid",
-      "is_nullable": false,
-      "is_primary_key": true
-    },
-    {
-      "name": "email",
-      "data_type": "text",
-      "is_nullable": false,
-      "is_primary_key": false
-    }
-  ],
-  "indexes": [
-    {
-      "name": "users_email_idx",
-      "columns": ["email"],
-      "is_unique": true,
-      "is_primary": false,
-      "type": "btree"
-    }
-  ],
-  "foreign_keys": [],
-  "ddl": "CREATE TABLE users (...)",
-  "approximate_row_count": 12345
-}
-```
-
-`default_value`, `extra`, and `comment` are present on a column when set. `ddl` and `approximate_row_count` are present when the driver supports them.
-
-**Scope**: `readOnly`.
+**Scope**: `tools:read`.
 
 ### `get_table_ddl`
 
-Just the `CREATE TABLE` statement.
+**Arguments**: `connection_id`, `table`, `database`, `schema`.
 
-**Input**: same as `describe_table` (`connection_id`, `table`, `database`, `schema`).
+**Returns** `table`, `schema`, `ddl`.
 
-**Output**: `{ "ddl": "CREATE TABLE ..." }`
+**Scope**: `tools:read`.
 
-**Scope**: `readOnly`.
+### `search_schema`
 
-## Query tools
+Find tables and columns whose name contains a substring, so a column can be located without describing every table.
+
+**Arguments**: `connection_id`, `term`, `limit` (1-500, default 50), `database`, `schema`.
+
+**Returns** `term`, `matches[]` (`kind` is `table` or `column`, plus `name`, `table`, `schema`, `object_type`, `data_type`), `is_truncated`. Table matches come first.
+
+**Scope**: `tools:read`.
+
+### `list_indexes`
+
+One table, or the whole schema when `table` is omitted.
+
+**Arguments**: `connection_id`, `table`, `database`, `schema`.
+
+**Returns** `database`, `schema`, `tables[]` where each entry is `{ table, indexes[] }`. Tables with no index are left out.
+
+**Scope**: `tools:read`.
+
+### `list_foreign_keys`
+
+**Arguments**: `connection_id`, `table`, `database`, `schema`.
+
+**Returns** `database`, `schema`, `tables[]` where each entry is `{ table, foreign_keys[] }`.
+
+**Scope**: `tools:read`.
+
+### `list_triggers`
+
+**Arguments**: `connection_id`, `table` (required), `database`, `schema`.
+
+**Returns** `table`, `triggers[]` (`name`, `timing`, `event`, `statement`, `is_enabled`), sorted by name.
+
+**Scope**: `tools:read`.
+
+### `get_view_definition`
+
+**Arguments**: `connection_id`, `view` (required), `database`, `schema`.
+
+**Returns** `view`, `schema`, `definition`.
+
+**Scope**: `tools:read`.
+
+### `list_routines`
+
+Stored procedures and user-defined functions.
+
+**Arguments**: `connection_id`, `kind` (`procedure` or `function`, omit for both), `database`, `schema`.
+
+**Returns** `routines[]` (`name`, `kind`, `schema`, `qualified_name`, `signature`).
+
+**Scope**: `tools:read`.
+
+### `list_partitions`
+
+Direct partitions of a partitioned table. Empty on engines without partitioning.
+
+**Arguments**: `connection_id`, `table` (required), `database`, `schema`.
+
+**Returns** `table`, `partitions[]` in the same shape as `list_tables` entries.
+
+**Scope**: `tools:read`.
+
+### `get_table_statistics`
+
+**Arguments**: `connection_id`, `table` (required), `database`, `schema`.
+
+**Returns** `table` plus whatever the engine records: `data_size_bytes`, `index_size_bytes`, `total_size_bytes`, `average_row_length`, `row_count`, `comment`, `engine`, `collation`, `created_at`, `updated_at`.
+
+**Scope**: `tools:read`.
+
+### `get_database_statistics`
+
+**Arguments**: `connection_id`, `database` (omit for every database).
+
+**Returns** `databases[]` (`name`, `table_count`, `size_bytes`, `is_system_database`), sorted by name.
+
+**Scope**: `tools:read`.
+
+## Reading data
+
+### `browse_table`
+
+Read rows with filters, sorting and paging, built by TablePro's own query builder for this engine. Prefer it over hand-writing `SELECT`: it quotes identifiers, escapes values, and pages the way the app does.
+
+**Arguments**: `connection_id`, `table` (required), `columns[]` (omit for all), `filters[]`, `logic` (`and` or `or`, default `and`), `sort[]`, `limit` (default the server's row limit), `offset` (default 0), `timeout_seconds`, `database`, `schema`.
+
+A filter is `{ column, operator, value, second_value, case_sensitive }`. `column` and `operator` are required, `second_value` is the upper bound for `BETWEEN`, and `case_sensitive` defaults to whatever the operator normally does. The operator list is TablePro's own filter vocabulary, published in the tool's input schema as an `enum`; read it from `tools/list` rather than hardcoding it. Raw SQL filters are not available over MCP.
+
+A sort entry is `{ column, direction }` with `direction` one of `ascending` (default) or `descending`. Entries apply in the order given.
+
+**Returns** a result set: `columns[]`, `rows[][]`, `row_count`, `rows_affected`, `execution_time_ms`, `is_truncated`, and `status_message`, `database`, `schema` when they apply.
+
+**Scope**: `tools:read`.
+
+### `count_rows`
+
+**Arguments**: `connection_id`, `table` (required), `exact` (default `false`), `filters[]`, `logic`, `database`, `schema`.
+
+Without filters this returns the engine's fast estimate unless `exact` is set. With filters it always counts for real, because an estimate cannot answer a filtered question.
+
+**Returns** `table`, `row_count`, `is_approximate`, `filter_count`.
+
+**Scope**: `tools:read`.
 
 ### `execute_query`
 
-Execute a SQL query. All queries are subject to the connection's safe mode policy. DROP, TRUNCATE, and ALTER...DROP must use `confirm_destructive_operation`.
+Run one statement.
 
-**Input**:
+**Arguments**: `connection_id`, `query` (required, 100 KB max), `max_rows`, `timeout_seconds`, `database`, `schema`.
 
-```json
-{
-  "connection_id": "...",
-  "query": "SELECT id, email FROM users WHERE active = true LIMIT 100",
-  "max_rows": 500,
-  "timeout_seconds": 30,
-  "database": "app",
-  "schema": "public"
-}
-```
+Reads need `tools:read`. Anything that writes needs `tools:write` and goes through the connection's Safe Mode. `DROP` and `TRUNCATE` are refused here; use `confirm_destructive_operation`. Statements that reach the filesystem or run server-side code are refused. One statement per call.
 
-Defaults for `max_rows` and `timeout_seconds` come from **Settings > Integrations > Server Configuration** (default row limit, query timeout). `max_rows` is clamped to the configured maximum (default 10,000). `timeout_seconds` is clamped to 1-300. Single-statement queries only. Query size cap is 100 KB. `database` and `schema` are optional; when present, the query runs against them. It never changes what's selected in the app, and omitting them runs against the connection's currently selected database.
+**Returns** the result set shape shown under `browse_table`.
 
-**Output**:
+Emits progress at 0.0 (resolving), 0.3 (executing) and 1.0 (done) when the request carries a `progressToken`.
 
-```json
-{
-  "columns": ["id", "email"],
-  "rows": [["9f1f...", "alice@example.com"]],
-  "row_count": 1,
-  "rows_affected": 0,
-  "execution_time_ms": 14,
-  "is_truncated": false
-}
-```
+**Scope**: `tools:read`, plus `tools:write` for a write statement.
 
-`columns` is an array of column-name strings. `rows` is an array of rows, where each row is an array of strings (or `null`) aligned to the `columns` order. `status_message` is added when the driver returns one.
+### `explain_query`
 
-**Scope**:
+Ask the engine for the plan, and get both the raw text and, where TablePro can parse it, a node tree with costs and row estimates.
 
-- `readOnly` for SELECT, SHOW, EXPLAIN.
-- `readWrite` for INSERT, UPDATE, DELETE.
-- DROP, TRUNCATE, ALTER...DROP are rejected. Use `confirm_destructive_operation`.
+**Arguments**: `connection_id`, `query` (required, no `EXPLAIN` prefix), `analyze` (default `false`), `variant`, `timeout_seconds`, `database`, `schema`.
 
-Safe Mode rules apply on top. A connection in Safe Mode `readOnly` returns `403` for any write SQL.
+**Returns** `statement` (what was actually sent, with its prefix), `execution_time_ms`, `columns[]`, `rows[][]`, and where available `plan_text`, `plan` (`root`, `planning_time_ms`, `execution_time_ms`) and `available_variants[]` (`id`, `label`, `sql_prefix`).
 
-**Streaming progress**: pass `_meta.progressToken` in the request and the server sends `notifications/progress` events on the SSE channel as the query moves through "Connecting", "Executing", "Formatting result", and "Done". Clients that don't include a token get the final response only.
+Call it with no `variant` to see what this engine offers. `analyze: true` runs the statement for real, so an analyzed write needs `tools:write` and Safe Mode approval.
 
-### `confirm_destructive_operation`
-
-Run a DROP, TRUNCATE, or ALTER...DROP after a typed confirmation.
-
-**Input**:
-
-```json
-{
-  "connection_id": "...",
-  "query": "DROP TABLE legacy_events",
-  "confirmation_phrase": "I understand this is irreversible"
-}
-```
-
-The confirmation phrase is fixed: `I understand this is irreversible`. Anything else returns JSON-RPC `-32602` over HTTP 200 with message `Invalid params: confirmation_phrase must be exactly: I understand this is irreversible`.
-
-**Output**: same shape as `execute_query`.
-
-**Scope**: `readWrite` or `fullAccess` (both grant the `tools:write` MCP scope). The connection's external access must also permit writes; a `readOnly` connection rejects destructive operations even with a matching token.
+**Scope**: `tools:read`.
 
 ### `export_data`
 
-Export query or table data as CSV, JSON, or SQL.
+Export a query result or whole tables as CSV, JSON, or SQL `INSERT` statements.
 
-**Input**:
+**Arguments**: `connection_id`, `format` (`csv`, `json`, `sql`), `query` **or** `tables[]` (exactly one), `sql_table`, `output_path`, `max_rows`, `database`, `schema`.
 
-```json
-{
-  "connection_id": "...",
-  "format": "csv",
-  "tables": ["users", "orders"],
-  "max_rows": 5000
-}
-```
+With `output_path` the file is written inside the user's Downloads folder and never overwrites: a name that is taken gets `-1`, `-2` and so on. The path must stay inside Downloads, must end in the format's extension, and must not name a hidden file. Without `output_path` the text comes back inline in each export entry.
 
-`format` is one of `csv`, `json`, `sql`. Defaults for `max_rows` and the query timeout come from **Settings > Integrations > Server Configuration**, the same as `execute_query`: omitting `max_rows` uses the default row limit (500), and any value you pass is clamped to the maximum row limit (default 10,000). Raise those settings to export more rows. Provide either `tables` or `query`. Table names accept letters, digits, underscore, and `.` for schema-qualified names. Pass `output_path` to write to disk instead of returning data inline; the path must resolve inside the user's `~/Downloads` directory. Anything else fails with JSON-RPC `-32602` over HTTP 200 and message `Invalid params: output_path must be inside the Downloads directory (/Users/you/Downloads)`.
+SQL output uses the connection's own quoting and literal rules, so exporting a query needs `sql_table` to name the target table.
 
-**Output**: when `output_path` is set, returns `{ "path": "...", "rows_exported": N, "is_truncated": false }`. Otherwise returns the export inline. A single export returns `{ "label": "...", "format": "csv", "row_count": N, "is_truncated": false, "data": "..." }`. Multiple exports (multi-table requests) return `{ "exports": [ { "label": "...", "format": "csv", "row_count": N, "is_truncated": false, "data": "..." }, ... ] }`. `is_truncated` is `true` when the row limit clipped the result.
+**Returns** `format`, `rows_exported`, `is_truncated`, `path` when a file was written, and `exports[]` (`label`, `row_count`, `is_truncated`, `data`).
 
-**Scope**: `readOnly`.
+**Scope**: `tools:read`.
 
-### `switch_database` / `switch_schema`
+### `quote_identifiers`
 
-**Input**: `{ "connection_id": "...", "database": "analytics" }` or `{ "connection_id": "...", "schema": "reporting" }`
+Quote identifiers and escape string literals using the connection's own driver rules. Use it before putting any name or value into hand-written SQL.
 
-**Output**: `{ "status": "switched", "current_database": "analytics" }` or `{ "status": "switched", "current_schema": "reporting" }`
+**Arguments**: `connection_id`, `identifiers[]`, `literals[]` (at least one of the two), `database`, `schema`.
 
-**Scope**: `readWrite` (moves the connection's selected database or schema, which the sidebar follows).
+**Returns** `identifiers[]` as `{ input, quoted }` and `literals[]` as `{ input, escaped }`, in the order supplied.
 
-## Navigation tools
+**Scope**: `tools:read`.
 
-These open or focus tabs and windows in the running TablePro app. They require `readOnly` scope and respect the connection allowlist; tabs from `externalAccess: blocked` connections are filtered out.
+## Writing data
 
-### `open_connection_window`
+### `insert_rows`
 
-Open a connection in TablePro and bring its window to front. If the connection is already open, the existing window is focused.
+Insert rows using bound parameters, so values are never spliced into SQL text.
 
-**Input**: `{ "connection_id": "..." }`
+**Arguments**: `connection_id`, `table`, `columns[]`, `rows[][]` (all required), `database`, `schema`.
 
-**Output**:
+Each row is an array with one value per column. At most 1,000 rows per call.
 
-```json
-{
-  "status": "opened",
-  "connection_id": "9f1f...",
-  "window_id": "..."
-}
-```
+**Returns** `table`, `rows_submitted`, `rows_affected`.
 
-**Scope**: `readOnly`.
+**Scope**: `tools:write`.
 
-### `open_table_tab`
+### `confirm_destructive_operation`
 
-Open a table tab.
+Run one destructive statement: `DROP`, `TRUNCATE`, `ALTER ... DROP`. The user approves it before it runs, through your elicitation prompt if your client supports elicitation, otherwise through TablePro's own dialog on the user's Mac.
 
-**Input**:
+**Arguments**: `connection_id`, `query` (required), `timeout_seconds`, `database`, `schema`.
 
-```json
-{
-  "connection_id": "...",
-  "table_name": "users",
-  "database_name": "app",
-  "schema_name": "public"
-}
-```
+A statement that is not destructive is rejected. Use `execute_query` for those.
 
-`database_name` and `schema_name` are optional. If omitted, the connection's current database/schema is used.
+**Returns** the result set shape.
 
-**Output**:
+**Scope**: `tools:write` **and** `admin`, on a connection whose external access is `readWrite`. No token permission skips the approval.
 
-```json
-{
-  "status": "opened",
-  "connection_id": "9f1f...",
-  "table_name": "users",
-  "window_id": "..."
-}
-```
+### `transaction_control`
 
-**Scope**: `readOnly`.
+Begin, commit, or roll back a transaction on the connection's shared session.
 
-### `focus_query_tab`
+**Arguments**: `connection_id`, `action` (`begin`, `commit`, `rollback`), `database`, `schema`.
 
-Bring an existing tab to front. The `tab_id` comes from `list_recent_tabs`.
+The transaction stays open across calls until it is committed or rolled back, and it runs on the same session as the user's own tabs. Leave nothing open.
 
-**Input**: `{ "tab_id": "..." }`
+**Returns** `status` (the action that completed), `connection_id`.
 
-**Output**:
+**Scope**: `tools:write`.
 
-```json
-{
-  "status": "focused",
-  "tab_id": "...",
-  "window_id": "...",
-  "connection_id": "9f1f..."
-}
-```
+## Databases and objects
 
-If the tab is no longer open, the call returns `-32602 invalid params` with detail `tab not found`.
+### `describe_create_database_options`
 
-**Scope**: `readOnly`.
+What `create_database` accepts on this engine.
+
+**Arguments**: `connection_id`.
+
+**Returns** `is_supported`, `fields[]` (`key`, `label`, `default_value`, `options[]`).
+
+**Scope**: `tools:read`.
+
+### `create_database`
+
+**Arguments**: `connection_id`, `name`, `options` (a flat object of string values from `describe_create_database_options`).
+
+**Returns** `status` (`"created"`), `database`.
+
+**Scope**: `tools:write`, plus the user's approval.
+
+### `drop_database_object`
+
+Drop a whole database or a whole schema. This deletes everything inside it and cannot be undone, so the user approves it first.
+
+**Arguments**: `connection_id`, `kind` (`database` or `schema`), `name`.
+
+**Returns** `status` (`"dropped"`) and `database` or `schema`.
+
+**Scope**: `tools:write`.
+
+### `list_maintenance_operations`
+
+**Arguments**: `connection_id`.
+
+**Returns** `operations[]` (`VACUUM`, `ANALYZE`, `OPTIMIZE` and the like, whatever this engine supports) and `is_supported`.
+
+**Scope**: `tools:read`.
+
+### `run_maintenance`
+
+**Arguments**: `connection_id`, `operation` (a name from `list_maintenance_operations`), `table` (omit for the whole database), `options` (string values), `database`, `schema`.
+
+TablePro generates the statements and runs them in order, asking for approval before each one.
+
+**Returns** `operation`, `statements[]`, `results[]` (one result set per statement).
+
+**Scope**: `tools:write`.
+
+## Server administration
+
+### `get_server_dashboard`
+
+The live panels TablePro shows: active sessions, server metrics, and slow queries. Available on PostgreSQL, MySQL, SQL Server, ClickHouse, DuckDB, and SQLite.
+
+**Arguments**: `connection_id`, `panels[]` (`sessions`, `metrics`, `slow_queries`; omit for all).
+
+**Returns** the requested panels. A session carries `id` (the process id `stop_server_session` takes), `user`, `database`, `state`, `duration_seconds`, `query`, `can_kill`, `can_cancel`. A metric carries `id`, `label`, `value`, `unit`. A slow query carries `duration`, `query`, `user`, `database`.
+
+**Scope**: `tools:read`.
+
+### `stop_server_session`
+
+Cancel the running query on a server session, or kill the session outright.
+
+**Arguments**: `connection_id`, `process_id` (from `get_server_dashboard`), `mode` (`cancel` or `kill`, default `cancel`).
+
+The user always approves this one, whatever Safe Mode says.
+
+**Returns** the result set the engine produced.
+
+**Scope**: `tools:write`.
+
+### `list_principals`
+
+Users and roles defined on the server.
+
+**Arguments**: `connection_id`.
+
+**Returns** `principals[]` (`name`, `host`, `is_role`, `can_login`, `member_of[]`, `connection_limit`, `comment`, `attributes[]` of `{ key, label, is_enabled }`), sorted by name.
+
+**Scope**: `tools:read`.
+
+### `list_grants`
+
+**Arguments**: `connection_id`, `principal` (required), `host`.
+
+**Returns** `principal`, `grants[]` (`privilege`, `scope`, `is_grantable`). `scope` is a dotted path, `*` for a server-wide grant.
+
+**Scope**: `tools:read`.
+
+### `list_session_contexts`
+
+Session-level contexts the engine exposes, such as a Snowflake warehouse or role, with the value the session currently holds.
+
+**Arguments**: `connection_id`.
+
+**Returns** `is_supported`, `contexts[]` (`id`, `label`, `value`, `options[]`).
+
+**Scope**: `tools:read`.
+
+## The user's workspace
+
+These read and drive the TablePro app itself. They never bypass the connection allowlist or an `externalAccess: blocked` connection.
+
+### `list_favorite_tables`
+
+Tables the user starred. A good hint at what matters in this database.
+
+**Arguments**: `connection_id`.
+
+**Returns** `favorites[]` (`name`, `database`, `schema`), sorted.
+
+**Scope**: `tools:read`.
+
+### `list_recent_tables`
+
+**Arguments**: `connection_id`.
+
+**Returns** `recent_tables[]` (`name`, `database`, `schema`, `is_view`, `opened_at` as Unix epoch seconds), newest first.
+
+**Scope**: `tools:read`.
 
 ### `list_recent_tabs`
 
-Read the cross-window tab registry. Tabs from connections with `externalAccess: blocked` are filtered out.
+Tabs open in TablePro for connections this client may reach.
 
-**Input**: `{ "limit": 20 }` (optional, 1-500, default 20).
+**Arguments**: `connection_id` (omit for every readable connection), `limit` (1-500, default 20).
 
-**Output**:
+**Returns** `tabs[]` (`connection_id`, `connection_name`, `tab_id`, `tab_type`, `display_title`, `is_active`, plus `table_name`, `database_name`, `schema_name`, `window_id` when known). `tab_type` is one of `query`, `table`, `createTable`, `erDiagram`, `serverDashboard`, `insights`, `usersRoles`.
 
-```json
-{
-  "tabs": [
-    {
-      "tab_id": "...",
-      "connection_id": "9f1f...",
-      "connection_name": "Production",
-      "tab_type": "query",
-      "display_title": "users by signup date",
-      "is_active": true,
-      "table_name": "users",
-      "database_name": "app",
-      "schema_name": "public",
-      "window_id": "..."
-    }
-  ]
-}
-```
+**Scope**: `tools:read`.
 
-`tab_type` is one of `query`, `table`, `createTable`, `erDiagram`, `serverDashboard`, `usersRoles`. `table_name`, `database_name`, `schema_name`, and `window_id` are present when known.
+### `focus_query_tab`
 
-**Scope**: `readOnly`.
+Bring an open tab to the front.
 
-## History tools
+**Arguments**: `tab_id` (from `list_recent_tabs`).
+
+**Returns** `status` (`"focused"`), `tab_id`, `connection_id`, `window_id`.
+
+**Scope**: `tools:write`.
+
+### `open_connection_window`
+
+Open or focus a window for a saved connection, connecting it if needed. Returns once the window has a tab, or fails after 8 seconds.
+
+**Arguments**: `connection_id`.
+
+**Returns** `status` (`"opened"`), `connection_id`, `tab_id`, `window_id`, `is_connected`.
+
+**Scope**: `tools:write`.
+
+### `open_table_tab`
+
+Open a table in TablePro and bring it forward. Connects the connection if it is not open yet.
+
+**Arguments**: `connection_id`, `table_name` (required), `database_name`, `schema_name`.
+
+**Returns** `status` (`"opened"`), `connection_id`, `table_name`, `tab_id`, `window_id`.
+
+**Scope**: `tools:write`.
 
 ### `search_query_history`
 
-Full-text search over the query history database.
+Search the query history TablePro keeps on this Mac. Results cover only connections this client may reach, with or without `connection_id`.
 
-**Input**:
+**Arguments**: `query` (required; pass `""` to match everything and filter by date alone), `connection_id`, `limit` (1-500, default 50), `since` and `until` as Unix epoch seconds.
 
-```json
-{
-  "query": "users active",
-  "connection_id": "9f1f...",
-  "limit": 50,
-  "since": 1745577262,
-  "until": 1745663662
-}
-```
+**Returns** `entries[]` (`id`, `query`, `connection_id`, `database_name`, `schema_name`, `database_type`, `source`, `statement_type`, `executed_at`, `execution_time_ms`, `row_count`, `was_successful`, `error_message`), newest first. `error_message` is redacted.
 
-`connection_id` is optional. `limit` is 1-500, default 50. `since` and `until` are optional Unix epoch seconds; both bounds are inclusive. Either may be set on its own. Pass an empty `query` ("") to skip the full-text filter and only narrow by date or connection.
+**Scope**: `tools:read`.
 
-**Output**:
+## Annotations
 
-```json
-{
-  "entries": [
-    {
-      "id": "...",
-      "connection_id": "9f1f...",
-      "database_name": "app",
-      "query": "SELECT * FROM users WHERE active = true",
-      "executed_at": 1745663662.0,
-      "execution_time_ms": 18,
-      "row_count": 142,
-      "was_successful": true
-    }
-  ]
-}
-```
+Every tool ships MCP annotations so a client can decide what to auto-run:
 
-`executed_at` is a Unix timestamp in seconds. `error_message` is included when `was_successful` is false.
+- `readOnlyHint: true` on everything that only reads.
+- `destructiveHint: true` on `confirm_destructive_operation`, `drop_database_object`, and `stop_server_session`.
+- `idempotentHint: true` where repeating the call is safe.
+- `openWorldHint: true` where the call reaches a live server rather than TablePro's own state.
 
-**Scope**: `readOnly`.
+`execute_query` is deliberately not marked read-only: whether it writes depends on the statement.
 
 ## Errors
 
-Tool failures come back as JSON-RPC error envelopes. Codes follow the JSON-RPC spec plus TablePro's reserved range:
+A tool that fails returns a successful JSON-RPC result with `isError: true` and a text body starting with a code: `invalid_argument`, `not_connected`, `not_found`, `denied`, `timeout`, `unsupported`, `query_failed`, `user_cancelled`, `internal_failure`.
 
-| JSON-RPC code | HTTP status | Meaning |
-|---------------|-------------|---------|
-| `-32700` | 400 | Parse error (malformed JSON body) |
-| `-32600` | 400 | Invalid request (bad envelope, missing `Mcp-Session-Id`) |
-| `-32601` | 200 / 404 | Method or resource URI not found |
-| `-32602` | 200 | Invalid params (bad input, unknown tab id, unknown connection, wrong confirmation phrase) |
-| `-32603` | 500 | Internal error |
-| `-32001` | 404 | Session not found |
-| `-32002` | 200 | Request cancelled |
-| `-32003` | 200 | Request timeout (e.g. query timeout) |
-| `-32004` | 404 | Resource not found |
-| `-32005` | 413 | Payload too large |
-| `-32006` | - | Server disabled (reserved, not currently returned) |
-| `-32007` | 403 / 401 | Forbidden (token scope, allowlist, or `externalAccess` rejects); 401 when the token is unknown or revoked |
-| `-32008` | 401 | Token expired |
-| `-32009` | 401 | Unauthenticated (missing bearer token) |
-| `-32000` | 429 / 503 | Server error (rate limited, service unavailable) |
-
-Error responses include a `message`. Example:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 7,
-  "error": {
-    "code": -32007,
-    "message": "Forbidden: Connection is read only for external clients"
-  }
-}
-```
-
-A `404` from `GET/POST/DELETE /mcp` with a stale `Mcp-Session-Id` returns the JSON-RPC envelope with `code: -32001, message: "Session not found"`. Per the [MCP spec](https://modelcontextprotocol.io), clients MUST treat that response as a signal to start a new `initialize` handshake before retrying.
-
-`401` responses carry a `WWW-Authenticate` challenge. A missing token returns `Bearer realm="TablePro"`. An unknown or revoked token returns `Bearer error="invalid_token"`. An expired token returns `Bearer error="invalid_token", error_description="token expired"`.
+Protocol errors, with a JSON-RPC `error` envelope, are reserved for the request itself: a missing scope, an unknown tool, a bad header. The full table is in [MCP Protocol](/external-api/mcp-protocol#errors).

@@ -1,22 +1,38 @@
 ---
 title: MCP Resources
-description: Read-only resources exposed by the MCP server
+description: Read-only resources for connections, schema, tables, and query history, with their URI templates
 ---
 
-Resources are read-only views of TablePro state. AI clients use them to discover what is available before calling tools. Every resource is scope-gated the same way as tools and respects the per-connection allowlist.
+Resources are read-only views of TablePro state. A client reads them to find its way around before calling a tool. Every read is gated the same way a tool call is: the token's `resources:read` scope, its connection allowlist, and the connection's own external access and AI policy.
 
-URIs use the `tablepro://` scheme inside the MCP transport. Do not confuse them with shell-level [URL scheme deep links](/external-api/url-scheme).
+URIs use the `tablepro://` scheme inside the MCP transport. They are not the same thing as the shell-level [URL scheme deep links](/external-api/url-scheme), which happen to share the prefix.
 
 ## Discovery
 
-Two MCP methods enumerate resources:
+`resources/list` returns `tablepro://connections`, plus four entries for each connection that is currently connected and visible to this token: its schema, its tables, its databases, and its history. The list is sorted by connection name.
 
-- `resources/list` returns the static `tablepro://connections` resource plus a schema and history entry for each currently connected database.
-- `resources/templates/list` returns the URI templates for `tablepro://connections/{id}/schema` and `tablepro://connections/{id}/history`, so clients can construct a URL for any connection without waiting for it to be open.
+`resources/templates/list` returns the URI templates, so a client can build a URI for a connection that is not open yet.
 
-## Response envelope
+Both paginate at 50 entries with `nextCursor`. `resources/list` carries a 30-second private cache hint; the template list carries an hour, public.
 
-`resources/read` wraps the resource payload in the MCP standard envelope:
+## Templates
+
+| Template | Name |
+|----------|------|
+| `tablepro://connections` | `connections` |
+| `tablepro://connections/{connection_id}/schema` | `connection_schema` |
+| `tablepro://connections/{connection_id}/databases` | `connection_databases` |
+| `tablepro://connections/{connection_id}/schemas{?database}` | `connection_schemas` |
+| `tablepro://connections/{connection_id}/tables{?database,schema,row_counts}` | `connection_tables` |
+| `tablepro://connections/{connection_id}/tables/{table}{?database,schema}` | `table_description` |
+| `tablepro://connections/{connection_id}/tables/{table}/ddl{?database,schema}` | `table_ddl` |
+| `tablepro://connections/{connection_id}/history{?limit,search,date_filter}` | `connection_history` |
+
+`{connection_id}` must be a UUID; a name is `-32602`. `completion/complete` fills every variable in these templates against the live schema, including `table`, `database` and `schema`. See [Completions](/external-api/mcp-prompts#completions).
+
+## Reading
+
+`resources/read` needs `params.uri` and, in the modern era, an `Mcp-Name` header carrying the same URI.
 
 ```json
 {
@@ -24,19 +40,19 @@ Two MCP methods enumerate resources:
     {
       "uri": "tablepro://connections",
       "mimeType": "application/json",
-      "text": "{...JSON payload below as a string...}"
+      "text": "{\"connections\":[...]}"
     }
   ]
 }
 ```
 
-The shapes documented below are what you get after parsing `text` as JSON.
+The payload is a JSON string inside `text`. The shapes below are what you get after parsing it.
+
+Cache hints vary by URI: 5 seconds for history, 15 for the connections list, 60 for schema, table and database reads, 300 for a DDL read. All are `private`, because what you can see depends on your token.
 
 ## `tablepro://connections`
 
-All saved connections with their current session state.
-
-**Returns**:
+Every saved connection this token may use, with live session state.
 
 ```json
 {
@@ -48,35 +64,29 @@ All saved connections with their current session state.
       "host": "db.example.com",
       "port": 5432,
       "database": "app",
-      "username": "app",
       "is_connected": false,
       "ai_policy": "askEachTime",
+      "external_access": "readOnly",
       "safe_mode": "silent"
     }
   ]
 }
 ```
 
-`database` reflects the active session database when connected, otherwise the saved default. `type` uses display casing (`MySQL`, `PostgreSQL`, `SQLite`, etc.). `safe_mode` is one of `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull`, `readOnly`. `ai_policy` is one of `askEachTime`, `alwaysAllow`, `never`.
-
-Connections with `externalAccess: blocked` are omitted. The envelope matches the `list_connections` tool.
-
-**Scope**: `readOnly`.
+`database` is the session's browsed database when connected, the saved default otherwise. `type` uses display casing (`MySQL`, `PostgreSQL`, `SQLite`). Connections with `external_access: blocked` or `ai_policy: never` are omitted, as are connections outside the token's allowlist. Same payload as the `list_connections` tool.
 
 ## `tablepro://connections/{id}/schema`
 
-Tables and columns visible on the current connection session.
-
-**Path parameter**: `id` is the connection UUID.
-
-**Returns**:
+Tables and their columns for the database the connection is browsing.
 
 ```json
 {
+  "database": "app",
   "tables": [
     {
       "name": "users",
       "type": "TABLE",
+      "schema": "public",
       "columns": [
         { "name": "id", "data_type": "uuid", "is_nullable": false, "is_primary_key": true },
         { "name": "email", "data_type": "text", "is_nullable": false, "is_primary_key": false }
@@ -86,27 +96,41 @@ Tables and columns visible on the current connection session.
 }
 ```
 
-The response is flat: tables for the active database/schema only. To switch context, call the `switch_database` or `switch_schema` tool first. `type` is one of `TABLE`, `VIEW`, `MATERIALIZED VIEW`, `FOREIGN TABLE`, or `SYSTEM TABLE`, the same values `list_tables` returns.
+Capped at 100 tables. Beyond that the payload also carries `truncated: true` and `total_tables`. For a larger schema use the `list_tables` tool, or `search_schema` to find one column.
 
-Capped at 100 tables. When more exist, the response also includes `truncated: true` and `total_tables: <count>`. For larger schemas, page through `list_tables` instead.
+This is the only subscribable resource. See [Subscriptions](/external-api/mcp-subscriptions).
 
-**Scope**: `readOnly`.
+## `tablepro://connections/{id}/tables{?database,schema,row_counts}`
 
-## `tablepro://connections/{id}/history`
+Table and view names without columns. Pass `database` and `schema` to look outside the browsed one, and `row_counts=true` for approximate counts. `row_counts` also accepts `1` and `yes`.
 
-Recent query history for a connection.
+Same payload as the `list_tables` tool.
 
-**Path parameter**: `id` is the connection UUID.
+## `tablepro://connections/{id}/tables/{table}{?database,schema}`
 
-**Query parameters**:
+Columns, indexes, foreign keys and an approximate row count for one table. Same payload as `describe_table`.
 
-| Parameter | Description |
-|-----------|-------------|
-| `limit` | 1-500. Default 50. |
-| `search` | Full-text query string. |
-| `date_filter` | `today`, `thisWeek`, or `thisMonth`. Anything else is treated as no date filter. |
+## `tablepro://connections/{id}/tables/{table}/ddl{?database,schema}`
 
-**Returns**:
+The `CREATE` statement, as the engine reports it. Same payload as `get_table_ddl`.
+
+## `tablepro://connections/{id}/databases`
+
+`{ "databases": ["app", "analytics"] }`.
+
+## `tablepro://connections/{id}/schemas{?database}`
+
+`{ "schemas": ["public", "reporting"], "database": "app" }`.
+
+## `tablepro://connections/{id}/history{?limit,search,date_filter}`
+
+Queries recently run against this connection, newest first.
+
+| Parameter | Meaning |
+|-----------|---------|
+| `limit` | 1 to 500, default 50. Out-of-range values are clamped, not rejected. |
+| `search` | Matched against the recorded statement text. |
+| `date_filter` | `today`, `thisWeek` (last 7 days), or `thisMonth` (last 30 days). Anything else means no date filter. |
 
 ```json
 {
@@ -114,8 +138,12 @@ Recent query history for a connection.
     {
       "id": "9b2d3c5a-...",
       "query": "SELECT * FROM users WHERE active = true",
+      "connection_id": "9f1f0c3e-...",
       "database_name": "app",
-      "executed_at": "2026-04-26T10:14:22Z",
+      "database_type": "PostgreSQL",
+      "source": "editor",
+      "statement_type": "select",
+      "executed_at": "2026-08-20T10:14:22Z",
       "execution_time_ms": 18.4,
       "row_count": 142,
       "was_successful": true
@@ -124,15 +152,14 @@ Recent query history for a connection.
 }
 ```
 
-`executed_at` is an ISO 8601 timestamp. `execution_time_ms` is a double in milliseconds. `error_message` is included when `was_successful` is false.
-
-**Scope**: `readOnly`.
+`executed_at` is ISO 8601. `schema_name` appears when the entry has one, and `error_message` when `was_successful` is false, redacted.
 
 ## Errors
 
-| JSON-RPC code | HTTP status | Meaning |
-|---------------|-------------|---------|
-| `-32602` | 200 | Invalid params (malformed URI, missing `uri`, bad UUID, connection not active). |
-| `-32601` | 404 | Unknown resource URI (e.g. `tablepro://connections/{id}/foo`). |
-| `-32004` | 404 | Resource not found in the data layer. |
-| `-32007` | 403 | Token allowlist rejects the connection, or `externalAccess` is `blocked`. |
+| Code | Meaning |
+|------|---------|
+| `-32602` | Missing `uri`, wrong scheme, unknown URI, connection id that is not a UUID, empty table name, or a connection that is not open |
+| `-32020` | The `Mcp-Name` header does not match `params.uri` |
+| `-33007` | The token's allowlist rejects the connection, or its external access is `blocked` |
+
+Resource-not-found is `-32602`, not a code of its own. The full table is in [MCP Protocol](/external-api/mcp-protocol#errors).

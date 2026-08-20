@@ -1,20 +1,11 @@
 import Foundation
+import os
 
 public actor MCPCompositeAuthenticator: MCPAuthenticator {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Auth")
+
     private let bearer: MCPBearerTokenAuthenticator
     private let requireAuthentication: Bool
-
-    private static let anonymousLoopbackPrincipal = MCPPrincipal(
-        tokenFingerprint: "anonymous-loopback",
-        tokenId: nil,
-        scopes: [.toolsRead, .toolsWrite, .resourcesRead, .admin],
-        connectionAccess: .all,
-        metadata: MCPPrincipalMetadata(
-            label: "Anonymous (loopback)",
-            issuedAt: .distantPast,
-            expiresAt: nil
-        )
-    )
 
     public init(
         bearer: MCPBearerTokenAuthenticator,
@@ -28,13 +19,17 @@ public actor MCPCompositeAuthenticator: MCPAuthenticator {
         authorizationHeader: String?,
         clientAddress: MCPClientAddress
     ) async -> MCPAuthDecision {
-        if !requireAuthentication, case .loopback = clientAddress {
-            MCPAuditLogger.logAuthAllowedAnonymous(ip: "127.0.0.1")
-            return .allow(Self.anonymousLoopbackPrincipal)
+        let presentedCredential = authorizationHeader?.isEmpty == false
+
+        guard !requireAuthentication, clientAddress.isLoopback, !presentedCredential else {
+            return await bearer.authenticate(
+                authorizationHeader: authorizationHeader,
+                clientAddress: clientAddress
+            )
         }
-        return await bearer.authenticate(
-            authorizationHeader: authorizationHeader,
-            clientAddress: clientAddress
-        )
+
+        Self.logger.info("Auth allowed anonymously on loopback with no credential presented")
+        MCPAuditLogger.logAuthAllowedAnonymous(ip: clientAddress.displayValue)
+        return .allow(.anonymousLoopback)
     }
 }
