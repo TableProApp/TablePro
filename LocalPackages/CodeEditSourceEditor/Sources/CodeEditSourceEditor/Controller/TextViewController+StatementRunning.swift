@@ -54,4 +54,33 @@ public extension TextViewController {
         get { (textView as? SourceEditorTextView)?.statementHighlightRange }
         set { (textView as? SourceEditorTextView)?.statementHighlightRange = newValue }
     }
+
+    /// Where the statement before or after an offset starts, answered by the host.
+    ///
+    /// Setting this is what makes `Option+Shift+Up` and `Option+Shift+Down` extend the selection by statement. AppKit
+    /// binds those to `moveParagraph{Backward,Forward}AndModifySelection:` already, and this editor implements no
+    /// paragraph movement otherwise, so an editor that leaves this unset keeps whatever the text system does.
+    var statementBoundaryProvider: ((_ offset: Int, _ forward: Bool) -> Int?)? {
+        get { (textView as? SourceEditorTextView)?.statementBoundaryProvider }
+        set { (textView as? SourceEditorTextView)?.statementBoundaryProvider = newValue }
+    }
+
+    /// Puts the caret at `offset`, revealing it if a collapsed fold is hiding it.
+    ///
+    /// Scrolling alone is not enough: a fold hides its range from layout entirely, so a caret sent inside one lands
+    /// somewhere the reader cannot see and cannot get back to except by unfolding by hand.
+    func moveCursor(to offset: Int, revealingFolds: Bool = true) {
+        if revealingFolds {
+            revealFold(containing: offset)
+        }
+        setCursorPositions([CursorPosition(range: NSRange(location: offset, length: 0))], scrollToVisible: true)
+    }
+
+    /// Expands every collapsed fold that hides `offset`, outermost first.
+    func revealFold(containing offset: Int) {
+        guard let model = gutterView?.foldingRibbon.model else { return }
+        for fold in model.getFolds(in: offset..<(offset + 1)) where model.isCollapsed(fold) {
+            model.setCollapsed(false, for: fold)
+        }
+    }
 }
