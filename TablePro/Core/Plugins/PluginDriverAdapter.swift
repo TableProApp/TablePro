@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProNumberFormatting
 import TableProPluginKit
 
 final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseReporting {
@@ -86,10 +87,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             return b ? "1" : "0"
         case let i as any BinaryInteger:
             return String(i)
+        case let f as Float:
+            guard f.isFinite else { return "NULL" }
+            return NumberText.text(for: f)
         case let f as any BinaryFloatingPoint:
             let d = Double(f)
             guard d.isFinite else { return "NULL" }
-            return String(d)
+            return NumberText.text(for: d)
         case let d as Date:
             return Self.iso8601Formatter.string(from: d)
         case let data as Data:
