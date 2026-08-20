@@ -340,6 +340,116 @@ struct QueryHistoryInsightsTests {
         #expect(snapshot.totals.totalCount == 1)
     }
 
+    @Test("Representative queries and errors stay inside every active filter")
+    func representativeRowsRespectFilters() async {
+        let now = Date()
+        let visibleQuery = "SELECT * FROM accounts WHERE token = 'visible'"
+
+        await record(
+            visibleQuery,
+            executedAt: now,
+            wasSuccessful: false,
+            errorMessage: "visible error"
+        )
+        await record(
+            "SELECT * FROM accounts WHERE token = 'hidden source'",
+            executedAt: now.addingTimeInterval(10),
+            wasSuccessful: false,
+            errorMessage: "hidden source error",
+            source: .tableBrowse
+        )
+        _ = await storage.record(QueryHistoryEntry(
+            query: "SELECT * FROM accounts WHERE token = 'hidden connection'",
+            connectionId: UUID(),
+            databaseName: "other",
+            databaseType: .postgresql,
+            source: .editor,
+            executedAt: now.addingTimeInterval(20),
+            executionTime: 0.05,
+            rowCount: 0,
+            wasSuccessful: false,
+            errorMessage: "hidden connection error"
+        ))
+        await record(
+            "SELECT * FROM accounts WHERE token = 'hidden date'",
+            executedAt: now.addingTimeInterval(30),
+            wasSuccessful: false,
+            errorMessage: "hidden date error",
+            databaseType: .mysql
+        )
+
+        let snapshot = await storage.insights(
+            QueryInsightsRequest(
+                scope: .connection(connectionId),
+                sources: [.editor],
+                since: now.addingTimeInterval(-1),
+                until: now.addingTimeInterval(25),
+                referenceDate: now.addingTimeInterval(25)
+            ),
+            slowestRanking: .totalTime
+        )
+
+        #expect(snapshot.failures.count == 1)
+        #expect(snapshot.failures.first?.representativeQuery == visibleQuery)
+        #expect(snapshot.failures.first?.databaseType == .postgresql)
+        #expect(snapshot.failures.first?.latestErrorMessage == "visible error")
+    }
+
+    @Test("Regression representative queries stay inside every active filter")
+    func regressionRepresentativeRowsRespectFilters() async {
+        let now = Date()
+        let day: TimeInterval = 86_400
+        let visibleQuery = "SELECT * FROM accounts WHERE token = 'visible'"
+
+        for index in 0..<6 {
+            await record(
+                visibleQuery,
+                executedAt: now.addingTimeInterval(-10 * day + Double(index) * 3_600),
+                executionTime: 0.05
+            )
+            await record(
+                visibleQuery,
+                executedAt: now.addingTimeInterval(-2 * day + Double(index) * 3_600),
+                executionTime: 0.40
+            )
+        }
+        await record(
+            "SELECT * FROM accounts WHERE token = 'hidden source'",
+            executedAt: now.addingTimeInterval(-1_800),
+            source: .tableBrowse
+        )
+        _ = await storage.record(QueryHistoryEntry(
+            query: "SELECT * FROM accounts WHERE token = 'hidden connection'",
+            connectionId: UUID(),
+            databaseName: "other",
+            databaseType: .mysql,
+            source: .editor,
+            executedAt: now.addingTimeInterval(-900),
+            executionTime: 0.05,
+            rowCount: 0,
+            wasSuccessful: true
+        ))
+        await record(
+            "SELECT * FROM accounts WHERE token = 'hidden date'",
+            executedAt: now.addingTimeInterval(3_600)
+        )
+
+        let snapshot = await storage.insights(
+            QueryInsightsRequest(
+                scope: .connection(connectionId),
+                sources: [.editor],
+                since: now.addingTimeInterval(-7 * day),
+                until: now,
+                referenceDate: now
+            ),
+            slowestRanking: .totalTime
+        )
+
+        #expect(snapshot.regressions.count == 1)
+        #expect(snapshot.regressions.first?.representativeQuery == visibleQuery)
+        #expect(snapshot.regressions.first?.databaseType == .postgresql)
+    }
+
     // MARK: - Activity
 
     @Test("Activity buckets separate failures from successes")

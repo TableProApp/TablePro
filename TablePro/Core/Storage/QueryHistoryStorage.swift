@@ -680,31 +680,33 @@ actor QueryHistoryStorage {
 
     private func appendScopeAndSources(
         _ request: QueryInsightsRequest,
+        columnPrefix: String = "",
         to clause: inout QueryHistorySqlClause
     ) {
         if let connectionId = request.scope.connectionId {
-            clause.append(" AND connection_id = ?", .text(connectionId.uuidString))
+            clause.append(" AND \(columnPrefix)connection_id = ?", .text(connectionId.uuidString))
         }
 
         let allSources = Set(QueryHistorySource.allCases)
         guard request.sources != allSources else { return }
         let sources = Array(request.sources)
         clause.append(
-            " AND source IN (\(QueryHistorySqlClause.placeholders(count: sources.count)))",
+            " AND \(columnPrefix)source IN (\(QueryHistorySqlClause.placeholders(count: sources.count)))",
             bindings: sources.map { .text($0.rawValue) }
         )
     }
 
     private func appendInsightsFilters(
         _ request: QueryInsightsRequest,
+        columnPrefix: String = "",
         to clause: inout QueryHistorySqlClause
     ) {
-        appendScopeAndSources(request, to: &clause)
+        appendScopeAndSources(request, columnPrefix: columnPrefix, to: &clause)
         if let since = request.since {
-            clause.append(" AND executed_at >= ?", .double(since.timeIntervalSince1970))
+            clause.append(" AND \(columnPrefix)executed_at >= ?", .double(since.timeIntervalSince1970))
         }
         if let until = request.until {
-            clause.append(" AND executed_at <= ?", .double(until.timeIntervalSince1970))
+            clause.append(" AND \(columnPrefix)executed_at <= ?", .double(until.timeIntervalSince1970))
         }
     }
 
@@ -739,10 +741,9 @@ actor QueryHistoryStorage {
         )
     }
 
-    /// The representative row is looked up by fingerprint alone rather than through the panel's
-    /// own filters. Every row sharing a fingerprint normalizes to the same text by construction, so
-    /// the filters could only change which identical shape is shown, at the cost of binding the
-    /// whole filter set a second time inside the subquery.
+    /// A fingerprint deliberately erases literal values, so the representative row has to follow
+    /// the same filters as its aggregate. Otherwise a scoped panel can copy or load a query whose
+    /// values came from another connection, source, or date range.
     private func fetchGroups(_ request: QueryInsightsRequest, ranking: InsightsRanking) -> [QueryInsightsGroup] {
         var clause = QueryHistorySqlClause()
         clause.append("""
@@ -750,18 +751,27 @@ actor QueryHistoryStorage {
                    g.total_rows,
                    (SELECT r.query FROM history r
                      WHERE r.fingerprint_hash = g.fingerprint_hash
+            """)
+        appendInsightsFilters(request, columnPrefix: "r.", to: &clause)
+        clause.append("""
                      ORDER BY r.executed_at DESC LIMIT 1),
                    (SELECT r.statement_type FROM history r
                      WHERE r.fingerprint_hash = g.fingerprint_hash
+            """)
+        appendInsightsFilters(request, columnPrefix: "r.", to: &clause)
+        clause.append("""
                      ORDER BY r.executed_at DESC LIMIT 1),
                    (SELECT r.database_type FROM history r
                      WHERE r.fingerprint_hash = g.fingerprint_hash
+            """)
+        appendInsightsFilters(request, columnPrefix: "r.", to: &clause)
+        clause.append("""
                      ORDER BY r.executed_at DESC LIMIT 1),
                    (SELECT r.error_message FROM history r
                      WHERE r.fingerprint_hash = g.fingerprint_hash
                        AND r.was_successful = 0 AND r.error_message IS NOT NULL
             """)
-        appendErrorSubqueryBounds(request, to: &clause)
+        appendInsightsFilters(request, columnPrefix: "r.", to: &clause)
         clause.append("""
                      ORDER BY r.executed_at DESC LIMIT 1)
             FROM (
@@ -810,24 +820,6 @@ actor QueryHistoryStorage {
         return groups
     }
 
-    /// The representative `query` is the same shape whichever row it comes from, but an error
-    /// message is not. Without these bounds the Failures panel could print an error the filtered
-    /// view says does not exist, from a connection the user did not select.
-    private func appendErrorSubqueryBounds(
-        _ request: QueryInsightsRequest,
-        to clause: inout QueryHistorySqlClause
-    ) {
-        if let connectionId = request.scope.connectionId {
-            clause.append(" AND r.connection_id = ?", .text(connectionId.uuidString))
-        }
-        if let since = request.since {
-            clause.append(" AND r.executed_at >= ?", .double(since.timeIntervalSince1970))
-        }
-        if let until = request.until {
-            clause.append(" AND r.executed_at <= ?", .double(until.timeIntervalSince1970))
-        }
-    }
-
     /// Compares two adjacent windows of equal length. Only successful runs count, because a query
     /// that failed fast would otherwise read as one that got quicker.
     private func fetchRegressions(_ request: QueryInsightsRequest) -> [QueryInsightsRegression] {
@@ -860,9 +852,19 @@ actor QueryHistoryStorage {
             SELECT p.fingerprint_hash, p.recent_count, p.prior_count, p.recent_mean, p.prior_mean,
                    (SELECT r.query FROM history r
                      WHERE r.fingerprint_hash = p.fingerprint_hash
+                       AND r.was_successful = 1
+            """)
+        appendScopeAndSources(request, columnPrefix: "r.", to: &clause)
+        clause.append(" AND r.executed_at >= ? AND r.executed_at < ?", .double(middle), .double(end))
+        clause.append("""
                      ORDER BY r.executed_at DESC LIMIT 1),
                    (SELECT r.database_type FROM history r
                      WHERE r.fingerprint_hash = p.fingerprint_hash
+                       AND r.was_successful = 1
+            """)
+        appendScopeAndSources(request, columnPrefix: "r.", to: &clause)
+        clause.append(" AND r.executed_at >= ? AND r.executed_at < ?", .double(middle), .double(end))
+        clause.append("""
                      ORDER BY r.executed_at DESC LIMIT 1)
             FROM paired p
             WHERE p.recent_count >= ? AND p.prior_count >= ?
