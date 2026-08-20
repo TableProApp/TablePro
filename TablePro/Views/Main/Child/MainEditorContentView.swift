@@ -894,6 +894,7 @@ struct MainEditorContentView: View {
             tab: tab,
             tableRows: resolvedRows,
             displayRowCount: coordinator.displayIDs(forTab: tab.id)?.count,
+            isFetching: coordinator.tabExecution.isExecuting(tab.id),
             hasStructureActions: structureFooter.isActive
         )
         return ResultStatusBar(

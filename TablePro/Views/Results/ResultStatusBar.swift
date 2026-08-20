@@ -156,12 +156,15 @@ struct ResultStatusBar: View {
         .fixedSize()
     }
 
-    /// Keyed by tab, because its jump and rows-per-page popovers hold `@State`. Sharing one identity
-    /// across a tab switch meant a page number typed for one tab was submitted against the next.
+    /// The tab identity is passed in rather than applied as `.id()`. Keying the view by tab did stop
+    /// a page number typed for one tab being submitted against the next, but it also tore the whole
+    /// cluster down and rebuilt it on every switch, which is a second source of the churn this bar
+    /// exists to avoid. The view resets the same `@State` on the same signal instead.
     private var paginationControls: some View {
         PaginationControlsView(
             pagination: snapshot.pagination,
             loadedRowCount: snapshot.rowCount,
+            tabId: snapshot.tabId,
             onFirst: paginationCallbacks.onFirst,
             onPrevious: paginationCallbacks.onPrevious,
             onNext: paginationCallbacks.onNext,
@@ -170,7 +173,6 @@ struct ResultStatusBar: View {
             onShowAll: paginationCallbacks.onShowAll,
             onGoToPage: paginationCallbacks.onGoToPage
         )
-        .id(snapshot.tabId)
     }
 
     private var columnsButton: some View {
@@ -184,6 +186,9 @@ struct ResultStatusBar: View {
             }
         }
         .controlSize(.small)
+        /// Present but inert until the result names its columns, so a reload dims the button rather
+        /// than removing it and shifting everything beside it.
+        .disabled(columnState.all.isEmpty)
         .help(String(localized: "Choose which columns the grid shows"))
         .accessibilityLabel(String(localized: "Columns"))
         .accessibilityValue(columnsAccessibilityValue)

@@ -206,9 +206,23 @@ struct PaginationState: Equatable {
     var pageSize: Int               // Rows per page (passed from manager/coordinator)
     var currentPage: Int = 1         // Current page number (1-based)
     var currentOffset: Int = 0       // Current OFFSET for SQL query
+    /// A fetch is in flight for the rows this state describes.
+    ///
+    /// Raised synchronously by whatever discards the tab's rows, in the same block that discards
+    /// them, and lowered when the rows land or the attempt fails. It cannot be derived from
+    /// `TabExecutionRegistry.isExecuting`: retargeting a tab clears the row buffer synchronously
+    /// but only *schedules* the load, so the claim arrives a main-actor turn later and the status
+    /// bar can render an empty buffer that nothing has yet called a load.
     var isLoading: Bool = false
     var isApproximateRowCount: Bool = false  // True when totalRowCount is from fast estimate
     var isCountingExact: Bool = false        // True while a user-requested exact count is running
+    /// An automatic row count is running, so the total on screen is not the one this page settles on.
+    ///
+    /// Separate from `isCountingExact`, which the user asked for and which owns the spinner. This
+    /// one is silent: it exists so `Count Exactly` is not offered against a total that is about to
+    /// be replaced anyway. The execution claim cannot answer this, because it settles the moment
+    /// phase 1 applies, before the count is even dispatched.
+    var isCountPending: Bool = false
 
     // Result truncation state (query tabs)
     var hasMoreRows: Bool = false
@@ -246,6 +260,11 @@ struct PaginationState: Equatable {
         guard let total = totalRowCount, total > 0, pageSize > 0 else { return 1 }
         let (quotient, remainder) = total.quotientAndRemainder(dividingBy: pageSize)
         return remainder == 0 ? quotient : quotient + 1
+    }
+
+    /// Any asynchronous work this state is still waiting on.
+    var isBusy: Bool {
+        isLoading || isLoadingMore || isCountingExact || isCountPending
     }
 
     /// Whether the total is a real count rather than a driver estimate.
@@ -333,11 +352,41 @@ struct PaginationState: Equatable {
         setPage(page)
     }
 
+    /// Applies a total the app derived on its own, rather than one the user asked for.
+    ///
+    /// An estimate never replaces an exact count. The automatic count re-runs after every execution,
+    /// including a page turn, and on a driver whose cheap count is an estimate that silently undid a
+    /// `Count Exactly` and brought the button back on the next page. Retiring an exact count is a
+    /// deliberate act, so it belongs to the paths that ask for fresh data, not to this one.
+    /// A nil total blanks it, which is what a filter change asks for and is never an estimate.
+    mutating func applyDerivedRowCount(_ total: Int?, isApproximate: Bool) {
+        guard !isApproximate || !hasExactRowCount else { return }
+        totalRowCount = total
+        isApproximateRowCount = isApproximate
+    }
+
+    /// Drops the total so the next execution derives it again from scratch.
+    ///
+    /// For the paths that change the row set or ask for it fresh, where the count on screen is no
+    /// longer describing the table. Clearing the number rather than flagging it approximate matters:
+    /// `rowCountPlan` skips counting a table whose total already exceeds the count threshold, so a
+    /// real count left in place and merely relabelled would keep its `~` forever, with `Last page`
+    /// disabled and no `Count Exactly` to put it right. Cleared, the tab counts exactly the way a
+    /// freshly opened one does.
+    mutating func retireDerivedRowCount() {
+        totalRowCount = nil
+        isApproximateRowCount = false
+    }
+
     /// Reset pagination to first page
     mutating func reset() {
         currentPage = 1
         currentOffset = 0
         isLoading = false
+        /// A count belonging to the rows being replaced is not this tab's business any more. Left
+        /// set, a superseded attempt's mark would suppress `Count Exactly` on the new table until
+        /// something else happened to clear it.
+        isCountPending = false
     }
 
     /// Reset result truncation state

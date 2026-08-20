@@ -119,4 +119,25 @@ struct ContainerSwitchPlannerTests {
 
         #expect(steps.isEmpty)
     }
+
+    // MARK: - Schema-only engines browsing no database (#2262)
+
+    /// Dameng, Oracle, BigQuery, Elasticsearch and etcd browse no database at all, so the tree
+    /// hands over a nil one. Planning a database switch for them reached the driver, which has
+    /// no database to switch, and its error became an alert on every table click.
+    @Test("A schema-only engine given no database plans only the schema")
+    func schemaOnlyEngineWithoutADatabasePlansOnlyTheSchema() {
+        let steps = ContainerSwitchPlanner.plan(
+            database: nil, schema: "SYSDBA", switchable: [.schema]
+        )
+
+        #expect(steps == [.schema("SYSDBA")])
+    }
+
+    @Test("An engine browsing no database plans nothing from a nil database alone")
+    func nilDatabaseAlonePlansNothing() {
+        #expect(ContainerSwitchPlanner.plan(
+            database: nil, schema: nil, switchable: [.schema]
+        ).isEmpty)
+    }
 }

@@ -181,7 +181,9 @@ When nothing matches on the page and more rows exist, **Search All Rows** turns 
 
 **Table tabs** page through data. The status bar has a rows-per-page menu (5 to 1,000, a custom size up to 1,000,000, or **All rows**) and First / Previous / Next / Last controls. Click the page indicator (for example `3 / 12`) to type a page number and jump to it. Set the default page size in **Settings > Data**.
 
-Large tables show an estimated total instead of running a slow `COUNT(*)`. **Settings > Data > Count rows if estimate less than** sets the threshold below which TablePro counts exactly. An estimated total is prefixed with `~`. **Count Exactly** next to the total replaces an estimate, or fills in a total shown as `?`, with a real count. That count can take a while on a large table, so it runs in the background and `Cmd+.` cancels it.
+These controls stay on a table tab whatever it holds. On a table that fits in one page they are dimmed rather than hidden, and while a table is loading they dim until its rows arrive, so the bar keeps the same shape as you move between tables.
+
+Large tables show an estimated total instead of running a slow `COUNT(*)`. **Settings > Data > Count rows if estimate less than** sets the threshold below which TablePro counts exactly. An estimated total is prefixed with `~`. **Count Exactly** next to the total replaces an estimate, or fills in a total shown as `?`, with a real count. That count can take a while on a large table, so it runs in the background and `Cmd+.` cancels it. **Count Exactly** appears once the total has settled, so it does not flicker in and out while a table loads, and a real count stays put: the automatic estimate that runs after each page turn will not overwrite it. **Refresh** works the total out again.
 
 An estimate of zero from a table the server has never analyzed is treated as unknown rather than as an empty table, so you get no total instead of a wrong one.
 

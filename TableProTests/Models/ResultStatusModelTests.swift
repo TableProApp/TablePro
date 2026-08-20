@@ -231,6 +231,176 @@ struct ResultStatusModelTests {
         let structure = model(makeSnapshot(rowCount: 5, statusMessage: "OK"), viewMode: .structure)
         #expect(structure.statusMessage == nil)
     }
+
+    // MARK: - Stability across a reload
+
+    /// The instants one sidebar click on another table passes through, in order.
+    ///
+    /// Retargeting empties the tab's row buffer and nulls its total synchronously, before the
+    /// replacing fetch starts, so every one of these is a state the bar can actually be asked to
+    /// render. They are listed here as data because the defect was never one bad state: it was that
+    /// consecutive states disagreed about which controls exist.
+    private func makeReloadTimeline() -> [(name: String, snapshot: StatusBarSnapshot)] {
+        var loading = PaginationState(pageSize: 1_000)
+        loading.isLoading = true
+
+        var counting = PaginationState(pageSize: 1_000)
+        counting.isCountPending = true
+
+        var estimated = PaginationState(totalRowCount: 4_000_000, pageSize: 1_000)
+        estimated.isApproximateRowCount = true
+
+        var timeline: [(name: String, snapshot: StatusBarSnapshot)] = []
+        timeline.append((
+            "settled on the outgoing table",
+            makeSnapshot(rowCount: 1_000, pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000))
+        ))
+        timeline.append((
+            "buffer cleared, load not yet claimed",
+            makeSnapshot(rowCount: 0, hasColumns: false, pagination: loading)
+        ))
+        timeline.append((
+            "rows landed, no total yet",
+            makeSnapshot(rowCount: 1_000, pagination: counting)
+        ))
+        timeline.append((
+            "estimated total posted",
+            makeSnapshot(rowCount: 1_000, pagination: estimated)
+        ))
+        timeline.append((
+            "exact total posted",
+            makeSnapshot(rowCount: 1_000, pagination: PaginationState(totalRowCount: 3_812_004, pageSize: 1_000))
+        ))
+        return timeline
+    }
+
+    /// Everything that frames the bar. The exact-count affordance is deliberately absent: it is
+    /// meant to appear exactly once, at the end, and only when the total settles on an estimate,
+    /// which `exactCountAppearsOnceAtTheEndOfAReload` pins separately.
+    private func framingControls(_ controls: ResultStatusControls) -> [Bool] {
+        [
+            controls.showsModeSwitcher,
+            controls.showsReadout,
+            controls.showsColumns,
+            controls.showsFilters,
+            controls.showsPagination,
+            controls.showsFetchAll,
+            controls.showsStructureActions,
+        ]
+    }
+
+    @Test("A table tab keeps the same framing controls at every instant of a reload")
+    func controlSetIsInvariantAcrossAReload() {
+        let timeline = makeReloadTimeline()
+        guard let baseline = timeline.first else { return }
+        let expected = framingControls(model(baseline.snapshot).controls)
+
+        for step in timeline.dropFirst() {
+            #expect(
+                framingControls(model(step.snapshot).controls) == expected,
+                "control set changed at: \(step.name)"
+            )
+        }
+    }
+
+    /// The reported blink: the button used to show up the moment the rows landed, because the
+    /// retarget had nulled the total, and disappear again when the count arrived.
+    @Test("Count Exactly appears once, at the end of a reload")
+    func exactCountAppearsOnceAtTheEndOfAReload() {
+        let offered = makeReloadTimeline().map { model($0.snapshot).controls.showsExactCountAction }
+        #expect(offered == [false, false, false, true, false])
+    }
+
+    /// The bar used to collapse to the mode switcher and Filters mid-fetch. Naming the four controls
+    /// explicitly means a future change that quietly drops one fails here rather than passing the
+    /// invariance test above by removing the same control from every step.
+    @Test("The controls a table tab keeps through a reload are the ones worth keeping")
+    func reloadKeepsTheControlsThatMatter() {
+        for step in makeReloadTimeline() {
+            let controls = model(step.snapshot).controls
+            #expect(controls.showsReadout, "readout missing at: \(step.name)")
+            #expect(controls.showsColumns, "columns missing at: \(step.name)")
+            #expect(controls.showsFilters, "filters missing at: \(step.name)")
+            #expect(controls.showsPagination, "pagination missing at: \(step.name)")
+        }
+    }
+
+    @Test("A reloading table never reports itself empty")
+    func loadingIsNotAnEmptyResult() {
+        var pagination = PaginationState(pageSize: 1_000)
+        pagination.isLoading = true
+        let snapshot = makeSnapshot(rowCount: 0, hasColumns: false, pagination: pagination)
+        #expect(model(snapshot).readout == .loading)
+    }
+
+    @Test("A settled table with no rows still reports itself empty")
+    func settledEmptyTableStillReportsNoRows() {
+        let snapshot = makeSnapshot(rowCount: 0, hasColumns: true, pagination: PaginationState(totalRowCount: 0))
+        #expect(model(snapshot).readout == .noRows)
+    }
+
+    /// Offered while the total is still being resolved, the button appears the moment the rows land
+    /// and disappears again when the count arrives.
+    @Test("Count Exactly waits for the total to stop moving")
+    func exactCountIsWithheldWhileTheTotalIsUnsettled() {
+        var loading = PaginationState(pageSize: 1_000)
+        loading.isLoading = true
+        #expect(!model(makeSnapshot(rowCount: 0, hasColumns: false, pagination: loading)).controls.showsExactCountAction)
+
+        var counting = PaginationState(pageSize: 1_000)
+        counting.isCountPending = true
+        #expect(!model(makeSnapshot(rowCount: 1_000, pagination: counting)).controls.showsExactCountAction)
+
+        var settledEstimate = PaginationState(totalRowCount: 4_000_000, pageSize: 1_000)
+        settledEstimate.isApproximateRowCount = true
+        #expect(model(makeSnapshot(rowCount: 1_000, pagination: settledEstimate)).controls.showsExactCountAction)
+    }
+
+    /// The reported sequence was spinner, then "1,000 rows" with Count Exactly, then a jump to
+    /// "1-1,000 of 1,000 rows" with the button gone. Every step has to add to the one before it.
+    @Test("A reload's readout only ever gains information")
+    func readoutOnlyGainsInformationAcrossAReload() {
+        let readouts = makeReloadTimeline().map { model($0.snapshot).readout }
+
+        #expect(readouts[1] == .loading, "rows not in yet, so nothing to describe")
+        #expect(
+            readouts[2] == .rangeOfUnknownTotal(start: 1, end: 1_000),
+            "rows are in and the total is still being worked out, so report the range we know"
+        )
+        #expect(readouts[3] == .range(start: 1, end: 1_000, total: 4_000_000, isEstimate: true))
+        #expect(readouts[4] == .range(start: 1, end: 1_000, total: 3_812_004, isEstimate: false))
+
+        #expect(!readouts.contains(.rowCount(1_000)), "a bare row count is the sentence that gets replaced")
+    }
+
+    /// A table small enough to fit one page has no range to fall back on, so this is the case that
+    /// would regress to a bare count if the pending mark were ignored.
+    @Test("A single-page table reports its range while the total is pending")
+    func singlePageTableReportsARangeWhilePending() {
+        var pending = PaginationState(pageSize: 1_000)
+        pending.isCountPending = true
+        let snapshot = makeSnapshot(rowCount: 12, pagination: pending)
+
+        #expect(model(snapshot).readout == .rangeOfUnknownTotal(start: 1, end: 12))
+        #expect(!model(snapshot).controls.showsExactCountAction)
+    }
+
+    /// The driver never returns a total, so the count attempt finishes with nothing. The bar has to
+    /// settle rather than keep reporting a pending total.
+    @Test("A settled table with no total falls back to its row count")
+    func settledTableWithNoTotalReportsRowCount() {
+        let snapshot = makeSnapshot(rowCount: 12, pagination: PaginationState(pageSize: 1_000))
+        #expect(model(snapshot).readout == .rowCount(12))
+    }
+
+    @Test("An unexecuted query tab is not given a table's controls")
+    func queryTabKeepsItsContentGate() {
+        let snapshot = makeSnapshot(tabType: .query, rowCount: 0, hasColumns: false, hasTableName: false)
+        let controls = model(snapshot).controls
+        #expect(!controls.showsReadout)
+        #expect(!controls.showsColumns)
+        #expect(!controls.showsPagination)
+    }
 }
 
 @Suite("ResultsModeAvailability")
@@ -260,4 +430,5 @@ struct ResultsModeAvailabilityTests {
         }
         #expect(ResultsViewMode.json.displayName == "JSON")
     }
+
 }

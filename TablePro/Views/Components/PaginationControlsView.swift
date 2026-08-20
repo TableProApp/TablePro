@@ -8,6 +8,9 @@ import SwiftUI
 struct PaginationControlsView: View {
     let pagination: PaginationState
     let loadedRowCount: Int
+    /// Identity of the tab these controls describe. Not used for display: a change to it is what
+    /// discards a half-typed page number so it cannot be submitted against the next tab.
+    let tabId: UUID?
     let onFirst: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
@@ -33,6 +36,12 @@ struct PaginationControlsView: View {
         HStack(spacing: 6) {
             pageSizeMenu
             navigationCluster
+        }
+        .onChange(of: tabId) { _, _ in
+            showJumpPopover = false
+            showCustomPopover = false
+            jumpPage = nil
+            customPageSize = nil
         }
     }
 
@@ -65,6 +74,7 @@ struct PaginationControlsView: View {
         .menuStyle(.button)
         .fixedSize()
         .controlSize(.small)
+        .disabled(pagination.isLoading)
         .help(String(localized: "Rows per page"))
         .accessibilityLabel(String(localized: "Rows per page"))
         .accessibilityValue(pagination.pageSize.formatted())
@@ -80,6 +90,9 @@ struct PaginationControlsView: View {
 
     // MARK: - Navigation
 
+    /// A progress indicator never goes inside this cluster. Sitting between the page indicator and
+    /// Next, it would push both nav buttons sideways every time a page loaded, which is the reflow
+    /// the readout's own indicator already reports without moving anything.
     private var navigationCluster: some View {
         HStack(spacing: 0) {
             navButton(
@@ -98,12 +111,6 @@ struct PaginationControlsView: View {
             )
 
             pageIndicator
-
-            if pagination.isLoading {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel(String(localized: "Loading page"))
-            }
 
             navButton(
                 "chevron.forward",
@@ -154,7 +161,7 @@ struct PaginationControlsView: View {
                 .frame(minWidth: 44)
         }
         .buttonStyle(.plain)
-        .disabled(!pagination.hasRowCountTotal)
+        .disabled(!pagination.hasRowCountTotal || pagination.isLoading)
         .help(String(localized: "Go to page"))
         .accessibilityLabel(String(localized: "Page"))
         .accessibilityValue(pageIndicatorAccessibilityValue)
@@ -228,6 +235,7 @@ struct PaginationControlsView: View {
         PaginationControlsView(
             pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000, currentPage: 3, currentOffset: 2_000),
             loadedRowCount: 1_000,
+            tabId: nil,
             onFirst: {}, onPrevious: {}, onNext: {}, onLast: {},
             onPageSizeChange: { _ in }, onShowAll: {}, onGoToPage: { _ in }
         )
@@ -235,6 +243,7 @@ struct PaginationControlsView: View {
         PaginationControlsView(
             pagination: PaginationState(totalRowCount: nil, pageSize: 1_000, currentPage: 2, currentOffset: 1_000),
             loadedRowCount: 1_000,
+            tabId: nil,
             onFirst: {}, onPrevious: {}, onNext: {}, onLast: {},
             onPageSizeChange: { _ in }, onShowAll: {}, onGoToPage: { _ in }
         )

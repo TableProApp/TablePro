@@ -69,6 +69,18 @@ final class SchemaService {
         loadedScopes[connectionId]
     }
 
+    /// Records that what is loaded already covers `scope`, without refetching it.
+    ///
+    /// Only for a scope change that cannot invalidate the catalog: on an engine that groups by
+    /// hierarchical schema, moving the session's default schema leaves the schema list and every
+    /// per-schema object list, each keyed by an explicit schema, exactly as they were. Without
+    /// this the recorded scope keeps naming the schema the session left, and the next reader
+    /// compares the two and runs the full reload the caller just avoided.
+    func noteScopeCovered(_ scope: DatabaseScope, for connectionId: UUID) {
+        guard case .loaded = state(for: connectionId) else { return }
+        loadedScopes[connectionId] = scope
+    }
+
     func waitForRefresh(connectionId: UUID) async {
         while refreshingConnections.contains(connectionId), !Task.isCancelled {
             let waiterId = UUID()

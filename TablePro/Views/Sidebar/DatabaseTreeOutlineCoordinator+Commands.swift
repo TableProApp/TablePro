@@ -125,7 +125,8 @@ extension DatabaseTreeOutlineCoordinator {
     private func useAsActive(_ container: DatabaseContainerRef) {
         switch container.kind {
         case .database:
-            setActiveDatabase(container.database)
+            guard let database = container.database else { return }
+            setActiveDatabase(database)
         case .schema:
             guard let schema = container.schema else { return }
             setActiveSchema(database: container.database, schema: schema)

@@ -55,6 +55,6 @@ dm://user:password@host:5236/schema
   keeps in the row, read normally. The column is listed either way and every other column in the
   row is correct. Cast `CLOB` values to `VARCHAR`, or use `RAWTOHEX` for binary columns, when you
   need the contents.
-- The Database field selects an initial schema; DM8 database switching is not supported
+- The Database field selects an initial schema, and leaving it empty is fine. A DM8 instance holds one database, so there is no database to switch; use the schema picker instead.
 
 If a server value fails to decode, include the DM8 version and column type in a [GitHub issue](https://github.com/TableProApp/TablePro/issues).

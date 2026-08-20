@@ -141,12 +141,12 @@ final class PaginationCoordinator {
         parent.releaseAllExactCounts()
         parent.reportEndedExecutions(parent.tabExecution.invalidateAll(reason: .cancelledByUser))
         parent.toolbarState.setExecuting(false)
-        for idx in parent.tabManager.tabs.indices
-            where parent.tabManager.tabs[idx].pagination.isLoadingMore
-                || parent.tabManager.tabs[idx].pagination.isCountingExact {
+        for idx in parent.tabManager.tabs.indices where parent.tabManager.tabs[idx].pagination.isBusy {
             parent.tabManager.mutate(at: idx) { tab in
                 tab.pagination.isLoadingMore = false
                 tab.pagination.isCountingExact = false
+                tab.pagination.isCountPending = false
+                tab.pagination.isLoading = false
             }
         }
     }
@@ -171,7 +171,13 @@ final class PaginationCoordinator {
             columns: buffer.columns, columnTypes: buffer.columnTypes
         )
 
-        parent.tabManager.mutate(at: index) { $0.pagination.isCountingExact = true }
+        /// Taking the task slot supersedes whatever automatic count held it, so this claims that
+        /// count's flag too. Leaving it set would strand it: the superseded task's completion finds
+        /// the token changed and correctly declines to clear a successor's state.
+        parent.tabManager.mutate(at: index) { tab in
+            tab.pagination.isCountingExact = true
+            tab.pagination.isCountPending = false
+        }
 
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let token = UUID()
