@@ -11,10 +11,20 @@ import TableProPluginKit
 /// Statements, parenthesised groups, `BEGIN`/`CASE` blocks and multi-line block comments all open frames on one depth
 /// stack, so a nested region always reports a deeper level than the region containing it. Regions that open and close
 /// on the same line are discarded, because there is nothing to hide.
-///
-/// A semicolon only ends the statement when the statement is the innermost open frame: inside a `BEGIN` block or a
-/// parenthesised group it separates something nested instead.
 enum SQLFoldScanner {
+    static func scan(_ text: NSString, dialect: SqlDialect) -> SQLFoldStructure {
+        guard text.length > 0 else { return .empty }
+        var scan = Scan(text: text, dialect: dialect)
+        scan.run()
+        return scan.structure
+    }
+}
+
+/// One pass over a document.
+///
+/// The scan is a value rather than a function with captured locals, so every step of it is a named method over named
+/// state instead of a closure reaching into the loop around it.
+private struct Scan {
     private struct Frame {
         let kind: SQLFoldRegion.Kind
         let depth: Int
@@ -22,168 +32,47 @@ enum SQLFoldScanner {
         let startLine: Int
     }
 
-    static func scan(_ text: NSString, dialect: SqlDialect) -> SQLFoldStructure {
-        let length = text.length
-        guard length > 0 else { return .empty }
+    private let text: NSString
+    private let length: Int
+    private let dialect: SqlDialect
 
-        var completed: [SQLFoldRegion] = []
-        var frames: [Frame] = []
-        var line = 0
-        var index = 0
+    private var frames: [Frame] = []
+    private var completed: [SQLFoldRegion] = []
+    private var index = 0
+    private var line = 0
 
-        func pushFrame(_ kind: SQLFoldRegion.Kind, openingToken: Int, startLine: Int) {
-            let start = SqlLexer.endOfLine(text, from: openingToken, length: length)
-            frames.append(Frame(kind: kind, depth: frames.count + 1, start: start, startLine: startLine))
-        }
-
-        func popFrame(_ kind: SQLFoldRegion.Kind, end: Int, endLine: Int) {
-            guard let frame = frames.last, frame.kind == kind else { return }
-            frames.removeLast()
-            guard frame.startLine != endLine else { return }
-            completed.append(
-                SQLFoldRegion(
-                    kind: frame.kind,
-                    depth: frame.depth,
-                    range: frame.start..<max(frame.start, end),
-                    startLine: frame.startLine,
-                    endLine: endLine
-                )
-            )
-        }
-
-        while index < length {
-            let char = text.character(at: index)
-
-            if char == SqlLexer.newline {
-                line += 1
-                index += 1
-                continue
-            }
-
-            if SqlLexer.isWhitespace(char) {
-                index += 1
-                continue
-            }
-
-            if SqlLexer.startsLineComment(text, at: index, length: length) {
-                index = SqlLexer.endOfLine(text, from: index, length: length)
-                continue
-            }
-
-            if dialect.supportsHashLineComments, char == SqlLexer.hash {
-                index = SqlLexer.endOfLine(text, from: index, length: length)
-                continue
-            }
-
-            if SqlLexer.startsBlockComment(text, at: index, length: length) {
-                let scanned = scanBlockComment(text, from: index, length: length, depth: frames.count + 1, line: &line)
-                completed.append(contentsOf: scanned.region.map { [$0] } ?? [])
-                index = scanned.next
-                continue
-            }
-
-            if SqlLexer.isQuote(char) {
-                let span = SqlLexer.skipQuotedString(
-                    text,
-                    from: index,
-                    quote: char,
-                    length: length,
-                    dialect: dialect
-                )
-                line += span.newlines
-                index = span.next
-                continue
-            }
-
-            if dialect.supportsDollarQuotes, char == SqlDollarQuote.dollar,
-               case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(
-                   at: index,
-                   in: text,
-                   bufLen: length
-               ) {
-                if frames.isEmpty {
-                    pushFrame(.statement, openingToken: index, startLine: line)
-                }
-                let scanned = scanDollarQuote(
-                    text,
-                    from: index,
-                    openerLength: openerLength,
-                    tag: tag,
-                    length: length,
-                    depth: frames.count + 1,
-                    line: &line
-                )
-                completed.append(contentsOf: scanned.region.map { [$0] } ?? [])
-                index = scanned.next
-                continue
-            }
-
-            if frames.isEmpty {
-                pushFrame(.statement, openingToken: index, startLine: line)
-            }
-
-            if char == SqlLexer.openParen {
-                pushFrame(.parenGroup, openingToken: index, startLine: line)
-                index += 1
-                continue
-            }
-
-            if char == SqlLexer.closeParen {
-                popFrame(.parenGroup, end: index, endLine: line)
-                index += 1
-                continue
-            }
-
-            if char == SqlLexer.semicolon {
-                if frames.last?.kind == .statement {
-                    popFrame(.statement, end: index, endLine: line)
-                }
-                index += 1
-                continue
-            }
-
-            let word = readKeyword(text, from: index, length: length)
-            guard !word.text.isEmpty else {
-                index += 1
-                continue
-            }
-
-            switch word.text {
-            case "BEGIN", "CASE":
-                pushFrame(.keywordBlock, openingToken: word.end, startLine: line)
-            case "END":
-                if isControlFlowEnd(text, after: word.end, length: length) {
-                    break
-                }
-                popFrame(.keywordBlock, end: index, endLine: line)
-            default:
-                break
-            }
-            index = word.end
-        }
-
-        let documentEnd = length
-        for frame in frames.reversed() where frame.startLine != line {
-            completed.append(
-                SQLFoldRegion(
-                    kind: frame.kind,
-                    depth: frame.depth,
-                    range: frame.start..<max(frame.start, documentEnd),
-                    startLine: frame.startLine,
-                    endLine: line
-                )
-            )
-        }
-
-        return makeStructure(completed)
+    init(text: NSString, dialect: SqlDialect) {
+        self.text = text
+        self.length = text.length
+        self.dialect = dialect
     }
 
-    // MARK: - Frame helpers
+    // MARK: - Pass
 
-    private static func makeStructure(_ regions: [SQLFoldRegion]) -> SQLFoldStructure {
+    mutating func run() {
+        while index < length {
+            step()
+        }
+        closeFramesAtEndOfDocument()
+    }
+
+    private mutating func step() {
+        let character = text.character(at: index)
+
+        if consumeTrivia(character) { return }
+        if consumeComment(character) { return }
+        if consumeQuotedString(character) { return }
+        if consumeDollarQuotedBody(character) { return }
+
+        openStatementIfNeeded()
+        consumeStructure(character)
+    }
+
+    /// Everything the pass found, indexed by the line each event lands on.
+    var structure: SQLFoldStructure {
         var startsByLine: [Int: [SQLFoldRegion]] = [:]
         var endsByLine: [Int: [SQLFoldRegion]] = [:]
-        for region in regions {
+        for region in completed {
             startsByLine[region.startLine, default: []].append(region)
             endsByLine[region.endLine, default: []].append(region)
         }
@@ -193,61 +82,183 @@ enum SQLFoldScanner {
         )
     }
 
-    // MARK: - Scanning helpers
+    // MARK: - Frames
 
-    /// Consumes a block comment, reporting it as a fold when it spans more than one line.
-    private static func scanBlockComment(
-        _ text: NSString,
-        from offset: Int,
-        length: Int,
-        depth: Int,
-        line: inout Int
-    ) -> (region: SQLFoldRegion?, next: Int) {
-        let start = SqlLexer.endOfLine(text, from: offset, length: length)
+    /// A fold starts at the end of the line that opens it, so collapsing it leaves `CREATE TABLE users (` on screen.
+    private mutating func pushFrame(_ kind: SQLFoldRegion.Kind, openingToken: Int, startLine: Int) {
+        frames.append(
+            Frame(
+                kind: kind,
+                depth: frames.count + 1,
+                start: SqlLexer.endOfLine(text, from: openingToken, length: length),
+                startLine: startLine
+            )
+        )
+    }
+
+    /// Closes the innermost frame when it is the kind being closed. A `)` that does not match an open group, or an
+    /// `END` with no `BEGIN`, belongs to structure this scanner does not track and is left alone.
+    private mutating func popFrame(_ kind: SQLFoldRegion.Kind, end: Int) {
+        guard let frame = frames.last, frame.kind == kind else { return }
+        frames.removeLast()
+        complete(frame, end: end, endLine: line)
+    }
+
+    private mutating func complete(_ frame: Frame, end: Int, endLine: Int) {
+        guard frame.startLine != endLine else { return }
+        completed.append(
+            SQLFoldRegion(
+                kind: frame.kind,
+                depth: frame.depth,
+                range: frame.start..<max(frame.start, end),
+                startLine: frame.startLine,
+                endLine: endLine
+            )
+        )
+    }
+
+    /// A document that ends mid-statement still folds what it opened, up to wherever the text stops.
+    private mutating func closeFramesAtEndOfDocument() {
+        for frame in frames.reversed() {
+            complete(frame, end: length, endLine: line)
+        }
+        frames.removeAll()
+    }
+
+    /// Everything outside a `BEGIN` block or a parenthesised group belongs to a statement, which opens at the first
+    /// token that is not whitespace or a comment.
+    private mutating func openStatementIfNeeded() {
+        guard frames.isEmpty else { return }
+        pushFrame(.statement, openingToken: index, startLine: line)
+    }
+
+    // MARK: - Structure
+
+    private mutating func consumeStructure(_ character: UInt16) {
+        switch character {
+        case SqlLexer.openParen:
+            pushFrame(.parenGroup, openingToken: index, startLine: line)
+            index += 1
+        case SqlLexer.closeParen:
+            popFrame(.parenGroup, end: index)
+            index += 1
+        case SqlLexer.semicolon:
+            consumeSemicolon()
+        default:
+            consumeKeyword()
+        }
+    }
+
+    /// A semicolon only ends the statement when the statement is the innermost open frame. Inside a `BEGIN` block or
+    /// a parenthesised group it separates something nested instead.
+    private mutating func consumeSemicolon() {
+        if frames.last?.kind == .statement {
+            popFrame(.statement, end: index)
+        }
+        index += 1
+    }
+
+    private mutating func consumeKeyword() {
+        let word = readKeyword(from: index)
+        guard !word.text.isEmpty else {
+            index += 1
+            return
+        }
+
+        switch word.text {
+        case "BEGIN", "CASE":
+            pushFrame(.keywordBlock, openingToken: word.end, startLine: line)
+        case "END" where !isControlFlowEnd(after: word.end):
+            popFrame(.keywordBlock, end: index)
+        default:
+            break
+        }
+        index = word.end
+    }
+
+    // MARK: - Trivia
+
+    private mutating func consumeTrivia(_ character: UInt16) -> Bool {
+        if character == SqlLexer.newline {
+            line += 1
+            index += 1
+            return true
+        }
+        guard SqlLexer.isWhitespace(character) else { return false }
+        index += 1
+        return true
+    }
+
+    private mutating func consumeComment(_ character: UInt16) -> Bool {
+        if SqlLexer.startsLineComment(text, at: index, length: length)
+            || (dialect.supportsHashLineComments && character == SqlLexer.hash) {
+            index = SqlLexer.endOfLine(text, from: index, length: length)
+            return true
+        }
+
+        guard SqlLexer.startsBlockComment(text, at: index, length: length) else { return false }
+        let start = SqlLexer.endOfLine(text, from: index, length: length)
         let startLine = line
-        let span = SqlLexer.skipBlockComment(text, from: offset, length: length)
+        let span = SqlLexer.skipBlockComment(text, from: index, length: length)
         line += span.newlines
-        guard startLine != line else { return (nil, span.next) }
-        return (
-            SQLFoldRegion(
-                kind: .blockComment,
-                depth: depth,
-                range: start..<max(start, span.next - 2),
-                startLine: startLine,
-                endLine: line
-            ),
-            span.next
-        )
+        appendSpanningRegion(.blockComment, start: start, startLine: startLine, end: span.next - 2)
+        index = span.next
+        return true
     }
 
-    /// Consumes a dollar quoted body as one opaque region, so nothing inside it is treated as structure.
-    private static func scanDollarQuote(
-        _ text: NSString,
-        from offset: Int,
-        openerLength: Int,
-        tag: String,
-        length: Int,
-        depth: Int,
-        line: inout Int
-    ) -> (region: SQLFoldRegion?, next: Int) {
-        let start = SqlLexer.endOfLine(text, from: offset, length: length)
+    private mutating func consumeQuotedString(_ character: UInt16) -> Bool {
+        guard SqlLexer.isQuote(character) else { return false }
+        let span = SqlLexer.skipQuotedString(text, from: index, quote: character, length: length, dialect: dialect)
+        line += span.newlines
+        index = span.next
+        return true
+    }
+
+    /// A dollar quoted body is one opaque region, so nothing inside it is read as structure. The statement around it
+    /// opens first, because the body is part of that statement.
+    private mutating func consumeDollarQuotedBody(_ character: UInt16) -> Bool {
+        guard dialect.supportsDollarQuotes, character == SqlDollarQuote.dollar,
+              case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(
+                  at: index,
+                  in: text,
+                  bufLen: length
+              ) else {
+            return false
+        }
+
+        openStatementIfNeeded()
+        let start = SqlLexer.endOfLine(text, from: index, length: length)
         let startLine = line
-        let result = SqlLexer.skipDollarQuotedBody(text, from: offset + openerLength, tag: tag, length: length)
+        let result = SqlLexer.skipDollarQuotedBody(text, from: index + openerLength, tag: tag, length: length)
         line += result.span.newlines
-        guard startLine != line else { return (nil, result.span.next) }
-        return (
+        appendSpanningRegion(.quotedBody, start: start, startLine: startLine, end: result.bodyEnd)
+        index = result.span.next
+        return true
+    }
+
+    /// Records a region that was scanned in one go rather than opened and closed on the frame stack, when it turned
+    /// out to span more than one line.
+    private mutating func appendSpanningRegion(
+        _ kind: SQLFoldRegion.Kind,
+        start: Int,
+        startLine: Int,
+        end: Int
+    ) {
+        guard startLine != line else { return }
+        completed.append(
             SQLFoldRegion(
-                kind: .quotedBody,
-                depth: depth,
-                range: start..<max(start, result.bodyEnd),
+                kind: kind,
+                depth: frames.count + 1,
+                range: start..<max(start, end),
                 startLine: startLine,
                 endLine: line
-            ),
-            result.span.next
+            )
         )
     }
 
-    private static func readKeyword(_ text: NSString, from offset: Int, length: Int) -> (text: String, end: Int) {
+    // MARK: - Words
+
+    private func readKeyword(from offset: Int) -> (text: String, end: Int) {
         guard SqlDollarQuote.isIdentifierStart(text.character(at: offset)) else {
             return ("", offset + 1)
         }
@@ -264,13 +275,12 @@ enum SQLFoldScanner {
 
     /// `END IF`, `END LOOP`, `END WHILE` and `END FOR` close constructs this scanner does not open, so they must not
     /// pop a `BEGIN` or `CASE` frame.
-    private static func isControlFlowEnd(_ text: NSString, after offset: Int, length: Int) -> Bool {
+    private func isControlFlowEnd(after offset: Int) -> Bool {
         var cursor = offset
         while cursor < length, SqlLexer.isWhitespace(text.character(at: cursor)) {
             cursor += 1
         }
         guard cursor < length else { return false }
-        let next = readKeyword(text, from: cursor, length: length)
-        return ["IF", "LOOP", "WHILE", "FOR"].contains(next.text)
+        return ["IF", "LOOP", "WHILE", "FOR"].contains(readKeyword(from: cursor).text)
     }
 }

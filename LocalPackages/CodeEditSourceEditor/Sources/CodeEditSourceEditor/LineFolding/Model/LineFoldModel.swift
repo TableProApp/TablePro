@@ -277,13 +277,6 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
         textChangedStreamContinuation.yield()
     }
 
-    /// Finds the deepest cached depth of the fold for a line number.
-    /// - Parameter lineNumber: The line number to query, zero-indexed.
-    /// - Returns: The deepest cached depth of the fold if it was found.
-    func getCachedDepthAt(lineNumber: Int) -> Int? {
-        return getCachedFoldAt(lineNumber: lineNumber)?.depth
-    }
-
     /// Finds the deepest cached fold and depth of the fold for a line number.
     /// - Parameter lineNumber: The line number to query, zero-indexed.
     /// - Returns: The deepest cached fold and depth of the fold if it was found.

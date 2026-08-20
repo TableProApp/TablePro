@@ -112,8 +112,11 @@ public class GutterView: NSView {
         }
     }
 
-    /// Toggle the visibility of the line numbers. The gutter stays visible either way, so an editor can show the
-    /// folding ribbon on its own.
+    /// Toggle the visibility of the line numbers.
+    ///
+    /// The gutter stays visible either way, so an editor can show the folding ribbon on its own. That costs a column
+    /// wide enough for the fold controls with nothing in it whenever the document has nothing to fold, so an editor
+    /// that has no line numbers to show is usually better off hiding the gutter entirely.
     @Invalidating(.display)
     public var showLineNumbers: Bool = true {
         didSet {

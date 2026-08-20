@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import CodeEditSourceEditor
 import CodeEditTextView
 import Foundation
