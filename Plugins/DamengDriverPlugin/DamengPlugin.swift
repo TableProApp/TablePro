@@ -197,11 +197,23 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func disconnect() {
+        cancelReconnect()
         connection.disconnect()
         activeSchema = nil
         detectedServerVersion = nil
         textEscaping = .unknown
         hasConnectedBefore = false
+    }
+
+    /// A rebuild that outlived the caller would open a DM8 session after the user closed the
+    /// connection, and repopulate the schema on a driver the app considers disconnected.
+    func cancelReconnect() {
+        let inFlight = sessionLock.withLock { () -> Task<Void, any Error>? in
+            let task = reconnectInFlight
+            reconnectInFlight = nil
+            return task
+        }
+        inFlight?.cancel()
     }
 
     func ping() async throws {
@@ -221,7 +233,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult {
         try await executeWithReconnect(
-            query: query, parameters: [], rowCap: nil, replay: Self.replayPolicy(for: query)
+            query: query, parameters: [], rowCap: nil, replay: replayPolicy(for: query)
         )
     }
 
@@ -234,18 +246,23 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             query: query,
             parameters: parameters ?? [],
             rowCap: rowCap,
-            replay: Self.replayPolicy(for: query)
+            replay: replayPolicy(for: query)
         )
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await executeWithReconnect(
-            query: query, parameters: parameters, rowCap: nil, replay: Self.replayPolicy(for: query)
+            query: query, parameters: parameters, rowCap: nil, replay: replayPolicy(for: query)
         )
     }
 
-    static func replayPolicy(for query: String) -> DamengReplayPolicy {
-        DamengStatementClassifier.isReadOnly(query) ? .replayable : .reportFailure
+    /// Every statement in a script has to be a read, not just the first one. A script now
+    /// really executes, so `SELECT ...; DELETE ...` classified on its leading keyword alone
+    /// would replay the delete on a rebuilt connection.
+    func replayPolicy(for query: String) -> DamengReplayPolicy {
+        let statements = DamengScriptSplitter.statements(in: query, escaping: textEscaping)
+        guard !statements.isEmpty else { return .reportFailure }
+        return statements.allSatisfy(DamengStatementClassifier.isReadOnly) ? .replayable : .reportFailure
     }
 
     func beginTransaction() async throws {
@@ -344,6 +361,9 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "EXPLAIN \(sql)"
     }
 
+    /// DM8 rejects a string holding more than one statement, so a script is sent a statement at
+    /// a time and the last one's result is returned. A single statement is passed through
+    /// untouched, terminator and all, so nothing changes for the common path.
     func executeOnce(
         query: String,
         parameters: [PluginCellValue],
@@ -352,10 +372,42 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let bound = parameters.isEmpty
             ? query
             : try DamengParameterBinder.bind(query: query, parameters: parameters, escaping: textEscaping)
+        let statements = DamengScriptSplitter.statements(in: bound, escaping: textEscaping)
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
-        let expectsRows = DamengStatementClassifier.likelyReturnsRows(bound)
-        let result = try await connection.execute(bound, expectsRows: expectsRows, rowCap: rowCap)
+
+        guard statements.count > 1 else {
+            return try await runOne(bound, rowCap: rowCap, generation: generation)
+        }
+        var last: PluginQueryResult?
+        for (offset, statement) in statements.enumerated() {
+            do {
+                last = try await runOne(statement, rowCap: rowCap, generation: generation)
+            } catch let error as DamengError {
+                // Naming the statement matters because the ones before it already ran and
+                // cannot be rolled back: DM8 commits DDL as it goes.
+                throw DamengError(
+                    message: String(
+                        format: String(localized: "Statement %1$d of %2$d failed: %3$@"),
+                        offset + 1, statements.count, error.message
+                    ),
+                    closedConnection: error.closedConnection
+                )
+            }
+        }
+        guard let last else {
+            throw DamengError(message: String(localized: "This Dameng script contains no statement to run."))
+        }
+        return last
+    }
+
+    private func runOne(
+        _ statement: String,
+        rowCap: Int?,
+        generation: Int
+    ) async throws -> PluginQueryResult {
+        let expectsRows = DamengStatementClassifier.likelyReturnsRows(statement)
+        let result = try await connection.execute(statement, expectsRows: expectsRows, rowCap: rowCap)
         if cancellationGate.isCancelled(generation) {
             throw CancellationError()
         }

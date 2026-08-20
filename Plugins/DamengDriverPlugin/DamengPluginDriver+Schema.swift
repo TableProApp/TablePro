@@ -47,7 +47,7 @@ extension DamengPluginDriver {
                       AND ac.TABLE_NAME = ?
                 ) pk ON c.COLUMN_NAME = pk.COLUMN_NAME
                 LEFT JOIN ALL_COL_COMMENTS com
-                  ON c.OWNER = com.OWNER
+                  ON c.OWNER = com.SCHEMA_NAME
                  AND c.TABLE_NAME = com.TABLE_NAME
                  AND c.COLUMN_NAME = com.COLUMN_NAME
                 WHERE c.OWNER = ?
@@ -101,7 +101,7 @@ extension DamengPluginDriver {
                  AND c.TABLE_NAME = pk.TABLE_NAME
                  AND c.COLUMN_NAME = pk.COLUMN_NAME
                 LEFT JOIN ALL_COL_COMMENTS com
-                  ON c.OWNER = com.OWNER
+                  ON c.OWNER = com.SCHEMA_NAME
                  AND c.TABLE_NAME = com.TABLE_NAME
                  AND c.COLUMN_NAME = com.COLUMN_NAME
                 WHERE c.OWNER = ?
@@ -243,6 +243,8 @@ extension DamengPluginDriver {
         )
     }
 
+    /// `ALL_TAB_COMMENTS.OWNER` really is the schema, unlike `ALL_COL_COMMENTS.OWNER`, which is
+    /// the schema's owning user. The two catalog views disagree, so this join stays on `OWNER`.
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         let result = try await executeParameterized(
             query: """
