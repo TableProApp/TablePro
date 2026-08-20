@@ -151,6 +151,8 @@ private struct SettingsPaneContent: View {
             )
         case .keyboard:
             KeyboardSettingsView(settings: $settingsManager.keyboard)
+        case .notifications:
+            NotificationsSettingsView(settings: $settingsManager.notifications)
         case .ai:
             AISettingsView(settings: $settingsManager.ai)
         case .mcp:

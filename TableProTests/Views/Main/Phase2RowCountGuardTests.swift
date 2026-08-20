@@ -58,7 +58,7 @@ struct Phase2RowCountGuardTests {
         let settled = registry.settle(claim)
         #expect(settled)
 
-        registry.invalidate(tabId)
+        _ = registry.invalidate(tabId, reason: .supersededNavigation)
 
         #expect(registry.isSameContent(contentEpoch, for: tabId) == false)
     }

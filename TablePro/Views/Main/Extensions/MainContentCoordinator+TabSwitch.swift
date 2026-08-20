@@ -16,6 +16,10 @@ extension MainContentCoordinator {
         to newTabId: UUID?,
         tabs: [QueryTab]
     ) {
+        if let newTabId {
+            OperationUnseenMarker.clear(tabId: newTabId, in: tabManager)
+            OperationCompletionReporter.shared.clearDelivered(for: operationOwner(tabId: newTabId))
+        }
         let start = Date()
         Self.lifecycleLogger.debug(
             "[switch] handleTabChange start from=\(oldTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) connId=\(self.connectionId, privacy: .public) tabsCount=\(self.tabManager.tabs.count)"

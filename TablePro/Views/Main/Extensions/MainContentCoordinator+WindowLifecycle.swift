@@ -225,6 +225,6 @@ extension MainContentCoordinator {
             tabId: tab.id,
             detail: "clearedAbandonedClaim"
         )
-        tabExecution.invalidate(tab.id)
+        reportEndedExecutions(tabExecution.invalidate(tab.id, reason: .abandoned).map { [$0] } ?? [])
     }
 }

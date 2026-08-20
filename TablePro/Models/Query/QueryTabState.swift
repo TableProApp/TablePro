@@ -413,11 +413,20 @@ struct TabExecutionState: Equatable {
     var rowsAffected: Int = 0
     var lastExecutedAt: Date?
 
+    /// Set when work on this tab finished somewhere the user could not see it, cleared when they
+    /// select the tab. This is the channel that survives a missed banner, a denied notification
+    /// permission and a Focus mode, none of which the app can do anything about.
+    var finishedUnseenAt: Date?
+
+    /// Hand-written, and every field the UI draws from has to be in it. `finishedUnseenAt` drives
+    /// a dot in the tab strip, so leaving it out here would mean the dot never appeared: SwiftUI
+    /// compares the tab and sees no change.
     static func == (lhs: TabExecutionState, rhs: TabExecutionState) -> Bool {
         lhs.executionTime == rhs.executionTime
             && lhs.statusMessage == rhs.statusMessage
             && lhs.errorMessage == rhs.errorMessage
             && lhs.rowsAffected == rhs.rowsAffected
+            && lhs.finishedUnseenAt == rhs.finishedUnseenAt
     }
 }
 

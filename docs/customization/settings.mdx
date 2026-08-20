@@ -99,6 +99,32 @@ Powered by [Sparkle](https://sparkle-project.org/). Also available from the **Ta
 
 **Reset All Settings to Defaults** resets every settings tab after a confirmation. Saved connections and query history are not affected.
 
+## Notifications
+
+TablePro tells you when long-running work finishes while you are somewhere else. It only notifies when the result is not already in front of you: the app is in another Space or behind another window, the window is minimized, or the tab that ran the work is not the one on screen. Work you cancelled yourself never notifies.
+
+**Notify when long-running work finishes** is the master switch. **Only after** sets how long work has to run before it counts, from 5 seconds to 10 minutes; the default is 20 seconds. Set it below the query timeout in General, or a query that times out will finish before the notification is due.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| **Notify when long-running work finishes** | On | Master switch for every kind below |
+| **Only after** | 20 seconds | How long work must run to count, from 5 seconds to 10 minutes |
+| **Queries** | On | Editor queries, including Explain |
+| **Statement batches** | On | Execute All, as one notification for the batch |
+| **Row edits** | On | Saving edited rows |
+| **Structure changes** | On | Applying table structure changes |
+| **Imports** | On | File imports |
+| **Exports** | On | Exports, including streaming exports |
+| **Backups** | On | Database dumps |
+| **Fetch all rows** | On | Loading every row of a truncated result |
+| **AI and MCP queries** | On | Queries an AI assistant or MCP client runs |
+
+The notification says which connection and database, what happened, how much, and how long it took: "1,204 rows in 3m 12s", or "Failed after 2m 45s" with the reason. A failure offers Copy Error; an export or backup offers Show in Finder. Clicking it brings TablePro forward and selects the tab that ran the work. Notifications group by connection, and re-running the same tab replaces its previous notification instead of stacking a second one.
+
+Whatever the notification settings say, a tab whose work finished while you were looking elsewhere keeps a dot next to its name until you select it. That happens even if you never granted notification permission.
+
+macOS asks for notification permission the first time TablePro actually has something to tell you, not at launch. If you refuse, or turn TablePro's notifications off in System Settings, this section says so and links you there, and TablePro bounces its Dock icon instead. Notification sound and alert style are per-app System Settings options, so TablePro does not duplicate them.
+
 ## AI
 
 **Enable AI Features** is the master switch; turning it off hides the other AI sections and disables chat, inline suggestions, and editor actions. **Active Provider** picks the default provider; the chat composer's model picker can override it per turn.

@@ -36,7 +36,7 @@ struct TabExecutionRegistryTests {
         let tabId = UUID()
         let claim = registry.claim(tabId)
 
-        registry.invalidate(tabId)
+        _ = registry.invalidate(tabId, reason: .supersededNavigation)
 
         #expect(registry.isCurrent(claim) == false)
         #expect(registry.isExecuting(tabId) == false)
@@ -50,7 +50,7 @@ struct TabExecutionRegistryTests {
         let claimA = registry.claim(tabA)
         let claimB = registry.claim(tabB)
 
-        registry.invalidate(tabB)
+        _ = registry.invalidate(tabB, reason: .supersededNavigation)
 
         #expect(registry.isCurrent(claimA))
         #expect(registry.isCurrent(claimB) == false)
@@ -104,7 +104,7 @@ struct TabExecutionRegistryTests {
         #expect(secondSettle == false)
 
         let superseded = registry.claim(tabId)
-        registry.invalidate(tabId)
+        _ = registry.invalidate(tabId, reason: .supersededNavigation)
         let settledSuperseded = registry.settle(superseded)
         #expect(settledSuperseded == false)
     }
@@ -121,7 +121,7 @@ struct TabExecutionRegistryTests {
         #expect(settled)
         #expect(registry.ownsContent(claim))
 
-        registry.invalidate(tabId)
+        _ = registry.invalidate(tabId, reason: .supersededNavigation)
         #expect(registry.ownsContent(claim) == false)
 
         let reclaimed = registry.claim(tabId)
@@ -145,7 +145,7 @@ struct TabExecutionRegistryTests {
         let claimA = registry.claim(UUID())
         let claimB = registry.claim(UUID())
 
-        registry.invalidateAll()
+        _ = registry.invalidateAll(reason: .sessionEnded)
 
         #expect(registry.isCurrent(claimA) == false)
         #expect(registry.isCurrent(claimB) == false)

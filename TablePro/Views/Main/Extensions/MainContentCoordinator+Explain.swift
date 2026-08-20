@@ -146,8 +146,19 @@ extension MainContentCoordinator {
                     // query that is still running, so the gate comes before all of them.
                     guard tabExecution.settle(claim) else { return }
                     retireQueryTask(for: claim)
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled else {
+                        reportEndedExecutions([
+                            EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+                        ])
+                        return
+                    }
 
+                    reportOperation(
+                        kind: .query,
+                        claim: claim,
+                        databaseName: operationDatabaseName(tabId: tabId),
+                        outcome: .succeeded(OperationSummary())
+                    )
                     flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
                     tabManager.mutate(tabId: tabId) { tab in
                         tab.execution.executionTime = fetchResult.executionTime
@@ -190,7 +201,19 @@ extension MainContentCoordinator {
 
                     // A cancelled EXPLAIN is not a failure the user needs told about, and it does
                     // not belong in history either.
-                    if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
+                    if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
+                        reportEndedExecutions([
+                            EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+                        ])
+                        return
+                    }
+
+                    reportOperation(
+                        kind: .query,
+                        claim: claim,
+                        databaseName: operationDatabaseName(tabId: tabId),
+                        outcome: .failed(reason: error.localizedDescription)
+                    )
 
                     tabManager.mutate(tabId: tabId) { tab in
                         tab.execution.errorMessage = error.localizedDescription

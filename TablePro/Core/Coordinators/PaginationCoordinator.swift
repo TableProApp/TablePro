@@ -131,7 +131,7 @@ final class PaginationCoordinator {
     func cancelCurrentQuery() {
         parent.cancelInFlightQueryTask()
         parent.cancelAllRowCountTasks()
-        parent.tabExecution.invalidateAll()
+        parent.reportEndedExecutions(parent.tabExecution.invalidateAll(reason: .cancelledByUser))
         parent.toolbarState.setExecuting(false)
         for idx in parent.tabManager.tabs.indices
             where parent.tabManager.tabs[idx].pagination.isLoadingMore
@@ -269,6 +269,7 @@ final class PaginationCoordinator {
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
 
+        let startedAt = ContinuousClock.Instant.now
         let fetchAllTask = Task { [weak self, parent] in
             guard let self, !parent.isTearingDown else { return }
 
@@ -290,7 +291,20 @@ final class PaginationCoordinator {
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")
 
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else {
+                    /// Every other exit from this function clears the flag, and this one used to
+                    /// bare return, so a fetch-all cancelled after its rows had already arrived
+                    /// left the tab showing "Loading..." for good with Fetch All hidden, healed
+                    /// only by re-running the query. Deterministic on any driver whose
+                    /// `cancelQuery()` is the PluginKit no-op default, because the fetch always
+                    /// runs to completion there and returns straight into this guard.
+                    await MainActor.run { [weak self] in
+                        self?.parent.tabManager.mutate(tabId: tabId) { tab in
+                            tab.pagination.isLoadingMore = false
+                        }
+                    }
+                    return
+                }
 
                 await MainActor.run { [weak self] in
                     guard let self, !parent.isTearingDown else { return }
@@ -321,6 +335,13 @@ final class PaginationCoordinator {
 
                     let totalTime = CFAbsoluteTimeGetCurrent() - start
                     progressLog.info("[fetchAll] DONE rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s totalTime=\(String(format: "%.3f", totalTime))s")
+                    parent.reportOperation(
+                        kind: .fetchAll,
+                        tabId: tabId,
+                        startedAt: startedAt,
+                        databaseName: parent.operationDatabaseName(tabId: tabId),
+                        outcome: .succeeded(OperationSummary(rowsReturned: result.rows.count))
+                    )
                 }
             } catch {
                 await MainActor.run { [weak self] in
@@ -334,6 +355,14 @@ final class PaginationCoordinator {
                     }
                     parent.retireQueryTask(for: nil)
                     MainContentCoordinator.logger.error("Fetch all failed: \(error.localizedDescription, privacy: .public)")
+                    guard !isStale, !isCancelled else { return }
+                    parent.reportOperation(
+                        kind: .fetchAll,
+                        tabId: tabId,
+                        startedAt: startedAt,
+                        databaseName: parent.operationDatabaseName(tabId: tabId),
+                        outcome: .failed(reason: error.localizedDescription)
+                    )
                 }
             }
         }

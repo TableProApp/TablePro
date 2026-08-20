@@ -44,12 +44,20 @@ extension MainContentCoordinator {
         }
         retireQueryTask(for: claim)
         traceExecutionFailed(traceToken, error: error)
-        if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled { return }
+        if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
+            reportEndedExecutions([
+                EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+            ])
+            return
+        }
         if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
             pendingLoadTrigger = trigger
             return
         }
         handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
+        reportQueryOperation(
+            claim: claim, trigger: trigger, outcome: .failed(reason: error.localizedDescription)
+        )
     }
 
     /// The change manager is one per window and holds whichever tab is selected, so a result that

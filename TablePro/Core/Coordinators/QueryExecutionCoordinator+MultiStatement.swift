@@ -105,6 +105,17 @@ extension QueryExecutionCoordinator {
         parent.retireQueryTask(for: claim)
         parent.toolbarState.lastQueryDuration = cumulativeTime
 
+        /// Once for the batch, never once per statement, and below the settle gate rather than at
+        /// the call site: a superseded batch has its results dropped here, and a notification
+        /// raised outside this guard would announce a result the user will never be shown.
+        reportOperation(
+            kind: .queryBatch,
+            claim: claim,
+            outcome: .succeeded(
+                OperationSummary(rowsAffected: totalRowsAffected, statementCount: newResultSets.count)
+            )
+        )
+
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             return
         }

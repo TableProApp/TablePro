@@ -833,6 +833,11 @@ final class MainContentCoordinator {
         fileWatcher = nil
         currentQueryTask?.cancel()
         currentQueryTask = nil
+        /// A cancelled task is not a finished one. `Task.cancel()` is cooperative, so the driver
+        /// call may still be running and will throw on the way out; without this the resulting
+        /// error reaches the ordinary failure path and reports a query that "failed" when what
+        /// actually happened is that the window closed.
+        reportEndedExecutions(tabExecution.invalidateAll(reason: .sessionEnded))
         refreshCoalesceTask?.cancel()
         refreshCoalesceTask = nil
         for entry in tableLoadTasks.values { entry.task.cancel() }
@@ -1273,6 +1278,16 @@ final class MainContentCoordinator {
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: "completed")
+                    reportQueryOperation(
+                        claim: claim,
+                        trigger: trigger,
+                        outcome: .succeeded(
+                            OperationSummary(
+                                rowsReturned: fetchResult.rows.count,
+                                rowsAffected: fetchResult.rowsAffected
+                            )
+                        )
+                    )
                 }
 
                 if isEditable, let tableName {
@@ -1341,7 +1356,7 @@ final class MainContentCoordinator {
     /// titlebar back to idle, and a stuck spinner keeps Stop enabled and makes Disconnect warn about
     /// a query that is not running.
     internal func supersedeExecution(for tabId: UUID) {
-        tabExecution.invalidate(tabId)
+        reportEndedExecutions(tabExecution.invalidate(tabId, reason: .supersededNavigation).map { [$0] } ?? [])
         cancelTableLoad(for: tabId)
         cancelRowCountTask(for: tabId)
         let hadInFlightQuery = currentQueryTask != nil
@@ -1356,7 +1371,7 @@ final class MainContentCoordinator {
     /// would otherwise take its successor's handle and spinner down with it.
     @MainActor
     internal func resetExecutionState(claim: TabExecutionClaim, executionTime: TimeInterval) {
-        tabExecution.invalidate(claim.tabId)
+        reportEndedExecutions(tabExecution.invalidate(claim.tabId, reason: .cancelledByUser).map { [$0] } ?? [])
         guard currentQueryTaskOwner == claim else { return }
         retireQueryTask(for: claim)
         toolbarState.lastQueryDuration = executionTime
