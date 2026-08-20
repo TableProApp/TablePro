@@ -53,6 +53,7 @@ final class WelcomeViewModel {
     var connectionsToDelete: [DatabaseConnection] = []
     var showDeleteConfirmation = false
     var pendingDeleteHasFavorites = false
+    private var deleteRequestToken = UUID()
     var showDeleteGroupConfirmation = false
     var groupToDelete: ConnectionGroup?
     var pendingMoveToNewGroup: [DatabaseConnection] = []
@@ -383,11 +384,15 @@ final class WelcomeViewModel {
 
     func requestDeleteConnections(_ targets: [DatabaseConnection]) {
         guard !targets.isEmpty else { return }
+        let token = UUID()
+        deleteRequestToken = token
         connectionsToDelete = targets
         pendingDeleteHasFavorites = false
-        showDeleteConfirmation = true
         Task {
-            pendingDeleteHasFavorites = await services.sqlFavoriteManager.hasFavorites(for: targets.map(\.id))
+            let hasFavorites = await services.sqlFavoriteManager.hasFavorites(for: targets.map(\.id))
+            guard deleteRequestToken == token else { return }
+            pendingDeleteHasFavorites = hasFavorites
+            showDeleteConfirmation = true
         }
     }
 

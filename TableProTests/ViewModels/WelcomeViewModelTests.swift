@@ -5,8 +5,8 @@
 
 @testable import TablePro
 import TableProPluginKit
-import XCTest
 import TableProSyncTransport
+import XCTest
 
 @MainActor
 final class WelcomeViewModelTests: XCTestCase {
@@ -213,5 +213,58 @@ final class WelcomeViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.urlImportPresented)
         XCTAssertNil(viewModel.pluginInstallConnection)
         XCTAssertEqual(welcomeRouter.pendingPluginInstall?.id, connection.id)
+    }
+
+    func testDeleteConfirmationIsNotPresentedBeforeTheFavoritesCheckFinishes() async throws {
+        let connection = DatabaseConnection(name: "Prod", type: .mysql)
+
+        viewModel.requestDeleteConnections([connection])
+
+        XCTAssertFalse(
+            viewModel.showDeleteConfirmation,
+            "The alert must wait for the favorites lookup, or it renders the wrong message"
+        )
+        XCTAssertEqual(viewModel.connectionsToDelete.map(\.id), [connection.id])
+
+        try await waitUntil { self.viewModel.showDeleteConfirmation }
+        XCTAssertFalse(viewModel.pendingDeleteHasFavorites)
+    }
+
+    func testDeleteRequestWithNoTargetsPresentsNothing() async throws {
+        viewModel.requestDeleteConnections([])
+
+        XCTAssertFalse(viewModel.showDeleteConfirmation)
+        XCTAssertTrue(viewModel.connectionsToDelete.isEmpty)
+    }
+
+    func testASecondDeleteRequestSupersedesTheFirst() async throws {
+        let first = DatabaseConnection(name: "First", type: .mysql)
+        let second = DatabaseConnection(name: "Second", type: .mysql)
+
+        viewModel.requestDeleteConnections([first])
+        viewModel.requestDeleteConnections([second])
+
+        try await waitUntil { self.viewModel.showDeleteConfirmation }
+        XCTAssertEqual(
+            viewModel.connectionsToDelete.map(\.id),
+            [second.id],
+            "The superseded request must not present an alert for its own targets"
+        )
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 5,
+        _ condition: @MainActor () -> Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() >= deadline {
+                XCTFail("Condition never became true within \(timeout)s", file: file, line: line)
+                return
+            }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
     }
 }

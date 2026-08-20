@@ -410,17 +410,9 @@ struct WelcomeWindowView: View {
         )
         .tag(connection.id)
         .listRowSeparator(.hidden)
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
-                vm.requestDeleteConnections([connection])
-            } label: {
-                Image(systemName: "trash")
-            }
-            Button {
-                WindowOpener.shared.openConnectionForm(editing: connection.id)
-            } label: {
-                Image(systemName: "pencil")
-            }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            editConnectionButton(for: connection)
+            deleteConnectionButton(for: connection)
         }
     }
 
