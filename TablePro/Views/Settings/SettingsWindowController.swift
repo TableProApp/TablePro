@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 
 /// Hosts the settings panes in an AppKit window so the app no longer needs a SwiftUI `Settings`
@@ -13,10 +14,10 @@ import SwiftUI
 internal final class SettingsWindowController: NSWindowController {
     private static var shared: SettingsWindowController?
 
-    internal static func present() {
+    internal static func present(pane: SettingsPane? = nil) {
         let controller = shared ?? SettingsWindowController()
         shared = controller
-        controller.paneController?.selectPersistedPane()
+        controller.paneController?.select(pane)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
@@ -26,24 +27,22 @@ internal final class SettingsWindowController: NSWindowController {
         contentViewController as? SettingsPaneTabViewController
     }
 
-    private convenience init() {
+    internal convenience init() {
         let panes = SettingsPaneTabViewController(nibName: nil, bundle: nil)
 
+        /// `NSWindow(contentViewController:)` binds the window title to the content view
+        /// controller's own title, so the selected pane publishes the title and nothing writes
+        /// `window.title` directly.
         let window = NSWindow(contentViewController: panes)
-        window.title = String(localized: "Settings")
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.settings)
         window.styleMask = [.titled, .closable, .resizable]
         window.toolbarStyle = .preference
         window.isRestorable = false
+        window.contentMinSize = SettingsPaneTabViewController.paneSize
         window.setContentSize(SettingsPaneTabViewController.paneSize)
-        window.setFrameAutosaveName(WindowIdentifier.settings)
-        /// A programmatic window keeps whatever origin AppKit gave it, so the first launch
-        /// after the SwiftUI scene is gone has no saved frame to restore.
-        if !window.setFrameUsingName(WindowIdentifier.settings) {
-            window.center()
-        }
-        /// A frame saved before the window became resizable can be smaller than any pane can
-        /// draw, so a restored frame is grown back to the pane minimum.
+        window.applyAutosaveName(WindowIdentifier.settings)
+        /// `contentMinSize` only constrains a user drag, so a frame saved before the window had
+        /// a minimum is grown back to the pane minimum on restore.
         window.setContentSize(
             NSSize(
                 width: max(window.contentLayoutRect.width, SettingsPaneTabViewController.paneSize.width),
@@ -54,12 +53,11 @@ internal final class SettingsWindowController: NSWindowController {
     }
 }
 
-private final class SettingsPaneTabViewController: NSTabViewController {
-    fileprivate static let paneSize = NSSize(width: 720, height: 500)
+internal final class SettingsPaneTabViewController: NSTabViewController {
+    internal static let paneSize = NSSize(width: 720, height: 500)
+    internal static let paneOrder: [SettingsPane] = SettingsPane.allCases
 
-    private static let paneOrder: [SettingsPane] = [
-        .general, .appearance, .editor, .data, .keyboard, .ai, .mcp, .plugins, .account,
-    ]
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SettingsWindow")
 
     private var persistedPane: SettingsPane {
         let stored = AppStorageEnvironment.shared.defaults.string(forKey: PreferenceKeys.selectedSettingsPane.name)
@@ -67,9 +65,14 @@ private final class SettingsPaneTabViewController: NSTabViewController {
         return pane
     }
 
-    fileprivate func selectPersistedPane() {
+    internal func select(_ pane: SettingsPane?) {
         loadViewIfNeeded()
-        select(persistedPane)
+        let wanted = pane ?? persistedPane
+        guard let index = Self.paneOrder.firstIndex(of: wanted) else {
+            Self.logger.error("Settings pane \(wanted.rawValue, privacy: .public) has no tab and cannot be shown")
+            return
+        }
+        selectedTabViewItemIndex = index
     }
 
     override func viewDidLoad() {
@@ -89,13 +92,6 @@ private final class SettingsPaneTabViewController: NSTabViewController {
         guard let identifier = tabViewItem?.identifier as? String,
               let pane = SettingsPane(rawValue: identifier) else { return }
         AppStorageEnvironment.shared.defaults.set(pane.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
-        view.window?.title = pane.title
-    }
-
-    private func select(_ pane: SettingsPane) {
-        guard let index = Self.paneOrder.firstIndex(of: pane) else { return }
-        selectedTabViewItemIndex = index
-        view.window?.title = pane.title
     }
 
     private func makeTabViewItem(for pane: SettingsPane) -> NSTabViewItem {
@@ -109,9 +105,11 @@ private final class SettingsPaneTabViewController: NSTabViewController {
             .environment(UpdaterBridge.shared)
             .environment(\.appServices, .live)
         let hosting = NSHostingController(rootView: content)
-        /// A standalone window wants the content's minimum to become the window's, unlike a
-        /// split pane's host, where the same minimum would pin the window's dividers.
-        hosting.sizingOptions = [.minSize]
+        /// A tab child publishes no size to the window, which owns its minimum through
+        /// `contentMinSize`. Its title does travel: `NSTabViewController` mirrors the selected
+        /// child's title into its own, and the window's title is bound to that.
+        hosting.sizingOptions = []
+        hosting.title = pane.title
 
         let item = NSTabViewItem(viewController: hosting)
         item.label = pane.title
