@@ -37,6 +37,7 @@ struct PersistedTab: Codable {
     var queryParameters: [QueryParameter]?
     var sortColumns: [PersistedSortColumn]?
     var restoredPage: Int?
+    var restoredPageSize: Int?
     var cursorOffset: Int?
     var cursorLength: Int?
     var columnWidths: [String: CGFloat]?
@@ -60,6 +61,7 @@ struct PersistedTab: Codable {
         queryParameters: [QueryParameter]? = nil,
         sortColumns: [PersistedSortColumn]? = nil,
         restoredPage: Int? = nil,
+        restoredPageSize: Int? = nil,
         cursorOffset: Int? = nil,
         cursorLength: Int? = nil,
         columnWidths: [String: CGFloat]? = nil,
@@ -79,6 +81,7 @@ struct PersistedTab: Codable {
         self.queryParameters = queryParameters
         self.sortColumns = sortColumns
         self.restoredPage = restoredPage
+        self.restoredPageSize = restoredPageSize
         self.cursorOffset = cursorOffset
         self.cursorLength = cursorLength
         self.columnWidths = columnWidths
@@ -89,7 +92,8 @@ struct PersistedTab: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, title, query, tabType, tableName, isView, databaseName, schemaName
         case sourceFileURL, erDiagramSchemaKey, queryParameters
-        case sortColumns, restoredPage, cursorOffset, cursorLength, columnWidths, columnContentWidths, windowGroupIndex
+        case sortColumns, restoredPage, restoredPageSize, cursorOffset, cursorLength
+        case columnWidths, columnContentWidths, windowGroupIndex
         case overflowFileName
     }
 
@@ -108,6 +112,7 @@ struct PersistedTab: Codable {
         queryParameters = try container.decodeIfPresent([QueryParameter].self, forKey: .queryParameters)
         sortColumns = try container.decodeIfPresent([PersistedSortColumn].self, forKey: .sortColumns)
         restoredPage = try container.decodeIfPresent(Int.self, forKey: .restoredPage)
+        restoredPageSize = try container.decodeIfPresent(Int.self, forKey: .restoredPageSize)
         cursorOffset = try container.decodeIfPresent(Int.self, forKey: .cursorOffset)
         cursorLength = try container.decodeIfPresent(Int.self, forKey: .cursorLength)
         columnWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnWidths)

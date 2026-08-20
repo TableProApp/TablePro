@@ -208,9 +208,6 @@ extension QueryExecutionCoordinator {
             rs.executionTime = tab.execution.executionTime
             rs.rowsAffected = tab.execution.rowsAffected
             rs.statusMessage = tab.execution.statusMessage
-            rs.tableName = tab.tableContext.tableName
-            rs.isEditable = tab.tableContext.isEditable
-            rs.metadataVersion = tab.metadataVersion
             rs.isTruncated = isTruncated
             rs.baseQuery = sql
 

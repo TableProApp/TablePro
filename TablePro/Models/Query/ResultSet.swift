@@ -9,6 +9,18 @@ import Foundation
 import Observation
 import os
 
+/// One execution's product: its rows, and the facts about how they were produced.
+///
+/// This is not where view state lives. A `ResultSet` is rebuilt with a fresh `id` on every table
+/// load, page turn, sort and re-execute, and `TabDisplayState.replaceUnpinnedResults(with:)` drops
+/// the one it replaces, so anything kept here is gone the first time the user turns a page.
+/// `QueryTab` owns what has to outlive a single result: sort, pagination, column layout, chart
+/// configuration and filters.
+///
+/// It used to mirror the first three of those, along with the tab's table name, editability and
+/// metadata version. Nothing read any of them, and having them here made this look like the
+/// established home for per-result view state, which is how the chart configuration nearly ended
+/// up here (#2243).
 @MainActor
 @Observable
 final class ResultSet: Identifiable {
@@ -19,16 +31,10 @@ final class ResultSet: Identifiable {
     var rowsAffected: Int = 0
     var errorMessage: String?
     var statusMessage: String?
-    var tableName: String?
-    var isEditable: Bool = false
     var isPinned: Bool = false
     var isTruncated: Bool = false
     var baseQuery: String?
     var baseQueryParameterValues: [String?]?
-    var metadataVersion: Int = 0
-    var sortState = SortState()
-    var pagination = PaginationState()
-    var columnLayout = ColumnLayoutState()
 
     /// An EXPLAIN result is a result set like any other, so it rides the same tab strip, pinning
     /// and history. It carries a plan instead of rows.

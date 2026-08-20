@@ -43,7 +43,6 @@ extension QueryExecutionCoordinator {
         resultSet.executionTime = result.executionTime
         resultSet.rowsAffected = result.rowsAffected
         resultSet.statusMessage = result.statusMessage
-        resultSet.tableName = tableName
         if !result.columns.isEmpty {
             resultSet.isTruncated = result.isTruncated
             resultSet.baseQuery = baseQuery
