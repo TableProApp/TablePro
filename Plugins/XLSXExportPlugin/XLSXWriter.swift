@@ -50,7 +50,6 @@ final class XLSXWriter {
         currentRowNumber = 0
         currentSheetHasHeader = includeHeader
 
-        // Pre-cache column letters
         let maxCols = max(columns.count, columnLetterCache.count)
         if maxCols > columnLetterCache.count {
             for i in columnLetterCache.count..<maxCols {
@@ -58,12 +57,10 @@ final class XLSXWriter {
             }
         }
 
-        // Start sheet XML with header
         var d = Data()
         d.appendUTF8("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n")
         d.appendUTF8("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>")
 
-        // Write header row if requested
         if includeHeader {
             let headerCells: [CellValue] = columns.map { .string($0) }
             appendRow(headerCells, isHeader: true, to: &d)

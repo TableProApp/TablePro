@@ -18,8 +18,10 @@ extension MainContentCoordinator {
 
     /// Called from `TabWindowController.windowDidBecomeKey(_:)`.
     /// Updates focus state, refreshes file-based schema if stale, and syncs the
-    /// sidebar selection to the active tab. No query work runs here — lazy-load
-    /// is owned by `MainEditorContentView`'s `.task(id:)` modifier.
+    /// sidebar selection to the active tab. The one query-related action here is
+    /// consuming a deferred restore load: a restored background tab loads its data
+    /// the first time its window becomes key. All other lazy-load is owned by
+    /// `MainEditorContentView`'s `.task(id:)` modifier.
     func handleWindowDidBecomeKey() {
         let t0 = Date()
         Self.lifecycleLogger.debug(
@@ -29,7 +31,11 @@ extension MainContentCoordinator {
         evictionTask?.cancel()
         evictionTask = nil
 
-        syncSidebarToSelectedTab()
+        consumeDeferredRestoreLoadIfNeeded()
+
+        recordSelectedTabContainer()
+        syncSidebarObjectSelection()
+        announceActiveTabToVoiceOver()
 
         Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidBecomeKey done connId=\(self.connectionId, privacy: .public) totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
@@ -66,8 +72,12 @@ extension MainContentCoordinator {
             "[close] coordinator.handleWindowWillClose connId=\(self.connectionId, privacy: .public) tabs=\(self.tabManager.tabs.count)"
         )
 
-        if !MainContentCoordinator.isAppTerminating {
-            persistence.saveOrClearAggregatedSync()
+        /// Never clears: a window closing says nothing about whether the user wants these tabs
+        /// kept, and every connection in the window reaches here. Discarding saved state is
+        /// `closeTabsByUser`'s job alone.
+        dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
+        if !MainContentCoordinator.isAppTerminating, !isTearingDown {
+            persistence.saveAggregatedSync()
         }
 
         evictionTask?.cancel()
@@ -82,70 +92,139 @@ extension MainContentCoordinator {
         )
     }
 
+    /// Announce the active tab title to VoiceOver when the window becomes key,
+    /// so assistive-technology users get the same context the window title gives.
+    private func announceActiveTabToVoiceOver() {
+        guard let title = tabManager.selectedTab?.title, !title.isEmpty else { return }
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: title,
+                .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+            ]
+        )
+    }
+
+    func selectTabAndFocusWindow(_ tabId: UUID) {
+        tabManager.selectedTabId = tabId
+        focusWindow()
+    }
+
+    func focusWindow() {
+        guard let windowId,
+              let window = WindowLifecycleMonitor.shared.window(for: windowId) else { return }
+        window.makeKeyAndOrderFront(nil)
+    }
+
     // MARK: - Sidebar Sync
 
-    /// Update the window-scoped sidebar selection so the active table tab
-    /// is highlighted. Reads tables fresh from the DatabaseManager because the
-    /// schema load is async and may complete after focus changes.
-    func syncSidebarToSelectedTab() {
-        let liveTables = DatabaseManager.shared
-            .session(for: connectionId)?.tables ?? []
-        let target: Set<TableInfo>
-        if let currentTableName = tabManager.selectedTab?.tableContext.tableName,
-           let match = liveTables.first(where: { $0.name == currentTableName }) {
-            target = [match]
-        } else {
-            target = []
-        }
-        if windowSidebarState.selectedTables != target {
-            if target.isEmpty && liveTables.isEmpty { return }
-            windowSidebarState.selectedTables = target
-        }
+    /// Mark the object the selected tab is showing in this window's object tree, or nothing when
+    /// that tab belongs to a container the tree is not listing. Reads tables fresh from the
+    /// DatabaseManager because the schema load is async and may complete after focus changes.
+    ///
+    /// The mark is a function of four inputs, so every one of them calls this: the selected tab,
+    /// the browsed container, the object list, and the window becoming key. Recomputing on only
+    /// some of them is what left a stale mark on a row in another database (#2217).
+    func syncSidebarObjectSelection() {
+        let selectedTab = tabManager.selectedTab
+        let selection = SidebarObjectSelection.resolve(
+            tabTableName: selectedTab?.tableContext.tableName,
+            tabScope: selectedTab.flatMap { scope(for: $0) },
+            browseScope: browseScope,
+            tables: services.databaseManager.session(for: connectionId)?.tables ?? []
+        )
+        guard case .mark(let target) = selection,
+              windowSidebarState.selectedTables != target else { return }
+        windowSidebarState.selectTables(target)
     }
 
     // MARK: - Lazy Load
 
-    /// Execute the current tab's query if it is a table tab whose row data is
-    /// missing or evicted. Apple-pattern guards in cheap-content-first order:
-    /// trivial content checks reject before the expensive connection probe.
-    /// Idempotent — repeated calls with the same state are no-ops.
-    func lazyLoadCurrentTabIfNeeded() {
+    func lazyLoadCurrentTabIfNeeded(trigger: TableLoadTrigger = .userInitiated) {
         guard let tab = tabManager.selectedTab else { return }
-        guard tab.tabType == .table else { return }
-        guard tab.execution.errorMessage == nil else { return }
-        guard !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard deferredRestoreLoadTabId != tab.id else { return }
+        guard canAutoLoadTableTab(tab) else { return }
+
+        let tracer = TableLoadTracer.shared
+        let carriedToken = tracer.activeToken(for: tab.id)
+        let traceToken = carriedToken ?? tracer.begin(
+            tabId: tab.id,
+            table: tab.tableContext.tableName ?? "",
+            origin: trigger == .restore ? .restore : .programmatic,
+            connectionId: connectionId
+        )
+
+        guard tableLoadTasks[tab.id] == nil else {
+            guard carriedToken == nil else { return }
+            tracer.anomaly(.loadAlreadyInFlight, token: traceToken)
+            tracer.finish(token: traceToken, outcome: "loadAlreadyInFlight")
+            return
+        }
+
+        clearAbandonedExecutingFlagIfNeeded(for: tab)
+
+        guard let session = DatabaseManager.shared.session(for: connectionId),
+              session.isConnected else {
+            tracer.anomaly(.connectionNotReady, token: traceToken)
+            tracer.finish(token: traceToken, outcome: "notConnected")
+            pendingLoadTrigger = trigger
+            return
+        }
+
+        let tabId = tab.id
+        tracer.stage(.lazyLoadScheduled, token: traceToken)
+        let token = UUID()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if self.tableLoadTasks[tabId]?.token == token {
+                    self.tableLoadTasks[tabId] = nil
+                }
+            }
+            await self.openTableTabQuery(tabId: tabId, trigger: trigger)
+            if let queryTask = self.currentQueryTask {
+                await queryTask.value
+            }
+        }
+        tableLoadTasks[tabId] = (token, task)
+    }
+
+    func cancelTableLoad(for tabId: UUID) {
+        tableLoadTasks[tabId]?.task.cancel()
+        tableLoadTasks[tabId] = nil
+    }
+
+    func consumeDeferredRestoreLoadIfNeeded() {
+        guard isKeyWindow else { return }
+        guard let deferredId = deferredRestoreLoadTabId,
+              deferredId == tabManager.selectedTabId else { return }
+        deferredRestoreLoadTabId = nil
+        lazyLoadCurrentTabIfNeeded(trigger: .restore)
+    }
+
+    private func canAutoLoadTableTab(_ tab: QueryTab) -> Bool {
+        guard tab.tabType == .table else { return false }
+        guard tab.execution.errorMessage == nil else { return false }
+        guard !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
 
         let rows = tabSessionRegistry.tableRows(for: tab.id)
         let isEvicted = tabSessionRegistry.isEvicted(tab.id)
         let hasFreshRows = !rows.rows.isEmpty && !isEvicted
         let hasExecuted = tab.execution.lastExecutedAt != nil && !isEvicted
-        guard !hasFreshRows, !hasExecuted else { return }
+        guard !hasFreshRows, !hasExecuted else { return false }
 
-        let hasPendingEdits =
-            changeManager.hasChanges
-            || tab.pendingChanges.hasChanges
-        guard !hasPendingEdits else { return }
+        let hasPendingEdits = changeManager.hasChanges || tab.pendingChanges.hasChanges
+        return !hasPendingEdits
+    }
 
-        // A previous load that was cancelled mid-flight (e.g. user rapidly
-        // switched away) leaves `isExecuting = true` with no rows and no
-        // `lastExecutedAt`. Clear the stale flag inline so the executor's
-        // own `!tab.execution.isExecuting` guard inside
-        // `executeTableTabQueryDirectly` doesn't suppress this re-fire.
-        if tab.execution.isExecuting && rows.rows.isEmpty && tab.execution.lastExecutedAt == nil {
-            tabManager.mutate(tabId: tab.id) { $0.execution.isExecuting = false }
-        } else if tab.execution.isExecuting {
-            return
-        }
-
-        guard let session = DatabaseManager.shared.session(for: connectionId),
-              session.isConnected else {
-            needsLazyLoad = true
-            return
-        }
-
-        Self.lifecycleLogger.debug(
-            "[switch] coordinator.lazyLoadCurrentTabIfNeeded executing tabId=\(tab.id, privacy: .public) evicted=\(isEvicted)"
+    private func clearAbandonedExecutingFlagIfNeeded(for tab: QueryTab) {
+        guard tabExecution.isExecuting(tab.id), currentQueryTask == nil else { return }
+        TableLoadTracer.shared.anomaly(
+            .preparationAbandoned,
+            tabId: tab.id,
+            detail: "clearedAbandonedClaim"
         )
-        executeTableTabQueryDirectly()
+        tabExecution.invalidate(tab.id)
     }
 }

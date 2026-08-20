@@ -13,7 +13,6 @@ extension MainContentCoordinator {
                 columnName: TableFilter.rawSQLColumn,
                 filterOperator: .equal,
                 value: "",
-                isSelected: true,
                 isEnabled: true,
                 rawSQL: condition
             )
@@ -29,7 +28,6 @@ extension MainContentCoordinator {
             columnName: column,
             filterOperator: filterOp,
             value: value ?? "",
-            isSelected: true,
             isEnabled: true
         )
         applySingleFilter(filter)

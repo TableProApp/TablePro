@@ -53,7 +53,6 @@ final class DatabaseFileWatcher {
     // MARK: - Private
 
     private func startSource(connectionId: UUID) {
-        // Cancel any existing source
         if let existing = activeSources.removeValue(forKey: connectionId) {
             existing.cancel()
         }
@@ -94,7 +93,6 @@ final class DatabaseFileWatcher {
         // SQLite journaling (rename + recreate) can invalidate the old fd.
         startSource(connectionId: connectionId)
 
-        // Debounced refresh
         debounceTasks[connectionId]?.cancel()
         debounceTasks[connectionId] = Task { @MainActor [weak self] in
             try? await Task.sleep(for: self?.debounceInterval ?? .milliseconds(500))

@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import os
 import SwiftUI
+import UserNotifications
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -14,12 +15,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     private var hasRunPostLaunchActivation = false
-    private var pluginsRejectedCancellable: AnyCancellable?
 
     // MARK: - URL & File Open
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
+        AppSettingsStorage.shared.migrateJsonFieldHeightKeyIfNeeded()
+        AIProviderRegistration.registerAll()
+
+        /// Installed before any window exists, so the bar is correct from the first frame.
+        /// Nothing else owns it now that the app no longer runs a SwiftUI `App`.
+        MainMenuBuilder.install(keyboard: AppSettingsManager.shared.keyboard)
+
         _ = InspectorDocumentController()
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        PluginManager.shared.loadPlugins()
+        /// The registry manifest only feeds the plugin-install UI, and fetching it is a network call
+        /// at launch. A sandboxed run has no user plugins directory to install into anyway.
+        if !AppStorageEnvironment.shared.isIsolated {
+            Task { await RegistryClient.shared.ensureManifest(.ifStale) }
+        }
+
+        Task { await QueryHistoryManager.shared.performStartupCleanup() }
+        Task { @MainActor in
+            let activeIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
+            await SQLFavoriteManager.shared.pruneOrphaned(activeConnectionIds: activeIds)
+        }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -48,19 +69,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let appearanceSettings = AppSettingsManager.shared.appearance
         ThemeEngine.shared.updateAppearanceAndTheme(
-            mode: appearanceSettings.appearanceMode,
+            mode: ScreenshotEnvironment.appearanceMode ?? appearanceSettings.appearanceMode,
             lightThemeId: appearanceSettings.preferredLightThemeId,
             darkThemeId: appearanceSettings.preferredDarkThemeId
         )
 
         NSWindow.allowsAutomaticWindowTabbing = true
+        WindowOpener.shared.setWelcomePresenter { WelcomeWindowController.present() }
+        WindowOpener.shared.setConnectionFormPresenter { ConnectionFormWindowController.present($0) }
+        WindowOpener.shared.setIntegrationsActivityPresenter { IntegrationsActivityWindowController.present() }
+        WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present() }
+        KeyRepeatFilter.shared.install()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
-        UserDefaults.standard.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
+        AppStorageEnvironment.shared.defaults.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
         DatabaseManager.shared.startObservingSystemEvents()
+        DatabaseManager.shared.tabStatePersister = SessionTabStatePersister()
+
+        Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
+        Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }
 
         MemoryPressureAdvisor.startMonitoring()
-        PluginManager.shared.loadPlugins()
+        UNUserNotificationCenter.current().delegate = self
+        PluginNotificationService.shared.setUp()
         ChatToolBootstrap.register()
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -68,7 +99,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWorkspace.didWakeNotification, object: nil
         )
 
-        if AppSettingsManager.shared.mcp.enabled {
+        if AppSettingsManager.shared.mcp.enabled, !AppStorageEnvironment.shared.isIsolated {
             Task {
                 await MCPServerManager.shared.start(port: UInt16(clamping: AppSettingsManager.shared.mcp.port))
             }
@@ -84,26 +115,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(windowWillClose(_:)),
             name: NSWindow.willCloseNotification, object: nil
         )
-        pluginsRejectedCancellable = AppEvents.shared.pluginsRejected
-            .receive(on: RunLoop.main)
-            .sink { [weak self] rejected in
-                self?.handlePluginsRejected(rejected)
-            }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
         runPostLaunchActivationIfNeeded()
+        guard !AppStorageEnvironment.shared.isIsolated else { return }
         SyncCoordinator.shared.syncIfNeeded()
     }
 
     private func runPostLaunchActivationIfNeeded() {
         guard !hasRunPostLaunchActivation else { return }
         hasRunPostLaunchActivation = true
+        guard !AppStorageEnvironment.shared.isIsolated else { return }
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
         AnalyticsService.shared.startPeriodicHeartbeat()
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
+        TeamLibrarySyncCoordinator.shared.start()
 
         Task {
             LicenseManager.shared.startPeriodicValidation()
@@ -136,57 +165,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        persistOpenConnectionsForRecovery()
         LinkedFolderWatcher.shared.stop()
         SQLFolderWatcher.shared.stop()
-        TerminalProcessManager.registry.terminateAllSync()
         SSHTunnelManager.shared.terminateAllProcessesSync()
+        CloudflareTunnelManager.shared.terminateAllProcessesSync()
+        CloudSQLProxyManager.shared.terminateAllProcessesSync()
+    }
+
+    private func persistOpenConnectionsForRecovery() {
+        LastOpenConnectionsStorage.shared.save(connectionIds: SessionRecoveryTracker.connectionIds())
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {
         SQLFolderWatcher.shared.reload()
     }
 
-    @objc func showHelp(_ sender: Any?) {
-        if let url = URL(string: "https://docs.tablepro.app") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    // MARK: - Plugin Rejection Alert
-
-    private func handlePluginsRejected(_ rejected: [RejectedPlugin]) {
-        guard !rejected.isEmpty else { return }
-        let details = rejected.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
-        Task {
-            let alert = NSAlert()
-            alert.messageText = String(
-                format: String(localized: "%d plugin(s) could not be loaded"),
-                rejected.count
-            )
-            alert.informativeText = String(
-                format: String(localized: "The following plugins were rejected:\n\n%@\n\nYou can update them from the plugin registry in Settings."),
-                details
-            )
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: String(localized: "Open Plugin Settings"))
-            alert.addButton(withTitle: String(localized: "Dismiss"))
-
-            let response: NSApplication.ModalResponse
-            if let window = AlertHelper.resolveWindow(nil) {
-                response = await withCheckedContinuation { continuation in
-                    alert.beginSheetModal(for: window) { resp in
-                        continuation.resume(returning: resp)
-                    }
-                }
-            } else {
-                response = alert.runModal()
-            }
-
-            if response == .alertFirstButtonReturn {
-                WindowOpener.shared.openSettings(tab: .plugins)
-            }
-        }
-    }
 
     // MARK: - Window Notifications
 
@@ -194,12 +188,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let window = notification.object as? NSWindow else { return }
 
         let csvLogger = Logger(subsystem: "com.TablePro", category: "CSVInspector")
-        if AppLaunchCoordinator.isMainWindow(window) {
+        let isPrimary = AppLaunchCoordinator.isMainWindow(window)
+        if isPrimary {
             let remaining = NSApp.windows.filter {
                 $0 !== window && AppLaunchCoordinator.isMainWindow($0) && $0.isVisible
             }.count
             csvLogger.debug("AppDelegate.windowWillClose - main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing, remaining main windows=\(remaining, privacy: .public)")
-            if remaining == 0 {
+            if WelcomeVisibilityPolicy.shouldPresentWelcome(
+                closingWindowWasPrimary: isPrimary,
+                remainingVisiblePrimaryWindows: remaining
+            ) {
                 AppEvents.shared.mainWindowWillClose.send(())
                 WindowOpener.shared.openWelcome()
             }
@@ -258,25 +256,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowOpener.shared.openWelcome()
     }
 
-    @objc func newWindowForTab(_ sender: Any?) {
-        guard let keyWindow = NSApp.keyWindow,
-              let connectionId = MainActor.assumeIsolated({
-                  WindowLifecycleMonitor.shared.connectionId(forWindow: keyWindow)
-              })
-        else { return }
-
-        MainActor.assumeIsolated {
-            if let actions = MainContentCoordinator.allActiveCoordinators()
-                .first(where: { $0.connectionId == connectionId })?.commandActions {
-                actions.newTab()
-            } else {
-                WindowManager.shared.openTab(
-                    payload: EditorTabPayload(connectionId: connectionId, intent: .newEmptyTab)
-                )
-            }
-        }
-    }
-
     @objc func connectFromDock(_ sender: NSMenuItem) {
         guard let connectionId = sender.representedObject as? UUID else { return }
         Task {
@@ -287,5 +266,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     nonisolated deinit {
         NotificationCenter.default.removeObserver(self)
         NSWorkspace.shared.notificationCenter.removeObserver(self)
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        guard notification.request.identifier.hasPrefix(PluginNotificationService.identifierPrefix) else {
+            completionHandler([])
+            return
+        }
+        completionHandler([.banner])
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        defer { completionHandler() }
+        guard response.notification.request.identifier.hasPrefix(PluginNotificationService.identifierPrefix) else {
+            return
+        }
+        let action = response.actionIdentifier
+        guard action == PluginNotificationService.openPluginSettingsActionId
+            || action == UNNotificationDefaultActionIdentifier
+        else { return }
+        Task { @MainActor in
+            WindowOpener.shared.openSettings(tab: .plugins)
+        }
     }
 }

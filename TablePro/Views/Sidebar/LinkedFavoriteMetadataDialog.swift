@@ -12,133 +12,132 @@ internal struct LinkedFavoriteMetadataDialog: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var name: String = ""
-    @State private var keyword: String = ""
+    @State private var keywordField = SQLFavoriteKeywordField()
     @State private var fileDescription: String = ""
-    @State private var keywordError: String?
-    @State private var isKeywordWarning = false
-    @State private var validationId = 0
     @State private var isSaving = false
     @State private var saveError: String?
 
     @FocusState private var nameFocused: Bool
 
-    private var trimmedKeyword: String {
-        keyword.trimmingCharacters(in: .whitespaces)
-    }
-
     private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty
-            && (keywordError == nil || isKeywordWarning)
+        SQLFavoriteEditValidation.canSave(
+            isNameBlank: !name.contains { !$0.isWhitespace },
+            keywordValidation: keywordField.validation
+        )
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(String(localized: "Edit Metadata"))
-                    .font(.headline)
-                Text(favorite.relativePath)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 0) {
+            titleRow
+
+            Divider()
 
             Form {
-                TextField(String(localized: "Name"), text: $name)
-                    .focused($nameFocused)
-                TextField(String(localized: "Keyword"), text: $keyword)
-                    .onChange(of: keyword) { _, newValue in
-                        validateKeyword(newValue)
-                    }
-                if let error = keywordError {
-                    LabeledContent {} label: {
-                        Text(error)
-                            .foregroundStyle(isKeywordWarning ? .orange : .red)
-                            .font(.callout)
-                    }
-                }
-                TextField(String(localized: "Description"), text: $fileDescription, axis: .vertical)
-                    .lineLimit(2...4)
+                identitySection
+                keywordSection
             }
-            .formStyle(.columns)
+            .formStyle(.grouped)
 
             if let saveError {
-                Label(saveError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                Divider()
+                errorBanner(saveError)
             }
 
-            HStack {
-                Spacer()
-                Button(String(localized: "Cancel")) {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
+            Divider()
 
-                Button(String(localized: "Save")) {
-                    save()
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .disabled(!isValid || isSaving)
-            }
+            buttonBar
         }
-        .padding(20)
-        .frame(width: 460)
+        .frame(width: 480, height: 400)
         .onAppear {
             name = favorite.name
-            keyword = favorite.keyword ?? ""
+            keywordField.keyword = favorite.keyword ?? ""
             fileDescription = favorite.fileDescription ?? ""
             nameFocused = true
         }
     }
 
-    private func validateKeyword(_ value: String) {
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty {
-            keywordError = nil
-            return
+    private var titleRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(String(localized: "Edit Metadata"))
+                .font(.headline)
+            Text(favorite.relativePath)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
-        if trimmed.contains(" ") {
-            isKeywordWarning = false
-            keywordError = String(localized: "Keyword cannot contain spaces")
-            return
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+    }
+
+    private var identitySection: some View {
+        Section {
+            TextField(String(localized: "Name"), text: $name)
+                .focused($nameFocused)
+            TextField(String(localized: "Description"), text: $fileDescription, axis: .vertical)
+                .lineLimit(2...4)
         }
-        validationId += 1
-        let currentId = validationId
-        Task { @MainActor in
-            let available = await SQLFavoriteManager.shared.isKeywordAvailable(
-                trimmed,
-                connectionId: connectionId,
-                excludingFavoriteId: nil
-            )
-            guard currentId == validationId else { return }
-            if !available {
-                isKeywordWarning = false
-                keywordError = String(localized: "This keyword is already in use")
-                return
+    }
+
+    private var keywordSection: some View {
+        Section {
+            TextField(String(localized: "Keyword"), text: $keywordField.keyword)
+                .onChange(of: keywordField.keyword) {
+                    revalidateKeyword()
+                }
+
+            if let message = keywordField.validation.displayText {
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(keywordField.validation.isWarning ? Color.orange : Color.red)
             }
-            let sqlKeywords: Set<String> = [
-                "select", "from", "where", "insert", "update", "delete",
-                "create", "drop", "alter", "join", "on", "and", "or",
-                "not", "in", "like", "between", "order", "group", "having",
-                "limit", "set", "values", "into", "as", "is", "null",
-                "true", "false", "case", "when", "then", "else", "end"
-            ]
-            if sqlKeywords.contains(trimmed.lowercased()) {
-                isKeywordWarning = true
-                keywordError = String(format: String(localized: "Shadows the SQL keyword '%@'"), trimmed.uppercased())
-            } else {
-                isKeywordWarning = false
-                keywordError = nil
+        }
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+    }
+
+    private var buttonBar: some View {
+        HStack {
+            Spacer()
+
+            Button(String(localized: "Cancel")) {
+                dismiss()
             }
+            .keyboardShortcut(.cancelAction)
+
+            Button(String(localized: "Save")) {
+                save()
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(!isValid || isSaving)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+    }
+
+    private func revalidateKeyword() {
+        Task {
+            await keywordField.validate(connectionId: connectionId, excludingFavoriteId: nil)
         }
     }
 
     private func save() {
         isSaving = true
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let trimmedKeyword = keywordField.trimmedKeyword
         let trimmedDescription = fileDescription.trimmingCharacters(in: .whitespaces)
 
         let metadata = SQLFrontmatter.Metadata(

@@ -17,6 +17,7 @@ import AppKit
 import Foundation
 import os
 import SQLite3
+import TableProImport
 import TableProPluginKit
 
 struct BeekeeperStudioImporter: ForeignAppImporter {
@@ -26,6 +27,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
     let displayName = "Beekeeper Studio"
     let symbolName = "ant"
     let appBundleIdentifier = "io.beekeeperstudio.desktop"
+    let readsPasswordsFromKeychain = false
 
     var dataDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/beekeeper-studio")
@@ -246,6 +248,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
             password: decrypt(row.password, key: key),
             sshPassword: decrypt(row.sshPassword, key: key),
             keyPassphrase: decrypt(row.sshKeyfilePassword, key: key),
+            sslClientKeyPassphrase: nil,
             totpSecret: nil,
             pluginSecureFields: nil
         )

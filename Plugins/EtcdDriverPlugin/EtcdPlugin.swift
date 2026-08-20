@@ -19,7 +19,6 @@ final class EtcdPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "etcd"
     static let iconName = "etcd-icon"
     static let defaultPort = 2379
-    static let additionalDatabaseTypeIds: [String] = []
     static let isDownloadable = true
 
     static let navigationModel: NavigationModel = .standard
@@ -41,6 +40,7 @@ final class EtcdPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let defaultPrimaryKeyColumn: String? = "Key"
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable]
     static let sqlDialect: SQLDialectDescriptor? = nil
+    static let caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle = .driverManaged
     static let columnTypesByCategory: [String: [String]] = ["String": ["string"]]
 
     static let additionalConnectionFields: [ConnectionField] = [

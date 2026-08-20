@@ -1,0 +1,692 @@
+# Open source libraries TablePro redistributes.
+#
+# Hand-maintained. ThirdPartyLicenseInventoryTests checks each version against the pin
+# in scripts/build-*.sh or Package.resolved and fails when they disagree, because a
+# version bump can change a license and that needs a person to re-read it.
+#
+# spdx: UNVERIFIED means the project publishes no license we could read. Those entries
+# carry no license text and render as unresolved rather than being given a guess.
+- id: bigint
+  name: BigInt
+  version: 5.7.0
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2016-2017 Karoly Lorentey
+  homepageURL: https://github.com/attaswift/BigInt
+  licenseTextURL: https://github.com/attaswift/BigInt/blob/v5.7.0/LICENSE.md
+  textFile: texts/bigint.txt
+  source: spm:bigint
+  patched: false
+  notes: Tag is `v5.7.0`; Package.resolved records the bare "5.7.0". The holder's name carries Hungarian
+    diacritics (Karoly Lorentey, with o-acute and o-double-acute) in the original file; reproduce it from
+    texts/bigint.LICENSE.txt rather than from this YAML, which is ASCII-folded. Transitive via oracle-nio.
+    Zero `$s6BigInt` symbols in the app dylib.
+- id: codeeditlanguages
+  name: CodeEditLanguages
+  version: vendored, heavily trimmed (no upstream tag recorded in the tree)
+  spdx: UNVERIFIED
+  copyrights: []
+  homepageURL: https://github.com/CodeEditApp/CodeEditLanguages
+  licenseTextURL: ''
+  source: manual
+  patched: false
+  notes: 'NO LICENCE FILE. There is no LICENSE, LICENSE.md, LICENCE, COPYING or NOTICE anywhere under
+    LocalPackages/CodeEditLanguages (checked recursively, excluding build/ and .build/). The only root
+    files are Package.swift and Sources/. No SPDX identifier is inferred. Upstream is equally unlicensed:
+    see the codeeditlanguages-upstream record below. Authorship is evident from the Swift file headers
+    ("Created by Lukas Pistrol", "Created by Khan Winter"), i.e. the code is derived from CodeEditApp/CodeEditLanguages,
+    but no grant of licence accompanies it. THIS IS A BLOCKING COMPLIANCE ITEM: without a licence, default
+    copyright applies and redistribution inside TablePro.app is not permitted. Confirmed shipping: 768
+    `$s17CodeEditLanguages` symbols plus the four grammar entry points `_tree_sitter_bash`, `_tree_sitter_javascript`,
+    `_tree_sitter_json`, `_tree_sitter_sql` in the app dylib. This package ALSO vendors four tree-sitter
+    grammars as C sources under Sources/TreeSitterGrammars/ with no licence headers of their own; see
+    the vendoredTreeSitterGrammars section at the bottom of this file.'
+- id: codeeditsourceeditor
+  name: CodeEditSourceEditor
+  version: vendored (no upstream tag recorded in the tree)
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2022 CodeEdit
+  homepageURL: https://github.com/CodeEditApp/CodeEditSourceEditor
+  licenseTextURL: https://github.com/CodeEditApp/CodeEditSourceEditor/blob/main/LICENSE.md
+  textFile: texts/codeeditsourceeditor.txt
+  source: manual
+  patched: false
+  notes: 'LICENSE.md present at the package root. First 3 lines: "MIT License" / "" / "Copyright (c) 2022
+    CodeEdit". Vendored fork with local modifications (its Package.swift points CodeEditTextView and CodeEditLanguages
+    at local paths). MIT requires the copyright notice and permission notice be reproduced. Confirmed
+    linked: 83+ `$s21CodeEditSourceEditor` symbols in the app dylib.'
+- id: codeeditsymbols
+  name: CodeEditSymbols
+  version: 0.2.3
+  spdx: UNVERIFIED
+  copyrights: []
+  homepageURL: https://github.com/CodeEditApp/CodeEditSymbols
+  licenseTextURL: ''
+  source: spm:codeeditsymbols
+  patched: false
+  notes: 'NO LICENCE UPSTREAM. Verified independently on 2026-08-19 by four checks, all agreeing: (1)
+    https://api.github.com/repos/CodeEditApp/CodeEditSymbols -> "license": null (2) https://api.github.com/repos/CodeEditApp/CodeEditSymbols/license
+    -> HTTP 404 Not Found (3) root contents at HEAD (https://api.github.com/repos/CodeEditApp/CodeEditSymbols/contents/)
+    -> .github, .gitignore, Package.resolved, Package.swift, README.md, Sources, Tests. No LICENSE, LICENSE.md,
+    LICENCE, COPYING or NOTICE. (4) root tree at the EXACT resolved revision ae69712b08571c4469c2ed5cd38ad9f19439793e
+    (tag v0.2.3), via git/trees -> same seven entries, still no licence file. The README makes no licence
+    statement either. Repo is not archived (pushed_at 2025-04-10). No SPDX identifier is inferred. THIS
+    IS A BLOCKING COMPLIANCE ITEM: it is linked into the shipping app (700 `$s15CodeEditSymbols` symbols
+    in the app dylib; imported by CodeEditSourceEditor/Sources/CodeEditSourceEditor/Find/PanelView/FindPanelView.swift).
+    Note the resolved tag is `v0.2.3`; querying the API with the bare `0.2.3` returns "No commit found
+    for the ref", which is a lookup artefact and not evidence of anything.'
+- id: codeedittextview
+  name: CodeEditTextView
+  version: vendored (no upstream tag recorded in the tree)
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2023 CodeEdit
+  homepageURL: https://github.com/CodeEditApp/CodeEditTextView
+  licenseTextURL: https://github.com/CodeEditApp/CodeEditTextView/blob/main/LICENSE.md
+  textFile: texts/codeedittextview.txt
+  source: manual
+  patched: false
+  notes: 'LICENSE.md present at the package root. First 3 lines: "MIT License" / "" / "Copyright (c) 2023
+    CodeEdit". Note the year differs from CodeEditSourceEditor (2023 vs 2022), so the two notices are
+    NOT interchangeable.'
+- id: cassandra-cpp-driver
+  name: DataStax C/C++ Driver for Apache Cassandra
+  version: 2.17.1
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright (c) DataStax, Inc.
+  homepageURL: https://github.com/datastax/cpp-driver
+  licenseTextURL: https://raw.githubusercontent.com/datastax/cpp-driver/2.17.1/LICENSE.txt
+  textFile: texts/cassandra-cpp-driver.txt
+  source: sh:CASSANDRA_VERSION
+  patched: false
+  notes: 'LICENSE.txt at the tag is the bare Apache-2.0 text; there is no NOTICE file in the repo root
+    at 2.17.1. The holder line is quoted from the per-file header of src/session.cpp; README.md at the
+    tag states the same as "&copy; DataStax, Inc." under "## License". The archive statically includes
+    vendored src/third_party/{curl, hdr_histogram, http-parser, minizip, mt19937_64, rapidjson, sparsehash},
+    each under its own licence. Those sub-licences are NOT enumerated here: UNVERIFIED. build-cassandra.sh:83
+    rewrites the upstream CMakeLists.txt in place with sed to accept AppleClang. That is a build-system
+    edit made inside the script, not a file under scripts/patches/, so patched is false but the tree is
+    not byte-identical to upstream. The build uses Homebrew openssl@3 (build-cassandra.sh:99), not the
+    pinned OpenSSL.'
+- id: duckdb
+  name: DuckDB
+  version: v1.5.3
+  spdx: MIT
+  copyrights:
+  - Copyright 2018-2025 Stichting DuckDB Foundation
+  homepageURL: https://duckdb.org
+  licenseTextURL: https://raw.githubusercontent.com/duckdb/duckdb/v1.5.3/LICENSE
+  textFile: texts/duckdb.txt
+  source: sh:DUCKDB_VERSION
+  patched: false
+  notes: 'Built from the libduckdb-src.zip amalgamation attached to the v1.5.3 GitHub release (build-duckdb.sh:24).
+    The amalgamation compiles the whole tree including third_party/, which at v1.5.3 holds 30 vendored
+    projects (brotli, catch, concurrentqueue, fast_float, fastpforlib, fmt, fsst, httplib, hyperloglog,
+    imdb, jaro_winkler, jemalloc, libpg_query, lz4, mbedtls, miniz, parquet, pcg, pdqsort, re2, ska_sort,
+    skiplist, snappy, snowball, tdigest, thrift, utf8proc, vergesort, yyjson, zstd), each under its own
+    licence. Those sub-licences are NOT enumerated here: UNVERIFIED. Build-script defect worth flagging:
+    DUCKDB_SHA256 at scripts/build-duckdb.sh:11 is still the literal placeholder "REPLACE_WITH_libduckdb-src.zip_SHA256_FOR_v1.5.3",
+    so the checksum gate at line 25 cannot pass as committed. scripts/build-duckdb-ios.sh:37 defaults
+    to the same v1.5.3 for the iOS xcframework.'
+- id: freetds
+  name: FreeTDS
+  version: 1.4.22
+  spdx: LGPL-2.0-or-later
+  copyrights:
+  - FreeTDS - Library of routines accessing Sybase and Microsoft databases
+  - Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005  Brian Bruns
+  - Copyright (C) 2006-2015  Frediano Ziglio
+  - Copyright (C) 2005-2015  Ziglio Frediano
+  - Copyright (C) 2012  Frediano Ziglio
+  - Copyright (c) 1987, 1993, 1994
+  - The Regents of the University of California.  All rights reserved.
+  homepageURL: https://www.freetds.org
+  licenseTextURL: https://raw.githubusercontent.com/FreeTDS/freetds/v1.4.22/COPYING_LIB.txt
+  textFile: texts/freetds.txt
+  source: sh:FREETDS_VERSION
+  patched: true
+  notes: 'COPYING_LIB.txt at v1.4.22 is the GNU *Library* General Public License Version 2, June 1991
+    (LGPL-2.0), not 2.1. Every source file built into libsybdb.a grants "either version 2 of the License,
+    or (at your option) any later version", so LGPL-2.0-or-later is the id. The repo also ships COPYING.txt
+    (GPL-2.0) for parts of the tree; the build compiles only include, src/utils, src/replacements, src/tds
+    and src/dblib (build-freetds.sh:123-128), so no GPL-only component is linked. README.md at the tag
+    states "FreeTDS is licensed under the GNU LGPL license. See COPYING_LIB.txt". src/replacements carries
+    separate BSD-3-Clause code, hence the Regents of the University of California lines (src/replacements/getopt.c,
+    quoted with its original tab indentation). Per-contributor credits live in AUTHORS.md at the tag;
+    the headers above are the ones on the files actually compiled. The build fetches the tarball from
+    https://www.freetds.org/files/stable/freetds-1.4.22.tar.gz (build-freetds.sh:24), SHA-256 pinned at
+    line 23; the GitHub tag v1.4.22 is the same release. The patch adds the TDS FEDAUTH login extension
+    (Microsoft Entra ID) that upstream has never implemented; it is TablePro-authored and applies to LGPL
+    sources, so the modified library stays LGPL-2.0-or-later and the modification must be offered alongside.
+    Static-linked LGPL: same relinking obligation as MariaDB Connector/C. One source tree serves the macOS
+    and both iOS slices, so the patch covers all of them.'
+- id: hiredis
+  name: hiredis
+  version: 1.2.0
+  spdx: BSD-3-Clause
+  copyrights:
+  - Copyright (c) 2009-2011, Salvatore Sanfilippo <antirez at gmail dot com>
+  - Copyright (c) 2010-2011, Pieter Noordhuis <pcnoordhuis at gmail dot com>
+  - All rights reserved.
+  - Copyright (c) 2019, Redis Labs
+  - Copyright (c) 2006-2015, Salvatore Sanfilippo <antirez at gmail dot com>
+  - Copyright (c) 2015, Oran Agra
+  - Copyright (c) 2015, Redis Labs, Inc
+  - Copyright (c) 2020, Michael Grunder <michael dot grunder at gmail dot com>
+  homepageURL: https://github.com/redis/hiredis
+  licenseTextURL: https://raw.githubusercontent.com/redis/hiredis/v1.2.0/COPYING
+  textFile: texts/hiredis.txt
+  source: sh:HIREDIS_VERSION
+  patched: false
+  notes: 'COPYING at the tag names only the first two holders plus "All rights reserved."; the remaining
+    five lines are per-file headers on sources compiled into the two archives: ssl.c (Redis Labs, 2019),
+    sds.c (Sanfilippo 2006-2015, Oran Agra, Redis Labs, Inc) and alloc.c (Michael Grunder). All are the
+    same BSD-3-Clause grant. Tarball is the GitHub source archive for v1.2.0 (build-hiredis.sh:70), SHA-256
+    pinned at line 39. The script writes only the _arch and _universal archives; the flat Libs/libhiredis.a
+    and Libs/libhiredis_ssl.a that project.yml force_loads are copied by hand before publishing, the same
+    as libssh2.a, libpq.a, libpgcommon.a, libpgport.a, libssl.a and libcrypto.a. scripts/ios/build-hiredis-ios.sh:13
+    pins the same 1.2.0.'
+- id: libssh2
+  name: libssh2
+  version: 1.11.1
+  spdx: BSD-3-Clause
+  copyrights:
+  - Copyright (C) 2004-2007 Sara Golemon <sarag@libssh2.org>
+  - Copyright (C) 2005,2006 Mikhail Gusarov <dottedmag@dottedmag.net>
+  - Copyright (C) 2006-2007 The Written Word, Inc.
+  - Copyright (C) 2007 Eli Fant <elifantu@mail.ru>
+  - Copyright (C) 2009-2023 Daniel Stenberg
+  - Copyright (C) 2008, 2009 Simon Josefsson
+  - Copyright (C) 2000 Markus Friedl
+  - Copyright (C) 2015 Microsoft Corp.
+  - All rights reserved.
+  homepageURL: https://libssh2.org
+  licenseTextURL: https://raw.githubusercontent.com/libssh2/libssh2/libssh2-1.11.1/COPYING
+  textFile: texts/libssh2.txt
+  source: sh:LIBSSH2_VERSION
+  patched: true
+  notes: Linked by the main app target (SSH tunnels), not by a plugin. The tarball is fetched from the
+    GitHub release for libssh2-1.11.1 and pinned by SHA-256 (build-libssh2.sh:38). The script writes only
+    libssh2_arm64.a, libssh2_x86_64.a and libssh2_universal.a. The flat Libs/libssh2.a that project.yml
+    force_loads is listed in Libs/checksums.sha256 but is not written by build-libssh2.sh nor by publish-libs.sh;
+    it is copied by hand before publishing. Both patches are TablePro-authored CVE backports carrying
+    their own prose headers; the 1.11.1 tree they modify stays BSD-3-Clause. The repo also ships a LICENSES/
+    directory (BSD-2-Clause, BSD-3-Clause, FSFULLR, MIT, SAX-PD-2.0, curl) for REUSE compliance, covering
+    build and doc files rather than the library sources. scripts/ios/build-libssh2-ios.sh:9 pins the same
+    1.11.1 for the iOS app.
+- id: libuv
+  name: libuv
+  version: 1.48.0
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2015-present libuv project contributors.
+  - Copyright Joyent, Inc. and other Node contributors. All rights reserved.
+  homepageURL: https://libuv.org
+  licenseTextURL: https://raw.githubusercontent.com/libuv/libuv/v1.48.0/LICENSE
+  textFile: texts/libuv.txt
+  source: sh:LIBUV_VERSION
+  patched: false
+  notes: 'libuv is not pinned by a script of its own; it is a dependency of the Cassandra driver and is
+    pinned inside scripts/build-cassandra.sh. Tarball comes from dist.libuv.org (build-cassandra.sh:39),
+    SHA-256 pinned at line 12. Two licence files apply at v1.48.0. LICENSE is the MIT grant for libuv
+    itself; LICENSE-extra is the same MIT grant carried over from the joyent/libuv history, which is why
+    the Joyent / Node contributors line must also be reproduced. LICENSE-extra additionally names two
+    externally maintained pieces that ship inside the archive: tree.h from FreeBSD, "copyright Niels Provos.
+    Two clause BSD license", and the inet_pton / inet_ntop implementations in src/inet.c, "copyright the
+    Internet Systems Consortium, Inc.", ISC licence. The repo also has LICENSE-docs (documentation only,
+    not linked).'
+- id: mariadb-connector-c
+  name: MariaDB Connector/C
+  version: 3.4.4
+  spdx: LGPL-2.1-or-later
+  copyrights:
+  - Copyright (C) 2000, 2012 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+  - Monty Program AB
+  - 2013, 2022 MariaDB Corporation AB
+  - This product includes PHP software, freely available from <http://www.php.net/software/>
+  homepageURL: https://mariadb.com/kb/en/mariadb-connector-c/
+  licenseTextURL: https://raw.githubusercontent.com/mariadb-corporation/mariadb-connector-c/v3.4.4/COPYING.LIB
+  textFile: texts/mariadb-connector-c.txt
+  source: sh:MARIADB_VERSION
+  patched: false
+  notes: 'NOT the MariaDB server''s GPL-2.0. The connector ships COPYING.LIB = GNU Lesser General Public
+    License Version 2.1, February 1999, and that is the only licence file in the repo root at v3.4.4.
+    Nuance worth recording: the per-file grant in libmariadb/mariadb_lib.c says "GNU Library General Public
+    License ... either version 2 of the License, or (at your option) any later version", i.e. the older
+    LGPL-2.0 wording with an or-later clause, while the shipped COPYING.LIB is 2.1. LGPL-2.1-or-later
+    is the correct single id for the combination; the project itself says "This is LGPL MariaDB client
+    library" (README). The three multi-line holder entries above are the mariadb_lib.c header block, quoted
+    with its original continuation indentation. The PHP attribution line is quoted from the README at
+    the tag and is a required notice because the connector derives from PHP''s mysqlnd extension. Static-linked
+    LGPL: shipping the app must keep the relinking route open (object files or the shipped .a plus the
+    licence text). The build uses Homebrew openssl@3 (build-mariadb.sh:22), not the pinned OpenSSL. scripts/ios/build-mariadb-ios.sh:13
+    pins the same 3.4.4.'
+- id: mongo-c-driver
+  name: MongoDB C Driver (libmongoc / libbson)
+  version: 1.28.1
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2009-present MongoDB, Inc.
+  homepageURL: https://github.com/mongodb/mongo-c-driver
+  licenseTextURL: https://raw.githubusercontent.com/mongodb/mongo-c-driver/1.28.1/COPYING
+  textFile: texts/mongo-c-driver.txt
+  source: sh:MONGOC_VERSION
+  patched: false
+  notes: 'COPYING at the tag is the bare Apache-2.0 text with no holder block; the holder line is the
+    per-file header on src/libmongoc/src/mongoc/mongoc-client.c and src/libbson/src/bson/bson.c. The repo
+    ships THIRD_PARTY_NOTICES at the same tag with six further notices that must be reproduced when the
+    binary ships: uthash ("Copyright (c) 2003-2021, Troy D. Hanson"), common-b64.c (ISC, "Copyright: 1996,
+    1998 Internet Software Consortium / 1995 International Business Machines, Inc." plus an IBM permission
+    grant), mongoc.css_t, zlib, common-md5.c and utf8proc. The full text is saved in the extra text file.
+    Tarball is the GitHub release archive for 1.28.1 (build-libmongoc.sh:74), SHA-256 pinned at line 42.
+    The script writes the flat Libs/libmongoc.a and Libs/libbson.a itself (build-libmongoc.sh:219).'
+- id: openssl
+  name: OpenSSL
+  version: 3.4.3
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright (c) 1998-2025 The OpenSSL Project Authors
+  - Copyright (c) 1995-1998 Eric A. Young, Tim J. Hudson
+  - All rights reserved.
+  homepageURL: https://www.openssl.org
+  licenseTextURL: https://raw.githubusercontent.com/openssl/openssl/openssl-3.4.3/LICENSE.txt
+  textFile: texts/openssl.txt
+  source: sh:OPENSSL_VERSION
+  patched: false
+  notes: OpenSSL 3.x is Apache-2.0 only; the old OpenSSL/SSLeay dual licence ended at 1.1.1. LICENSE.txt
+    at the tag is the bare Apache-2.0 text with no copyright block, so the two holder lines above are
+    quoted from the Copyright section of README.md at the same tag (https://raw.githubusercontent.com/openssl/openssl/openssl-3.4.3/README.md,
+    lines 196-203). Source files carry the per-file form "Copyright <years> The OpenSSL Project Authors.
+    All Rights Reserved." scripts/openssl-version.sh is sourced by build-libssh2.sh:37, build-hiredis.sh:38,
+    build-libmongoc.sh:43 and build-libpq.sh:39, each of which builds OpenSSL from source for its own
+    static link. Only build-libpq.sh installs the result into Libs/ (libpq.sh:196-197). scripts/create-openssl-dylibs.sh
+    turns those static archives into the two shipped dylibs. build-mariadb.sh, build-cassandra.sh and
+    build-freetds.sh use Homebrew's openssl@3 instead of the pin, so their OpenSSL version is whatever
+    brew has installed (UNVERIFIED at build time; the shipped dylibs are the pinned 3.4.3).
+- id: oracle-nio
+  name: OracleNIO
+  version: rev:a5b3b355f24c807ce481f0cd68f2e9b0f5ec64e5
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright (c) 2023 Timo Zacherl
+  homepageURL: https://github.com/TableProApp/oracle-nio
+  licenseTextURL: https://github.com/TableProApp/oracle-nio/blob/a5b3b355f24c807ce481f0cd68f2e9b0f5ec64e5/LICENSE
+  textFile: texts/oracle-nio.txt
+  source: spm:oracle-nio
+  patched: false
+  notes: 'NO state.version in any of the three Package.resolved files, only a revision. All three pin
+    the SAME revision, so there is no version disagreement here. TableProApp/oracle-nio is a fork of lovetodream/oracle-nio
+    (GitHub reports fork: true, parent: lovetodream/oracle-nio); at the pinned revision it is 21 ahead
+    / 10 behind upstream main. LICENSE at the pinned revision is 11357 bytes, PLAIN Apache-2.0, no Runtime
+    Library Exception. NOTICE.txt is present and its attribution must be reproduced under section 4(d);
+    it still names the upstream homepage and "Copyright (c) 2023 Timo Zacherl". Because the fork MODIFIES
+    the files, Apache 2.0 section 4(b) additionally requires that changed files carry prominent notices
+    stating that they were changed. UNVERIFIED: I did not check whether TablePro''s 21 fork commits added
+    those change notices. Second licence inside this package: Sources/OracleConnectionPoolModule/ carries
+    its own LICENSE file, MIT, "Copyright (c) 2019 Tanner Nelson" (i.e. Vapor-derived pool code). It is
+    `exclude`d from resources by Package.swift but the CODE is compiled in, so the MIT notice must be
+    reproduced wherever OracleNIO ships. Reaches users only through the registry-only Oracle plugin and
+    through TableProMobile: no `$s9OracleNIO` symbols in the app dylib, and none in any of the 14 bundled
+    plugins.'
+- id: postgresql-libpq
+  name: PostgreSQL (libpq client library)
+  version: '17.4'
+  spdx: PostgreSQL
+  copyrights:
+  - PostgreSQL Database Management System
+  - (formerly known as Postgres, then as Postgres95)
+  - Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+  - Portions Copyright (c) 1994, The Regents of the University of California
+  homepageURL: https://www.postgresql.org
+  licenseTextURL: https://raw.githubusercontent.com/postgres/postgres/REL_17_4/COPYRIGHT
+  textFile: texts/postgresql-libpq.txt
+  source: sh:PG_VERSION
+  patched: false
+  notes: Source tarball comes from ftp.postgresql.org (build-libpq.sh:71), SHA-256 pinned at build-libpq.sh:40;
+    the GitHub tag REL_17_4 is the same release and is used here only as a stable URL for the COPYRIGHT
+    file. The COPYRIGHT text is the whole licence; SPDX calls it "PostgreSQL" (a BSD/MIT-style permissive
+    licence), not BSD-2-Clause. The same build also emits Libs/libssl_*.a and Libs/libcrypto_*.a, which
+    are OpenSSL, not PostgreSQL. scripts/ios/build-libpq-ios.sh:10 pins the same 17.4.
+- id: rearrange
+  name: Rearrange
+  version: 2.1.1
+  spdx: BSD-3-Clause
+  copyrights:
+  - Copyright (c) 2019, Chime Systems Inc.
+  homepageURL: https://github.com/ChimeHQ/Rearrange
+  licenseTextURL: https://github.com/ChimeHQ/Rearrange/blob/2.1.1/LICENSE
+  textFile: texts/rearrange.txt
+  source: spm:rearrange
+  patched: false
+  notes: 'Transitive (via TextStory / TextFormation). LICENSE is 1518 bytes, 5 bytes longer than the other
+    Chime files, because the holder is "Chime Systems Inc." rather than "Chime". Confirmed shipping: 544
+    `$s9Rearrange` symbols.'
+- id: sparkle
+  name: Sparkle
+  version: 2.9.5
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2006-2013 Andy Matuschak.
+  - Copyright (c) 2009-2013 Elgato Systems GmbH.
+  - Copyright (c) 2011-2014 Kornel Lesinski.
+  - Copyright (c) 2015-2017 Mayur Pawashe.
+  - Copyright (c) 2014 C.W. Betts.
+  - Copyright (c) 2014 Petroules Corporation.
+  - Copyright (c) 2014 Big Nerd Ranch.
+  homepageURL: https://github.com/sparkle-project/Sparkle
+  licenseTextURL: https://github.com/sparkle-project/Sparkle/blob/2.9.5/LICENSE
+  textFile: texts/sparkle.txt
+  source: spm:sparkle
+  patched: false
+  notes: 'GitHub''s detector reports key "other" / SPDX "NOASSERTION" for this repo. That is a detector
+    artefact: the file opens with seven copyright lines followed by the VERBATIM MIT permission and warranty
+    text, so the primary licence is MIT. The detector balks at the appended "EXTERNAL LICENSES" section.
+    Note the third holder''s name uses a Polish s-acute (Kornel Lesinski, spelled "Lesin(s-acute)ki")
+    in the original file; reproduce it from texts/sparkle-LICENSE.txt rather than retyping it from this
+    YAML, which is ASCII-folded. The appended EXTERNAL LICENSES section covers code bundled INSIDE Sparkle.framework
+    and its helpers, and those notices must be reproduced too: - bspatch.c / bsdiff.c from bsdiff 4.3,
+    BSD-2-Clause, "Copyright 2003-2005 Colin Percival" - sais.c / sais.h from sais-lite, MIT, "Copyright
+    (c) 2008-2010 Yuta Mori All Rights Reserved." - portable C Ed25519 from https://github.com/orlp/ed25519,
+    Zlib, "Copyright (c) 2015 Orson Peters <orsonpeters@gmail.com>" - SUSignatureVerifier.m, BSD-2-Clause,
+    "Copyright (c) 2011 Mark Hamlin." Ships as a dynamically linked framework: Contents/Frameworks/Sparkle.framework,
+    confirmed by otool -L on the app dylib (current version 2.9.5), which is why it contributes no Swift
+    mangled symbols to the app dylib.'
+- id: swift-asn1
+  name: swift-asn1
+  version: 1.5.1, 1.7.1
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2022 The SwiftASN1 Project
+  - Copyright (c) 2019-2020 Apple Inc. and the SwiftASN1 project authors
+  homepageURL: https://github.com/apple/swift-asn1
+  licenseTextURL: https://github.com/apple/swift-asn1/blob/1.7.1/LICENSE.txt
+  textFile: texts/swift-asn1.txt
+  source: spm:swift-asn1
+  patched: false
+  notes: 'VERSION SET, deliberately divergent: the app pins 1.5.1, TableProOracle and TableProMobile pin
+    1.7.1. LICENSE.txt is byte-identical (11359 bytes) at both tags and is PLAIN Apache-2.0 with no Runtime
+    Library Exception. NOTICE.txt present at both tags and unchanged; its attribution must be reproduced
+    under section 4(d). Transitive via swift-certificates. Confirmed shipping: 6204 `$s9SwiftASN1` symbols.'
+- id: swift-async-algorithms
+  name: swift-async-algorithms
+  version: 1.1.5
+  spdx: Apache-2.0 WITH Swift-exception
+  copyrights:
+  - Copyright (c) 2022 Apple Inc. and the Swift project authors
+  homepageURL: https://github.com/apple/swift-async-algorithms
+  licenseTextURL: https://github.com/apple/swift-async-algorithms/blob/1.1.5/LICENSE.txt
+  textFile: texts/swift-async-algorithms.txt
+  source: spm:swift-async-algorithms
+  patched: false
+  notes: '11751 bytes: Apache 2.0 plus the Runtime Library Exception section (verified by reading the
+    file). No NOTICE.txt. Transitive via swift-service-lifecycle.'
+- id: swift-atomics
+  name: swift-atomics
+  version: 1.3.1
+  spdx: Apache-2.0 WITH Swift-exception
+  copyrights:
+  - Copyright (c) 2020 - 2025 Apple Inc. and the Swift project authors
+  homepageURL: https://github.com/apple/swift-atomics
+  licenseTextURL: https://github.com/apple/swift-atomics/blob/1.3.1/LICENSE.txt
+  textFile: texts/swift-atomics.txt
+  source: spm:swift-atomics
+  patched: false
+  notes: '11751 bytes: Apache 2.0 plus the Runtime Library Exception section (verified by reading the
+    file). No NOTICE.txt. Copyright from a source header.'
+- id: swift-certificates
+  name: swift-certificates
+  version: 1.19.0
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2022 The SwiftCertificates Project
+  - Copyright (c) 2022 Apple Inc. and the SwiftCertificates project authors
+  homepageURL: https://github.com/apple/swift-certificates
+  licenseTextURL: https://github.com/apple/swift-certificates/blob/1.19.0/LICENSE.txt
+  textFile: texts/swift-certificates.txt
+  source: spm:swift-certificates
+  patched: false
+  notes: 'PLAIN Apache-2.0, NOT the Swift exception variant. LICENSE.txt is 11359 bytes and contains no
+    Runtime Library Exception section (verified by reading the file). Ships a NOTICE.txt whose attribution
+    lines MUST be reproduced under Apache 2.0 section 4(d). NOTICE content: "The SwiftCertificates Project"
+    / homepage https://github.com/apple/swift-certificates / "Copyright 2022 The SwiftCertificates Project".
+    Declared directly in project.yml. Confirmed shipping: 25520 `$s4X509` symbols.'
+- id: swift-collections
+  name: swift-collections
+  version: 1.6.0
+  spdx: Apache-2.0 WITH Swift-exception
+  copyrights:
+  - Copyright (c) 2021 - 2026 Apple Inc. and the Swift project authors
+  homepageURL: https://github.com/apple/swift-collections
+  licenseTextURL: https://github.com/apple/swift-collections/blob/1.6.0/LICENSE.txt
+  textFile: texts/swift-collections.txt
+  source: spm:swift-collections
+  patched: false
+  notes: 'LICENSE.txt is 11751 bytes: the Apache 2.0 body PLUS an appended "## Runtime Library Exception
+    to the Apache 2.0 License: ##" section (verified by reading the file, not by trusting GitHub, whose
+    detector reports plain "Apache-2.0" for both variants). The exception waives the attribution otherwise
+    required by sections 4(a), 4(b) and 4(d) for material embedded into a binary product by compilation.
+    There is no NOTICE.txt in this repo. Copyright line taken from a source header (Sources/DequeModule/_DequeSlot.swift),
+    since the LICENSE file names no holder. Confirmed shipping: 3530 `$s18OrderedCollections` and 1844
+    DequeModule symbols.'
+- id: swift-crypto
+  name: swift-crypto
+  version: 4.2.0, 4.5.1
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2019 The SwiftCrypto Project
+  - Copyright (c) 2019-2020 Apple Inc. and the SwiftCrypto project authors
+  homepageURL: https://github.com/apple/swift-crypto
+  licenseTextURL: https://github.com/apple/swift-crypto/blob/4.5.1/LICENSE.txt
+  textFile: texts/swift-crypto.txt
+  source: spm:swift-crypto
+  patched: false
+  notes: 'VERSION SET, deliberately divergent: the app pins 4.2.0, TableProOracle and TableProMobile pin
+    4.5.1. LICENSE.txt is byte-identical (11358 bytes) at both tags and is PLAIN Apache-2.0 with no Runtime
+    Library Exception. NOTICE.txt present at both tags; its attribution must be reproduced under section
+    4(d), and it carries two onward attributions of its own that the NOTICE text itself requires be passed
+    along - test vectors from Google''s wycheproof project (Apache-2.0) and a derivation of files from
+    SwiftNIO (Apache-2.0). swift-crypto also vendors BoringSSL as CCryptoBoringSSL; that C code carries
+    its own combination ISC/OpenSSL licensing and is NOT covered by this record. Flag it to whoever owns
+    the C-library records. Confirmed shipping: 124 `$s6Crypto` symbols. Transitive via swift-certificates.'
+- id: swift-distributed-tracing
+  name: swift-distributed-tracing
+  version: 1.4.1
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright (c) 2020-2023 Apple Inc. and the Swift Distributed Tracing project authors
+  homepageURL: https://github.com/apple/swift-distributed-tracing
+  licenseTextURL: https://github.com/apple/swift-distributed-tracing/blob/1.4.1/LICENSE.txt
+  textFile: texts/swift-distributed-tracing.txt
+  source: spm:swift-distributed-tracing
+  patched: false
+  notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NO NOTICE.txt at this tag (checked
+    the root tree). Copyright from a source header. Transitive via oracle-nio.
+- id: swift-log
+  name: swift-log
+  version: 1.15.0
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2018, 2019 The SwiftLog Project
+  homepageURL: https://github.com/apple/swift-log
+  licenseTextURL: https://github.com/apple/swift-log/blob/1.15.0/LICENSE.txt
+  textFile: texts/swift-log.txt
+  source: spm:swift-log
+  patched: false
+  notes: 'PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt present; its attribution
+    must be reproduced under section 4(d). Not in TablePro.app: zero `$s7Logging` mangled-prefix symbols.
+    (A naive `strings` grep for the bare word "Logging" hits 28 times in the app dylib, but those are
+    substrings of first-party identifiers, not module references. Do not treat that as a link.)'
+- id: swift-nio-transport-services
+  name: swift-nio-transport-services
+  version: 1.28.0
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright (c) 2017-2021 Apple Inc. and the SwiftNIO project authors
+  homepageURL: https://github.com/apple/swift-nio-transport-services
+  licenseTextURL: https://github.com/apple/swift-nio-transport-services/blob/1.28.0/LICENSE.txt
+  textFile: texts/swift-nio-transport-services.txt
+  source: spm:swift-nio-transport-services
+  patched: false
+  notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NO NOTICE.txt at this tag (checked
+    the root tree), unlike its swift-nio siblings, so nothing to carry under 4(d). Copyright line taken
+    from a source header, since the LICENSE names no holder.
+- id: swift-service-context
+  name: swift-service-context
+  version: 1.3.0
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2024 The Swift Service Context Project
+  homepageURL: https://github.com/apple/swift-service-context
+  licenseTextURL: https://github.com/apple/swift-service-context/blob/1.3.0/LICENSE.txt
+  textFile: texts/swift-service-context.txt
+  source: spm:swift-service-context
+  patched: false
+  notes: 'PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt present and must be
+    carried under section 4(d). Reproduce it verbatim and do NOT "correct" it: the upstream NOTICE.txt
+    has a copy-paste bug, pointing at https://github.com/apple/swift-asn1 as the project web site instead
+    of swift-service-context. Transitive via swift-distributed-tracing.'
+- id: swift-service-lifecycle
+  name: swift-service-lifecycle
+  version: 2.11.0
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2019-2023 The ServiceLifecycle Project
+  homepageURL: https://github.com/swift-server/swift-service-lifecycle
+  licenseTextURL: https://github.com/swift-server/swift-service-lifecycle/blob/2.11.0/LICENSE.txt
+  textFile: texts/swift-service-lifecycle.txt
+  source: spm:swift-service-lifecycle
+  patched: false
+  notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt present and must be
+    carried under section 4(d). Owned by the swift-server org, not apple. Transitive via oracle-nio.
+- id: swift-syntax
+  name: swift-syntax
+  version: 602.0.0
+  spdx: Apache-2.0 WITH Swift-exception
+  copyrights:
+  - Copyright (c) 2014 - 2023 Apple Inc. and the Swift project authors
+  homepageURL: https://github.com/swiftlang/swift-syntax
+  licenseTextURL: https://github.com/swiftlang/swift-syntax/blob/602.0.0/LICENSE.txt
+  textFile: texts/swift-syntax.txt
+  source: spm:swift-syntax
+  patched: false
+  notes: '11751 bytes: Apache 2.0 plus the Runtime Library Exception section (verified by reading the
+    file). No NOTICE.txt. Pulled in by oracle-nio purely to build its macro implementations, so it is
+    a BUILD-TIME compiler plugin and no swift-syntax code is embedded in any shipped binary. Confirmed:
+    zero `$s11SwiftSyntax` symbols in the app dylib. Repo moved from apple/ to swiftlang/ ownership.'
+- id: swift-system
+  name: swift-system
+  version: 1.8.0
+  spdx: Apache-2.0 WITH Swift-exception
+  copyrights:
+  - Copyright (c) 2020 - 2024 Apple Inc. and the Swift System project authors
+  homepageURL: https://github.com/apple/swift-system
+  licenseTextURL: https://github.com/apple/swift-system/blob/1.8.0/LICENSE.txt
+  textFile: texts/swift-system.txt
+  source: spm:swift-system
+  patched: false
+  notes: '11750 bytes: Apache 2.0 plus the Runtime Library Exception section (verified by reading the
+    file). No NOTICE.txt. Transitive via swift-nio (NIOFileSystem).'
+- id: swift-nio
+  name: SwiftNIO
+  version: 2.101.3
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2017, 2018 The SwiftNIO Project
+  homepageURL: https://github.com/apple/swift-nio
+  licenseTextURL: https://github.com/apple/swift-nio/blob/2.101.3/LICENSE.txt
+  textFile: texts/swift-nio.txt
+  source: spm:swift-nio
+  patched: false
+  notes: 'PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt is the LONGEST in the
+    tree and section 4(d) requires all of it be carried: Netty (Apache-2.0), NodeJS llhttp (MIT), "cpp_magic.h"
+    from uSHET (MIT), "sha1.c"/"sha1.h" from FreeBSD (BSD-3, "Copyright (C) 1995, 1996, 1997, and 1998
+    WIDE Project"), a derivation of Fabian Fett''s Base64.swift (Apache-2.0), derivations from AsyncHTTPClient,
+    SwiftCertificates, Swift System and Swift Package Manager (all Apache-2.0). Not in TablePro.app: zero
+    `$s8NIOCore` symbols in the app dylib and none in any bundled plugin.'
+- id: swift-nio-ssl
+  name: SwiftNIOSSL
+  version: 2.37.2
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2017, 2018 The SwiftNIO Project
+  homepageURL: https://github.com/apple/swift-nio-ssl
+  licenseTextURL: https://github.com/apple/swift-nio-ssl/blob/2.37.2/LICENSE.txt
+  textFile: texts/swift-nio-ssl.txt
+  source: spm:swift-nio-ssl
+  patched: false
+  notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt must be reproduced under
+    section 4(d) and carries onward attributions for Netty (Apache-2.0), Tony Stone's process_test_files.rb
+    (Apache-2.0), grpc-swift (Apache-2.0) and BoringSSL (combination ISC and OpenSSL licence). The vendored
+    BoringSSL C code is NOT covered by this record.
+- id: swifttreesitter
+  name: SwiftTreeSitter
+  version: 0.25.0
+  spdx: BSD-3-Clause
+  copyrights:
+  - Copyright (c) 2021, Chime
+  homepageURL: https://github.com/ChimeHQ/SwiftTreeSitter
+  licenseTextURL: https://github.com/ChimeHQ/SwiftTreeSitter/blob/0.25.0/LICENSE
+  textFile: texts/swifttreesitter.txt
+  source: spm:swifttreesitter
+  patched: false
+  notes: 'LICENSE at the tagged root, 1513 bytes. BSD-3-Clause requires the copyright notice, the condition
+    list and the disclaimer be reproduced in binary distributions, plus the no-endorsement clause naming
+    the copyright holder and contributors. Confirmed shipping: 3674 `$s15SwiftTreeSitter` symbols.'
+- id: textformation
+  name: TextFormation
+  version: 0.9.0
+  spdx: BSD-3-Clause
+  copyrights:
+  - Copyright (c) 2022, Chime
+  homepageURL: https://github.com/ChimeHQ/TextFormation
+  licenseTextURL: https://github.com/ChimeHQ/TextFormation/blob/0.9.0/LICENSE
+  textFile: texts/textformation.txt
+  source: spm:textformation
+  patched: false
+  notes: 'Direct dependency of CodeEditSourceEditor. Confirmed shipping: 1658 `$s13TextFormation` symbols.'
+- id: textstory
+  name: TextStory
+  version: 0.9.2
+  spdx: BSD-3-Clause
+  copyrights:
+  - Copyright (c) 2020, Chime
+  homepageURL: https://github.com/ChimeHQ/TextStory
+  licenseTextURL: https://github.com/ChimeHQ/TextStory/blob/0.9.2/LICENSE
+  textFile: texts/textstory.txt
+  source: spm:textstory
+  patched: false
+  notes: 'Dependency of CodeEditTextView. Confirmed shipping: 777 `$s9TextStory` symbols. The copyright
+    YEAR differs from the other two Chime packages (2020 vs 2021 vs 2022) and the HOLDER STRING differs
+    from Rearrange ("Chime" vs "Chime Systems Inc."), so the four BSD notices must be reproduced separately,
+    not collapsed into one.'
+- id: tree-sitter
+  name: tree-sitter
+  version: 0.25.10
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2018-2024 Max Brunsfeld
+  homepageURL: https://github.com/tree-sitter/tree-sitter
+  licenseTextURL: https://github.com/tree-sitter/tree-sitter/blob/v0.25.10/LICENSE
+  textFile: texts/tree-sitter.txt
+  source: spm:tree-sitter
+  patched: false
+  notes: 'Pinned as an SPM package (it carries a Package.swift) even though the shipped artefact is the
+    C runtime library. Tag is `v0.25.10`; the Package.resolved records the bare version "0.25.10". Confirmed
+    shipping: 106 `_ts_parser_*` C symbols in the app dylib.'
+- id: yams
+  name: Yams
+  version: 5.4.0
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2016 JP Simard.
+  homepageURL: https://github.com/jpsim/Yams
+  licenseTextURL: https://github.com/jpsim/Yams/blob/5.4.0/LICENSE
+  textFile: texts/yams.txt
+  source: spm:yams
+  patched: false
+  notes: 'Declared directly in project.yml (majorVersion 5.1.0, resolved to 5.4.0). Confirmed shipping:
+    7578 `$s4Yams` symbols. Yams vendors libfyaml/LibYAML C sources (CYaml); that C code carries its own
+    MIT notice (Copyright (c) 2006-2016 Kirill Simonov) which is NOT in this repo''s root LICENSE. Flag
+    to whoever owns the C-library records. UNVERIFIED here: I did not open Yams'' CYaml sources.'

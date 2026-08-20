@@ -9,18 +9,19 @@ import SwiftUI
 @MainActor
 internal final class SidebarContainerViewController: NSViewController {
     private let searchField = NSSearchField()
-    private var hostingController: NSHostingController<AnyView>
+    /// The filter field is window chrome and stays put; only the object list below it belongs to a
+    /// connection, so that is the part the window swaps.
+    private let listHost = WorkspacePaneHost()
     private var sidebarState: SharedSidebarState?
-    private var windowState: WindowSidebarState?
-    private var observationGeneration = 0
+    private var observationTask: Task<Void, Never>?
+    private var filterPopover: NSPopover?
 
-    var rootView: AnyView {
-        get { hostingController.rootView }
-        set { hostingController.rootView = newValue }
+    internal func show(_ controller: NSViewController?) {
+        listHost.show(controller)
+        searchField.nextKeyView = controller?.view ?? listHost.view
     }
 
-    init(rootView: AnyView) {
-        self.hostingController = NSHostingController(rootView: rootView)
+    init() {
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -33,17 +34,20 @@ internal final class SidebarContainerViewController: NSViewController {
         view = NSView()
 
         searchField.translatesAutoresizingMaskIntoConstraints = false
+        searchField.isHidden = true
         searchField.placeholderString = String(localized: "Filter")
         searchField.controlSize = .regular
         searchField.sendsSearchStringImmediately = true
         searchField.delegate = self
         searchField.setAccessibilityIdentifier("sidebar-filter")
+        searchField.setAccessibilityLabel(String(localized: "Filter"))
         view.addSubview(searchField)
 
-        addChild(hostingController)
-        let hostingView = hostingController.view
+        addChild(listHost)
+        let hostingView = listHost.view
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hostingView)
+        searchField.nextKeyView = hostingView
 
         NSLayoutConstraint.activate([
             searchField.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5),
@@ -57,49 +61,86 @@ internal final class SidebarContainerViewController: NSViewController {
         ])
     }
 
-    func updateSidebarState(_ state: SharedSidebarState?, windowState: WindowSidebarState?) {
-        observationGeneration += 1
+    func focusSearchField() {
+        guard !searchField.isHidden else { return }
+        view.window?.makeFirstResponder(searchField)
+    }
+
+    /// The database filter, shown from the View menu and from the object list's contextual menu
+    /// rather than from a button at the bottom of the sidebar. It anchors on the filter field
+    /// because that is what it scopes, and because the field is the one piece of sidebar chrome
+    /// that outlives a workspace switch.
+    func presentDatabaseFilter(connectionId: UUID, sidebarState: SharedSidebarState) {
+        guard !searchField.isHidden else { return }
+        filterPopover?.close()
+        filterPopover = PopoverPresenter.show(
+            relativeTo: searchField.bounds,
+            of: searchField,
+            preferredEdge: .maxY,
+            behavior: .transient
+        ) { _ in
+            DatabaseTreeFilterPopover(
+                connectionId: connectionId,
+                selectedDatabases: Binding(
+                    get: { sidebarState.databaseFilterSelected },
+                    set: { sidebarState.databaseFilterSelected = $0 }
+                )
+            )
+        }
+    }
+
+    func updateSidebarState(_ state: SharedSidebarState?) {
+        observationTask?.cancel()
+        /// The popover is scoped to the connection whose databases it lists, and this is the field
+        /// being repointed at a different one.
+        filterPopover?.close()
+        filterPopover = nil
         self.sidebarState = state
-        self.windowState = windowState
-        guard let state, let windowState else {
+        guard let state else {
             searchField.isHidden = true
             return
         }
         searchField.isHidden = false
-        syncFromState(state, windowState: windowState)
-        startObserving(state, windowState: windowState, generation: observationGeneration)
-    }
-
-    private func startObserving(
-        _ state: SharedSidebarState,
-        windowState: WindowSidebarState,
-        generation: Int
-    ) {
-        withObservationTracking {
-            _ = state.selectedSidebarTab
-            _ = windowState.searchText
-            _ = windowState.favoritesSearchText
-        } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self,
-                      generation == self.observationGeneration,
-                      let sidebarState = self.sidebarState,
-                      let windowState = self.windowState else { return }
-                self.syncFromState(sidebarState, windowState: windowState)
-                self.startObserving(sidebarState, windowState: windowState, generation: generation)
+        observationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                self.syncFromState(state)
+                await Self.awaitChange(state: state)
             }
         }
     }
 
-    private func syncFromState(_ state: SharedSidebarState, windowState: WindowSidebarState) {
+    private static func awaitChange(state: SharedSidebarState) async {
+        let box = ObservationContinuationBox()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                box.attach(continuation)
+                withObservationTracking {
+                    _ = state.selectedSidebarTab
+                    _ = state.searchText
+                    _ = state.favoritesSearchText
+                } onChange: {
+                    box.resume()
+                }
+            }
+        } onCancel: {
+            box.resume()
+        }
+    }
+
+    deinit {
+        observationTask?.cancel()
+    }
+
+    private func syncFromState(_ state: SharedSidebarState) {
         let activeText: String
         let placeholder: String
         switch state.selectedSidebarTab {
         case .tables:
-            activeText = windowState.searchText
+            activeText = state.searchText
             placeholder = String(localized: "Filter")
         case .favorites:
-            activeText = windowState.favoritesSearchText
+            activeText = state.favoritesSearchText
             placeholder = String(localized: "Filter favorites")
         }
 
@@ -107,6 +148,7 @@ internal final class SidebarContainerViewController: NSViewController {
             searchField.stringValue = activeText
         }
         searchField.placeholderString = placeholder
+        searchField.setAccessibilityLabel(placeholder)
     }
 }
 
@@ -120,13 +162,52 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
         writeSearchText("")
     }
 
+    /// Down from the filter field hands focus to the list. The handoff goes through the key view loop,
+    /// which only ever lands on a view that answers `acceptsFirstResponder`; naming the hosting view
+    /// directly parked focus on a view that does not, so the selection never moved, the list never drew
+    /// as focused, and returning true swallowed the key. Returning false when nothing took focus leaves
+    /// AppKit's own handling in place.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.moveDown(_:)), let window = view.window else {
+            return false
+        }
+        let previous = window.firstResponder
+        window.selectKeyView(following: searchField)
+        return window.firstResponder !== previous
+    }
+
     private func writeSearchText(_ text: String) {
-        guard let sidebarState, let windowState else { return }
+        guard let sidebarState else { return }
         switch sidebarState.selectedSidebarTab {
         case .tables:
-            windowState.searchText = text
+            sidebarState.searchText = text
         case .favorites:
-            windowState.favoritesSearchText = text
+            sidebarState.favoritesSearchText = text
         }
+    }
+}
+
+private final class ObservationContinuationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var resumed = false
+
+    func attach(_ continuation: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed else {
+            continuation.resume()
+            return
+        }
+        self.continuation = continuation
+    }
+
+    func resume() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed else { return }
+        resumed = true
+        continuation?.resume()
+        continuation = nil
     }
 }

@@ -30,7 +30,9 @@ final class AppState {
 
     var pendingConnectionId: UUID?
     var pendingTableName: String?
+    var pendingImportURL: URL?
     let connectionManager: ConnectionManager
+    let backgroundRelease: BackgroundReleaseCoordinator
     let syncCoordinator = IOSSyncCoordinator()
     let sshProvider: IOSSSHProvider
     let secureStore: KeychainSecureStore
@@ -45,14 +47,16 @@ final class AppState {
         self.secureStore = secureStore
         let sshProvider = IOSSSHProvider(secureStore: secureStore)
         self.sshProvider = sshProvider
-        self.connectionManager = ConnectionManager(
+        let connectionManager = ConnectionManager(
             driverFactory: driverFactory,
             secureStore: secureStore,
             sshProvider: sshProvider
         )
+        self.connectionManager = connectionManager
+        self.backgroundRelease = BackgroundReleaseCoordinator(connectionManager: connectionManager)
         loadPersistedData()
 
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard !TestRuntime.isActive else { return }
 
         secureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
         Task {
@@ -189,6 +193,7 @@ final class AppState {
         try? secureStore.delete(forKey: "com.TablePro.sshpassword.\(connection.id.uuidString)")
         try? secureStore.delete(forKey: "com.TablePro.keypassphrase.\(connection.id.uuidString)")
         try? secureStore.delete(forKey: "com.TablePro.sshkeydata.\(connection.id.uuidString)")
+        FileBookmarkStore().delete(for: connection.id)
         clearPerConnectionPreferences(for: connection.id)
         persist(connections: updated)
         updateWidgetData()
@@ -276,8 +281,8 @@ final class AppState {
         persist(tags: updatedTags)
 
         var updatedConnections = connections
-        for index in updatedConnections.indices where updatedConnections[index].tagId == tagId {
-            updatedConnections[index].tagId = nil
+        for index in updatedConnections.indices where updatedConnections[index].tagIds.contains(tagId) {
+            updatedConnections[index].tagIds.removeAll { $0 == tagId }
             syncCoordinator.markDirty(updatedConnections[index].id)
         }
         persist(connections: updatedConnections)
@@ -317,8 +322,6 @@ final class AppState {
                     id: conn.id,
                     name: conn.name.isEmpty ? conn.host : conn.name,
                     type: conn.type.rawValue,
-                    host: conn.host,
-                    port: conn.port,
                     sortOrder: conn.sortOrder
                 )
             }

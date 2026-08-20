@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import Network
 import os
 import Security
 import SwiftUI
@@ -13,7 +14,8 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager()
-    static let currentPluginKitVersion = 13
+    static let currentPluginKitVersion = 19
+    static let minimumCompatiblePluginKitVersion = 19
     static let currentInspectorKitVersion = 1
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
@@ -24,7 +26,18 @@ final class PluginManager {
 
     internal(set) var plugins: [PluginEntry] = []
 
-    internal(set) var isInstalling = false
+    internal(set) var stagedUpdates: [String: StagedPluginUpdate] = [:]
+
+    internal(set) var pluginsWithRegistryUpdate: Set<String> = []
+
+    var isInstalling: Bool {
+        PluginInstallTracker.shared.activeInstalls.values.contains { progress in
+            switch progress.phase {
+            case .downloading, .installing: true
+            case .stagedPendingActivation, .completed, .failed: false
+            }
+        }
+    }
 
     internal(set) var hasFinishedInitialLoad = false {
         didSet {
@@ -99,6 +112,15 @@ final class PluginManager {
     @ObservationIgnored internal var lazyInspectorUTIs: [String: URL] = [:]
     @ObservationIgnored private var activatedBundleIds: Set<String> = []
 
+    @ObservationIgnored internal var reconciliationTask: Task<Void, Never>?
+    @ObservationIgnored internal var reconciliationActive = false
+    @ObservationIgnored internal var reconciliationAttempts: [String: Int] = [:]
+    @ObservationIgnored internal var reconciliationManifestAttempts = 0
+    @ObservationIgnored private var connectionStatusSubscription: AnyCancellable?
+    @ObservationIgnored internal var pluginNetworkMonitor: NWPathMonitor?
+    @ObservationIgnored internal var lastNetworkSatisfied = false
+    @ObservationIgnored internal var installsInFlight: Set<String> = []
+
     var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
 
     init(
@@ -120,13 +142,13 @@ final class PluginManager {
     }
 
     nonisolated static func defaultUserPluginsDir() -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro/Plugins", isDirectory: true)
     }
 
     // MARK: - Registry Metadata
 
-    private struct RegistryMetadata: Codable {
+    struct RegistryMetadata: Codable {
         let pluginId: String
     }
 
@@ -135,7 +157,7 @@ final class PluginManager {
             .appendingPathComponent(pluginURL.lastPathComponent + ".metadata.json")
     }
 
-    nonisolated private static func readRegistryMetadata(for pluginURL: URL) -> RegistryMetadata? {
+    nonisolated static func readRegistryMetadata(for pluginURL: URL) -> RegistryMetadata? {
         let url = metadataURL(for: pluginURL)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(RegistryMetadata.self, from: data)
@@ -183,7 +205,9 @@ final class PluginManager {
 
     func loadPlugins() {
         migrateDisabledPluginsKey()
+        cleanStaleStagingArtifacts()
         discoverAllPlugins()
+
         var lazyPending: [(url: URL, source: PluginSource, manifest: PluginManifest)] = []
         var eagerPending: [(url: URL, source: PluginSource)] = []
         for entry in pendingPluginURLs {
@@ -204,22 +228,58 @@ final class PluginManager {
             registerLazyManifest(at: entry.url, source: entry.source, manifest: entry.manifest)
         }
 
+        let lazyCount = lazyPending.count
         Task {
-            if !self.rejectedPlugins.isEmpty {
-                await self.autoUpdateRejectedPlugins()
-            }
             let validated = await Self.validateAndLoadBundles(eagerPending)
-            self.needsRestart = false
             self.registerValidatedBundles(validated)
             self.validateDependencies()
             self.hasFinishedInitialLoad = true
-            let lazyCount = lazyPending.count
             let eagerCount = validated.count
             Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(lazyCount) lazy + \(eagerCount) eager (\(self.driverPlugins.count) driver(s) active, \(self.exportPlugins.count) export(s) active, \(self.importPlugins.count) import(s) active)")
-            if !self.rejectedPlugins.isEmpty {
-                AppEvents.shared.pluginsRejected.send(self.rejectedPlugins)
+
+            self.refreshRegistryUpdateSet()
+            self.subscribeToConnectionStatusChanges()
+            self.startNetworkReachabilityMonitor()
+            self.scheduleReconciliation()
+        }
+    }
+
+    private func cleanStaleStagingArtifacts() {
+        let stagingRoot = PluginInstaller.stagingRoot(for: userPluginsDir)
+        let pluginsDir = userPluginsDir
+        Task.detached(priority: .utility) {
+            let fm = FileManager.default
+            if let stagingContents = try? fm.contentsOfDirectory(
+                at: stagingRoot,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) {
+                for item in stagingContents {
+                    try? fm.removeItem(at: item)
+                }
+            }
+            if let pluginContents = try? fm.contentsOfDirectory(
+                at: pluginsDir,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) {
+                for item in pluginContents where item.pathExtension == "bak" {
+                    try? fm.removeItem(at: item)
+                }
             }
         }
+    }
+
+    private func subscribeToConnectionStatusChanges() {
+        guard connectionStatusSubscription == nil else { return }
+        connectionStatusSubscription = AppEvents.shared.connectionStatusChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] change in
+                guard let self else { return }
+                if case .disconnected = change.status {
+                    self.reattemptStagedUpdates()
+                }
+            }
     }
 
     // MARK: - Lazy Plugin Activation
@@ -227,7 +287,7 @@ final class PluginManager {
     private func registerLazyManifest(at url: URL, source: PluginSource, manifest: PluginManifest) {
         guard let bundle = Bundle(url: url) else { return }
         do {
-            try Self.validateBundleVersions(bundle, source: source)
+            try Self.validateBundleVersions(bundle)
         } catch {
             Self.logger.error("Lazy plugin '\(manifest.bundleId)' failed version check: \(error.localizedDescription)")
             if source == .userInstalled {
@@ -237,7 +297,8 @@ final class PluginManager {
                     registryId: Self.readRegistryMetadata(for: url)?.pluginId,
                     name: manifest.bundleId,
                     reason: error.localizedDescription,
-                    isOutdated: (error as? PluginError)?.isOutdated ?? false
+                    isOutdated: (error as? PluginError)?.isOutdated ?? false,
+                    providedDatabaseTypeIds: manifest.providedDatabaseTypeIds
                 ))
             }
             return
@@ -253,7 +314,8 @@ final class PluginManager {
                     registryId: Self.readRegistryMetadata(for: url)?.pluginId,
                     name: manifest.bundleId,
                     reason: error.localizedDescription,
-                    isOutdated: false
+                    isOutdated: false,
+                    providedDatabaseTypeIds: manifest.providedDatabaseTypeIds
                 ))
                 return
             }
@@ -294,7 +356,10 @@ final class PluginManager {
             databaseTypeId: primaryTypeId,
             additionalTypeIds: additionalTypeIds,
             pluginIconName: pluginIconName,
-            defaultPort: defaultPort
+            defaultPort: defaultPort,
+            exportFormatId: manifest.providedExportFormatIds.first,
+            importFormatId: manifest.providedImportFormatIds.first,
+            inspectorId: manifest.providedInspectorIds.first
         )
         plugins.append(entry)
 
@@ -360,8 +425,23 @@ final class PluginManager {
         let bundleId = bundle.bundleIdentifier ?? url.lastPathComponent
         guard !activatedBundleIds.contains(bundleId) else { return }
 
-        guard bundle.load() else {
-            Self.logger.error("Failed to load lazy bundle '\(bundleId)' at \(url.lastPathComponent)")
+        let entry = plugins.first(where: { $0.id == bundleId })
+
+        if entry?.source != .builtIn {
+            do {
+                try verifyCodeSignature(bundle: bundle)
+            } catch {
+                Self.logger.error("Refusing to activate lazy plugin '\(bundleId)': code-signature re-check failed before load: \(error.localizedDescription)")
+                recordLazyActivationRejection(url: url, bundleId: bundleId, entry: entry, error: error)
+                return
+            }
+        }
+
+        do {
+            try PluginBundleLoader.load(bundle)
+        } catch {
+            Self.logger.error("Failed to load lazy bundle '\(bundleId)' at \(url.lastPathComponent): \(error.localizedDescription)")
+            recordLazyActivationRejection(url: url, bundleId: bundleId, entry: entry, error: error)
             return
         }
 
@@ -372,7 +452,7 @@ final class PluginManager {
 
         validateCapabilityDeclarations(principalClass, pluginId: bundleId)
 
-        let isEnabled = plugins.first(where: { $0.id == bundleId })?.isEnabled ?? false
+        let isEnabled = entry?.isEnabled ?? false
         if isEnabled {
             let instance = principalClass.init()
             registerCapabilities(instance, pluginId: bundleId)
@@ -383,16 +463,33 @@ final class PluginManager {
         Self.logger.info("Activated plugin '\(bundleId)' on demand")
     }
 
+    private func recordLazyActivationRejection(url: URL, bundleId: String, entry: PluginEntry?, error: Error) {
+        guard !rejectedPlugins.contains(where: { $0.url == url }) else { return }
+        var providedDatabaseTypeIds: [String] = []
+        if let entry {
+            if let primaryTypeId = entry.databaseTypeId {
+                providedDatabaseTypeIds.append(primaryTypeId)
+            }
+            providedDatabaseTypeIds.append(contentsOf: entry.additionalTypeIds)
+        }
+        rejectedPlugins.append(RejectedPlugin(
+            url: url,
+            bundleId: bundleId,
+            registryId: Self.readRegistryMetadata(for: url)?.pluginId,
+            name: entry?.name ?? bundleId,
+            reason: error.localizedDescription,
+            isOutdated: false,
+            providedDatabaseTypeIds: providedDatabaseTypeIds
+        ))
+    }
+
     private struct ValidatedBundle: @unchecked Sendable {
         let url: URL
         let source: PluginSource
         let bundle: Bundle
     }
 
-    nonisolated private static func validateBundleVersions(
-        _ bundle: Bundle,
-        source: PluginSource
-    ) throws {
+    nonisolated private static func validateBundleVersions(_ bundle: Bundle) throws {
         let infoPlist = bundle.infoDictionary ?? [:]
         let declaredPluginKit = infoPlist["TableProPluginKitVersion"] as? Int
         let declaredInspectorKit = infoPlist["TableProInspectorKitVersion"] as? Int
@@ -411,7 +508,7 @@ final class PluginManager {
                     current: currentPluginKitVersion
                 )
             }
-            if version < currentPluginKitVersion {
+            if version < minimumCompatiblePluginKitVersion {
                 throw PluginError.pluginOutdated(
                     pluginVersion: version,
                     requiredVersion: currentPluginKitVersion
@@ -450,13 +547,29 @@ final class PluginManager {
             throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
         }
 
-        try validateBundleVersions(bundle, source: source)
+        try validateBundleVersions(bundle)
 
-        guard bundle.load() else {
-            throw PluginError.invalidBundle("Bundle failed to load executable")
+        if source != .builtIn {
+            let trust = try PluginCodeSignatureVerifier.evaluate(bundle: bundle)
+            if case .developerID(let identity) = trust,
+               !PluginDeveloperTrustStore.shared.isTrusted(identity) {
+                throw PluginError.developerNotTrusted(identity: identity)
+            }
         }
 
+        try PluginBundleLoader.load(bundle)
+
         return bundle
+    }
+
+    nonisolated static func bundleShortVersion(at url: URL) -> String? {
+        let infoPlistURL = url.appendingPathComponent("Contents/Info.plist")
+        guard let data = try? Data(contentsOf: infoPlistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
+              let dictionary = plist as? [String: Any] else {
+            return nil
+        }
+        return dictionary["CFBundleShortVersionString"] as? String
     }
 
     nonisolated private static func validateAndLoadBundles(
@@ -482,44 +595,19 @@ final class PluginManager {
 
         let bundleId = bundle.bundleIdentifier ?? url.lastPathComponent
 
-        let rawDriverType = principalClass as? any DriverPlugin.Type
-        let rawInspectorType = principalClass as? any DocumentInspectorPlugin.Type
-        let pluginKitVersion = bundle.infoDictionary?["TableProPluginKitVersion"] as? Int ?? 0
-        let inspectorKitVersion = bundle.infoDictionary?["TableProInspectorKitVersion"] as? Int ?? 0
-        if rawDriverType != nil, source == .userInstalled, pluginKitVersion != Self.currentPluginKitVersion {
-            assertionFailure(
-                "DriverPlugin '\(bundleId)' has TableProPluginKitVersion \(pluginKitVersion) but current is \(Self.currentPluginKitVersion); ABI mismatch would crash on static property access"
-            )
-            Self.logger.error("Plugin '\(bundleId)' DriverPlugin ABI mismatch: plist=\(pluginKitVersion) current=\(Self.currentPluginKitVersion). Rejecting to prevent crash.")
-            rejectedPlugins.append(RejectedPlugin(
-                url: url,
-                bundleId: bundleId,
-                registryId: Self.readRegistryMetadata(for: url)?.pluginId,
-                name: principalClass.pluginName,
-                reason: String(localized: "Incompatible plugin version"),
-                isOutdated: pluginKitVersion < Self.currentPluginKitVersion
-            ))
-            return nil
-        }
-        if rawInspectorType != nil, source == .userInstalled, inspectorKitVersion != Self.currentInspectorKitVersion {
-            assertionFailure(
-                "DocumentInspectorPlugin '\(bundleId)' has TableProInspectorKitVersion \(inspectorKitVersion) but current is \(Self.currentInspectorKitVersion); ABI mismatch would crash on static property access"
-            )
-            Self.logger.error("Plugin '\(bundleId)' DocumentInspectorPlugin ABI mismatch: plist=\(inspectorKitVersion) current=\(Self.currentInspectorKitVersion). Rejecting to prevent crash.")
-            rejectedPlugins.append(RejectedPlugin(
-                url: url,
-                bundleId: bundleId,
-                registryId: Self.readRegistryMetadata(for: url)?.pluginId,
-                name: principalClass.pluginName,
-                reason: String(localized: "Incompatible plugin version"),
-                isOutdated: inspectorKitVersion < Self.currentInspectorKitVersion
-            ))
-            return nil
-        }
+        let driverType = principalClass as? any DriverPlugin.Type
+        let exportType = principalClass as? any ExportFormatPlugin.Type
+        let importType = principalClass as? any ImportFormatPlugin.Type
+        let inspectorType = principalClass as? any DocumentInspectorPlugin.Type
 
         let disabled = disabledPluginIds
-        let driverType = rawDriverType
-        let version = (bundle.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0.0"
+        let version: String
+        if let declared = Self.bundleShortVersion(at: url) {
+            version = declared
+        } else {
+            Self.logger.warning("Plugin '\(bundleId)' missing CFBundleShortVersionString; defaulting to 0.0.0")
+            version = "0.0.0"
+        }
         let entry = PluginEntry(
             id: bundleId,
             bundle: bundle,
@@ -533,7 +621,10 @@ final class PluginManager {
             databaseTypeId: driverType?.databaseTypeId,
             additionalTypeIds: driverType?.additionalDatabaseTypeIds ?? [],
             pluginIconName: driverType?.iconName ?? "puzzlepiece",
-            defaultPort: driverType?.defaultPort
+            defaultPort: driverType?.defaultPort,
+            exportFormatId: exportType?.formatId,
+            importFormatId: importType?.formatId,
+            inspectorId: inspectorType?.inspectorId
         )
 
         plugins.append(entry)
@@ -587,7 +678,8 @@ final class PluginManager {
                         registryId: Self.readRegistryMetadata(for: winner.url)?.pluginId,
                         name: winner.url.deletingPathExtension().lastPathComponent,
                         reason: error.localizedDescription,
-                        isOutdated: (error as? PluginError)?.isOutdated ?? false
+                        isOutdated: (error as? PluginError)?.isOutdated ?? false,
+                        providedDatabaseTypeIds: bundle.flatMap { PluginManifest(bundle: $0)?.providedDatabaseTypeIds } ?? []
                     ))
                 }
             }
@@ -695,34 +787,12 @@ final class PluginManager {
         Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(self.driverPlugins.count) driver(s), \(self.exportPlugins.count) export format(s), \(self.importPlugins.count) import format(s)")
     }
 
-    func loadPendingPlugins(clearRestartFlag: Bool = false) {
-        if clearRestartFlag {
-            needsRestart = false
-        }
-        guard !pendingPluginURLs.isEmpty else { return }
-        let pending = pendingPluginURLs
-        pendingPluginURLs.removeAll()
-
-        for entry in pending {
-            do {
-                try loadPlugin(at: entry.url, source: entry.source)
-            } catch {
-                Self.logger.error("Failed to load plugin at \(entry.url.lastPathComponent): \(error.localizedDescription)")
-            }
-        }
-
-        queryBuildingDriverCache.removeAll()
-        hasFinishedInitialLoad = true
-        validateDependencies()
-        Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(self.driverPlugins.count) driver(s), \(self.exportPlugins.count) export format(s), \(self.importPlugins.count) import format(s)")
-    }
-
     private func discoverPlugin(at url: URL, source: PluginSource) throws {
         guard let bundle = Bundle(url: url) else {
             throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
         }
 
-        try Self.validateBundleVersions(bundle, source: source)
+        try Self.validateBundleVersions(bundle)
 
         if source == .userInstalled {
             try verifyCodeSignature(bundle: bundle)
@@ -732,38 +802,16 @@ final class PluginManager {
     }
 
     @discardableResult
-    func loadPlugin(at url: URL, source: PluginSource) throws -> PluginEntry {
-        guard let bundle = Bundle(url: url) else {
-            throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
-        }
-
-        try Self.validateBundleVersions(bundle, source: source)
-
-        if source == .userInstalled {
-            try verifyCodeSignature(bundle: bundle)
-        }
-
-        guard bundle.load() else {
-            throw PluginError.invalidBundle("Bundle failed to load executable")
-        }
-
-        guard let entry = registerBundle(bundle, url: url, source: source) else {
-            throw PluginError.invalidBundle("Principal class does not conform to TableProPlugin")
-        }
-
-        return entry
-    }
-
-    @discardableResult
-    func loadPluginAsync(at url: URL, source: PluginSource) async throws -> PluginEntry {
-        if source == .userInstalled {
-            guard let bundle = Bundle(url: url) else {
-                throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
-            }
-            try verifyCodeSignature(bundle: bundle)
-        }
-
+    func loadPluginAsync(
+        at url: URL,
+        source: PluginSource,
+        replacingBundleId: String? = nil
+    ) async throws -> PluginEntry {
         let loaded = try await Self.validateAndLoadBundleAsync(at: url, source: source)
+
+        if let replacingBundleId {
+            replaceExistingPlugin(bundleId: replacingBundleId)
+        }
 
         guard let entry = registerBundle(loaded, url: url, source: source) else {
             throw PluginError.invalidBundle("Principal class does not conform to TableProPlugin")
@@ -776,16 +824,9 @@ final class PluginManager {
         at url: URL,
         source: PluginSource
     ) async throws -> Bundle {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let bundle = try validateAndLoadBundle(at: url, source: source)
-                    continuation.resume(returning: bundle)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+        try await Task.detached(priority: .userInitiated) {
+            try Self.validateAndLoadBundle(at: url, source: source)
+        }.value
     }
 
     func diagnose(error: Error, for type: DatabaseType) -> PluginDiagnostic? {
@@ -798,6 +839,12 @@ final class PluginManager {
         guard let driver = driverPlugins[type.pluginTypeId] else { return .useAppDefault }
         guard let provider = driver as? PluginDefaultSortProvider else { return .useAppDefault }
         return provider.defaultSortHint(forTable: table)
+    }
+
+    func browseFilterDescriptor(for type: DatabaseType) -> BrowseFilterDescriptor? {
+        guard let driver = driverPlugins[type.pluginTypeId] else { return nil }
+        guard let provider = driver as? PluginBrowseFilterProvider else { return nil }
+        return provider.browseFilterDescriptor
     }
 
     func replaceExistingPlugin(bundleId: String) {
@@ -824,19 +871,14 @@ final class PluginManager {
             }
         }
 
-        if let exportClass = entry.bundle.principalClass as? any ExportFormatPlugin.Type {
-            let formatId = exportClass.formatId
-            exportPlugins = exportPlugins.filter { key, _ in key != formatId }
+        if let formatId = entry.exportFormatId {
+            exportPlugins.removeValue(forKey: formatId)
         }
-
-        if let importClass = entry.bundle.principalClass as? any ImportFormatPlugin.Type {
-            let formatId = importClass.formatId
-            importPlugins = importPlugins.filter { key, _ in key != formatId }
+        if let formatId = entry.importFormatId {
+            importPlugins.removeValue(forKey: formatId)
         }
-
-        if let inspectorClass = entry.bundle.principalClass as? any DocumentInspectorPlugin.Type {
-            let inspectorId = inspectorClass.inspectorId
-            inspectorPlugins = inspectorPlugins.filter { key, _ in key != inspectorId }
+        if let inspectorId = entry.inspectorId {
+            inspectorPlugins.removeValue(forKey: inspectorId)
         }
     }
 }

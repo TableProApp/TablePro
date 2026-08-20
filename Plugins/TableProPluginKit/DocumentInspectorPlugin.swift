@@ -1,9 +1,12 @@
-import AppKit
 import Foundation
+
+#if canImport(AppKit)
+import AppKit
 
 public enum InspectorWindowFactory {
     @MainActor public static var make: ((NSDocument) -> NSWindowController?)?
 }
+#endif
 
 public protocol DocumentInspectorPlugin: TableProPlugin {
     static var inspectorId: String { get }
@@ -21,6 +24,7 @@ public extension DocumentInspectorPlugin {
     static var iconName: String { "doc.text" }
 }
 
+@frozen
 public enum InspectorColumnType: String, Sendable, Equatable, CaseIterable {
     case text
     case integer
@@ -56,6 +60,21 @@ public protocol InspectorDocument: AnyObject {
     func insertColumn(at index: Int, name: String)
     func removeColumn(at index: Int)
     func renameColumn(at index: Int, to name: String)
+    func splitColumn(at index: Int, separator: String, isRegex: Bool)
+    func mergeColumns(at index: Int, separator: String)
+    func toggleHeaderRow()
     func setTypeOverride(_ type: InspectorColumnType?, forColumn index: Int)
     var onChange: (() -> Void)? { get set }
+}
+
+public extension InspectorDocument {
+    func splitColumn(at index: Int, separator: String, isRegex: Bool) {}
+    func mergeColumns(at index: Int, separator: String) {}
+    func toggleHeaderRow() {}
+}
+
+@MainActor
+public protocol CSVConfigurableDocument: InspectorDocument {
+    var csvDialect: CSVDialect { get }
+    func reload(with dialect: CSVDialect)
 }

@@ -15,14 +15,29 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     private(set) var executedQueries: [String] = []
     private(set) var fetchColumnsCalls: Int = 0
     private(set) var fetchForeignKeysCalls: Int = 0
+    private(set) var didBeginTransaction = false
+    private(set) var didCommitTransaction = false
+    private(set) var didRollbackTransaction = false
 
     var supportsSchemas: Bool = false
     var currentSchema: String? = nil
     var supportsTransactions: Bool = true
     var serverVersion: String? = "Mock 1.0"
+    var holdsSuspensionBlockingResource: Bool = false
+    var usesBackslashEscaping: Bool = false
+
+    func escapeStringLiteral(_ value: String) -> String {
+        usesBackslashEscaping
+            ? SQLEscaping.backslashStringLiteral(value)
+            : SQLEscaping.ansiStringLiteral(value)
+    }
+
+    var beforeDisconnect: (@Sendable () async -> Void)?
 
     func connect() async throws {}
-    func disconnect() async throws {}
+    func disconnect() async throws {
+        await beforeDisconnect?()
+    }
     func ping() async throws -> Bool { true }
     func cancelCurrentQuery() async throws {}
 
@@ -55,9 +70,9 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     func fetchSchemas() async throws -> [String] { scriptedSchemas }
     func switchDatabase(to name: String) async throws {}
     func switchSchema(to name: String) async throws {}
-    func beginTransaction() async throws {}
-    func commitTransaction() async throws {}
-    func rollbackTransaction() async throws {}
+    func beginTransaction() async throws { didBeginTransaction = true }
+    func commitTransaction() async throws { didCommitTransaction = true }
+    func rollbackTransaction() async throws { didRollbackTransaction = true }
 }
 
 final class MockSecureStore: SecureStore, @unchecked Sendable {

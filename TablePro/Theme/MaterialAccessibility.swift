@@ -11,10 +11,8 @@ internal enum MaterialRole {
         switch self {
         case .banner, .toolbar, .inlineControl:
             Color(nsColor: .controlBackgroundColor)
-        case .sidebar:
+        case .sidebar, .scrim:
             Color(nsColor: .windowBackgroundColor)
-        case .scrim:
-            Color(nsColor: .windowBackgroundColor).opacity(0.95)
         }
     }
 }

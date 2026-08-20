@@ -9,22 +9,53 @@ import SwiftUI
 extension TableViewCoordinator {
     func tableViewColumnDidResize(_ notification: Notification) {
         guard !isRebuildingColumns else { return }
+        guard let column = notification.userInfo?["NSTableColumn"] as? NSTableColumn else { return }
+        guard markColumnWidthUserSized(column) else { return }
         scheduleLayoutPersist()
     }
 
     func tableViewColumnDidMove(_ notification: Notification) {
         guard !isRebuildingColumns else { return }
+        invalidateColumnIndexCache()
+        hasUnpersistedColumnLayoutChanges = true
         layoutPersistTask?.cancel()
         persistColumnLayoutToStorage()
     }
 
     func scheduleLayoutPersist() {
         layoutPersistTask?.cancel()
+        let pending = makePendingColumnLayoutPersistence()
+        pendingColumnLayoutPersistence = nil
+        guard let pending else { return }
+        pendingColumnLayoutPersistence = pending
+        let generation = columnLayoutPersistenceGeneration
         layoutPersistTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            self?.persistColumnLayoutToStorage()
+            guard self?.columnLayoutPersistenceGeneration == generation else { return }
+            self?.flushPendingColumnLayoutPersistence()
         }
+    }
+
+    func flushPendingColumnLayoutPersistence() {
+        layoutPersistTask?.cancel()
+        layoutPersistTask = nil
+        guard let pending = pendingColumnLayoutPersistence else { return }
+        pendingColumnLayoutPersistence = nil
+        persistColumnLayout(pending)
+    }
+
+    func currentRowSelection(fallbackRow: Int? = nil) -> Set<Int> {
+        if !selectionController.isEmpty {
+            return Set(selectionController.selection.affectedRows)
+        }
+        if !selectedRowIndices.isEmpty {
+            return selectedRowIndices
+        }
+        if let fallbackRow, fallbackRow >= 0 {
+            return [fallbackRow]
+        }
+        return []
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -32,11 +63,15 @@ extension TableViewCoordinator {
 
         let previousSelection = selectedRowIndices
         let newSelection = Set(tableView.selectedRowIndexes.map { $0 })
-        if !isSyncingSelection && newSelection != previousSelection {
+        if newSelection != previousSelection {
             selectedRowIndices = newSelection
         }
 
         guard let keyTableView = tableView as? KeyHandlingTableView else { return }
+
+        if !isApplyingProgrammaticRowSelection, !newSelection.isEmpty, !selectionController.isEmpty {
+            selectionController.clear()
+        }
 
         let newFocus = resolvedFocus(
             previous: previousSelection,

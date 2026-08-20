@@ -77,6 +77,18 @@ struct CSVDialectDetectionTests {
         let dialect = CSVDialect.detect(from: data)
         #expect(dialect.encoding == .windowsCP1252)
     }
+
+    @Test("Default escape character is the quote character")
+    func defaultEscapeChar() {
+        #expect(CSVDialect.csv.escapeChar == 0x22)
+        let detected = CSVDialect.detect(from: "a,b\n1,2\n".data(using: .utf8)!)
+        #expect(detected.escapeChar == 0x22)
+    }
+
+    @Test("Escape character follows a non-default quote character")
+    func escapeFollowsQuote() {
+        #expect(CSVDialect(delimiter: 0x2C, quoteChar: 0x27).escapeChar == 0x27)
+    }
 }
 
 @Suite("CSVStreamingParser")
@@ -131,6 +143,37 @@ struct CSVStreamingParserTests {
         let (data, ranges, parser) = parse(#"a,"say ""hi""",c"# + "\n")
         let fields = row(data, parser, ranges[0])
         #expect(fields == ["a", #"say "hi""#, "c"])
+    }
+
+    @Test("Backslash escape decodes an escaped quote to a single quote")
+    func backslashEscapesQuote() {
+        var dialect = CSVDialect.csv
+        dialect.escapeChar = 0x5C
+        let (data, ranges, parser) = parse(#""a\"b",c"# + "\n", dialect: dialect)
+        #expect(ranges.count == 1)
+        let fields = row(data, parser, ranges[0])
+        #expect(fields == [#"a"b"#, "c"])
+    }
+
+    @Test("Backslash escape decodes a doubled backslash to a single backslash")
+    func backslashEscapesBackslash() {
+        var dialect = CSVDialect.csv
+        dialect.escapeChar = 0x5C
+        let (data, ranges, parser) = parse(#""a\\b""# + "\n", dialect: dialect)
+        let fields = row(data, parser, ranges[0])
+        #expect(fields == [#"a\b"#])
+    }
+
+    @Test("field(at:column:) honors the backslash escape inside a quoted field")
+    func fieldBackslashEscape() {
+        var dialect = CSVDialect.csv
+        dialect.escapeChar = 0x5C
+        let (data, ranges, parser) = parse(#""a\"b",c"# + "\n", dialect: dialect)
+        let first = data.withUnsafeBytes { raw -> String in
+            guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return "" }
+            return parser.field(UnsafeBufferPointer(start: base, count: raw.count), range: ranges[0], column: 0)
+        }
+        #expect(first == #"a"b"#)
     }
 
     @Test("Empty fields preserved")
@@ -265,6 +308,39 @@ struct CSVRowStoreTests {
         #expect(store.cells(forRow: 4) == ["5", "5"])
     }
 
+    @Test("insertRow places a row at the given index and shifts the rest down")
+    func insertRowAtIndex() {
+        let store = makeStore("a,b\n1,1\n3,3\n")
+        store.insertRow(["2", "2"], at: 1)
+        #expect(store.rowCount == 3)
+        #expect(store.cells(forRow: 0) == ["1", "1"])
+        #expect(store.cells(forRow: 1) == ["2", "2"])
+        #expect(store.cells(forRow: 2) == ["3", "3"])
+    }
+
+    @Test("insertRow at 0 inserts above the first row")
+    func insertRowAtTop() {
+        let store = makeStore("a,b\n1,1\n2,2\n")
+        store.insertRow(["0", "0"], at: 0)
+        #expect(store.cells(forRow: 0) == ["0", "0"])
+        #expect(store.cells(forRow: 1) == ["1", "1"])
+    }
+
+    @Test("insertRow past the end clamps to an append")
+    func insertRowClampsToEnd() {
+        let store = makeStore("a,b\n1,1\n")
+        store.insertRow(["9", "9"], at: 99)
+        #expect(store.rowCount == 2)
+        #expect(store.cells(forRow: 1) == ["9", "9"])
+    }
+
+    @Test("insertRow pads a short row to the column count")
+    func insertRowPadsShortRow() {
+        let store = makeStore("a,b,c\n1,2,3\n")
+        store.insertRow(["x"], at: 0)
+        #expect(store.cells(forRow: 0) == ["x", "", ""])
+    }
+
     @Test("renameColumn updates columnNames in place")
     func renameColumnInPlace() {
         let store = makeStore("a,b,c\n1,2,3\n")
@@ -285,6 +361,94 @@ struct CSVRowStoreTests {
         _ = store.removeColumn(at: 1)
         #expect(store.columnNames == ["a", "c"])
         #expect(store.cells(forRow: 0) == ["1", "3"])
+    }
+
+    @Test("split(_:spec:) splits by a literal separator")
+    func splitLiteral() {
+        #expect(CSVRowStore.split("a-b-c", spec: .literal("-")) == ["a", "b", "c"])
+        #expect(CSVRowStore.split("nodash", spec: .literal("-")) == ["nodash"])
+        #expect(CSVRowStore.split("x", spec: .literal("")) == ["x"])
+    }
+
+    @Test("split(_:spec:) splits by a regular expression")
+    func splitRegex() throws {
+        let regex = try NSRegularExpression(pattern: "[0-9]+")
+        #expect(CSVRowStore.split("a12b3c", spec: .regex(regex)) == ["a", "b", "c"])
+    }
+
+    @Test("splitColumn replaces the column with padded split pieces")
+    func splitColumnReplaces() {
+        let store = makeStore("full\nAlice Smith\nBob\n")
+        store.splitColumn(at: 0, spec: .literal(" "))
+        #expect(store.columnNames == ["full 1", "full 2"])
+        #expect(store.cells(forRow: 0) == ["Alice", "Smith"])
+        #expect(store.cells(forRow: 1) == ["Bob", ""])
+    }
+
+    @Test("mergeColumns joins a column with the next using the separator")
+    func mergeColumnsJoins() {
+        let store = makeStore("first,last\nAlice,Smith\nBob,Jones\n")
+        store.mergeColumns(at: 0, separator: " ")
+        #expect(store.columnNames == ["first"])
+        #expect(store.cells(forRow: 0) == ["Alice Smith"])
+        #expect(store.cells(forRow: 1) == ["Bob Jones"])
+    }
+
+    @Test("captureState and restore round-trip a structural change")
+    func captureRestoreRoundTrip() {
+        let store = makeStore("first,last\nAlice,Smith\n")
+        let before = store.captureState()
+        store.mergeColumns(at: 0, separator: " ")
+        #expect(store.columnCount == 1)
+        store.restore(before)
+        #expect(store.columnNames == ["first", "last"])
+        #expect(store.cells(forRow: 0) == ["Alice", "Smith"])
+    }
+
+    @Test("toggleHeaderRow demotes the header into a data row")
+    func toggleHeaderToData() {
+        let store = makeStore("name,age\nAlice,30\n")
+        #expect(store.hasHeaderRow)
+        store.toggleHeaderRow()
+        #expect(!store.hasHeaderRow)
+        #expect(store.columnNames == ["Column 1", "Column 2"])
+        #expect(store.rowCount == 2)
+        #expect(store.cells(forRow: 0) == ["name", "age"])
+        #expect(store.cells(forRow: 1) == ["Alice", "30"])
+    }
+
+    @Test("toggleHeaderRow promotes the first data row into the header")
+    func toggleDataToHeader() {
+        let store = makeStore("1,2\n3,4\n")
+        #expect(!store.hasHeaderRow)
+        store.toggleHeaderRow()
+        #expect(store.hasHeaderRow)
+        #expect(store.columnNames == ["1", "2"])
+        #expect(store.rowCount == 1)
+        #expect(store.cells(forRow: 0) == ["3", "4"])
+    }
+
+    @Test("toggleHeaderRow twice returns to the original state")
+    func toggleHeaderRoundTrip() {
+        let store = makeStore("name,age\nAlice,30\nBob,25\n")
+        store.toggleHeaderRow()
+        store.toggleHeaderRow()
+        #expect(store.hasHeaderRow)
+        #expect(store.columnNames == ["name", "age"])
+        #expect(store.rowCount == 2)
+        #expect(store.cells(forRow: 0) == ["Alice", "30"])
+    }
+
+    @Test("Demoting after a column insert keeps the header row the full width")
+    func toggleHeaderAfterColumnInsert() {
+        let store = makeStore("1,2\n3,4\n")
+        store.toggleHeaderRow()
+        store.insertColumn(at: 2, name: "c")
+        store.toggleHeaderRow()
+        #expect(store.columnCount == 3)
+        #expect(store.columnNames == ["Column 1", "Column 2", "Column 3"])
+        #expect(store.cells(forRow: 0) == ["1", "2", "c"])
+        #expect(store.cells(forRow: 1).count == 3)
     }
 }
 
@@ -350,5 +514,39 @@ struct CSVWriterRoundTripTests {
 
         let written = try Data(contentsOf: outURL)
         #expect(written.prefix(3) == Data([0xEF, 0xBB, 0xBF]))
+    }
+
+    @Test("Writer doubles an embedded quote by default")
+    func writerDefaultDoublesQuote() {
+        let writer = CSVWriter(dialect: .csv)
+        #expect(writer.encodeRow([#"a"b"#, "c"]) == #""a""b",c"#)
+    }
+
+    @Test("Writer escapes an embedded quote with the escape character")
+    func writerBackslashEscapesQuote() {
+        var dialect = CSVDialect.csv
+        dialect.escapeChar = 0x5C
+        let writer = CSVWriter(dialect: dialect)
+        #expect(writer.encodeRow([#"a"b"#, "c"]) == #""a\"b",c"#)
+    }
+
+    @Test("A headerless file is written without a synthetic header row")
+    func roundTripHeaderless() throws {
+        let source = "1,2\n3,4\n"
+        let url = tempURL()
+        try source.data(using: .utf8)!.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        let dialect = CSVDialect.detect(from: data)
+        let store = CSVRowStore(data: data, dialect: dialect)
+        #expect(!store.hasHeaderRow)
+
+        let outURL = tempURL()
+        defer { try? FileManager.default.removeItem(at: outURL) }
+        try CSVWriter(dialect: dialect).write(store, to: outURL)
+
+        let written = try Data(contentsOf: outURL)
+        #expect(written == data)
     }
 }

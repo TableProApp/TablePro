@@ -19,18 +19,20 @@ extension TableViewCoordinator {
         guard row >= 0, columnIndex >= 0, columnIndex < tableRows.columns.count else { return .blocked }
         guard !changeManager.isRowDeleted(row) else { return .blocked }
 
-        let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        if immutable.contains(tableRows.columns[columnIndex]) { return .blocked }
-
         let columnName = tableRows.columns[columnIndex]
-        if tableRows.columnForeignKeys[columnName] != nil { return .blocked }
+        if changeManager.generatedColumns.contains(columnName) { return .blocked }
+
+        let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
+        if immutable.contains(columnName) { return .blocked }
 
         if columnIndex < tableRows.columnTypes.count {
             let ct = tableRows.columnTypes[columnIndex]
-            if ct.isJsonType || ct.isBlobType {
+            if ct.isBlobType {
                 return .blocked
             }
         }
+
+        guard cellTypedValue(at: row, column: columnIndex).asBytes == nil else { return .blocked }
 
         let value: String
         if let displayRow = displayRow(at: row),
@@ -54,13 +56,24 @@ extension TableViewCoordinator {
         false
     }
 
+    /// A grid that will not take a keystroke and says nothing reads as broken. When the refusal has
+    /// a reason the pointer already carries it as the grid's tooltip, and the beep is AppKit's own
+    /// way of saying the attempt was heard and declined.
+    func refuseEditIfExplained() {
+        guard !isEditable, editRefusalMessage != nil else { return }
+        NSSound.beep()
+    }
+
     func beginCellEdit(row: Int, tableColumnIndex: Int) {
         guard let tableView else { return }
         guard tableColumnIndex >= 0, tableColumnIndex < tableView.numberOfColumns else { return }
         let column = tableView.tableColumns[tableColumnIndex]
         guard column.identifier != ColumnIdentitySchema.rowNumberIdentifier else { return }
         guard let columnIndex = dataColumnIndex(from: column.identifier) else { return }
-        guard case .editable(let value) = editEligibility(row: row, columnIndex: columnIndex) else { return }
+        guard case .editable(let value) = editEligibility(row: row, columnIndex: columnIndex) else {
+            refuseEditIfExplained()
+            return
+        }
         showOverlayEditor(
             tableView: tableView,
             row: row,
@@ -78,13 +91,29 @@ extension TableViewCoordinator {
         }
         guard let editor = overlayEditor else { return }
 
+        editor.onRemove = { [weak self] in
+            self?.flushPendingCellPresentationRefresh()
+        }
         editor.onCommit = { [weak self] row, columnIndex, newValue in
             self?.commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
         }
         editor.onTabNavigation = { [weak self] row, column, forward in
             self?.handleOverlayTabNavigation(row: row, column: column, forward: forward)
         }
+        overlayViewer?.dismiss()
         editor.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
+    }
+
+    func showOverlayViewer(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, value: String) {
+        if overlayViewer == nil {
+            overlayViewer = CellOverlayViewer()
+        }
+        guard let viewer = overlayViewer else { return }
+        viewer.onRemove = { [weak self] in
+            self?.flushPendingCellPresentationRefresh()
+        }
+        overlayEditor?.dismiss(commit: false)
+        viewer.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
     }
 
     func handleOverlayTabNavigation(row: Int, column: Int, forward: Bool) {

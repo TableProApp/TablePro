@@ -57,13 +57,13 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
             )
         }
 
-        guard !QueryClassifier.isMultiStatement(query) else {
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+
+        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
             throw MCPProtocolError.invalidParams(
                 detail: "Multi-statement queries are not supported. Send one statement at a time."
             )
         }
-
-        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
         let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
         guard tier == .destructive else {
@@ -76,19 +76,23 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
             sql: query,
             connectionId: connectionId,
             databaseType: meta.databaseType,
-            safeModeLevel: meta.safeModeLevel
+            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
         )
 
-        let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
-        let timeoutSeconds = mcpSettings.queryTimeoutSeconds
+        let mcpSettings = await services.settingsProvider()
+        let timeoutSeconds = MCPLimitResolver.resolveTimeoutSeconds(requested: nil, settings: mcpSettings)
 
         Self.logger.debug("confirm_destructive_operation invoked for connection \(connectionId.uuidString, privacy: .public)")
 
+        let scope = try await services.connectionBridge.resolveScope(
+            connectionId: connectionId,
+            database: nil,
+            schema: nil
+        )
         let result = try await ToolQueryExecutor.executeAndLog(
             services: services,
             query: query,
-            connectionId: connectionId,
-            databaseName: meta.databaseName,
+            scope: scope,
             maxRows: 0,
             timeoutSeconds: timeoutSeconds,
             principalLabel: context.principal.metadata.label

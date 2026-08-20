@@ -34,19 +34,16 @@ extension PluginManager {
                     driverPlugins[additionalId] = driver
                 }
 
-                // Self-register plugin metadata from the DriverPlugin protocol.
                 let snapshot = PluginMetadataRegistry.shared.buildMetadataSnapshot(
                     from: driverType,
                     isDownloadable: driverType.isDownloadable
                 )
+                if snapshot.schema.databaseGroupingStrategy == .hierarchicalSchema, snapshot.supportsDatabaseSwitching {
+                    Self.logger.warning("Plugin '\(pluginId)' declares hierarchicalSchema grouping together with supportsDatabaseSwitching; schema-only engines must declare supportsDatabaseSwitching = false or the container switcher misroutes")
+                }
                 PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: typeId, preserveIcon: true)
                 for additionalId in driverType.additionalDatabaseTypeIds {
-                    var additionalSnapshot = snapshot
-                    if let existingDefault = PluginMetadataRegistry.shared.snapshot(forTypeId: additionalId),
-                       !existingDefault.explainVariants.isEmpty {
-                        additionalSnapshot = snapshot.withExplainVariants(existingDefault.explainVariants)
-                    }
-                    PluginMetadataRegistry.shared.register(snapshot: additionalSnapshot, forTypeId: additionalId, preserveIcon: true)
+                    PluginMetadataRegistry.shared.registerVariant(pluginSnapshot: snapshot, forTypeId: additionalId)
                     PluginMetadataRegistry.shared.registerTypeAlias(additionalId, primaryTypeId: typeId)
                 }
 
@@ -217,6 +214,16 @@ extension PluginManager {
             .editor.sqlDialect
     }
 
+    /// How this engine can express case-insensitive matching. SQL engines answer from their
+    /// dialect; document stores have no dialect and declare it on the plugin directly.
+    func caseSensitivityStyle(for databaseType: DatabaseType) -> SQLDialectDescriptor.CaseSensitivityStyle {
+        if let dialect = sqlDialect(for: databaseType) {
+            return dialect.caseSensitivityStyle
+        }
+        guard let plugin = driverPlugin(for: databaseType) else { return .unsupported }
+        return type(of: plugin).caseSensitivityStyle
+    }
+
     func statementCompletions(for databaseType: DatabaseType) -> [CompletionEntry] {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .editor.statementCompletions ?? []
@@ -260,6 +267,31 @@ extension PluginManager {
             activateImportFormat(formatId)
         }
         return Array(importPlugins.values)
+    }
+
+    func importPlugins(for databaseType: DatabaseType) -> [any ImportFormatPlugin] {
+        guard supportsImport(for: databaseType) else { return [] }
+        let typeId = databaseType.rawValue
+        return allImportPlugins()
+            .filter { plugin in
+                let supported = type(of: plugin).supportedDatabaseTypeIds
+                let excluded = type(of: plugin).excludedDatabaseTypeIds
+                if !supported.isEmpty && !supported.contains(typeId) { return false }
+                if excluded.contains(typeId) { return false }
+                return true
+            }
+            .sorted { lhs, rhs in
+                let lhsRowBased = type(of: lhs).requiresTargetTable
+                let rhsRowBased = type(of: rhs).requiresTargetTable
+                if lhsRowBased != rhsRowBased { return !lhsRowBased }
+                return type(of: lhs).formatDisplayName < type(of: rhs).formatDisplayName
+            }
+    }
+
+    func importFormatOptions(for databaseType: DatabaseType) -> [ImportFormatOption] {
+        importPlugins(for: databaseType).map {
+            ImportFormatOption(id: type(of: $0).formatId, name: type(of: $0).formatDisplayName)
+        }
     }
 
     /// Returns a temporary plugin driver for query building (buildBrowseQuery), or nil
@@ -316,6 +348,31 @@ extension PluginManager {
             .capabilities.supportsSchemaSwitching ?? false
     }
 
+    /// Every container dimension the engine can switch, ordered outermost first. An engine can have
+    /// both, which is why this is a list: PostgreSQL browses a database and a schema within it, and
+    /// naming only one of them is what left the schema with no control of its own.
+    func switchableContainers(for databaseType: DatabaseType) -> [ContainerSwitchTarget] {
+        var targets: [ContainerSwitchTarget] = []
+        if supportsDatabaseSwitching(for: databaseType) {
+            targets.append(.database)
+        }
+        if supportsSchemaSwitching(for: databaseType) {
+            targets.append(.schema)
+        }
+        return targets
+    }
+
+    /// The dimension a tab and a workspace are anchored to, which is the outermost one the engine
+    /// switches. Derived from `switchableContainers` so the two orderings cannot drift apart.
+    /// This is not "the dimension the user can switch": read `switchableContainers` for that.
+    func containerSwitchTarget(for databaseType: DatabaseType) -> ContainerSwitchTarget? {
+        switchableContainers(for: databaseType).first
+    }
+
+    func supportsContainerSwitching(for databaseType: DatabaseType) -> Bool {
+        containerSwitchTarget(for: databaseType) != nil
+    }
+
     func supportsImport(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .capabilities.supportsImport ?? true
@@ -349,6 +406,29 @@ extension PluginManager {
     func tableEntityName(for databaseType: DatabaseType) -> String {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .schema.tableEntityName ?? "Tables"
+    }
+
+    func containerEntityName(for databaseType: DatabaseType) -> String {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .schema.containerEntityName ?? "Database"
+    }
+
+    func defaultUnixSocketPath(for databaseType: DatabaseType) -> String? {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .connection.defaultUnixSocketPath
+    }
+
+    func containerEntityNamePlural(for databaseType: DatabaseType) -> String {
+        containerEntityName(for: databaseType) + "s"
+    }
+
+    func schemaEntityName(for databaseType: DatabaseType) -> String {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .schema.schemaEntityName ?? "Schema"
+    }
+
+    func schemaEntityNamePlural(for databaseType: DatabaseType) -> String {
+        schemaEntityName(for: databaseType) + "s"
     }
 
     func supportsCascadeDrop(for databaseType: DatabaseType) -> Bool {
@@ -406,6 +486,16 @@ extension PluginManager {
             .capabilities.supportsSSL ?? true
     }
 
+    func supportsCloudflareTunnel(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsCloudflareTunnel ?? true
+    }
+
+    func supportsSOCKSProxy(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsSOCKSProxy ?? true
+    }
+
     func supportsColumnReorder(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .supportsColumnReorder ?? false
@@ -414,6 +504,11 @@ extension PluginManager {
     func supportsDropDatabase(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .capabilities.supportsDropDatabase ?? false
+    }
+
+    func supportsDropSchema(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsDropSchema ?? false
     }
 
     func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {
@@ -441,6 +536,35 @@ extension PluginManager {
             .schema.databaseGroupingStrategy ?? .byDatabase
     }
 
+    /// A file holds exactly one database, so a file-based engine never has a tree to draw.
+    /// Every other mode can: a server hosts several databases, and an embedded engine can
+    /// attach them.
+    ///
+    /// Both remaining terms are permissive by default (`supportsDatabaseSwitching` is true
+    /// and the grouping strategy is `.byDatabase` on `DriverPlugin`), so a plugin that
+    /// declares neither gets a tree its default `fetchDatabases()` returns nothing for.
+    /// That was true of networked plugins before this guard was widened and is why the
+    /// list stays a declaration rather than an inference; `DatabaseTreeCapabilityTests`
+    /// pins it for both modes.
+    func supportsDatabaseTree(for databaseType: DatabaseType) -> Bool {
+        Self.supportsDatabaseTree(
+            connectionMode: connectionMode(for: databaseType),
+            supportsDatabaseSwitching: supportsDatabaseSwitching(for: databaseType),
+            grouping: databaseGroupingStrategy(for: databaseType)
+        )
+    }
+
+    /// The rule itself, as a pure function of the three inputs, so it can be exercised for
+    /// combinations no registered type declares today.
+    static func supportsDatabaseTree(
+        connectionMode: ConnectionMode,
+        supportsDatabaseSwitching: Bool,
+        grouping: GroupingStrategy
+    ) -> Bool {
+        guard connectionMode != .fileBased, supportsDatabaseSwitching else { return false }
+        return grouping == .byDatabase || grouping == .bySchema
+    }
+
     func defaultGroupName(for databaseType: DatabaseType) -> String {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .schema.defaultGroupName ?? "main"
@@ -461,6 +585,7 @@ extension PluginManager {
 
     func installMissingPlugin(
         for databaseType: DatabaseType,
+        registryClient: RegistryClient = .shared,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws {
         let pluginTypeId = databaseType.pluginTypeId
@@ -470,7 +595,6 @@ extension PluginManager {
         }) {
             if !existingEntry.isEnabled {
                 setEnabled(true, pluginId: existingEntry.id)
-                await loadPendingPluginsAsync()
             }
             if driverPlugins[pluginTypeId] != nil {
                 Self.logger.info("Re-enabled existing plugin '\(existingEntry.name)' for '\(databaseType.rawValue)'")
@@ -479,27 +603,33 @@ extension PluginManager {
             Self.logger.warning("Plugin '\(existingEntry.id)' exists but driver not registered, reinstalling")
             if existingEntry.source == .userInstalled {
                 do {
-                    try uninstallPlugin(id: existingEntry.id)
+                    try await uninstallPlugin(id: existingEntry.id)
                 } catch {
                     Self.logger.warning("Failed to uninstall plugin '\(existingEntry.id)' before reinstall: \(error.localizedDescription)")
                 }
             }
         }
 
-        let registryClient = RegistryClient.shared
-        await registryClient.fetchManifest()
+        await registryClient.ensureManifest(.ifStale)
+        var registryPlugin = Self.registryPlugin(forTypeId: pluginTypeId, in: registryClient.manifest)
 
-        guard let manifest = registryClient.manifest else {
-            throw PluginError.downloadFailed(String(localized: "Could not fetch plugin registry"))
+        if registryPlugin == nil {
+            await registryClient.ensureManifest(.mustBeCurrent)
+            registryPlugin = Self.registryPlugin(forTypeId: pluginTypeId, in: registryClient.manifest)
         }
 
-        guard let registryPlugin = manifest.plugins.first(where: { plugin in
-            plugin.databaseTypeIds?.contains(pluginTypeId) == true
-        }) else {
+        guard let registryPlugin else {
+            guard registryClient.fetchState == .loaded else {
+                throw PluginError.registryUnreachable
+            }
             throw PluginError.notFound
         }
 
-        let entry = try await installFromRegistry(registryPlugin, progress: progress)
+        let entry = try await installFromRegistry(registryPlugin, registryClient: registryClient, progress: progress)
         Self.logger.info("Installed missing plugin '\(entry.name)' for database type '\(databaseType.rawValue)'")
+    }
+
+    nonisolated static func registryPlugin(forTypeId pluginTypeId: String, in manifest: RegistryManifest?) -> RegistryPlugin? {
+        manifest?.plugins.first { $0.databaseTypeIds?.contains(pluginTypeId) == true }
     }
 }

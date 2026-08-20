@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import Observation
 import os
@@ -16,6 +17,7 @@ final class QueryTabManager {
             if oldValue.map(\.id) != tabs.map(\.id) {
                 tabStructureVersion += 1
             }
+            publishAnchorChange(oldTabs: oldValue, newTabs: tabs)
             syncTabSessionRegistry(oldTabs: oldValue, newTabs: tabs)
         }
     }
@@ -23,6 +25,8 @@ final class QueryTabManager {
     var selectedTabId: UUID?
 
     var tabStructureVersion: Int = 0
+
+    @ObservationIgnored var pendingFocusTabId: UUID?
 
     @ObservationIgnored private var _tabIndexMap: [UUID: Int] = [:]
     @ObservationIgnored private var _tabIndexMapDirty = true
@@ -38,11 +42,43 @@ final class QueryTabManager {
         self.tabSessionRegistry = tabSessionRegistry
     }
 
+    /// Closing a tab used to mean closing its window, because a tab was a window. Selection
+    /// lands on the tab that took its place so the pane never blanks while others are open.
+    func closeTab(id: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let wasSelected = selectedTab?.id == id
+        tabs.remove(at: index)
+        guard wasSelected else { return }
+        selectedTabId = tabs.indices.contains(index) ? tabs[index].id : tabs.last?.id
+    }
+
+    func selectTab(at index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        selectedTabId = tabs[index].id
+    }
+
+    func selectTab(offsetBy offset: Int) {
+        guard !tabs.isEmpty else { return }
+        let current = selectedTab.flatMap { tab in tabs.firstIndex { $0.id == tab.id } } ?? 0
+        let count = tabs.count
+        selectedTabId = tabs[((current + offset) % count + count) % count].id
+    }
+
     func bindTabSessionRegistry(_ registry: TabSessionRegistry) {
         tabSessionRegistry = registry
         for tab in tabs where registry.session(for: tab.id) == nil {
-            registry.register(TabSession(queryTab: tab))
+            registry.register(TabSession(id: tab.id))
         }
+    }
+
+    /// The workspace rail lists a container while a tab holds it open, so it reloads when
+    /// that set can have changed. Every other tab mutation, a keystroke above all, leaves
+    /// the anchors identical and publishes nothing.
+    private func publishAnchorChange(oldTabs: [QueryTab], newTabs: [QueryTab]) {
+        guard WorkspaceAnchoring.anchors(in: oldTabs) != WorkspaceAnchoring.anchors(in: newTabs) else {
+            return
+        }
+        AppEvents.shared.workspaceTabsChanged.send()
     }
 
     private func syncTabSessionRegistry(oldTabs: [QueryTab], newTabs: [QueryTab]) {
@@ -54,7 +90,7 @@ final class QueryTabManager {
         }
         for addedTab in newTabs where !oldIds.contains(addedTab.id) {
             if registry.session(for: addedTab.id) == nil {
-                registry.register(TabSession(queryTab: addedTab))
+                registry.register(TabSession(id: addedTab.id))
             }
         }
     }
@@ -103,11 +139,11 @@ final class QueryTabManager {
 
     // MARK: - Tab Management
 
-    func addTab(initialQuery: String? = nil, title: String? = nil, databaseName: String = "", sourceFileURL: URL? = nil) {
+    func addTab(initialQuery: String? = nil, title: String? = nil, databaseName: String = "", sourceFileURL: URL? = nil, claimFocus: Bool = false) {
         if let sourceFileURL,
            let existingIndex = tabs.firstIndex(where: { $0.content.sourceFileURL == sourceFileURL }) {
             if let query = initialQuery {
-                tabs[existingIndex].content.query = query
+                adoptReopenedFile(at: existingIndex, content: query, url: sourceFileURL)
             }
             selectedTabId = tabs[existingIndex].id
             return
@@ -117,7 +153,7 @@ final class QueryTabManager {
         if let title {
             tabTitle = title
         } else if let sourceFileURL {
-            tabTitle = sourceFileURL.deletingPathExtension().lastPathComponent
+            tabTitle = QueryTab.fileDisplayTitle(for: sourceFileURL)
         } else {
             tabTitle = nextTitle()
         }
@@ -132,27 +168,102 @@ final class QueryTabManager {
         newTab.content.sourceFileURL = sourceFileURL
         if let sourceFileURL {
             newTab.content.savedFileContent = newTab.content.query
-            newTab.content.loadMtime = (try? FileManager.default.attributesOfItem(atPath: sourceFileURL.path)[.modificationDate]) as? Date
+            newTab.content.loadMtime = FileTextLoader.modificationDate(of: sourceFileURL)
         }
         tabs.append(newTab)
         selectedTabId = newTab.id
+        if claimFocus {
+            pendingFocusTabId = newTab.id
+        }
     }
 
+    /// A file that is already open is shown, not reloaded over.
+    ///
+    /// Opening it again is a request to look at it, so the buffer is replaced only when there is
+    /// nothing of the user's in it. A tab with unsaved edits keeps them: `setText` on the editor
+    /// resets its storage, so the replacement was not undoable and nothing asked first. The one
+    /// path that does replace a dirty buffer is the file-changed-on-disk banner, which asks.
+    ///
+    /// The baseline moves with the buffer. Writing the text without it left the tab reading as
+    /// dirty against content it had just loaded, and armed the same banner for a change it had
+    /// already taken.
+    private func adoptReopenedFile(at index: Int, content: String, url: URL) {
+        /// An unknown baseline is not a licence to replace what the tab holds. `isFileDirty` reads a
+        /// missing one as clean, so without this a tab that never learned what its file said would
+        /// be overwritten by the very check meant to protect it.
+        guard tabs[index].content.savedFileContent != nil, !tabs[index].content.isFileDirty else { return }
+        tabs[index].content.query = content
+        tabs[index].content.savedFileContent = content
+        tabs[index].content.loadMtime = FileTextLoader.modificationDate(of: url)
+        tabs[index].content.externalModificationDetected = false
+    }
+
+    /// Take an already-built tab, such as one rebuilt from the recently closed history, rather than
+    /// minting a fresh one. Selecting it drives the window title, toolbar, and persistence through
+    /// the usual `selectedTabId` observation.
+    func adoptTab(_ tab: QueryTab, claimFocus: Bool = false) {
+        tabs.append(tab)
+        selectedTabId = tab.id
+        if claimFocus {
+            pendingFocusTabId = tab.id
+        }
+    }
+
+    var onTableOpened: ((_ tableName: String, _ schemaName: String?, _ databaseName: String, _ isView: Bool, _ isPreview: Bool) -> Void)?
+
+    /// Fired the instant a tab stops being about the table it was about. Whoever owns execution
+    /// listens here rather than at the navigation call sites, because a retarget that forgets to
+    /// invalidate is exactly how a finished query paints its rows into a tab showing something else.
+    var onTabRetargeted: ((UUID) -> Void)?
+
+    private func notifyTableOpened(
+        tableName: String, schemaName: String?, databaseName: String, isView: Bool, isPreview: Bool
+    ) {
+        onTableOpened?(tableName, schemaName, databaseName, isView, isPreview)
+    }
+
+    /// The tab already showing this table, preferring the selected one.
+    ///
+    /// A table can legitimately hold more than one tab now, so plain array order would send a
+    /// sidebar click on the table you are already looking at to the other copy of it.
+    func tabShowingTable(
+        named tableName: String, databaseName: String, schemaName: String?
+    ) -> QueryTab? {
+        func matches(_ tab: QueryTab) -> Bool {
+            tab.tabType == .table
+                && tab.tableContext.tableName == tableName
+                && tab.tableContext.databaseName == databaseName
+                && tab.tableContext.schemaName == schemaName
+        }
+        if let selected = selectedTab, matches(selected) { return selected }
+        return tabs.first(where: matches)
+    }
+
+    /// - Parameter allowsDuplicate: `true` when the caller asked for a tab of its own, so a table
+    ///   that is already open gets a second one instead of the existing tab being reselected.
+    ///   "Open in New Tab" means what it says only if this reaches here.
+    /// - Returns: `true` when a tab was created, `false` when an existing one was reselected.
+    ///   Callers that carry per-tab payload state must not write it onto a tab they did not create.
+    @discardableResult
     func addTableTab(
         tableName: String,
         databaseType: DatabaseType = .mysql,
         databaseName: String = "",
         schemaName: String? = nil,
+        isView: Bool = false,
+        isPreview: Bool = false,
+        allowsDuplicate: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
-    ) throws {
-        if let existingTab = tabs.first(where: {
-            $0.tabType == .table
-                && $0.tableContext.tableName == tableName
-                && $0.tableContext.databaseName == databaseName
-                && $0.tableContext.schemaName == schemaName
-        }) {
+    ) throws -> Bool {
+        if !allowsDuplicate, let existingTab = tabShowingTable(
+            named: tableName, databaseName: databaseName, schemaName: schemaName
+        ) {
             selectedTabId = existingTab.id
-            return
+            notifyTableOpened(
+                tableName: tableName, schemaName: schemaName, databaseName: databaseName,
+                isView: isView, isPreview: isPreview
+            )
+            return false
         }
 
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
@@ -171,8 +282,14 @@ final class QueryTabManager {
         newTab.pagination = PaginationState(pageSize: pageSize)
         newTab.tableContext.databaseName = databaseName
         newTab.tableContext.schemaName = schemaName
+        newTab.isPreview = isPreview
         tabs.append(newTab)
         selectedTabId = newTab.id
+        notifyTableOpened(
+            tableName: tableName, schemaName: schemaName, databaseName: databaseName,
+            isView: isView, isPreview: isPreview
+        )
+        return true
     }
 
     static func tabTitle(name: String, schema: String?, databaseType: DatabaseType) -> String {
@@ -217,54 +334,28 @@ final class QueryTabManager {
         selectedTabId = newTab.id
     }
 
-    func addTerminalTab(databaseName: String = "") {
-        if let existing = tabs.first(where: { $0.tabType == .terminal }) {
+    func addQueryInsightsTab() {
+        if let existing = tabs.first(where: { $0.tabType == .insights }) {
             selectedTabId = existing.id
             return
         }
-        let tabTitle = String(localized: "Terminal")
-        var newTab = QueryTab(title: tabTitle, tabType: .terminal)
-        newTab.tableContext.databaseName = databaseName
+        let tabTitle = String(localized: "Query Insights")
+        var newTab = QueryTab(title: tabTitle, tabType: .insights)
         newTab.tableContext.isEditable = false
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
     }
 
-    func addPreviewTableTab(
-        tableName: String,
-        databaseType: DatabaseType = .mysql,
-        databaseName: String = "",
-        schemaName: String? = nil,
-        quoteIdentifier: ((String) -> String)? = nil
-    ) throws {
-        if let existing = tabs.first(where: {
-            $0.tabType == .table
-                && $0.tableContext.tableName == tableName
-                && $0.tableContext.databaseName == databaseName
-                && $0.tableContext.schemaName == schemaName
-        }) {
+    func addUsersRolesTab() {
+        if let existing = tabs.first(where: { $0.tabType == .usersRoles }) {
             selectedTabId = existing.id
             return
         }
-
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
-        let query = try QueryTab.buildBaseTableQuery(
-            tableName: tableName,
-            databaseType: databaseType,
-            schemaName: schemaName,
-            quoteIdentifier: quoteIdentifier
-        )
-        var newTab = QueryTab(
-            title: Self.tabTitle(name: tableName, schema: schemaName, databaseType: databaseType),
-            query: query,
-            tabType: .table,
-            tableName: tableName
-        )
-        newTab.pagination = PaginationState(pageSize: pageSize)
-        newTab.tableContext.databaseName = databaseName
-        newTab.tableContext.schemaName = schemaName
-        newTab.isPreview = true
+        let tabTitle = String(localized: "Users & Roles")
+        var newTab = QueryTab(title: tabTitle, tabType: .usersRoles)
+        newTab.tableContext.isEditable = false
+        newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
     }
@@ -293,6 +384,8 @@ final class QueryTabManager {
         )
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
 
+        onTabRetargeted?(selectedId)
+
         var tab = tabs[selectedIndex]
         tab.tabType = .table
         tab.title = Self.tabTitle(name: tableName, schema: schemaName, databaseType: databaseType)
@@ -303,8 +396,9 @@ final class QueryTabManager {
         tab.execution.statusMessage = nil
         tab.execution.errorMessage = nil
         tab.execution.lastExecutedAt = nil
-        tab.execution.didEvaluateDefaultSort = false
         tab.display.resultsViewMode = .data
+        tab.display.resultSets = []
+        tab.display.activeResultSetId = nil
         tab.sortState = SortState()
         tab.selectedRowIndices = []
         tab.pendingChanges = TabChangeSnapshot()
@@ -314,11 +408,21 @@ final class QueryTabManager {
         tab.filterState = TabFilterState()
         tab.columnLayout = ColumnLayoutState()
         tab.pagination = PaginationState(pageSize: pageSize)
+        // Retargeting points the tab at a different table, so a restore that has not been consumed
+        // yet describes rows this tab no longer shows. Left behind, it is persisted against the new
+        // table and applied to it on the next launch.
+        tab.pendingRestoredSort = nil
+        tab.restoredPage = nil
+        tab.restoredPageSize = nil
         tab.tableContext.databaseName = databaseName
         tab.tableContext.schemaName = schemaName
         tab.isPreview = isPreview
         tabs[selectedIndex] = tab
         tabStructureVersion += 1
+        notifyTableOpened(
+            tableName: tableName, schemaName: schemaName, databaseName: databaseName,
+            isView: isView, isPreview: isPreview
+        )
         return true
     }
 

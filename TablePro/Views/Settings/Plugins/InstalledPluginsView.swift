@@ -18,6 +18,7 @@ struct InstalledPluginsView: View {
     @State private var errorAlertTitle = ""
     @State private var errorAlertMessage = ""
     @State private var dismissedRestartBanner = false
+    @State private var dismissedRejectedBanner = false
 
     private var filteredPlugins: [PluginEntry] {
         if searchText.isEmpty { return pluginManager.plugins }
@@ -26,6 +27,9 @@ struct InstalledPluginsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if !pluginManager.rejectedPlugins.isEmpty && !dismissedRejectedBanner {
+                rejectedPluginsBanner
+            }
             if pluginManager.needsRestart && !dismissedRestartBanner {
                 restartBanner
             }
@@ -39,9 +43,7 @@ struct InstalledPluginsView: View {
             }
         }
         .task {
-            if registryClient.fetchState == .idle {
-                await registryClient.fetchManifest()
-            }
+            await registryClient.ensureManifest(.ifStale)
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let provider = providers.first,
@@ -84,6 +86,138 @@ struct InstalledPluginsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    // MARK: - Rejected Plugins Banner
+
+    private var rejectedPluginsBanner: some View {
+        let actions = rejectedActionsByURL
+        let recoverable = !actions.values.contains { if case .notInRegistry = $0 { return true } else { return false } }
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: recoverable ? "arrow.triangle.2.circlepath" : "exclamationmark.circle.fill")
+                    .foregroundStyle(recoverable ? .orange : .red)
+                Text(rejectedBannerTitle(recoverable: recoverable))
+                    .font(.callout.weight(.medium))
+                Spacer()
+                Button(String(localized: "Dismiss")) { dismissedRejectedBanner = true }
+                    .buttonStyle(.borderless)
+                    .font(.callout)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+
+            Divider()
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(pluginManager.rejectedPlugins, id: \.url) { plugin in
+                        rejectedPluginRow(plugin, action: actions[plugin.url] ?? .awaitingCompatibleBuild)
+                        Divider().padding(.leading, 12)
+                    }
+                }
+            }
+            .frame(maxHeight: Self.rejectedBannerMaxHeight)
+
+            Divider()
+        }
+    }
+
+    private static let rejectedBannerMaxHeight: CGFloat = 168
+
+    private var rejectedActionsByURL: [URL: RejectedPluginAction] {
+        var result: [URL: RejectedPluginAction] = [:]
+        for plugin in pluginManager.rejectedPlugins {
+            result[plugin.url] = pluginManager.rejectedAction(for: plugin)
+        }
+        return result
+    }
+
+    private func rejectedBannerTitle(recoverable: Bool) -> String {
+        let count = pluginManager.rejectedPlugins.count
+        if recoverable {
+            return count == 1
+                ? String(localized: "1 plugin needs an update to load.")
+                : String(format: String(localized: "%d plugins need an update to load."), count)
+        }
+        return count == 1
+            ? String(localized: "1 plugin could not be loaded.")
+            : String(format: String(localized: "%d plugins could not be loaded."), count)
+    }
+
+    @ViewBuilder
+    private func rejectedPluginRow(_ plugin: RejectedPlugin, action: RejectedPluginAction) -> some View {
+        HStack(spacing: 8) {
+            PluginIconView(name: rejectedIconName(for: plugin))
+                .font(.title3)
+                .frame(width: 24, height: 24)
+                .foregroundStyle(.tertiary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(plugin.name)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                Text(plugin.reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer()
+            rejectedActionControl(for: plugin, action: action)
+            Button(String(localized: "Remove")) {
+                removeRejectedPlugin(plugin)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityLabel(String(format: String(localized: "Remove %@"), plugin.name))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    @ViewBuilder
+    private func rejectedActionControl(for plugin: RejectedPlugin, action: RejectedPluginAction) -> some View {
+        switch action {
+        case .updateAvailable(let registryPlugin):
+            Button(String(localized: "Update Now")) {
+                updatePlugin(registryPlugin)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .accessibilityLabel(String(format: String(localized: "Update %@"), plugin.name))
+        case .requiresAppUpdate:
+            Button(String(localized: "Update TablePro")) {
+                UpdaterBridge.shared.checkForUpdates()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help(String(localized: "A newer TablePro is required to load this plugin."))
+        case .awaitingCompatibleBuild, .notInRegistry:
+            EmptyView()
+        }
+    }
+
+    private func rejectedIconName(for plugin: RejectedPlugin) -> String {
+        registryEntry(for: plugin)?.iconName ?? "puzzlepiece"
+    }
+
+    private func registryEntry(for plugin: RejectedPlugin) -> RegistryPlugin? {
+        pluginManager.registryPlugin(for: plugin)
+    }
+
+    private func removeRejectedPlugin(_ plugin: RejectedPlugin) {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: plugin.url.path) {
+            do {
+                try fm.removeItem(at: plugin.url)
+            } catch CocoaError.fileNoSuchFile {
+            } catch {
+                errorAlertTitle = String(localized: "Remove Failed")
+                errorAlertMessage = error.localizedDescription
+                showErrorAlert = true
+                return
+            }
+        }
+        pluginManager.removeFromRejected(url: plugin.url)
     }
 
     private func relaunchApp() {
@@ -312,15 +446,10 @@ struct InstalledPluginsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
-            VStack(spacing: 8) {
-                Image(systemName: "puzzlepiece.extension")
-                    .font(.title)
-                    .foregroundStyle(.tertiary)
-                Text("Select a Plugin")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+            Form {
+                TrustedDevelopersView()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .formStyle(.grouped)
         }
     }
 
@@ -345,6 +474,30 @@ struct InstalledPluginsView: View {
                     Text("Updating...")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                }
+            case .stagedPendingActivation(let newVersion):
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(String(format: String(localized: "v%@ ready to activate"), newVersion))
+                            .font(.callout)
+                        Text(String(localized: "Close active connections to apply."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(String(localized: "Activate Now")) {
+                        activateStagedPlugin(plugin)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    Button(String(localized: "On Quit")) {
+                        installTracker.clearInstall(pluginId: plugin.id)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(String(localized: "Activate next time you launch TablePro"))
                 }
             case .completed:
                 Label(
@@ -372,18 +525,21 @@ struct InstalledPluginsView: View {
 
     private func updatePlugin(_ registryPlugin: RegistryPlugin) {
         Task {
-            installTracker.beginInstall(pluginId: registryPlugin.id)
-            do {
-                _ = try await pluginManager.updateFromRegistry(registryPlugin) { fraction in
-                    installTracker.updateProgress(pluginId: registryPlugin.id, fraction: fraction)
-                    if fraction >= 1.0 {
-                        installTracker.markInstalling(pluginId: registryPlugin.id)
-                    }
-                }
-                installTracker.completeInstall(pluginId: registryPlugin.id)
-            } catch {
-                installTracker.failInstall(pluginId: registryPlugin.id, error: error.localizedDescription)
+            let result = await pluginManager.performRegistryUpdate(registryPlugin)
+            if case .failed(let error) = result {
                 errorAlertTitle = String(localized: "Plugin Update Failed")
+                errorAlertMessage = error.localizedDescription
+                showErrorAlert = true
+            }
+        }
+    }
+
+    private func activateStagedPlugin(_ plugin: PluginEntry) {
+        Task {
+            do {
+                _ = try await pluginManager.commitStagedUpdate(pluginId: plugin.id)
+            } catch {
+                errorAlertTitle = String(localized: "Activation Failed")
                 errorAlertMessage = error.localizedDescription
                 showErrorAlert = true
             }
@@ -432,7 +588,7 @@ struct InstalledPluginsView: View {
             guard confirmed else { return }
 
             do {
-                try pluginManager.uninstallPlugin(id: plugin.id)
+                try await pluginManager.uninstallPlugin(id: plugin.id)
                 selectedPluginId = nil
             } catch {
                 errorAlertTitle = String(localized: "Uninstall Failed")
@@ -452,6 +608,7 @@ private extension PluginCapability {
         case .exportFormat: String(localized: "Export Format")
         case .importFormat: String(localized: "Import Format")
         case .documentInspector: String(localized: "Document Inspector")
+        @unknown default: String(localized: "Unknown")
         }
     }
 }

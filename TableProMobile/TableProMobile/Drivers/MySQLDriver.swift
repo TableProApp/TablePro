@@ -10,29 +10,33 @@ final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     private let user: String
     private let password: String
     private let database: String
-    let sslEnabled: Bool
+    let ssl: DriverSSLConfiguration
 
     var supportsSchemas: Bool { false }
     var currentSchema: String? { nil }
     var supportsTransactions: Bool { true }
 
+    func escapeStringLiteral(_ value: String) -> String {
+        SQLEscaping.backslashStringLiteral(value)
+    }
+
     // Set once during connect() before the driver is shared — safe for concurrent reads
     nonisolated(unsafe) private(set) var serverVersion: String?
 
-    init(host: String, port: Int, user: String, password: String, database: String, sslEnabled: Bool = false) {
+    init(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) {
         self.host = host
         self.port = port
         self.user = user
         self.password = password
         self.database = database
-        self.sslEnabled = sslEnabled
+        self.ssl = ssl
     }
 
     // MARK: - Connection
 
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
-        try await actor.connect(host: host, port: port, user: user, password: password, database: database, sslEnabled: sslEnabled)
+        try await actor.connect(host: host, port: port, user: user, password: password, database: database, ssl: ssl)
         serverVersion = await actor.serverVersion()
     }
 
@@ -256,7 +260,7 @@ final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
 private actor MySQLActor {
     private var mysql: UnsafeMutablePointer<MYSQL>?
 
-    func connect(host: String, port: Int, user: String, password: String, database: String, sslEnabled: Bool) throws {
+    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration) throws {
         // Close existing connection if reconnecting
         if let mysql { mysql_close(mysql); self.mysql = nil }
 
@@ -276,16 +280,21 @@ private actor MySQLActor {
         var reconnect: my_bool = 0
         mysql_options(handle, MYSQL_OPT_RECONNECT, &reconnect)
 
-        if sslEnabled {
-            var sslEnforce: my_bool = 1
-            mysql_options(handle, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
-            var sslVerify: my_bool = 0
-            mysql_options(handle, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
-        } else {
-            var sslEnforce: my_bool = 0
-            mysql_options(handle, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
-            var sslVerify: my_bool = 0
-            mysql_options(handle, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
+        var allowLocalInfile: UInt32 = 0
+        mysql_options(handle, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
+
+        var sslEnforce: my_bool = ssl.isEnabled ? 1 : 0
+        mysql_options(handle, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
+        var sslVerify: my_bool = ssl.verifiesCertificate ? 1 : 0
+        mysql_options(handle, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
+        if let caPath = ssl.existingCACertificatePath {
+            _ = caPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CA, $0) }
+        }
+        if let clientCertPath = ssl.existingClientCertificatePath {
+            _ = clientCertPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CERT, $0) }
+        }
+        if let clientKeyPath = ssl.existingClientKeyPath {
+            _ = clientKeyPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_KEY, $0) }
         }
 
         guard let portU32 = UInt32(exactly: port), (1...65_535).contains(port) else {

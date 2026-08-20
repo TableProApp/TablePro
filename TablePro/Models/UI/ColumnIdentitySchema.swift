@@ -7,7 +7,20 @@ import AppKit
 
 struct ColumnIdentitySchema: Equatable {
     static let rowNumberIdentifier = NSUserInterfaceItemIdentifier("__rowNumber__")
+
+    /// Stand-ins for the columns the window leaves unmounted, holding their width so the document
+    /// keeps its full extent and the horizontal scroller still spans the whole result.
+    ///
+    /// Deliberately outside `dataColumnPrefix`: every loop that walks `tableView.tableColumns`
+    /// resolves a data index through `dataIndex(from:)` first, so a spacer is skipped by all of
+    /// them without any of those call sites learning about it.
+    static let leadingSpacerIdentifier = NSUserInterfaceItemIdentifier("__leadingSpacer__")
+    static let trailingSpacerIdentifier = NSUserInterfaceItemIdentifier("__trailingSpacer__")
     static let dataColumnPrefix = "dataColumn-"
+
+    static func isSpacer(_ identifier: NSUserInterfaceItemIdentifier) -> Bool {
+        identifier == leadingSpacerIdentifier || identifier == trailingSpacerIdentifier
+    }
 
     let identifiers: [NSUserInterfaceItemIdentifier]
     let columnNames: [String]
@@ -55,6 +68,8 @@ struct ColumnIdentitySchema: Equatable {
     func dataIndex(forColumnName name: String) -> Int? {
         slotByColumnName[name]
     }
+
+    var totalDataColumns: Int { columnNames.count }
 
     static func slotIdentifier(_ slot: Int) -> NSUserInterfaceItemIdentifier {
         NSUserInterfaceItemIdentifier("\(dataColumnPrefix)\(slot)")

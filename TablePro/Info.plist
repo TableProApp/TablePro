@@ -4,6 +4,8 @@
 <dict>
 	<key>AnalyticsHMACSecret</key>
 	<string>$(ANALYTICS_HMAC_SECRET)</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>TablePro connects to database servers and SSH tunnels running on your local network, including Bonjour (.local) hostnames.</string>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
@@ -14,19 +16,20 @@
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>sql</string>
+				<string>psql</string>
+				<string>pgsql</string>
 			</array>
-			<key>CFBundleTypeIconFile</key>
-			<string>SQLDocument</string>
+			<key>CFBundleTypeIconSystemGenerated</key>
+			<true/>
 			<key>CFBundleTypeName</key>
 			<string>SQL File</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Owner</string>
+			<string>Default</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.tablepro.sql</string>
-				<string>public.sql</string>
+				<string>org.iso.sql</string>
 			</array>
 		</dict>
 		<dict>
@@ -58,6 +61,8 @@
 				<string>sqlite3</string>
 				<string>sqlitedb</string>
 			</array>
+			<key>CFBundleTypeIconSystemGenerated</key>
+			<true/>
 			<key>CFBundleTypeName</key>
 			<string>SQLite Database</string>
 			<key>CFBundleTypeRole</key>
@@ -66,8 +71,7 @@
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.apple.sqlite3</string>
-				<string>com.tablepro.sqlite-db</string>
+				<string>org.sqlite.sqlite</string>
 			</array>
 		</dict>
 		<dict>
@@ -87,12 +91,14 @@
 			</array>
 		</dict>
 		<dict>
+			<key>CFBundleTypeIconSystemGenerated</key>
+			<true/>
 			<key>CFBundleTypeName</key>
 			<string>DuckDB Database</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Owner</string>
+			<string>Default</string>
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>duckdb</string>
@@ -100,7 +106,23 @@
 			</array>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.tablepro.duckdb</string>
+				<string>org.duckdb.duckdb-database</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Beancount Ledger</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>beancount</string>
+			</array>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.tablepro.beancount</string>
 			</array>
 		</dict>
 		<dict>
@@ -136,36 +158,34 @@
 			</array>
 		</dict>
 	</array>
-	<key>UTExportedTypeDeclarations</key>
+	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.sql</string>
+			<string>org.iso.sql</string>
 			<key>UTTypeDescription</key>
 			<string>SQL File</string>
-			<key>UTTypeIconFile</key>
-			<string>SQLDocument</string>
 			<key>UTTypeConformsTo</key>
 			<array>
-				<string>public.sql</string>
-				<string>public.plain-text</string>
+				<string>public.source-code</string>
 			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
 					<string>sql</string>
+					<string>psql</string>
+					<string>pgsql</string>
 				</array>
 			</dict>
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.sqlite-db</string>
+			<string>org.sqlite.sqlite</string>
 			<key>UTTypeDescription</key>
 			<string>SQLite Database</string>
 			<key>UTTypeConformsTo</key>
 			<array>
-				<string>com.apple.sqlite3</string>
 				<string>public.database</string>
 				<string>public.data</string>
 			</array>
@@ -185,7 +205,7 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.tablepro.duckdb</string>
+			<string>org.duckdb.duckdb-database</string>
 			<key>UTTypeDescription</key>
 			<string>DuckDB Database</string>
 			<key>UTTypeConformsTo</key>
@@ -199,6 +219,37 @@
 				<array>
 					<string>duckdb</string>
 					<string>ddb</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.filter-row</string>
+			<key>UTTypeDescription</key>
+			<string>TablePro Filter Row</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.beancount</string>
+			<key>UTTypeDescription</key>
+			<string>Beancount Ledger</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>beancount</string>
 				</array>
 			</dict>
 		</dict>
@@ -239,10 +290,63 @@
 			</dict>
 		</dict>
 	</array>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>TablePro reads database settings from the project folder you choose.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>TablePro reads database settings from the project folder you choose.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>TablePro reads database settings from the project folder you choose.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>tablepro.app</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<false/>
+				<key>NSExceptionMinimumTLSVersion</key>
+				<string>TLSv1.2</string>
+				<key>NSExceptionRequiresForwardSecrecy</key>
+				<true/>
+			</dict>
+			<key>github.com</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<false/>
+				<key>NSExceptionMinimumTLSVersion</key>
+				<string>TLSv1.2</string>
+				<key>NSExceptionRequiresForwardSecrecy</key>
+				<true/>
+			</dict>
+			<key>githubusercontent.com</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<false/>
+				<key>NSExceptionMinimumTLSVersion</key>
+				<string>TLSv1.2</string>
+				<key>NSExceptionRequiresForwardSecrecy</key>
+				<true/>
+			</dict>
+			<key>jsdelivr.net</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<false/>
+				<key>NSExceptionMinimumTLSVersion</key>
+				<string>TLSv1.2</string>
+				<key>NSExceptionRequiresForwardSecrecy</key>
+				<true/>
+			</dict>
+		</dict>
 	</dict>
 	<key>NSUserActivityTypes</key>
 	<array>
@@ -286,12 +390,14 @@
 				<string>scylladb</string>
 				<string>scylla</string>
 				<string>oracle</string>
+				<string>dm</string>
 				<string>clickhouse</string>
 				<string>ch</string>
 				<string>etcd</string>
 				<string>etcds</string>
 				<string>d1</string>
 				<string>libsql</string>
+				<string>surrealdb</string>
 			</array>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>

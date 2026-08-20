@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProSyncTransport
 
 /// Service for persisting the global tag library
 @MainActor
@@ -15,13 +16,12 @@ final class TagStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TagStorage")
 
     private let tagsKey = "com.TablePro.tags"
-    private let defaults = UserDefaults.standard
+    private let defaults = AppStorageEnvironment.shared.defaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var cachedTags: [ConnectionTag]?
 
     private init() {
-        // Initialize with presets on first launch
         if loadTags().isEmpty {
             saveTags(ConnectionTag.presets)
         }
@@ -66,7 +66,6 @@ final class TagStorage {
     /// Add a new custom tag
     func addTag(_ tag: ConnectionTag) {
         var tags = loadTags()
-        // Prevent duplicates by name
         guard !tags.contains(where: { $0.name.lowercased() == tag.name.lowercased() }) else {
             return
         }
@@ -81,6 +80,14 @@ final class TagStorage {
         tags.removeAll { $0.id == tag.id }
         saveTags(tags)
         SyncChangeTracker.shared.markDeleted(.tag, id: tag.id.uuidString)
+    }
+
+    /// Delete a custom tag and clear it from every connection that referenced it.
+    /// Connections are persisted before the tag tombstone fires (sync delete-ordering invariant).
+    func deleteTag(_ tag: ConnectionTag, clearingFrom connectionStorage: ConnectionStorage) {
+        guard !tag.isPreset else { return }
+        connectionStorage.removeTagId(tag.id)
+        deleteTag(tag)
     }
 
     /// Get tag by ID

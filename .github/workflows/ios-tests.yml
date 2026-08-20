@@ -1,16 +1,14 @@
 name: iOS Tests
 
 on:
+  # No paths filter here on purpose. See the note in macos-tests.yml: a workflow skipped by a
+  # paths filter never reports, so a required check would hang on every unrelated pull request.
   pull_request:
-    paths:
-      - "TableProMobile/**"
-      - "Packages/TableProCore/**"
-      - "Libs/**"
-      - ".github/workflows/ios-tests.yml"
   push:
     branches: [main]
     paths:
       - "TableProMobile/**"
+      - "Configs/**"
       - "Packages/TableProCore/**"
       - "Libs/**"
       - ".github/workflows/ios-tests.yml"
@@ -24,42 +22,97 @@ concurrency:
 env:
   XCODE_PROJECT: TableProMobile/TableProMobile.xcodeproj
   XCODE_SCHEME: TableProMobile
-  TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5"
+  TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=latest"
 
 jobs:
+  # No `permissions:` block here either. See the note in macos-tests.yml: this workflow has no
+  # workflow_call caller today, but the same shape must not be copied back into one.
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the iOS suite needs to run
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              exit 0
+          fi
+
+          # Raw NUL-separated records, read from a file. See the note in macos-tests.yml for what
+          # core.quotePath and a pipeline each break here.
+          git -c core.quotePath=false diff --no-renames --name-only -z \
+              "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-files"
+
+          if LC_ALL=C grep -zqE '^(TableProMobile/|Configs/|Packages/TableProCore/|Libs/|\.github/workflows/ios-tests\.yml$)' "$RUNNER_TEMP/changed-files"; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Run iOS Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
     timeout-minutes: 25
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
-          xcode-version: '26.5-beta'
+          xcode-version: '26.4.1'
 
       - name: Install xcbeautify
         run: brew list xcbeautify &>/dev/null || brew install xcbeautify
 
       # macos-26 lazy-loads simulator runtimes; -downloadPlatform pulls the runtime
-      # matching Xcode's SDK and is a no-op when it is already present.
+      # matching Xcode's SDK and is a no-op when it is already present. The download
+      # endpoint flakes on hosted runners, so a failure falls back to checking whether
+      # the test device already exists before failing the job.
       - name: Install iOS simulator runtime
-        run: sudo xcodebuild -downloadPlatform iOS
+        run: |
+          if sudo xcodebuild -downloadPlatform iOS; then
+            exit 0
+          fi
 
-      # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so the
-      # checked-in example template is enough for the project to resolve.
-      - name: Stub Secrets.xcconfig
-        run: cp TableProMobile/Secrets.xcconfig.example TableProMobile/Secrets.xcconfig
+          echo "::warning::xcodebuild -downloadPlatform iOS failed; checking for an existing simulator"
+          device_name="$(echo "$TEST_DESTINATION" | sed -n 's/.*name=\([^,]*\).*/\1/p')"
+          if xcrun simctl list devices available | grep -qF "$device_name ("; then
+            echo "$device_name simulator is already available; continuing."
+            exit 0
+          fi
+
+          echo "::error::$device_name simulator is not available and the runtime download failed."
+          exit 1
+
+      - name: Setup XcodeGen
+        uses: ./.github/actions/setup-xcodegen
+
+      - name: Generate Xcode project
+        run: scripts/generate-project.sh
 
       - name: Cache static libraries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: Libs
-          # Include the FreeTDS stub header in the cache key so iOS xcframework refreshes
-          # whenever the C bridge surface (e.g. new symbol declarations) changes.
-          key: ${{ runner.os }}-libs-${{ hashFiles('Libs/checksums.sha256', 'Plugins/MSSQLDriverPlugin/CFreeTDS/include/sybdb.h') }}
+          # Include C bridge stub headers in the cache key so the iOS xcframework set
+          # refreshes whenever a bridge surface (e.g. a new driver's headers) changes.
+          key: ${{ runner.os }}-libs-${{ hashFiles('Libs/checksums.sha256', 'Plugins/MSSQLDriverPlugin/CFreeTDS/include/sybdb.h', 'TableProMobile/TableProMobile/CBridges/CDuckDB/CDuckDB.h') }}
 
       - name: Download static libraries
         env:
@@ -88,7 +141,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-test-results
           path: TestResults.xcresult
@@ -106,3 +159,27 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -skipPackagePluginValidation 2>&1 \
             | grep -E "iOS Simulator.*iPhone" || true
+
+  # The one check to mark required on main. See the note in macos-tests.yml.
+  gate:
+    name: iOS Tests Gate
+    if: always()
+    needs: [changes, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the suite to have passed or been skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "suite results: $RESULTS"
+          for result in $RESULTS; do
+              case "$result" in
+                  success|skipped) ;;
+                  *)
+                      echo "The iOS suite reported '$result'." >&2
+                      exit 1
+                      ;;
+              esac
+          done

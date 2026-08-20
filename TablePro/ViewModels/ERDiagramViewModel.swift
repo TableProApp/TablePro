@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import os
 import SwiftUI
+import TableProPluginKit
 
 @MainActor
 @Observable
@@ -12,7 +13,31 @@ final class ERDiagramViewModel {
     // MARK: - Configuration
 
     let connectionId: UUID
+    let databaseName: String
     let schemaKey: String
+    let schemaName: String?
+
+    /// The diagram is bound to the database and the schema its tab was opened on, so moving
+    /// the sidebar to another database or schema cannot repoint an open diagram.
+    private var scope: DatabaseScope? {
+        services.databaseManager.resolvedScope(database: databaseName, schema: schemaName, for: connectionId)
+    }
+
+    private static let noSchemaMarker = "default"
+
+    /// `schemaKey` is the diagram's identity, written as `database.schema` with
+    /// `noSchemaMarker` standing in for an engine that has no schemas. It is also the only
+    /// record of the schema a diagram tab was opened on, because `addERDiagramTab` writes a
+    /// database into the tab's table context but never a schema. Stripping the database
+    /// prefix rather than splitting on the separator keeps a database name that contains a
+    /// dot intact.
+    static func resolveSchemaName(fromSchemaKey schemaKey: String, databaseName: String) -> String? {
+        let prefix = databaseName + "."
+        guard !databaseName.isEmpty, schemaKey.hasPrefix(prefix) else { return nil }
+        let schema = String(schemaKey.dropFirst(prefix.count))
+        guard !schema.isEmpty, schema != noSchemaMarker else { return nil }
+        return schema
+    }
 
     // MARK: - State
 
@@ -33,23 +58,31 @@ final class ERDiagramViewModel {
     var loadState: LoadState = .loading
     var needsInitialFit = true
     var graph: ERDiagramGraph = .empty
-    var magnification: CGFloat = 1.0
     var isCompactMode = false {
-        didSet { rebuildDisplayColumns() }
+        didSet { rebuildVisibleGraph() }
     }
+
+    var collapseJunctions = true {
+        didSet { rebuildVisibleGraph() }
+    }
+
+    var hasJunctionTables: Bool { !fullGraph.junctionTableIds.isEmpty }
+
+    @ObservationIgnored private var fullGraph: ERDiagramGraph = .empty
+    @ObservationIgnored private var allColumns: [String: [ColumnInfo]] = [:]
+    @ObservationIgnored private var allForeignKeys: [String: [ForeignKeyInfo]] = [:]
 
     // MARK: - Canvas Viewport
 
-    var canvasOffset: CGPoint = .zero
-    var viewportSize: CGSize = .zero
-    var isMouseOverCanvas = false
+    /// AppKit owns pan and zoom, so every coordinate the view hands over is already in document
+    /// space. The viewport is only needed to nudge the scroll position while auto-panning.
+    @ObservationIgnored weak var viewport: DiagramViewportController?
 
     // MARK: - Drag State
 
     private(set) var isDragging = false
     private(set) var draggingNodeId: UUID?
     @ObservationIgnored private var dragNodeStart: CGPoint?
-    @ObservationIgnored private var panStart: CGPoint?
     @ObservationIgnored private var lastDragTranslation: CGSize = .zero
 
     // MARK: - Auto-Pan
@@ -74,9 +107,11 @@ final class ERDiagramViewModel {
 
     // MARK: - Initialization
 
-    init(connectionId: UUID, schemaKey: String, services: AppServices = .live) {
+    init(connectionId: UUID, databaseName: String, schemaKey: String, services: AppServices = .live) {
         self.connectionId = connectionId
+        self.databaseName = databaseName
         self.schemaKey = schemaKey
+        self.schemaName = Self.resolveSchemaName(fromSchemaKey: schemaKey, databaseName: databaseName)
         self.services = services
     }
 
@@ -95,25 +130,40 @@ final class ERDiagramViewModel {
             await waitForConnection()
         }
 
-        guard let driver = services.databaseManager.driver(for: connectionId) else {
+        guard services.databaseManager.driver(for: connectionId) != nil else {
             loadState = .failed(String(localized: "No database connection"))
             return
         }
 
-        do {
-            async let columnsResult = driver.fetchAllColumns()
-            async let fksResult = driver.fetchAllForeignKeys()
-            let (allColumns, allFKs) = try await (columnsResult, fksResult)
+        guard let scope else {
+            loadState = .failed(String(localized: "This diagram is not bound to a database"))
+            return
+        }
 
-            let builtGraph = ERDiagramGraphBuilder.build(
-                allColumns: allColumns,
-                allForeignKeys: allFKs
+        do {
+            let (columns, foreignKeys, indexes) = try await services.databaseManager.withMetadataDriver(
+                scope: scope, workload: .bulk
+            ) { driver in
+                let cols = try await driver.fetchAllColumns()
+                let fks = try await driver.fetchAllForeignKeys()
+                let idx = try await driver.fetchIndexes(forTables: Array(fks.keys))
+                return (cols, fks, idx)
+            }
+
+            allColumns = columns
+            allForeignKeys = foreignKeys
+            fullGraph = ERDiagramGraphBuilder.build(
+                allColumns: columns,
+                allForeignKeys: foreignKeys,
+                allIndexes: indexes
             )
-            graph = builtGraph
-            nodeIdToName = Dictionary(uniqueKeysWithValues: builtGraph.nodes.map { ($0.id, $0.tableName) })
+
+            nodeIdToName = Dictionary(uniqueKeysWithValues: fullGraph.nodes.map { ($0.id, $0.tableName) })
+            let visibleGraph = makeVisibleGraph()
+            graph = visibleGraph
 
             let layout = await Task.detached {
-                ERDiagramLayout.compute(graph: builtGraph)
+                ERDiagramLayout.compute(graph: visibleGraph)
             }.value
             computedLayout = layout
             loadPersistedPositions()
@@ -172,11 +222,19 @@ final class ERDiagramViewModel {
     func setPositionOverride(nodeId: UUID, position: CGPoint) {
         positionOverrides[nodeId] = position
         let height = ERDiagramLayout.estimateHeight(columnCount: columnCountByNodeId[nodeId] ?? 1)
-        cachedNodeRects[nodeId] = CGRect(
+        let rect = CGRect(
             x: position.x - ERDiagramLayout.nodeWidth / 2,
             y: position.y - height / 2,
             width: ERDiagramLayout.nodeWidth,
             height: height
+        )
+        cachedNodeRects[nodeId] = rect
+
+        // The scroll view's document is sized from this, so a node dragged past the load-time
+        // bounds has to grow it or the node ends up somewhere the canvas cannot scroll to.
+        cachedCanvasSize = CGSize(
+            width: max(cachedCanvasSize.width, rect.maxX + Self.canvasPadding),
+            height: max(cachedCanvasSize.height, rect.maxY + Self.canvasPadding)
         )
     }
 
@@ -205,10 +263,11 @@ final class ERDiagramViewModel {
         }
     }
 
-    // MARK: - Compact Mode
+    // MARK: - Visible Graph (compact mode + junction collapse)
 
-    private func rebuildDisplayColumns() {
-        graph.nodes = graph.nodes.map { node in
+    private func makeVisibleGraph() -> ERDiagramGraph {
+        var projected = fullGraph.projected(collapseJunctions: collapseJunctions)
+        projected.nodes = projected.nodes.map { node in
             var updated = node
             updated.displayColumns = isCompactMode
                 ? node.columns.filter { $0.isPrimaryKey || $0.isForeignKey }
@@ -218,12 +277,18 @@ final class ERDiagramViewModel {
             }
             return updated
         }
+        return projected
+    }
+
+    private func rebuildVisibleGraph() {
+        guard loadState == .loaded else { return }
+        let visibleGraph = makeVisibleGraph()
+        graph = visibleGraph
         invalidateCachedRects()
-        let currentGraph = graph
         layoutTask?.cancel()
         layoutTask = Task {
             let layout = await Task.detached {
-                ERDiagramLayout.compute(graph: currentGraph)
+                ERDiagramLayout.compute(graph: visibleGraph)
             }.value
             guard !Task.isCancelled else { return }
             computedLayout = layout
@@ -231,9 +296,47 @@ final class ERDiagramViewModel {
         }
     }
 
+    // MARK: - SQL Export
+
+    func exportSchemaAsSQL() {
+        guard loadState == .loaded, !fullGraph.nodes.isEmpty else { return }
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
+        let databaseType = driver.connection.type
+        do {
+            let dialect = try resolveSQLDialect(for: databaseType)
+            let quote = quoteIdentifierFromDialect(dialect)
+            let sql = ERDiagramSQLExporter.generate(
+                tableNames: fullGraph.nodes.map(\.tableName),
+                allColumns: allColumns,
+                allForeignKeys: allForeignKeys,
+                isSQLite: databaseType == .sqlite,
+                quoteIdentifier: quote
+            )
+            guard !sql.isEmpty else { return }
+
+            let payload = EditorTabPayload(
+                connectionId: connectionId,
+                tabType: .query,
+                databaseName: scope?.database ?? services.databaseManager.browseDatabaseName(for: driver.connection),
+                initialQuery: sql,
+                skipAutoExecute: true,
+                tabTitle: String(localized: "Schema SQL")
+            )
+            WindowManager.shared.openTab(payload: payload)
+        } catch {
+            Self.logger.error("Failed to export ER diagram as SQL: \(error.localizedDescription)")
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Export Failed"),
+                message: error.localizedDescription,
+                window: nil
+            )
+        }
+    }
+
     // MARK: - Canvas Size
 
     private(set) var cachedCanvasSize = CGSize(width: 800, height: 600)
+    private static let canvasPadding: CGFloat = 80
 
     // MARK: - Node Rect (for edge rendering)
 
@@ -275,7 +378,9 @@ final class ERDiagramViewModel {
                 csMaxX = max(csMaxX, rect.maxX)
                 csMaxY = max(csMaxY, rect.maxY)
             }
-            cachedCanvasSize = CGSize(width: csMaxX + 80, height: csMaxY + 80)
+            cachedCanvasSize = CGSize(
+                width: csMaxX + Self.canvasPadding, height: csMaxY + Self.canvasPadding
+            )
         }
     }
 
@@ -283,42 +388,22 @@ final class ERDiagramViewModel {
 
     func beginDrag(at startLocation: CGPoint) {
         isDragging = true
-        let canvasPoint = CGPoint(
-            x: (startLocation.x - canvasOffset.x) / magnification,
-            y: (startLocation.y - canvasOffset.y) / magnification
-        )
-        var hitNodeId: UUID?
-        for (id, rect) in cachedNodeRects where rect.contains(canvasPoint) {
-            hitNodeId = id
-            break
-        }
-        draggingNodeId = hitNodeId
-        if let nodeId = hitNodeId {
-            dragNodeStart = position(for: nodeId)
-        } else {
-            panStart = canvasOffset
-        }
+        draggingNodeId = cachedNodeRects.first { $0.value.contains(startLocation) }?.key
+        dragNodeStart = draggingNodeId.map { position(for: $0) }
     }
 
+    /// The translation arrives in document units and already carries any scrolling that happened
+    /// since the drag began, so the accumulator only has to cover the ticks between two events.
     func updateDrag(translation: CGSize, currentPoint: CGPoint) {
         lastDragTranslation = translation
+        guard let nodeId = draggingNodeId, let nodeStart = dragNodeStart else { return }
 
-        if let nodeId = draggingNodeId, let nodeStart = dragNodeStart {
-            let totalDelta = CGSize(
-                width: (translation.width + autoPanAccum.x) / magnification,
-                height: (translation.height + autoPanAccum.y) / magnification
-            )
-            setPositionOverride(
-                nodeId: nodeId,
-                position: CGPoint(x: nodeStart.x + totalDelta.width, y: nodeStart.y + totalDelta.height)
-            )
-            updateAutoPanVelocity(for: currentPoint)
-        } else if let start = panStart {
-            canvasOffset = CGPoint(
-                x: start.x + translation.width,
-                y: start.y + translation.height
-            )
-        }
+        autoPanAccum = .zero
+        setPositionOverride(
+            nodeId: nodeId,
+            position: CGPoint(x: nodeStart.x + translation.width, y: nodeStart.y + translation.height)
+        )
+        updateAutoPanVelocity(for: currentPoint)
     }
 
     func endDrag() {
@@ -328,66 +413,72 @@ final class ERDiagramViewModel {
         isDragging = false
         draggingNodeId = nil
         dragNodeStart = nil
-        panStart = nil
         lastDragTranslation = .zero
         stopAutoPan()
     }
 
+    /// The edge band and the pan speed are tuned in screen points, so both are divided by the
+    /// magnification to reach the document units the viewport scrolls in.
     private func updateAutoPanVelocity(for point: CGPoint) {
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let viewport else {
             stopAutoPan()
             return
         }
-        let t = Self.edgeThreshold
-        let s = Self.maxPanSpeed
-        var v = CGPoint.zero
 
-        if point.x > viewportSize.width - t {
-            v.x = -s * min(1, max(0, 1 - (viewportSize.width - point.x) / t))
-        } else if point.x < t {
-            v.x = s * min(1, max(0, 1 - point.x / t))
-        }
-        if point.y > viewportSize.height - t {
-            v.y = -s * min(1, max(0, 1 - (viewportSize.height - point.y) / t))
-        } else if point.y < t {
-            v.y = s * min(1, max(0, 1 - point.y / t))
+        let visible = viewport.visibleDocumentRect
+        guard visible.width > 0, visible.height > 0 else {
+            stopAutoPan()
+            return
         }
 
-        autoPanVelocity = v
-        if v != .zero && autoPanTask == nil {
+        let magnification = max(viewport.magnification, 0.01)
+        let threshold = Self.edgeThreshold / magnification
+        let speed = Self.maxPanSpeed / magnification
+        var velocity = CGPoint.zero
+
+        if point.x > visible.maxX - threshold {
+            velocity.x = -speed * min(1, max(0, 1 - (visible.maxX - point.x) / threshold))
+        } else if point.x < visible.minX + threshold {
+            velocity.x = speed * min(1, max(0, 1 - (point.x - visible.minX) / threshold))
+        }
+        if point.y > visible.maxY - threshold {
+            velocity.y = -speed * min(1, max(0, 1 - (visible.maxY - point.y) / threshold))
+        } else if point.y < visible.minY + threshold {
+            velocity.y = speed * min(1, max(0, 1 - (point.y - visible.minY) / threshold))
+        }
+
+        autoPanVelocity = velocity
+        if velocity != .zero && autoPanTask == nil {
             autoPanTask = Task { [weak self] in
                 while !Task.isCancelled {
                     self?.autoPanTick()
                     try? await Task.sleep(for: .milliseconds(16))
                 }
             }
-        } else if v == .zero && autoPanTask != nil {
+        } else if velocity == .zero && autoPanTask != nil {
             autoPanTask?.cancel()
             autoPanTask = nil
         }
     }
 
     private func autoPanTick() {
-        guard autoPanVelocity != .zero, draggingNodeId != nil else {
+        guard autoPanVelocity != .zero, let nodeId = draggingNodeId, let nodeStart = dragNodeStart else {
             stopAutoPan()
             return
         }
 
-        canvasOffset.x += autoPanVelocity.x
-        canvasOffset.y += autoPanVelocity.y
-        autoPanAccum.x -= autoPanVelocity.x
-        autoPanAccum.y -= autoPanVelocity.y
+        let delta = CGSize(width: -autoPanVelocity.x, height: -autoPanVelocity.y)
+        viewport?.scrollBy(delta)
+        autoPanAccum.x += delta.width
+        autoPanAccum.y += delta.height
 
-        if let nodeId = draggingNodeId, let nodeStart = dragNodeStart {
-            let totalDelta = CGSize(
-                width: (lastDragTranslation.width + autoPanAccum.x) / magnification,
-                height: (lastDragTranslation.height + autoPanAccum.y) / magnification
+        setPositionOverride(
+            nodeId: nodeId,
+            position: CGPoint(
+                x: nodeStart.x + lastDragTranslation.width + autoPanAccum.x,
+                y: nodeStart.y + lastDragTranslation.height + autoPanAccum.y
             )
-            setPositionOverride(
-                nodeId: nodeId,
-                position: CGPoint(x: nodeStart.x + totalDelta.width, y: nodeStart.y + totalDelta.height)
-            )
-        }
+        )
     }
 
     private func stopAutoPan() {
@@ -397,47 +488,12 @@ final class ERDiagramViewModel {
         autoPanAccum = .zero
     }
 
-    // MARK: - Zoom
-
-    func zoom(to newMag: CGFloat, anchor: CGPoint? = nil) {
-        let clamped = max(0.25, min(3.0, newMag))
-        let center = anchor ?? CGPoint(x: viewportSize.width / 2, y: viewportSize.height / 2)
-        let canvasPoint = CGPoint(
-            x: (center.x - canvasOffset.x) / magnification,
-            y: (center.y - canvasOffset.y) / magnification
-        )
-        withAnimation(.easeOut(duration: 0.2)) {
-            canvasOffset = CGPoint(
-                x: center.x - canvasPoint.x * clamped,
-                y: center.y - canvasPoint.y * clamped
-            )
-            magnification = clamped
-        }
-    }
-
-    func fitToWindow() {
-        guard !graph.nodes.isEmpty, viewportSize.width > 0, viewportSize.height > 0 else { return }
-        let diagramSize = cachedCanvasSize
-        let padding: CGFloat = 40
-        let scaleX = (viewportSize.width - padding * 2) / diagramSize.width
-        let scaleY = (viewportSize.height - padding * 2) / diagramSize.height
-        let fitScale = max(0.25, min(1.0, min(scaleX, scaleY)))
-
-        withAnimation(.easeOut(duration: 0.3)) {
-            magnification = fitScale
-            canvasOffset = CGPoint(
-                x: (viewportSize.width - diagramSize.width * fitScale) / 2,
-                y: (viewportSize.height - diagramSize.height * fitScale) / 2
-            )
-        }
-    }
-
     // MARK: - Private
 
     private func loadPersistedPositions() {
         let stored = ERDiagramPositionStorage.shared.load(connectionId: connectionId, schemaKey: schemaKey)
         for (tableName, point) in stored {
-            if let nodeId = graph.nodeIndex[tableName] {
+            if let nodeId = fullGraph.nodeIndex[tableName] {
                 positionOverrides[nodeId] = point
             }
         }

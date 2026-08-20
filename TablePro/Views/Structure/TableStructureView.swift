@@ -17,27 +17,83 @@ import UniformTypeIdentifiers
 struct TableStructureView: View {
     static let logger = Logger(subsystem: "com.TablePro", category: "TableStructureView")
     static let structurePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure")
+
+    /// Whether the clipboard holds structure rows this view can paste. Structure paste reads its
+    /// own pasteboard type and nothing else, so the plain text a structure copy also writes is not
+    /// enough. Menu validation and the grid delegate both ask here rather than each spelling out
+    /// the same check.
+    static var canPasteStructureRows: Bool {
+        NSPasteboard.general.data(forType: structurePasteboardType) != nil
+    }
     let tableName: String
     let connection: DatabaseConnection
+    let databaseName: String
+    let schemaName: String?
     let toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator?
     let selectionState: GridSelectionState
 
+    @Environment(\.appServices) private var services
+
+    /// Derived from the tab's own binding on every render so it can never go stale.
+    var scope: DatabaseScope {
+        DatabaseScope(connectionId: connection.id, database: databaseName, schema: schemaName)
+    }
+
+    var structureLoader: TableStructureLoader {
+        TableStructureLoader(scope: scope, tableName: tableName)
+    }
+
+    /// Everything the user has staged, plus the baseline it is staged against. Held outside this
+    /// view because the view is destroyed whenever the tab is deselected or switched to Data.
+    let session: StructureEditingSession
+
     @State var selectedTab: StructureTab = .columns
-    @State var columns: [ColumnInfo] = []
-    @State var indexes: [IndexInfo] = []
-    @State var foreignKeys: [ForeignKeyInfo] = []
-    @State var ddlStatement: String = ""
-    @State var ddlFontSize: CGFloat = 13
+
+    /// The loaded schema, forwarded to the session so a rebuild adopts it instead of refetching.
+    /// Refetching would re-baseline `structureChangeManager` and clear the staged edits.
+    var columns: [ColumnInfo] {
+        get { session.columns }
+        nonmutating set { session.columns = newValue }
+    }
+
+    var indexes: [IndexInfo] {
+        get { session.indexes }
+        nonmutating set { session.indexes = newValue }
+    }
+
+    var foreignKeys: [ForeignKeyInfo] {
+        get { session.foreignKeys }
+        nonmutating set { session.foreignKeys = newValue }
+    }
+
+    var triggers: [TriggerInfo] {
+        get { session.triggers }
+        nonmutating set { session.triggers = newValue }
+    }
+
+    var ddlStatement: String {
+        get { session.ddlStatement }
+        nonmutating set { session.ddlStatement = newValue }
+    }
+
+    var tabData: StructureTabDataState {
+        get { session.tabData }
+        nonmutating set { session.tabData = newValue }
+    }
+
+    var structureChangeManager: StructureChangeManager { session.changeManager }
+
+    @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) var ddlFontSize: Double = 13
     @State var showCopyConfirmation = false
     @State var copyResetTask: Task<Void, Never>?
     @State var isLoading = true
     @State var isInitialLoading = true
     @State var errorMessage: String?
-    @State var loadedTabs: Set<StructureTab> = []
+    @State var partsReloadToken = 0
     @State var isReloadingAfterSave = false  // Prevent onChange loops during save reload
-    @State var lastSaveTime: Date?  // Track when we last saved
-    @AppStorage("skipSchemaPreview") var skipSchemaPreview = false
+    @State var lastSaveTime: Date?
+    @AppStorage("skipSchemaPreview", store: AppStorageEnvironment.shared.defaults) var skipSchemaPreview = false
 
     // Search and sort state
     @State var searchText = ""
@@ -45,34 +101,40 @@ struct TableStructureView: View {
     @State var displayVersion: Int = 0
 
     // DataGridView state
-    @State var structureChangeManager: StructureChangeManager
     @State var wrappedChangeManager: AnyChangeManager
     @State var selectedRows: Set<Int> = []
     @State var sortState = SortState()
     @State var structureColumnLayouts: [StructureTab: ColumnLayoutState] = [:]
-    @State var columnLayoutPersister: any ColumnLayoutPersisting = FileColumnLayoutPersister()
     @State var actionHandler = StructureViewActionHandler()
     @State var gridDelegate: StructureGridDelegate
+    @State private var footerOwnerId = UUID()
 
     init(
         tableName: String,
         connection: DatabaseConnection,
+        databaseName: String,
+        schemaName: String?,
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator?,
-        selectionState: GridSelectionState
+        selectionState: GridSelectionState,
+        session: StructureEditingSession,
+        initialSelectedTab: StructureTab = .columns
     ) {
         self.tableName = tableName
         self.connection = connection
+        self.databaseName = databaseName
+        self.schemaName = schemaName
         self.toolbarState = toolbarState
         self.coordinator = coordinator
         self.selectionState = selectionState
+        self.session = session
+        _selectedTab = State(initialValue: initialSelectedTab)
 
-        let manager = StructureChangeManager()
-        _structureChangeManager = State(wrappedValue: manager)
+        let manager = session.changeManager
         _wrappedChangeManager = State(wrappedValue: AnyChangeManager(manager))
         _gridDelegate = State(wrappedValue: StructureGridDelegate(
             structureChangeManager: manager,
-            selectedTab: .columns,
+            selectedTab: initialSelectedTab,
             connection: connection,
             tableName: tableName,
             coordinator: coordinator
@@ -84,10 +146,17 @@ struct TableStructureView: View {
             toolbar
             Divider()
             contentArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task(loadInitialData)
-        .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
-        .onChange(of: selectedTab) { _, newValue in onSelectedTabChanged(newValue) }
+        .onChange(of: selectedRows) { _, newRows in
+            selectionState.indices = newRows
+            publishFooterState()
+        }
+        .onChange(of: selectedTab) { _, newValue in
+            onSelectedTabChanged(newValue)
+            publishFooterState()
+        }
         .onChange(of: columns) { onColumnsChanged() }
         .onChange(of: indexes) { onIndexesChanged() }
         .onChange(of: foreignKeys) { onForeignKeysChanged() }
@@ -95,6 +164,9 @@ struct TableStructureView: View {
         .onChange(of: displayVersion) { updateGridDelegate() }
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
+
+            selectionState.indices = []
+            coordinator?.inspectorRowSource = gridDelegate
 
             gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
             gridDelegate.coordinator = coordinator
@@ -118,11 +190,18 @@ struct TableStructureView: View {
             actionHandler.undo = { self.gridDelegate.dataGridUndo() }
             actionHandler.redo = { self.gridDelegate.dataGridRedo() }
             actionHandler.addRow = { self.gridDelegate.dataGridAddRow() }
+            actionHandler.removeRow = { self.gridDelegate.dataGridDeleteRows(self.selectedRows) }
+            actionHandler.refresh = { self.onRefreshData() }
             coordinator?.structureActions = actionHandler
+            publishFooterState()
         }
         .onDisappear {
             coordinator?.toolbarState.hasStructureChanges = false
             coordinator?.structureActions = nil
+            coordinator?.structureFooterState.deactivate(owner: footerOwnerId)
+            if coordinator?.inspectorRowSource === gridDelegate {
+                coordinator?.inspectorRowSource = nil
+            }
             selectionState.indices = []
         }
         .onChange(of: structureChangeManager.hasChanges) { _, newValue in
@@ -138,7 +217,11 @@ struct TableStructureView: View {
             // manager but the grid never displays it.
             displayVersion += 1
         }
-        .onReceive(AppCommands.shared.refreshData) { _ in onRefreshData() }
+        .onReceive(AppCommands.shared.refreshData) { request in
+            guard request.connectionId == connection.id else { return }
+            guard request.reaches(tabScope: scope) else { return }
+            onRefreshData()
+        }
     }
 
     // MARK: - Toolbar
@@ -151,6 +234,9 @@ struct TableStructureView: View {
         if connection.type != .clickhouse {
             tabs = tabs.filter { $0 != .parts }
         }
+        if !connection.type.supportsTriggers {
+            tabs = tabs.filter { $0 != .triggers }
+        }
         return tabs
     }
 
@@ -158,38 +244,86 @@ struct TableStructureView: View {
         HStack {
             Spacer()
 
-            Picker("", selection: $selectedTab) {
+            Picker("Structure", selection: $selectedTab) {
                 ForEach(availableTabs, id: \.self) { tab in
                     Text(tabLabel(for: tab)).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .monospacedDigit()
+            .accessibilityIdentifier("structure-tab-picker")
 
             Spacer()
         }
         .padding()
     }
 
+    // MARK: - Footer state (rendered by MainStatusBarView)
+
+    private func publishFooterState() {
+        guard let footer = coordinator?.structureFooterState else { return }
+        guard connection.type.supportsSchemaEditing,
+              let labels = footerLabels(for: selectedTab) else {
+            footer.deactivate(owner: footerOwnerId)
+            return
+        }
+        footer.update(
+            owner: footerOwnerId,
+            canAdd: canAdd(for: selectedTab),
+            canRemove: canRemove(for: selectedTab),
+            addLabel: labels.add,
+            removeLabel: labels.remove
+        )
+    }
+
+    private func canAdd(for tab: StructureTab) -> Bool {
+        switch tab {
+        case .columns: return connection.type.supportsAddColumn
+        case .indexes: return connection.type.supportsAddIndex
+        case .foreignKeys: return connection.type.supportsForeignKeys
+        case .ddl, .parts, .triggers: return false
+        }
+    }
+
+    private func canRemove(for tab: StructureTab) -> Bool {
+        guard !selectedRows.isEmpty else { return false }
+        switch tab {
+        case .columns: return connection.type.supportsDropColumn
+        case .indexes: return connection.type.supportsDropIndex
+        case .foreignKeys: return connection.type.supportsForeignKeys
+        case .ddl, .parts, .triggers: return false
+        }
+    }
+
+    private func footerLabels(for tab: StructureTab) -> (add: String, remove: String)? {
+        switch tab {
+        case .columns:
+            return (String(localized: "Add Column"), String(localized: "Remove Column"))
+        case .indexes:
+            return (String(localized: "Add Index"), String(localized: "Remove Index"))
+        case .foreignKeys:
+            return (String(localized: "Add Foreign Key"), String(localized: "Remove Foreign Key"))
+        case .ddl, .parts, .triggers:
+            return nil
+        }
+    }
+
     // MARK: - Tab Label with Count Badge
 
     private func tabLabel(for tab: StructureTab) -> String {
-        let count: Int?
-        switch tab {
-        case .columns:
-            count = loadedTabs.contains(.columns) ? columns.count : nil
-        case .indexes:
-            count = loadedTabs.contains(.indexes) ? indexes.count : nil
-        case .foreignKeys:
-            count = loadedTabs.contains(.foreignKeys) ? foreignKeys.count : nil
-        case .ddl, .parts:
-            count = nil
-        }
+        StructureTabDataState.label(for: tab, count: loadedCount(for: tab))
+    }
 
-        if let count {
-            return "\(tab.displayName) (\(count))"
+    private func loadedCount(for tab: StructureTab) -> Int? {
+        guard tabData.hasData(tab) else { return nil }
+        switch tab {
+        case .columns: return columns.count
+        case .indexes: return indexes.count
+        case .foreignKeys: return foreignKeys.count
+        case .triggers: return triggers.count
+        case .ddl, .parts: return nil
         }
-        return tab.displayName
     }
 
     // MARK: - Content Area
@@ -206,13 +340,49 @@ struct TableStructureView: View {
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
-        case .columns, .indexes, .foreignKeys:
+        case .columns:
             structureGrid
+        case .indexes:
+            if shouldShowIndexesEmptyState {
+                EmptyStateView.indexes { gridDelegate.dataGridAddRow() }
+            } else {
+                structureGrid
+            }
+        case .foreignKeys:
+            if shouldShowForeignKeysEmptyState {
+                EmptyStateView.foreignKeys { gridDelegate.dataGridAddRow() }
+            } else {
+                structureGrid
+            }
+        case .triggers:
+            TriggerDetailView(
+                triggers: triggers,
+                connection: connection,
+                tableName: tableName,
+                isLoading: !tabData.hasData(.triggers),
+                onOpenInEditor: openTriggerInEditor
+            )
         case .ddl:
             ddlView
         case .parts:
-            ClickHousePartsView(tableName: tableName, connectionId: connection.id)
+            ClickHousePartsView(
+                tableName: tableName,
+                connectionId: connection.id,
+                reloadToken: partsReloadToken
+            )
         }
+    }
+
+    private var shouldShowIndexesEmptyState: Bool {
+        tabData.hasData(.indexes)
+            && structureChangeManager.workingIndexes.isEmpty
+            && connection.type.supportsAddIndex
+    }
+
+    private var shouldShowForeignKeysEmptyState: Bool {
+        tabData.hasData(.foreignKeys)
+            && structureChangeManager.workingForeignKeys.isEmpty
+            && connection.type.supportsForeignKeys
     }
 
     // MARK: - Structure Grid (DataGridView)
@@ -242,6 +412,7 @@ struct TableStructureView: View {
         gridDelegate.selectedTab = selectedTab
         gridDelegate.currentProvider = provider
         gridDelegate.orderedFields = provider.orderedColumnFields
+        coordinator?.inspectorRowSourceRevision += 1
 
         let moveRowHandler: ((Int, Int) -> Void)? = {
             guard selectedTab == .columns,
@@ -252,6 +423,7 @@ struct TableStructureView: View {
             }
             return { [self] fromIndex, toIndex in
                 let columnsSnapshot = structureChangeManager.workingColumns
+                let columnLayoutClearTarget = coordinator?.selectedColumnLayoutClearTarget()
                 Task { @MainActor in
                     do {
                         let executedSQL = try await StructureColumnReorderHandler.moveColumn(
@@ -261,20 +433,26 @@ struct TableStructureView: View {
                             tableName: tableName,
                             connectionId: connection.id
                         )
-                        QueryHistoryManager.shared.recordQuery(
-                            query: executedSQL.hasSuffix(";") ? executedSQL : executedSQL + ";",
-                            connectionId: connection.id,
-                            databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
-                            executionTime: 0,
-                            rowCount: 0,
-                            wasSuccessful: true
+                        await services.queryHistoryManager.record(
+                            QueryHistoryRecordRequest(
+                                query: executedSQL.hasSuffix(";") ? executedSQL : executedSQL + ";",
+                                connectionId: connection.id,
+                                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                                databaseType: connection.type,
+                                source: .structureDDL,
+                                executionTime: 0,
+                                rowCount: -1,
+                                wasSuccessful: true
+                            )
                         )
                         isReloadingAfterSave = true
                         await loadColumns()
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
-                        columnLayoutPersister.clear(for: tableName, connectionId: connection.id)
-                        AppCommands.shared.refreshData.send(nil)
+                        if let columnLayoutClearTarget {
+                            coordinator?.clearColumnLayout(columnLayoutClearTarget)
+                        }
+                        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
                     } catch {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Column Reorder Failed"),
@@ -316,10 +494,10 @@ struct TableStructureView: View {
                 databaseType: connection.type
             ),
             delegate: gridDelegate,
-            layoutPersister: columnLayoutPersister,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
-            columnLayout: columnLayoutBinding(for: selectedTab)
+            columnLayout: columnLayoutBinding(for: selectedTab),
+            contentRevision: displayVersion
         )
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
@@ -369,9 +547,12 @@ struct TableStructureView: View {
             username: "root",
             type: .mysql
         ),
+        databaseName: "test",
+        schemaName: nil,
         toolbarState: ConnectionToolbarState(),
         coordinator: nil,
-        selectionState: GridSelectionState()
+        selectionState: GridSelectionState(),
+        session: StructureEditingSession(identity: "test.users")
     )
     .frame(width: 800, height: 600)
 }

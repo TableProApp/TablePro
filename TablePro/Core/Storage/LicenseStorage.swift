@@ -15,7 +15,7 @@ final class LicenseStorage {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseStorage")
 
-    private let defaults = UserDefaults.standard
+    private let defaults = AppStorageEnvironment.shared.defaults
     private let keychain: KeychainHelper
 
     private enum Keys {
@@ -34,24 +34,8 @@ final class LicenseStorage {
     }
 
     func loadLicenseKey() -> String? {
-        switch keychain.readStringResult(forKey: Keys.keychainLicenseKey) {
-        case .found(let value):
-            return value
-        case .notFound:
-            return nil
-        case .locked:
-            Self.logger.warning("License key unavailable: Keychain locked")
-            return nil
-        case .userCancelled:
-            Self.logger.notice("License key prompt cancelled")
-            return nil
-        case .authFailed:
-            Self.logger.warning("License key auth failed")
-            return nil
-        case .error(let status):
-            Self.logger.error("License key read error \(status)")
-            return nil
-        }
+        keychain.readStringResult(forKey: Keys.keychainLicenseKey)
+            .value(label: "License key", logger: Self.logger)
     }
 
     func deleteLicenseKey() {
@@ -66,9 +50,7 @@ final class LicenseStorage {
     /// Save cached license (including signed payload) to UserDefaults
     func saveLicense(_ license: License) {
         do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(license)
+            let data = try JSONEncoder().encode(license)
             defaults.set(data, forKey: Keys.licensePayload)
         } catch {
             Self.logger.error("Failed to encode license: \(error.localizedDescription)")
@@ -82,9 +64,7 @@ final class LicenseStorage {
         }
 
         do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode(License.self, from: data)
+            return try JSONDecoder().decode(License.self, from: data)
         } catch {
             Self.logger.error("Failed to decode license: \(error.localizedDescription)")
             return nil
@@ -135,7 +115,7 @@ final class LicenseStorage {
 
     /// Hardware UUID from IOKit, SHA256-hashed for privacy (uncached, for migration).
     static func currentMachineId() -> String {
-        computeMachineId(defaults: UserDefaults.standard)
+        computeMachineId(defaults: AppStorageEnvironment.shared.defaults)
     }
 
     /// Human-readable machine name (e.g., "John's MacBook Pro")

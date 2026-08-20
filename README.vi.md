@@ -24,6 +24,7 @@
 <p align="center">
   <a href="README.md">English</a>
   <a href="README.zh.md">简体中文</a>
+  <a href="README.ko.md">한국어</a>
 </p>
 
 <p align="center">
@@ -64,7 +65,8 @@ TablePro là mảnh thứ tư còn thiếu: native, đa database, và mã nguồ
 |----------|-----------|
 | macOS 14+ | Ổn định |
 | iOS / iPadOS 18+ | Ổn định |
-| Linux | Đang phát triển |
+| Linux | Bản thử nghiệm, chưa có gì để cài |
+| Windows | Không |
 
 ## Database hỗ trợ
 
@@ -81,7 +83,9 @@ TablePro là mảnh thứ tư còn thiếu: native, đa database, và mã nguồ
 | Microsoft SQL Server | Plugin |
 | MongoDB | Plugin |
 | Oracle Database | Plugin |
+| Dameng DM8 | Plugin |
 | DuckDB | Plugin |
+| Beancount | Plugin |
 | Cassandra / ScyllaDB | Plugin |
 | Etcd | Plugin |
 | Cloudflare D1 | Plugin |
@@ -100,7 +104,6 @@ Driver tích hợp sẵn đi kèm app. Driver dạng plugin cài thêm khi cần
 - Lịch sử query tìm kiếm full-text
 - iCloud sync cho connection, group, tag, cài đặt, SSH profile
 - AI chat, gợi ý inline, Explain/Optimize
-- Terminal tích hợp: mysql, psql, redis-cli, mongosh (hỗ trợ SSH và Docker)
 - MCP server và URL scheme cho Raycast, Cursor, Claude Desktop
 - Hệ thống plugin, tự viết driver database bằng Swift
 
@@ -124,15 +127,15 @@ App miễn phí theo AGPLv3. Nếu bạn dùng TablePro cho công việc, hãy m
 
 Cảm ơn những người tuyệt vời đã ủng hộ TablePro:
 
-**[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Visnalize](https://visnalize.com?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)** · **[Huy TQ](https://github.com/imhuytq)** · **[Xermius](https://xermius.com?ref=tablepro)** · **[Unikorn](https://unikorn.vn?ref=tablepro)**
+**[getapps.cafe](https://getapps.cafe/?ref=SJO7-TgA)** · **[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Visnalize](https://visnalize.com?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)** · **[Huy TQ](https://github.com/imhuytq)** · **[Xermius](https://xermius.com?ref=tablepro)** · **[Unikorn](https://unikorn.vn?ref=tablepro)**
 
 ## Star History
 
 <a href="https://www.star-history.com/?repos=TableProApp%2FTablePro&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=TableProApp/TablePro&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=TableProApp/TablePro&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=TableProApp/TablePro&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&theme=dark&legend=top-left&sealed_token=rD14Ce48qCR6mXTi0zio-abLAcluGQrDOorFBPL8DAMnUeVFYI8giJJ8arDwTaB8BgpJfk3Y2y5hpIiAu4SBOg6e1_nW8xZ7OrTOFi7ykoGvxk30ycgvzwHW4E-skW0jp5QGttP1QvGgeu5xFrkVbvFa1OFSo_JwWr557R6RNg2hDXdFD7v7nwf_VnR1" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&legend=top-left&sealed_token=rD14Ce48qCR6mXTi0zio-abLAcluGQrDOorFBPL8DAMnUeVFYI8giJJ8arDwTaB8BgpJfk3Y2y5hpIiAu4SBOg6e1_nW8xZ7OrTOFi7ykoGvxk30ycgvzwHW4E-skW0jp5QGttP1QvGgeu5xFrkVbvFa1OFSo_JwWr557R6RNg2hDXdFD7v7nwf_VnR1" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&legend=top-left&sealed_token=rD14Ce48qCR6mXTi0zio-abLAcluGQrDOorFBPL8DAMnUeVFYI8giJJ8arDwTaB8BgpJfk3Y2y5hpIiAu4SBOg6e1_nW8xZ7OrTOFi7ykoGvxk30ycgvzwHW4E-skW0jp5QGttP1QvGgeu5xFrkVbvFa1OFSo_JwWr557R6RNg2hDXdFD7v7nwf_VnR1" />
  </picture>
 </a>
 
@@ -140,4 +143,3 @@ Cảm ơn những người tuyệt vời đã ủng hộ TablePro:
 
 Dự án này cấp phép theo [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE).
 
-Đóng góp cần ký Contributor License Agreement (CLA). Xem [CLA.md](CLA.md) để biết chi tiết.

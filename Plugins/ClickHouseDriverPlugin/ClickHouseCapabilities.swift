@@ -15,6 +15,10 @@ struct ClickHouseCapabilities: Sendable, Equatable {
         major > 19 || (major == 19 && minor >= 17)
     }
 
+    var hasWriteExceptionInOutputFormatSetting: Bool {
+        major > 23 || (major == 23 && minor >= 8)
+    }
+
     static func parse(_ version: String?) -> ClickHouseCapabilities {
         guard let version else { return .unknown }
         let parts = version.split(separator: ".")

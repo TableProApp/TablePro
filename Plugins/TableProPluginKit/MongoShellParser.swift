@@ -32,6 +32,37 @@ public enum MongoOperation {
     case listCollections
     case listDatabases
     case ping
+    case write(
+        kind: MongoWriteKind,
+        collection: String,
+        filter: String,
+        document: String,
+        options: MongoWriteOptions
+    )
+}
+
+/// Which write a `.write` operation performs. Only produced when the shell call carries an
+/// options argument; the plain two-argument forms keep their original operation cases.
+public enum MongoWriteKind: String, Sendable {
+    case updateOne
+    case updateMany
+    case replaceOne
+    case findOneAndUpdate
+}
+
+/// The third argument of an update, replace or findOneAndUpdate call.
+public struct MongoWriteOptions: Sendable {
+    public var upsert: Bool
+    public var arrayFilters: String?
+    public var hint: String?
+    public var raw: String
+
+    public init(upsert: Bool = false, arrayFilters: String? = nil, hint: String? = nil, raw: String = "{}") {
+        self.upsert = upsert
+        self.arrayFilters = arrayFilters
+        self.hint = hint
+        self.raw = raw
+    }
 }
 
 /// Options for a find operation parsed from chained methods
@@ -59,13 +90,13 @@ public enum MongoShellParseError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidSyntax(let msg):
-            return String(localized: "Invalid MongoDB syntax: \(msg)")
+            return String(format: String(localized: "Invalid MongoDB syntax: %@"), msg)
         case .unsupportedMethod(let method):
-            return String(localized: "Unsupported MongoDB method: \(method)")
+            return String(format: String(localized: "Unsupported MongoDB method: %@"), method)
         case .invalidJson(let msg):
-            return String(localized: "Invalid JSON: \(msg)")
+            return String(format: String(localized: "Invalid JSON: %@"), msg)
         case .missingArgument(let msg):
-            return String(localized: "Missing argument: \(msg)")
+            return String(format: String(localized: "Missing argument: %@"), msg)
         }
     }
 }
@@ -77,7 +108,8 @@ public struct MongoShellParser {
 
     /// Parse a MongoDB Shell expression into a MongoOperation
     public static func parse(_ input: String) throws -> MongoOperation {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = try MongoShellValueTranslator.translate(input)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
         if trimmed.isEmpty {
             throw MongoShellParseError.invalidSyntax("Empty query")
@@ -123,65 +155,19 @@ public struct MongoShellParser {
     // MARK: - Private Parsing
 
     /// Parse db["collection"].method(args) bracket notation.
-    /// Supports both double and single quotes around the collection name.
+    /// Supports double quotes, single quotes and backticks around the collection name.
     private static func parseBracketExpression(_ input: String) throws -> MongoOperation {
-        // input starts with db[
-        let afterBracket = String(input.dropFirst(3)) // drop "db["
+        let nameStart = input.index(input.startIndex, offsetBy: 3)
+        let literal = try readStringLiteral(in: input, startingAt: nameStart)
 
-        // Determine quote character (" or ')
-        guard let quoteChar = afterBracket.first, quoteChar == "\"" || quoteChar == "'" else {
-            throw MongoShellParseError.invalidSyntax("Expected quoted collection name in db[...]")
+        guard literal.endIndex < input.endIndex, input[literal.endIndex] == "]" else {
+            throw MongoShellParseError.invalidSyntax(
+                String(localized: "Expected ']' after the collection name")
+            )
         }
 
-        // Find closing quote (handle escaped quotes)
-        var collectionName = ""
-        var i = afterBracket.index(after: afterBracket.startIndex)
-        var escapeNext = false
-        while i < afterBracket.endIndex {
-            let ch = afterBracket[i]
-            if escapeNext {
-                collectionName.append(ch)
-                escapeNext = false
-                i = afterBracket.index(after: i)
-                continue
-            }
-            if ch == "\\" {
-                escapeNext = true
-                i = afterBracket.index(after: i)
-                continue
-            }
-            if ch == quoteChar {
-                break
-            }
-            collectionName.append(ch)
-            i = afterBracket.index(after: i)
-        }
-
-        guard i < afterBracket.endIndex else {
-            throw MongoShellParseError.invalidSyntax("Unterminated string in db[...]")
-        }
-
-        // Move past closing quote and expect "]"
-        i = afterBracket.index(after: i)
-        guard i < afterBracket.endIndex, afterBracket[i] == "]" else {
-            throw MongoShellParseError.invalidSyntax("Expected ']' after collection name in db[...]")
-        }
-        i = afterBracket.index(after: i)
-
-        let remaining = String(afterBracket[i...]).trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // No method chain — treat as find all
-        if remaining.isEmpty {
-            return .find(collection: collectionName, filter: "{}", options: MongoFindOptions())
-        }
-
-        // Expect ".method(args)" after db["collection"]
-        guard remaining.hasPrefix(".") else {
-            throw MongoShellParseError.invalidSyntax("Expected '.method()' after db[\"...\"]")
-        }
-
-        let methodChain = String(remaining.dropFirst())
-        return try parseMethodChain(collection: collectionName, chain: methodChain)
+        let chain = String(input[input.index(after: literal.endIndex)...])
+        return try parseAccessorChain(collection: literal.value, chain: chain)
     }
 
     private static func parseDbExpression(_ input: String) throws -> MongoOperation {
@@ -202,6 +188,9 @@ public struct MongoShellParser {
         // This correctly handles dotted collection names like "system.version".
         let beforeParen = afterDb[afterDb.startIndex..<firstParen]
         guard let lastDot = beforeParen.lastIndex(of: ".") else {
+            if beforeParen.trimmingCharacters(in: .whitespacesAndNewlines) == "getCollection" {
+                return try parseGetCollectionExpression(afterDb, openParen: firstParen)
+            }
             // No dot before paren — db-level method call like db.getCollectionNames()
             return try parseDbLevelMethod(afterDb)
         }
@@ -210,6 +199,51 @@ public struct MongoShellParser {
         let remainder = String(afterDb[afterDb.index(after: lastDot)...])
 
         return try parseMethodChain(collection: collection, chain: remainder)
+    }
+
+    private static func parseGetCollectionExpression(
+        _ input: String,
+        openParen: String.Index
+    ) throws -> MongoOperation {
+        let argAndRest = try extractParenthesizedArgAndRemainder(from: input, startingAt: openParen)
+        let argument = argAndRest.arg
+
+        guard !argument.isEmpty else {
+            throw MongoShellParseError.missingArgument(
+                String(localized: "getCollection requires a collection name")
+            )
+        }
+
+        let literal = try readStringLiteral(in: argument, startingAt: argument.startIndex)
+        let trailing = argument[literal.endIndex...].trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard trailing.isEmpty else {
+            throw MongoShellParseError.invalidSyntax(
+                String(localized: "getCollection takes a single quoted collection name")
+            )
+        }
+        guard !literal.value.isEmpty else {
+            throw MongoShellParseError.missingArgument(
+                String(localized: "getCollection requires a collection name")
+            )
+        }
+
+        return try parseAccessorChain(collection: literal.value, chain: argAndRest.remainder)
+    }
+
+    private static func parseAccessorChain(collection: String, chain: String) throws -> MongoOperation {
+        let trimmed = chain.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmed.isEmpty else {
+            return .find(collection: collection, filter: "{}", options: MongoFindOptions())
+        }
+        guard trimmed.hasPrefix(".") else {
+            throw MongoShellParseError.invalidSyntax(
+                String(localized: "Expected '.method()' after the collection reference")
+            )
+        }
+
+        return try parseMethodChain(collection: collection, chain: String(trimmed.dropFirst()))
     }
 
     /// Parse a db-level method call like db.getCollectionNames(), db.stats(), etc.
@@ -294,16 +328,16 @@ public struct MongoShellParser {
             operation = .insertMany(collection: collection, documents: arg)
 
         case "updateOne":
-            let (filter, update) = try parseTwoArgs(arg, method: "updateOne")
-            operation = .updateOne(collection: collection, filter: filter, update: update)
+            operation = makeWrite(.updateOne, collection: collection,
+                                  args: try parseWriteArgs(arg, method: "updateOne"))
 
         case "updateMany":
-            let (filter, update) = try parseTwoArgs(arg, method: "updateMany")
-            operation = .updateMany(collection: collection, filter: filter, update: update)
+            operation = makeWrite(.updateMany, collection: collection,
+                                  args: try parseWriteArgs(arg, method: "updateMany"))
 
         case "replaceOne":
-            let (filter, replacement) = try parseTwoArgs(arg, method: "replaceOne")
-            operation = .replaceOne(collection: collection, filter: filter, replacement: replacement)
+            operation = makeWrite(.replaceOne, collection: collection,
+                                  args: try parseWriteArgs(arg, method: "replaceOne"))
 
         case "deleteOne":
             let filter = arg.isEmpty ? "{}" : arg
@@ -321,8 +355,8 @@ public struct MongoShellParser {
             operation = .dropIndex(collection: collection, indexName: arg)
 
         case "findOneAndUpdate":
-            let (filter, update) = try parseTwoArgs(arg, method: "findOneAndUpdate")
-            operation = .findOneAndUpdate(collection: collection, filter: filter, update: update)
+            operation = makeWrite(.findOneAndUpdate, collection: collection,
+                                  args: try parseWriteArgs(arg, method: "findOneAndUpdate"))
 
         case "findOneAndReplace":
             let (filter, replacement) = try parseTwoArgs(arg, method: "findOneAndReplace")
@@ -339,48 +373,166 @@ public struct MongoShellParser {
             throw MongoShellParseError.unsupportedMethod(methodName)
         }
 
-        // Parse chained methods (.sort(), .limit(), .skip(), .projection())
-        if !remainder.isEmpty, case .find(let coll, let filter, var opts) = operation {
-            opts = try parseChainedOptions(remainder, options: opts)
-            operation = .find(collection: coll, filter: filter, options: opts)
+        guard !remainder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return operation
         }
 
-        return operation
+        let calls = try parseChainedCalls(remainder)
+
+        switch operation {
+        case .find(let coll, let filter, let opts):
+            return .find(collection: coll, filter: filter, options: try applyCursorCalls(calls, to: opts))
+        case .aggregate(let coll, let pipeline):
+            return .aggregate(collection: coll, pipeline: try appendPipelineStages(for: calls, to: pipeline))
+        default:
+            throw MongoShellParseError.unsupportedMethod(
+                "\(methodName)() does not return a cursor, so .\(calls[0].method)() cannot be chained onto it"
+            )
+        }
     }
 
-    /// Parse chained find options: .sort({...}).limit(N).skip(N)
-    private static func parseChainedOptions(_ chain: String, options: MongoFindOptions) throws -> MongoFindOptions {
-        var opts = options
+    private struct ChainedCall {
+        let method: String
+        let argument: String
+    }
+
+    private static func parseChainedCalls(_ chain: String) throws -> [ChainedCall] {
+        var calls: [ChainedCall] = []
         var remaining = chain.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        while remaining.hasPrefix(".") {
+        while !remaining.isEmpty {
+            guard remaining.hasPrefix(".") else {
+                throw MongoShellParseError.invalidSyntax("Unexpected text after the method call: \(remaining)")
+            }
             remaining = String(remaining.dropFirst())
 
-            guard let parenIndex = remaining.firstIndex(of: "(") else { break }
+            guard let parenIndex = remaining.firstIndex(of: "(") else {
+                throw MongoShellParseError.invalidSyntax("Expected a chained method call with parentheses")
+            }
             let method = String(remaining[remaining.startIndex..<parenIndex])
 
             let argAndRest = try extractParenthesizedArgAndRemainder(from: remaining, startingAt: parenIndex)
-            let arg = argAndRest.arg
+            calls.append(ChainedCall(method: method, argument: argAndRest.arg))
             remaining = argAndRest.remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
 
-            switch method {
+        guard !calls.isEmpty else {
+            throw MongoShellParseError.invalidSyntax("Expected a chained method call")
+        }
+        return calls
+    }
+
+    private static func applyCursorCalls(
+        _ calls: [ChainedCall],
+        to options: MongoFindOptions
+    ) throws -> MongoFindOptions {
+        var opts = options
+
+        for call in calls {
+            switch call.method {
             case "sort":
-                opts.sort = arg
+                opts.sort = call.argument
             case "limit":
-                opts.limit = Int(arg.trimmingCharacters(in: .whitespaces))
+                opts.limit = try integerArgument(call)
             case "skip":
-                opts.skip = Int(arg.trimmingCharacters(in: .whitespaces))
+                opts.skip = try integerArgument(call)
             case "projection":
-                opts.projection = arg
+                opts.projection = call.argument
+            case "pretty", "toArray", "explain":
+                continue
             default:
-                break
+                throw MongoShellParseError.unsupportedMethod(".\(call.method)()")
             }
         }
 
         return opts
     }
 
+    private static func appendPipelineStages(for calls: [ChainedCall], to pipeline: String) throws -> String {
+        var stages: [String] = []
+
+        for call in calls {
+            switch call.method {
+            case "sort":
+                stages.append("{\"$sort\":\(call.argument)}")
+            case "skip":
+                stages.append("{\"$skip\":\(try integerArgument(call))}")
+            case "limit":
+                stages.append("{\"$limit\":\(try integerArgument(call))}")
+            case "pretty", "toArray", "explain":
+                continue
+            default:
+                throw MongoShellParseError.unsupportedMethod(".\(call.method)()")
+            }
+        }
+
+        guard !stages.isEmpty else { return pipeline }
+
+        let trimmed = pipeline.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("["), trimmed.hasSuffix("]") else {
+            throw MongoShellParseError.invalidSyntax("aggregate() expects an array of pipeline stages")
+        }
+
+        let inner = String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        let joined = stages.joined(separator: ",")
+        return inner.isEmpty ? "[\(joined)]" : "[\(inner),\(joined)]"
+    }
+
+    private static func integerArgument(_ call: ChainedCall) throws -> Int {
+        guard let value = Int(call.argument.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw MongoShellParseError.invalidSyntax(".\(call.method)() expects a whole number")
+        }
+        return value
+    }
+
     // MARK: - Argument Extraction Helpers
+
+    private struct StringLiteral {
+        let value: String
+        let endIndex: String.Index
+    }
+
+    /// Read a quoted JavaScript string literal, returning its unescaped value and the index after
+    /// the closing quote. Accepts double quotes, single quotes and backticks.
+    private static func readStringLiteral(in text: String, startingAt start: String.Index) throws -> StringLiteral {
+        guard start < text.endIndex, isStringDelimiter(text[start]) else {
+            throw MongoShellParseError.invalidSyntax(
+                String(localized: "Expected a quoted collection name")
+            )
+        }
+
+        let quote = text[start]
+        var value = ""
+        var index = text.index(after: start)
+        var escapeNext = false
+
+        while index < text.endIndex {
+            let character = text[index]
+            index = text.index(after: index)
+
+            if escapeNext {
+                value.append(character)
+                escapeNext = false
+                continue
+            }
+            if character == "\\" {
+                escapeNext = true
+                continue
+            }
+            if character == quote {
+                return StringLiteral(value: value, endIndex: index)
+            }
+            value.append(character)
+        }
+
+        throw MongoShellParseError.invalidSyntax(
+            String(localized: "Unterminated string in the collection reference")
+        )
+    }
+
+    private static func isStringDelimiter(_ character: Character) -> Bool {
+        character == "\"" || character == "'" || character == "`"
+    }
 
     /// Extract content inside balanced parentheses starting at the given index
     private static func extractParenthesizedArg(from str: String, startingAt openParen: String.Index) throws -> String {
@@ -464,6 +616,78 @@ public struct MongoShellParser {
             throw MongoShellParseError.missingArgument("\(method) requires 2 arguments")
         }
         return (parts[0], parts[1])
+    }
+
+    /// Parse a write call's arguments, keeping the optional third options document.
+    private static func parseWriteArgs(
+        _ args: String,
+        method: String
+    ) throws -> (filter: String, document: String, options: MongoWriteOptions?) {
+        let parts = try splitTopLevelArgs(args)
+        guard parts.count >= 2 else {
+            throw MongoShellParseError.missingArgument("\(method) requires 2 arguments")
+        }
+        guard parts.count > 2 else {
+            return (parts[0], parts[1], nil)
+        }
+        return (parts[0], parts[1], try parseWriteOptions(parts[2], method: method))
+    }
+
+    private static func parseWriteOptions(_ raw: String, method: String) throws -> MongoWriteOptions {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"), trimmed.hasSuffix("}") else {
+            throw MongoShellParseError.invalidSyntax("\(method) options must be a document")
+        }
+
+        var options = MongoWriteOptions(raw: trimmed)
+        let inner = String(trimmed.dropFirst().dropLast())
+
+        for entry in try splitTopLevelArgs(inner) {
+            let pair = entry.split(separator: ":", maxSplits: 1).map {
+                $0.trimmingCharacters(in: CharacterSet(charactersIn: " \t\n\"'`"))
+            }
+            guard pair.count == 2 else { continue }
+
+            switch pair[0] {
+            case "upsert":
+                options.upsert = pair[1] == "true"
+            case "arrayFilters":
+                options.arrayFilters = pair[1]
+            case "hint":
+                options.hint = pair[1]
+            default:
+                continue
+            }
+        }
+
+        return options
+    }
+
+    private static func makeWrite(
+        _ kind: MongoWriteKind,
+        collection: String,
+        args: (filter: String, document: String, options: MongoWriteOptions?)
+    ) -> MongoOperation {
+        guard let options = args.options else {
+            switch kind {
+            case .updateOne:
+                return .updateOne(collection: collection, filter: args.filter, update: args.document)
+            case .updateMany:
+                return .updateMany(collection: collection, filter: args.filter, update: args.document)
+            case .replaceOne:
+                return .replaceOne(collection: collection, filter: args.filter, replacement: args.document)
+            case .findOneAndUpdate:
+                return .findOneAndUpdate(collection: collection, filter: args.filter, update: args.document)
+            }
+        }
+
+        return .write(
+            kind: kind,
+            collection: collection,
+            filter: args.filter,
+            document: args.document,
+            options: options
+        )
     }
 
     /// Parse two arguments where the second is optional

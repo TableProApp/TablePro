@@ -25,61 +25,33 @@ final class GeminiProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let request = try buildStreamRequest(turns: turns, options: options)
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        throw AIProviderError.networkError("Invalid response")
-                    }
-
-                    guard httpResponse.statusCode == 200 else {
-                        let errorBody = try await collectErrorBody(from: bytes)
-                        throw AIProviderError.mapHTTPError(
-                            statusCode: httpResponse.statusCode,
-                            body: errorBody,
-                            treatForbiddenAsAuthFailure: true
-                        )
-                    }
-
-                    var state = GeminiStreamState()
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        guard let json = Self.decodeStreamLine(line) else { continue }
-                        let events = Self.parseChunk(
-                            json,
-                            state: &state,
-                            idGenerator: { UUID().uuidString }
-                        )
-                        for event in events { continuation.yield(event) }
-                    }
-                    if let usage = state.finalUsageEvent() {
-                        continuation.yield(usage)
-                    }
-
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        SSEEventStream.make(
+            session: session,
+            treatForbiddenAsAuthFailure: true,
+            buildRequest: { [self] in try buildStreamRequest(turns: turns, options: options) },
+            decodeLine: { Self.decodeStreamLine($0) },
+            makeState: { GeminiStreamState() },
+            parse: { Self.parseChunk($0, state: &$1, idGenerator: { UUID().uuidString }) },
+            finalEvents: { state in state.finalUsageEvent().map { [$0] } ?? [] }
+        )
     }
 
-    private static let knownModels = [
-        "gemini-2.5-flash",
+    private static let offlineModels: [AIModelInfo] = [
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-pro-preview",
         "gemini-2.5-pro",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro"
-    ]
+        "gemini-2.5-flash"
+    ].map {
+        AIModelInfo(
+            id: $0,
+            modalities: [.text, .image],
+            reasoning: AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high], defaultEffort: .medium)
+        )
+    }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
         guard let url = URL(string: "\(endpoint)/v1beta/models") else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
@@ -95,7 +67,7 @@ final class GeminiProvider: ChatTransport {
             (data, response) = try await session.data(for: request)
         } catch {
             Self.logger.warning("Gemini model fetch failed; using known models: \(error.localizedDescription, privacy: .public)")
-            return Self.knownModels
+            return Self.offlineModels
         }
 
         guard let httpResponse = response as? HTTPURLResponse,
@@ -104,21 +76,32 @@ final class GeminiProvider: ChatTransport {
               let models = json["models"] as? [[String: Any]]
         else {
             Self.logger.warning("Gemini model fetch returned unexpected response; using known models")
-            return Self.knownModels
+            return Self.offlineModels
         }
 
-        let fetched = models.compactMap { model -> String? in
-            guard let name = model["name"] as? String,
-                  let methods = model["supportedGenerationMethods"] as? [String],
-                  methods.contains("generateContent")
-            else { return nil }
-            if name.hasPrefix("models/") {
-                return String(name.dropFirst(7))
-            }
-            return name
-        }
+        let fetched = models.compactMap(Self.decodeModel(_:))
+        return fetched.isEmpty ? Self.offlineModels : fetched
+    }
 
-        return fetched.isEmpty ? Self.knownModels : fetched
+    static func decodeModel(_ json: [String: Any]) -> AIModelInfo? {
+        guard let name = json["name"] as? String,
+              let methods = json["supportedGenerationMethods"] as? [String],
+              methods.contains("generateContent")
+        else { return nil }
+
+        let id = name.hasPrefix("models/") ? String(name.dropFirst(7)) : name
+        let supportsThinking = json["thinking"] as? Bool ?? false
+
+        return AIModelInfo(
+            id: id,
+            displayName: json["displayName"] as? String,
+            contextWindow: json["inputTokenLimit"] as? Int,
+            maxOutputTokens: json["outputTokenLimit"] as? Int,
+            modalities: [.text, .image],
+            reasoning: supportsThinking
+                ? AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high], defaultEffort: .medium)
+                : .unsupported
+        )
     }
 
     func testConnection() async throws -> Bool {
@@ -214,6 +197,10 @@ final class GeminiProvider: ChatTransport {
         for block in turn.blocks {
             switch block.kind {
             case .text(let text):
+                guard !text.isEmpty else { continue }
+                parts.append(["text": text])
+            case .sqlWalkthrough(let walkthrough):
+                let text = walkthrough.transcriptText
                 guard !text.isEmpty else { continue }
                 parts.append(["text": text])
             case .attachment, .reasoning, .image:

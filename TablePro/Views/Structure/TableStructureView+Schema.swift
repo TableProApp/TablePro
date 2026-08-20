@@ -25,7 +25,6 @@ extension TableStructureView {
             return
         }
 
-        // If user chose to skip preview, apply changes directly
         if skipSchemaPreview {
             Task {
                 await executeSchemaChanges()
@@ -54,10 +53,13 @@ extension TableStructureView {
     }
 
     func executeSchemaChanges() async {
-        guard !connection.safeModeLevel.blocksAllWrites else {
+        let liveSafeModeLevel = coordinator?.safeModeLevel ?? connection.safeModeLevel
+        guard !liveSafeModeLevel.blocksAllWrites else {
             AlertHelper.showErrorSheet(
-                title: String(localized: "Read Only Connection"),
-                message: String(localized: "Cannot save schema changes: connection is read only."),
+                title: String(localized: "Safe Mode Is Read-Only"),
+                message: String(
+                    localized: "Cannot save schema changes: TablePro's Safe Mode is set to read-only for this connection."
+                ),
                 window: coordinator?.contentWindow
             )
             return
@@ -66,7 +68,8 @@ extension TableStructureView {
         let changes = structureChangeManager.getChangesArray()
         guard !changes.isEmpty else { return }
 
-        // Check for destructive changes that require confirmation
+        let saveScope = scope
+
         let destructiveChanges = changes.filter { $0.requiresDataMigration }
         if !destructiveChanges.isEmpty {
             let descriptions = destructiveChanges.map { $0.description }
@@ -92,33 +95,15 @@ extension TableStructureView {
             try await DatabaseManager.shared.executeSchemaChanges(
                 tableName: tableName,
                 changes: changes,
-                databaseType: connection.type
+                databaseType: connection.type,
+                scope: saveScope
             )
 
-            // Success - reload schema
-            loadedTabs.removeAll()
+            tabData.markAllStale()
+            await reloadCoreTabs()
 
-            // Reload all structure data before calling loadSchemaForEditing
-            await loadColumns()
-
-            // Load indexes and foreign keys (needed for complete schema state)
-            guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-                isReloadingAfterSave = false
-                return
-            }
-            do {
-                indexes = try await driver.fetchIndexes(table: tableName)
-                loadedTabs.insert(.indexes)
-                foreignKeys = try await driver.fetchForeignKeys(table: tableName)
-                loadedTabs.insert(.foreignKeys)
-            } catch {
-                Self.logger.error("Failed to reload indexes/FKs: \(error.localizedDescription, privacy: .public)")
-            }
-
-            // Now load the complete schema into the change manager
             loadSchemaForEditing()
 
-            // Load current tab data for display
             await loadTabDataIfNeeded(selectedTab)
 
             // Force clear state after reload (in case it got set during the async process)
@@ -136,7 +121,7 @@ extension TableStructureView {
             lastSaveTime = Date()
             isReloadingAfterSave = false
         } catch {
-            isReloadingAfterSave = false  // Clear flag on error
+            isReloadingAfterSave = false
             AlertHelper.showErrorSheet(
                 title: String(localized: "Error Applying Changes"),
                 message: error.localizedDescription,
@@ -157,7 +142,6 @@ extension TableStructureView {
 
     var ddlView: some View {
         VStack(spacing: 0) {
-            // DDL toolbar
             HStack(spacing: 12) {
                 HStack(spacing: 4) {
                     Button(action: { ddlFontSize = max(10, ddlFontSize - 1) }) {
@@ -227,6 +211,14 @@ extension TableStructureView {
         )
     }
 
+    func openTriggerInEditor(_ trigger: TriggerInfo) {
+        guard !trigger.statement.isEmpty else { return }
+        coordinator?.tabManager.addTab(
+            initialQuery: trigger.statement,
+            title: trigger.name
+        )
+    }
+
     private func copyDDL() {
         ClipboardService.shared.writeText(ddlStatement)
 
@@ -258,6 +250,11 @@ extension TableStructureView {
                 try ddlStatement.write(to: url, atomically: true, encoding: .utf8)
             } catch {
                 Self.logger.error("Failed to export: \(error.localizedDescription, privacy: .public)")
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Could not export the schema"),
+                    message: error.localizedDescription,
+                    window: window
+                )
             }
         }
     }

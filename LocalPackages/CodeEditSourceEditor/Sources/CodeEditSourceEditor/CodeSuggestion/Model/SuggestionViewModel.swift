@@ -19,6 +19,7 @@ final class SuggestionViewModel: ObservableObject {
 
     var itemsRequestTask: Task<Void, Never>?
     weak var activeTextView: TextViewController?
+    private(set) var isApplyingCompletion = false
 
     weak var delegate: CodeSuggestionDelegate?
 
@@ -27,6 +28,11 @@ final class SuggestionViewModel: ObservableObject {
     /// monitor and state cleanup). Bypassing this and calling `NSWindow.close()`
     /// directly leaves the local key monitor installed.
     var onApply: (() -> Void)?
+
+    /// Invoked when a click lands on a non-interactive part of the panel (background,
+    /// padding, rounded corners, divider, preview, or the "No Completions" label).
+    /// The owning controller dismisses the window so the click is not swallowed.
+    var onBackgroundTap: (() -> Void)?
 
     private var cursorPosition: CursorPosition?
     private var syntaxHighlightedCache: [Int: NSAttributedString] = [:]
@@ -83,11 +89,13 @@ final class SuggestionViewModel: ObservableObject {
         isManualTrigger: Bool = false,
         showWindowOnParent: @escaping @MainActor (NSWindow, NSRect) -> Void
     ) {
+        guard !isApplyingCompletion else { return }
+
         self.activeTextView = nil
         self.delegate = nil
         itemsRequestTask?.cancel()
 
-        guard let targetParentWindow = textView.view.window else {
+        guard textView.view.window != nil else {
             Self.logger.warning("showCompletions: textView.view.window is nil")
             return
         }
@@ -113,22 +121,31 @@ final class SuggestionViewModel: ObservableObject {
                 try await MainActor.run {
                     try Task.checkCancellation()
 
+                    guard let window = textView.view.window,
+                          window.isKeyWindow,
+                          let responder = window.firstResponder as? NSView,
+                          responder.isDescendant(of: textView.view) else {
+                        Self.logger.debug("showCompletions: editor lost focus while completions were loading")
+                        return
+                    }
+
                     guard let cursorPosition = textView.resolveCursorPosition(completionItems.windowPosition),
                           let cursorRect = textView.textView.layoutManager.rectForOffset(
                             cursorPosition.range.location
-                          ),
-                          let cursorRect = textView.view.window?.convertToScreen(
-                            textView.textView.convert(cursorRect, to: nil)
                           ) else {
                         Self.logger.warning("showCompletions: cursor rect resolution failed")
                         return
                     }
 
+                    let screenCursorRect = window.convertToScreen(
+                        textView.textView.convert(cursorRect, to: nil)
+                    )
+
                     self.items = completionItems.items
                     self.selectedIndex = 0
                     self.syntaxHighlightedCache = [:]
                     self.notifySelection()
-                    showWindowOnParent(targetParentWindow, cursorRect)
+                    showWindowOnParent(window, screenCursorRect)
                 }
             } catch {
                 return
@@ -142,29 +159,29 @@ final class SuggestionViewModel: ObservableObject {
         position: CursorPosition,
         close: () -> Void
     ) {
-        if itemsRequestTask != nil {
-            itemsRequestTask?.cancel()
-            itemsRequestTask = nil
-        }
+        guard !isApplyingCompletion else { return }
 
         if activeTextView !== textView {
+            itemsRequestTask?.cancel()
+            itemsRequestTask = nil
             close()
             return
         }
 
-        guard let newItems = delegate.completionOnCursorMove(
+        if let newItems = delegate.completionOnCursorMove(
             textView: textView,
             cursorPosition: position
-        ),
-              !newItems.isEmpty else {
-            close()
+        ), !newItems.isEmpty {
+            items = newItems
+            selectedIndex = 0
+            syntaxHighlightedCache = [:]
+            notifySelection()
             return
         }
 
-        items = newItems
-        selectedIndex = 0
-        syntaxHighlightedCache = [:]
-        notifySelection()
+        guard itemsRequestTask == nil else { return }
+
+        close()
     }
 
     func didSelect(item: CodeSuggestionEntry) {
@@ -175,11 +192,13 @@ final class SuggestionViewModel: ObservableObject {
         guard let activeTextView else {
             return
         }
+        isApplyingCompletion = true
         self.delegate?.completionWindowApplyCompletion(
             item: item,
             textView: activeTextView,
             cursorPosition: activeTextView.cursorPositions.first
         )
+        isApplyingCompletion = false
         onApply?()
     }
 
@@ -189,6 +208,7 @@ final class SuggestionViewModel: ObservableObject {
         items.removeAll()
         selectedIndex = 0
         activeTextView = nil
+        delegate?.completionWindowDidClose()
         delegate = nil
     }
 

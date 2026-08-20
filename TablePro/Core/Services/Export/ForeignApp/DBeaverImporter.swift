@@ -7,6 +7,7 @@ import AppKit
 import CommonCrypto
 import Foundation
 import os
+import TableProImport
 import TableProPluginKit
 
 struct DBeaverImporter: ForeignAppImporter {
@@ -16,15 +17,17 @@ struct DBeaverImporter: ForeignAppImporter {
     let displayName = "DBeaver"
     let symbolName = "bird"
     let appBundleIdentifier = "org.jkiss.dbeaver.core.product"
+    let readsPasswordsFromKeychain = false
 
-    /// All known DBeaver Eclipse product identifiers. Community, Enterprise,
-    /// Ultimate, and Lite variants each register a different bundle ID, but
-    /// they all write to the same `~/Library/DBeaverData/workspace*`.
+    /// All known DBeaver product identifiers. Community, Enterprise, Ultimate,
+    /// and Lite variants each register a different bundle ID, but they all
+    /// write to the same `~/Library/DBeaverData/workspace*`.
     private static let knownBundleIdentifiers = [
         "org.jkiss.dbeaver.core.product",
         "org.jkiss.dbeaver.ee.core.product",
         "org.jkiss.dbeaver.ue.product",
-        "org.jkiss.dbeaver.lite.product"
+        "org.jkiss.dbeaver.lite.product",
+        "com.dbeaver.product.ultimate"
     ]
 
     /// Root directory containing DBeaver workspace folders. The actual
@@ -33,13 +36,21 @@ struct DBeaverImporter: ForeignAppImporter {
     var dbeaverDataRoot: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/DBeaverData")
 
+    var resolveAppURL: (_ bundleIdentifier: String) -> URL? = {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
+    }
+
     func installedAppURL() -> URL? {
         for bundleId in Self.knownBundleIdentifiers {
-            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+            if let url = resolveAppURL(bundleId) {
                 return url
             }
         }
         return nil
+    }
+
+    func isAvailable() -> Bool {
+        installedAppURL() != nil || findDataSourcesFile() != nil
     }
 
     func connectionCount() -> Int {
@@ -64,12 +75,9 @@ struct DBeaverImporter: ForeignAppImporter {
 
         let foldersDict = json["folders"] as? [String: [String: Any]] ?? [:]
 
-        var credentialsMap: [String: [String: Any]] = [:]
-        if includePasswords {
-            let credentialsURL = dataSourcesURL.deletingLastPathComponent()
-                .appendingPathComponent("credentials-config.json")
-            credentialsMap = loadCredentials(from: credentialsURL)
-        }
+        let credentialsURL = dataSourcesURL.deletingLastPathComponent()
+            .appendingPathComponent("credentials-config.json")
+        let credentialsMap = loadCredentials(from: credentialsURL)
 
         var exportableConnections: [ExportableConnection] = []
         var groupNames: Set<String> = []
@@ -77,7 +85,10 @@ struct DBeaverImporter: ForeignAppImporter {
 
         for (connId, connDict) in connectionsDict {
             do {
-                let conn = try parseConnection(connId, dict: connDict, folders: foldersDict)
+                let credentialUsername = (credentialsMap[connId]?["#connection"] as? [String: Any])?["user"] as? String
+                let conn = try parseConnection(
+                    connId, dict: connDict, folders: foldersDict, credentialUsername: credentialUsername
+                )
                 let index = exportableConnections.count
                 exportableConnections.append(conn)
 
@@ -159,7 +170,8 @@ struct DBeaverImporter: ForeignAppImporter {
     private func parseConnection(
         _ connId: String,
         dict: [String: Any],
-        folders: [String: [String: Any]]
+        folders: [String: [String: Any]],
+        credentialUsername: String?
     ) throws -> ExportableConnection {
         let name = dict["name"] as? String ?? connId
         let provider = dict["provider"] as? String ?? ""
@@ -176,7 +188,9 @@ struct DBeaverImporter: ForeignAppImporter {
             port = defaultPort(for: dbType)
         }
         let database = config["database"] as? String ?? config["url"] as? String ?? ""
-        let username = config["user"] as? String ?? ""
+        let username = [credentialUsername, config["user"] as? String]
+            .compactMap { $0 }
+            .first { !$0.isEmpty } ?? ""
 
         let folderPath = dict["folder"] as? String
         let groupName: String?
@@ -184,7 +198,6 @@ struct DBeaverImporter: ForeignAppImporter {
             if let folderInfo = folders[path], let desc = folderInfo["description"] as? String, !desc.isEmpty {
                 groupName = desc
             } else {
-                // Use last component of folder path as group name
                 groupName = path.components(separatedBy: "/").last
             }
         } else {
@@ -223,7 +236,6 @@ struct DBeaverImporter: ForeignAppImporter {
 
         let properties = sshTunnel["properties"] as? [String: Any] ?? [:]
 
-        // Check if the handler is enabled
         let enabled = sshTunnel["enabled"] as? Bool ?? (properties["host"] != nil)
         guard enabled else { return nil }
 
@@ -296,7 +308,6 @@ struct DBeaverImporter: ForeignAppImporter {
     private func parseColor(_ config: [String: Any]) -> String? {
         guard let colorString = config["color"] as? String, !colorString.isEmpty else { return nil }
         // DBeaver stores colors as comma-separated RGB values like "255,0,0"
-        // Map common colors to our color names
         let components = colorString.components(separatedBy: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
         guard components.count >= 3 else { return nil }
         let (r, g, b) = (components[0], components[1], components[2])
@@ -367,6 +378,7 @@ struct DBeaverImporter: ForeignAppImporter {
             password: password,
             sshPassword: sshPassword,
             keyPassphrase: nil,
+            sslClientKeyPassphrase: nil,
             totpSecret: nil,
             pluginSecureFields: nil
         )

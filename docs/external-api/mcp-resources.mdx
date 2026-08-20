@@ -3,8 +3,6 @@ title: MCP Resources
 description: Read-only resources exposed by the MCP server
 ---
 
-# MCP Resources
-
 Resources are read-only views of TablePro state. AI clients use them to discover what is available before calling tools. Every resource is scope-gated the same way as tools and respects the per-connection allowlist.
 
 URIs use the `tablepro://` scheme inside the MCP transport. Do not confuse them with shell-level [URL scheme deep links](/external-api/url-scheme).
@@ -78,7 +76,7 @@ Tables and columns visible on the current connection session.
   "tables": [
     {
       "name": "users",
-      "type": "table",
+      "type": "TABLE",
       "columns": [
         { "name": "id", "data_type": "uuid", "is_nullable": false, "is_primary_key": true },
         { "name": "email", "data_type": "text", "is_nullable": false, "is_primary_key": false }
@@ -88,7 +86,7 @@ Tables and columns visible on the current connection session.
 }
 ```
 
-The response is flat: tables for the active database/schema only. To switch context, call the `switch_database` or `switch_schema` tool first. `type` matches the underlying `TableType` raw value (for example `table`, `view`).
+The response is flat: tables for the active database/schema only. To switch context, call the `switch_database` or `switch_schema` tool first. `type` is one of `TABLE`, `VIEW`, `MATERIALIZED VIEW`, `FOREIGN TABLE`, or `SYSTEM TABLE`, the same values `list_tables` returns.
 
 Capped at 100 tables. When more exist, the response also includes `truncated: true` and `total_tables: <count>`. For larger schemas, page through `list_tables` instead.
 

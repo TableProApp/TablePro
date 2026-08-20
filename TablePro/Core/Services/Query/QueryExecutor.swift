@@ -12,23 +12,24 @@ struct QueryFetchResult {
     let rowsAffected: Int
     let statusMessage: String?
     let isTruncated: Bool
+    let resultColumnMeta: [ResultColumnMeta]?
 }
 
-typealias SchemaResult = (columnInfo: [ColumnInfo], fkInfo: [ForeignKeyInfo], approximateRowCount: Int?)
+struct FetchedTableSchema {
+    let columns: [ColumnInfo]
+    let foreignKeys: [ForeignKeyInfo]?
+    let approximateRowCount: Int?
+}
 
 struct ParsedSchemaMetadata {
     let columnDefaults: [String: String?]
-    let columnForeignKeys: [String: ForeignKeyInfo]
+    let columnForeignKeys: [String: ForeignKeyInfo]?
     let columnNullable: [String: Bool]
     let primaryKeyColumns: [String]
+    let generatedColumns: Set<String>
     let approximateRowCount: Int?
     let columnEnumValues: [String: [String]]
-}
-
-struct QueryExecutionResult {
-    let fetchResult: QueryFetchResult
-    let schemaResult: SchemaResult?
-    let parsedMetadata: ParsedSchemaMetadata?
+    let columnComments: [String: String]
 }
 
 @MainActor
@@ -40,82 +41,29 @@ final class QueryExecutor {
         self.connection = connection
     }
 
-    // MARK: - Driver access
-
-    private func resolveDriver() throws -> DatabaseDriver {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            throw DatabaseError.notConnected
-        }
-        return driver
-    }
-
     // MARK: - Public orchestrators
 
+    /// The driver is supplied by the caller, which resolved it from the tab's scope.
+    /// Looking it up here would tie every query to whichever database the connection
+    /// happens to be on.
     func executeQuery(
+        driver: DatabaseDriver,
         sql: String,
         parameters: [Any?]? = nil,
-        rowCap: Int?,
-        tableName: String?,
-        fetchSchemaForTable: Bool
-    ) async throws -> QueryExecutionResult {
-        let connId = connectionId
-
-        var parallelSchemaTask: Task<SchemaResult, Error>?
-        if fetchSchemaForTable, let tableName, !tableName.isEmpty {
-            parallelSchemaTask = Task {
-                guard let driver = DatabaseManager.shared.driver(for: connId) else {
-                    throw DatabaseError.notConnected
-                }
-                async let cols = driver.fetchColumns(table: tableName)
-                async let fks = driver.fetchForeignKeys(table: tableName)
-                let result = try await (columnInfo: cols, fkInfo: fks)
-                let approxCount = try? await driver.fetchApproximateRowCount(table: tableName)
-                return (
-                    columnInfo: result.columnInfo,
-                    fkInfo: result.fkInfo,
-                    approximateRowCount: approxCount
-                )
-            }
-        }
-
-        let driver = try resolveDriver()
-
-        let fetchResult: QueryFetchResult
-        do {
-            if let parameters {
-                fetchResult = try await Self.fetchQueryDataParameterized(
-                    driver: driver,
-                    sql: sql,
-                    parameters: parameters,
-                    rowCap: rowCap
-                )
-            } else {
-                fetchResult = try await Self.fetchQueryData(
-                    driver: driver,
-                    sql: sql,
-                    rowCap: rowCap
-                )
-            }
-        } catch {
-            parallelSchemaTask?.cancel()
-            throw error
-        }
-
-        var schemaResult: SchemaResult?
-        if fetchSchemaForTable, let tableName, !tableName.isEmpty {
-            schemaResult = await Self.awaitSchemaResult(
-                connectionId: connId,
-                parallelTask: parallelSchemaTask,
-                tableName: tableName
+        rowCap: Int?
+    ) async throws -> QueryFetchResult {
+        if let parameters {
+            return try await Self.fetchQueryDataParameterized(
+                driver: driver,
+                sql: sql,
+                parameters: parameters,
+                rowCap: rowCap
             )
         }
-
-        let parsedMetadata = schemaResult.map { Self.parseSchemaMetadata($0) }
-
-        return QueryExecutionResult(
-            fetchResult: fetchResult,
-            schemaResult: schemaResult,
-            parsedMetadata: parsedMetadata
+        return try await Self.fetchQueryData(
+            driver: driver,
+            sql: sql,
+            rowCap: rowCap
         )
     }
 
@@ -138,7 +86,8 @@ final class QueryExecutor {
             executionTime: result.executionTime,
             rowsAffected: result.rowsAffected,
             statusMessage: result.statusMessage,
-            isTruncated: result.isTruncated
+            isTruncated: result.isTruncated,
+            resultColumnMeta: result.columnMeta
         )
     }
 
@@ -160,57 +109,102 @@ final class QueryExecutor {
             executionTime: result.executionTime,
             rowsAffected: result.rowsAffected,
             statusMessage: result.statusMessage,
-            isTruncated: result.isTruncated
+            isTruncated: result.isTruncated,
+            resultColumnMeta: result.columnMeta
         )
     }
 
-    // MARK: - Schema await + parse
+    // MARK: - Schema fetch + parse
 
-    static func awaitSchemaResult(
-        connectionId: UUID,
-        parallelTask: Task<SchemaResult, Error>?,
-        tableName: String
-    ) async -> SchemaResult? {
-        if let parallelTask {
-            return try? await parallelTask.value
+    static func fetchTableSchema(scope: DatabaseScope, tableName: String) async throws -> FetchedTableSchema {
+        queryExecutorLog.info(
+            "[fk] schema fetch start table=\(tableName, privacy: .public) db=\(scope.database, privacy: .public) schema=\(scope.schema ?? "default", privacy: .public)"
+        )
+        let (columns, approximateRowCount) = try await DatabaseManager.shared.withMetadataDriver(
+            scope: scope
+        ) { driver in
+            let columns = try await driver.fetchColumns(table: tableName)
+            let approximateRowCount = try? await driver.fetchApproximateRowCount(table: tableName)
+            return (columns, approximateRowCount)
         }
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return nil }
+        let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
+        queryExecutorLog.info(
+            "[fk] schema fetch done table=\(tableName, privacy: .public) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
+        )
+        return FetchedTableSchema(columns: columns, foreignKeys: foreignKeys, approximateRowCount: approximateRowCount)
+    }
+
+    private static func fetchForeignKeys(scope: DatabaseScope, tableName: String) async -> [ForeignKeyInfo]? {
         do {
-            async let cols = driver.fetchColumns(table: tableName)
-            async let fks = driver.fetchForeignKeys(table: tableName)
-            let (c, f) = try await (cols, fks)
-            let approxCount = try? await driver.fetchApproximateRowCount(table: tableName)
-            return (columnInfo: c, fkInfo: f, approximateRowCount: approxCount)
+            return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                try await driver.fetchForeignKeys(table: tableName)
+            }
         } catch {
-            queryExecutorLog.error("Phase 2 schema fetch failed: \(error.localizedDescription, privacy: .public)")
+            queryExecutorLog.error(
+                "[fk] FK fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
             return nil
         }
     }
 
-    static func parseSchemaMetadata(_ schema: SchemaResult) -> ParsedSchemaMetadata {
+    static func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         var defaults: [String: String?] = [:]
-        var fks: [String: ForeignKeyInfo] = [:]
         var nullable: [String: Bool] = [:]
-        for col in schema.columnInfo {
+        for col in schema.columns {
             defaults[col.name] = col.defaultValue
             nullable[col.name] = col.isNullable
         }
-        for fk in schema.fkInfo {
-            fks[fk.column] = fk
+        var fks: [String: ForeignKeyInfo]?
+        if let foreignKeys = schema.foreignKeys {
+            var byColumn: [String: ForeignKeyInfo] = [:]
+            for fk in foreignKeys {
+                byColumn[fk.column] = fk
+            }
+            fks = byColumn
         }
         var enumValues: [String: [String]] = [:]
-        for col in schema.columnInfo {
+        var comments: [String: String] = [:]
+        for col in schema.columns {
             if let values = col.allowedValues, !values.isEmpty {
                 enumValues[col.name] = values
+            } else if let values = EnumValueParser.parseMySQLEnumOrSet(from: col.dataType), !values.isEmpty {
+                enumValues[col.name] = values
+            }
+            if let comment = col.comment?.nilIfEmpty {
+                comments[col.name] = comment
             }
         }
         return ParsedSchemaMetadata(
             columnDefaults: defaults,
             columnForeignKeys: fks,
             columnNullable: nullable,
-            primaryKeyColumns: schema.columnInfo.filter { $0.isPrimaryKey }.map(\.name),
+            primaryKeyColumns: schema.columns.filter { $0.isPrimaryKey }.map(\.name),
+            generatedColumns: Set(schema.columns.filter(\.isGenerated).map(\.name)),
             approximateRowCount: schema.approximateRowCount,
-            columnEnumValues: enumValues
+            columnEnumValues: enumValues,
+            columnComments: comments
+        )
+    }
+
+    static func inlineMetadata(from meta: [ResultColumnMeta]?, columns: [String]) -> ParsedSchemaMetadata? {
+        guard let meta, !meta.isEmpty, meta.count == columns.count else { return nil }
+        var nullable: [String: Bool] = [:]
+        var primaryKeys: [String] = []
+        for (index, column) in columns.enumerated() {
+            nullable[column] = meta[index].isNullable
+            if meta[index].isPrimaryKey {
+                primaryKeys.append(column)
+            }
+        }
+        return ParsedSchemaMetadata(
+            columnDefaults: [:],
+            columnForeignKeys: nil,
+            columnNullable: nullable,
+            primaryKeyColumns: primaryKeys,
+            generatedColumns: [],
+            approximateRowCount: nil,
+            columnEnumValues: [:],
+            columnComments: [:]
         )
     }
 
@@ -218,17 +212,21 @@ final class QueryExecutor {
 
     static func resolveRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Int? {
         let dataGridSettings = AppSettingsManager.shared.dataGrid
-        let trimmedUpper = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let isSelectQuery = trimmedUpper.hasPrefix("SELECT ") || trimmedUpper.hasPrefix("WITH ")
-        let isWrite = QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
-        let isDDL = isDDLStatement(sql)
-
-        guard tabType == .query, isSelectQuery, !isWrite, !isDDL,
-              dataGridSettings.truncateQueryResults
+        guard dataGridSettings.truncateQueryResults,
+              qualifiesForRowCap(sql: sql, tabType: tabType, databaseType: databaseType)
         else {
             return nil
         }
-        return dataGridSettings.validatedQueryResultRowCap
+        let cap = dataGridSettings.validatedQueryResultRowCap
+        return cap > 0 ? cap : nil
+    }
+
+    static func qualifiesForRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Bool {
+        guard tabType == .query else { return false }
+        let keyword = QueryClassifier.leadingKeyword(of: sql)
+        return (keyword == "SELECT" || keyword == "WITH")
+            && !QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
+            && !isDDLStatement(sql)
     }
 
     private static let ddlPrefixes: [String] = [

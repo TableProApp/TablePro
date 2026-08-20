@@ -48,12 +48,17 @@ final class DataChangeManager: ChangeManaging {
     var changes: [RowChange] { pending.changes }
     var rowChanges: [RowChange] { pending.changes }
     var insertedRowIndices: Set<Int> { pending.insertedRowIndices }
+    var deletedRowIndices: Set<Int> { pending.deletedRowIndices }
 
     var tableName: String = ""
+    var schemaName: String?
     var primaryKeyColumns: [String] = []
     /// First PK column, for contexts that need a single column (paste, filters)
     var primaryKeyColumn: String? { primaryKeyColumns.first }
-    var databaseType: DatabaseType = .mysql
+    /// Columns the server computes. They reject any written value, so they are
+    /// never editable and never appear in a generated INSERT or UPDATE.
+    var generatedColumns: Set<String> = []
+    var databaseType: DatabaseType?
     var pluginDriver: (any PluginDatabaseDriver)?
 
     var columns: [String] = []
@@ -70,8 +75,11 @@ final class DataChangeManager: ChangeManaging {
 
     private func registerUndo(actionName: String, _ handler: @escaping (DataChangeManager) -> Void) {
         guard let undoManager = undoManagerProvider?() else { return }
+        let opensOwnGroup = !undoManager.groupsByEvent && undoManager.groupingLevel == 0
+        if opensOwnGroup { undoManager.beginUndoGrouping() }
         undoManager.registerUndo(withTarget: self, handler: handler)
         undoManager.setActionName(actionName)
+        if opensOwnGroup { undoManager.endUndoGrouping() }
     }
 
     // MARK: - Configuration
@@ -89,15 +97,18 @@ final class DataChangeManager: ChangeManaging {
 
     func configureForTable(
         tableName: String,
+        schemaName: String? = nil,
         columns: [String],
         primaryKeyColumns: [String],
-        databaseType: DatabaseType = .mysql,
+        databaseType: DatabaseType,
         triggerReload: Bool = true
     ) {
         self.tableName = tableName
+        self.schemaName = schemaName
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
+        self.generatedColumns = []
 
         pending.clear()
         undoManagerProvider?()?.removeAllActions(withTarget: self)
@@ -106,6 +117,14 @@ final class DataChangeManager: ChangeManaging {
         if triggerReload {
             reloadVersion += 1
         }
+    }
+
+    func setPrimaryKeyColumns(_ primaryKeyColumns: [String]) {
+        self.primaryKeyColumns = primaryKeyColumns
+    }
+
+    func setGeneratedColumns(_ generatedColumns: Set<String>) {
+        self.generatedColumns = generatedColumns
     }
 
     // MARK: - Change Tracking
@@ -393,6 +412,7 @@ final class DataChangeManager: ChangeManaging {
             let pluginInsertedRowData: [Int: [PluginCellValue]] = insertedRowData
             if let statements = pluginDriver.generateStatements(
                 table: tableName,
+                schema: schemaName,
                 columns: columns,
                 primaryKeyColumns: primaryKeyColumns,
                 changes: pluginChanges,
@@ -404,9 +424,15 @@ final class DataChangeManager: ChangeManaging {
             }
         }
 
+        guard let databaseType else {
+            throw DatabaseError.queryFailed(
+                "Cannot generate statements: table dialect not configured"
+            )
+        }
+
         if PluginManager.shared.editorLanguage(for: databaseType) != .sql {
             throw DatabaseError.queryFailed(
-                "Cannot generate statements for \(databaseType.rawValue) — plugin driver not initialized"
+                "Cannot generate statements for \(databaseType.rawValue): plugin driver not initialized"
             )
         }
 
@@ -415,6 +441,7 @@ final class DataChangeManager: ChangeManaging {
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
             databaseType: databaseType,
+            generatedColumns: generatedColumns,
             dialect: PluginManager.shared.sqlDialect(for: databaseType),
             quoteIdentifier: pluginDriver?.quoteIdentifier
         )
@@ -476,8 +503,9 @@ final class DataChangeManager: ChangeManaging {
         pending.snapshot(primaryKeyColumns: primaryKeyColumns, columns: columns)
     }
 
-    func restoreState(from state: TabChangeSnapshot, tableName: String, databaseType: DatabaseType) {
+    func restoreState(from state: TabChangeSnapshot, tableName: String, schemaName: String? = nil, databaseType: DatabaseType) {
         self.tableName = tableName
+        self.schemaName = schemaName
         self.columns = state.columns
         self.primaryKeyColumns = state.primaryKeyColumns
         self.databaseType = databaseType

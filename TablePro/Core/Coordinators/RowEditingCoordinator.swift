@@ -14,6 +14,13 @@ final class RowEditingCoordinator {
         self.parent = parent
     }
 
+    /// A row command selects the row it just made so the grid can highlight it and scroll to it.
+    /// No other mode has a grid to point at, and the JSON view reads the same selection as "show
+    /// only these rows", so writing it there collapses the document to the one new row.
+    private var selectionPointsTheGrid: Bool {
+        parent.tabManager.selectedTab?.display.resultsViewMode == .data
+    }
+
     // MARK: - Row Operations
 
     func addNewRow() {
@@ -41,9 +48,10 @@ final class RowEditingCoordinator {
 
         guard let result = addResult else { return }
 
-        parent.selectionState.indices = [result.rowIndex]
+        if selectionPointsTheGrid {
+            parent.selectionState.indices = [result.rowIndex]
+        }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        parent.querySortCache.removeValue(forKey: tabId)
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
     }
@@ -53,6 +61,11 @@ final class RowEditingCoordinator {
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               tab.tableContext.isEditable,
               !indices.isEmpty else { return }
+
+        if parent.activeGridDisplayIDs != nil {
+            deleteFilteredRows(indices: indices, tab: tab, tabIndex: tabIndex)
+            return
+        }
 
         let tabId = tab.id
 
@@ -71,19 +84,72 @@ final class RowEditingCoordinator {
         }
 
         let totalRows = parent.tabSessionRegistry.tableRows(for: tabId).count
-        if deleteResult.nextRowToSelect >= 0 && deleteResult.nextRowToSelect < totalRows {
-            parent.selectionState.indices = [deleteResult.nextRowToSelect]
-        } else {
-            parent.selectionState.indices.removeAll()
+        if selectionPointsTheGrid {
+            if deleteResult.nextRowToSelect >= 0 && deleteResult.nextRowToSelect < totalRows {
+                parent.selectionState.indices = [deleteResult.nextRowToSelect]
+            } else {
+                parent.selectionState.indices.removeAll()
+            }
         }
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
 
         if !deleteResult.physicallyRemovedIndices.isEmpty {
-            parent.querySortCache.removeValue(forKey: tabId)
             parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(deleteResult.delta)
         } else {
             parent.dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
+        }
+    }
+
+    private func deleteFilteredRows(indices: Set<Int>, tab: QueryTab, tabIndex: Int) {
+        let tabId = tab.id
+        let displayIDs = parent.activeGridDisplayIDs
+        let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
+
+        var existingRows: [(displayIndex: Int, originalRow: [PluginCellValue])] = []
+        var insertedStorageIndices: [Int] = []
+        for displayIndex in indices {
+            guard let storageIndex = DisplayRowMapping.rowIndex(
+                forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows
+            ) else { continue }
+            let row = tableRows.rows[storageIndex]
+            if row.id.isInserted {
+                insertedStorageIndices.append(storageIndex)
+            } else if !parent.changeManager.isRowDeleted(displayIndex) {
+                existingRows.append((displayIndex: displayIndex, originalRow: Array(row.values)))
+            }
+        }
+
+        guard !existingRows.isEmpty || !insertedStorageIndices.isEmpty else { return }
+
+        var deleteResult = RowOperationsManager.DeleteRowsResult(
+            nextRowToSelect: -1, physicallyRemovedIndices: [], delta: .none
+        )
+        parent.mutateActiveTableRows(for: tabId) { rows in
+            let result = parent.rowOperationsManager.deleteRows(
+                existingRows: existingRows,
+                insertedStorageIndices: insertedStorageIndices,
+                tableRows: &rows
+            )
+            deleteResult = result
+            return result.delta
+        }
+
+        parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
+
+        if !deleteResult.physicallyRemovedIndices.isEmpty {
+            parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(deleteResult.delta)
+        } else {
+            parent.dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
+        }
+
+        guard selectionPointsTheGrid else { return }
+        let displayCount = parent.activeGridDisplayIDs?.count
+            ?? parent.tabSessionRegistry.tableRows(for: tabId).count
+        if let minSelected = indices.min(), displayCount > 0 {
+            parent.selectionState.indices = [min(minSelected, displayCount - 1)]
+        } else {
+            parent.selectionState.indices = []
         }
     }
 
@@ -92,6 +158,11 @@ final class RowEditingCoordinator {
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               tab.tableContext.isEditable,
               tab.tableContext.tableName != nil else { return }
+
+        if parent.activeGridDisplayIDs != nil {
+            duplicateFilteredRow(displayIndex: index, tab: tab, tabIndex: tabIndex)
+            return
+        }
 
         let tabId = tab.id
         let columns = parent.tabSessionRegistry.tableRows(for: tabId).columns
@@ -112,11 +183,47 @@ final class RowEditingCoordinator {
 
         guard let result = dupResult else { return }
 
-        parent.selectionState.indices = [result.rowIndex]
+        if selectionPointsTheGrid {
+            parent.selectionState.indices = [result.rowIndex]
+        }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        parent.querySortCache.removeValue(forKey: tabId)
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
+    }
+
+    private func duplicateFilteredRow(displayIndex: Int, tab: QueryTab, tabIndex: Int) {
+        let tabId = tab.id
+        let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
+        let columns = tableRows.columns
+        guard let storageIndex = DisplayRowMapping.rowIndex(
+            forDisplay: displayIndex, displayIDs: parent.activeGridDisplayIDs, in: tableRows
+        ), storageIndex >= 0, storageIndex < tableRows.count else { return }
+
+        parent.dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
+
+        var dupResult: RowOperationsManager.AddNewRowResult?
+        parent.mutateActiveTableRows(for: tabId) { rows in
+            let result = parent.rowOperationsManager.duplicateRow(
+                sourceRowIndex: storageIndex,
+                columns: columns,
+                tableRows: &rows
+            )
+            dupResult = result
+            return result?.delta ?? .none
+        }
+
+        guard let result = dupResult else { return }
+
+        parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
+        parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
+
+        guard selectionPointsTheGrid else { return }
+        let displayCount = parent.activeGridDisplayIDs?.count
+            ?? parent.tabSessionRegistry.tableRows(for: tabId).count
+        let newDisplayIndex = displayCount - 1
+        guard newDisplayIndex >= 0 else { return }
+        parent.selectionState.indices = [newDisplayIndex]
+        parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: newDisplayIndex, column: 0)
     }
 
     func undoInsertRow(at rowIndex: Int) {
@@ -138,7 +245,6 @@ final class RowEditingCoordinator {
         }
 
         parent.selectionState.indices = undoResult.adjustedSelection
-        parent.querySortCache.removeValue(forKey: tabId)
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(undoResult.delta)
     }
 
@@ -159,7 +265,6 @@ final class RowEditingCoordinator {
         }
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        parent.querySortCache.removeValue(forKey: tabId)
         parent.dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(application.delta)
     }
@@ -169,7 +274,9 @@ final class RowEditingCoordinator {
         let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
         parent.rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
-            tableRows: tableRows
+            tableRows: tableRows,
+            displayIDs: parent.activeGridDisplayIDs,
+            visibleColumnIndices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
         )
     }
 
@@ -179,23 +286,24 @@ final class RowEditingCoordinator {
         parent.rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
             tableRows: tableRows,
-            includeHeaders: true
+            displayIDs: parent.activeGridDisplayIDs,
+            includeHeaders: true,
+            visibleColumnIndices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
         )
     }
 
     func copySelectedRowsAsJson(indices: Set<Int>) {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
-        let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
-        let rows = indices.sorted().compactMap { idx -> [PluginCellValue]? in
-            guard idx >= 0, idx < tableRows.count else { return nil }
-            return Array(tableRows.rows[idx].values)
-        }
-        guard !rows.isEmpty else { return }
-        let converter = JsonRowConverter(
-            columns: tableRows.columns,
-            columnTypes: tableRows.columnTypes
+        let output = ResultJsonSerializer.serialize(
+            tableRows: parent.tabSessionRegistry.tableRows(for: tab.id),
+            displayIDs: parent.activeGridDisplayIDs,
+            selectedDisplayIndices: indices,
+            columns: VisibleColumnProjection(
+                indices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
+            )
         )
-        ClipboardService.shared.writeText(converter.generateJson(rows: rows))
+        guard output.rowCount > 0 else { return }
+        ClipboardService.shared.writeText(output.json)
     }
 
     func pasteRows() {
@@ -220,13 +328,14 @@ final class RowEditingCoordinator {
         guard !pasteResult.pastedRows.isEmpty else { return }
 
         let newIndices = Set(pasteResult.pastedRows.map { $0.rowIndex })
-        parent.selectionState.indices = newIndices
+        if selectionPointsTheGrid {
+            parent.selectionState.indices = newIndices
+        }
 
         parent.tabManager.mutate(at: tabIndex) { tab in
             tab.selectedRowIndices = newIndices
             tab.hasUserInteraction = true
         }
-        parent.querySortCache.removeValue(forKey: tabId)
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(pasteResult.delta)
     }
 

@@ -4,16 +4,17 @@ enum ToolQueryExecutor {
     static func executeAndLog(
         services: MCPToolServices,
         query: String,
-        connectionId: UUID,
-        databaseName: String,
+        scope: DatabaseScope,
         maxRows: Int,
         timeoutSeconds: Int,
         principalLabel: String?
     ) async throws -> JsonValue {
+        let connectionId = scope.connectionId
+        let databaseName = scope.database
         let startTime = Date()
         do {
             let result = try await services.connectionBridge.executeQuery(
-                connectionId: connectionId,
+                scope: scope,
                 query: query,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds

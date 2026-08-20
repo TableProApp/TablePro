@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProImport
 
 struct ImportFromAppPreviewStep: View {
     let preview: ConnectionImportPreview
@@ -127,7 +128,7 @@ struct ImportFromAppPreviewStep: View {
         if preview.envelope.credentials != nil {
             ConnectionExportService.restoreCredentials(
                 from: preview.envelope,
-                connectionIdMap: result.connectionIdMap
+                connectionIdMap: result.newConnectionIdMap
             )
         }
 

@@ -56,64 +56,102 @@ final class MCPBridgeIntegrationTests: XCTestCase {
         XCTAssertEqual(toolsSuccess.result["echo"]?.stringValue, "tools/list")
     }
 
-    func testIdleSessionEvictionReturnsSessionNotFoundError() async throws {
+    func testIdleSessionEvictionRecoversTransparently() async throws {
         let clock = MCPTestClock(start: Date(timeIntervalSince1970: 1_700_000_000))
         let policy = MCPSessionPolicy(
             idleTimeout: .seconds(60),
             maxSessions: 16,
             cleanupInterval: .seconds(60)
         )
-        let harness = try await BridgeHarness.start(
+        let store = MCPSessionStore(policy: policy, clock: clock)
+        let serverTransport = MCPHttpServerTransport(
+            configuration: MCPHttpServerConfiguration.loopback(port: 0),
+            sessionStore: store,
             authenticator: StubAlwaysAllowAuthenticator(),
-            clock: clock,
-            sessionPolicy: policy
+            clock: clock
         )
-        defer { harness.shutdown() }
+        let stateStream = serverTransport.listenerState
+        let stateTask = Task<UInt16?, Never> {
+            for await state in stateStream {
+                if case .running(let port) = state { return port }
+                if case .failed = state { return nil }
+            }
+            return nil
+        }
+        try await serverTransport.start()
+        guard let port = await stateTask.value, port != 0 else {
+            XCTFail("server did not start")
+            return
+        }
+        defer { Task { await serverTransport.stop() } }
 
+        let observed = ObservedMethods()
         let consumer = StubExchangeConsumer()
-        await consumer.start(transport: harness.serverTransport) { exchange in
+        await consumer.start(transport: serverTransport) { exchange in
             switch exchange.message {
             case .request(let request):
-                let response = JsonRpcMessage.successResponse(
-                    JsonRpcSuccessResponse(id: request.id, result: .object(["ok": .bool(true)]))
+                await observed.record(request.method)
+                await exchange.responder.respond(
+                    .successResponse(JsonRpcSuccessResponse(id: request.id, result: .object(["ok": .bool(true)]))),
+                    sessionId: exchange.context.sessionId
                 )
-                await exchange.responder.respond(response, sessionId: exchange.context.sessionId)
+            case .notification(let notification):
+                await observed.record(notification.method)
+                await exchange.responder.acknowledgeAccepted()
             default:
                 await exchange.responder.respondError(.invalidRequest(detail: "unsupported"), requestId: nil)
             }
         }
         defer { Task { await consumer.stop() } }
 
-        let initRequest = JsonRpcMessage.request(
-            JsonRpcRequest(id: .number(10), method: "initialize", params: nil)
-        )
-        try await harness.writeFromHost(initRequest)
-
-        let initResponse = try await harness.readNextResponse()
-        guard case .successResponse = initResponse else {
-            XCTFail("Expected initialize success, got \(initResponse)")
+        guard let url = URL(string: "http://127.0.0.1:\(port)/mcp") else {
+            XCTFail("Failed to build URL")
             return
         }
-        let initialSessionCount = await harness.sessionStore.count()
-        XCTAssertEqual(initialSessionCount, 1)
+        let credentials = MCPUpstreamCredentials(endpoint: url, bearerToken: Self.bearerToken)
+        let client = MCPStreamableHttpClientTransport(
+            configuration: MCPStreamableHttpClientConfiguration(
+                requestTimeout: .seconds(5),
+                serverInitiatedStream: false,
+                keepaliveInterval: nil
+            ),
+            credentialsProvider: MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials },
+            errorLogger: nil
+        )
+        defer { Task { await client.close() } }
+
+        try await client.send(.request(JsonRpcRequest(id: .number(10), method: "initialize", params: nil)))
+        _ = try await Self.firstInbound(of: client, timeout: 3.0)
+        try await client.send(.notification(JsonRpcNotification(method: "notifications/initialized", params: nil)))
+        try await Self.waitUntil { await observed.methods.contains("notifications/initialized") }
+
+        let sessionsBeforeEviction = await store.allSessions()
+        XCTAssertEqual(sessionsBeforeEviction.count, 1)
+        let evictedSessionId = sessionsBeforeEviction.first?.id
 
         await clock.advance(by: .seconds(120))
-        await harness.sessionStore.runCleanupPass()
-        let postCleanupCount = await harness.sessionStore.count()
+        await store.runCleanupPass()
+        let postCleanupCount = await store.count()
         XCTAssertEqual(postCleanupCount, 0)
 
-        let followUp = JsonRpcMessage.request(
-            JsonRpcRequest(id: .number(11), method: "tools/call", params: nil)
-        )
-        try await harness.writeFromHost(followUp)
-
-        let response = try await harness.readNextResponse()
-        guard case .errorResponse(let envelope) = response else {
-            XCTFail("Expected errorResponse, got \(response)")
+        try await client.send(.request(JsonRpcRequest(id: .number(11), method: "tools/call", params: nil)))
+        let response = try await Self.firstInbound(of: client, timeout: 3.0)
+        guard case .successResponse(let success) = response else {
+            XCTFail("Expected the follow-up call to recover transparently, got \(response)")
             return
         }
-        XCTAssertEqual(envelope.id, .number(11))
-        XCTAssertEqual(envelope.error.code, JsonRpcErrorCode.sessionNotFound)
+        XCTAssertEqual(success.id, .number(11))
+
+        let sessionsAfterRecovery = await store.allSessions()
+        XCTAssertEqual(sessionsAfterRecovery.count, 1)
+        XCTAssertNotEqual(sessionsAfterRecovery.first?.id, evictedSessionId)
+
+        let methods = await observed.methods
+        XCTAssertEqual(
+            methods.suffix(3),
+            ["initialize", "notifications/initialized", "tools/call"],
+            "The bridge must replay the full handshake before retrying the call"
+        )
     }
 
     func testServerReturning404WithGarbageBodyIsWrappedAsJsonRpcError() async throws {
@@ -131,13 +169,16 @@ final class MCPBridgeIntegrationTests: XCTestCase {
             return
         }
         let configuration = MCPStreamableHttpClientConfiguration(
-            endpoint: url,
-            bearerToken: Self.bearerToken,
-            tlsCertFingerprint: nil,
             requestTimeout: .seconds(5),
-            serverInitiatedStream: false
+            serverInitiatedStream: false,
+            keepaliveInterval: nil
         )
-        let client = MCPStreamableHttpClientTransport(configuration: configuration, errorLogger: nil)
+        let credentials = MCPUpstreamCredentials(endpoint: url, bearerToken: Self.bearerToken)
+        let client = MCPStreamableHttpClientTransport(
+            configuration: configuration,
+            credentialsProvider: MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials },
+            errorLogger: nil
+        )
         defer { Task { await client.close() } }
 
         let request = JsonRpcMessage.request(
@@ -205,6 +246,20 @@ final class MCPBridgeIntegrationTests: XCTestCase {
         }
     }
 
+    private static func waitUntil(
+        timeout: TimeInterval = 3.0,
+        condition: @Sendable () async -> Bool
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if await condition() {
+                return
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        throw IntegrationTestError.timeout
+    }
+
     private static func firstInbound(
         of transport: MCPStreamableHttpClientTransport,
         timeout: TimeInterval
@@ -232,6 +287,14 @@ private enum IntegrationTestError: Error {
     case timeout
     case serverDidNotStart
     case readClosed
+}
+
+private actor ObservedMethods {
+    private(set) var methods: [String] = []
+
+    func record(_ method: String) {
+        methods.append(method)
+    }
 }
 
 private struct PipePair {
@@ -430,14 +493,18 @@ private final class BridgeHarness: @unchecked Sendable {
         }
         let logger = IntegrationBridgeLogger()
         let clientConfig = MCPStreamableHttpClientConfiguration(
-            endpoint: url,
-            bearerToken: MCPBridgeIntegrationTests.bearerToken,
-            tlsCertFingerprint: nil,
             requestTimeout: .seconds(5),
-            serverInitiatedStream: false
+            serverInitiatedStream: false,
+            keepaliveInterval: nil
         )
+        let credentials = MCPUpstreamCredentials(
+            endpoint: url,
+            bearerToken: MCPBridgeIntegrationTests.bearerToken
+        )
+        let credentialsProvider = MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials }
         let clientTransport = MCPStreamableHttpClientTransport(
             configuration: clientConfig,
+            credentialsProvider: credentialsProvider,
             errorLogger: logger
         )
 

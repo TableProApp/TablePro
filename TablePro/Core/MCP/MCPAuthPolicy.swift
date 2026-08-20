@@ -5,12 +5,7 @@ import os
 typealias MCPToolName = String
 
 extension MCPToolName {
-    static let stateMutating: Set<String> = [
-        "execute_query", "confirm_destructive_operation",
-        "switch_database", "switch_schema", "export_data"
-    ]
     static let requiresFullAccess: Set<String> = ["confirm_destructive_operation"]
-    static let requiresReadWrite: Set<String> = ["switch_database", "switch_schema", "export_data"]
     static let writeQueryTools: Set<String> = ["execute_query"]
 }
 
@@ -20,10 +15,32 @@ enum AuthDecision: Sendable {
     case denied(reason: String)
 }
 
+struct MCPConnectionAuthSnapshot: Sendable {
+    let policy: AIConnectionPolicy
+    let externalAccess: ExternalAccessLevel
+    let name: String
+    let databaseType: String
+}
+
+typealias MCPConnectionSnapshotResolver = @Sendable (UUID) async -> MCPConnectionAuthSnapshot?
+
 public actor MCPAuthPolicy {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPAuthPolicy")
 
-    public init() {}
+    private let connectionResolver: MCPConnectionSnapshotResolver
+    private let historyRecorder: QueryHistoryRecording
+
+    public init() {
+        self.init(connectionResolver: MCPAuthPolicy.defaultConnectionResolver)
+    }
+
+    init(
+        connectionResolver: @escaping MCPConnectionSnapshotResolver,
+        historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
+    ) {
+        self.connectionResolver = connectionResolver
+        self.historyRecorder = historyRecorder
+    }
 
     private var sessionApprovals: [String: Set<UUID>] = [:]
     private let approvalDedup = OnceTask<ApprovalKey, Bool>()
@@ -33,26 +50,18 @@ public actor MCPAuthPolicy {
         let connectionId: UUID
     }
 
-    private struct ConnectionSnapshot: Sendable {
-        let policy: AIConnectionPolicy
-        let externalAccess: ExternalAccessLevel
-        let name: String
-        let databaseType: String
-        let safeModeLevel: SafeModeLevel
-    }
-
     func authorize(
-        token: MCPAuthToken,
+        principal: MCPPrincipal,
         tool: MCPToolName,
         connectionId: UUID?,
         sql: String? = nil,
         sessionId: String
     ) async throws -> AuthDecision {
         guard let connectionId else {
-            return decideTokenTier(token: token, tool: tool)
+            return .allowed
         }
 
-        guard let snapshot = await loadConnection(connectionId) else {
+        guard let snapshot = await connectionResolver(connectionId) else {
             return .denied(reason: String(localized: "Connection not found"))
         }
 
@@ -64,12 +73,8 @@ public actor MCPAuthPolicy {
             return .denied(reason: String(localized: "External access is disabled for this connection"))
         }
 
-        if !token.connectionAccess.allows(connectionId) {
+        if !principal.connectionAccess.allows(connectionId) {
             return .denied(reason: String(localized: "Token does not have access to this connection"))
-        }
-
-        if case .denied(let reason) = decideTokenTier(token: token, tool: tool) {
-            return .denied(reason: reason)
         }
 
         if let writeReason = denialForWriteIntent(
@@ -96,15 +101,31 @@ public actor MCPAuthPolicy {
         return .allowed
     }
 
+    /// An aggregate read spans connections, so it cannot prompt for one that asks each time. It
+    /// answers the narrower question every per-connection check already asks: may this principal
+    /// see this connection at all. Anything it excludes is a connection the client could not have
+    /// named directly either.
+    func readableConnectionIds(principal: MCPPrincipal, from candidates: Set<UUID>) async -> Set<UUID> {
+        var readable: Set<UUID> = []
+        for candidate in candidates {
+            guard let snapshot = await connectionResolver(candidate) else { continue }
+            guard snapshot.policy != .never else { continue }
+            guard snapshot.externalAccess != .blocked else { continue }
+            guard principal.connectionAccess.allows(candidate) else { continue }
+            readable.insert(candidate)
+        }
+        return readable
+    }
+
     func resolveAndAuthorize(
-        token: MCPAuthToken,
+        principal: MCPPrincipal,
         tool: MCPToolName,
         connectionId: UUID?,
         sql: String? = nil,
         sessionId: String
     ) async throws {
         let decision = try await authorize(
-            token: token,
+            principal: principal,
             tool: tool,
             connectionId: connectionId,
             sql: sql,
@@ -149,30 +170,20 @@ public actor MCPAuthPolicy {
         sql: String,
         connectionId: UUID,
         databaseType: DatabaseType,
-        safeModeLevel: SafeModeLevel
+        capabilities: CallerCapabilities = [.mayWrite, .mayRunDestructive, .mayRunMultiStatement]
     ) async throws {
-        let isWrite = QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
-        let needsDialog = safeModeLevel != .silent
-            && (isWrite || safeModeLevel == .alertFull || safeModeLevel == .safeModeFull)
-
-        let window: NSWindow? = needsDialog
-            ? await MainActor.run {
-                NSApp.activate(ignoringOtherApps: true)
-                return WindowLifecycleMonitor.shared.findWindow(for: connectionId)
-                    ?? NSApp.mainWindow
-            }
-            : nil
-
-        let permission = await SafeModeGuard.checkPermission(
-            level: safeModeLevel,
-            isWriteOperation: isWrite,
-            sql: sql,
-            operationDescription: String(localized: "MCP query execution"),
-            window: window,
-            databaseType: databaseType
+        let decision = await ExecutionGateProvider.shared.authorize(
+            OperationRequest(
+                connectionId: connectionId,
+                databaseType: databaseType,
+                sql: sql,
+                kind: OperationKind.from(QueryClassifier.classifyTier(sql, databaseType: databaseType)),
+                caller: .mcpClient(label: nil),
+                capabilities: capabilities,
+                operationDescription: String(localized: "MCP query execution")
+            )
         )
-
-        if case .blocked(let reason) = permission {
+        if case .denied(let reason) = decision {
             throw MCPDataLayerError.forbidden(reason)
         }
     }
@@ -191,17 +202,21 @@ public actor MCPAuthPolicy {
         }
         guard shouldLog else { return }
 
-        let entry = QueryHistoryEntry(
-            query: sql,
-            connectionId: connectionId,
-            databaseName: databaseName,
-            executionTime: executionTime,
-            rowCount: rowCount,
-            wasSuccessful: wasSuccessful,
-            errorMessage: errorMessage
-        )
+        let databaseType = await connectionResolver(connectionId)?.databaseType ?? ""
 
-        _ = await QueryHistoryManager.shared.addHistory(entry)
+        await historyRecorder.record(
+            QueryHistoryRecordRequest(
+                query: sql,
+                connectionId: connectionId,
+                databaseName: databaseName,
+                databaseType: DatabaseType(rawValue: databaseType),
+                source: .mcp,
+                executionTime: executionTime,
+                rowCount: rowCount,
+                wasSuccessful: wasSuccessful,
+                errorMessage: errorMessage
+            )
+        )
     }
 
     private func runApprovalDedup(
@@ -239,34 +254,13 @@ public actor MCPAuthPolicy {
         }
     }
 
-    private func decideTokenTier(token: MCPAuthToken, tool: MCPToolName) -> AuthDecision {
-        let required = requiredPermission(for: tool)
-        if token.permissions.satisfies(required) {
-            return .allowed
-        }
-        return .denied(
-            reason: String(
-                format: String(localized: "Token '%@' with permission '%@' cannot access '%@'"),
-                token.name,
-                token.permissions.displayName,
-                tool
-            )
-        )
-    }
-
-    private func requiredPermission(for tool: MCPToolName) -> TokenPermissions {
-        if MCPToolName.requiresFullAccess.contains(tool) { return .fullAccess }
-        if MCPToolName.requiresReadWrite.contains(tool) { return .readWrite }
-        return .readOnly
-    }
-
     private func denialForWriteIntent(
         tool: MCPToolName,
         sql: String?,
         externalAccess: ExternalAccessLevel,
         databaseType: String
     ) -> String? {
-        if MCPToolName.requiresReadWrite.contains(tool) || MCPToolName.requiresFullAccess.contains(tool) {
+        if MCPToolName.requiresFullAccess.contains(tool) {
             if externalAccess != .readWrite {
                 return String(localized: "Connection is read only for external clients")
             }
@@ -287,26 +281,23 @@ public actor MCPAuthPolicy {
         return nil
     }
 
-    private func loadConnection(_ connectionId: UUID) async -> ConnectionSnapshot? {
+    private static let defaultConnectionResolver: MCPConnectionSnapshotResolver = { connectionId in
         await MainActor.run {
-            let state = DatabaseManager.shared.connectionState(connectionId)
-            switch state {
+            switch DatabaseManager.shared.connectionState(connectionId) {
             case .live(_, let session):
                 let conn = session.connection
-                return ConnectionSnapshot(
+                return MCPConnectionAuthSnapshot(
                     policy: conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
                     externalAccess: conn.externalAccess,
                     name: conn.name,
-                    databaseType: conn.type.rawValue,
-                    safeModeLevel: conn.safeModeLevel
+                    databaseType: conn.type.rawValue
                 )
             case .stored(let conn):
-                return ConnectionSnapshot(
+                return MCPConnectionAuthSnapshot(
                     policy: conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
                     externalAccess: conn.externalAccess,
                     name: conn.name,
-                    databaseType: conn.type.rawValue,
-                    safeModeLevel: conn.safeModeLevel
+                    databaseType: conn.type.rawValue
                 )
             case .unknown:
                 return nil

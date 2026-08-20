@@ -4,30 +4,25 @@
 //
 
 import Foundation
+import os
 
 extension TabPersistenceCoordinator {
-    /// Save or clear persisted state based on tabs aggregated across all windows
-    /// for the connection. Prevents the per-window close path from clobbering
-    /// state when sibling windows still have open tabs.
-    func saveOrClearAggregated() {
-        let aggregatedTabs = MainContentCoordinator.aggregatedTabs(for: connectionId)
-        if aggregatedTabs.isEmpty {
-            clearSavedState()
-        } else {
-            let selectedId = MainContentCoordinator.aggregatedSelectedTabId(for: connectionId)
-            saveNow(tabs: aggregatedTabs, selectedTabId: selectedId)
-        }
+    /// Saves the connection's tabs. An empty list leaves the saved state alone: only the user
+    /// closing every tab discards it, and that consent is expressed by `closeTabsByUser`.
+    func saveAggregated() {
+        let tabs = MainContentCoordinator.aggregatedTabs(for: connectionId)
+        guard !tabs.isEmpty else { return }
+        let selectedId = MainContentCoordinator.aggregatedSelectedTabId(for: connectionId)
+        saveNow(tabs: tabs, selectedTabId: selectedId)
     }
 
-    /// Synchronous variant for the window-close path, where the run loop may
-    /// not be available to service Tasks before the window tears down.
-    func saveOrClearAggregatedSync() {
-        let aggregatedTabs = MainContentCoordinator.aggregatedTabs(for: connectionId)
-        if aggregatedTabs.isEmpty {
-            saveNowSync(tabs: [], selectedTabId: nil)
-        } else {
-            let selectedId = MainContentCoordinator.aggregatedSelectedTabId(for: connectionId)
-            saveNowSync(tabs: aggregatedTabs, selectedTabId: selectedId)
-        }
+    /// The disconnect and window-close paths, which are synchronous because the run loop may not
+    /// service a Task before everything holding these tabs is torn down. Ending a session is not
+    /// closing your tabs, so this never clears.
+    func saveAggregatedSync() {
+        let tabs = MainContentCoordinator.aggregatedTabs(for: connectionId)
+        guard !tabs.isEmpty else { return }
+        let selectedId = MainContentCoordinator.aggregatedSelectedTabId(for: connectionId)
+        saveNowSync(tabs: tabs, selectedTabId: selectedId)
     }
 }

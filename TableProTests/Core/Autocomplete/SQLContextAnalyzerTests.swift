@@ -6,9 +6,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("SQL Context Analyzer")
 struct SQLContextAnalyzerTests {
@@ -265,6 +265,27 @@ struct SQLContextAnalyzerTests {
         #expect(context.tableReferences.count == 2)
         #expect(context.tableReferences.contains { $0.tableName == "users" && $0.alias == "u" })
         #expect(context.tableReferences.contains { $0.tableName == "orders" && $0.alias == "o" })
+    }
+
+    @Test("Registers derived-table alias with its columns")
+    func testDerivedTableReference() {
+        let query = """
+        SELECT * FROM happiness_scores hs
+        LEFT JOIN (SELECT country, AVG(score) AS avg_score FROM happiness_scores GROUP BY country) ahs
+          ON hs.country = ahs.country
+        """
+        let context = analyzer.analyze(query: query, cursorPosition: (query as NSString).length)
+        let ahs = context.tableReferences.first { $0.identifier == "ahs" }
+        #expect(ahs?.isDerived == true)
+        #expect(ahs?.derivedColumns == ["country", "avg_score"])
+    }
+
+    @Test("Registers CTE alias with its columns")
+    func testCteReference() {
+        let query = "WITH totals AS (SELECT region, SUM(amount) AS total FROM sales GROUP BY region) SELECT * FROM totals t"
+        let context = analyzer.analyze(query: query, cursorPosition: (query as NSString).length)
+        let totals = context.tableReferences.first { $0.identifier == "totals" }
+        #expect(totals?.derivedColumns == ["region", "total"])
     }
 
     @Test("Extracts table reference from UPDATE")
@@ -766,7 +787,7 @@ struct SQLContextAnalyzerTests {
 
     @Test("Multiple block comments with code between")
     func testMultipleBlockComments() {
-        let context = analyzer.analyze(query: "/* c1 */ SELECT /* c2 */ * FROM ", cursorPosition: 31)
+        let context = analyzer.analyze(query: "/* c1 */ SELECT /* c2 */ * FROM ", cursorPosition: 32)
         #expect(context.isInsideComment == false)
         #expect(context.clauseType == .from)
     }
@@ -933,5 +954,126 @@ struct SQLContextAnalyzerTests {
         let context = analyzer.analyze(query: query, cursorPosition: 9)
         #expect(context.tableReferences.contains { $0.tableName == "users" })
         #expect(context.tableReferences.contains { $0.tableName == "orders" })
+    }
+
+    // MARK: - Schema Segment Tests
+
+    @Test("Captures schema from schema-qualified table reference")
+    func testSchemaQualifiedReference() {
+        let context = analyzer.analyze(query: "SELECT * FROM sales.orders o", cursorPosition: 28)
+        #expect(context.tableReferences.contains {
+            $0.tableName == "orders" && $0.schema == "sales" && $0.alias == "o"
+        })
+    }
+
+    @Test("Captures middle schema segment from database-qualified table reference")
+    func testDatabaseSchemaQualifiedReference() {
+        let context = analyzer.analyze(query: "SELECT * FROM analytics.sales.orders", cursorPosition: 36)
+        #expect(context.tableReferences.contains {
+            $0.tableName == "orders" && $0.schema == "sales"
+        })
+    }
+
+    @Test("Leaves schema nil for an unqualified table reference")
+    func testUnqualifiedReferenceHasNoSchema() {
+        let context = analyzer.analyze(query: "SELECT * FROM orders", cursorPosition: 20)
+        #expect(context.tableReferences.contains { $0.tableName == "orders" && $0.schema == nil })
+    }
+
+    @Test("Strips quoting from the captured schema segment")
+    func testSchemaSegmentQuotingStripped() {
+        let context = analyzer.analyze(query: "SELECT * FROM \"sales\".orders", cursorPosition: 28)
+        #expect(context.tableReferences.contains { $0.tableName == "orders" && $0.schema == "sales" })
+    }
+
+    // MARK: - Nearest-Clause Detection (multi-clause statements)
+
+    @Test("JOIN after an ON condition detects JOIN, not the earlier ON")
+    func testJoinAfterOnDetectsJoin() {
+        let query = "SELECT * FROM a JOIN b ON a.id = b.id INNER JOIN "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .join)
+        #expect(context.expectsObjectName)
+    }
+
+    @Test("LEFT JOIN after an ON condition detects JOIN")
+    func testLeftJoinAfterOnDetectsJoin() {
+        let query = "SELECT * FROM a LEFT JOIN b ON a.x = b.x RIGHT JOIN "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .join)
+    }
+
+    @Test("Third JOIN in a chain detects JOIN, not the earlier ON")
+    func testThirdJoinInChainDetectsJoin() {
+        let query = "SELECT * FROM a JOIN b ON a.id = b.id JOIN c ON b.id = c.id INNER JOIN "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .join)
+    }
+
+    @Test("WHERE after SET detects WHERE, not the earlier SET")
+    func testWhereAfterSetDetectsWhere() {
+        let query = "UPDATE users SET name = 'a' WHERE "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .where_)
+    }
+
+    @Test("ORDER BY after HAVING detects ORDER BY, not the earlier HAVING")
+    func testOrderByAfterHavingDetectsOrderBy() {
+        let query = "SELECT id FROM t GROUP BY id HAVING COUNT(*) > 1 ORDER BY "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .orderBy)
+    }
+
+    @Test("A closed CASE expression does not leak into the following clause")
+    func testClosedCaseDoesNotLeak() {
+        let query = "SELECT CASE WHEN a THEN b ELSE c END, "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .select)
+    }
+
+    // MARK: - Table-Operand Slot Detection
+
+    @Test("Cursor right after JOIN keyword expects an object name")
+    func testJoinKeywordExpectsObjectName() {
+        let query = "SELECT * FROM users JOIN "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .join)
+        #expect(context.expectsObjectName)
+    }
+
+    @Test("Cursor after a complete FROM table does not expect an object name")
+    func testFromAfterTableDoesNotExpectObjectName() {
+        let query = "SELECT * FROM users "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .from)
+        #expect(!context.expectsObjectName)
+    }
+
+    @Test("Cursor right after FROM keyword expects an object name")
+    func testFromKeywordExpectsObjectName() {
+        let query = "SELECT * FROM "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .from)
+        #expect(context.expectsObjectName)
+    }
+
+    // MARK: - Comma-Separated FROM List
+
+    @Test("Extracts every table from a comma-separated FROM list")
+    func testCommaSeparatedFromTables() {
+        let query = "SELECT * FROM users u, orders o, products WHERE "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .where_)
+        #expect(context.tableReferences.contains { $0.tableName == "users" && $0.alias == "u" })
+        #expect(context.tableReferences.contains { $0.tableName == "orders" && $0.alias == "o" })
+        #expect(context.tableReferences.contains { $0.tableName == "products" })
+    }
+
+    @Test("DELETE FROM keeps the target table in scope for the WHERE clause")
+    func testDeleteFromTableInScope() {
+        let query = "DELETE FROM users WHERE "
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.clauseType == .where_)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
     }
 }

@@ -21,7 +21,7 @@ struct ConnectionURLFormatter {
         }
 
         if connection.type == .duckdb {
-            return formatDuckDB(connection.database)
+            return formatDuckDB(connection)
         }
 
         let ssh = connection.resolvedSSHConfig
@@ -46,11 +46,30 @@ struct ConnectionURLFormatter {
         return "sqlite://\(database)"
     }
 
-    private static func formatDuckDB(_ database: String) -> String {
+    private static func formatDuckDB(_ connection: DatabaseConnection) -> String {
+        if connection.additionalFields["duckdbMode"] == "remote" {
+            return formatDuckDBRemote(connection)
+        }
+        let database = connection.additionalFields["duckdbFilePath"].flatMap { $0.isEmpty ? nil : $0 }
+            ?? connection.database
         if database.hasPrefix("/") {
             return "duckdb:///\(database.dropFirst())"
         }
         return "duckdb://\(database)"
+    }
+
+    private static func formatDuckDBRemote(_ connection: DatabaseConnection) -> String {
+        let host = connection.additionalFields["duckdbHost"] ?? ""
+        var url = "quack://\(host)"
+        if let portString = connection.additionalFields["duckdbPort"],
+           let port = Int(portString.trimmingCharacters(in: .whitespaces)) {
+            url += ":\(port)"
+        }
+        let alias = connection.additionalFields["duckdbAlias"] ?? ""
+        if !alias.isEmpty {
+            url += "/\(alias)"
+        }
+        return url
     }
 
     private static func formatSSH(
@@ -176,6 +195,10 @@ struct ConnectionURLFormatter {
             }
         }
 
+        if ssh.enabled && ssh.authMethod == .none {
+            params.append("sshNoAuth=true")
+        }
+
         if let sslParam = sslModeParam(connection.sslConfig.mode) {
             params.append("sslmode=\(sslParam)")
         }
@@ -184,7 +207,7 @@ struct ConnectionURLFormatter {
             params.append("statusColor=\(hex)")
         }
 
-        if let tagId = connection.tagId,
+        if let tagId = connection.tagIds.first,
            let tag = TagStorage.shared.tag(for: tagId) {
             let encoded = tag.name
                 .replacingOccurrences(of: " ", with: "+")
@@ -206,6 +229,10 @@ struct ConnectionURLFormatter {
         }
         if connection.mongoUseSrv {
             params.append("mongoUseSrv=true")
+        }
+        if let uuidRepresentation = connection.additionalFields["mongoUuidRepresentation"],
+           !uuidRepresentation.isEmpty {
+            params.append("uuidRepresentation=\(percentEncodeQueryValue(uuidRepresentation))")
         }
 
         return params.joined(separator: "&")

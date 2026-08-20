@@ -24,31 +24,6 @@ extension TableViewCoordinator {
         return displayRow.values[columnIndex]
     }
 
-    func showForeignKeyPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, fkInfo: ForeignKeyInfo) {
-        let currentValue = cellValue(at: row, column: columnIndex)
-
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
-        guard let databaseType, let connectionId else { return }
-
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
-            relativeTo: cellRect,
-            of: tableView,
-            contentSize: NSSize(width: 420, height: 320)
-        ) { [weak self] dismiss in
-            ForeignKeyPopoverContentView(
-                currentValue: currentValue,
-                fkInfo: fkInfo,
-                connectionId: connectionId,
-                databaseType: databaseType,
-                onCommit: { newValue in
-                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
-                },
-                onDismiss: dismiss
-            )
-        }
-    }
-
     func toggleForeignKeyPreview(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         if let popover = activeFKPreviewPopover, popover.isShown {
             popover.close()
@@ -81,7 +56,7 @@ extension TableViewCoordinator {
                 onNavigate: { [weak self, model] in
                     dismiss()
                     guard let value = model.cellValue else { return }
-                    self?.delegate?.dataGridNavigateFK(value: value, fkInfo: model.fkInfo)
+                    self?.delegate?.dataGridNavigateFK(value: value, fkInfo: model.fkInfo, openInNewTab: false)
                 },
                 onDismiss: dismiss
             )
@@ -107,11 +82,7 @@ extension TableViewCoordinator {
         let focusedRow = (tableView as? KeyHandlingTableView)?.focusedRow ?? -1
         let newRow = focusedRow >= 0 ? focusedRow : (tableView.selectedRowIndexes.max() ?? -1)
         guard newRow >= 0,
-              let tableColumnIndex = DataGridView.tableColumnIndex(
-                for: columnIndex,
-                in: tableView,
-                schema: identitySchema
-              ) else {
+              let tableColumnIndex = tableColumnIndex(for: columnIndex) else {
             popover.close()
             clearFKPreviewState()
             return
@@ -150,10 +121,11 @@ extension TableViewCoordinator {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
-            contentSize: nil
+            contentSize: NSSize(width: 560, height: 420)
         ) { [weak self] dismiss in
             JSONEditorContentView(
                 initialValue: currentValue,
@@ -164,7 +136,7 @@ extension TableViewCoordinator {
                 onDismiss: dismiss,
                 onPopOut: { currentText in
                     dismiss()
-                    JSONViewerWindowController.open(
+                    self?.activePoppedOutEditor = JSONViewerWindowController.open(
                         text: currentText,
                         columnName: columnName,
                         isEditable: true,
@@ -178,18 +150,13 @@ extension TableViewCoordinator {
     }
 
     func showBlobEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        let typed = cellTypedValue(at: row, column: columnIndex)
-        let currentValue: String?
-        switch typed {
-        case .null: currentValue = nil
-        case .text(let s): currentValue = s
-        case .bytes(let data): currentValue = String(data: data, encoding: .isoLatin1)
-        }
+        let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
 
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
             contentSize: NSSize(width: 520, height: 400)
@@ -201,6 +168,37 @@ extension TableViewCoordinator {
                 },
                 onCommitBytes: { data in
                     self?.commitBinaryEdit(row: row, columnIndex: columnIndex, data: data)
+                },
+                onDismiss: dismiss
+            )
+        }
+    }
+
+    func showDateTimePickerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columnTypes.count else { return }
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let columnType = tableRows.columnTypes[columnIndex]
+        let parsed = DatabaseDateParser.parse(cellValue(at: row, column: columnIndex))
+        let initialDate = parsed?.date ?? Date()
+        let timeZone = parsed?.timeZone ?? DateEditingService.defaultTimeZone
+        let components = DateEditingService.components(for: columnType)
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView
+        ) { [weak self] dismiss in
+            DateTimePickerContentView(
+                initialDate: initialDate,
+                components: components,
+                timeZone: timeZone,
+                onCommit: { picked in
+                    let newValue = parsed.map { DateEditingService.string(from: picked, like: $0) }
+                        ?? DateEditingService.defaultString(from: picked, columnType: columnType)
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
                 onDismiss: dismiss
             )
@@ -248,6 +246,66 @@ extension TableViewCoordinator {
         ) { [weak self] newValue in
             self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
         }
+    }
+
+    func showArrayEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+
+        let typedValue = cellTypedValue(at: row, column: columnIndex)
+        let elements: [PostgresArrayElement]?
+        if typedValue.isNull {
+            elements = nil
+        } else {
+            guard let parsed = PostgresArrayLiteralCodec.parse(typedValue.asText ?? "") else {
+                beginCellEdit(row: row, tableColumnIndex: column)
+                return
+            }
+            elements = parsed
+        }
+
+        let allowedValues = tableRows.columnEnumValues[columnName] ?? []
+        let isNullable = tableRows.columnNullable[columnName] ?? true
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            behavior: .applicationDefined
+        ) { [weak self] dismiss in
+            ArrayValueEditorView(
+                initialElements: elements,
+                allowedValues: allowedValues,
+                isNullable: isNullable,
+                onCommit: { newValue in
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                },
+                onDismiss: dismiss
+            )
+        }
+    }
+
+    /// Only one cell editor popover is open at a time, and the outgoing one is closed before the
+    /// next is presented rather than after. An `.applicationDefined` popover such as the array
+    /// editor stays on screen until something closes it, so forgetting it would strand an editor
+    /// nothing can dismiss, and closing it once the replacement is already up takes first responder
+    /// back off the editor that just opened.
+    func dismissActiveCellEditorPopover() {
+        guard let popover = activeCellEditorPopover else { return }
+        activeCellEditorPopover = nil
+        popover.close()
+    }
+
+    /// The popped-out JSON editor is a window rather than a popover, so it survives everything that
+    /// closes a popover while still committing through the display row it was opened from. Only a
+    /// replaced row set invalidates it, never the user opening a different cell's editor.
+    func dismissPoppedOutCellEditor() {
+        guard let editor = activePoppedOutEditor else { return }
+        activePoppedOutEditor = nil
+        editor.close()
     }
 
     func showDropdownMenu(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
@@ -315,6 +373,90 @@ extension TableViewCoordinator {
 
     func commitBinaryEdit(row: Int, columnIndex: Int, data: Data) {
         commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: .bytes(data))
+    }
+
+    func showJSONViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        let currentValue = cellValue(at: row, column: columnIndex)
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: NSSize(width: 560, height: 360)
+        ) { dismiss in
+            JSONViewerContentView(
+                initialValue: currentValue,
+                columnName: columnName,
+                onDismiss: dismiss,
+                onPopOut: { currentText in
+                    dismiss()
+                    JSONViewerWindowController.open(
+                        text: currentText,
+                        columnName: columnName,
+                        isEditable: false,
+                        onCommit: nil
+                    )
+                }
+            )
+        }
+    }
+
+    func showPhpViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        let currentValue = cellValue(at: row, column: columnIndex)
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: NSSize(width: 560, height: 360)
+        ) { dismiss in
+            PhpViewerContentView(
+                initialValue: currentValue,
+                columnName: columnName,
+                onDismiss: dismiss,
+                onPopOut: { currentText in
+                    dismiss()
+                    PhpViewerWindowController.open(text: currentText, columnName: columnName)
+                }
+            )
+        }
+    }
+
+    func showBlobViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
+
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: nil
+        ) { dismiss in
+            HexEditorContentView(
+                initialValue: currentValue,
+                isEditable: false,
+                onDismiss: dismiss
+            )
+        }
+    }
+
+    private func blobStringValue(at row: Int, columnIndex: Int) -> String? {
+        switch cellTypedValue(at: row, column: columnIndex) {
+        case .null: return nil
+        case .text(let text): return text
+        case .bytes(let data): return String(data: data, encoding: .isoLatin1)
+        }
     }
 }
 

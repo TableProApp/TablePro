@@ -13,7 +13,7 @@ import Foundation
 import OSLog
 import TableProPluginKit
 
-private let logger = Logger(subsystem: "com.TablePro", category: "MongoDBConnection")
+let logger = Logger(subsystem: "com.TablePro", category: "MongoDBConnection")
 
 // MARK: - Error Types
 
@@ -49,7 +49,7 @@ final class MongoDBConnection: @unchecked Sendable {
         mongoc_init()
     }()
 
-    private var client: OpaquePointer?
+    var client: OpaquePointer?
     #endif
 
     private static let queueKey = DispatchSpecificKey<ObjectIdentifier>()
@@ -58,15 +58,18 @@ final class MongoDBConnection: @unchecked Sendable {
     private let port: Int
     private let user: String
     private let password: String?
-    private let database: String
+    let database: String
     private let ssl: SSLConfiguration
-    private let authSource: String?
+    private let resolvedAuthSource: String
     private let readPreference: String?
     private let writeConcern: String?
     private let useSrv: Bool
     private let authMechanism: String?
     private let replicaSet: String?
     private let extraUriParams: [String: String]
+    let uuidRepresentation: MongoDBUuidRepresentation
+
+    private let controlQueue = DispatchQueue(label: "com.TablePro.mongodb.control", qos: .userInitiated)
 
     private let stateLock = NSLock()
     private var _isConnected: Bool = false
@@ -74,6 +77,9 @@ final class MongoDBConnection: @unchecked Sendable {
     private var _cachedServerVersion: String?
     private var _isCancelled: Bool = false
     private var _queryTimeoutMS: Int32 = 0
+    #if canImport(CLibMongoc)
+    private var _activeSessionLsid: OpaquePointer?
+    #endif
 
     var isConnected: Bool {
         stateLock.lock()
@@ -94,7 +100,7 @@ final class MongoDBConnection: @unchecked Sendable {
         }
     }
 
-    private var queryTimeoutMS: Int32 {
+    var queryTimeoutMS: Int32 {
         stateLock.lock()
         defer { stateLock.unlock() }
         return _queryTimeoutMS
@@ -106,6 +112,10 @@ final class MongoDBConnection: @unchecked Sendable {
         stateLock.unlock()
     }
 
+    func effectiveMaxTimeMS(background: Bool) -> Int32? {
+        MongoDBTimeoutPolicy.resolveMaxTimeMS(ambientMS: queryTimeoutMS, background: background)
+    }
+
     // MARK: - Initialization
 
     init(
@@ -114,6 +124,7 @@ final class MongoDBConnection: @unchecked Sendable {
         user: String,
         password: String?,
         database: String,
+        configuredDatabase: String,
         ssl: SSLConfiguration = SSLConfiguration(),
         authSource: String? = nil,
         readPreference: String? = nil,
@@ -121,7 +132,8 @@ final class MongoDBConnection: @unchecked Sendable {
         useSrv: Bool = false,
         authMechanism: String? = nil,
         replicaSet: String? = nil,
-        extraUriParams: [String: String] = [:]
+        extraUriParams: [String: String] = [:],
+        uuidRepresentation: MongoDBUuidRepresentation = .unspecified
     ) {
         self.host = host
         self.port = port
@@ -129,13 +141,18 @@ final class MongoDBConnection: @unchecked Sendable {
         self.password = password
         self.database = database
         self.ssl = ssl
-        self.authSource = authSource
+        self.resolvedAuthSource = MongoDBAuthSourceResolver.resolve(
+            explicitAuthSource: authSource,
+            configuredDatabase: configuredDatabase,
+            useSrv: useSrv
+        )
         self.readPreference = readPreference
         self.writeConcern = writeConcern
         self.useSrv = useSrv
         self.authMechanism = authMechanism
         self.replicaSet = replicaSet
         self.extraUriParams = extraUriParams
+        self.uuidRepresentation = uuidRepresentation
         queue.setSpecific(key: Self.queueKey, value: ObjectIdentifier(self))
     }
 
@@ -204,18 +221,8 @@ final class MongoDBConnection: @unchecked Sendable {
         let encodedDb = database.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? database
         uri += database.isEmpty ? "/" : "/\(encodedDb)"
 
-        let effectiveAuthSource: String
-        if let source = authSource, !source.isEmpty {
-            effectiveAuthSource = source
-        } else if useSrv {
-            effectiveAuthSource = "admin"
-        } else if !database.isEmpty {
-            effectiveAuthSource = database
-        } else {
-            effectiveAuthSource = "admin"
-        }
-        let encodedAuthSource = effectiveAuthSource
-            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? effectiveAuthSource
+        let encodedAuthSource = resolvedAuthSource
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? resolvedAuthSource
         var params: [String] = [
             "connectTimeoutMS=10000",
             "serverSelectionTimeoutMS=10000",
@@ -267,6 +274,19 @@ final class MongoDBConnection: @unchecked Sendable {
         return String(trimmed[..<colonIndex])
     }
 
+    private var authenticationFailureMessage: String {
+        String(
+            format: String(
+                localized: """
+                Authentication failed for user '%1$@' against database '%2$@'. \
+                Check the username, password, and Auth Database in the connection settings.
+                """
+            ),
+            user,
+            resolvedAuthSource
+        )
+    }
+
     // MARK: - Connection Management
 
     func connect() async throws {
@@ -298,12 +318,17 @@ final class MongoDBConnection: @unchecked Sendable {
 
             guard success else {
                 let errorMsg = bsonErrorMessage(&error)
+                let domain = error.domain
+                let code = error.code
                 mongoc_client_destroy(newClient)
-                logger.error("MongoDB ping failed: \(errorMsg)")
-                if let sslError = Self.classifySSLError(errorMsg) {
+                logger.error("MongoDB ping failed [\(domain)/\(code)]: \(errorMsg)")
+                if let sslError = MongoDBSSLClassifier.classifySSLError(errorMsg) {
                     throw sslError
                 }
-                throw MongoDBError(code: error.code, message: errorMsg)
+                if domain == MONGOC_ERROR_CLIENT.rawValue, code == MONGOC_ERROR_CLIENT_AUTHENTICATE.rawValue {
+                    throw MongoDBError(code: 0, message: self.authenticationFailureMessage)
+                }
+                throw MongoDBError(code: code, message: errorMsg)
             }
 
             self.client = newClient
@@ -326,6 +351,8 @@ final class MongoDBConnection: @unchecked Sendable {
         #if canImport(CLibMongoc)
         let handle = client
         client = nil
+        let staleLsid = _activeSessionLsid
+        _activeSessionLsid = nil
         #endif
         _isConnected = false
         _cachedServerVersion = nil
@@ -334,6 +361,7 @@ final class MongoDBConnection: @unchecked Sendable {
         stateLock.unlock()
 
         #if canImport(CLibMongoc)
+        if let staleLsid { bson_destroy(staleLsid) }
         if let handle = handle {
             queue.async { mongoc_client_destroy(handle) }
         }
@@ -345,12 +373,67 @@ final class MongoDBConnection: @unchecked Sendable {
     func cancelCurrentQuery() {
         stateLock.lock()
         _isCancelled = true
+        #if canImport(CLibMongoc)
+        let lsid: OpaquePointer? = _activeSessionLsid.flatMap { bson_copy($0) }
+        #endif
         stateLock.unlock()
+
+        #if canImport(CLibMongoc)
+        guard let lsid else { return }
+        killSession(lsid: lsid)
+        #endif
     }
+
+    #if canImport(CLibMongoc)
+    func adoptSessionLsid(_ session: OpaquePointer) {
+        guard let lsid = mongoc_client_session_get_lsid(session) else { return }
+        let copy = bson_copy(lsid)
+        stateLock.lock()
+        let previous = _activeSessionLsid
+        _activeSessionLsid = copy
+        stateLock.unlock()
+        if let previous { bson_destroy(previous) }
+    }
+
+    func releaseSessionLsid() {
+        stateLock.lock()
+        let previous = _activeSessionLsid
+        _activeSessionLsid = nil
+        stateLock.unlock()
+        if let previous { bson_destroy(previous) }
+    }
+
+    /// Aborts the in-flight operation server-side. The connection's own queue is blocked inside a
+    /// libmongoc call at this point, so the `killSessions` command needs its own client.
+    private func killSession(lsid: OpaquePointer) {
+        let uriString = buildUri()
+        controlQueue.async {
+            defer { bson_destroy(lsid) }
+            guard let controlClient = mongoc_client_new(uriString) else { return }
+            defer { mongoc_client_destroy(controlClient) }
+
+            let command = bson_new()
+            defer { bson_destroy(command) }
+            let sessions = bson_new()
+            defer { bson_destroy(sessions) }
+
+            bson_append_document(sessions, "0", -1, lsid)
+            bson_append_array(command, "killSessions", -1, sessions)
+
+            let reply = bson_new()
+            defer { bson_destroy(reply) }
+            var error = bson_error_t()
+            let killed = mongoc_client_command_simple(controlClient, "admin", command, nil, reply, &error)
+            if !killed {
+                logger.warning("killSessions failed with code \(error.code, privacy: .public)")
+            }
+        }
+    }
+    #endif
 
     /// Throws if cancellation was requested, resetting the flag atomically.
     /// Safe to call from any thread.
-    private func checkCancelled() throws {
+    func checkCancelled() throws {
         stateLock.lock()
         let cancelled = _isCancelled
         if cancelled { _isCancelled = false }
@@ -480,7 +563,12 @@ final class MongoDBConnection: @unchecked Sendable {
         #endif
     }
 
-    func countDocuments(database: String, collection: String, filter: String) async throws -> Int64 {
+    func countDocuments(
+        database: String,
+        collection: String,
+        filter: String,
+        background: Bool
+    ) async throws -> Int64 {
         #if canImport(CLibMongoc)
         resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -489,7 +577,8 @@ final class MongoDBConnection: @unchecked Sendable {
             }
             try checkCancelled()
             let count = try countDocumentsSync(
-                client: client, database: database, collection: collection, filter: filter
+                client: client, database: database, collection: collection,
+                filter: filter, background: background
             )
             try checkCancelled()
             return count
@@ -499,7 +588,11 @@ final class MongoDBConnection: @unchecked Sendable {
         #endif
     }
 
-    func estimatedDocumentCount(database: String, collection: String) async throws -> Int64 {
+    func estimatedDocumentCount(
+        database: String,
+        collection: String,
+        background: Bool
+    ) async throws -> Int64 {
         #if canImport(CLibMongoc)
         resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -510,8 +603,14 @@ final class MongoDBConnection: @unchecked Sendable {
             let col = try getCollection(client, database: database, collection: collection)
             defer { mongoc_collection_destroy(col) }
 
+            var opts: OpaquePointer?
+            if let maxTimeMS = effectiveMaxTimeMS(background: background) {
+                opts = jsonToBson("{\"maxTimeMS\": \(maxTimeMS)}")
+            }
+            defer { if let opts { bson_destroy(opts) } }
+
             var error = bson_error_t()
-            let count = mongoc_collection_estimated_document_count(col, nil, nil, nil, &error)
+            let count = mongoc_collection_estimated_document_count(col, opts, nil, nil, &error)
             if count < 0 {
                 throw makeError(error)
             }
@@ -626,7 +725,9 @@ final class MongoDBConnection: @unchecked Sendable {
         collection: String,
         filter: String,
         sort: String?,
-        projection: String?
+        projection: String?,
+        skip: Int = 0,
+        limit: Int? = nil
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         #if canImport(CLibMongoc)
         let queue = self.queue
@@ -669,6 +770,12 @@ final class MongoDBConnection: @unchecked Sendable {
                     if let projection = projection, let data = projection.data(using: .utf8),
                        let obj = try? JSONSerialization.jsonObject(with: data) {
                         optsJson["projection"] = obj
+                    }
+                    if skip > 0 {
+                        optsJson["skip"] = skip
+                    }
+                    if let limit, limit > 0 {
+                        optsJson["limit"] = limit
                     }
                     let timeoutMS = queryTimeoutMS
                     if timeoutMS > 0 {
@@ -777,454 +884,6 @@ final class MongoDBConnection: @unchecked Sendable {
     }
 }
 
-// MARK: - Synchronous Helpers (must be called on the serial queue)
-
-#if canImport(CLibMongoc)
-private extension MongoDBConnection {
-    func bsonErrorMessage(_ error: inout bson_error_t) -> String {
-        withUnsafePointer(to: &error.message) { ptr in
-            ptr.withMemoryRebound(to: CChar.self, capacity: 504) { String(cString: $0) }
-        }
-    }
-
-    func makeError(_ error: bson_error_t) -> MongoDBError {
-        var err = error
-        return MongoDBError(code: err.code, message: bsonErrorMessage(&err))
-    }
-
-    func fetchServerVersionSync() -> String? {
-        guard let client = self.client,
-              let command = jsonToBson("{\"buildInfo\": 1}") else { return nil }
-        defer { bson_destroy(command) }
-
-        let reply = bson_new()
-        defer { bson_destroy(reply) }
-        var error = bson_error_t()
-
-        let dbName = database.isEmpty ? "admin" : database
-        let ok = dbName.withCString { mongoc_client_command_simple(client, $0, command, nil, reply, &error) }
-        guard ok else { return nil }
-
-        return bsonToDict(reply)["version"] as? String
-    }
-
-    func getCollection(
-        _ client: OpaquePointer, database: String, collection: String
-    ) throws -> OpaquePointer {
-        guard let col = database.withCString({ dbPtr in
-            collection.withCString { colPtr in mongoc_client_get_collection(client, dbPtr, colPtr) }
-        }) else {
-            throw MongoDBError(code: 0, message: "Failed to get collection \(collection)")
-        }
-        return col
-    }
-
-    func runCommandSync(
-        client: OpaquePointer, command: String, database: String?
-    ) throws -> [[String: Any]] {
-        try checkCancelled()
-
-        guard let bsonCmd = jsonToBson(command) else {
-            throw MongoDBError(code: 0, message: "Invalid JSON command: \(command)")
-        }
-        defer { bson_destroy(bsonCmd) }
-
-        let timeoutMS = queryTimeoutMS
-        if timeoutMS > 0, !bson_has_field(bsonCmd, "maxTimeMS") {
-            bson_append_int32(bsonCmd, "maxTimeMS", -1, timeoutMS)
-        }
-
-        let reply = bson_new()
-        defer { bson_destroy(reply) }
-        var error = bson_error_t()
-
-        let effectiveDb = (database ?? self.database).isEmpty ? "admin" : (database ?? self.database)
-        let ok = effectiveDb.withCString { mongoc_client_command_simple(client, $0, bsonCmd, nil, reply, &error) }
-
-        try checkCancelled()
-        guard ok else { throw makeError(error) }
-
-        return [bsonToDict(reply)]
-    }
-
-    func findSync(
-        client: OpaquePointer, database: String, collection: String,
-        filter: String, sort: String?, projection: String?, skip: Int, limit: Int
-    ) throws -> (docs: [[String: Any]], isTruncated: Bool) {
-        try checkCancelled()
-
-        guard let filterBson = jsonToBson(filter) else {
-            throw MongoDBError(code: 0, message: "Invalid JSON filter: \(filter)")
-        }
-        defer { bson_destroy(filterBson) }
-
-        var optsJson: [String: Any] = ["skip": skip, "limit": limit]
-        if let sort = sort, let data = sort.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) {
-            optsJson["sort"] = obj
-        }
-        if let projection = projection, let data = projection.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) {
-            optsJson["projection"] = obj
-        }
-
-        let timeoutMS = queryTimeoutMS
-        if timeoutMS > 0 {
-            optsJson["maxTimeMS"] = timeoutMS
-        }
-
-        let optsData = try JSONSerialization.data(withJSONObject: optsJson)
-        guard let optsStr = String(data: optsData, encoding: .utf8),
-              let optsBson = jsonToBson(optsStr) else {
-            throw MongoDBError(code: 0, message: "Failed to build query options")
-        }
-        defer { bson_destroy(optsBson) }
-
-        let col = try getCollection(client, database: database, collection: collection)
-        defer { mongoc_collection_destroy(col) }
-
-        try checkCancelled()
-
-        guard let cursor = mongoc_collection_find_with_opts(col, filterBson, optsBson, nil) else {
-            throw MongoDBError(code: 0, message: "Failed to create find cursor")
-        }
-        defer { mongoc_cursor_destroy(cursor) }
-
-        return try iterateCursor(cursor)
-    }
-
-    func aggregateSync(
-        client: OpaquePointer, database: String, collection: String, pipeline: String
-    ) throws -> (docs: [[String: Any]], isTruncated: Bool) {
-        try checkCancelled()
-
-        guard let pipelineBson = jsonToBson(pipeline) else {
-            throw MongoDBError(code: 0, message: "Invalid JSON pipeline: \(pipeline)")
-        }
-        defer { bson_destroy(pipelineBson) }
-
-        let col = try getCollection(client, database: database, collection: collection)
-        defer { mongoc_collection_destroy(col) }
-
-        let timeoutMS = queryTimeoutMS
-        var optsBson: OpaquePointer?
-        if timeoutMS > 0 {
-            optsBson = jsonToBson("{\"maxTimeMS\": \(timeoutMS)}")
-        }
-        defer { if let opts = optsBson { bson_destroy(opts) } }
-
-        try checkCancelled()
-
-        guard let cursor = mongoc_collection_aggregate(
-            col, MONGOC_QUERY_NONE, pipelineBson, optsBson, nil
-        ) else {
-            throw MongoDBError(code: 0, message: "Failed to create aggregation cursor")
-        }
-        defer { mongoc_cursor_destroy(cursor) }
-
-        return try iterateCursor(cursor)
-    }
-
-    func countDocumentsSync(
-        client: OpaquePointer, database: String, collection: String, filter: String
-    ) throws -> Int64 {
-        try checkCancelled()
-
-        guard let filterBson = jsonToBson(filter) else {
-            throw MongoDBError(code: 0, message: "Invalid JSON filter: \(filter)")
-        }
-        defer { bson_destroy(filterBson) }
-
-        let col = try getCollection(client, database: database, collection: collection)
-        defer { mongoc_collection_destroy(col) }
-
-        let timeoutMS = queryTimeoutMS
-        var optsBson: OpaquePointer?
-        if timeoutMS > 0 {
-            optsBson = jsonToBson("{\"maxTimeMS\": \(timeoutMS)}")
-        }
-        defer { if let opts = optsBson { bson_destroy(opts) } }
-
-        var error = bson_error_t()
-        let count = mongoc_collection_count_documents(col, filterBson, optsBson, nil, nil, &error)
-
-        try checkCancelled()
-        guard count >= 0 else { throw makeError(error) }
-        return count
-    }
-
-    func insertOneSync(
-        client: OpaquePointer, database: String, collection: String, document: String
-    ) throws -> String? {
-        try checkCancelled()
-
-        guard let docBson = jsonToBson(document) else {
-            throw MongoDBError(code: 0, message: "Invalid JSON document: \(document)")
-        }
-        defer { bson_destroy(docBson) }
-
-        let col = try getCollection(client, database: database, collection: collection)
-        defer { mongoc_collection_destroy(col) }
-
-        let reply = bson_new()
-        defer { bson_destroy(reply) }
-        var error = bson_error_t()
-
-        guard mongoc_collection_insert_one(col, docBson, nil, reply, &error) else {
-            throw makeError(error)
-        }
-
-        if let objectId = bsonToDict(docBson)["_id"] { return "\(objectId)" }
-        return nil
-    }
-
-    func updateOneSync(
-        client: OpaquePointer, database: String, collection: String, filter: String, update: String
-    ) throws -> Int64 {
-        try checkCancelled()
-
-        guard let filterBson = jsonToBson(filter) else {
-            throw MongoDBError(code: 0, message: "Invalid JSON filter: \(filter)")
-        }
-        defer { bson_destroy(filterBson) }
-
-        guard let updateBson = jsonToBson(update) else {
-            throw MongoDBError(code: 0, message: "Invalid JSON update: \(update)")
-        }
-        defer { bson_destroy(updateBson) }
-
-        let col = try getCollection(client, database: database, collection: collection)
-        defer { mongoc_collection_destroy(col) }
-
-        let reply = bson_new()
-        defer { bson_destroy(reply) }
-        var error = bson_error_t()
-
-        guard mongoc_collection_update_one(col, filterBson, updateBson, nil, reply, &error) else {
-            throw makeError(error)
-        }
-        return (bsonToDict(reply)["modifiedCount"] as? Int64) ?? 0
-    }
-
-    func deleteOneSync(
-        client: OpaquePointer, database: String, collection: String, filter: String
-    ) throws -> Int64 {
-        try checkCancelled()
-
-        guard let filterBson = jsonToBson(filter) else {
-            throw MongoDBError(code: 0, message: "Invalid JSON filter: \(filter)")
-        }
-        defer { bson_destroy(filterBson) }
-
-        let col = try getCollection(client, database: database, collection: collection)
-        defer { mongoc_collection_destroy(col) }
-
-        let reply = bson_new()
-        defer { bson_destroy(reply) }
-        var error = bson_error_t()
-
-        guard mongoc_collection_delete_one(col, filterBson, nil, reply, &error) else {
-            throw makeError(error)
-        }
-        return (bsonToDict(reply)["deletedCount"] as? Int64) ?? 0
-    }
-
-    func listDatabasesSync(client: OpaquePointer) throws -> [String] {
-        try checkCancelled()
-
-        let caps = MongoDBCapabilities.parse(serverVersion())
-        var fields = ["\"listDatabases\": 1"]
-        if caps.supportsListDatabasesNameOnly {
-            fields.append("\"nameOnly\": true")
-        }
-        if caps.supportsAuthorizedDatabases {
-            fields.append("\"authorizedDatabases\": true")
-        }
-        let commandJSON = "{\(fields.joined(separator: ", "))}"
-        guard let command = jsonToBson(commandJSON) else {
-            throw MongoDBError(code: 0, message: "Failed to create listDatabases command")
-        }
-        defer { bson_destroy(command) }
-
-        let reply = bson_new()
-        defer { bson_destroy(reply) }
-        var error = bson_error_t()
-
-        let ok = "admin".withCString { mongoc_client_command_simple(client, $0, command, nil, reply, &error) }
-
-        try checkCancelled()
-        guard ok else { throw makeError(error) }
-
-        guard let databases = bsonToDict(reply)["databases"] as? [[String: Any]] else { return [] }
-        return databases.compactMap { $0["name"] as? String }
-    }
-
-    func listCollectionsSync(client: OpaquePointer, database: String) throws -> [String] {
-        try checkCancelled()
-
-        guard let mongocDb = database.withCString({ mongoc_client_get_database(client, $0) }) else {
-            throw MongoDBError(code: 0, message: "Failed to get database \(database)")
-        }
-        defer { mongoc_database_destroy(mongocDb) }
-
-        var error = bson_error_t()
-        guard let names = mongoc_database_get_collection_names_with_opts(mongocDb, nil, &error) else {
-            throw makeError(error)
-        }
-        defer { bson_strfreev(names) }
-
-        try checkCancelled()
-
-        var collections: [String] = []
-        var index = 0
-        while let namePtr = names[index] {
-            collections.append(String(cString: namePtr))
-            index += 1
-        }
-        return collections
-    }
-
-    func listIndexesSync(
-        client: OpaquePointer, database: String, collection: String
-    ) throws -> [[String: Any]] {
-        try checkCancelled()
-
-        let col = try getCollection(client, database: database, collection: collection)
-        defer { mongoc_collection_destroy(col) }
-
-        guard let cursor = mongoc_collection_find_indexes_with_opts(col, nil) else {
-            throw MongoDBError(code: 0, message: "Failed to list indexes for \(collection)")
-        }
-        defer { mongoc_cursor_destroy(cursor) }
-
-        return try iterateCursor(cursor).docs
-    }
-
-    func iterateCursor(_ cursor: OpaquePointer) throws -> (docs: [[String: Any]], isTruncated: Bool) {
-        try checkCancelled()
-
-        var results: [[String: Any]] = []
-        var docPtr: OpaquePointer?
-        var truncated = false
-
-        while mongoc_cursor_next(cursor, &docPtr) {
-            try checkCancelled()
-
-            if let doc = docPtr {
-                results.append(bsonToDict(doc))
-            }
-
-            if results.count >= PluginRowLimits.emergencyMax {
-                truncated = true
-                logger.warning("Result set truncated at \(PluginRowLimits.emergencyMax) documents")
-                break
-            }
-        }
-
-        var error = bson_error_t()
-        if mongoc_cursor_error(cursor, &error) {
-            throw makeError(error)
-        }
-        return (docs: results, isTruncated: truncated)
-    }
-
-    func iterateCursorStreaming(
-        cursor: OpaquePointer,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
-        streamState: MongoStreamState
-    ) {
-        var docPtr: OpaquePointer?
-        var headerSent = false
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
-
-        while mongoc_cursor_next(cursor, &docPtr) {
-            if Task.isCancelled {
-                cleanup(streamState)
-                continuation.finish(throwing: CancellationError())
-                return
-            }
-
-            guard let doc = docPtr else { continue }
-            let dict = bsonToDict(doc)
-
-            if !headerSent {
-                columns = BsonDocumentFlattener.unionColumns(from: [dict])
-                let bsonTypes = BsonDocumentFlattener.columnTypes(for: columns, documents: [dict])
-                columnTypeNames = bsonTypes.map { bsonTypeToStreamString($0) }
-                continuation.yield(.header(PluginStreamHeader(
-                    columns: columns,
-                    columnTypeNames: columnTypeNames
-                )))
-                headerSent = true
-            } else {
-                for key in dict.keys.sorted() where !columns.contains(key) {
-                    columns.append(key)
-                    let type = BsonDocumentFlattener.columnTypes(for: [key], documents: [dict])
-                    columnTypeNames.append(bsonTypeToStreamString(type.first ?? 2))
-                }
-            }
-
-            let row: [PluginCellValue] = columns.map { column in
-                guard let value = dict[column] else { return .null }
-                if let data = value as? Data {
-                    return .bytes(data)
-                }
-                return PluginCellValue.fromOptional(BsonDocumentFlattener.stringValue(for: value))
-            }
-            continuation.yield(.rows([row]))
-        }
-
-        var error = bson_error_t()
-        if mongoc_cursor_error(cursor, &error) {
-            cleanup(streamState)
-            continuation.finish(throwing: makeError(error))
-            return
-        }
-
-        if !headerSent {
-            continuation.yield(.header(PluginStreamHeader(
-                columns: ["_id"],
-                columnTypeNames: ["VARCHAR"]
-            )))
-        }
-
-        cleanup(streamState)
-        continuation.finish()
-    }
-
-    private func cleanup(_ state: MongoStreamState) {
-        state.lock.lock()
-        let cur = state.cursor
-        let col = state.collection
-        let alreadyDrained = state.drained
-        state.drained = true
-        state.cursor = nil
-        state.collection = nil
-        state.lock.unlock()
-        guard !alreadyDrained else { return }
-        if let cur { mongoc_cursor_destroy(cur) }
-        if let col { mongoc_collection_destroy(col) }
-    }
-
-    private func bsonTypeToStreamString(_ type: Int32) -> String {
-        switch type {
-        case 1: return "FLOAT"
-        case 2: return "VARCHAR"
-        case 3: return "JSON"
-        case 4: return "JSON"
-        case 5: return "BLOB"
-        case 7: return "VARCHAR"
-        case 8: return "BOOLEAN"
-        case 9: return "TIMESTAMP"
-        case 10: return "VARCHAR"
-        case 16: return "INTEGER"
-        case 18: return "BIGINT"
-        default: return "VARCHAR"
-        }
-    }
-}
-#endif
 
 final class MongoStreamState: @unchecked Sendable {
     var cursor: OpaquePointer?
@@ -1235,7 +894,7 @@ final class MongoStreamState: @unchecked Sendable {
 
 // MARK: - BSON Helpers
 
-private extension MongoDBConnection {
+extension MongoDBConnection {
     /// Convert a JSON string to a bson_t pointer. Caller must call bson_destroy on the result.
     func jsonToBson(_ json: String) -> OpaquePointer? {
         #if canImport(CLibMongoc)
@@ -1252,26 +911,6 @@ private extension MongoDBConnection {
         #else
         return nil
         #endif
-    }
-
-    static func classifySSLError(_ message: String) -> SSLHandshakeError? {
-        let lower = message.lowercased()
-        if lower.contains("ssl handshake failed") || lower.contains("tls handshake failed") {
-            return .cipherMismatch(serverMessage: message)
-        }
-        if lower.contains("certificate verify failed") || lower.contains("ssl certificate") {
-            return .untrustedCertificate(serverMessage: message)
-        }
-        if lower.contains("hostname") && lower.contains("verification") {
-            return .hostnameMismatch(serverMessage: message)
-        }
-        if lower.contains("tls required") || lower.contains("ssl required") {
-            return .serverRejectedPlaintext(serverMessage: message)
-        }
-        if lower.contains("client certificate required") || lower.contains("peer did not return a certificate") {
-            return .clientCertRequired(serverMessage: message)
-        }
-        return nil
     }
 }
 
@@ -1302,7 +941,7 @@ extension MongoDBConnection {
     static func unwrapExtendedJson(_ value: Any) -> Any {
         if let dict = value as? [String: Any] {
             if dict.count == 1 {
-                if let oid = dict["$oid"] as? String { return oid }
+                if let oid = dict["$oid"] as? String { return MongoDBObjectId(hex: oid) }
                 if let s = dict["$numberInt"] as? String, let n = Int32(s) { return n }
                 if let s = dict["$numberLong"] as? String, let n = Int64(s) { return n }
                 if let s = dict["$numberDouble"] as? String, let n = Double(s) { return n }
@@ -1327,7 +966,9 @@ extension MongoDBConnection {
                 }
                 if let b = dict["$binary"] as? [String: Any],
                    let base64 = b["base64"] as? String {
-                    return Data(base64Encoded: base64) ?? base64
+                    guard let data = Data(base64Encoded: base64) else { return base64 }
+                    let subtype = (b["subType"] as? String).flatMap { UInt8($0, radix: 16) } ?? 0
+                    return MongoDBBinaryValue(data: data, subtype: subtype)
                 }
                 if let ts = dict["$timestamp"] as? [String: Any],
                    let t = ts["t"], let i = ts["i"] {

@@ -3,8 +3,10 @@
 //  TablePro
 //
 
+import AppKit
 import Foundation
 import os
+import TableProImport
 import TableProPluginKit
 
 struct TablePlusImporter: ForeignAppImporter {
@@ -14,12 +16,52 @@ struct TablePlusImporter: ForeignAppImporter {
     let displayName = "TablePlus"
     let symbolName = "rectangle.stack"
     let appBundleIdentifier = "com.tinyapp.TablePlus"
+    let readsPasswordsFromKeychain = true
 
-    var connectionsFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/com.tinyapp.TablePlus/Data/Connections.plist")
+    static let keychainService = "com.tableplus.TablePlus"
 
-    var groupsFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/com.tinyapp.TablePlus/Data/ConnectionGroups.plist")
+    private static let knownBundleIdentifiers = [
+        "com.tinyapp.TablePlus",
+        "com.tinyapp.TablePlus-setapp"
+    ]
+
+    var readKeychain: ForeignKeychainRead = ForeignKeychainReader.readPassword
+    var keyFileExists: (_ path: String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    var resolveAppURL: (_ bundleIdentifier: String) -> URL? = {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
+    }
+
+    var dataDirectoryOverride: URL?
+
+    var connectionsFileURL: URL {
+        dataDirectory.appendingPathComponent("Connections.plist")
+    }
+
+    var groupsFileURL: URL {
+        dataDirectory.appendingPathComponent("ConnectionGroups.plist")
+    }
+
+    func installedAppURL() -> URL? {
+        installedBundleIdentifier.flatMap { resolveAppURL($0) }
+    }
+
+    private var installedBundleIdentifier: String? {
+        Self.knownBundleIdentifiers.first { resolveAppURL($0) != nil }
+    }
+
+    private var dataDirectory: URL {
+        if let dataDirectoryOverride {
+            return dataDirectoryOverride
+        }
+        return Self.dataDirectory(
+            forBundleIdentifier: installedBundleIdentifier ?? appBundleIdentifier,
+            home: FileManager.default.homeDirectoryForCurrentUser
+        )
+    }
+
+    static func dataDirectory(forBundleIdentifier bundleIdentifier: String, home: URL) -> URL {
+        home.appendingPathComponent("Library/Application Support/\(bundleIdentifier)/Data")
+    }
 
     func connectionCount() -> Int {
         guard let data = try? Data(contentsOf: connectionsFileURL),
@@ -29,13 +71,14 @@ struct TablePlusImporter: ForeignAppImporter {
     }
 
     func importConnections(includePasswords: Bool) throws -> ForeignAppImportResult {
-        guard FileManager.default.fileExists(atPath: connectionsFileURL.path) else {
+        let connectionsURL = connectionsFileURL
+        guard FileManager.default.fileExists(atPath: connectionsURL.path) else {
             throw ForeignAppImportError.fileNotFound(displayName)
         }
 
         let data: Data
         do {
-            data = try Data(contentsOf: connectionsFileURL)
+            data = try Data(contentsOf: connectionsURL)
         } catch {
             throw ForeignAppImportError.parseError(error.localizedDescription)
         }
@@ -182,8 +225,7 @@ struct TablePlusImporter: ForeignAppImporter {
         let port = (entry["ServerPort"] as? String).flatMap(Int.init)
         let username = entry["ServerUser"] as? String ?? ""
         let useKey = entry["isUsePrivateKey"] as? Bool ?? false
-        let rawKeyPath = entry["ServerPrivateKeyName"] as? String ?? ""
-        let keyPath = ForeignAppPathHelper.resolveKeyPath(rawKeyPath)
+        let keyPath = useKey ? importedKeyPath(entry["ServerPrivateKeyName"] as? String ?? "") : ""
 
         return ExportableSSHConfig(
             enabled: true,
@@ -191,7 +233,7 @@ struct TablePlusImporter: ForeignAppImporter {
             port: port,
             username: username,
             authMethod: useKey ? "Private Key" : "Password",
-            privateKeyPath: useKey ? keyPath : "",
+            privateKeyPath: keyPath,
             agentSocketPath: "",
             jumpHosts: nil,
             totpMode: nil,
@@ -199,6 +241,14 @@ struct TablePlusImporter: ForeignAppImporter {
             totpDigits: nil,
             totpPeriod: nil
         )
+    }
+
+    private func importedKeyPath(_ rawName: String) -> String {
+        let trimmed = rawName.trimmingCharacters(in: .whitespaces)
+        let resolved = ForeignAppPathHelper.resolveKeyPath(trimmed)
+        guard !resolved.isEmpty else { return "" }
+        if trimmed.hasPrefix("/") || trimmed.hasPrefix("~/") { return resolved }
+        return keyFileExists(PathPortability.expandHome(resolved)) ? resolved : ""
     }
 
     private func parseSSLConfig(_ entry: [String: Any]) -> ExportableSSLConfig? {
@@ -215,18 +265,22 @@ struct TablePlusImporter: ForeignAppImporter {
         }
 
         let paths = entry["TlsKeyPaths"] as? [String] ?? []
+        func certPath(_ index: Int) -> String? {
+            guard index < paths.count, !paths[index].isEmpty else { return nil }
+            return paths[index]
+        }
         return ExportableSSLConfig(
             mode: mode,
-            caCertificatePath: !paths.isEmpty ? paths[0] : nil,
-            clientCertificatePath: paths.count > 1 ? paths[1] : nil,
-            clientKeyPath: paths.count > 2 ? paths[2] : nil
+            caCertificatePath: certPath(0),
+            clientCertificatePath: certPath(1),
+            clientKeyPath: certPath(2)
         )
     }
 
     private func readCredentials(for connectionId: String, abortFlag: inout Bool) -> ExportableCredentials {
         func read(_ account: String) -> String? {
             guard !abortFlag else { return nil }
-            switch ForeignKeychainReader.readPassword(service: "com.tinyapp.TablePlus", account: account) {
+            switch readKeychain(Self.keychainService, account) {
             case .found(let value):
                 return value
             case .notFound:
@@ -244,6 +298,7 @@ struct TablePlusImporter: ForeignAppImporter {
             password: dbPassword,
             sshPassword: sshPassword,
             keyPassphrase: keyPassphrase,
+            sslClientKeyPassphrase: nil,
             totpSecret: nil,
             pluginSecureFields: nil
         )

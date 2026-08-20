@@ -23,7 +23,7 @@ struct EtcdQueryBuilderBrowseTests {
         #expect(parsed?.limit == 100)
         #expect(parsed?.offset == 0)
         #expect(parsed?.sortAscending == true)
-        #expect(parsed?.filterType == .none)
+        #expect(parsed?.filterType == EtcdFilterType.none)
         #expect(parsed?.filterValue == "")
     }
 
@@ -77,7 +77,7 @@ struct EtcdQueryBuilderFilteredTests {
     func keyEqualsFilter() {
         let query = builder.buildFilteredQuery(
             prefix: "",
-            filters: [(column: "Key", op: "=", value: "/app/config")],
+            filters: [PluginQueryFilter(column: "Key", op: "=", value: "/app/config")],
             logicMode: "AND",
             sortColumns: [],
             limit: 100,
@@ -93,7 +93,7 @@ struct EtcdQueryBuilderFilteredTests {
     func keyContainsFilter() {
         let query = builder.buildFilteredQuery(
             prefix: "",
-            filters: [(column: "Key", op: "CONTAINS", value: "config")],
+            filters: [PluginQueryFilter(column: "Key", op: "CONTAINS", value: "config")],
             logicMode: "AND",
             sortColumns: [],
             limit: 100,
@@ -109,7 +109,7 @@ struct EtcdQueryBuilderFilteredTests {
     func keyStartsWithFilter() {
         let query = builder.buildFilteredQuery(
             prefix: "",
-            filters: [(column: "Key", op: "STARTS WITH", value: "/app")],
+            filters: [PluginQueryFilter(column: "Key", op: "STARTS WITH", value: "/app")],
             logicMode: "AND",
             sortColumns: [],
             limit: 100,
@@ -125,7 +125,7 @@ struct EtcdQueryBuilderFilteredTests {
     func keyEndsWithFilter() {
         let query = builder.buildFilteredQuery(
             prefix: "",
-            filters: [(column: "Key", op: "ENDS WITH", value: ".json")],
+            filters: [PluginQueryFilter(column: "Key", op: "ENDS WITH", value: ".json")],
             logicMode: "AND",
             sortColumns: [],
             limit: 100,
@@ -141,7 +141,7 @@ struct EtcdQueryBuilderFilteredTests {
     func unsupportedValueFilter() {
         let query = builder.buildFilteredQuery(
             prefix: "",
-            filters: [(column: "Value", op: "CONTAINS", value: "test")],
+            filters: [PluginQueryFilter(column: "Value", op: "CONTAINS", value: "test")],
             logicMode: "AND",
             sortColumns: [],
             limit: 100,
@@ -154,7 +154,7 @@ struct EtcdQueryBuilderFilteredTests {
     func unsupportedLeaseFilter() {
         let query = builder.buildFilteredQuery(
             prefix: "",
-            filters: [(column: "Lease", op: "=", value: "123")],
+            filters: [PluginQueryFilter(column: "Lease", op: "=", value: "123")],
             logicMode: "AND",
             sortColumns: [],
             limit: 100,
@@ -168,8 +168,8 @@ struct EtcdQueryBuilderFilteredTests {
         let query = builder.buildFilteredQuery(
             prefix: "",
             filters: [
-                (column: "Key", op: "CONTAINS", value: "test"),
-                (column: "Value", op: "CONTAINS", value: "data")
+                PluginQueryFilter(column: "Key", op: "CONTAINS", value: "test"),
+                PluginQueryFilter(column: "Value", op: "CONTAINS", value: "data")
             ],
             logicMode: "AND",
             sortColumns: [],
@@ -183,7 +183,7 @@ struct EtcdQueryBuilderFilteredTests {
     func unknownFilterOp() {
         let query = builder.buildFilteredQuery(
             prefix: "",
-            filters: [(column: "Key", op: "REGEX", value: ".*")],
+            filters: [PluginQueryFilter(column: "Key", op: "REGEX", value: ".*")],
             logicMode: "AND",
             sortColumns: [],
             limit: 100,
@@ -191,7 +191,7 @@ struct EtcdQueryBuilderFilteredTests {
         )
         #expect(query != nil)
         let parsed = EtcdQueryBuilder.parseRangeQuery(query!)
-        #expect(parsed?.filterType == .none)
+        #expect(parsed?.filterType == EtcdFilterType.none)
     }
 }
 
@@ -205,7 +205,7 @@ struct EtcdQueryBuilderCombinedTests {
     func searchTextTakesPrecedence() {
         let query = builder.buildCombinedQuery(
             prefix: "",
-            filters: [(column: "Key", op: "=", value: "exact")],
+            filters: [PluginQueryFilter(column: "Key", op: "=", value: "exact")],
             logicMode: "AND",
             searchText: "search",
             sortColumns: [],
@@ -222,7 +222,7 @@ struct EtcdQueryBuilderCombinedTests {
     func emptySearchFallsBackToFilters() {
         let query = builder.buildCombinedQuery(
             prefix: "",
-            filters: [(column: "Key", op: "=", value: "exact")],
+            filters: [PluginQueryFilter(column: "Key", op: "=", value: "exact")],
             logicMode: "AND",
             searchText: "",
             sortColumns: [],
@@ -239,7 +239,7 @@ struct EtcdQueryBuilderCombinedTests {
     func combinedUnsupportedFilter() {
         let query = builder.buildCombinedQuery(
             prefix: "",
-            filters: [(column: "Value", op: "CONTAINS", value: "test")],
+            filters: [PluginQueryFilter(column: "Value", op: "CONTAINS", value: "test")],
             logicMode: "AND",
             searchText: "",
             sortColumns: [],
@@ -262,7 +262,7 @@ struct EtcdQueryBuilderCountTests {
         let parsed = EtcdQueryBuilder.parseCountQuery(query)
         #expect(parsed != nil)
         #expect(parsed?.prefix == "/myprefix/")
-        #expect(parsed?.filterType == .none)
+        #expect(parsed?.filterType == EtcdFilterType.none)
         #expect(parsed?.filterValue == "")
     }
 
@@ -322,7 +322,7 @@ struct EtcdQueryBuilderTagTests {
         #expect(parsed?.limit == 42)
         #expect(parsed?.offset == 7)
         #expect(parsed?.sortAscending == false)
-        #expect(parsed?.filterType == .none)
+        #expect(parsed?.filterType == EtcdFilterType.none)
         #expect(parsed?.filterValue == "")
     }
 

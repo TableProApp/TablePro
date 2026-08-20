@@ -25,11 +25,38 @@ actor SQLSchemaProvider {
     private var loadTask: Task<Void, Never>?
     private var eagerColumnTask: Task<Void, Never>?
 
-    // Store a weak driver reference to avoid retaining it after disconnect (MEM-9)
-    private weak var cachedDriver: (any DatabaseDriver)?
+    struct ColumnMetadataSource: Sendable {
+        let fetchColumns: @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo]
+        let fetchAllColumns: @Sendable () async throws -> [String: [ColumnInfo]]
+        let fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])?
+        let sampleFieldPaths: (@Sendable (_ table: String, _ limit: Int) async throws -> [PluginFieldPath])?
 
-    // Store connection info for reference
+        init(
+            fetchColumns: @escaping @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo],
+            fetchAllColumns: @escaping @Sendable () async throws -> [String: [ColumnInfo]],
+            fetchSchemaTables: (@Sendable (_ schema: String) async throws -> [TableInfo])? = nil,
+            sampleFieldPaths: (@Sendable (_ table: String, _ limit: Int) async throws -> [PluginFieldPath])? = nil
+        ) {
+            self.fetchColumns = fetchColumns
+            self.fetchAllColumns = fetchAllColumns
+            self.fetchSchemaTables = fetchSchemaTables
+            self.sampleFieldPaths = sampleFieldPaths
+        }
+    }
+
+    private var fieldPathCache: [String: [PluginFieldPath]] = [:]
+    private var fieldPathTasks: [String: Task<[PluginFieldPath], Never>] = [:]
+
+    private var knownSchemas: [String] = []
+    private var knownDatabases: [String] = []
+
+    private weak var cachedDriver: (any DatabaseDriver)?
+    private let metadataSource: ColumnMetadataSource?
     private var connectionInfo: DatabaseConnection?
+
+    init(metadataSource: ColumnMetadataSource? = nil) {
+        self.metadataSource = metadataSource
+    }
 
     // MARK: - Public API
 
@@ -88,8 +115,8 @@ actor SQLSchemaProvider {
     }
 
     /// Get columns for a specific table (with LRU caching)
-    func getColumns(for tableName: String) async -> [ColumnInfo] {
-        let key = tableName.lowercased()
+    func getColumns(for tableName: String, schema: String? = nil) async -> [ColumnInfo] {
+        let key = [schema?.lowercased(), tableName.lowercased()].compactMap(\.self).joined(separator: ".")
 
         if let cached = columnCache[key] {
             columnAccessOrder.removeAll { $0 == key }
@@ -97,12 +124,17 @@ actor SQLSchemaProvider {
             return cached
         }
 
-        guard let driver = cachedDriver else {
-            return []
-        }
-
         do {
-            let columns = try await driver.fetchColumns(table: tableName)
+            let columns: [ColumnInfo]
+            if let metadataSource {
+                columns = try await metadataSource.fetchColumns(tableName, schema)
+            } else if let driver = cachedDriver {
+                columns = schema != nil
+                    ? try await driver.fetchColumns(table: tableName, schema: schema)
+                    : try await driver.fetchColumns(table: tableName)
+            } else {
+                return []
+            }
             columnCache[key] = columns
             columnAccessOrder.append(key)
             evictIfNeeded()
@@ -149,6 +181,8 @@ actor SQLSchemaProvider {
         self.tables = newTables
         self.columnCache.removeAll()
         self.columnAccessOrder.removeAll()
+        self.fieldPathCache.removeAll()
+        self.fieldPathTasks.removeAll()
         self.cachedDriver = driver
         self.isLoading = false
         self.lastLoadError = nil
@@ -160,6 +194,8 @@ actor SQLSchemaProvider {
         eagerColumnTask = nil
         columnCache.removeAll()
         columnAccessOrder.removeAll()
+        fieldPathCache.removeAll()
+        fieldPathTasks.removeAll()
         if cachedDriver != nil {
             startEagerColumnLoad()
         }
@@ -168,13 +204,23 @@ actor SQLSchemaProvider {
     // MARK: - Eager Column Loading
 
     private func startEagerColumnLoad() {
-        guard !tables.isEmpty, let driver = cachedDriver else { return }
+        guard !tables.isEmpty else { return }
+        let source = metadataSource
+        let driver = cachedDriver
+        guard source != nil || driver != nil else { return }
         eagerColumnTask?.cancel()
         let tableCount = tables.count
-        eagerColumnTask = Task {
+        eagerColumnTask = Task(priority: .utility) {
             Self.logger.info("[schema] eager column load starting tableCount=\(tableCount)")
             do {
-                let allColumns = try await driver.fetchAllColumns()
+                let allColumns: [String: [ColumnInfo]]
+                if let source {
+                    allColumns = try await source.fetchAllColumns()
+                } else if let driver {
+                    allColumns = try await driver.fetchAllColumns()
+                } else {
+                    return
+                }
                 guard !Task.isCancelled else { return }
                 self.populateColumnCache(allColumns)
                 Self.logger.info("[schema] eager column load complete cachedCount=\(self.columnCache.count)")
@@ -199,21 +245,18 @@ actor SQLSchemaProvider {
     func resolveAlias(_ aliasOrName: String, in references: [TableReference]) -> String? {
         let lowerName = aliasOrName.lowercased()
 
-        // First check if it's an alias
         for ref in references {
             if ref.alias?.lowercased() == lowerName {
                 return ref.tableName
             }
         }
 
-        // Then check if it's a table name directly
         for ref in references {
             if ref.tableName.lowercased() == lowerName {
                 return ref.tableName
             }
         }
 
-        // Finally check against known tables
         for table in tables {
             if table.name.lowercased() == lowerName {
                 return table.name
@@ -241,7 +284,7 @@ actor SQLSchemaProvider {
         let capturedConnection = connection
         let capturedTables = tables
         let (dbName, idQuote, editorLanguage, queryLanguageName) = await MainActor.run {
-            let resolvedName = DatabaseManager.shared.activeDatabaseName(for: capturedConnection)
+            let resolvedName = DatabaseManager.shared.browseDatabaseName(for: capturedConnection)
             let quote = PluginManager.shared.sqlDialect(for: dbType)?.identifierQuote ?? "\""
             let lang = PluginManager.shared.editorLanguage(for: dbType)
             let langName = PluginManager.shared.queryLanguageName(for: dbType)
@@ -273,9 +316,68 @@ actor SQLSchemaProvider {
         }
     }
 
+    func setNamespaces(schemas: [String], databases: [String]) {
+        knownSchemas = schemas
+        knownDatabases = databases
+    }
+
+    func isKnownSchema(_ name: String) -> Bool {
+        knownSchemas.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    func isKnownDatabase(_ name: String) -> Bool {
+        knownDatabases.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    /// Schema names only — suggested after a database-qualified dot (e.g. "ANALYTICS_PROD.").
+    func schemaCompletionItems() async -> [SQLCompletionItem] {
+        let schemas = knownSchemas
+        return await MainActor.run {
+            schemas.map { SQLCompletionItem.schemaName($0) }
+        }
+    }
+
+    /// Databases + schemas — suggested alongside tables in FROM/JOIN contexts.
+    func namespaceCompletionItems() async -> [SQLCompletionItem] {
+        let schemas = knownSchemas
+        let databases = knownDatabases
+        return await MainActor.run {
+            databases.map { SQLCompletionItem.databaseName($0) }
+                + schemas.map { SQLCompletionItem.schemaName($0) }
+        }
+    }
+
+    /// Tables of one schema — suggested after a schema-qualified dot (e.g. "DBT_MARTS.").
+    /// Falls back to fetching from the database when that schema's tables aren't loaded yet.
+    func tableCompletionItems(inSchema schema: String) async -> [SQLCompletionItem] {
+        var matching = tables.filter { $0.schema?.caseInsensitiveCompare(schema) == .orderedSame }
+        if matching.isEmpty, let fetchSchemaTables = metadataSource?.fetchSchemaTables {
+            if let fetched = try? await fetchSchemaTables(schema), !fetched.isEmpty {
+                matching = fetched.filter { belongsToSchema($0, schema) }
+                mergeTables(fetched)
+            }
+        }
+        let tableData = matching.map { (name: $0.name, isView: $0.type == .view) }
+        return await MainActor.run {
+            tableData.map { SQLCompletionItem.table($0.name, isView: $0.isView) }
+        }
+    }
+
+    private func belongsToSchema(_ table: TableInfo, _ schema: String) -> Bool {
+        guard let tableSchema = table.schema, !tableSchema.isEmpty else { return true }
+        return tableSchema.caseInsensitiveCompare(schema) == .orderedSame
+    }
+
+    private func mergeTables(_ newTables: [TableInfo]) {
+        var seen = Set(tables.map(\.id))
+        for table in newTables where seen.insert(table.id).inserted {
+            tables.append(table)
+        }
+    }
+
     /// Get completion items for columns of a specific table
-    func columnCompletionItems(for tableName: String) async -> [SQLCompletionItem] {
-        let columns = await getColumns(for: tableName)
+    func columnCompletionItems(for tableName: String, schema: String? = nil) async -> [SQLCompletionItem] {
+        let columns = await getColumns(for: tableName, schema: schema)
         let columnData = columns.map { col in
             (name: col.name, type: col.dataType, isPK: col.isPrimaryKey,
              isNullable: col.isNullable, defaultValue: col.defaultValue, comment: col.comment)
@@ -291,18 +393,69 @@ actor SQLSchemaProvider {
         }
     }
 
+    /// Dotted field paths for a document-store collection, cached per collection.
+    /// Concurrent callers await the same sample instead of firing duplicate queries.
+    func fieldPaths(for tableName: String, sampleSize: Int = 50) async -> [PluginFieldPath] {
+        let key = tableName.lowercased()
+        if let cached = fieldPathCache[key] { return cached }
+        if let inFlight = fieldPathTasks[key] { return await inFlight.value }
+        guard let sample = metadataSource?.sampleFieldPaths else { return [] }
+
+        let task = Task { (try? await sample(tableName, sampleSize)) ?? [] }
+        fieldPathTasks[key] = task
+        let paths = await task.value
+        fieldPathTasks[key] = nil
+        if !paths.isEmpty { fieldPathCache[key] = paths }
+        return paths
+    }
+
+    /// Values a column is restricted to, when the database declares them (a PostgreSQL enum type,
+    /// a MongoDB `$jsonSchema` enum). Returns nothing for an ordinary column.
+    /// Reads only what the column cache already holds. Completion runs on every keystroke, so it
+    /// must never trigger a schema fetch; the eager column preload is what fills this cache.
+    func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] {
+        let name = column.lowercased()
+        let candidates = references.isEmpty
+            ? tables.map { (table: $0.name, schema: String?.none) }
+            : references.map { (table: $0.tableName, schema: $0.schema) }
+
+        for candidate in candidates {
+            let key = [candidate.schema?.lowercased(), candidate.table.lowercased()]
+                .compactMap(\.self)
+                .joined(separator: ".")
+            guard let columns = columnCache[key] else { continue }
+            if let match = columns.first(where: { $0.name.lowercased() == name }),
+               let values = match.allowedValues, !values.isEmpty {
+                return values
+            }
+        }
+        return []
+    }
+
     /// Get completion items for all columns of tables in scope
     func allColumnsInScope(for references: [TableReference]) async -> [SQLCompletionItem] {
         // swiftlint:disable:next large_tuple
         var itemDataBuilder: [(
-            label: String, insertText: String, type: String, table: String,
+            label: String, insertText: String, type: String?, table: String,
             isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?
         )] = []
 
         let hasMultipleRefs = references.count > 1
         for ref in references {
-            let columns = await getColumns(for: ref.tableName)
             let refId = ref.identifier
+            if let derivedColumns = ref.derivedColumns {
+                for name in derivedColumns {
+                    let label = hasMultipleRefs ? "\(refId).\(name)" : name
+                    itemDataBuilder.append(
+                        (
+                            label: label, insertText: label, type: nil,
+                            table: refId, isPK: false, isNullable: true,
+                            defaultValue: nil, comment: nil
+                        ))
+                }
+                continue
+            }
+            let columns = await getColumns(for: ref.tableName, schema: ref.schema)
             for column in columns {
                 let label = hasMultipleRefs ? "\(refId).\(column.name)" : column.name
                 let insertText = hasMultipleRefs ? "\(refId).\(column.name)" : column.name

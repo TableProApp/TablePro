@@ -15,13 +15,13 @@ extension MainContentCoordinator {
     // MARK: - Foreign Key Navigation
 
     /// Navigate to the referenced table filtered by the FK value.
-    /// Opens or switches to the referenced table tab with a pre-applied filter
-    /// so only the matching row is shown.
-    func navigateToFKReference(value: String, fkInfo: ForeignKeyInfo) {
+    /// Reuses the current tab when it holds nothing the user authored, and otherwise opens the
+    /// reference in its own tab so the originating query or edits survive.
+    func navigateToFKReference(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool) {
         let referencedTable = fkInfo.referencedTable
         let referencedColumn = fkInfo.referencedColumn
 
-        fkNavigationLogger.debug("FK navigate: \(referencedTable).\(referencedColumn) = \(value)")
+        fkNavigationLogger.debug("FK navigate: \(referencedTable).\(referencedColumn) = \(value) newTab=\(openInNewTab)")
 
         let filter = TableFilter(
             columnName: referencedColumn,
@@ -29,85 +29,77 @@ extension MainContentCoordinator {
             value: value
         )
 
-        let currentDatabase = activeDatabaseName
+        guard let sourceScope = selectedTabScope else {
+            fkNavigationLogger.error("FK navigate skipped: the source tab is not bound to a database")
+            return
+        }
 
-        let targetSchema = fkInfo.referencedSchema ?? DatabaseManager.shared.session(for: connectionId)?.currentSchema
+        let currentDatabase = sourceScope.database
+        let targetSchema = fkInfo.referencedSchema.flatMap { $0.isEmpty ? nil : $0 } ?? sourceScope.schema
 
-        // Fast path: referenced table is already the active tab — just apply filter
-        if let current = tabManager.selectedTab,
-           current.tabType == .table,
-           current.tableContext.tableName == referencedTable,
-           current.tableContext.databaseName == currentDatabase,
-           current.tableContext.schemaName == targetSchema {
+        if !openInNewTab,
+           let current = tabManager.selectedTab,
+           matchesFKTarget(current, table: referencedTable, database: currentDatabase, schema: targetSchema) {
             applyFKFilter(filter, for: referencedTable)
             return
         }
 
-        // If current tab has unsaved changes, open in a new native tab instead of replacing
-        if changeManager.hasChanges {
-            let fkFilterState = TabFilterState(
-                filters: [filter],
-                appliedFilters: [filter],
-                isVisible: true,
-                filterLogicMode: .and
-            )
-            let payload = EditorTabPayload(
-                connectionId: connection.id,
-                tabType: .table,
-                tableName: referencedTable,
-                databaseName: currentDatabase,
-                schemaName: targetSchema,
-                isView: false,
-                initialFilterState: fkFilterState
-            )
-            WindowManager.shared.openTab(payload: payload)
-            return
-        }
-
-        let needsQuery: Bool
-        do {
-            needsQuery = try tabManager.replaceTabContent(
-                tableName: referencedTable,
-                databaseType: connection.type,
-                isView: false,
+        guard openInNewTab || selectedTabHoldsProtectedContent else {
+            replaceSelectedTabWithFKTarget(
+                referencedTable: referencedTable,
+                filter: filter,
                 databaseName: currentDatabase,
                 schemaName: targetSchema
             )
-        } catch {
-            fkNavigationLogger.error("navigateToFKReference replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
             return
         }
 
-        if needsQuery, let (tab, tabIndex) = tabManager.selectedTabAndIndex {
-            setActiveTableRows(TableRows(), for: tab.id)
-            tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
+        if !openInNewTab,
+           let existing = openFKTargetTab(
+               table: referencedTable,
+               database: currentDatabase,
+               schema: targetSchema,
+               filter: filter
+           ) {
+            existing.coordinator.selectTabAndFocusWindow(existing.tabId)
+            return
         }
 
-        if let (tab, _) = tabManager.selectedTabAndIndex {
-            toolbarState.isTableTab = tab.tabType == .table
-        }
+        promotePreviewTab()
+        let payload = makeFKReferencePayload(
+            filter: filter,
+            referencedTable: referencedTable,
+            databaseName: currentDatabase,
+            schemaName: targetSchema
+        )
+        openTabInNewWindow(payload)
+    }
 
-        if needsQuery {
-            NSApp.keyWindow?.title = referencedTable
-
-            guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
-            let tableRows = tabSessionRegistry.tableRows(for: tab.id)
-            let filteredQuery = queryBuilder.buildFilteredQuery(
-                tableName: referencedTable,
-                schemaName: fkInfo.referencedSchema,
-                filters: [filter],
-                columns: tableRows.columns,
-                limit: tab.pagination.pageSize,
-                offset: tab.pagination.currentOffset
-            )
-            tabManager.mutate(at: tabIndex) { $0.content.query = filteredQuery }
-
-            updateFilterState(filter, for: referencedTable)
-
-            runQuery()
-        } else {
-            applyFKFilter(filter, for: referencedTable)
-        }
+    func makeFKReferencePayload(
+        filter: TableFilter,
+        referencedTable: String,
+        databaseName: String?,
+        schemaName: String?
+    ) -> EditorTabPayload {
+        let fkFilterState = TabFilterState(
+            filters: [filter],
+            commit: .all,
+            isVisible: true,
+            filterLogicMode: .and
+        )
+        /// This payload is only built once no open tab could take the jump, so it must land in a
+        /// tab of its own. Reusing one would write the FK filter over filters the user applied
+        /// there, and leave the grid on rows the new filter never ran against.
+        return EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .table,
+            tableName: referencedTable,
+            databaseName: databaseName,
+            schemaName: schemaName,
+            isView: false,
+            forcesNewTab: true,
+            initialFilterState: fkFilterState
+        )
     }
 
     /// Toggle FK preview for the currently focused cell in the data grid.
@@ -124,6 +116,100 @@ extension MainContentCoordinator {
             column: tableView.focusedColumn,
             columnIndex: tableView.focusedColumn - 1
         )
+    }
+
+    private func matchesFKTarget(_ tab: QueryTab, table: String, database: String, schema: String?) -> Bool {
+        tab.tabType == .table
+            && tab.tableContext.tableName == table
+            && tab.tableContext.databaseName == database
+            && tab.tableContext.schemaName == schema
+    }
+
+    private func isSameFKPredicate(_ lhs: TableFilter, _ rhs: TableFilter) -> Bool {
+        lhs.columnName == rhs.columnName
+            && lhs.filterOperator == rhs.filterOperator
+            && lhs.value == rhs.value
+    }
+
+    /// A tab already showing exactly this reference. Matching the filter too keeps a click on a
+    /// different row from re-filtering a tab the user opened for another one.
+    private func openFKTargetTab(
+        table: String,
+        database: String,
+        schema: String?,
+        filter: TableFilter
+    ) -> (coordinator: MainContentCoordinator, tabId: UUID)? {
+        func matches(_ tab: QueryTab) -> Bool {
+            guard matchesFKTarget(tab, table: table, database: database, schema: schema) else { return false }
+            let applied = tab.filterState.appliedFilters
+            guard applied.count == 1 else { return false }
+            return isSameFKPredicate(applied[0], filter)
+        }
+
+        if let match = tabManager.tabs.first(where: matches) {
+            return (self, match.id)
+        }
+
+        for sibling in MainContentCoordinator.allActiveCoordinators()
+            where sibling !== self && sibling.connectionId == connectionId {
+            guard let match = sibling.tabManager.tabs.first(where: matches) else { continue }
+            return (sibling, match.id)
+        }
+        return nil
+    }
+
+    private func replaceSelectedTabWithFKTarget(
+        referencedTable: String,
+        filter: TableFilter,
+        databaseName: String,
+        schemaName: String?
+    ) {
+        if let outgoingTable = tabManager.selectedTab?.tableContext.tableName {
+            saveLastFilters(for: outgoingTable)
+        }
+
+        let replaced: Bool
+        do {
+            replaced = try tabManager.replaceTabContent(
+                tableName: referencedTable,
+                databaseType: connection.type,
+                isView: false,
+                databaseName: databaseName,
+                schemaName: schemaName
+            )
+        } catch {
+            fkNavigationLogger.error("navigateToFKReference replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        guard replaced, let (replacedTab, tabIndex) = tabManager.selectedTabAndIndex else {
+            applyFKFilter(filter, for: referencedTable)
+            return
+        }
+
+        let tabId = replacedTab.id
+        cancelTableLoad(for: tabId)
+        toolbarState.isTableTab = true
+        setActiveTableRows(TableRows(), for: tabId)
+        tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
+        restoreLastHiddenColumnsForTable()
+
+        guard let pagination = tabManager.selectedTab?.pagination else { return }
+        let tableRows = tabSessionRegistry.tableRows(for: tabId)
+        let filteredQuery = queryBuilder.buildFilteredQuery(
+            tableName: referencedTable,
+            schemaName: schemaName,
+            filters: [filter],
+            columns: tableRows.columns,
+            columnTypes: tableRows.columnTypes,
+            limit: pagination.pageSize,
+            offset: pagination.currentOffset
+        )
+        tabManager.mutate(at: tabIndex) { $0.content.query = filteredQuery }
+
+        updateFilterState(filter, for: referencedTable)
+
+        runQuery()
     }
 
     private func applyFKFilter(_ filter: TableFilter, for tableName: String) {

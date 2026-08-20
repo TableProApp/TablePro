@@ -15,30 +15,33 @@ internal final class WindowOpener {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WindowOpener")
 
     @ObservationIgnored private var openWelcomeAction: (() -> Void)?
-    @ObservationIgnored private var openConnectionFormAction: ((UUID?) -> Void)?
+    @ObservationIgnored private var openConnectionFormAction: ((ConnectionFormRequest) -> Void)?
     @ObservationIgnored private var openIntegrationsActivityAction: (() -> Void)?
     @ObservationIgnored private var openSettingsAction: (() -> Void)?
-    @ObservationIgnored
-    private var presentTypeChooserAction: ((DatabaseType?, @escaping (DatabaseType) -> Void) -> Void)?
+    @ObservationIgnored private var stagedDraftId: UUID?
     @ObservationIgnored private var pendingCalls: [() -> Void] = []
-    @ObservationIgnored private var isWired = false
 
-    private init() {}
+    /// Not private so a test can exercise the queue on an instance with no presenters
+    /// registered. Production code uses `shared`.
+    internal init() {}
 
     internal func openWelcome() {
-        run { $0.openWelcomeAction?() }
-    }
-
-    internal func openSettings(tab: SettingsTab? = nil) {
-        if let tab {
-            UserDefaults.standard.set(tab.rawValue, forKey: "selectedSettingsTab")
+        perform { opener in
+            guard let present = opener.openWelcomeAction else { return false }
+            present()
+            NSApp.activate()
+            return true
         }
-        run { $0.openSettingsAction?() }
     }
 
-    internal func orderOutWelcome() {
-        for window in NSApp.windows where AppLaunchCoordinator.isWelcomeWindow(window) {
-            window.orderOut(nil)
+    internal func openSettings(tab: SettingsPane? = nil) {
+        if let tab {
+            AppStorageEnvironment.shared.defaults.set(tab.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
+        }
+        perform { opener in
+            guard let present = opener.openSettingsAction else { return false }
+            present()
+            return true
         }
     }
 
@@ -48,68 +51,95 @@ internal final class WindowOpener {
         }
     }
 
-    internal func openConnectionForm(editing connectionId: UUID? = nil) {
-        guard connectionId == nil else {
-            run { $0.openConnectionFormAction?(connectionId) }
-            return
-        }
-        run { opener in
-            opener.presentTypeChooser(initialType: nil) { selected in
-                opener.openConnectionForm(editing: nil, withType: selected)
-            }
+    internal func openConnectionForm(editing connectionId: UUID) {
+        perform { opener in
+            guard let present = opener.openConnectionFormAction else { return false }
+            present(.edit(connectionId: connectionId))
+            return true
         }
     }
 
-    internal func openConnectionForm(editing connectionId: UUID?, withType type: DatabaseType) {
-        PendingNewConnectionType.shared.set(type)
-        run { $0.openConnectionFormAction?(connectionId) }
+    internal func openConnectionForm() {
+        presentTypeChooser(initialType: nil) { selected in
+            WindowOpener.shared.stageConnectionFormDraft(type: selected)
+        }
     }
 
-    internal func openConnectionFormFromURL(_ parsed: ParsedConnectionURL) {
-        PendingNewConnectionImport.shared.set(parsed)
-        run { $0.openConnectionFormAction?(nil) }
+    internal func stageConnectionFormDraft(type: DatabaseType? = nil, parsedURL: ParsedConnectionURL? = nil) {
+        discardStagedDraft()
+        stagedDraftId = ConnectionFormDraftStore.shared.stage(
+            ConnectionFormDraft(type: type, parsedURL: parsedURL)
+        )
+    }
+
+    internal func openStagedConnectionForm() {
+        guard let draftId = stagedDraftId else { return }
+        stagedDraftId = nil
+        perform { opener in
+            guard let present = opener.openConnectionFormAction else { return false }
+            present(.create(draftId: draftId))
+            return true
+        }
+    }
+
+    private func discardStagedDraft() {
+        guard let draftId = stagedDraftId else { return }
+        stagedDraftId = nil
+        _ = ConnectionFormDraftStore.shared.consume(draftId)
     }
 
     internal func presentTypeChooser(
         initialType: DatabaseType?,
         onSelected: @escaping (DatabaseType) -> Void
     ) {
-        run { $0.presentTypeChooserAction?(initialType, onSelected) }
+        let payload = DatabaseTypeChooserPayload(initialType: initialType, onSelected: onSelected)
+        WelcomeRouter.shared.route(.chooseDatabaseType(payload))
     }
 
     internal func openIntegrationsActivity() {
-        run { $0.openIntegrationsActivityAction?() }
+        perform { opener in
+            guard let present = opener.openIntegrationsActivityAction else { return false }
+            present()
+            return true
+        }
     }
 
-    internal func wire(
-        openWelcome: @escaping () -> Void,
-        openConnectionForm: @escaping (UUID?) -> Void,
-        openIntegrationsActivity: @escaping () -> Void,
-        openSettings: @escaping () -> Void,
-        presentTypeChooser: @escaping (DatabaseType?, @escaping (DatabaseType) -> Void) -> Void
-    ) {
-        openWelcomeAction = openWelcome
-        openConnectionFormAction = openConnectionForm
-        openIntegrationsActivityAction = openIntegrationsActivity
-        openSettingsAction = openSettings
-        presentTypeChooserAction = presentTypeChooser
-        isWired = true
+    internal func setWelcomePresenter(_ present: @escaping () -> Void) {
+        openWelcomeAction = present
+        drainPendingCalls()
+    }
+
+    internal func setConnectionFormPresenter(_ present: @escaping (ConnectionFormRequest) -> Void) {
+        openConnectionFormAction = present
+        drainPendingCalls()
+    }
+
+    internal func setIntegrationsActivityPresenter(_ present: @escaping () -> Void) {
+        openIntegrationsActivityAction = present
+        drainPendingCalls()
+    }
+
+    internal func setSettingsPresenter(_ present: @escaping () -> Void) {
+        openSettingsAction = present
+        drainPendingCalls()
+    }
+
+    /// Returns false when the presenter for that window has not been registered yet, which
+    /// queues the call. Each window registers independently, so one that has already migrated
+    /// to AppKit never waits on one that has not.
+    private func perform(_ block: @escaping (WindowOpener) -> Bool) {
+        guard !block(self) else { return }
+        Self.logger.notice("WindowOpener call queued; presenter not registered yet")
+        pendingCalls.append { [weak self] in
+            self?.perform(block)
+        }
+    }
+
+    private func drainPendingCalls() {
         let drained = pendingCalls
         pendingCalls.removeAll()
         for call in drained {
             call()
-        }
-    }
-
-    private func run(_ block: @escaping (WindowOpener) -> Void) {
-        if isWired {
-            block(self)
-            return
-        }
-        Self.logger.notice("WindowOpener call queued; bridge not yet wired")
-        pendingCalls.append { [weak self] in
-            guard let self else { return }
-            block(self)
         }
     }
 }

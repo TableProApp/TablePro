@@ -45,6 +45,33 @@ struct LicensePayloadData: Codable, Equatable {
     let expiresAt: String?
     let issuedAt: String
     let tier: String
+    let teamId: String?
+    let role: String?
+    let machineId: String?
+
+    init(
+        billingCycle: String?,
+        licenseKey: String,
+        email: String,
+        status: String,
+        expiresAt: String?,
+        issuedAt: String,
+        tier: String,
+        teamId: String? = nil,
+        role: String? = nil,
+        machineId: String? = nil
+    ) {
+        self.billingCycle = billingCycle
+        self.licenseKey = licenseKey
+        self.email = email
+        self.status = status
+        self.expiresAt = expiresAt
+        self.issuedAt = issuedAt
+        self.tier = tier
+        self.teamId = teamId
+        self.role = role
+        self.machineId = machineId
+    }
 
     private enum CodingKeys: String, CodingKey {
         case billingCycle = "billing_cycle"
@@ -54,11 +81,18 @@ struct LicensePayloadData: Codable, Equatable {
         case expiresAt = "expires_at"
         case issuedAt = "issued_at"
         case tier
+        case teamId = "team_id"
+        case role
+        case machineId = "machine_id"
     }
 
     /// Custom encode to explicitly write null for nil optionals.
     /// The auto-synthesized Codable uses encodeIfPresent which omits nil keys,
     /// but PHP's json_encode includes null values — the signed JSON must match exactly.
+    ///
+    /// `team_id`, `role` and `machine_id` are the exception: the server omits them unless they
+    /// apply, so they use encodeIfPresent (dropped when nil). This keeps a payload signed before
+    /// those keys existed verifying byte-for-byte against a build that knows about them.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         if let billingCycle {
@@ -76,6 +110,9 @@ struct LicensePayloadData: Codable, Equatable {
         }
         try container.encode(issuedAt, forKey: .issuedAt)
         try container.encode(tier, forKey: .tier)
+        try container.encodeIfPresent(teamId, forKey: .teamId)
+        try container.encodeIfPresent(role, forKey: .role)
+        try container.encodeIfPresent(machineId, forKey: .machineId)
     }
 }
 
@@ -97,6 +134,23 @@ struct LicenseActivationRequest: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case licenseKey = "license_key"
+        case machineId = "machine_id"
+        case machineName = "machine_name"
+        case appVersion = "app_version"
+        case osVersion = "os_version"
+    }
+}
+
+/// Request body for accepting a team invitation (activation via invite code)
+struct LicenseAcceptInviteRequest: Codable {
+    let token: String
+    let machineId: String
+    let machineName: String
+    let appVersion: String
+    let osVersion: String
+
+    private enum CodingKeys: String, CodingKey {
+        case token
         case machineId = "machine_id"
         case machineName = "machine_name"
         case appVersion = "app_version"
@@ -175,17 +229,51 @@ internal struct ListActivationsResponse: Codable {
 
 // MARK: - Cached License
 
-/// Local cached license with metadata for offline use
+/// Cache envelope around the server's signed payload.
+///
+/// Every field that drives gating is computed from `signedPayload.data`, so a forged value has
+/// nowhere to live: the RSA signature covers all of it. `cachedOnMachineId` is the one locally
+/// written field and it is not a security control, only the tripwire that drops a cache restored
+/// from another Mac's backup. The binding that holds against tampering is `boundMachineId`,
+/// which the server signs.
 struct License: Codable, Equatable {
-    var key: String
-    var email: String
-    var status: LicenseStatus
-    var expiresAt: Date?
-    var lastValidatedAt: Date
-    var machineId: String
     var signedPayload: SignedLicensePayload
-    var tier: String
-    var billingCycle: String?
+    var cachedOnMachineId: String
+
+    private enum CodingKeys: String, CodingKey {
+        case signedPayload
+        case cachedOnMachineId = "machineId"
+    }
+
+    private var payload: LicensePayloadData { signedPayload.data }
+
+    var key: String { payload.licenseKey }
+
+    var email: String { payload.email }
+
+    var tier: String { payload.tier }
+
+    var billingCycle: String? { payload.billingCycle }
+
+    var boundMachineId: String? { payload.machineId }
+
+    var status: LicenseStatus {
+        switch payload.status {
+        case "active": .active
+        case "expired": .expired
+        case "suspended": .suspended
+        default: .validationFailed
+        }
+    }
+
+    var expiresAt: Date? {
+        payload.expiresAt.flatMap { Self.iso8601Formatter.date(from: $0) }
+    }
+
+    /// When the server signed this payload, which is when it last confirmed the license.
+    var issuedAt: Date? {
+        Self.iso8601Formatter.date(from: payload.issuedAt)
+    }
 
     /// Whether the license has expired based on expiration date
     var isExpired: Bool {
@@ -199,9 +287,11 @@ struct License: Codable, Equatable {
         return Calendar.current.dateComponents([.day], from: Date(), to: expiresAt).day
     }
 
-    /// Days since last successful server validation
-    var daysSinceLastValidation: Int {
-        Calendar.current.dateComponents([.day], from: lastValidatedAt, to: Date()).day ?? 0
+    /// Days since the server last confirmed this license, or nil when the payload does not say.
+    /// A clock behind the server reads as zero rather than as a license from the future.
+    var daysSinceLastValidation: Int? {
+        guard let issuedAt else { return nil }
+        return max(0, Calendar.current.dateComponents([.day], from: issuedAt, to: Date()).day ?? 0)
     }
 
     private static let iso8601Formatter: ISO8601DateFormatter = {
@@ -209,33 +299,6 @@ struct License: Codable, Equatable {
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
     }()
-
-    /// Create a License from a verified server payload
-    static func from(
-        payload: LicensePayloadData,
-        signedPayload: SignedLicensePayload,
-        machineId: String
-    ) -> License {
-        let expiresAt = payload.expiresAt.flatMap { iso8601Formatter.date(from: $0) }
-        let status: LicenseStatus = switch payload.status {
-        case "active": .active
-        case "expired": .expired
-        case "suspended": .suspended
-        default: .validationFailed
-        }
-
-        return License(
-            key: payload.licenseKey,
-            email: payload.email,
-            status: status,
-            expiresAt: expiresAt,
-            lastValidatedAt: Date(),
-            machineId: machineId,
-            signedPayload: signedPayload,
-            tier: payload.tier,
-            billingCycle: payload.billingCycle
-        )
-    }
 }
 
 // MARK: - License Error
@@ -244,6 +307,7 @@ struct License: Codable, Equatable {
 enum LicenseError: LocalizedError {
     case invalidKey
     case signatureInvalid
+    case machineMismatch
     case publicKeyNotFound
     case publicKeyInvalid
     case activationLimitReached
@@ -260,6 +324,8 @@ enum LicenseError: LocalizedError {
             return String(localized: "The license key is invalid.")
         case .signatureInvalid:
             return String(localized: "License signature verification failed.")
+        case .machineMismatch:
+            return String(localized: "This license was issued for a different Mac.")
         case .publicKeyNotFound:
             return String(localized: "License public key not found in app bundle.")
         case .publicKeyInvalid:
@@ -301,6 +367,8 @@ enum LicenseError: LocalizedError {
             return String(format: String(localized: "Something went wrong (error %d). Try again in a moment."), code)
         case .signatureInvalid, .publicKeyNotFound, .publicKeyInvalid:
             return String(localized: "License verification failed. Try updating the app to the latest version.")
+        case .machineMismatch:
+            return String(localized: "This license was activated on a different Mac. Activate it here to use Pro features.")
         case .notActivated:
             return String(localized: "This machine is not activated for this license.")
         case .decodingError:

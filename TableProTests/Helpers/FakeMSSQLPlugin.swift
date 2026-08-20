@@ -78,6 +78,11 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return "[\(escaped)]"
     }
 
+    func qualifiedName(schema: String?, table: String) -> String {
+        guard let schema, !schema.isEmpty else { return quoteIdentifier(table) }
+        return "\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
+    }
+
     func buildBrowseQuery(
         table: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
@@ -85,9 +90,23 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = quoteIdentifier(table)
+        buildBrowseQuery(
+            table: table, schema: nil, sortColumns: sortColumns,
+            columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildBrowseQuery(
+        table: String,
+        schema: String?,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        let target = qualifiedName(schema: schema, table: table)
         let orderBy = orderByClause(sortColumns: sortColumns, columns: columns) ?? "ORDER BY (SELECT NULL)"
-        return "SELECT * FROM \(quotedTable) \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+        return "SELECT * FROM \(target) \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
     }
 
     func buildFilteredQuery(
@@ -99,8 +118,24 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
-        let quotedTable = quoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
+        buildFilteredQuery(
+            table: table, schema: nil, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        let target = qualifiedName(schema: schema, table: table)
+        var query = "SELECT * FROM \(target)"
         let whereClause = whereClause(filters: filters, logicMode: logicMode)
         if !whereClause.isEmpty {
             query += " WHERE \(whereClause)"

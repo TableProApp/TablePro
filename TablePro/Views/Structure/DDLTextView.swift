@@ -13,7 +13,7 @@ import TableProPluginKit
 /// Read-only DDL display with syntax highlighting powered by CodeEditSourceEditor
 struct DDLTextView: View {
     let ddl: String
-    @Binding var fontSize: CGFloat
+    @Binding var fontSize: Double
     var databaseType: DatabaseType?
 
     @State private var text: String
@@ -22,7 +22,7 @@ struct DDLTextView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     /// Primary initializer accepting DDL as a value (read-only display)
-    init(ddl: String, fontSize: Binding<CGFloat>, databaseType: DatabaseType? = nil) {
+    init(ddl: String, fontSize: Binding<Double>, databaseType: DatabaseType? = nil) {
         self.ddl = ddl
         self._text = State(wrappedValue: ddl)
         self._fontSize = fontSize
@@ -38,7 +38,8 @@ struct DDLTextView: View {
                 $text,
                 language: resolvedLanguage,
                 configuration: editorConfiguration,
-                state: $editorState
+                state: $editorState,
+                foldProvider: foldProvider
             )
             .onChange(of: ddl) { _, newDDL in
                 text = newDDL
@@ -52,6 +53,10 @@ struct DDLTextView: View {
         }
     }
 
+    private var foldProvider: LineFoldProvider? {
+        databaseType.flatMap(FoldProviderResolver.provider(for:))
+    }
+
     private var resolvedLanguage: CodeLanguage {
         if let databaseType {
             return PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage
@@ -59,8 +64,8 @@ struct DDLTextView: View {
         return .sql
     }
 
-    private static func makeConfiguration(fontSize: CGFloat) -> SourceEditorConfiguration {
-        let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+    private static func makeConfiguration(fontSize: Double) -> SourceEditorConfiguration {
+        let font = NSFont.monospacedSystemFont(ofSize: CGFloat(fontSize), weight: .regular)
         return SourceEditorConfiguration(
             appearance: .init(
                 theme: TableProEditorTheme.make(),
@@ -73,10 +78,9 @@ struct DDLTextView: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
             ),
-            peripherals: .init(
-                showGutter: true,
-                showMinimap: false,
-                showFoldingRibbon: false
+            peripherals: EditorPeripherals.inline(
+                lineNumbers: true,
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }

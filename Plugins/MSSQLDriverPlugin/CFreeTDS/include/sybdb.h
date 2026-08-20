@@ -55,6 +55,7 @@ typedef struct loginrec LOGINREC;
 #define DBSETPACKET     11
 #define DBSETENCRYPT    12
 #define DBSETDBNAME     14
+#define DBSETSERVERPRINCIPAL 103
 
 // Convenience macros (match FreeTDS sybdb.h)
 #define DBSETLHOST(x, y)    dbsetlname((x), (y), DBSETHOST)
@@ -87,6 +88,12 @@ extern LOGINREC *dblogin(void);
 extern void dbloginfree(LOGINREC *loginrec);
 extern RETCODE dbsetlname(LOGINREC *loginrec, const char *value, int which);
 extern RETCODE dbsetlversion(LOGINREC *loginrec, BYTE version);
+
+// Microsoft Entra ID access token, sent in the LOGIN7 FEDAUTH feature extension instead of a
+// user name and password. Added by scripts/patches/freetds/freetds-fedauth.patch; upstream
+// FreeTDS has no federated authentication. Separate from dbsetlname() because that caps values
+// at 128 bytes and writes them to the log, and an access token is neither short nor loggable.
+extern RETCODE dbsetlfedauthtoken(LOGINREC *loginrec, const char *token);
 
 // tdsdbopen is the real symbol; dbopen is a macro wrapper in the real header
 // (msdblib=1 enables MS SQL Server behavior — required for SQL Server connections)

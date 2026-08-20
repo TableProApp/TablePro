@@ -9,24 +9,1261 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Right-click a column header to copy all its values from the loaded rows (#1325)
-- Copy as submenu on the row context menu now offers CSV, CSV with Headers, Markdown table, and IN Clause for SQL `WHERE id IN (...)` lookups (#1325)
-- Redis: Sentinel connection mode. Pick "Sentinel" in the connection form, list the Sentinel nodes, and set the master name; TablePro resolves the current master through the Sentinel quorum and re-resolves automatically on failover (#1021)
+- Help › Acknowledgements lists the 38 open source libraries TablePro ships, each with the exact version that shipped, its license, the copyright lines it asks you to reproduce, and the full license text. Several of these licenses require the text to travel with the app, and it had never been included. Two libraries whose own projects publish no license are listed as unresolved rather than being given a guess.
+- Korean localization for macOS, iPhone and iPad, with a 한국어 language option in General settings. (#2219)
+- Query results can be drawn as native bar, line, area and scatter charts from the loaded rows. Date and timestamp columns plot on a real time axis. Axis and series controls stack when the pane is narrow, hover shows exact values, and the chart keeps its type and axes across a page turn, a sort and a re-run. A result past the plotting limit still draws what fits and says how much. The status bar keeps the row count and pagination in Chart mode. This is a Starter feature.
+- Every database operation TablePro authorizes is written to a local execution log, including the ones the AI assistant and MCP clients ask for, with the statement stored as a digest rather than as text. Records are hash chained, so an edited, reordered or removed entry can be detected. The log stays on the Mac and is not synced.
+- An administrator can set a minimum Safe Mode level for every connection through a macOS configuration profile, so a managed Mac cannot be dropped below it. A connection set stricter keeps its own level, since the policy is a floor rather than a ceiling. The control shows as managed instead of editable.
+- Plugins signed by other developers can be installed. TablePro used to refuse any plugin bundle it had not signed itself, so the only way to publish a driver was through the TablePro repository. A bundle signed with an Apple Developer ID now installs after you agree to trust that developer by name, and the prompt says plainly that a database plugin runs as part of TablePro and can read the credentials of every connection you open. Trust is recorded per developer rather than per plugin, so their updates install without asking again, and you can withdraw it. Unsigned and ad-hoc signed bundles are still refused.
+- The SQL editor folds code. Move the pointer over the gutter and a chevron appears beside every statement, table body, CTE, subquery, `BEGIN` block and multi-line comment that spans more than one line, with a bar marking how far the one under the pointer reaches; click the chevron to collapse that block. A folded block keeps its chevron so you can find it again, and a gutter you are not pointing at shows nothing but line numbers. A collapsed region is replaced by a chip showing the start of what it hides and how many lines are hidden, so you can read a long script without scrolling through the parts you are not working on. Click the chip to bring it back, or rest the pointer on it in the query editor to peek at the whole block, opening line included and syntax highlighted, without expanding it. Pointing at a chip also marks its chevron in the gutter, since the two are the same control. The chevrons are reachable with VoiceOver, which reads each one as a disclosure control and says whether its block is folded. Fold All, Unfold All and Toggle Fold are in the Query menu with rebindable shortcuts, and Fold and Unfold are on the editor's right-click menu. Collapsed regions are remembered when a tab is closed and reopened. Folding also works on the DDL and trigger views, the SQL import preview, the AI review sheet, AI chat code blocks and the JSON cell viewer, which number their lines while folding is on so the chevrons never sit in a blank rail. Turning line numbers off hides the chevrons with them, and Fold All, Unfold All, Toggle Fold and the collapsed chips keep working. Turn folding off in Settings > Editor.
+- `Cmd+F` on a table tab opens a find bar over the results. Type a term and the matching cell is highlighted and scrolled to; `Return` and `Cmd+G` step forward, `Cmd+Shift+G` steps back, `Escape` clears the term and then closes the bar. Matching ignores case and accents and runs over the text as displayed, skipping binary and spatial columns. The counter always says what it searched, reading "3 of 12 on this page" while rows remain unfetched and "3 of 12" once everything is loaded, so a result is never mistaken for an answer about the whole table. When nothing matches on the page and more rows exist, Search All Rows turns the term into a server-side filter.
+- The Execute button's menu in the SQL editor offers Execute All Statements, alongside the `Cmd+Shift+Enter` shortcut and the Query menu. Running every statement in a tab no longer means selecting the whole tab first. (#2230)
+- Double-click a table in the object browser, or press `Return` on it, to keep its tab. Clicking a table opens it in a preview tab that the next click reuses, and until now nothing said "keep this one", so browsing several tables left them all fighting over the first tab. Keeping a tab means the next table you click opens in its own, and double-clicking a table that is already open switches back to its tab rather than making a second one. (#2235)
 
 ### Changed
 
-- `Cmd+C` now copies the focused cell value when one row is selected and a cell has focus; with multiple rows selected, or when no cell is focused, it still copies row(s) as TSV. `Cmd+Shift+C` now always copies row(s) as TSV. "Copy with Headers" stays in the Edit menu and row context menu without a default shortcut (#1332)
+- The iOS Shortcuts documentation says which app build each action needs and where to find the full action list, so a Mac release note no longer reads as though the iPhone app already has them.
+- `Cmd+F` on a table tab used to toggle the filter panel, which meant it closed the panel when it was already open and never searched anything. The filter panel keeps `Cmd+Option+F` and its funnel button in the status bar.
+- Find Next and Find Previous work on the data grid when its find bar is open, instead of staying dimmed on a table tab.
+- The PHP serialized viewer's tree filter now behaves like the JSON one. Both ignore accents, so `cafe` finds `café`. (#2204)
+- Picking a database in the connections strip returns you to the tab you last used in it, the way picking a connection already returns you to that connection's tab. A database with nothing open just moves the object browser, as before. (#2217)
+- Two tabs showing objects with the same name from different databases now carry the database in their names, so two tabs called `orders` read as `app.orders` and `staging.orders`. A name no other tab uses stays short. Hovering a tab, or reading it with VoiceOver, always names its database. (#2217)
+- Save in the "Do you want to save changes?" prompt now closes what you asked to close once the save lands. Closing a group of tabs, or closing a connection, used to save and then leave everything open.
+- A column value filter survives switching result mode and switching tabs, instead of being dropped the moment the grid left the screen. Running a query, turning a page, refreshing, or moving to another result of the same script still clears it, because the values you picked came from the rows being replaced. (#2251)
 
 ### Fixed
 
-- DuckDB Spatial `GEOMETRY` columns render as WKT, not NULL (#1324)
-- DuckDB `HUGEINT` and `UHUGEINT` keep full precision and no longer crash on negatives
-- DuckDB streaming results honor the row cap and render `TIMESTAMPTZ`/`TIMETZ`/`GEOMETRY` instead of NULL
-- DuckDB schema reads handle apostrophes and concurrent schema switches correctly
-- DuckDB ENUMs in non-`main` schemas resolve correctly
-- DuckDB `DATE` and `TIMESTAMP` BC years use a leading minus
-- `.db`, `.db3`, `.s3db`, `.sl3`, and `.sqlitedb` files now open in TablePro from Finder (#1327)
-- DynamoDB SSO connections work with modern `sso-session` profiles immediately after `aws sso login`, without needing to run another AWS CLI command first (#1333)
+- JSON result mode shows the rows the grid is showing, in the same order, and a row you selected in Data mode resolves to that same row. With a column value filter on, it listed every loaded row in fetch order and a selection pointed somewhere else. The row inspector had the same problem in JSON mode, and editing a field there wrote the change to the wrong row. (#2251)
+- Rows you marked for deletion no longer appear in JSON result mode. They kept rendering unchanged, so Save lit up with nothing visibly different. The count line says how many are held back. Copy as JSON in the grid still copies every row you selected. (#2251)
+- Editing a cell in a result you clicked back to writes to that result's own table. A query tab can hold several results at once, from pinning one or from running several statements, but the tab only remembered the table of the run that finished last, so an edit made on an earlier result was saved against the newest one. Nothing warned you, and the wrong table was changed.
+- A result whose table TablePro cannot identify no longer looks editable. Typing into one now says why it is read only instead of accepting the edit and saving it somewhere else.
+- Running several statements at once no longer carries the previous run's primary key over to the new table. A column that happened to share a name meant an edit matched the wrong rows. Results from a run like that are read only until TablePro knows the table's key columns, so an edit can never fall back to matching on every column and change more rows than you picked.
+- Column details that arrive after a query, such as foreign keys, defaults and primary keys, now land on the result that asked for them. Switching to another result while they were still loading applied one table's details to another table's rows.
+- Editing a field in the row inspector obeys the same rules as the grid. It ignored them, so a view, or a result the grid refuses to edit, could still be changed from the inspector.
+- The rows loaded by Fetch All stay with the result you loaded them for, and are no longer replaced by another result's rows or silently dropped by the next query you run.
+- Switching between results asks before discarding unsaved edits, the way sorting, paging and filtering already do.
+- Every restored tab hides the columns you hid for its table, not just the tab that was in front. The others came back showing every column, and hiding one there wrote that single column over the table's saved set, losing the rest.
+- A query tab reopens with the caret where you left it, even if it was not the tab in front when you quit. The position was recorded only for the selected tab, so switching to another tab threw away the position that was already saved, and looking at a restored tab was enough to lose it.
+- Reopening a session keeps the sort and the page number on every restored tab, not just the one that was in front. The others held their saved sort and page until you clicked them, and the next save wrote the tab out without either, so a tab you did not visit lost them for good.
+- A restored tab reopens on the rows it was showing. The page number was saved without the page size it was counted in, so a tab left on page 12 of 100 rows came back as page 12 of the default 1,000 and landed 11,000 rows further down, usually on an empty grid.
+- Scrolling a result with hundreds of columns is no longer slow. Every column built a cell for every row on screen whether or not it was anywhere near the viewport, so a 500-column table carried about 18,000 live cells and laid all of them out on each frame. Only the columns near the viewport are built now, and the rest keep their width so the horizontal scroller still spans the whole result. (#1219)
+- A column you hid keeps its place in the column order. The order was saved from the columns the query returned, and a hidden column is left out of that query, so its position was erased and Show All put it back at the far right of a grid you had arranged.
+- A row you are inserting shows empty values in JSON result mode for the columns the server fills in, instead of printing TablePro's internal marker for them as though it were data.
+- `Cmd+F` no longer opens a find bar in JSON result mode. It searched the data grid's cells through the grid, which is not mounted there, so it always reported no matches whatever you typed. The Tree view keeps its own search field. (#2244)
+- The Filters button and `Cmd+Option+F` now open the filter panel in JSON result mode, where they used to flip a switch and draw nothing. Applying a filter re-runs the query, so the JSON shows the filtered rows. (#2244)
+- Add Row, Duplicate Row, Paste and Delete no longer collapse the JSON view to the single row they touched. Each command selected that row so the grid could scroll to it, and JSON mode reads the same selection as "show only these rows", so the document appeared to empty out. (#2244)
+- Opening the date picker on an empty date or timestamp cell now starts at your own clock and writes your own time. It used to read the picked instant as UTC, so the value written was your clock shifted by your time zone offset, and for the hours after local midnight a date column got the previous day. (#2241)
+- A time value that carries a UTC offset, such as a PostgreSQL `time with time zone` column, now follows your chosen date format instead of showing as raw text. The grid and the cell editor disagreed about which spellings counted as a date, so the same value was editable as a date but never formatted as one. (#2241)
+- **Open in New Tab** opens a second tab for a table that is already open. It reselected the existing tab and said nothing, so there was no way to browse one table under two different filters. (#2235)
+- Following a foreign key into a new tab no longer overwrites the filters on a tab already showing that table. The jump reused the open tab, replaced its filters with the foreign key's, and left the grid on the rows it had before, so the filters were gone and the rows did not match what the panel said.
+- Opening a table from the sidebar while the object list is still loading opens it. The click was dropped with no tab, no error, and no retry when the load finished, which was most visible right after relaunching with tabs restored.
+- Opening a table from Favorites gives it a tab of its own. Selecting a favorite does not open it, so a double-click, `Return`, or **Open Table** is always deliberate, but each handed back a preview tab that the next click in the object browser threw away.
+- A Cloud SQL Auth Proxy or Cloudflare tunnel that fails to start now reports the last thing it said. The final line a helper wrote before exiting was dropped whenever it exited quickly, and that line is usually the reason it failed, so the error could arrive with nothing in it.
+- The Cloud SQL Auth Proxy is checked against the version and checksum TablePro pins for it every time a tunnel starts, and reinstalled when either no longer matches. A copy already on disk was run on the strength of the file existing, so a proxy updated in a new TablePro release never reached a Mac that already had the old one, and a copy altered afterwards kept being run. The Copilot language server is checked the same way against the digest recorded when it was installed, which catches a truncated download or a failed extraction; npm serves it from a floating tag, so there is no version for TablePro to pin.
+- Editing a connection keeps its favorite mark, its place in the connection list, and the AI tools you had chosen to always allow for it. All three were reset to their defaults every time the connection form saved, so starring a connection and then renaming it lost the star.
+- MongoDB, Cassandra and Trino connections can name a database, keyspace or catalog in the connection form. Whether that field appeared was decided by whether the driver needs a username and password, so a driver that does not require credentials never got one, and a MongoDB connection had to load the whole database list before you could reach a database. Naming one skips that load. Leave it blank to browse everything, as before. (#2234)
+- Sorting a column keeps working after you hide or show columns. The sort was held as a column position and then read against a shorter list once anything was hidden, so it ordered by the wrong column or stopped having any effect, in both cases without saying so. Hiding the column you are sorting by no longer drops the sort. (#2234)
+- **Hide All** hides every column of a MongoDB collection. Fields that appear only in later documents were drawn by the grid but missing from the column list, so nothing could hide them and they stayed on screen with empty values, which was most visible after scrolling right. (#2234)
+- A new DuckDB connection can be saved. The form required a database name while rendering no field able to supply one, so Save and Test Connection stayed disabled with nothing you could do to clear the error.
+- Opening a `.sql` file that is already open shows its tab instead of replacing what you have typed in it. The buffer was overwritten with the copy on disk, with no prompt and nothing to undo it. A tab with no unsaved edits still picks up the current file, and its unsaved marker and changed-on-disk banner now follow the text it just loaded.
+- A `.sql` tab reopened from Recently Closed knows it has unsaved edits. It compared against nothing, so it showed no unsaved marker, Save did nothing, and reopening the file replaced what you had typed.
+- Table maintenance from the object browser (OPTIMIZE, ANALYZE, CHECK, REPAIR, and VACUUM on PostgreSQL) now runs against the database the table you picked lives in. It ran on whichever database the connection happened to be on, which a tab from another database moves for the length of its query, so the command could maintain the same-named table in the wrong database and still report success.
+- A table that exists in two databases can be opened in both. The object browser marked the row for a table you had open in another database, so clicking it did nothing at all: the row was already selected and the click changed nothing. The browser now marks a row only while the tab you are looking at belongs to the database on screen. (#2217)
+- Server Dashboard, Users & Roles, Query Insights, ER Diagram and a linked SQL file now select the tab they already opened instead of doing nothing when another tab is in front. (#2217)
+- The empty Favorites sidebar fits its width on macOS 15. The description and the New Favorite, New Folder and Link a Folder buttons ran past both edges of the sidebar and were cut off, so the buttons could not be read or reached. They now wrap and stack inside the sidebar.
+- Table favorites and saved queries sync through iCloud. Their record types had never been created in the iCloud schema, so every one was rejected on upload, and Account settings reported the same sync error again on every attempt because the rejected items were retried forever.
+- An SSH profile that uses a jump host syncs. iCloud rejected the jump host list, and that stopped the whole profile from uploading.
+- A connection carries its favorite mark, every tag assigned to it, and its AI rules and always-allowed tools to your other Macs. These were held back from upload, so they stayed on the Mac that set them, and a connection with several tags arrived with only the first one.
+- iOS: a connection's query timeout syncs instead of being dropped on upload.
+- The inspector button stays at the right end of the toolbar when the inspector is open. It used to slide left and sit against the inspector's inner edge, so the button moved as soon as you used it.
+- The Tables and Favorites switch in the toolbar keeps following the sidebar after you open Customize Toolbar. It stopped responding until the window was closed and reopened.
+- Refresh, New Tab, Open Quickly, Export, Database, Results and Dashboard are dimmed in the toolbar's overflow menu when they cannot run. On a narrow window they looked available and did nothing.
+- iOS: a value containing a backslash, a newline or a carriage return is stored as you typed it on PostgreSQL, Redshift, SQL Server, SQLite, DuckDB and Oracle. Every insert, edit and delete used MySQL's escaping rules, so `C:\Users\dat` was saved with doubled backslashes, a line break was saved as the two characters `\n`, and editing a row that already held a backslash matched nothing and silently changed no rows. MySQL and MariaDB are unaffected.
+- iOS: PostgreSQL sessions now set `standard_conforming_strings` on, so a backslash in a value is always data and never an escape character. Servers that do not have the setting, Redshift among them, already behave that way and are left alone.
+- iOS: Add Row to Table and Add Rows to Table write to the database or schema you picked in Shortcuts. The rows went to the connection's default schema instead, while the column names were checked against the schema you chose, so a row could land in the wrong table or fail against a table the picker had just offered.
+- iOS: the three Shortcuts actions are found by searching "TablePro" in the Shortcuts action list, and are grouped under Database. Only Open Connection matched before, because the two insert actions carried no keywords.
+- `Cmd+W` now closes the Settings window, the Integrations window, the JSON and PHP viewers, the connection form and the column inspector. It was bound to a command only a connection window answered, so it did nothing in any of them.
+- The File menu names the close command after what it will close: Close Tab in a connection window, the connection's own name when that window has no tabs open or while the connections strip has focus, and Close Window everywhere else.
+- Filtering a JSON or PHP tree now reveals nested key and value matches instead of leaving them behind collapsed parent rows. (#2204)
+- A tree filter that matches a key now lets you open that key and read what is inside it. (#2204)
+- Expanding or collapsing rows while a tree filter is active no longer springs back on the next keystroke. (#2204)
+- Clearing a tree filter now restores the rows you had open before you started filtering. (#2204)
+- A tree filter that finds nothing now says so instead of showing an empty list, and says when the value was too large to load in full. (#2204)
+- Filtering a tree now searches the whole of a long string value instead of only the shortened form shown in the row. (#2204)
+- Copy Value on a JSON object or array now copies that part of the document instead of a summary like `{3 keys}`, and long strings copy in full. (#2204)
+- Closing a tab holding unsaved work asks before it goes, instead of discarding the work in silence. This covers unsaved cell edits in a table tab, a `.sql` file that differs from what is on disk, staged structure and Create Table changes, and staged user and role changes. Cell edits were the worst case: nothing brought them back, not even Reopen Closed Tab. Tabs holding only typed query text still close without asking, because that text comes back.
+- A tab with unsaved cell edits now shows the unsaved dot, so a tab is never marked clean and then asks to be saved.
+- Closing a tab used to leave its unsaved cell edits loaded behind it. The connection went on reporting unsaved changes with no tabs to show for it, and saving from there could write those edits to whichever database the sidebar had moved to.
+- A `.sql` file opened from a linked favorite can be opened again after its tab is closed. Opening it used to just bring the window forward and do nothing.
+- Staged structure changes survive switching tabs, and switching a table tab between Data and Structure. Adding a column or an index and then looking at anything else threw the pending change away, with no prompt and nothing in Undo.
+- A table definition in progress survives switching tabs. Naming a new table and defining its columns, then clicking any other tab, used to discard the whole definition.
+- Closing a tab with staged structure changes or an unfinished table definition asks before discarding them, and they count as unsaved work when you close the window or quit.
+- Timestamps written with a space before the time zone offset, or with fractional seconds, are now shown in your chosen date format instead of as raw text. PostgreSQL `timestamptz` and MySQL `DATETIME(6)` values used to slip through unformatted while the same instant written in ISO form was formatted.
+- Switching to another connection no longer empties the SQL editor. Typing into the blank editor replaced the query you had written, and the same switch cleared undo history, turned off syntax highlighting, and left the editor's own shortcuts (comment, indent, duplicate line, delete line, move line, manual completion) and Vim mode dead for the rest of the tab's life. (#2236)
+
+## [0.66.0] - 2026-08-19
+
+### Added
+
+- Tree sidebar layouts group each database or schema's tables, views, materialized views, foreign tables, procedures and functions into collapsible folders. (#1590)
+- Dameng DM8 connections through a downloadable plugin, with schema browsing, table editing, metadata, DDL, transactions, EXPLAIN, query cancellation and a query timeout. Stopping a query closes its connection, and TablePro reconnects on the next one. (#1671, #2003, #2010)
+- SQL Server connections can sign in with Microsoft Entra ID on Azure SQL Database, Azure SQL Managed Instance and SQL Server 2022. Sign-in runs in your browser and honours multifactor authentication and Conditional Access. Set it up on the Mac; iPhone and iPad prompt to sign in once the connection syncs over.
+- Query Insights, a Starter feature in **Database > Query Insights**, summarizes the query history on your Mac: which queries you run most, which are slowest, which got slower and which fail. Queries that differ only by their values count as one, and nothing leaves the Mac. (#2107)
+
+### Changed
+
+- Five on-screen strings dropped their em dash, including the JSON and PHP viewer titles and the expired-license banner in **Settings > Account**. The JSON viewer title can be translated now.
+- The Quick Switcher is now **Open Quickly**, in the **File** menu under Open File. `Cmd+Shift+O` is unchanged and still rebindable in **Settings > Keyboard**. (#2185)
+- `Cmd+Return` opens the selected item in a new tab in Open Quickly, alongside `Option+Return`. (#2185)
+- Open Quickly is drawn on the system Liquid Glass material on macOS 26 and later, and keeps the blurred popover material on macOS 14 and 15.
+- Open Quickly's scope filters are a segmented control inside the panel now, instead of buttons that vanished as soon as anything was listed, which left four of the five scopes unpickable with the mouse.
+- Open Quickly has a footer for `Return`, `Cmd+Return`, `Cmd+1` to `Cmd+5` and `Escape`. The `Escape` hint reads **Clear** while the field has text and **Close** when it is empty.
+- A connection that fails because a Microsoft Entra ID or AWS SSO sign-in expired now offers to sign in again and reconnects for you, both when you open it and from the connection form's Test button.
+- The editor tab bar moved into the window chrome below the toolbar and lines up with the content pane, with its tabs in a filled track and the selected tab raised out of it. It still appears only once a connection has a second tab.
+- Tree layout opens a connection with its current database and schema expanded, unless the connection already remembers what you left open.
+- DuckDB connections now report a database name, so their saved column widths, per-table filters, favorites and recent tables reset once.
+- Turkish, Vietnamese, Simplified Chinese and Traditional Chinese cover 298 strings that were still showing in English, including the Query Insights tab, the Window and Help menus, the query plan viewer, the connection progress steps and the Microsoft Entra ID sign-in prompts.
+
+### Fixed
+
+- Right-clicking a database and choosing Export now exports from the database you picked, with everything in it selected, instead of listing another database's tables. On DuckDB and PGlite, where a second connection cannot reach another database, Export is offered only for the active one.
+- On Oracle, Dameng and BigQuery, "Close Tabs for Other Databases" closed every query tab; it now closes only tabs in a different schema. The menu item reads "Close Tabs for Other Schemas" there, and Open Database reads "Open Schema".
+- A `tablepro://` link applies the database first and the schema second, instead of applying a database name as a schema on connections that have schemas, and ignores a segment the connection has no place for.
+- On connections with schemas, the toolbar shows the database and the schema side by side, each opening its own list, and the schema picker is back at the foot of the object list. Clicking the schema name used to open the database list. (#2196)
+- Data-grid columns reserve space for their trailing editor and foreign-key actions, so the foreign-key arrow and the enum dropdown chevron no longer widen a column after the rows are drawn, and a value that would otherwise fit is no longer truncated. A column you resized keeps the width you gave it.
+- Open Quickly reuses the object list it already built instead of re-querying the database and schema lists and 200 rows of query history each time it opens, which over an SSH tunnel is the whole time the panel sits empty. It rebuilds when the database, schema, database filter, saved queries or query history change, and on disconnect.
+- The column value filter, date and time picker, array editor, type picker, binary viewer and sidebar database filter now open against the control they belong to, instead of above and to the left of it.
+- The array, JSON, hex, date and type editors and the column value filter close when the rows change, so an editor left open while sorting, refreshing or filtering can no longer save onto a different row.
+- Open Quickly's Recent section now includes materialized views, foreign tables, system tables, partitioned tables and external tables, ranks them higher the more you open them, and tells apart two objects with the same name in different schemas.
+- Opening a table from Open Quickly reuses the tab that is already open, instead of showing the Open badge and Switch to Tab for a same-named table in another schema and then opening a second tab.
+- Open Quickly says it is loading instead of "No results", both while the object list is being fetched and while a search is being ranked.
+- Open Quickly's `Cmd+Return`, `Cmd+1` to `Cmd+5`, `Ctrl+J`, `Ctrl+K`, `Ctrl+N` and `Ctrl+P` work with Caps Lock on, and the numeric keypad's Enter works with `Cmd`.
+- Toolbar buttons show the shortcut you bound in **Settings > Keyboard** in their tooltip and overflow menu, and the Database and Preview buttons keep their shortcut hint after you switch connection. (#2185)
+- JSON results, Copy as JSON and JSON export no longer crash on unsigned or wider-than-64-bit integers, and keep every digit of large integers and high-precision decimals. A value a numeric column cannot represent, such as `Infinity` or digits outside 0-9, is quoted as a string instead of being written as invalid JSON.
+- Pasting a large block of text into the query editor no longer crashes the app, and the pasted text keeps its syntax highlighting instead of staying plain for the rest of the session. (#2158, #2172)
+- The flat sidebar keeps its Materialized Views, Foreign Tables, Procedures and Functions sections while a connection reconnects after a dropped SSH or proxy tunnel, and the flat and tree layouts show the same object kinds. (#2173)
+- `Cmd+C` in the query editor with nothing selected copies the current line instead of emptying the clipboard, and paste accepts RTF and file-path clipboards, fills a grid cell with a single copied value instead of adding a row, and works with focus in the sidebar. (#2172)
+- Sixteen-byte SQL binary columns respect their Display As setting in the grid, the row inspector, VoiceOver and single-cell copy, and keep it across a refresh. MongoDB binary UUIDs stay under the driver's Legacy UUID Encoding setting. (#2157)
+- A very long single line no longer stalls the app or eats memory, in the JSON value viewer, chat code blocks and the SQL review sheet, and in the SQL editor with Word Wrap on.
+- The data grid picks up a theme or appearance change made while it is on screen: an open cell editor repaints, deleted and newly added rows take the new tint in the results and structure grids, and the foreign-key arrow and dropdown chevron follow the window instead of keeping the colour that drew them first. The arrow has no circle now, and the chevron is drawn at its own size.
+- Format Query no longer crashes on an unclosed string literal ending in a backslash, as in `select * from t where c like 'C:\`, and leaves an unclosed `/*` comment alone.
+- Clicking the right edge of the SQL editor, a strip as wide as 140 points, puts the caret on that line, and text selection works there in the trigger editor, the JSON view, the structure DDL, the SQL review sheet, the import preview and chat code blocks. (#2156)
+- Query results are editable again when the `SELECT` aliases its table, as in `select * from users u where u.id = 1`, and when the query spans several lines, starts with a comment, or ends in `FOR UPDATE`. (#2150)
+- `UNION`, `EXCEPT` and `INTERSECT` results are read-only now instead of writing an edit into one branch, as are results from a join, a subquery, a CTE, a `FOR SYSTEM_TIME` read, and `FROM ONLY`.
+- Results stay editable when you write the schema in front of the table, as in `select * from public.users u`, as long as it is the schema the connection is browsing; naming a different schema stays read-only.
+- The connection window no longer draws a rule under its toolbar, which divided two areas of the same colour.
+- Empty Structure tabs and structured-value errors keep their toolbar at the top and center the message in the content area below it.
+- The sidebar star updates as soon as you add or remove a favorite table, instead of waiting for the sidebar to reopen.
+- Save Changes and Preview update as soon as data-grid changes are added, undone, saved or discarded.
+- Content stays readable on the blue selection fill in the connection switcher, the database switcher and the query history drawer: the row highlighted when they first open, the failure marker and connection dot, and the connection colour and status marks. (#2140)
+- Refreshing the database switcher keeps the list on screen instead of showing a spinner, and a failed refresh no longer hides the databases you were already looking at.
+- The database switcher keeps your highlighted database when its details finish loading, and no longer highlights a database the search filter hides, which left Return doing nothing.
+- Right-clicking a day heading in the query history drawer no longer clears the selected entry, and right-clicking a row in the connection switcher shows its menu instead of only moving the highlight.
+- The query history drawer stops re-reading history once you close it, and a drawer that starts closed does not load until you open it.
+- Query History's "Load in Editor" and "Run in New Tab" work again, from the buttons, the right-click menu, and `Return` or a double-click on a row.
+- "Run in New Tab" runs the query it opens, and asks first when that query writes, even with safe mode set to Silent.
+- A history entry opens in the window of the connection it was recorded against, in a tab bound to its own database, instead of loading into whatever is in front of you.
+- DuckDB `TIMESTAMP_S`, `TIMESTAMP_MS` and `TIMESTAMP_NS` columns show their stored value with sub-second digits, not `1970-01-01 00:00:00` on every row. (#2130)
+- DuckDB `UUID`, `ENUM`, `BIT`, `LIST`, `STRUCT`, `MAP`, `ARRAY` and `UNION` columns show their value instead of an empty cell. (#2130)
+- Querying two DuckDB tables that share a column name no longer repeats one table's value in both columns. (#2130)
+- DuckDB tables outside the `main` schema are visible again, with every schema listed in the sidebar and `ATTACH`ed databases shown alongside the one you opened. (#2131)
+- An `ATTACH`ed DuckDB file's tables stay out of the database you opened when the two share a schema name.
+- A DuckDB table in the default schema is titled `orders` again rather than `main.orders`, and exports preselect the schema you are browsing.
+- **File > Save As...** on a table, structure or diagram tab, and **File > Export > Export Results...** with no rows to export, are dimmed now instead of doing nothing when chosen.
+- Clearing query history from the drawer says what it will actually delete, instead of promising the connection's whole history when the source filter spares table browsing, row edits, imports and AI queries.
+- When TablePro cannot open the query history store, the drawer says so and that your history is still on disk, instead of showing "No Query History".
+- A license the server reports as suspended, expired or no longer activated on this Mac pauses Pro features at that check, instead of running on for up to a month because the reply was treated as if the server could not be reached. **Check Status** in **Settings > Account** says what the server replied.
+- A license bought with an email address containing a slash can be activated now, instead of telling you to update the app.
+
+### Removed
+
+- **Settings > Data** no longer lists saved table layouts and filters. TablePro still remembers both; reset columns from the table's Columns popover and filters from the filter panel.
+
+### Security
+
+- Paid features are read from the signed license, so an edited or copied local copy cannot enable them. TablePro honours a machine binding when the server sends one. (#2181)
+
+## [0.65.0] - 2026-08-16
+
+### Added
+
+- Query History is a resizable drawer that opens per connection and remembers its height, its filters and whether it was open. Entries group by day and load in pages, so history older than the most recent few hundred queries is reachable for the first time.
+- Query History filters by where a query came from: the editor, EXPLAIN runs, the SELECTs the app generates while you browse a table, grid row edits, structure changes, imports, and AI or MCP clients. It shows your own queries by default.
+- Query History filters to failed queries only, and by last hour, today, last 7 days or last 4 weeks. It can be scoped to one connection or searched across all of them, and names the connection each query belongs to when you widen the scope.
+- Query History works from the keyboard. Arrow keys move through entries, and `Return` or a double-click loads one into the editor.
+- Query History has a pause button. While it is paused nothing is recorded from any source, including row edits, structure changes, imports and AI clients. Pausing stays on the Mac you press it on.
+- Clearing query history from the drawer clears only what the drawer is showing, so clearing one connection leaves the others alone. Settings still clears everything.
+- A query plan opens as a result tab next to your query results, so you can switch back to the data without re-running the query, and a plan can be pinned.
+- MySQL `EXPLAIN FORMAT=TREE` and `EXPLAIN ANALYZE`, plus PGlite, Cloudflare D1, libSQL and Turso plans, render as a diagram and tree instead of raw text.
+- Plan diagrams zoom with a trackpad pinch, a two-finger double tap, or Cmd and scroll, fit to the window, and copy or export as a PNG.
+- The plan tree has resizable, sortable Operation, Cost, Rows and Actual Time columns, arrow-key navigation, a right-click menu to copy a step, and a detail panel you can resize.
+- Plan steps show a cost badge whose shape and colour escalate together, so cost reads without relying on colour.
+- The ER diagram uses the same zoom and scrolling as the plan diagram, gaining two-finger double tap, Cmd and scroll, and standard scrollers.
+- PostgreSQL array columns of a simple type, including arrays of an enum, get a list editor in the data grid: one row per element, with reordering, add, remove and NULL per element. An empty array and a NULL column stay separate values. Arrays of `jsonb`, `bytea` or composite types, and multi-dimensional values, keep the plain text editor.
+- The editor underlines a structural mistake as you type, such as a closing bracket with no opener or an unterminated comment. On MongoDB it also reports what the query parser rejects. A half-written statement is never flagged. (#2095)
+- PostgreSQL enum values are suggested when you compare against an enum column, so `WHERE status = ` offers the labels the type declares. (#2095)
+- PostgreSQL autocomplete knows the operators, including `::`, the JSON ones, array and range containment, regex matching and full-text search, about 400 built-in functions, and multi-word syntax such as `ON CONFLICT DO UPDATE SET` and window frame clauses. (#2095)
+- Autocomplete for MongoDB queries. `db.` lists collections, `db.users.` lists the driver methods, and inside a query you get field names, nested paths such as `address.city`, and the operators valid in that spot. (#2095)
+- MongoDB updates accept an options argument, so `db.users.updateOne({...}, {...}, {upsert: true})` upserts. `arrayFilters` and `hint` are passed through too. (#2095)
+- The MongoDB editor accepts mongosh value constructors in filters and pipelines, so a value copied from the grid pastes straight into a query. Covers `ObjectId`, `ISODate`, `Date`, the `Number*` family, `Timestamp`, `BinData`, `HexData`, `MinKey`, `MaxKey` and the UUID names. (#2086)
+- Format Query follows the editor language. On a MongoDB tab it lays out filters and pipelines by nesting depth instead of running the SQL formatter over them. (#2095)
+- Legacy UUID Encoding on a MongoDB connection, so binary UUIDs written by the Java, C# or Python drivers read as UUIDs instead of hex. Filters, edits and MQL exports write the same bytes back. (#2086)
+- Select several databases or schemas in the sidebar tree, or in the database switcher, and drop, refresh, copy names or export them at once. Shift-click and Cmd-click extend the selection.
+- The sidebar follows Sidebar icon size in System Settings > Appearance, so it matches Finder and Mail. A Row Size control in General settings and in View Options overrides it when you want to fit more objects on screen.
+- Right-clicking a row in the object list or the Favorites list highlights the row the menu will act on, the way Finder does. Right-clicking the empty space below either list gives a menu too, which is where View Options, New Query, New Favorite, New Folder and Add Linked SQL Folder now live.
+- Add to Favorites is in the sidebar's right-click menu, so it no longer needs a hover to reach.
+- Typing a name in the database tree jumps to the matching object.
+- Quick Switcher searches tables, views, saved queries and recent queries across every open connection.
+- Drop Schema for PostgreSQL, SQL Server and SurrealDB.
+- Editor tabs have a right-click menu for closing tabs.
+- Redis key rows have a right-click menu for copying a key or namespace prefix.
+- Dropping a SQL file on a connection window opens it. (#2104)
+- The Settings window can be resized.
+- SSL settings on mobile for MySQL, PostgreSQL and Redis: a mode picker plus CA, client certificate and client key. Import a PEM file, paste one, or use a PKCS#12 file. (#2083)
+- A Beancount ledger projects the directives it used to leave in the source file: commodities, documents, notes, events and closes, plus transaction and posting metadata, tags and links. Transactions remain visible with these details when they have no postings. Transactions and postings carry the file and line they were read from.
+- A Beancount ledger opened through `rledger` lists what validation found in a `diagnostics` table, with the severity, phase, code and source location of each problem. Document diagnostics refresh when a referenced file is created or removed.
+
+### Changed
+
+- Every open connection now lives in one window. Picking a connection in the connections strip switches that window to it instead of raising a second window. Each connection keeps its own view while it waits its turn, so switching away and back leaves the grid scrolled where it was, the editor's cursor and selection where you left them, and a half-filled sheet still filled in.
+- Opening a table or query on a connection you already have open adds a tab to that window instead of opening another window. A tab strip appears once a connection holds more than one tab.
+- Closing the last tab leaves the connection open on its empty state. Close Tab again closes the connection, and the window once that was the last one open.
+- Window tabs follow your "Prefer tabs when opening documents" setting instead of always forcing tabs, and the Window menu carries Move Tab to New Window and Merge All Windows.
+- Clicking a table in the sidebar opens it right away. It used to wait out the double-click interval, about half a second, to find out whether a second click was coming. **Open in New Tab** on the table's contextual menu opens a second copy.
+- Opening a table from the sidebar leaves the keyboard in the sidebar, so you can keep clicking or arrowing through tables and watch each one load. Click into the grid when you want to work in it.
+- The bar at the bottom of the sidebar is gone, and everything it held moved somewhere a window can never hide. New Table and New View are in the Database menu and the sidebar's right-click menu. Switching schema is Database > Schema. The database filter is View > Filter Databases. The refresh spinner joined the other progress in the toolbar.
+- A filtered database tree says so, with a banner naming how many of the databases it is showing and a button to show them all.
+- Sidebar section titles are real source list headers now: a short grey title with no icon, and the objects under it sitting at the same depth as a database instead of one step in.
+- MongoDB shows a standard binary UUID as `UUID("...")` everywhere, including in exports.
+- An imported connection link shows the startup SQL and driver options it carries, before you add it.
+- Mobile keeps remote connections open when you switch apps.
+- Mobile no longer copies database passwords to iCloud Keychain unless you turn on Sync Passwords. Mac already worked this way.
+
+### Fixed
+
+- The Quick Switcher opens what you searched for. Typing a new search kept the row you had highlighted selected whenever it still matched anything, and searching across connections matches the connection path in every row, so almost any row stayed highlighted while the list reordered under it. `Return` then opened something you had stopped searching for.
+- A query that fails shows the database's error again and is recorded in query history. A syntax error, or selecting from a table that does not exist, left the results area blank with no message at all, and opening a table that failed to load was silent the same way. The error also opens the results pane if you had it collapsed. (#2120)
+- Running a query with parameters, or several statements at once, no longer stops the tab from accepting any later run.
+- Query History no longer mixes every connection's queries together with no way to tell them apart. Loading one could put another connection's SQL into the editor in front of you.
+- Searching query history matches as you type, and several words match entries that contain them all, wherever they appear. It only matched whole words sitting next to each other, so `user` found nothing until you finished `users`, and `select customers` found nothing at all.
+- Query History keeps the older entries you loaded when a query finishes while the drawer is open, and stops refetching once per statement while a large save or import runs.
+- Deleting a connection deletes its query history, its drawer filters and its saved queries with it.
+- Trimming history to the retention limits refreshes the open drawer instead of leaving deleted entries on screen, including when the limits arrive from another Mac over iCloud.
+- Turning off automatic query history cleanup now actually stops it. Entries were still pruned to the limits every hundred queries regardless of the setting.
+- Query history highlights each query for the database it actually ran on. Everything except MongoDB was coloured as MySQL.
+- The query history duration column is honest. Ten of the places that record a query reported no duration as `0 ms`; they either measure it now or show `–`, and a query faster than a millisecond shows `<1 ms`.
+- Query history rows show a SQLite database by file name instead of its full path, which used to fill the row.
+- A failed grid save records one history entry per statement, the same as a successful one, instead of joining them all into a single unusable entry.
+- Cancelling an import is no longer recorded as a failed import, and an import no longer reports its statement count as a row count.
+- The Quick Switcher no longer fills up with the same statement repeated. It shows each distinct query once, most recent first, and a long list of saved queries can no longer push recent queries out of the panel entirely.
+- On iPhone and iPad, a query that failed is kept in history and marked, instead of vanishing.
+- Corrected two claims about iCloud sync: it does not sync query history, and there is no history sync limit to reduce when storage is full.
+- Running EXPLAIN from the toolbar asks for confirmation when Safe Mode requires it. It skipped that check on every database that offers an EXPLAIN variant, even though `EXPLAIN ANALYZE` runs the query.
+- The Stop button can cancel a running `EXPLAIN ANALYZE`, and EXPLAIN runs started from the toolbar are recorded in Query History.
+- An EXPLAIN that fails reports the error in the usual place instead of showing it where the plan should be, and Clear Query clears the plan instead of leaving a stale one on screen.
+- A query plan that cannot be read as a tree says so and shows the raw output instead of leaving an empty pane, and a second EXPLAIN in the same tab redraws the diagram.
+- Plan diagrams line every node of the same depth up on one row, so a tall box no longer pushes its children up into itself.
+- Plans that report a cost per node but no startup cost, such as MySQL's, show that cost in the diagram and the tree, and nodes in a plan whose root reports no cost are no longer all painted red.
+- Closing a connection removes it from the connections strip, ends its session, and closes its tunnel. It stayed listed as connected, could not be clicked, and its database connection stayed open.
+- The strip's close command ends the connection: every tab across every database it has open, its session, and every row it holds in the strip. It used to close only the tabs of one database and leave the row you clicked exactly where it was. Disconnect still ends only the session and keeps the row. **File > Close Connection** does the same from the menu bar.
+- Closing a window disconnects every connection it was showing, not just one of them.
+- **Open in New Window** on a connection in the strip moves it out of the shared window with its tabs, its session and its unsaved work.
+- Cmd+W closes the welcome window. The shortcut was bound to Close Tab, which the welcome window has no answer for, so it did nothing there.
+- Typing in a new query tab goes into the editor. Cmd+T left the keyboard on the sidebar, so the first characters you typed went to the object list instead.
+- An alert opens on the window you were working in. It could attach itself to a floating panel such as the Quick Switcher, which takes the alert with it when it closes.
+- Switching connection no longer rebuilds the toolbar. Its items resize to the connection you switched to instead of holding the previous one's width, the Results button tracks the pane you are looking at, and Snowflake's role and warehouse menus reload.
+- Customize Toolbar no longer blanks the connection and status controls, and a connection that loses its session no longer puts your toolbar arrangement at risk. The items you had customized could be dropped for good.
+- Main window toolbar buttons are real toolbar items, so icon only mode, display mode customization and the overflow menu all work.
+- Toolbar tooltips name what the button does and show the current keyboard shortcut again. Import works from the toolbar, and the Results button shows whether the pane is open. (#2104)
+- A tag with no colour is readable in the toolbar instead of drawing white on nothing.
+- Refreshing a database or schema from the sidebar no longer empties it. The tables and routines came back only when the refresh finished, and a refresh that failed left an error where they had been.
+- Hiding a database in the sidebar's database filter takes effect straight away. The tree kept listing every database until some other change happened to rebuild it.
+- The sidebar drops a database from the tree as soon as you drop it on the server, instead of listing it until you reconnect.
+- Holding an arrow key in the sidebar no longer opens a tab and runs a query for every object it passes. Arrowing through 20 tables fired 20 queries.
+- Arrowing to a table in the sidebar opens it right away. The open waited out the key repeat rate from System Settings, which is up to two seconds, even for a single press.
+- Cmd-clicking or Shift-arrowing to select several tables no longer opens the table it added. Building a selection for Truncate, Delete or Export ran a query, replaced the tab, and could switch the active database.
+- Right-clicking a table that is not part of the current selection acts on that table. It used to act on the selected tables instead, including for Delete.
+- The sidebar object list is a native outline in every layout, so the selected row is drawn as the active selection, arrow keys move between objects, and typing jumps to a name. The flat and schema layouts were SwiftUI lists that could not do any of that.
+- Routines, procedures, functions, Redis keys and Recent entries can be selected in the sidebar, so arrow keys reach them and type-to-find lands on them. Clicking a Recent entry highlights the row it opened.
+- The Favorites tab is a native outline too, so saved queries, folders and linked SQL files take the keyboard and show a real selection. Team Library entries can be selected for the first time; opening one is now a double-click or Return, and its publisher shows beside the name instead of under it.
+- Truncate, Copy Name and Delete act on the sidebar selection in tree layout. They read a selection the tree never published, so they did nothing at all.
+- Clicking a row in the sidebar puts the keyboard on the list. The click moved the selection but sometimes left the keyboard in the filter field above it, so the row drew grey and the arrow keys went to the field. Switching to the Favorites tab left the keyboard nowhere at all.
+- Opening a table from somewhere that asks for the grid, such as Favorites or Show Structure, puts the keyboard in the grid. Only the first such table of a session did.
+- Down arrow in the sidebar filter field moves into the object list instead of being swallowed.
+- Typing in the sidebar filter no longer restarts its own delay when anything else redraws the sidebar, so the list settles when you stop typing.
+- Collapsing a database or a section while the sidebar filter has text no longer throws away the layout you had before searching. The row sprang back open on the next keystroke, and stayed collapsed once the filter was cleared. A collapse is recorded once AppKit has applied it, so the saved state always describes what is on screen.
+- The favourite star in the sidebar takes a click anywhere in its button, not only on the star itself. A near miss selected the table and opened it instead.
+- Favorites rows follow the sidebar row size like the object list does, and both lists draw their rows at the same height. One inset its rows a point more than the other, so the two tabs did not line up.
+- Renaming a favourites folder edits the row itself. The field used to float above the list, so expanding or collapsing anything left it sitting over a different folder, and a new folder could open its rename before its row existed.
+- Disabling a linked SQL folder no longer makes it disappear with no way back. It stays in the sidebar, marked disabled. Choosing the same folder from Add Linked SQL Folder re-enables it instead of reporting that it is already linked.
+- Sidebar and inspector widths are remembered per window again. They were saved under whichever connection happened to be selected.
+- A connection dropping and reconnecting no longer reopens a sidebar you hid, or closes an inspector you opened.
+- The sidebar scrollers follow Show scroll bars in General settings instead of always overlaying.
+- The Quick Switcher row that Return will open is highlighted from the moment the panel opens, not only after an arrow key, and Option+Return opens the selected table in a new window tab. The shortcut was documented but never fired.
+- The highlighted row in the connection switcher and the database switcher is drawn as the active selection while you type and arrow through it, the way Spotlight does.
+- Database icons and the current-database checkmark stay visible on a selected row in the database switcher. They were drawn in the accent colour, which vanished against the accent-coloured selection.
+- The drop, truncate, delete and external-link confirmations are standard system alerts that default to Cancel, so Return no longer drops a table, and Escape closes them again. Deleting a column or row from the inspector no longer runs on Return or without asking. (#2104)
+- Theme, schema and diagram exports report write failures instead of failing silently, and picking a folder that is already linked says so.
+- The export dialog no longer asks for a file name twice, and the save panel validates it.
+- Import and export results use standard alerts that size to their content, and the import result lists the statement that failed, not just the line number. (#2104)
+- Opening Settings, Appearance no longer replaces the theme saved for the light or dark slot, and a dark theme can no longer be assigned to the light slot. A theme that does not match the slot stays listed while it is the one in use.
+- Selected sidebar rows, quick switcher results and the database switcher use the system foreground colour, so labels stay readable under any accent colour and with Increase Contrast on. A selected row in the Favorites list reads correctly too; the linked file and folder icons were drawn in blue on the blue selection.
+- Tag badges, the Pro badge, the Vim mode indicator and the date cell picker pick a readable label colour instead of always using white. The selected tag filter is readable on light tag colours, and the picked colour swatch keeps its ring whatever accent colour is set. (#2104)
+- Cell range selection and the selected column header dim when the window loses focus, matching the rest of the system.
+- Tab moves focus out of the data grid when no cell is active, and cell to cell tabbing skips hidden columns.
+- The shortcut recorder captures combinations the menu bar already uses, such as Command W, instead of running the menu command.
+- Reduce Motion suppresses the remaining animations, and Reduce Transparency makes the Pro feature overlay fully opaque.
+- VoiceOver follows the data grid cell cursor and reports the selected cell range. Editor tabs, quick switcher results, mention suggestions, the Settings pickers, connection tags and the chat composer placeholder report themselves properly, the filter suggestion list announces when suggestions appear, and split view diffs mark added, removed and changed lines for VoiceOver and for Differentiate Without Colour.
+- Moving the pointer no longer changes the highlighted mention suggestion.
+- Dialog buttons are grouped at the trailing edge in six sheets instead of splitting Cancel to the left, and the split column alert grows to fit longer labels in other languages.
+- The titlebar breaks at the inspector divider, so the inspector toggle sits over the inspector pane.
+- Two Window menu items that could never run are gone.
+- Find in the Welcome window runs from the Edit menu and can be rebound in Settings.
+- The integration pairing prompt is modal, can be closed from its title bar, and sizes to its content.
+- Installing a missing database plugin shows download progress instead of nothing.
+- Nested connection groups show their nesting in the group menus again, and the connection group selector is a standard pop up button. (#2104)
+- Connection tags can be removed from the chip itself, and the host list add and remove buttons match the rest of the app.
+- Colour swatches show press, hover and keyboard focus, and the selection ring follows the accent colour.
+- A chained method on a MongoDB aggregation no longer goes missing. `db.orders.aggregate([...]).limit(10)` dropped the limit and returned everything the pipeline matched. Chaining a method that a query does not support now reports an error instead of ignoring it. (#2095)
+- MQL export writes a MongoDB `_id` as `ObjectId("...")`, a date as `ISODate("...")`, and a binary value as `BinData(...)` with its real BSON subtype, so running the script inserts the same types and bytes back. It wrote Extended JSON that mongosh reads as a plain object, and stamped every value as subtype 0. A value nested inside a subdocument is still exported as a string. (#2086)
+- MongoDB no longer prints a binary field nested inside a document as a UUID when it is not one, or labels a UUID with the wrong byte order. (#2086)
+- Deleting a MongoDB document with a binary `_id` deletes that document. It used to match on the other fields and could remove the wrong one.
+- MongoDB again authenticates against the database the connection names when browsing another database, so credentials that only exist in one database keep working.
+- PostgreSQL enum columns whose type lives in another schema show their values instead of a plain text box.
+- Tables you create in an in-memory DuckDB database show up in the sidebar. The object list was reading a second, empty in-memory database, so a refresh always came back with nothing. (#2108)
+- Mobile sends the client certificate and key on MySQL and PostgreSQL connections that use mutual TLS, and a connection whose certificate is missing says so instead of connecting without it while still demanding server verification. (#2083)
+- Editing a connection on mobile no longer wipes its SSL settings and per-database options, which then synced the loss back to the Mac. (#2083)
+- Redis and Valkey ACL users can sign in on mobile. The username was dropped, so every login was rejected. A rejected login now says what to change, and mobile opens the Redis database index saved on a connection instead of always database 0.
+- Mobile no longer gets killed by iOS when you leave the app with a DuckDB file open.
+
+### Security
+
+- SQL Server Verify CA and Verify Identity check the certificate for real on Mac. Both used to encrypt without checking anything, while the picker said otherwise.
+- ClickHouse Verify CA reads a PEM certificate authority file, and refuses to connect when the file cannot be read. It used to fall back to the public root store without saying so.
+- Mobile checks the SSH server's host key before sending any credential, and asks you the first time it sees a server. It never checked at all, so anyone intercepting the connection received the SSH password.
+- A changed SSH host key is reported as changed even when the server offers a different key type. Presenting a new key type used to get the milder first-use prompt.
+- Trusting an unknown SSH host key takes a click. Return picks Cancel.
+- libssh2 is patched against CVE-2026-55199, where a malicious SSH server could pin a CPU core before authentication.
+- A connection's password source no longer runs if the connections file was edited outside TablePro. Save the connection again from the app to confirm the change.
+- An import link can no longer make TablePro fetch an AWS credential and send it to the link author's server, or preset the fields that decide where a connection looks for its password.
+- Connections pulled from a team library no longer carry startup SQL or credential-resolution options.
+- MySQL and MariaDB connections refuse a server's request to read a local file.
+- A plugin's signature is rechecked immediately before it is loaded, and again before a staged update replaces the installed copy.
+- An MCP client could read the query history and schema of a connection whose external access was turned off, or that its token was not allowed to reach, by naming the connection directly. Both now go through the same permission check as every other request.
+- The MCP server refuses a request whose browser Origin is not on its allow list, which closes a DNS-rebinding route to the local port, and the connection listing no longer names connections you set to AI Never.
+- Query parameter values are no longer written to the history database. They were stored in the clear, nothing read them back, and existing ones are deleted on upgrade. The history database is protected at rest, matching the AI chat store.
+- Copy Connection String marks the clipboard item so clipboard-history apps leave it out of their history.
+- Release and test workflows pin their third-party actions to an exact commit.
+
+## [0.64.0] - 2026-08-10
+
+### Added
+
+- Match Case in the filter operator menu, on every database that can express it. (#2048)
+- Oracle SYSDBA and SYSOPER logons, on Mac and mobile. (#2039)
+- Oracle in TablePro Mobile, with a Service Name or SID picker. (#2033)
+- A workspace rail listing every open connection and database, with its own shortcuts. (#1282)
+- Disconnect and Reconnect, from the Database menu, the rail, or the connection list.
+- A Database menu, plus Minimize, Zoom, Move Tab to New Window, Show Toolbar, and Customize Toolbar.
+- Show Object Icons, to turn sidebar icons off.
+- Redshift external schemas now list their tables, marked in the sidebar and opened read-only.
+
+### Changed
+
+- The menu bar is rebuilt on native macOS menus, so every command follows the window you are using.
+- `Cmd+F` finds in whatever is in front of you: rows in a table, text in the editor, the CSV inspector.
+- Connecting fills the window and names the step it is on, and a failure shows the database's own error.
+- Running a query or opening a table replaces whatever that tab was already running.
+- Reopening the last session connects the window you land on first.
+- A saved pre-connect script no longer runs on an automatic reopen.
+- Settings opens in a standard preferences window.
+- A tab's subtitle names the database it is bound to, and its toolbar repoints only that tab. (#2026)
+- MCP and AI table tools take a `database` argument, so another database can be inspected. (#2026)
+- Building from source now needs XcodeGen.
+
+### Removed
+
+- Show Tables Sidebar and Show Favorites Sidebar from the menu bar.
+- The "Group all connections in one window" setting. Each connection has its own window. (#1282)
+
+### Fixed
+
+- A tab keeps running against the database it was opened on, so changing database no longer breaks it or writes to the wrong place. (#2026)
+- Menu commands act on the selected row, column, and editor, and stay disabled when they would do nothing.
+- A reconnect brings every window's tabs back, each in the window it was in.
+- Window and tab names follow what the window is showing, and a name you chose is kept.
+- Tabs are saved before a session ends, and a window that never loaded tabs no longer deletes them.
+- A cancelled or failed connect leaves the window usable.
+- A connection unreachable at launch is reopened next time, and reconnects once the server is up.
+- Opening a connection that already has a window reuses it, and MCP-opened windows connect.
+- Row counts refine to an exact count, and stop when you close the window or leave the table. (#2059)
+- Clicking through the sidebar no longer loads tables you have left, or shows the previous table's rows. (#2058)
+- Stop cancels reads only, so it can no longer cut off a save or a schema change.
+- A brief SSH tunnel reconnect no longer closes tabs, and a dead tunnel offers to retry.
+- The JSON view follows the grid's sort, filters, and hidden columns, and updates with every query.
+- The editor restores your cursor and selection, and keeps autocomplete after a reconnect.
+- AI replies stream smoothly, render markdown as they arrive, and no longer slow the panel down.
+- Claude, Gemini, and local models no longer fail on thinking and image settings. (#2031)
+- Filters compare text columns as text, match NULL and TRUE literally, and no longer break IS EMPTY. (#2029)
+- Alerts, focus, calendars, number formats, and Reduce Motion follow system conventions.
+- Oracle connections turn on TCP keepalive, so idle sessions survive. (#2038)
+- iPhone and iPad ask for Local Network access only when it is needed. (#2040)
+
+### Security
+
+- Requests to TablePro's own servers require TLS again.
+- Updated Sparkle to 2.9.5, patching CVE-2026-47121 and CVE-2026-47122 in the updater.
+
+## [0.63.0] - 2026-08-05
+
+### Added
+
+- Turkish, Vietnamese, Simplified Chinese, and Traditional Chinese translations for the strings that still showed in English.
+
+### Changed
+
+- The Claude Agent provider now lists its tradeoffs: Anthropic's terms decide whether this use is allowed, replies share the limits of your other Claude work, and any API key in your environment is ignored.
+
+### Fixed
+
+- `Cmd+Delete` in the SQL editor deletes to the start of the line again. (#2022)
+- `Option+Delete` in the SQL editor deletes the previous word again. (#2022)
+- Refreshing a table no longer fails with "Query cancelled" on every second click. (#2021)
+- Stopping a query no longer shows a red error or records the query as failed in history.
+- Stopping a MySQL, MariaDB, or Redis query no longer cancels the next one you run.
+- SQL export no longer writes generated columns into the INSERT statements, so the dump imports cleanly. Covers MySQL, MariaDB, and ClickHouse. (#2023)
+- Adding or duplicating a row on a table with a generated column now saves. (#2023)
+- Generated columns are now read-only in the data grid. (#2023)
+- The data grid header's bottom line no longer cuts through a column comment. It sits on the header's bottom edge. (#2017)
+- A sorted column's header no longer draws an extra line and a divider that no other column has. (#2017)
+- Selecting a column highlights the full height of its header instead of a band across the middle. (#2017)
+- The New Connection window opens in front of the Welcome window on the first try, from every command that opens it.
+- Importing a connection URL while a New Connection window is open no longer discards the pasted URL. Each import opens its own window.
+- Clicking a foreign key arrow in a query tab's results no longer replaces the tab and loses the query. The referenced table opens in its own tab, and clicking the same reference again returns to it. A tab with unsaved edits is kept the same way.
+- A foreign key jump keeps the filters saved for the table you left and applies the hidden columns saved for the table you open.
+- Saving a table structure change with more than one connection open now runs against the connection, database, and schema the edited table belongs to, instead of a different one. It stops with an error rather than writing to the wrong place. (#2015)
+- Saving on a server that starts sessions read-only no longer fails with "Cannot execute statement in a READ ONLY transaction". TablePro marks the transaction read-write before it writes. Covers MySQL, MariaDB, PostgreSQL, CockroachDB, and Redshift. (#2009)
+- Changing Safe Mode in the connection form now applies to an open connection instead of waiting for a reconnect. (#2009)
+- A read-only error now says whether the database server or Safe Mode refused the write. (#2009)
+- The MCP server's **Default row limit** and **Maximum row limit** now apply to the `export_data` tool. Export ignored both and used a fixed 50,000, so an export with no `max_rows` now returns 500 rows until you raise the default. Export also honours the query timeout, reports when the limit clipped the result, and appears in query history and the activity log. (#2012)
+- Exporting a table over MCP no longer fails on SQL Server, Oracle, and Teradata. The row limit now uses each database's own syntax instead of `LIMIT`. (#2012)
+- Setting the MCP server's row limits or query timeout to zero or less no longer crashes the app on the next tool call. Out-of-range values are corrected as you type. (#2012)
+- AI chat no longer crashes when a tool is asked for a row limit or timeout larger than TablePro can count to. It falls back to the configured limit. (#2012)
+
+## [0.62.0] - 2026-08-02
+
+### Added
+
+- **Claude Agent** provider, which runs AI chat through the Claude Code command line tool so you can use a Claude subscription instead of a metered API key. It answers from your schema when the MCP server is on.
+- **Count exactly** next to an estimated row total, to replace the estimate with a real count when you want it.
+- Reorder filter rows by dragging the grip on the left of each row, or with **Move Up** and **Move Down** in the row's right-click menu.
+- An **On Update** column in the Structure tab for MySQL and MariaDB, so a timestamp column can be set to update itself without writing the SQL by hand. (#2005)
+- A **Length** column in the Redis key grid, showing the size Redis reports: bytes for a string, element count for a hash, list, set, sorted set, or stream. It tells you how much a preview leaves out.
+
+### Changed
+
+- The Redis key tree in the sidebar lists keys with `SCAN` instead of `KEYS`, and no longer reads every key's value to draw the tree. `KEYS` blocks the server for the whole scan.
+- Redis command arguments now follow the same quoting rules as `redis-cli`, so `\xHH` writes a raw byte and a command you paste from `redis-cli` behaves the same way in TablePro. A command with unbalanced quotes is rejected instead of being guessed at.
+
+### Fixed
+
+- A Redis string key now shows its whole value in the grid. Values were cut at 1,000 characters with `...` on the end, and because that was the only copy the app held, the same cut value reached the JSON tab, Copy JSON, the row inspector, and exports. Editing one of those cells and saving wrote the cut value back to Redis and lost the rest.
+- Hash, list, set, sorted set, and stream previews are now valid JSON. They were cut mid-token, so a preview could end in the middle of a key or an escape sequence.
+- A Redis key that expires between listing and reading now shows an empty cell instead of the text `(nil)`.
+- A Redis value that is not text, such as a gzip or MessagePack payload, is no longer shown as base64 and rewritten as base64 when you save. It now displays as binary, opens in the hex editor, and is written back byte for byte. This applies to the query editor too, so `SET`, `HSET`, `LPUSH`, `SADD`, and `ZADD` keep binary arguments intact.
+- Opening a SQL Server table or view that lives outside the default schema no longer fails with "Invalid object name". A table now keeps the schema it was listed under, and switching database no longer leaves the sidebar and the query on different schemas. (#2004)
+- Editing a MySQL or MariaDB column no longer drops its `ON UPDATE CURRENT_TIMESTAMP`. Saving a change to any other part of the column, even just its comment, silently removed the clause. (#2005)
+- A MySQL or MariaDB timestamp column that keeps fractional seconds now saves. Its default was written as text instead of an expression, so the change was rejected. (#2005)
+- Quitting no longer loses unsaved SQL editor tabs. A window with no tabs loaded yet, such as one still waiting on its connection, could erase the saved tabs for that connection, so nothing came back on relaunch. Editors are also saved about a second after you stop typing instead of waiting up to 30 seconds, and a query over 500KB is kept in full rather than restored empty. (#1997)
+- Opening a large MongoDB collection no longer hangs. Row counts that back the pagination display now give up after 5 seconds and leave the estimate in place instead of holding the tab.
+- Stop now cancels a running MongoDB query on the server, rather than leaving it running until it finishes on its own.
+- A MongoDB query that runs out of time now says so, and points at the missing index that usually causes it.
+- Running a MongoDB query with no limit no longer pulls the whole collection into memory before applying the row limit.
+- Exporting a MongoDB query that has a skip or limit now exports that range, not the whole collection.
+- A row count estimate of zero from a table that was never analyzed no longer displays as an empty table.
+
+## [0.61.0] - 2026-07-30
+
+### Added
+
+- **Close All Tabs**, **Close Other Tabs**, and **Close Tabs for Other Databases** in the File menu, bindable in **Settings > Keyboard**. (#1972)
+- AI Explain, Optimize, and Fix Error answer with numbered steps and a before/after SQL diff you can apply to the editor. (#1945)
+- Create a connection from a project folder, filled in from `.env`, `wp-config.php`, `prisma/schema.prisma`, `config/database.yml`, `docker-compose.yml`, `application.properties`, `application.yml`, or `appsettings.json`. (#1959)
+- An AI tool call limit in **Settings > AI**, now 25 per reply instead of a fixed 10, with **Continue** to resume a paused reply. (#1987)
+- A pin button on result tabs. (#1982)
+- The inspector edits the column, index, or foreign key you select in the Structure tab.
+
+### Changed
+
+- The welcome screen groups Import from Other App, Open Project Folder, Import Connections, and Import from URL into one **Add from Existing** menu, and offers **Try Sample Database** in the connection list.
+- A failed iCloud sync on iPhone and iPad names the cause: out of storage, no network, or a rejected change. (#1990)
+
+### Fixed
+
+- The inspector shows the Structure row you selected, not the data row in the same position. Duplicate Row and Copy with Headers no longer act on a data row there either.
+- Editing a connection on two devices no longer overwrites the field the other one changed. (#643)
+- A per-connection query timeout set on iPhone or iPad no longer stops that connection from syncing. (#643)
+- iCloud Sync downloads every page of changes when catching up, instead of only the first. (#643)
+- iCloud Sync reports a failed sync instead of always reporting success. (#643)
+- A change iCloud rejects no longer stops the rest of its batch from syncing. (#643)
+- Connection changes made on the Mac reach the iPhone and iPad app again. (#643)
+- A connection synced from iPhone or iPad keeps its safe mode setting on the Mac. (#643)
+- A connection's colour tag set on iPhone or iPad no longer overwrites its colour label on the Mac. (#643)
+- **Primary Key**, **Nullable**, **Auto Inc**, and the index **Unique** flag now change when you pick a value, and no longer offer Set NULL. (#1991)
+- A message sent in the AI panel right after launch is no longer replaced by the restored conversation.
+- A PostgreSQL partitioned table is listed once, with its partitions nested under it. (#1984)
+- An SSH tunnel that cannot reach the database reports whether the connection was refused or timed out. (#1981)
+- The macOS local network prompt says why TablePro needs access.
+- An SSH tunnel no longer drops under heavy traffic.
+- A `ProxyCommand` line in `~/.ssh/config` is logged as skipped instead of ignored without a word.
+- Right-clicking below the SQL editor opens the menu for the result tabs, data grid, or status bar instead of the editor's. (#1982)
+- **View > Pin Result** is enabled only when there is a result tab to pin, and result tabs now show in JSON view. (#1982)
+- Closing a window asks about unsaved changes in every tab, not just the one on screen. (#1972)
+- MongoDB authenticates against the database set on the connection, not the one you are browsing. (#1970)
+- Creating a MongoDB database asks for its first collection, so the database is kept. (#1970)
+- A MongoDB authentication error names the user and the database it tried. (#1970)
+- Exporting a MongoDB collection works again, and `db.getCollection("name")` is accepted in the query editor. (#1971)
+- A MongoDB export includes fields that first appear after the opening document. (#1971)
+- `postgres`, CockroachDB's `defaultdb`, and Redshift's `dev` are no longer hidden as system databases. (#1967)
+- The database a connection is using always shows in the sidebar and the database switchers. (#1967)
+- The license activation sheet opens when you click **Activate License**.
+- File > New Connection..., ⌘N, and the other File menu connection commands work once a connection is open. (#1975)
+- The tooltip on the welcome screen's **+** button shows the shortcut bound to New Connection.
+- The AI chat panel stays inside the right panel at narrow widths. (#1956)
+- BigQuery `REPEATED` columns (including repeated `STRUCT`) no longer show every element as `null`. (#1963)
+- BigQuery `STRUCT` cells show nested structs and arrays as JSON instead of escaped text. (#1963)
+
+## [0.60.1] - 2026-07-25
+
+### Added
+
+- AWS IAM connections have an **RDS Endpoint** field, for when the connection points at a port forward you run yourself and TablePro cannot tell which database is behind it. The MySQL and PostgreSQL profile fields now list the profiles found on disk, like MariaDB already did. (#1432)
+
+### Fixed
+
+- AWS IAM authentication now works through a tunnel. The token was signed for the local forward instead of the database endpoint, so RDS rejected every connection made over SSH, Cloudflare, Cloud SQL Auth Proxy, or SOCKS. A tunneled connection also no longer needs the region filled in by hand. (#1432)
+
+## [0.60.0] - 2026-07-24
+
+### Added
+
+- Connect to PGlite through its socket server (`pglite-server`), with schema browsing, SQL editing, and row editing like PostgreSQL. (#1911)
+- In the CSV editor, edit structure from the column-header and row right-click menus and the Edit menu: rename, insert, delete, or change the type of columns; insert or delete rows; split a column by a delimiter or regex and merge adjacent columns, each a single undo step. Deleting columns or rows that hold data asks you to confirm first. (#1469, #1913)
+- In the CSV editor, set the delimiter, quote character, escape character, encoding, and line ending from Edit > Set CSV Properties…, then Reload to re-read the file. Switch the first row between header and data with `Cmd+Shift+H`, and files without a header no longer save with a generated header row. (#1469)
+- Add llama.cpp and MLX as local AI providers, each pointing at the server's default local endpoint with no API key. (#1777)
+- SQL Server Windows Authentication (Kerberos) now connects to servers whose Kerberos realm differs from your Mac's default realm, read from the `[domain_realm]` mapping in your Kerberos configuration. (#1947)
+
+### Fixed
+
+- The object list no longer blanks out and shows a spinner while a schema change refreshes it. A spinner now only appears for a first load or a refresh that runs long. (#1916)
+- Saving a change in the Structure tab no longer strips and re-adds the Columns, Indexes, and Foreign Keys counts, so the picker stops shifting on every save. (#1916)
+- SSH tunnels using the None auth method now work on iPhone and iPad, including connections synced from the Mac. (#1912)
+- Browsing a Trino table no longer fails with a syntax error. (#1936)
+- The Authentication method selector no longer shifts position in the connection form when you switch between methods that show or hide the username and password. (#1947)
+- Switching schemas no longer flashes the sidebar loading spinner once per open tab. The table list now reloads once per connection instead of once per window. (#1946)
+
+## [0.59.0] - 2026-07-21
+
+### Added
+
+- Trino support through a downloadable native Swift driver. Connect with a username and password or a JWT token, optionally over TLS with a custom CA or client certificate, browse catalogs, schemas, tables, and columns, run SQL, edit rows, and create or alter tables. (#1906)
+- SSH tunnels support **None** as an auth method, for hosts that handle SSH auth themselves like Tailscale SSH. (#1907)
+- SSH tunnels support keyboard-interactive 2FA, so a server that needs a private key plus a one-time code now connects. TablePro shows the prompt and you type the code. (#1920)
+
+### Fixed
+
+- Copy as INSERT, UPDATE, JSON, CSV, or Markdown now copies only the cells you selected, not the whole row. Copy as UPDATE still keys its WHERE clause on the primary key. (#1929)
+- Windows Authentication (Kerberos) to SQL Server now works on macOS. The bundled driver was built without Kerberos support, so every Windows-auth connect failed. (#1918)
+- MySQL and MariaDB queries no longer fail after about a minute when a longer query timeout is set. The client read timeout now follows the query timeout. (#1921)
+- A dropped MySQL or MariaDB connection no longer re-runs a statement that changes data, so a lost connection can't run an insert or update twice. (#1921)
+- The MongoDB, Oracle, Cassandra, and Elasticsearch plugins failed to install on 0.58 with "Bundle failed to load executable". (#1917)
+- Plugin install and load failures now name the real cause (wrong architecture, missing dependency, or version incompatibility) instead of a generic error. A plugin that fails to load on demand is reported instead of silently disappearing. (#1915)
+
+### Changed
+
+- AI Chat renders Markdown while the assistant reply streams, including open code blocks, instead of waiting for the reply to finish.
+
+## [0.58.0] - 2026-07-18
+
+### Added
+
+- Connect through a SOCKS5 proxy, set on the connection form's new SOCKS Proxy pane. The proxy resolves the database hostname, so names that only resolve behind it work. (#1882)
+- SQL Server connections can use Windows Authentication (Kerberos) on macOS. Sign in with your existing `kinit` ticket, or enter a Kerberos principal and password. Connect by hostname, not IP address. (#1879)
+- Teradata support through a downloadable native Swift driver. Connect over TD2 or TDNEGO, optionally with TLS, browse databases, tables, and columns, run SQL, edit rows, and create or alter tables. (#1867)
+- The sidebar database tree remembers which databases and schemas you expanded, per connection, so reopening a window keeps them open.
+- A Saved Customizations section in Settings lists the tables where you set column layouts or filters, and lets you reset any or all of them.
+- Per-table column layouts (widths, order, and hidden columns) sync across your Macs with iCloud when Settings sync is on.
+
+### Changed
+
+- The query result row cap no longer adds a LIMIT to your SQL. The query runs as written and TablePro stops reading at the cap, so a query with ORDER BY no longer returns different rows than you typed. (#1884)
+- Settings groups the data grid, pagination, result formatting, JSON viewer, query history, and saved customizations under a new Data tab, and moves recent tables, object comments, and default sidebar layout under General.
+
+### Fixed
+
+- Fixed the split dividers in the Users and Roles, Structure, Server Dashboard, and SQL editor panels not showing the resize cursor on hover, even though they could be dragged. (#1905)
+- Fixed a query with a comment after the closing semicolon, such as `SELECT 1; -- note`, running as two statements and failing on the trailing comment. A comment-only query now does nothing instead of erroring. (#1895)
+- Fixed duplicating a connection dropping its Cloudflare Tunnel and Cloud SQL Auth Proxy settings and stored secrets.
+- Fixed the tunnel panes warning about only some conflicting connection methods. Each pane now lists every one with a button to turn it off.
+- Fixed Copy as, Delete, and the Edit menu's copy and delete acting on only the active row instead of the whole cell-range or column selection in the data grid. (#1898)
+- Fixed the Edit menu's Copy as JSON copying the wrong rows when the grid was sorted or filtered. (#1898)
+- Fixed tables picked in the sidebar showing up unchecked and being skipped when exporting to SQL or MQL. The export sheet now checks them with the format's default options. (#1897)
+- Fixed ClickHouse queries showing only a success message with no result table. TablePro now reads what the server returned instead of guessing from the first word, so any query that produces rows shows the grid, including empty results and queries with their own FORMAT clause. (#1886)
+- Fixed ClickHouse INSERT statements always reporting 0 rows affected. (#1886)
+- Fixed ClickHouse query exports writing an empty file when the query started with a comment. (#1886)
+- Fixed a restored window tab sometimes showing a blank name until you switched to it. (#1894)
+- Fixed the window title not updating right away after saving a query to a file or opening a favorite into the current tab. (#1894)
+- Fixed the SQL editor in a new tab losing keyboard focus after the first couple of characters, which stopped typing until you clicked back in. (#1885)
+- Cancelling a SQL Server connection now stops right away instead of waiting for the attempt to finish. A connection also gives up after the login timeout with a clear message, and for Windows Authentication points at the usual Kerberos causes (KDC unreachable, missing SPN, or clock skew). (#1889)
+- Fixed MySQL and MariaDB queries ending in ORDER BY showing an empty result instead of a server error. A failure while reading rows was treated as the end of results, so TablePro now shows the error. (#1884)
+- Fixed the query result row cap returning a single row when it was set to unlimited. (#1884)
+- Fixed SSH tunnels that could accept a connection then go quiet, which showed up as MySQL and MariaDB timing out while reading the server greeting. A tunnel that cannot open its forwarding channel now gives up after 10 seconds and logs the reason. (#1883)
+- Fixed connections being reset when a single session opened several at once through one SSH tunnel, which could happen while browsing schemas. (#1883)
+- Fixed the connection form's SSH tunnel Socket Path hint always showing the PostgreSQL path. It now shows the right default per database type, such as `/var/run/mysqld/mysqld.sock` for MySQL and MariaDB. (#1902)
+- Per-column display formats (Display As) are now kept per table, so two tables with the same name in different databases or schemas no longer share formatting.
+- Reopening a table now restores a saved filter's AND/OR match mode instead of resetting it to AND.
+
+## [0.57.1] - 2026-07-15
+
+### Added
+
+- SSH tunnels can now forward to a Unix socket on the remote server, for databases that only listen on a socket. Set the socket path on the General pane, and TablePro forwards to it instead of a host and port, through jump hosts if you use them. (#1871)
+
+### Fixed
+
+- Fixed the right sidebar refusing to resize while a Users & Roles tab was open. The user list now collapses on its own when the tab gets too narrow to hold it. (#1872)
+- Fixed dividers that could not be dragged at all: the user list and privilege panes in Users & Roles, the trigger list in Structure, and the metrics and slow query panes in Server Dashboard. (#1872)
+- Cancel now stops a connection attempt right away instead of letting it run on in the background. A cancelled connection is also dropped from the last session, so restarting no longer reconnects to a host you gave up on, and it can no longer interrupt a later successful connection. (#1358)
+- Fixed a crash that could quit the app when opening or sorting a table whose columns have comments. (#1869, #1880)
+- MCP tools no longer stop working after the server sits idle for 15 minutes, or after the MCP server is restarted from Settings. TablePro's bridge now starts a new session by itself instead of reusing a dead one, so agents like Claude Code and Cursor keep working without being turned off and on again. (#1881)
+
+### Security
+
+- Patched CVE-2026-55200 in libssh2, a critical out-of-bounds write that let a malicious SSH server corrupt memory and run code before authentication finished. It affected every SSH tunnel and jump host.
+
+## [0.57.0] - 2026-07-14
+
+### Added
+
+- SurrealDB 2.x and 3.x support as a downloadable driver. Browse namespaces and databases, run SurrealQL, and edit records in the grid. (#1862)
+- xAI (Grok) as an AI provider. Paste a key from the xAI Console, or sign in with a SuperGrok or X Premium+ subscription and use no key at all.
+- Google Cloud SQL connections through the Cloud SQL Auth Proxy. Turn it on for a MySQL, PostgreSQL, or SQL Server connection, set the instance connection name, and TablePro starts and stops the proxy for you. (#1728)
+- Beancount ledger support as a downloadable, read-only driver. Transactions, postings, accounts, prices, and balances read as SQL tables, and BQL runs with a `BQL:` prefix. (#1474)
+- **New Query** in the Favorites sidebar **+** menu, which opens an empty SQL query tab.
+- Database users, roles, and privileges on MySQL and PostgreSQL, under **View > Users & Roles**. Pick any object from the server down to a single column, see where each privilege comes from, and grant or revoke it. Changes are staged, undoable, and shown as SQL before they run. (#1413)
+- **File > Reopen Closed Tab** (`Cmd+Shift+T`) brings back the tab you just closed, and **File > Recently Closed** lists the last 20, kept for 30 days. (#1854)
+- Open a database from the terminal. Install the `tablepro` command from **Settings > General**, then run `ddev tablepro` in a DDEV project. Links to a database on your own Mac can be trusted with **Always Allow** and reviewed in **Settings > General**. (#1486)
+
+### Changed
+
+- Query results always open in a result tab, so a single result can be pinned before the next query replaces it. Pin from the tab's context menu or with `Cmd+Option+P`. (#1855)
+- Closing a query tab keeps its SQL in **Recently Closed** instead of throwing it away, and the close button shows the unsaved dot for a query you typed into. (#1854)
+
+### Fixed
+
+- Fixed a crash when several tables on the same connection ran queries at the same time.
+- Column comments now show in the data grid header as soon as the table opens, and the header grows to fit them. (#1861)
+- **Size to Fit** no longer stretches a column of long text past the window. Fitted columns stop at half the visible grid, and every column has a maximum width.
+- The username is now optional. Leaving it empty no longer fills in `root`, and lets the database pick its own default the way `psql` and `mysql` do.
+- A failed or cancelled connection that uses a Cloudflare tunnel no longer leaves the `cloudflared` process running in the background.
+- Pinned results are no longer discarded by **Clear Results**, and a tab holding one is no longer reused to browse a different table. (#1855)
+- Quitting now warns about unsaved changes in any tab, not just the visible one. (#1854)
+
+## [0.56.2] - 2026-07-10
+
+### Added
+
+- The JSON field in the row details inspector can now be resized by dragging the handle below it. The height is remembered across rows and app restarts. (#1849)
+
+### Changed
+
+- Data grid column comments now appear directly in column headers when object comments are enabled, instead of only being available from the header tooltip. (#1789)
+
+### Fixed
+
+- MySQL and MariaDB connections that prompt for a password at connect time now ask for a fresh password after an auto-reconnect hits an authentication failure such as `1045` / `SQLSTATE 28000`, instead of looping forever in Connecting with the expired session password.
+- Pressing Escape to dismiss the SQL autocomplete popup no longer moves focus out of the editor, so you can keep typing. (#1845)
+
+## [0.56.1] - 2026-07-09
+
+### Removed
+
+- The Oracle Native network encryption connection option. Encryption is now offered to every server and used only when the server requires it, so the option is no longer needed. (#483)
+
+### Fixed
+
+- Oracle now connects to servers that require native network encryption (`SQLNET.ENCRYPTION_SERVER = REQUIRED`), negotiating AES with a SHA checksum automatically like SQL Developer and DBeaver. (#483)
+- MongoDB filters and generated edit statements now quote numeric-looking values that would not round-trip, such as `.5`, `1.`, `+7`, `01`, integers larger than 64 bits, and exponents that overflow a double like `1e400`, instead of emitting invalid or lossy JSON. A row whose `_id` is a decimal or exponent string is matched as that string, so delete and update target the right document. Update the MongoDB plugin to get the fix. (#1813)
+- Reading a connection password from a command, 1Password, Vault, or AWS Secrets Manager no longer occasionally returns corrupted output from a race while reading the command's output. (#1841)
+- The Structure tab filter and column sort now update the grid instead of leaving stale rows on screen.
+- The row details inspector now shows the selected row's values, including JSON, when a column value filter is active, and a JSON or serialized value you open now follows the selected row as you move between rows. (#1837)
+- Copying, duplicating, and deleting rows now act on the rows you selected when a column value filter is active, instead of the rows sitting at those positions in the unfiltered result. (#1837)
+
+## [0.56.0] - 2026-07-09
+
+### Added
+
+- Custom AI slash commands now sync across your Macs with iCloud Sync.
+- Join a team by pasting your invite code where a license key goes, in Settings > Account. Owners manage members and seats on tablepro.app.
+- Connections can pull their password from 1Password, HashiCorp Vault, or AWS Secrets Manager at connect time, so the secret is never stored in TablePro.
+- Team plan: publish connections to a shared folder for your team, without passwords. Right-click a connection, then Share > Publish to Team Catalog; teammates add the folder under Settings > Linked Folders.
+- Team Library: share connections and saved queries with your team through your account. Right-click a connection or use the Favorites sidebar to Publish to Team Library. Teammates see them in their list and sidebar; you manage the library on tablepro.app. Passwords are never included.
+- Saved SQL queries and their folders now sync across your Macs. Turn on Saved Queries under Settings > Sync.
+- A Recent section at the top of the sidebar lists the last 10 tables you opened per connection and database, and remembers them between launches. Click one to reopen it, or right-click to remove or clear. Off by default; turn it on in Settings > General > Sidebar. (#1352)
+- Saving now asks you to confirm before it permanently deletes rows. (#1823)
+
+### Changed
+
+- The sidebar filter now matches table and view names by substring instead of fuzzy matching, and sorts names that start with what you typed to the top. (#1822)
+
+### Fixed
+
+- Typing in the SQL editor no longer crashes the app, and the autocomplete popup appears again as you type. (#1835)
+- Deleting many rows at once no longer freezes the app. Multi-row deletes now run as one batched statement instead of one query per row. (#1823)
+- Deleting rows from a table without a primary key now matches on every column, so it won't remove other rows that share the first column's value. (#1823)
+- Sorting a table column no longer discards your rows-per-page setting. It keeps the page size and returns to page 1 instead of loading the whole table. (#1826)
+- Sorting a column no longer fails with a SQL error on tables whose name contains a word like limit or offset. (#1825)
+- Elasticsearch connections using Username & Password now show a Password field, so you can set up basic auth on a secured cluster. Update the Elasticsearch plugin to get the fix. (#1816)
+- Switching schemas on an Oracle connection no longer hangs on an infinite spinner. Oracle now switches by schema, loads each schema's tables on expand, respects the query timeout with automatic reconnect, and shows an error with a Retry button when a schema fails to load. Update the plugin to get query timeout enforcement. (#1807)
+- Resizing a data grid column no longer triggers a sort. Dragging a column edge only resizes it; clicking the header still sorts. (#1815)
+- Hidden columns stay hidden, and resizing a column no longer brings them back. Column widths, order, and visibility are remembered per table, kept separately for each connection, database, and schema so tables with the same name don't overwrite each other. A new Reset Columns button in the Columns popover restores defaults. Existing saved column layouts reset once with this change. (#1815)
+- Query and filter errors now appear in a banner you can select and copy, with a Fix with AI button, instead of a dialog that cut the message off. The banner sizes to the message. (#1815)
+- The filter autocomplete no longer pops up on empty input, and pressing Escape to close it no longer also closes the filter bar. (#1815)
+- The editor autocomplete popup drops below the line you're typing instead of covering it, no longer overlaps the Columns and Add buttons, and dismisses when you click anywhere on it that isn't a suggestion. (#1815, #1831)
+
+## [0.55.0] - 2026-07-04
+
+### Added
+
+- iOS: add data to a table from the Shortcuts app. Two new shortcuts, Add Row to Table and Add Rows to Table, pick a saved connection, database or schema, and table, then insert from JSON or CSV. They run without opening the app. (#1788)
+- Refresh button in Settings > Plugins > Browse to reload the plugin list on demand. (#1799)
+- SQL Favorites: put ;; in a saved query to set where the cursor lands after keyword expansion in the editor. (#1795)
+- SELECT queries without their own LIMIT now run with the row cap applied as a real LIMIT on the statement sent to the server, so forgetting a LIMIT no longer pulls millions of rows. The query text in the editor never changes, a query with its own LIMIT is sent as written and not capped, and Execute Query Without Limit (Option+Cmd+Enter, also in the Query menu and the Execute button menu) skips the cap for one run. (#1794)
+
+### Fixed
+
+- The New/Edit Favorite and linked file metadata dialogs no longer open with a large empty area and fields crushed against the right edge. They now use the standard macOS grouped form layout: the query editor spans the full dialog width, the cursor marker hint sits under the editor, keyword validation shows under the keyword field, and the Global option is a checkbox that explains its scope. (#1809)
+- Tables and views outside the connection's default schema now open and save correctly when reached through the Quick Switcher, a restored tab, or the MCP table-open tool. These paths used to send unqualified queries, which failed with "Invalid object name" on SQL Server or silently targeted the wrong table. (#1774)
+- Quick Switcher opens again on macOS Sequoia. Since 0.51.0 the panel came up invisible on macOS 15, and the toolbar button and keyboard shortcut appeared to do nothing. (#1806)
+- Quick Switcher keyboard navigation (Ctrl-J/K and arrow shortcuts) no longer goes dead after the switcher has been opened and closed repeatedly. (#1806)
+- Restored table tabs no longer reload all at once or flood failure dialogs on launch. Only the frontmost tab loads immediately; other restored tabs load when you switch to them, and a load failure now shows inline in the tab instead of a dialog. (#1796)
+- Execute All Statements now applies the query result row cap to each SELECT in the batch instead of returning every row, and each result tab tracks its own truncation state so Fetch All loads the rest of the result you are viewing. (#1794)
+- Queries starting with a comment or with a newline right after the first keyword are now classified correctly: the row cap applies to them, and Safe Mode recognizes such writes and destructive statements instead of letting them through unprompted.
+- Enum and set value pickers now populate when the driver reports the values only inside the column type instead of as a separate list.
+- The plugin list no longer goes stale. The app now checks the plugin registry for changes at launch, when the plugin browser opens, and before reporting a plugin as missing, so newly published plugins show up and install right away. A registry that cannot be reached now reports a connection problem instead of "Plugin not found". (#1799)
+- Dropping a materialized view or foreign table from the sidebar now generates the correct DROP statement instead of DROP TABLE, and drop and truncate statements are schema-qualified. ClickHouse now lists materialized views as their own sidebar section and drops them with the DROP VIEW syntax it requires. (#1800)
+- Scrolling no longer goes dead across the whole app after opening an ER diagram and switching tabs while the pointer rests over the canvas. Diagram pan and zoom now handle scroll events on the canvas itself instead of intercepting them app-wide. (#1805)
+
+## [0.54.0] - 2026-06-30
+
+### Added
+
+- Per-tab database picker in the query editor toolbar. Each SQL tab can target its own database without clearing other tabs.
+- Single-clicking a table in the sidebar tree opens it in the current tab; double-clicking opens it in a new tab.
+- Table and column comments from the database now show in the UI. The sidebar shows a table's comment in dimmed text after its name, the data grid column header tooltip includes the column comment, and the table inspector shows the table comment. Toggle from View > Show Object Comments. Available for MySQL and PostgreSQL. (#1771)
+
+### Changed
+
+- Switching the active database keeps existing tabs open instead of closing them.
+- The toolbar, quick switcher, and query editor database pickers follow the sidebar database filter.
+- Switching table tabs is faster: filter settings persist off the main thread, and only the active database's table list refreshes.
+
+### Fixed
+
+- Safe mode no longer jumps to the first tab after you confirm a query. The confirmation now stays on the tab you ran the query from. (#1781)
+- Switching between sidebar tables no longer leaves extra blank space above the list. (#1675)
+- SSH tunnels no longer pin a CPU core after the connection drops. A dropped tunnel is now detected and torn down instead of spinning in its relay loop. (#1769)
+- Restored table tabs now load with the current page size instead of the page size from the previous session.
+- MSSQL: large `nvarchar(max)` and `text` values no longer truncate to 2048 bytes when copied or viewed. TEXTSIZE is raised at connect time. (#1783)
+- Oracle connections with Native network encryption turned on no longer hang for about a minute against servers that do not complete it, such as Oracle 11g. The login now stops after 30 seconds and explains how to turn the option off. (#1746)
+
+## [0.53.0] - 2026-06-25
+
+### Added
+
+- Connections can have multiple tags. Assign them in the connection form and filter the welcome list by tag with Match Any or Match All. (#744)
+- Per-column value filter in the data grid. Click the funnel icon on a column header to choose which loaded values to show, across several columns at once. Filters loaded rows without re-querying. (#1454)
+- Elasticsearch support: connect to 7.x and 8.x, browse indices, run Query DSL in a console, and edit documents in the data grid. Install from Settings > Plugins. (#1529)
+- The connection switcher and welcome list now show each connection's tags and group. (#1323)
+- The ER diagram marks relationship cardinality (one-to-one, one-to-many, and optional variants) with crow's foot notation, read from primary keys and unique indexes. Junction tables collapse into a single many-to-many link, with a toolbar toggle to expand them. (#1335)
+- Export the ER diagram to SQL. A toolbar button opens a query tab with CREATE TABLE and foreign key statements for the current schema. (#1335)
+- Oracle connections have a Native network encryption option, off by default, for servers that require encrypted traffic. (#1746)
+
+### Changed
+
+- The ER diagram uses a more compact layout, keeps foreign-key-linked tables together, and tints each connected group with its own header color. (#1755)
+- When an Oracle server drops the connection during login, the error dialog now shows which handshake phase it stopped at (helps diagnose Oracle 11g). (#1746)
+
+### Fixed
+
+- Opening a new query tab now puts keyboard focus in the SQL editor instead of the sidebar filter, so you can type right away. (#1765)
+- Raw filters in the data grid now work on document and key-value databases; the typed text was dropped before reaching the driver. (#1529)
+- Connecting to Oracle no longer crashes on certain server values during the handshake; a bad packet now fails the connection with an error. (#1746)
+- Connecting to Oracle no longer hangs when the server permits but does not require native network encryption; TablePro now connects in clear text by default, like Oracle's own clients. (#1746)
+- Following a foreign key into another schema now opens the correct table on SQL Server and Oracle, instead of falling back to the default schema. (#1754)
+- Browsing or editing a SQL Server or Oracle table outside the default schema no longer fails with "Invalid object name" or writes to the wrong table; queries now qualify the table with its schema. (#1754)
+
+## [0.52.1] - 2026-06-22
+
+### Added
+
+- Import connections on iPhone. Open a .tablepro file from Files or AirDrop, or use Import Connections in the list menu. Encrypted files prompt for the passphrase, and you choose how to handle duplicates.
+- Export connections on iPhone from the list menu. Passwords are left out by default; include them by setting a passphrase that encrypts the file.
+
+### Changed
+
+- Drag-selecting many columns in a wide result set scrolls smoothly instead of lagging.
+- The connection Export Options dialog keeps a steady size when you turn on Include Credentials, and saves through the standard macOS save dialog.
+- Scrolling large result sets uses less CPU.
+- Typing in the sidebar table search stays responsive on databases with thousands of tables.
+- The welcome sidebar stays responsive with many connections and nested groups.
+- Autocomplete stays snappy on wide SELECT clauses with hundreds of columns.
+
+### Fixed
+
+- SQL autocomplete no longer stops appearing until the app is relaunched; it stays available after switching query tabs and windows. (#1731)
+- Oracle connections no longer crash the app when the server sends a message the driver cannot decode; the query fails with a clear error and reconnects. (#483)
+- MongoDB TLS handshake failures now report the actual cause instead of always blaming a cipher or protocol mismatch. (#1418)
+- The External Clients access level no longer reverts to Read Only after saving and reopening a connection, so MCP clients keep the write access you granted. (#1730)
+- Typing fast with the autocomplete window open no longer stalls each keystroke.
+
+## [0.52.0] - 2026-06-19
+
+### Added
+
+- Triggers tab in the table structure view for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1, with a filter field, sortable columns, and a read-only view of each trigger's definition. (#1695)
+- Create, edit, and drop triggers from the Triggers tab. (#1695)
+- Traditional Chinese (繁體中文) language in Settings > General.
+- An Add button in the table status bar inserts a new row at the end of the grid and starts editing it.
+- DuckDB connections can now reach a remote server over the Quack protocol (experimental). Pick Remote (Quack) in the connection form, enter the host, port, and token. Listing remote tables in the sidebar is not available yet. Needs DuckDB 1.5.3 or later. (#1716)
+
+### Changed
+
+- Selecting a Redis namespace in the sidebar now filters the open view to that prefix with paging, instead of opening a separate tab. (#1701)
+
+### Fixed
+
+- SQL autocomplete now suggests columns for a derived-table or CTE alias. (#1697)
+- Redis entries no longer disappear after the connection sits idle. (#1701)
+- Redis key browsing now lists and pages through every key in a database or namespace, instead of only the first SCAN batch. (#1701)
+- A dropped Redis connection now reconnects on the next command and replays auth and the selected database. (#1701)
+- DuckDB VARIANT columns now show their value as text instead of an empty cell.
+- A new database group now appears in the connection list right away instead of only after restarting the app. (#1704)
+- The SQL formatter keeps nested indentation for UNION, INTERSECT, and EXCEPT inside a subquery, and puts the closing parenthesis on its own line. (#1698)
+- Toolbar button tooltips now show each action's real keyboard shortcut and follow your custom bindings. (#1694)
+- Deleting a table from the sidebar now removes it from the tree right away on multi-database servers like MySQL and PostgreSQL. (#1714)
+- The row detail panel no longer stays blank when a table is opened in a second tab.
+- The sidebar filter now stays put when you open another tab.
+- Fixed a crash when browsing the database tree on servers with many schemas, such as PostgreSQL.
+- Reopening the app no longer shows a "Not connected to database" error when it restores a table tab on a connection that is still reconnecting, such as one over SSH.
+
+## [0.51.1] - 2026-06-16
+
+### Added
+
+- The tree sidebar can filter to only the databases you pick, saved per connection. (#1667)
+- Closing a query tab no longer loses unsaved SQL. The next blank query tab for the same connection restores the last closed draft. (#1686)
+- A checkbox in the filter panel header turns every filter row on or off at once, with a dash when only some are on.
+
+### Changed
+
+- The filter panel's "Unset" button is now "Clear". It keeps your filter rows and only drops the applied state. To remove the rows, use "Remove All Filters" in the filter options menu.
+- A row's right-click menu now has "Apply Only This Filter". The inline per-row Apply button is gone.
+
+### Changed
+
+- Expanding a database in the tree sidebar loads tables first and fills in procedures and functions in the background, so the table list appears after one round-trip instead of waiting for three queries to finish in sequence.
+
+### Fixed
+
+- Expanding or collapsing a database or schema in the tree sidebar while its tables were still loading could crash the app. The tree now updates its rows without rebuilding the outline structure.
+- MongoDB filters on `_id` and other ObjectId fields now match. A 24-character hex value is matched as an ObjectId as well as a string, so filtering by `_id` returns the row instead of nothing. (#1682)
+- Shift+Arrow in the data grid now starts and extends a cell selection from the focused cell. Cmd+Shift+Arrow extends to the row or column edge.
+- Delete key now removes all rows covered by a cell-range selection instead of ignoring it.
+- Right-clicking inside a multi-row or cell-range selection no longer collapses the selection first.
+- Oracle connections no longer crash during connect when the server sends a short or unexpected handshake packet. (#1683)
+- MongoDB filters on `_id` and other ObjectId fields now match. A 24-character hex value is matched as an ObjectId as well as a string. (#1682)
+- The sidebar and inspector keep their width per connection, the sidebar its collapsed state, and the inspector its selected tab, across quit and reopen.
+
+## [0.51.0] - 2026-06-13
+
+### Added
+
+- BigQuery datasets can be switched, created, and dropped from the toolbar, Cmd+K switcher, and File menu. (#509)
+- Quick Switcher now searches saved queries too, alongside tables, views, databases, and history.
+- Quick Switcher scopes: an empty search shows recent items, and Cmd+1 to Cmd+4 browse all tables, databases, or queries.
+- Quick Switcher: Option+Return opens a table in a new tab, and right-click opens its structure or copies the name or query.
+- Tables already open show an Open badge in the Quick Switcher, rank higher, and Return switches to the existing tab.
+- `.psql` and `.pgsql` files now open in the SQL editor like `.sql`. (#1641)
+- Session restore brings back each tab's sort, page, cursor position, and column widths, plus the connection's active database and schema. Tabs autosave every 30 seconds, so a crash recovers your last session and reopens its connections. (#1673)
+
+### Changed
+
+- Redis connections now filter with a key-pattern search field and a key-type scope. Glob patterns like `user:*` match server-side across the whole keyspace, replacing the SQL-style filter row that only matched one batch of keys.
+- Switcher, menus, and alerts now use each database's own container name: Dataset for BigQuery, Keyspace for Cassandra and ScyllaDB. (#509)
+- Quick Switcher highlights matched characters, aligns camelCase and snake_case names better, and ranks items you open often and recently higher.
+- Quick Switcher now opens as a Spotlight-style floating panel instead of a modal sheet, with Liquid Glass on macOS 26.
+- The sidebar filter, database switcher, and connection switcher now use the same fuzzy matching as the Quick Switcher, so `upv` finds `user_profile_view`.
+- Refresh (Cmd+R) now acts only on the focused window's connection instead of reloading every open connection.
+- Holding Cmd+R no longer queues a backlog of refreshes; rapid presses collapse into a single reload.
+- Switching PostgreSQL schemas now sets the search path to just the selected schema. Unqualified references to "public" objects, such as extension functions, need a "public." prefix while another schema is selected. (#1662)
+- The inspector panel can now be resized freely by dragging its divider.
+- TablePro now reopens your last session on launch by default instead of the welcome screen. Existing installs move over once; change it under Settings > General > Startup Behavior. (#1673)
+
+### Fixed
+
+- PostgreSQL and Redshift autocomplete now completes tables and columns from schemas other than the selected one, so `SELECT * FROM s2.orders` suggests `s2`'s columns. (#1668)
+- Favorite keywords work again. Deleting a connection now also deletes its saved queries, folders, and per-table filters, the confirmation says so, and favorites orphaned by an earlier delete are cleaned up at launch.
+- Keyword and SQL keyword autocomplete now work in editors without a connection, and favorites appear in the completion popup immediately.
+- Typing a favorite's keyword in the Quick Switcher now finds the saved query instead of ranking it below name matches.
+- PostgreSQL databases without a "public" schema now load tables from the first available schema, show the schema selector even with one schema, and count tables across every user schema. (#1662)
+- Switching schemas no longer closes open tabs or discards unsaved SQL; the sidebar, schema chip, and autocomplete update to the new schema. (#1669)
+- Creating a table now turns the Create Table tab into the new table's tab and shows it in the sidebar without a manual refresh. (#1664)
+- Cmd+S in the Create Table tab now creates the table, matching the Save shortcut everywhere else. (#1664)
+- Format Query can now be undone with Cmd+Z. (#1645)
+- Format Query now formats only the selection when one is active, and the full query otherwise. (#1656)
+- Foreign key jump arrows no longer disappear after sorting, filtering, or paginating, and a failed lookup is retried on the next load.
+- PostgreSQL foreign keys are now read from the system catalogs, so FK jump arrows appear even when the role does not own the referenced tables.
+- Sorting a query result no longer overwrites the SQL editor or an opened `.sql` file; the sort runs as a separate query. (#1645)
+- iCloud Sync between the iPhone and Mac apps now uses the Production CloudKit environment, so development builds no longer sync into a separate database.
+- Exports no longer fail mid-table on servers with a statement time limit; the export session disables the limit and restores it afterwards. (#1633)
+- Quick Switcher no longer shows an empty table list when opened before the schema finishes loading.
+- Loading a saved query or history entry from the no-tabs screen now opens it in the current window instead of a second tab.
+- Opening a query from history in the Quick Switcher loads the full query instead of a 100-character preview.
+- Refreshing a table now reloads its data even when the previous load is still running. (#1637)
+- Cmd+R on a table now reloads its rows instead of failing with a query error.
+- SQL autocomplete now suggests tables after JOIN across multi-join and multi-clause queries, with tables leading the list. (#1646)
+- Large SQL scripts no longer freeze the editor or pin the CPU. Above 2 MB the editor suspends syntax highlighting and inline AI so typing and scrolling stay responsive. (#1652)
+
+### Security
+
+- Imported connections from a deep link or shared file can no longer carry a pre-connect script that runs a shell command on connect.
+- External database links now ask for confirmation before connecting, and a password in the link is never saved to the Keychain.
+- MCP tools now enforce each connection's external access level, AI policy, and token scope on every request.
+- The MCP server now requires a paired token by default, even over loopback.
+- An installed plugin's code signature is re-checked right before it loads, so the binary cannot be swapped after the first check.
+- MongoDB filter values in the Contains, Not Contains, Starts With, Ends With, and Regex operators can no longer inject query operators.
+- iOS validates TLS certificates for MySQL, PostgreSQL, and Redis connections set to a verify SSL mode.
+- Database values copied on iOS stay on the device and clear from the clipboard after a minute.
+- The iOS home screen widget no longer stores database host and port on disk.
+
+## [0.50.0] - 2026-06-09
+
+### Added
+
+- Cursor as an AI provider: use a Cursor API key or sign in with the Cursor CLI. (#1624)
+- Sign in with ChatGPT to run AI chat and inline suggestions without an API key. Existing Codex CLI logins can be imported. (#1617)
+- libSQL / Turso connections can open a local database file offline, transactions included. (#1607)
+
+### Fixed
+
+- Default row sort now applies to the first table opened after launch. (#1603)
+- Cancelling a SQLite query no longer races a disconnect. (#1610)
+- Typing in the query editor no longer erases characters or drops focus, most visible on macOS 15. (#1608)
+- The autocomplete popup now filters in place instead of closing and reopening on each keystroke. (#1608)
+- Syntax highlighting no longer disappears after formatting a query. (#1612)
+- The GitHub Copilot provider no longer shows a Max output tokens field it ignores or leaves a stray model ID field behind.
+- Oracle connections with native network encryption no longer crash on a server error; the real ORA error is shown and the connection keeps working. (#483)
+- Clicking an already-open table switches to its tab instead of opening a duplicate. (#1613)
+- MongoDB now connects over an SSH or Cloudflare tunnel instead of failing with connection refused. (#1621)
+- A plugin updated in Settings stays marked Installed instead of showing the Update button again.
+- DBeaver connections import from any edition, based on your DBeaver data rather than which app is installed. (#1628)
+
+## [0.49.1] - 2026-06-06
+
+### Fixed
+
+- Default row sort by primary key works again for PostgreSQL and other databases, and the rows arrive already sorted on the first load instead of re-sorting after they appear. (#1603)
+- Registry plugins built before 0.49.0 install and load again instead of failing with an invalid plugin bundle error.
+
+## [0.49.0] - 2026-06-06
+
+### Added
+
+- Snowflake support: sign in with username & password (MFA included), key-pair, browser SSO, or an access token; browse and edit data, import CSV and JSON, edit table structure, run scripts, and switch warehouse and role from the toolbar. Snowflake CLI connections can be reused by name. (#1420)
+- Import CSV and TSV files into a table: map columns to an existing table or create a new one, with delimiter, quote, encoding, header, and NULL options. (#1568)
+- SQL autocomplete completes each segment of qualified names (database, schema, table), loads tables of unopened schemas on demand, resolves alias columns, and suggests the connection's dialect functions.
+- Each filter row can be switched on or off and applied on its own; disabled rows stay in the panel. (#1561)
+- Importing connections from other apps detects duplicates and lets you replace, add a copy, or skip each one.
+- Oracle connections negotiate Native Network Encryption, so servers that require it now connect. (#483)
+- Oracle connections follow listener redirects, so RAC SCAN, shared server, and load-balanced setups connect. (#483)
+- AWS connections can assume an IAM role through STS, including chained source profiles, external IDs, and custom durations. (#1567)
+- Redis connects to Amazon ElastiCache with IAM auth via access key, profile, or SSO. (#1567)
+- AWS SSO sign-in from TablePro: an expired session prompts a browser sign-in and refreshes the token. (#1567)
+- Cassandra connects to Amazon Keyspaces with AWS IAM (SigV4) auth via access keys, profile, or SSO. (#1567)
+- Export and import dialogs remember the last-used format, options, and encoding; cancelling keeps your saved settings, and Reset to Defaults restores the stock options. (#1591)
+
+### Changed
+
+- The results status bar has a divider, balanced margins, and a spinner sized to its controls. (#1569)
+- Custom keyboard shortcuts work on non-US layouts, and shifted symbols like Cmd+[ record correctly.
+- The Keyboard settings list is grouped by where shortcuts act (Editor, Data Grid, Navigation, Connections), with a reset button per changed shortcut.
+- Shortcut conflict detection checks live macOS system shortcuts and editor commands, and allows the same key in the editor and the data grid since focus decides which runs.
+- Show Tables and Show Favorites moved to Cmd+Option+1 and Cmd+Option+2; Control+1 and Control+2 belong to macOS Spaces.
+- Cmd+N opens a new connection; Manage Connections stays in the File menu.
+- First Page and Last Page default to Cmd+Option+Up and Cmd+Option+Down.
+- Shortcuts can use function keys (F1 through F12), with or without a modifier.
+- AWS connections list the profiles from `~/.aws/config` and `~/.aws/credentials`, and still accept a typed name. (#1567)
+
+### Fixed
+
+- Accepting an autocomplete suggestion replaces the whole typed word; it could leave part of the word behind, turning `mess` plus Tab into `memessage`.
+- MongoDB: connecting to Atlas no longer fails with TLS internal error (-9838); the plugin ships the OpenSSL TLS stack again. (#1599)
+- DuckDB: the plugin runs DuckDB 1.5.2 again after a rollback to 1.5.0.
+- JSON import: a failed import with "Delete existing rows before import" restores the deleted rows.
+- JSON import: skip-and-continue no longer inserts duplicate rows after a mid-batch error.
+- JSON import: "Stop and Commit" keeps the rows inserted before the error.
+- The connection and database switcher focuses its search field even while a filter input is being edited; the filter text is kept. (#1575)
+- TablePro no longer shows its icon for .sql, .sqlite, and .duckdb files when it is not their default app. (#1594)
+- The JSON results view shows row data right away, follows the row selection, and shows a spinner while large results format. (#1576)
+- Double-click or Enter edits a JSON cell inline and opens the hex editor on a blob cell; the chevron still opens the tree or hex editor. (#1588)
+- Query results appear as soon as rows return; metadata loads in the background, removing a multi-second wait on slow remote databases. (#1574)
+- MySQL and MariaDB queries are editable right away instead of waiting on a separate metadata query. (#1574)
+- Status bar buttons no longer get blocked by the bottom-right window resize zone. (#1569)
+- VoiceOver reads clear labels for the results status bar controls. (#1569)
+- The custom rows-per-page popover points at the page-size menu. (#1569)
+- DynamoDB AWS Profile auth reads `~/.aws/config` too and supports `credential_process`, so config-only, SSO, and credential-process profiles work. (#1567)
+- Query result columns follow the SELECT order; new columns no longer get stuck at the end of the grid. (#1565)
+- JSON file import works again. It failed to load in 0.48.0.
+- SQL export quotes empty or malformed numeric values instead of producing invalid INSERT statements.
+- SQL Server: logins restricted to one database, such as Azure SQL contained users, now connect; the database is sent during login.
+- Custom Copy and Cut shortcuts take effect in the SQL editor.
+- The Delete shortcut in the data grid follows a custom binding.
+- Find Next (Cmd+G) and Find Previous (Cmd+Shift+G) work in the editor.
+- Pagination buttons no longer fire their page shortcut twice.
+- PostgreSQL scripts with `DO $$ ... $$` blocks or dollar-quoted bodies no longer fail with an unterminated string error. (#1559)
+- AWS IAM connections no longer ask for a password; the same holds for any auth mode that replaces the password, such as a Postgres password file.
+- Oracle connection failures show the listener's actual reason instead of a generic message. (#483)
+- A connection password read from a command no longer fails when the command finishes quickly.
+- A cancelled MCP query returns a cancelled error instead of an invalid-parameters error, and emits an initial progress notification.
+
+## [0.48.0] - 2026-06-02
+
+### Added
+
+- Import a JSON file into a table: an array of objects, newline-delimited JSON, or TablePro's JSON export, mapped to a new or existing table. Pick SQL or JSON from the Import menu.
+- The title bar shows the open table's name, with its database and schema below. (#1475)
+- iOS: open DuckDB database files and in-memory DuckDB databases. (#1526)
+- Save the current query as a favorite from the SQL editor toolbar.
+- Select and copy field names and types in the row Details panel.
+
+### Changed
+
+- The plugin interface is now binary-stable, so app updates that add plugin capabilities no longer force installed plugins to be rebuilt.
+- Connection list rows show the database name after the host, so look-alike connections are easier to tell apart. (#1535)
+- Save as Favorite uses Cmd+D again. The 0.47.0 Cmd+Control+D was reserved by macOS for Look Up.
+- Editor toolbar buttons show their keyboard shortcut in the tooltip, updated when you rebind it.
+- Window toolbar: connection and database selectors move left as navigation items, Refresh and Save move right. Customized toolbars reset once.
+
+### Fixed
+
+- PostgreSQL: the selected schema stays applied after an automatic reconnect, so unqualified table names keep resolving against it. (#1540)
+- Import now finds the Setapp edition of TablePlus and reads its connections. (#1528)
+- Favorite keyword suggestions now appear in editor autocomplete. They were dropped before reaching the popup.
+- Editor autocomplete refreshes when you switch schema, suggesting the new schema's tables and columns.
+- Plugins settings: the unloaded-plugins banner now scrolls instead of pushing the plugin list off screen, shows each plugin's real icon, and only offers an Update button when a compatible build exists. Plugins waiting on a build that publishes automatically no longer show a button that fails.
+- Opening a connection right after an app update no longer fails when its driver plugin needs updating. The driver updates in the background and the connection proceeds, instead of showing an error until you quit and reopen. (#1552)
+
+## [0.47.0] - 2026-06-01
+
+### Added
+
+- Previous Page, Next Page, First Page, and Last Page are now in the Query menu. Previous and Next keep their Cmd+[ and Cmd+] shortcuts. (#1490)
+- Keyboard control of the sidebar: focus the filter field (Cmd+Option+F) and switch between the Tables and Favorites sidebars (Ctrl+1 and Ctrl+2). Tab or Down moves from the filter field into the list. All rebindable in Settings, Keyboard. (#1490)
+- Star a table in its sidebar row to favorite it. Favorites are scoped to the connection, database, and schema, pinned to the top of their section, listed in the Favorites tab, and synced through iCloud when Table Favorites is on.
+- A plus button in the Tables sidebar footer creates a new table or view without right-clicking. Disabled while safe mode blocks writes.
+- The sidebar can show every database on the server as an expandable tree. Switch between the flat list and the tree in the View menu (Sidebar Layout), and right-click a database or schema to set it active. Set the default for new connections in Settings, General. Applies to MySQL, MariaDB, PostgreSQL, MSSQL, ClickHouse, Redshift; SQLite, Redis, MongoDB, BigQuery keep their existing sidebar. (#139)
+- A connection can read its password from a file, environment variable, or command at connect time instead of the Keychain, so scripts can provision it without typing the password. (#1254)
+- PostgreSQL: PostGIS `geometry` and `geography` columns render as WKT with SRID instead of raw hex. (#1458)
+- Import connections from Navicat: export from Navicat (File, Export Connections), then pick the file under Import from Other App. SSH tunnel and SSL settings carry over, and saved passwords are decrypted during import. (#1485)
+
+### Changed
+
+- Save as Favorite moved from Cmd+D to Cmd+Control+D, leaving Cmd+D free for the system "Don't Save" action. Rebindable in Settings, Keyboard. (#1490)
+- The Tables sidebar footer uses native macOS styling. The schema switcher is now a borderless pull-down matching the Favorites footer, and switching schemas goes through the same path as the toolbar so filters and the active tab stay in sync.
+- The Maintenance submenu in the sidebar context menu is hidden when no operations apply or the target is read-only, instead of showing an empty disabled menu.
+- The window minimum width adjusts to the visible panes, so opening the inspector on a small window no longer pushes content off-screen.
+- Destructive queries (DROP, TRUNCATE, DELETE without WHERE) always ask for confirmation, even with Safe Mode off. (#1481)
+- Table structure changes, table creation, maintenance, column reorder, and saved data-grid edits follow the connection's Safe Mode and read-only setting. (#1481)
+- AI assistant and MCP queries follow the same Safe Mode, read-only, and authentication rules as the editor. (#1481)
+- iOS: sheet close, cancel, and confirm buttons use the native iOS 26 button roles, matching system apps like Mail. iOS 18 keeps titled buttons. (#1524)
+
+### Removed
+
+- "Create New Table…" from the sidebar right-click menu. Use the plus button in the Tables sidebar footer instead.
+
+### Fixed
+
+- The Details pane updates when you select a row by clicking, not only with the arrow keys. (#1496)
+- Tab and Shift-Tab move focus out of the AI rules field in the connection form instead of inserting a tab. (#1490)
+- The cell inspector's Set NULL, Set DEFAULT, copy, and SQL-function actions are now in a right-click menu on each field, reachable by keyboard, Full Keyboard Access, and VoiceOver, not only on hover. (#1490)
+- VoiceOver: grid selection changes are announced even when VoiceOver was not already on, the drop and truncate dialog toggles describe their effect, and the favorite query editor is labeled. (#1490)
+- Tab moves keyboard focus between the window panes (sidebar, results, inspector). (#1490)
+- The license activation sheet focuses the key field on open, the SQL review sheet closes with Escape even while the editor has focus, and the integration token sheet focuses its Done button. (#1490)
+- Copy with Headers now has a default shortcut (Cmd+Option+C) instead of appearing in the Edit menu with no key. (#1490)
+- VoiceOver reads the column name and current value for each field editor in the cell inspector. (#1490)
+- VoiceOver announces the active tab title when you switch between window tabs. (#1490)
+- Opening a query tab no longer pulls keyboard focus from the sidebar or another control; the editor takes focus only when nothing else holds it. VoiceOver now labels the SQL editor and the Clear and Format buttons. (#1490)
+- The connection form opens with the Name field focused, Return or Down in the welcome search moves to the connection list, and focus returns to the list after a sheet closes, so you can set up a connection without the mouse. (#1490)
+- Escape dismisses search-based sheets and popovers (database switcher, quick switcher, column and connection pickers). The first Escape clears the search text; a second closes the sheet. (#1490)
+- Running `EXPLAIN` or `EXPLAIN ANALYZE` in the editor opens the plan viewer instead of squashing the plan into one truncated grid cell. (#1480)
+- Filtering the data grid keeps you on the keyboard: applying or clearing a filter returns focus to the grid, Return applies the filter, and Escape closes the filter panel. (#1490)
+- Opening a table (Return or double-click in the sidebar) moves keyboard focus into the data grid for arrow-key navigation. Arrowing the sidebar still previews tables without taking focus. (#1490)
+- Moving a connection into or out of a group syncs across devices instead of leaving it ungrouped on your other Macs.
+- Opening a table on a connection with many tables no longer stalls for several seconds while autocomplete and metadata load. Schema introspection runs on separate connections instead of blocking the query that fills the grid. (#1483)
+- Cassandra SSL connections with a client certificate now have a Key Passphrase field for an encrypted private key, and report "key is encrypted" or "passphrase is incorrect" instead of a generic handshake failure. The passphrase is stored in the Keychain. (#1487)
+
+## [0.46.0] - 2026-05-28
+
+### Added
+
+- Rectangular cell selection in the data grid, with Shift and Cmd modifiers to extend or add cells, and Cmd+C to copy as TSV. (#1446)
+- BigQuery datasets show as expandable nodes in the sidebar instead of one at a time behind a picker.
+- OpenCode Zen as an AI provider, with free models when no key is set. (#1400)
+- Oracle Database 11g (11.1 and 11.2) now connects. (#1425)
+- Oracle connections can use a SID instead of a service name. (#1425)
+- Cmd-click a foreign key arrow (or pick Open in New Tab from the right-click menu) to open the referenced table in a new tab. (#1421)
+- Favorite a connection from the welcome screen; starred connections appear in a Favorites section at the top of the list. (#1302)
+- Text-column cells holding JSON or PHP serialized values open in the structured viewer automatically.
+- Add and remove buttons in the table structure editor (Cmd+Shift+N to add, Cmd+Delete to remove), and a labelled add button on empty Indexes or Foreign Keys tabs. (#1319)
+
+### Changed
+
+- The query trash button clears results too, and a Clear Results item on the right-click menu clears results alone. (#1256)
+- Inserting SQL from AI Chat opens a new query tab, or fills an empty editor in place. (#1257)
+
+### Fixed
+
+- Safe mode level changes in the toolbar persist as the connection default across reconnects.
+- Toolbar customizations persist after closing and reopening a session window. (#1455)
+- Pasting rows with commas in a cell keeps each value in its own column and preserves NULL vs the literal text "NULL".
+- BigQuery: switching to another table loads its data immediately instead of leaving the grid empty.
+- Custom and OpenAI-compatible AI providers work when the base URL ends in `/v1`. (#1400)
+- MongoDB: opening a collection no longer crashes on documents containing NaN or infinite numbers. (#1418)
+- Connecting after an app update waits for in-progress plugin updates; when no compatible plugin build exists yet, the message asks you to update TablePro. (#1380)
+- Failed saved connections show the Test Connection troubleshooting dialog instead of a generic alert. (#1425, #483)
+- Oracle connection errors explain the cause in plain language instead of the driver's raw message. (#483)
+- AWS IAM authentication with a named profile reads `~/.aws/config` and supports `credential_process`, so SSO, IAM Identity Center, and assume-role profiles work. (#1291)
+- Opening a table no longer runs the initial query multiple times before data arrives.
+- iOS: Safe Mode setting survives relaunch instead of reverting to Off after iCloud sync.
+- iOS: large query results no longer crash the app; the editor keeps the rows it loaded and suggests adding LIMIT.
+- iOS: Safe Mode "Confirm Writes" prompts before grid edits and inserts, matching the query editor.
+- Redshift: schema switching, table search, and contains/starts with/ends with filters now work. (#1439)
+- MCP server: turning on Require Authentication no longer hangs the first request, generates a default token if needed, and shows it once. (#1093)
+- The Generate Token sheet focuses the Token Name field on first open. (#1093)
+- Double-clicking a CSV or TSV file when TablePro is closed opens the file directly. (#1443)
+- Opening a `.sql` file names the tab after the file instead of "SQL Query". (#1220)
+- Server Dashboard shows the Slow Queries panel, with a draggable vertical split and remembered divider positions. (#1464)
+- Data grid row context menus now copy the clicked or focused cell value for Copy, while Copy Rows still keeps the full-row TSV action.
+- Opening a table in a new tab now restores saved hidden columns before the first load, so the initial query matches the visible column set.
+- The JSON detail popover now shows long string values up to 300 characters in the tree view instead of cutting them off at 80.
+- Restoring or previewing a table no longer leaves the Tables sidebar spinner stuck after the table list has already loaded.
+
+## [0.45.0] - 2026-05-26
+
+### Added
+
+- Cloudflare Tunnel: connect to a database behind Cloudflare Access. TablePro starts and stops `cloudflared access tcp` per connection, the same way it manages SSH tunnels, with browser sign-in or a service token. Needs cloudflared (`brew install cloudflared`). (#1285)
+- Fill Column: right-click a column header to set one value across all loaded rows. The fill is staged like a normal edit, and one undo reverts it. Not available on primary key columns. (#1304)
+- AWS IAM authentication for PostgreSQL and MySQL on RDS and Aurora. Pick AWS IAM in the connection's Authentication field with an access key, named profile, or SSO. TablePro generates a fresh token on every connect and requires SSL. (#1291)
+- Date picker for date, datetime, timestamp, and time cells, from the chevron button. Double-clicking still edits the cell as text, and the picker keeps the value's format, fractional seconds, and timezone offset. (#1405)
+- Pagination bar for table tabs with a rows-per-page menu (5, 10, 20, 100, 500, 1,000, All rows, or custom) and First, Previous, Next, and Last buttons. (#1364)
+- Click the page indicator in the pagination bar to jump to a specific page. (#1364)
+- Pagination now appears for filtered tables with an unknown total row count, instead of showing only the first page. (#1364)
+- First Page and Last Page keyboard actions, unbound by default and assignable in Settings > Keyboard. (#1364)
+- JSON and JSONB cells display pretty-printed by default, keeping your key order and exact numbers. Viewing or reformatting no longer marks the row changed, and saving no longer reorders keys or rounds large integers.
+
+### Fixed
+
+- Changing the editor or data grid font size in Appearance settings now applies immediately and persists across relaunch, with no orphan custom themes left behind. (#1381)
+- Installing or updating a plugin right after updating TablePro now refetches the plugin list first, so it no longer fails against a stale cached list. (#1380)
+- Pressing Esc to close the Raw SQL filter suggestions, or to clear a search field, no longer also exits fullscreen. (#1403)
+- Connecting an OAuth-capable MCP client like Claude Code with an invalid or expired token now shows a clear error instead of "Invalid OAuth error response". (#1409)
+
+## [0.44.0] - 2026-05-23
+
+### Added
+
+- Import connections and passwords from DataGrip, including SSH tunnels and SSL settings. The source app doesn't need to be running. (#1374)
+
+### Changed
+
+- Active Connections is now a searchable toolbar popover instead of a modal dialog. (#1350)
+
+### Fixed
+
+- Connecting to a PostgreSQL-compatible engine without the pg_matviews catalog (such as db9.ai) no longer fails to load tables. (#1383)
+- Filtering a table now updates the row and page counts to match the filtered result, instead of the whole-table totals.
+- Reopening a table restores the filter you had applied, per connection. Removing or clearing a filter is remembered too, so an unfiltered table reopens with no filter. (#1347)
+- Quick switcher panel height now fits its results instead of leaving empty space below short lists. (#1349)
+- Importing connections from TablePlus brings over saved passwords again, after a recent release looked under the wrong keychain name.
+- Importing an SSH connection from TablePlus no longer fills in a fake private key path when no key was selected, and skips empty TLS certificate paths.
+- Importing from DBeaver no longer shows an unnecessary keychain permission warning, since DBeaver stores passwords in its own file.
+- Raw SQL filter now suggests columns and keywords at every position, including after AND and OR, instead of only the first. (#1346)
+- Plugins left incompatible after a TablePro update now update quietly in the background instead of showing a premature "could not be loaded" alert. You are notified only when no compatible version exists yet. (#1322)
+- A plugin you download and install by hand is no longer blocked by macOS Gatekeeper once its signature is verified. (#1322)
+- Clicking a table now replaces the active tab instead of opening a new one when you have multiple tabs open. A new tab still opens for unsaved edits, an applied filter, or sorting; double-click always opens a new tab. (#1348)
+
+## [0.43.3] - 2026-05-22
+
+### Fixed
+
+- Fixed a crash when adding a row while a cell editor or value viewer was open (#1378)
+
+## [0.43.2] - 2026-05-22
+
+### Changed
+
+- Hiding a column now also drops it from the query, so tables with one heavy column load faster. The primary key is always fetched so editing still works
+
+### Removed
+
+- Removed the embedded database CLI terminal. Use your system terminal for command-line access to your databases.
+
+### Fixed
+
+- Opening a connection no longer crashes when its database plugin is older than the app; outdated plugins now update automatically (#1371)
+- Safe mode no longer resets when you open another table; it stays set for the connection until you change it (#1351)
+- Reassigning the Execute Query, Execute All Statements, and Cancel Query shortcuts now takes effect and shows in the Query menu (#1357)
+- Custom shortcuts now require a modifier key, so a plain key like Space is no longer silently ignored (#1357)
+- Cancelling a pending connection no longer lets the abandoned attempt overwrite a later successful one to the same database (#1358)
+- Cancelling a pending SSH connection now closes its tunnel instead of leaving the port open (#1369)
+- Importing connections from DBeaver now brings over the username (#1355)
+- Copying rows now includes only the visible columns, in their current order (#1354)
+- The query shown in the editor when you open a table now matches the query that actually runs
+- Large text columns are no longer truncated to 256 characters when browsing a table, so editing a cell can't save a shortened value
+
+## [0.43.1] - 2026-05-20
+
+### Added
+
+- Right-click a column header to copy all its loaded values (#1325)
+- The row "Copy as" submenu adds CSV, CSV with Headers, Markdown table, and an IN clause for `WHERE id IN (...)` lookups (#1325)
+- A plugin update that arrives while a connection is open installs when you close the connection or quit, instead of being blocked
+- Settings > Plugins shows a badge with the count of rejected plugins and available updates
+- Connections whose driver plugin failed to load show a yellow warning triangle in the welcome list
+- A rejected driver plugin shows an inline banner with an Update Plugin button in the connection form
+
+### Changed
+
+- A plugin that fails to load no longer interrupts launch with an alert. The app posts a notification and lists rejected plugins in Settings > Plugins with Update Now and Remove buttons (#1322)
+- Rejected plugins auto-update from the registry in the background, retrying with backoff until they load (#1322)
+- The app installs the plugin binary built for its own version, even when the registry holds binaries for other versions (#1322)
+- Double-click or press Return on a read-only result cell to open a selectable text viewer. JSON columns open a viewer popover and BLOB columns open the hex viewer (#1336)
+- `Cmd+C` copies the focused cell when one row is selected and a cell has focus; otherwise it copies the selected row(s) as TSV. `Cmd+Shift+C` always copies row(s) as TSV. "Copy with Headers" stays in the Edit and row context menus (#1332)
+- `Cmd+F` toggles the filter panel on a table and opens Find in the SQL editor. The old `Cmd+Shift+F` filter shortcut is removed
+
+### Fixed
+
+- Fixes the recurring "Plugin was built with PluginKit version N, but version M is required" error after app updates. Rejected plugins now recover without manual steps (#1322, #1237, #923, #912, #443)
+- DuckDB spatial `GEOMETRY` columns show as WKT instead of NULL (#1324)
+- DuckDB `HUGEINT` and `UHUGEINT` keep full precision and no longer crash on negative values
+- DuckDB streaming results respect the row cap and show `TIMESTAMPTZ`, `TIMETZ`, and `GEOMETRY` instead of NULL
+- DuckDB schema reads handle apostrophes and concurrent schema switches
+- DuckDB ENUMs in schemas other than `main` resolve correctly
+- DuckDB `DATE` and `TIMESTAMP` BC years show a leading minus
+- `.db`, `.db3`, `.s3db`, `.sl3`, and `.sqlitedb` files open from Finder (#1327)
+- DynamoDB SSO connections work with `sso-session` profiles right after `aws sso login`, with no extra AWS CLI command (#1333)
 
 ## [0.43.0] - 2026-05-18
 
@@ -1909,7 +3146,40 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.43.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.66.0...HEAD
+[0.66.0]: https://github.com/TableProApp/TablePro/compare/v0.65.0...v0.66.0
+[0.65.0]: https://github.com/TableProApp/TablePro/compare/v0.64.0...v0.65.0
+[0.64.0]: https://github.com/TableProApp/TablePro/compare/v0.63.0...v0.64.0
+[0.63.0]: https://github.com/TableProApp/TablePro/compare/v0.62.0...v0.63.0
+[0.62.0]: https://github.com/TableProApp/TablePro/compare/v0.61.0...v0.62.0
+[0.61.0]: https://github.com/TableProApp/TablePro/compare/v0.60.1...v0.61.0
+[0.60.1]: https://github.com/TableProApp/TablePro/compare/v0.60.0...v0.60.1
+[0.60.0]: https://github.com/TableProApp/TablePro/compare/v0.59.0...v0.60.0
+[0.59.0]: https://github.com/TableProApp/TablePro/compare/v0.58.0...v0.59.0
+[0.58.0]: https://github.com/TableProApp/TablePro/compare/v0.57.1...v0.58.0
+[0.57.1]: https://github.com/TableProApp/TablePro/compare/v0.57.0...v0.57.1
+[0.57.0]: https://github.com/TableProApp/TablePro/compare/v0.56.2...v0.57.0
+[0.56.2]: https://github.com/TableProApp/TablePro/compare/v0.56.1...v0.56.2
+[0.56.1]: https://github.com/TableProApp/TablePro/compare/v0.56.0...v0.56.1
+[0.56.0]: https://github.com/TableProApp/TablePro/compare/v0.55.0...v0.56.0
+[0.55.0]: https://github.com/TableProApp/TablePro/compare/v0.54.0...v0.55.0
+[0.54.0]: https://github.com/TableProApp/TablePro/compare/v0.53.0...v0.54.0
+[0.53.0]: https://github.com/TableProApp/TablePro/compare/v0.52.1...v0.53.0
+[0.52.1]: https://github.com/TableProApp/TablePro/compare/v0.52.0...v0.52.1
+[0.52.0]: https://github.com/TableProApp/TablePro/compare/v0.51.1...v0.52.0
+[0.51.1]: https://github.com/TableProApp/TablePro/compare/v0.51.0...v0.51.1
+[0.51.0]: https://github.com/TableProApp/TablePro/compare/v0.50.0...v0.51.0
+[0.50.0]: https://github.com/TableProApp/TablePro/compare/v0.49.1...v0.50.0
+[0.49.1]: https://github.com/TableProApp/TablePro/compare/v0.49.0...v0.49.1
+[0.49.0]: https://github.com/TableProApp/TablePro/compare/v0.48.0...v0.49.0
+[0.48.0]: https://github.com/TableProApp/TablePro/compare/v0.47.0...v0.48.0
+[0.47.0]: https://github.com/TableProApp/TablePro/compare/v0.46.0...v0.47.0
+[0.46.0]: https://github.com/TableProApp/TablePro/compare/v0.45.0...v0.46.0
+[0.45.0]: https://github.com/TableProApp/TablePro/compare/v0.44.0...v0.45.0
+[0.44.0]: https://github.com/TableProApp/TablePro/compare/v0.43.3...v0.44.0
+[0.43.3]: https://github.com/TableProApp/TablePro/compare/v0.43.2...v0.43.3
+[0.43.2]: https://github.com/TableProApp/TablePro/compare/v0.43.1...v0.43.2
+[0.43.1]: https://github.com/TableProApp/TablePro/compare/v0.43.0...v0.43.1
 [0.43.0]: https://github.com/TableProApp/TablePro/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/TableProApp/TablePro/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/TableProApp/TablePro/compare/v0.40.3...v0.41.0

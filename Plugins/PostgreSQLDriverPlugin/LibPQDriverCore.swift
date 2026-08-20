@@ -11,15 +11,31 @@ import TableProPluginKit
 
 final class LibPQDriverCore: @unchecked Sendable {
     private let config: DriverConnectionConfig
+    private let schemaFallbackQueries: [String]
+    private let singleConnectionMode: Bool
     private var libpqConnection: LibPQPluginConnection?
 
     var currentSchema: String = "public"
+    private var selectedSchema: String?
+
+    var onPostConnect: (@Sendable () async -> Void)?
+
+    /// Set by `LibPQBackedDriver` for the span of one connect, so every driver built on this
+    /// core reports its handshake steps without having to thread a parameter through its own
+    /// `connect()` and duplicate the setup each one does around it.
+    var stageReporter: ConnectionStageReporter?
 
     var serverVersion: String? { libpqConnection?.serverVersion() }
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
 
-    init(config: DriverConnectionConfig) {
+    init(
+        config: DriverConnectionConfig,
+        schemaFallbackQueries: [String] = PostgreSQLSchemaQueries.schemaFallbackQueries,
+        singleConnectionMode: Bool = false
+    ) {
         self.config = config
+        self.schemaFallbackQueries = schemaFallbackQueries
+        self.singleConnectionMode = singleConnectionMode
     }
 
     // MARK: - Connection
@@ -32,16 +48,51 @@ final class LibPQDriverCore: @unchecked Sendable {
             password: config.password.isEmpty ? nil : config.password,
             database: config.database,
             sslConfig: config.ssl,
-            options: config.additionalFields["connectionOptions"]
+            options: config.additionalFields["connectionOptions"],
+            suppressServerSideCancel: singleConnectionMode
         )
 
-        try await pqConn.connect()
+        try await pqConn.connect(reportingStage: stageReporter ?? { _ in })
         libpqConnection = pqConn
 
-        if let schemaResult = try? await pqConn.executeQuery("SELECT current_schema()"),
-           let schema = schemaResult.rows.first?.first?.asText {
+        switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
+        case .schema(let schema):
             currentSchema = schema
+        case .empty:
+            if let fallback = await firstFallbackSchema(pqConn) {
+                currentSchema = fallback
+                _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
+            }
+        case .failed:
+            break
         }
+
+        if let selectedSchema,
+           (try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: selectedSchema))) != nil {
+            currentSchema = selectedSchema
+        }
+
+        await onPostConnect?()
+    }
+
+    private func firstFallbackSchema(_ pqConn: LibPQPluginConnection) async -> String? {
+        for query in schemaFallbackQueries {
+            if case .schema(let schema) = await probeSchema(pqConn, query: query) {
+                return schema
+            }
+        }
+        return nil
+    }
+
+    private func probeSchema(_ pqConn: LibPQPluginConnection, query: String) async -> PostgreSQLSchemaProbe {
+        let result = try? await pqConn.executeQuery(query)
+        return PostgreSQLSchemaQueries.probe(rows: result?.rows)
+    }
+
+    func applySchema(_ schema: String) async throws {
+        _ = try await execute(query: PostgreSQLSchemaQueries.setSearchPath(toSchema: schema))
+        selectedSchema = schema
+        currentSchema = schema
     }
 
     func disconnect() {
@@ -84,6 +135,14 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     func cancelQuery() {
         libpqConnection?.cancelCurrentQuery()
+    }
+
+    func setPostgisOidMap(_ map: [UInt32: String]) {
+        libpqConnection?.setPostgisOidMap(map)
+    }
+
+    func setEnumOidMap(_ map: [UInt32: String]) {
+        libpqConnection?.setEnumOidMap(map)
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
@@ -143,6 +202,14 @@ extension LibPQBackedDriver {
         try await core.connect()
     }
 
+    /// Routes back through `connect()` rather than calling the core directly, so a driver that
+    /// overrides `connect()` to probe catalogs or remap errors still runs its own version.
+    func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
+        core.stageReporter = report
+        defer { core.stageReporter = nil }
+        try await connect()
+    }
+
     func disconnect() {
         core.disconnect()
     }
@@ -172,22 +239,25 @@ extension LibPQBackedDriver {
     }
 
     func switchSchema(to schema: String) async throws {
-        let escapedName = schema.replacingOccurrences(of: "\"", with: "\"\"")
-        _ = try await core.execute(query: "SET search_path TO \"\(escapedName)\", public")
-        core.currentSchema = schema
+        try await core.applySchema(schema)
     }
 
     var currentSchema: String? { core.currentSchema }
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
+
+    func beginTransaction() async throws {
+        try await beginTransaction(mode: .serverDefault)
+    }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        _ = try await execute(query: postgresBeginTransactionStatement(mode: mode))
+    }
+
     var serverVersion: String? { core.serverVersion }
     var parameterStyle: ParameterStyle { .dollar }
 
     func escapeLiteral(_ str: String) -> String {
         escapeStringLiteral(str)
-    }
-
-    var escapedSchema: String {
-        escapeLiteral(core.currentSchema)
     }
 }

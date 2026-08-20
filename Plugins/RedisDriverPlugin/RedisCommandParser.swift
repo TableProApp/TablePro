@@ -13,10 +13,12 @@ import TableProPluginKit
 /// A parsed Redis command ready for execution
 enum RedisOperation {
     case get(key: String)
-    case set(key: String, value: String, options: RedisSetOptions?)
+    case set(key: String, value: Data, options: RedisSetOptions?)
     case del(keys: [String])
     case keys(pattern: String)
     case scan(cursor: Int, pattern: String?, count: Int?)
+    case keyBrowse(pattern: String?, typeScope: String?, limit: Int, offset: Int)
+    case keyTree(pattern: String?, limit: Int)
     case type(key: String)
     case ttl(key: String)
     case pttl(key: String)
@@ -27,26 +29,26 @@ enum RedisOperation {
 
     // Hash
     case hget(key: String, field: String)
-    case hset(key: String, fieldValues: [(String, String)])
+    case hset(key: String, fieldValues: [(String, Data)])
     case hgetall(key: String)
     case hdel(key: String, fields: [String])
 
     // List
     case lrange(key: String, start: Int, stop: Int)
-    case lpush(key: String, values: [String])
-    case rpush(key: String, values: [String])
+    case lpush(key: String, values: [Data])
+    case rpush(key: String, values: [Data])
     case llen(key: String)
 
     // Set
     case smembers(key: String)
-    case sadd(key: String, members: [String])
-    case srem(key: String, members: [String])
+    case sadd(key: String, members: [Data])
+    case srem(key: String, members: [Data])
     case scard(key: String)
 
     // Sorted set
     case zrange(key: String, start: String, stop: String, flags: [String])
-    case zadd(key: String, flags: [String], scoreMembers: [(Double, String)])
-    case zrem(key: String, members: [String])
+    case zadd(key: String, flags: [String], scoreMembers: [(Double, Data)])
+    case zrem(key: String, members: [Data])
     case zcard(key: String)
 
     // Stream
@@ -61,7 +63,7 @@ enum RedisOperation {
     case select(database: Int)
     case configGet(parameter: String)
     case configSet(parameter: String, value: String)
-    case command(args: [String])
+    case command(args: [RedisArgument])
 
     // Multi
     case multi
@@ -90,8 +92,8 @@ extension RedisParseError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .emptySyntax: return String(localized: "Empty Redis command")
-        case .invalidArgument(let msg): return String(localized: "Invalid argument: \(msg)")
-        case .missingArgument(let msg): return String(localized: "Missing argument: \(msg)")
+        case .invalidArgument(let msg): return String(format: String(localized: "Invalid argument: %@"), msg)
+        case .missingArgument(let msg): return String(format: String(localized: "Missing argument: %@"), msg)
         }
     }
 }
@@ -106,10 +108,13 @@ struct RedisCommandParser {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw RedisParseError.emptySyntax }
 
-        let tokens = tokenize(trimmed)
+        guard let split = RedisArgumentCodec.split(trimmed) else {
+            throw RedisParseError.invalidArgument(String(localized: "unbalanced quotes"))
+        }
+        let tokens = split.map { RedisArgument($0) }
         guard let first = tokens.first else { throw RedisParseError.emptySyntax }
 
-        let command = first.uppercased()
+        let command = first.text.uppercased()
         let args = Array(tokens.dropFirst())
 
         switch command {
@@ -151,36 +156,102 @@ struct RedisCommandParser {
              "MULTI", "EXEC", "DISCARD", "AUTH", "OBJECT":
             return try parseServerCommand(command, args: args, tokens: tokens)
 
+        case "KEYBROWSE":
+            return parseKeyBrowse(args)
+
+        case "KEYTREE":
+            return parseKeyTree(args)
+
         default:
             return .command(args: tokens)
         }
     }
 
+    private static func parseKeyBrowse(_ args: [RedisArgument]) -> RedisOperation {
+        var pattern: String?
+        var typeScope: String?
+        var limit = 200
+        var offset = 0
+        var i = 0
+        while i < args.count {
+            switch args[i].text.uppercased() {
+            case "MATCH":
+                if i + 1 < args.count {
+                    pattern = args[i + 1].text
+                    i += 1
+                }
+            case "TYPE":
+                if i + 1 < args.count {
+                    typeScope = args[i + 1].text
+                    i += 1
+                }
+            case "LIMIT":
+                if i + 1 < args.count, let value = Int(args[i + 1].text) {
+                    limit = value
+                    i += 1
+                }
+            case "OFFSET":
+                if i + 1 < args.count, let value = Int(args[i + 1].text) {
+                    offset = value
+                    i += 1
+                }
+            default:
+                break
+            }
+            i += 1
+        }
+        return .keyBrowse(pattern: pattern, typeScope: typeScope, limit: limit, offset: offset)
+    }
+
+    private static func parseKeyTree(_ args: [RedisArgument]) -> RedisOperation {
+        var pattern: String?
+        var limit = PluginRowLimits.emergencyMax
+        var i = 0
+        while i < args.count {
+            switch args[i].text.uppercased() {
+            case "MATCH":
+                if i + 1 < args.count {
+                    pattern = args[i + 1].text
+                    i += 1
+                }
+            case "LIMIT":
+                if i + 1 < args.count, let value = Int(args[i + 1].text) {
+                    limit = value
+                    i += 1
+                }
+            default:
+                break
+            }
+            i += 1
+        }
+        return .keyTree(pattern: pattern, limit: limit)
+    }
+
     // MARK: - Key Commands
 
     private static func parseKeyCommand(
-        _ command: String, args: [String], tokens: [String]
+        _ command: String, args: [RedisArgument], tokens: [RedisArgument]
     ) throws -> RedisOperation {
         switch command {
         case "GET":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("GET requires a key") }
-            return .get(key: args[0])
+            return .get(key: args[0].text)
 
         case "SET":
             guard args.count >= 2 else { throw RedisParseError.missingArgument("SET requires key and value") }
             let options = try parseSetOptions(Array(args.dropFirst(2)))
-            return .set(key: args[0], value: args[1], options: options)
+            return .set(key: args[0].text, value: args[1].bytes, options: options)
 
         case "DEL":
             guard !args.isEmpty else { throw RedisParseError.missingArgument("DEL requires at least one key") }
-            return .del(keys: args)
+            return .del(keys: args.map(\.text))
 
         case "KEYS":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("KEYS requires a pattern") }
-            return .keys(pattern: args[0])
+            return .keys(pattern: args[0].text)
 
         case "SCAN":
-            guard args.count >= 1, let cursor = Int(args[0]) else {
+            guard args.count >= 1, let cursor = Int(args[0].text) else {
                 throw RedisParseError.missingArgument("SCAN requires a cursor (integer)")
             }
             let (pattern, count) = try parseScanOptions(Array(args.dropFirst()))
@@ -188,32 +259,32 @@ struct RedisCommandParser {
 
         case "TYPE":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("TYPE requires a key") }
-            return .type(key: args[0])
+            return .type(key: args[0].text)
 
         case "TTL":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("TTL requires a key") }
-            return .ttl(key: args[0])
+            return .ttl(key: args[0].text)
 
         case "PTTL":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("PTTL requires a key") }
-            return .pttl(key: args[0])
+            return .pttl(key: args[0].text)
 
         case "EXPIRE":
             guard args.count >= 2 else { throw RedisParseError.missingArgument("EXPIRE requires key and seconds") }
-            guard let seconds = Int(args[1]) else {
+            guard let seconds = Int(args[1].text) else {
                 throw RedisParseError.invalidArgument("EXPIRE seconds must be an integer")
             }
             // Redis 7.0+ supports optional NX|XX|GT|LT flags; pass through as raw command
             if args.count > 2 {
                 return .command(args: tokens)
             }
-            return .expire(key: args[0], seconds: seconds)
+            return .expire(key: args[0].text, seconds: seconds)
 
         case "PEXPIRE":
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("PEXPIRE requires key and milliseconds")
             }
-            guard Int(args[1]) != nil else {
+            guard Int(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("PEXPIRE milliseconds must be an integer")
             }
             return .command(args: tokens)
@@ -222,7 +293,7 @@ struct RedisCommandParser {
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("EXPIREAT requires key and timestamp")
             }
-            guard Int(args[1]) != nil else {
+            guard Int(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("EXPIREAT timestamp must be an integer")
             }
             return .command(args: tokens)
@@ -231,22 +302,22 @@ struct RedisCommandParser {
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("PEXPIREAT requires key and milliseconds-timestamp")
             }
-            guard Int(args[1]) != nil else {
+            guard Int(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("PEXPIREAT milliseconds-timestamp must be an integer")
             }
             return .command(args: tokens)
 
         case "PERSIST":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("PERSIST requires a key") }
-            return .persist(key: args[0])
+            return .persist(key: args[0].text)
 
         case "RENAME":
             guard args.count >= 2 else { throw RedisParseError.missingArgument("RENAME requires key and newKey") }
-            return .rename(key: args[0], newKey: args[1])
+            return .rename(key: args[0].text, newKey: args[1].text)
 
         case "EXISTS":
             guard !args.isEmpty else { throw RedisParseError.missingArgument("EXISTS requires at least one key") }
-            return .exists(keys: args)
+            return .exists(keys: args.map(\.text))
 
         case "GETSET":
             guard args.count >= 2 else { throw RedisParseError.missingArgument("GETSET requires key and value") }
@@ -280,14 +351,14 @@ struct RedisCommandParser {
 
         case "INCRBY":
             guard args.count >= 2 else { throw RedisParseError.missingArgument("INCRBY requires key and increment") }
-            guard Int(args[1]) != nil else {
+            guard Int(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("INCRBY increment must be an integer")
             }
             return .command(args: tokens)
 
         case "DECRBY":
             guard args.count >= 2 else { throw RedisParseError.missingArgument("DECRBY requires key and decrement") }
-            guard Int(args[1]) != nil else {
+            guard Int(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("DECRBY decrement must be an integer")
             }
             return .command(args: tokens)
@@ -296,7 +367,7 @@ struct RedisCommandParser {
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("INCRBYFLOAT requires key and increment")
             }
-            guard Double(args[1]) != nil else {
+            guard Double(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("INCRBYFLOAT increment must be a number")
             }
             return .command(args: tokens)
@@ -313,40 +384,40 @@ struct RedisCommandParser {
     // MARK: - Hash Commands
 
     private static func parseHashCommand(
-        _ command: String, args: [String], tokens: [String]
+        _ command: String, args: [RedisArgument], tokens: [RedisArgument]
     ) throws -> RedisOperation {
         switch command {
         case "HGET":
             guard args.count >= 2 else { throw RedisParseError.missingArgument("HGET requires key and field") }
-            return .hget(key: args[0], field: args[1])
+            return .hget(key: args[0].text, field: args[1].text)
 
         case "HSET":
             guard args.count >= 3, args.count % 2 == 1 else {
                 throw RedisParseError.missingArgument("HSET requires key followed by field value pairs")
             }
-            var fieldValues: [(String, String)] = []
+            var fieldValues: [(String, Data)] = []
             var i = 1
             while i + 1 < args.count {
-                fieldValues.append((args[i], args[i + 1]))
+                fieldValues.append((args[i].text, args[i + 1].bytes))
                 i += 2
             }
-            return .hset(key: args[0], fieldValues: fieldValues)
+            return .hset(key: args[0].text, fieldValues: fieldValues)
 
         case "HGETALL":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("HGETALL requires a key") }
-            return .hgetall(key: args[0])
+            return .hgetall(key: args[0].text)
 
         case "HDEL":
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("HDEL requires key and at least one field")
             }
-            return .hdel(key: args[0], fields: Array(args.dropFirst()))
+            return .hdel(key: args[0].text, fields: args.dropFirst().map(\.text))
 
         case "HSCAN":
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("HSCAN requires key and cursor")
             }
-            guard Int(args[1]) != nil else {
+            guard Int(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("HSCAN cursor must be an integer")
             }
             return .command(args: tokens)
@@ -359,38 +430,38 @@ struct RedisCommandParser {
     // MARK: - List Commands
 
     private static func parseListCommand(
-        _ command: String, args: [String], tokens: [String]
+        _ command: String, args: [RedisArgument], tokens: [RedisArgument]
     ) throws -> RedisOperation {
         switch command {
         case "LRANGE":
             guard args.count >= 3 else {
                 throw RedisParseError.missingArgument("LRANGE requires key, start, and stop")
             }
-            guard let start = Int(args[1]), let stop = Int(args[2]) else {
+            guard let start = Int(args[1].text), let stop = Int(args[2].text) else {
                 throw RedisParseError.invalidArgument("LRANGE start and stop must be integers")
             }
-            return .lrange(key: args[0], start: start, stop: stop)
+            return .lrange(key: args[0].text, start: start, stop: stop)
 
         case "LPUSH":
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("LPUSH requires key and at least one value")
             }
-            return .lpush(key: args[0], values: Array(args.dropFirst()))
+            return .lpush(key: args[0].text, values: args.dropFirst().map(\.bytes))
 
         case "RPUSH":
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("RPUSH requires key and at least one value")
             }
-            return .rpush(key: args[0], values: Array(args.dropFirst()))
+            return .rpush(key: args[0].text, values: args.dropFirst().map(\.bytes))
 
         case "LLEN":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("LLEN requires a key") }
-            return .llen(key: args[0])
+            return .llen(key: args[0].text)
 
         case "LPOP":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("LPOP requires a key") }
             if args.count >= 2 {
-                guard Int(args[1]) != nil else {
+                guard Int(args[1].text) != nil else {
                     throw RedisParseError.invalidArgument("LPOP count must be an integer")
                 }
             }
@@ -399,7 +470,7 @@ struct RedisCommandParser {
         case "RPOP":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("RPOP requires a key") }
             if args.count >= 2 {
-                guard Int(args[1]) != nil else {
+                guard Int(args[1].text) != nil else {
                     throw RedisParseError.invalidArgument("RPOP count must be an integer")
                 }
             }
@@ -409,7 +480,7 @@ struct RedisCommandParser {
             guard args.count >= 3 else {
                 throw RedisParseError.missingArgument("LSET requires key, index, and element")
             }
-            guard Int(args[1]) != nil else {
+            guard Int(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("LSET index must be an integer")
             }
             return .command(args: tokens)
@@ -418,7 +489,7 @@ struct RedisCommandParser {
             guard args.count >= 4 else {
                 throw RedisParseError.missingArgument("LINSERT requires key, BEFORE|AFTER, pivot, and element")
             }
-            let position = args[1].uppercased()
+            let position = args[1].text.uppercased()
             guard position == "BEFORE" || position == "AFTER" else {
                 throw RedisParseError.invalidArgument("LINSERT position must be BEFORE or AFTER")
             }
@@ -428,7 +499,7 @@ struct RedisCommandParser {
             guard args.count >= 3 else {
                 throw RedisParseError.missingArgument("LREM requires key, count, and element")
             }
-            guard Int(args[1]) != nil else {
+            guard Int(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("LREM count must be an integer")
             }
             return .command(args: tokens)
@@ -443,8 +514,8 @@ struct RedisCommandParser {
             guard args.count >= 4 else {
                 throw RedisParseError.missingArgument("LMOVE requires source, destination, LEFT|RIGHT, LEFT|RIGHT")
             }
-            let dir1 = args[2].uppercased()
-            let dir2 = args[3].uppercased()
+            let dir1 = args[2].text.uppercased()
+            let dir2 = args[3].text.uppercased()
             guard (dir1 == "LEFT" || dir1 == "RIGHT") && (dir2 == "LEFT" || dir2 == "RIGHT") else {
                 throw RedisParseError.invalidArgument("LMOVE directions must be LEFT or RIGHT")
             }
@@ -458,33 +529,33 @@ struct RedisCommandParser {
     // MARK: - Set Commands
 
     private static func parseSetCommand(
-        _ command: String, args: [String], tokens: [String]
+        _ command: String, args: [RedisArgument], tokens: [RedisArgument]
     ) throws -> RedisOperation {
         switch command {
         case "SMEMBERS":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("SMEMBERS requires a key") }
-            return .smembers(key: args[0])
+            return .smembers(key: args[0].text)
 
         case "SADD":
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("SADD requires key and at least one member")
             }
-            return .sadd(key: args[0], members: Array(args.dropFirst()))
+            return .sadd(key: args[0].text, members: args.dropFirst().map(\.bytes))
 
         case "SREM":
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("SREM requires key and at least one member")
             }
-            return .srem(key: args[0], members: Array(args.dropFirst()))
+            return .srem(key: args[0].text, members: args.dropFirst().map(\.bytes))
 
         case "SCARD":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("SCARD requires a key") }
-            return .scard(key: args[0])
+            return .scard(key: args[0].text)
 
         case "SPOP":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("SPOP requires a key") }
             if args.count >= 2 {
-                guard Int(args[1]) != nil else {
+                guard Int(args[1].text) != nil else {
                     throw RedisParseError.invalidArgument("SPOP count must be an integer")
                 }
             }
@@ -493,7 +564,7 @@ struct RedisCommandParser {
         case "SRANDMEMBER":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("SRANDMEMBER requires a key") }
             if args.count >= 2 {
-                guard Int(args[1]) != nil else {
+                guard Int(args[1].text) != nil else {
                     throw RedisParseError.invalidArgument("SRANDMEMBER count must be an integer")
                 }
             }
@@ -539,7 +610,7 @@ struct RedisCommandParser {
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("SSCAN requires key and cursor")
             }
-            guard Int(args[1]) != nil else {
+            guard Int(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("SSCAN cursor must be an integer")
             }
             return .command(args: tokens)
@@ -552,34 +623,33 @@ struct RedisCommandParser {
     // MARK: - Sorted Set Commands
 
     private static func parseSortedSetCommand(
-        _ command: String, args: [String], tokens: [String]
+        _ command: String, args: [RedisArgument], tokens: [RedisArgument]
     ) throws -> RedisOperation {
         switch command {
         case "ZRANGE":
             guard args.count >= 3 else { throw RedisParseError.missingArgument("ZRANGE requires key, start, and stop") }
-            let start = args[1]
-            let stop = args[2]
+            let start = args[1].text
+            let stop = args[2].text
             // Parse optional trailing flags: BYSCORE, BYLEX, REV, WITHSCORES, LIMIT offset count
             let knownFlags: Set<String> = ["BYSCORE", "BYLEX", "REV", "WITHSCORES", "LIMIT"]
             var flags: [String] = []
             var i = 3
             while i < args.count {
-                let upper = args[i].uppercased()
+                let upper = args[i].text.uppercased()
                 if knownFlags.contains(upper) {
                     flags.append(upper)
                     if upper == "LIMIT" {
-                        // LIMIT requires offset and count
                         guard i + 2 < args.count else {
                             throw RedisParseError.missingArgument("LIMIT requires offset and count")
                         }
-                        flags.append(args[i + 1])
-                        flags.append(args[i + 2])
+                        flags.append(args[i + 1].text)
+                        flags.append(args[i + 2].text)
                         i += 2
                     }
                 }
                 i += 1
             }
-            return .zrange(key: args[0], start: start, stop: stop, flags: flags)
+            return .zrange(key: args[0].text, start: start, stop: stop, flags: flags)
 
         case "ZADD":
             guard args.count >= 2 else {
@@ -589,34 +659,34 @@ struct RedisCommandParser {
             let zaddFlags: Set<String> = ["NX", "XX", "GT", "LT", "CH", "INCR"]
             var collectedFlags: [String] = []
             var i = 1
-            while i < args.count, zaddFlags.contains(args[i].uppercased()) {
-                collectedFlags.append(args[i].uppercased())
+            while i < args.count, zaddFlags.contains(args[i].text.uppercased()) {
+                collectedFlags.append(args[i].text.uppercased())
                 i += 1
             }
             let remaining = Array(args[i...])
             guard !remaining.isEmpty, remaining.count % 2 == 0 else {
                 throw RedisParseError.missingArgument("ZADD requires score member pairs after flags")
             }
-            var scoreMembers: [(Double, String)] = []
+            var scoreMembers: [(Double, Data)] = []
             var j = 0
             while j + 1 < remaining.count {
-                guard let score = Double(remaining[j]) else {
-                    throw RedisParseError.invalidArgument("ZADD score must be a number: \(remaining[j])")
+                guard let score = Double(remaining[j].text) else {
+                    throw RedisParseError.invalidArgument("ZADD score must be a number: \(remaining[j].text)")
                 }
-                scoreMembers.append((score, remaining[j + 1]))
+                scoreMembers.append((score, remaining[j + 1].bytes))
                 j += 2
             }
-            return .zadd(key: args[0], flags: collectedFlags, scoreMembers: scoreMembers)
+            return .zadd(key: args[0].text, flags: collectedFlags, scoreMembers: scoreMembers)
 
         case "ZREM":
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("ZREM requires key and at least one member")
             }
-            return .zrem(key: args[0], members: Array(args.dropFirst()))
+            return .zrem(key: args[0].text, members: args.dropFirst().map(\.bytes))
 
         case "ZCARD":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("ZCARD requires a key") }
-            return .zcard(key: args[0])
+            return .zcard(key: args[0].text)
 
         case "ZSCORE":
             guard args.count >= 2 else {
@@ -634,7 +704,7 @@ struct RedisCommandParser {
             guard args.count >= 3 else {
                 throw RedisParseError.missingArgument("ZREVRANGE requires key, start, and stop")
             }
-            guard Int(args[1]) != nil, Int(args[2]) != nil else {
+            guard Int(args[1].text) != nil, Int(args[2].text) != nil else {
                 throw RedisParseError.invalidArgument("ZREVRANGE start and stop must be integers")
             }
             return .command(args: tokens)
@@ -649,7 +719,7 @@ struct RedisCommandParser {
             guard args.count >= 3 else {
                 throw RedisParseError.missingArgument("ZINCRBY requires key, increment, and member")
             }
-            guard Double(args[1]) != nil else {
+            guard Double(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("ZINCRBY increment must be a number")
             }
             return .command(args: tokens)
@@ -675,7 +745,7 @@ struct RedisCommandParser {
         case "ZPOPMIN":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("ZPOPMIN requires a key") }
             if args.count >= 2 {
-                guard Int(args[1]) != nil else {
+                guard Int(args[1].text) != nil else {
                     throw RedisParseError.invalidArgument("ZPOPMIN count must be an integer")
                 }
             }
@@ -684,7 +754,7 @@ struct RedisCommandParser {
         case "ZPOPMAX":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("ZPOPMAX requires a key") }
             if args.count >= 2 {
-                guard Int(args[1]) != nil else {
+                guard Int(args[1].text) != nil else {
                     throw RedisParseError.invalidArgument("ZPOPMAX count must be an integer")
                 }
             }
@@ -694,7 +764,7 @@ struct RedisCommandParser {
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("ZSCAN requires key and cursor")
             }
-            guard Int(args[1]) != nil else {
+            guard Int(args[1].text) != nil else {
                 throw RedisParseError.invalidArgument("ZSCAN cursor must be an integer")
             }
             return .command(args: tokens)
@@ -707,7 +777,7 @@ struct RedisCommandParser {
     // MARK: - Stream Commands
 
     private static func parseStreamCommand(
-        _ command: String, args: [String], tokens: [String]
+        _ command: String, args: [RedisArgument], tokens: [RedisArgument]
     ) throws -> RedisOperation {
         switch command {
         case "XRANGE":
@@ -715,14 +785,14 @@ struct RedisCommandParser {
                 throw RedisParseError.missingArgument("XRANGE requires key, start, and end")
             }
             var count: Int?
-            if args.count >= 5, args[3].uppercased() == "COUNT" {
-                count = Int(args[4])
+            if args.count >= 5, args[3].text.uppercased() == "COUNT" {
+                count = Int(args[4].text)
             }
-            return .xrange(key: args[0], start: args[1], end: args[2], count: count)
+            return .xrange(key: args[0].text, start: args[1].text, end: args[2].text, count: count)
 
         case "XLEN":
             guard args.count >= 1 else { throw RedisParseError.missingArgument("XLEN requires a key") }
-            return .xlen(key: args[0])
+            return .xlen(key: args[0].text)
 
         case "XADD":
             // XADD key [NOMKSTREAM] [MAXLEN|MINID [=|~] threshold] *|ID field value [field value ...]
@@ -736,7 +806,7 @@ struct RedisCommandParser {
             guard args.count >= 3 else {
                 throw RedisParseError.missingArgument("XREAD requires STREAMS keyword, at least one key, and an ID")
             }
-            let hasStreams = args.contains { $0.uppercased() == "STREAMS" }
+            let hasStreams = args.contains { $0.text.uppercased() == "STREAMS" }
             guard hasStreams else {
                 throw RedisParseError.missingArgument("XREAD requires the STREAMS keyword")
             }
@@ -764,7 +834,7 @@ struct RedisCommandParser {
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("XINFO requires a subcommand and key")
             }
-            let sub = args[0].uppercased()
+            let sub = args[0].text.uppercased()
             guard sub == "STREAM" || sub == "GROUPS" || sub == "CONSUMERS" || sub == "HELP" else {
                 throw RedisParseError.invalidArgument(
                     "XINFO subcommand must be STREAM, GROUPS, CONSUMERS, or HELP"
@@ -776,7 +846,7 @@ struct RedisCommandParser {
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("XGROUP requires a subcommand and key")
             }
-            let sub = args[0].uppercased()
+            let sub = args[0].text.uppercased()
             guard sub == "CREATE" || sub == "SETID" || sub == "DELCONSUMER" || sub == "DESTROY" else {
                 throw RedisParseError.invalidArgument(
                     "XGROUP subcommand must be CREATE, SETID, DELCONSUMER, or DESTROY"
@@ -798,14 +868,14 @@ struct RedisCommandParser {
     // MARK: - Server Commands
 
     private static func parseServerCommand(
-        _ command: String, args: [String], tokens: [String]
+        _ command: String, args: [RedisArgument], tokens: [RedisArgument]
     ) throws -> RedisOperation {
         switch command {
         case "PING":
             return .ping
 
         case "INFO":
-            return .info(section: args.first)
+            return .info(section: args.first?.text)
 
         case "DBSIZE":
             return .dbsize
@@ -815,7 +885,7 @@ struct RedisCommandParser {
 
         case "FLUSHALL":
             // Optional ASYNC|SYNC flag
-            if let flag = args.first?.uppercased() {
+            if let flag = args.first?.text.uppercased() {
                 guard flag == "ASYNC" || flag == "SYNC" else {
                     throw RedisParseError.invalidArgument("FLUSHALL flag must be ASYNC or SYNC")
                 }
@@ -823,7 +893,7 @@ struct RedisCommandParser {
             return .command(args: tokens)
 
         case "SELECT":
-            guard args.count >= 1, let db = Int(args[0]) else {
+            guard args.count >= 1, let db = Int(args[0].text) else {
                 throw RedisParseError.missingArgument("SELECT requires a database index (integer)")
             }
             return .select(database: db)
@@ -832,15 +902,15 @@ struct RedisCommandParser {
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("CONFIG requires a subcommand and parameter")
             }
-            let subcommand = args[0].uppercased()
+            let subcommand = args[0].text.uppercased()
             switch subcommand {
             case "GET":
-                return .configGet(parameter: args[1])
+                return .configGet(parameter: args[1].text)
             case "SET":
                 guard args.count >= 3 else {
                     throw RedisParseError.missingArgument("CONFIG SET requires parameter and value")
                 }
-                return .configSet(parameter: args[1], value: args[2])
+                return .configSet(parameter: args[1].text, value: args[2].text)
             default:
                 return .command(args: tokens)
             }
@@ -864,7 +934,7 @@ struct RedisCommandParser {
             guard args.count >= 2 else {
                 throw RedisParseError.missingArgument("OBJECT requires a subcommand and key")
             }
-            let sub = args[0].uppercased()
+            let sub = args[0].text.uppercased()
             guard sub == "ENCODING" || sub == "REFCOUNT" || sub == "IDLETIME"
                 || sub == "HELP" || sub == "FREQ" else {
                 throw RedisParseError.invalidArgument(
@@ -878,95 +948,10 @@ struct RedisCommandParser {
         }
     }
 
-    // MARK: - Tokenizer
-
-    /// Split input by whitespace, respecting quoted strings (single and double quotes).
-    /// Escape sequences (\n, \t, \r, \\, \", \') are only decoded inside quoted strings.
-    /// Outside quotes, backslash is treated as a literal character (matching Redis CLI behavior).
-    private static func tokenize(_ input: String) -> [String] {
-        var tokens: [String] = []
-        var current = ""
-        var inQuote = false
-        var quoteChar: Character = "\""
-        var escapeNext = false
-        var escapedInsideQuote = false
-        var hadQuote = false
-
-        for char in input {
-            if escapeNext {
-                escapeNext = false
-                if escapedInsideQuote {
-                    // Decode known escape sequences inside quoted strings
-                    switch char {
-                    case "n": current.append("\n")
-                    case "t": current.append("\t")
-                    case "r": current.append("\r")
-                    case "\\": current.append("\\")
-                    case "\"": current.append("\"")
-                    case "'": current.append("'")
-                    default:
-                        // Unknown escape: preserve both characters
-                        current.append("\\")
-                        current.append(char)
-                    }
-                } else {
-                    // Outside quotes: backslash is literal
-                    current.append("\\")
-                    current.append(char)
-                }
-                continue
-            }
-
-            if char == "\\" {
-                escapeNext = true
-                escapedInsideQuote = inQuote
-                continue
-            }
-
-            if inQuote {
-                if char == quoteChar {
-                    inQuote = false
-                } else {
-                    current.append(char)
-                }
-                continue
-            }
-
-            if char == "\"" || char == "'" {
-                inQuote = true
-                hadQuote = true
-                quoteChar = char
-                continue
-            }
-
-            if char.isWhitespace {
-                if !current.isEmpty || hadQuote {
-                    tokens.append(current)
-                    current = ""
-                    hadQuote = false
-                }
-                continue
-            }
-
-            current.append(char)
-        }
-
-        // Handle trailing backslash
-        if escapeNext {
-            current.append("\\")
-        }
-
-        if !current.isEmpty || hadQuote {
-            tokens.append(current)
-        }
-
-        return tokens
-    }
-
     // MARK: - Option Parsers
 
     /// Parse SET command options: EX, PX, EXAT, PXAT, NX, XX
-    private static func parseSetOptions(_ args: [String]) throws -> RedisSetOptions? {
+    private static func parseSetOptions(_ args: [RedisArgument]) throws -> RedisSetOptions? {
         guard !args.isEmpty else { return nil }
 
         var options = RedisSetOptions()
@@ -974,13 +959,13 @@ struct RedisCommandParser {
         var i = 0
 
         while i < args.count {
-            let arg = args[i].uppercased()
+            let arg = args[i].text.uppercased()
             switch arg {
             case "EX":
                 guard i + 1 < args.count else {
                     throw RedisParseError.missingArgument("EX requires a value")
                 }
-                guard let seconds = Int(args[i + 1]), seconds > 0 else {
+                guard let seconds = Int(args[i + 1].text), seconds > 0 else {
                     throw RedisParseError.invalidArgument("EX value must be a positive integer")
                 }
                 options.ex = seconds
@@ -990,7 +975,7 @@ struct RedisCommandParser {
                 guard i + 1 < args.count else {
                     throw RedisParseError.missingArgument("PX requires a value")
                 }
-                guard let millis = Int(args[i + 1]), millis > 0 else {
+                guard let millis = Int(args[i + 1].text), millis > 0 else {
                     throw RedisParseError.invalidArgument("PX value must be a positive integer")
                 }
                 options.px = millis
@@ -1000,7 +985,7 @@ struct RedisCommandParser {
                 guard i + 1 < args.count else {
                     throw RedisParseError.missingArgument("EXAT requires a value")
                 }
-                guard let timestamp = Int(args[i + 1]) else {
+                guard let timestamp = Int(args[i + 1].text) else {
                     throw RedisParseError.invalidArgument("EXAT value must be a positive integer")
                 }
                 options.exat = timestamp
@@ -1010,7 +995,7 @@ struct RedisCommandParser {
                 guard i + 1 < args.count else {
                     throw RedisParseError.missingArgument("PXAT requires a value")
                 }
-                guard let timestamp = Int(args[i + 1]) else {
+                guard let timestamp = Int(args[i + 1].text) else {
                     throw RedisParseError.invalidArgument("PXAT value must be a positive integer")
                 }
                 options.pxat = timestamp
@@ -1032,24 +1017,24 @@ struct RedisCommandParser {
     }
 
     /// Parse SCAN options: MATCH pattern, COUNT count
-    private static func parseScanOptions(_ args: [String]) throws -> (pattern: String?, count: Int?) {
+    private static func parseScanOptions(_ args: [RedisArgument]) throws -> (pattern: String?, count: Int?) {
         var pattern: String?
         var count: Int?
         var i = 0
 
         while i < args.count {
-            let arg = args[i].uppercased()
+            let arg = args[i].text.uppercased()
             switch arg {
             case "MATCH":
                 if i + 1 < args.count {
-                    pattern = args[i + 1]
+                    pattern = args[i + 1].text
                     i += 1
                 }
             case "COUNT":
                 guard i + 1 < args.count else {
                     throw RedisParseError.missingArgument("COUNT requires a value")
                 }
-                guard let countVal = Int(args[i + 1]) else {
+                guard let countVal = Int(args[i + 1].text) else {
                     throw RedisParseError.invalidArgument("COUNT must be a positive integer")
                 }
                 count = countVal

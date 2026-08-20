@@ -56,11 +56,11 @@ internal final class FavoritesExpansionState {
     }
 
     private func load() {
-        if let data = UserDefaults.standard.data(forKey: foldersKey),
+        if let data = AppStorageEnvironment.shared.defaults.data(forKey: foldersKey),
            let decoded = try? JSONDecoder().decode([UUID: Set<UUID>].self, from: data) {
             foldersByConnection = decoded
         }
-        if let data = UserDefaults.standard.data(forKey: linkedKey),
+        if let data = AppStorageEnvironment.shared.defaults.data(forKey: linkedKey),
            let decoded = try? JSONDecoder().decode([UUID: Set<String>].self, from: data) {
             linkedNodesByConnection = decoded
         }
@@ -68,13 +68,13 @@ internal final class FavoritesExpansionState {
 
     private func persistFolders() {
         if let data = try? JSONEncoder().encode(foldersByConnection) {
-            UserDefaults.standard.set(data, forKey: foldersKey)
+            AppStorageEnvironment.shared.defaults.set(data, forKey: foldersKey)
         }
     }
 
     private func persistLinkedNodes() {
         if let data = try? JSONEncoder().encode(linkedNodesByConnection) {
-            UserDefaults.standard.set(data, forKey: linkedKey)
+            AppStorageEnvironment.shared.defaults.set(data, forKey: linkedKey)
         }
     }
 }

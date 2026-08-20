@@ -45,6 +45,10 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         AnyView(MQLExportOptionsView(plugin: self))
     }
 
+    func resetSettingsToDefaults() {
+        settings = MQLExportOptions()
+    }
+
     func export(
         tables: [PluginExportTable],
         dataSource: any PluginExportDataSource,
@@ -90,6 +94,7 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
 
             if includeData {
                 var columns: [String] = []
+                var columnTypeNames: [String] = []
                 var documentBatch: [String] = []
 
                 let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
@@ -99,20 +104,27 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                     switch element {
                     case .header(let header):
                         columns = header.columns
+                        columnTypeNames = header.columnTypeNames
                     case .rows(let rows):
                         for row in rows {
                             var fields: [String] = []
                             for (colIndex, column) in columns.enumerated() {
                                 guard colIndex < row.count else { continue }
                                 let cell = row[colIndex]
+                                let typeName = colIndex < columnTypeNames.count ? columnTypeNames[colIndex] : ""
                                 let jsonValue: String
                                 switch cell {
                                 case .null:
                                     continue
                                 case .bytes(let data):
-                                    jsonValue = "{\"$binary\": {\"base64\": \"\(data.base64EncodedString())\", \"subType\": \"00\"}}"
+                                    jsonValue = MQLExportHelpers.mqlBinaryValue(
+                                        for: data,
+                                        subtype: MongoDBUuidCodec.binarySubtype(fromColumnTypeName: typeName)
+                                    )
                                 case .text(let value):
-                                    jsonValue = MQLExportHelpers.mqlJsonValue(for: value)
+                                    jsonValue = MQLExportHelpers.mqlTextValue(
+                                        for: value, columnTypeName: typeName
+                                    )
                                 }
                                 fields.append("\"\(PluginExportUtilities.escapeJSONString(column))\": \(jsonValue)")
                             }

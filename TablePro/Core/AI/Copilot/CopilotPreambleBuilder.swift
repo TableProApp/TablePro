@@ -12,8 +12,7 @@ final class CopilotPreambleBuilder {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotPreambleBuilder")
 
     static let contextDirectory: URL = {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         return appSupport.appendingPathComponent("TablePro/copilot-context", isDirectory: true)
     }()
 

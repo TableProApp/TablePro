@@ -8,13 +8,26 @@
 import AppKit
 import SwiftUI
 
-struct AIChatMessageView: View {
+struct AIChatMessageView: View, Equatable {
     private static let userBubbleTintOpacity: Double = 0.08
 
     let message: ChatTurn
     var onRetry: (() -> Void)?
     var onRegenerate: (() -> Void)?
     var onEdit: (() -> Void)?
+    var onContinue: (() -> Void)?
+    var onAdjustToolLimit: (() -> Void)?
+    var pausedToolCallCount: Int?
+
+    static func == (lhs: AIChatMessageView, rhs: AIChatMessageView) -> Bool {
+        lhs.message === rhs.message
+            && (lhs.onRetry == nil) == (rhs.onRetry == nil)
+            && (lhs.onRegenerate == nil) == (rhs.onRegenerate == nil)
+            && (lhs.onEdit == nil) == (rhs.onEdit == nil)
+            && (lhs.onContinue == nil) == (rhs.onContinue == nil)
+            && (lhs.onAdjustToolLimit == nil) == (rhs.onAdjustToolLimit == nil)
+            && lhs.pausedToolCallCount == rhs.pausedToolCallCount
+    }
 
     private var attachedContextItems: [ContextItem] {
         message.blocks.compactMap { block in
@@ -28,7 +41,7 @@ struct AIChatMessageView: View {
             if message.role == .user {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Spacer()
+                        Spacer(minLength: 0)
                         Text("You")
                             .fontWeight(.medium)
                         Text("·")
@@ -47,7 +60,7 @@ struct AIChatMessageView: View {
 
                     if let onEdit {
                         HStack {
-                            Spacer()
+                            Spacer(minLength: 0)
                             Button { onEdit() } label: {
                                 Image(systemName: "pencil")
                                     .font(.caption2)
@@ -113,7 +126,36 @@ struct AIChatMessageView: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal, 8)
             }
+
+            toolLimitPauseRow
         }
+    }
+
+    @ViewBuilder
+    private var toolLimitPauseRow: some View {
+        if let onContinue, let onAdjustToolLimit, let pausedToolCallCount {
+            HStack(spacing: 8) {
+                Image(systemName: "pause.circle")
+                    .foregroundStyle(.secondary)
+                Text(pausedDescription(count: pausedToolCallCount))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button(String(localized: "Adjust Limit")) { onAdjustToolLimit() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .help(String(localized: "Open AI settings to change the tool call limit."))
+                Button(String(localized: "Continue")) { onContinue() }
+                    .controlSize(.small)
+                    .help(String(localized: "Resume with a fresh tool call budget."))
+            }
+            .font(.caption)
+            .padding(.horizontal, 8)
+            .padding(.top, 2)
+        }
+    }
+
+    private func pausedDescription(count: Int) -> String {
+        String(format: String(localized: "Paused after %d tool calls."), count)
     }
 
     private var roleHeader: some View {
@@ -142,6 +184,8 @@ struct AIChatMessageView: View {
                 return block.isStreaming || (reasoning.text?.isEmpty == false)
             case .image:
                 return true
+            case .sqlWalkthrough:
+                return true
             }
         }
         if visibleBlocks.isEmpty {
@@ -152,29 +196,27 @@ struct AIChatMessageView: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(visibleBlocks) { block in
                     AIChatBlockView(block: block)
+                        .equatable()
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 6)
         }
     }
 }
 
-private struct AIChatBlockView: View {
+private struct AIChatBlockView: View, Equatable {
     @Bindable var block: ChatContentBlock
+
+    static func == (lhs: AIChatBlockView, rhs: AIChatBlockView) -> Bool {
+        lhs.block === rhs.block
+    }
 
     var body: some View {
         switch block.kind {
         case .text(let text):
-            if block.isStreaming {
-                Text(text)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-            } else {
-                MarkdownView(source: text)
-                    .padding(.horizontal, 8)
-            }
+            MarkdownView(source: text, isStreaming: block.isStreaming)
+                .padding(.horizontal, 8)
         case .toolUse(let useBlock):
             AIChatToolUseBlockView(block: useBlock)
         case .toolResult(let resultBlock):
@@ -187,11 +229,15 @@ private struct AIChatBlockView: View {
         case .image(let input):
             AIChatImageBlockView(input: input)
                 .padding(.horizontal, 8)
+        case .sqlWalkthrough:
+            AIChatWalkthroughBlockView(block: block)
+                .padding(.horizontal, 8)
         }
     }
 }
 
 struct ChatTypingIndicatorView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var animating = false
 
     var body: some View {
@@ -202,7 +248,9 @@ struct ChatTypingIndicatorView: View {
                     .frame(width: 6, height: 6)
                     .offset(y: animating ? -3 : 0)
                     .animation(
-                        .easeInOut(duration: 0.4)
+                        reduceMotion
+                            ? nil
+                            : .easeInOut(duration: 0.4)
                             .repeatForever(autoreverses: true)
                             .delay(Double(index) * 0.15),
                         value: animating
@@ -210,6 +258,8 @@ struct ChatTypingIndicatorView: View {
             }
         }
         .frame(height: 16)
-        .onAppear { animating = true }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "Responding"))
+        .onAppear { animating = !reduceMotion }
     }
 }

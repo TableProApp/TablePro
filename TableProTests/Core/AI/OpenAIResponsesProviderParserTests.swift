@@ -58,6 +58,22 @@ struct OpenAIResponsesProviderParserTests {
         #expect(text == "I should look at")
     }
 
+    @Test("reasoning_text.delta yields reasoningDelta for xAI raw reasoning")
+    func reasoningTextDelta() throws {
+        var state = ResponsesStreamState()
+        let events = try parse([
+            "type": "response.reasoning_text.delta",
+            "item_id": "rs_grok",
+            "delta": "Let me check the schema"
+        ], state: &state)
+        guard case .reasoningDelta(let id, let text) = events.first else {
+            Issue.record("expected reasoningDelta; got \(events)")
+            return
+        }
+        #expect(id == "rs_grok")
+        #expect(text == "Let me check the schema")
+    }
+
     @Test("output_item.done reasoning yields reasoningEnd with encrypted opaque and real itemID")
     func reasoningEndCarriesEncryptedOpaque() throws {
         var state = ResponsesStreamState()
@@ -115,6 +131,64 @@ struct OpenAIResponsesProviderParserTests {
         }
         #expect(id == "call_xyz")
         #expect(delta == #"{"query":"#)
+    }
+
+    @Test("output_item.done function_call without arg deltas emits the complete arguments")
+    func functionCallDoneEmitsCompleteArguments() throws {
+        var state = ResponsesStreamState()
+        _ = try parse([
+            "type": "response.output_item.added",
+            "item": ["type": "function_call", "call_id": "call_xyz", "name": "execute_query"]
+        ], state: &state)
+        let events = try parse([
+            "type": "response.output_item.done",
+            "item": [
+                "type": "function_call",
+                "call_id": "call_xyz",
+                "name": "execute_query",
+                "arguments": #"{"query":"SELECT 1"}"#
+            ]
+        ], state: &state)
+        guard case .toolUseDelta(let id, let delta) = events.first else {
+            Issue.record("expected toolUseDelta with the complete arguments; got \(events)")
+            return
+        }
+        #expect(id == "call_xyz")
+        #expect(delta == #"{"query":"SELECT 1"}"#)
+        guard case .toolUseEnd(let endID) = events.last else {
+            Issue.record("expected toolUseEnd; got \(events)")
+            return
+        }
+        #expect(endID == "call_xyz")
+    }
+
+    @Test("output_item.done function_call after arg deltas does not duplicate arguments")
+    func functionCallDoneSkipsArgumentsWhenStreamed() throws {
+        var state = ResponsesStreamState()
+        _ = try parse([
+            "type": "response.output_item.added",
+            "item": ["type": "function_call", "call_id": "call_xyz", "name": "execute_query"]
+        ], state: &state)
+        _ = try parse([
+            "type": "response.function_call_arguments.delta",
+            "call_id": "call_xyz",
+            "delta": #"{"query":"SELECT 1"}"#
+        ], state: &state)
+        let events = try parse([
+            "type": "response.output_item.done",
+            "item": [
+                "type": "function_call",
+                "call_id": "call_xyz",
+                "name": "execute_query",
+                "arguments": #"{"query":"SELECT 1"}"#
+            ]
+        ], state: &state)
+        #expect(events.count == 1)
+        guard case .toolUseEnd(let id) = events.first else {
+            Issue.record("expected only toolUseEnd; got \(events)")
+            return
+        }
+        #expect(id == "call_xyz")
     }
 
     @Test("completed event captures usage tokens")

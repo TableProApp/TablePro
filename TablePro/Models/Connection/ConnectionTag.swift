@@ -12,7 +12,7 @@ struct ConnectionTag: Identifiable, Hashable, Codable {
     let id: UUID
     var name: String
     var isPreset: Bool  // Preset tags cannot be deleted
-    var color: ConnectionColor  // Tag display color
+    var color: ConnectionColor
 
     init(id: UUID = UUID(), name: String, isPreset: Bool = false, color: ConnectionColor = .gray) {
         self.id = id

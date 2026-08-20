@@ -30,17 +30,7 @@ actor AIChatStorage {
     }()
 
     private init() {
-        let appSupport: URL
-        if let resolved = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first {
-            appSupport = resolved
-        } else {
-            Self.logger.error("Application Support directory unavailable, falling back to temporary directory")
-            appSupport = FileManager.default.temporaryDirectory
-        }
-        let dir = appSupport
+        let dir = AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("ai_chats", isDirectory: true)
         directory = dir

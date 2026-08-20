@@ -8,6 +8,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSyncTransport
 
 @MainActor
 final class WeakCoordinatorRef {
@@ -29,6 +30,9 @@ final class ConnectionFormCoordinator {
     var network: NetworkPaneViewModel
     var auth: AuthPaneViewModel
     var ssh: SSHPaneViewModel
+    var cloudflareTunnel: CloudflareTunnelPaneViewModel
+    var cloudSQLProxy: CloudSQLProxyPaneViewModel
+    var socksProxy: SOCKSProxyPaneViewModel
     var ssl: SSLPaneViewModel
     var customization: CustomizationPaneViewModel
     var advanced: AdvancedPaneViewModel
@@ -65,6 +69,15 @@ final class ConnectionFormCoordinator {
         if services.pluginManager.supportsSSH(for: network.type) {
             panes.append(.ssh)
         }
+        if services.pluginManager.supportsCloudflareTunnel(for: network.type) {
+            panes.append(.cloudflareTunnel)
+        }
+        if network.type.supportsCloudSQLProxy {
+            panes.append(.cloudSQLProxy)
+        }
+        if services.pluginManager.supportsSOCKSProxy(for: network.type) {
+            panes.append(.socksProxy)
+        }
         if services.pluginManager.supportsSSL(for: network.type) {
             panes.append(.ssl)
         }
@@ -78,6 +91,9 @@ final class ConnectionFormCoordinator {
         network.validationIssues.isEmpty
             && auth.validationIssues.isEmpty
             && ssh.validationIssues.isEmpty
+            && cloudflareTunnel.validationIssues.isEmpty
+            && cloudSQLProxy.validationIssues.isEmpty
+            && socksProxy.validationIssues.isEmpty
             && ssl.validationIssues.isEmpty
             && customization.validationIssues.isEmpty
             && advanced.validationIssues.isEmpty
@@ -99,6 +115,9 @@ final class ConnectionFormCoordinator {
         self.network = NetworkPaneViewModel()
         self.auth = AuthPaneViewModel()
         self.ssh = SSHPaneViewModel()
+        self.cloudflareTunnel = CloudflareTunnelPaneViewModel()
+        self.cloudSQLProxy = CloudSQLProxyPaneViewModel()
+        self.socksProxy = SOCKSProxyPaneViewModel()
         self.ssl = SSLPaneViewModel()
         self.customization = CustomizationPaneViewModel()
         self.advanced = AdvancedPaneViewModel()
@@ -108,6 +127,9 @@ final class ConnectionFormCoordinator {
         network.coordinator = ref
         auth.coordinator = ref
         ssh.coordinator = ref
+        cloudflareTunnel.coordinator = ref
+        cloudSQLProxy.coordinator = ref
+        socksProxy.coordinator = ref
         ssl.coordinator = ref
         customization.coordinator = ref
         advanced.coordinator = ref
@@ -152,6 +174,9 @@ final class ConnectionFormCoordinator {
             network.load(from: existing)
             auth.load(from: existing, storage: storage)
             ssh.load(from: existing, storage: storage)
+            cloudflareTunnel.load(from: existing, storage: storage)
+            cloudSQLProxy.load(from: existing, storage: storage)
+            socksProxy.load(from: existing, storage: storage)
             ssl.load(from: existing)
             customization.load(from: existing)
             advanced.load(from: existing)
@@ -205,71 +230,49 @@ final class ConnectionFormCoordinator {
         saveConnection(connect: isNew)
     }
 
-    private func saveConnection(connect: Bool) {
-        let sshConfig = ssh.state.buildSSHConfig()
-        let sslConfig = ssl.buildConfig()
+    func buildEdits() -> ConnectionFormEdits {
+        var fields: [String: String] = [:]
+        network.write(into: &fields)
+        auth.write(into: &fields)
+        advanced.write(into: &fields)
 
-        var finalHost = network.host.trimmingCharacters(in: .whitespaces).isEmpty
-            ? "localhost" : network.host
-        var finalPort = Int(network.port) ?? network.type.defaultPort
-        let trimmedUsername = auth.username.trimmingCharacters(in: .whitespaces)
-        let finalUsername =
-            trimmedUsername.isEmpty && services.pluginManager.requiresAuthentication(for: network.type)
-                ? "root" : trimmedUsername
-
-        let finalId = connectionId ?? UUID()
-
-        var finalAdditionalFields: [String: String] = [:]
-        network.write(into: &finalAdditionalFields)
-        auth.write(into: &finalAdditionalFields)
-        advanced.write(into: &finalAdditionalFields)
+        var resolvedHost = network.resolvedHost
+        var resolvedPort = network.resolvedPort
 
         if network.type.pluginTypeId == "MongoDB",
-           let mongoHosts = finalAdditionalFields["mongoHosts"],
+           let mongoHosts = fields["mongoHosts"],
            !mongoHosts.isEmpty
         {
             let result = Self.normalizeMongoHosts(mongoHosts, defaultPort: network.type.defaultPort)
-            finalAdditionalFields["mongoHosts"] = result.hosts
-            finalHost = result.primaryHost
-            finalPort = result.primaryPort
+            fields["mongoHosts"] = result.hosts
+            resolvedHost = result.primaryHost
+            resolvedPort = result.primaryPort
         }
 
         let trimmedScript = advanced.preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedScript.isEmpty {
-            finalAdditionalFields["preConnectScript"] = advanced.preConnectScript
+        if trimmedScript.isEmpty {
+            fields.removeValue(forKey: "preConnectScript")
         } else {
-            finalAdditionalFields.removeValue(forKey: "preConnectScript")
+            fields["preConnectScript"] = advanced.preConnectScript
         }
 
-        finalAdditionalFields["promptForPassword"] = auth.promptForPassword ? "true" : nil
-
-        let secureFields = services.pluginManager.additionalConnectionFields(for: network.type)
-            .filter(\.isSecure)
-        for field in secureFields {
-            if let value = finalAdditionalFields[field.id], !value.isEmpty {
-                storage.savePluginSecureField(value, fieldId: field.id, for: finalId)
-            } else {
-                storage.deletePluginSecureField(fieldId: field.id, for: finalId)
-            }
-            finalAdditionalFields.removeValue(forKey: field.id)
-        }
-
-        let sshTunnelMode = ssh.state.buildTunnelMode()
-        let connectionToSave = DatabaseConnection(
-            id: finalId,
+        return ConnectionFormEdits(
             name: network.name,
-            host: finalHost,
-            port: finalPort,
+            host: resolvedHost,
+            port: resolvedPort,
             database: network.database,
-            username: finalUsername,
+            username: auth.resolvedUsername,
             type: network.type,
-            sshConfig: sshConfig,
-            sslConfig: sslConfig,
+            sshConfig: ssh.state.buildSSHConfig(),
+            sslConfig: ssl.buildConfig(),
             color: customization.color,
-            tagId: customization.tagId,
+            tagIds: customization.tagIds,
             groupId: customization.groupId,
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
-            sshTunnelMode: sshTunnelMode,
+            sshTunnelMode: ssh.state.buildTunnelMode(),
+            cloudflareTunnelMode: cloudflareTunnel.state.buildTunnelMode(),
+            cloudSQLProxyMode: cloudSQLProxy.state.buildTunnelMode(),
+            socksProxyMode: socksProxy.state.buildTunnelMode(),
             safeModeLevel: customization.safeModeLevel,
             aiPolicy: advanced.aiPolicy,
             aiRules: aiRules.trimmedRules,
@@ -278,10 +281,52 @@ final class ConnectionFormCoordinator {
             startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : advanced.startupCommands,
             localOnly: advanced.localOnly,
-            additionalFields: finalAdditionalFields.isEmpty ? nil : finalAdditionalFields
+            additionalFields: fields,
+            ownedAdditionalFieldIDs: ownedAdditionalFieldIDs()
         )
+    }
 
-        if auth.promptForPassword {
+    private func ownedAdditionalFieldIDs() -> Set<String> {
+        var ids = ConnectionFormEdits.appManagedAdditionalFieldIDs
+        for field in services.pluginManager.additionalConnectionFields(for: network.type) {
+            ids.insert(field.id)
+        }
+        guard let originalType = originalConnection?.type, originalType != network.type else {
+            return ids
+        }
+        for field in services.pluginManager.additionalConnectionFields(for: originalType) {
+            ids.insert(field.id)
+        }
+        return ids
+    }
+
+    private func baseConnection(id: UUID) -> DatabaseConnection {
+        guard let original = originalConnection, original.id == id else {
+            return DatabaseConnection(id: id, name: "")
+        }
+        return original
+    }
+
+    private func saveConnection(connect: Bool) {
+        let finalId = connectionId ?? UUID()
+
+        var edits = buildEdits()
+        edits.additionalFields["promptForPassword"] = auth.effectivePromptForPassword ? "true" : nil
+
+        let secureFields = services.pluginManager.additionalConnectionFields(for: network.type)
+            .filter(\.isSecure)
+        for field in secureFields {
+            if let value = edits.additionalFields[field.id], !value.isEmpty {
+                storage.savePluginSecureField(value, fieldId: field.id, for: finalId)
+            } else {
+                storage.deletePluginSecureField(fieldId: field.id, for: finalId)
+            }
+            edits.additionalFields.removeValue(forKey: field.id)
+        }
+
+        let connectionToSave = edits.applied(to: baseConnection(id: finalId))
+
+        if auth.effectivePromptForPassword {
             storage.deletePassword(for: connectionToSave.id)
         } else if !auth.password.isEmpty {
             storage.savePassword(auth.password, for: connectionToSave.id)
@@ -306,6 +351,16 @@ final class ConnectionFormCoordinator {
             storage.deleteKeyPassphrase(for: connectionToSave.id)
             storage.deleteTOTPSecret(for: connectionToSave.id)
         }
+
+        if !ssl.clientKeyPassphrase.isEmpty && !ssl.clientKeyPath.trimmingCharacters(in: .whitespaces).isEmpty {
+            storage.saveSSLClientKeyPassphrase(ssl.clientKeyPassphrase, for: connectionToSave.id)
+        } else {
+            storage.deleteSSLClientKeyPassphrase(for: connectionToSave.id)
+        }
+
+        cloudflareTunnel.save(to: connectionToSave.id, storage: storage)
+        cloudSQLProxy.save(to: connectionToSave.id, storage: storage)
+        socksProxy.save(to: connectionToSave.id, storage: storage)
 
         var savedConnections = storage.loadConnections()
         if isNew {
@@ -341,7 +396,6 @@ final class ConnectionFormCoordinator {
     }
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))
@@ -376,7 +430,6 @@ final class ConnectionFormCoordinator {
     }
 
     func connectAfterInstall(_ connection: DatabaseConnection) {
-        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))
@@ -394,97 +447,38 @@ final class ConnectionFormCoordinator {
         testSucceeded = false
         let window = NSApp.keyWindow
 
-        let sshConfig = ssh.state.buildSSHConfig()
-        let sslConfig = ssl.buildConfig()
-
-        var testHost = network.host.trimmingCharacters(in: .whitespaces).isEmpty
-            ? "localhost" : network.host
-        var testPort = Int(network.port) ?? network.type.defaultPort
-        let trimmedUsername = auth.username.trimmingCharacters(in: .whitespaces)
-        let finalUsername =
-            trimmedUsername.isEmpty && services.pluginManager.requiresAuthentication(for: network.type)
-                ? "root" : trimmedUsername
-
-        var finalAdditionalFields: [String: String] = [:]
-        network.write(into: &finalAdditionalFields)
-        auth.write(into: &finalAdditionalFields)
-        advanced.write(into: &finalAdditionalFields)
-
-        let trimmedScript = advanced.preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedScript.isEmpty {
-            finalAdditionalFields["preConnectScript"] = advanced.preConnectScript
-        } else {
-            finalAdditionalFields.removeValue(forKey: "preConnectScript")
-        }
-
-        if network.type.pluginTypeId == "MongoDB",
-           let mongoHosts = finalAdditionalFields["mongoHosts"],
-           !mongoHosts.isEmpty
-        {
-            let result = Self.normalizeMongoHosts(mongoHosts, defaultPort: network.type.defaultPort)
-            finalAdditionalFields["mongoHosts"] = result.hosts
-            testHost = result.primaryHost
-            testPort = result.primaryPort
-        }
-
-        let testTunnelMode = ssh.state.buildTunnelMode()
-        let testConn = DatabaseConnection(
-            name: network.name,
-            host: testHost,
-            port: testPort,
-            database: network.database,
-            username: finalUsername,
-            type: network.type,
-            sshConfig: sshConfig,
-            sslConfig: sslConfig,
-            color: customization.color,
-            tagId: customization.tagId,
-            groupId: customization.groupId,
-            sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
-            sshTunnelMode: testTunnelMode,
-            redisDatabase: advanced.additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
-            startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? nil : advanced.startupCommands,
-            additionalFields: finalAdditionalFields.isEmpty ? nil : finalAdditionalFields
-        )
+        var testConn = buildEdits().applied(to: DatabaseConnection(id: UUID(), name: ""))
+        testConn.passwordSource = auth.password.isEmpty ? originalConnection?.passwordSource : nil
         temporaryTestIds.insert(testConn.id)
 
         let password = auth.password
-        let promptForPassword = auth.promptForPassword
+        let promptForPassword = auth.effectivePromptForPassword
         let connectionType = network.type
         let displayName = network.name.isEmpty ? network.host : network.name
         let sshState = ssh.state
-        let additionalFieldValues = finalAdditionalFields
+        let tunnelStates = TunnelFormStates(
+            ssh: ssh.state,
+            cloudflare: cloudflareTunnel.state,
+            cloudSQLProxy: cloudSQLProxy.state,
+            socksProxy: socksProxy.state
+        )
+        let sslClientKeyPassphrase = ssl.clientKeyPassphrase
+        let sslClientKeyPath = ssl.clientKeyPath
+        let additionalFieldValues = testConn.additionalFields
+
+        persistTestSecrets(
+            for: testConn.id,
+            password: password,
+            promptForPassword: promptForPassword,
+            tunnelStates: tunnelStates,
+            sslClientKeyPassphrase: sslClientKeyPassphrase,
+            sslClientKeyPath: sslClientKeyPath,
+            connectionType: connectionType,
+            additionalFieldValues: additionalFieldValues
+        )
 
         testTask = Task { [weak self] in
             do {
-                if !password.isEmpty && !promptForPassword {
-                    services.connectionStorage.savePassword(password, for: testConn.id)
-                }
-                if sshState.enabled && sshState.profileId == nil {
-                    if (sshState.authMethod == .password || sshState.authMethod == .keyboardInteractive)
-                        && !sshState.password.isEmpty
-                    {
-                        services.connectionStorage.saveSSHPassword(sshState.password, for: testConn.id)
-                    }
-                    if sshState.authMethod == .privateKey && !sshState.keyPassphrase.isEmpty {
-                        services.connectionStorage.saveKeyPassphrase(sshState.keyPassphrase, for: testConn.id)
-                    }
-                    if sshState.totpMode == .autoGenerate && !sshState.totpSecret.isEmpty {
-                        services.connectionStorage.saveTOTPSecret(sshState.totpSecret, for: testConn.id)
-                    }
-                }
-
-                for field in services.pluginManager.additionalConnectionFields(for: connectionType)
-                    where field.isSecure
-                {
-                    if let value = additionalFieldValues[field.id], !value.isEmpty {
-                        services.connectionStorage.savePluginSecureField(
-                            value, fieldId: field.id, for: testConn.id
-                        )
-                    }
-                }
-
                 let sshPasswordForTest = sshState.profileId == nil ? sshState.password : nil
                 let isApiOnly = services.pluginManager.connectionMode(for: connectionType) == .apiOnly
                 let testPwOverride: String? = promptForPassword
@@ -526,6 +520,11 @@ final class ConnectionFormCoordinator {
                     }
                 }
             } catch {
+                let fields = self?.auth.additionalFieldValues ?? [:]
+                if let provider = ConnectionSignInRegistry.provider(for: error, fields: fields) {
+                    await self?.offerSignIn(provider, fields: fields, testId: testConn.id, window: window)
+                    return
+                }
                 await MainActor.run {
                     self?.cleanupTestSecrets(for: testConn.id)
                     self?.isTesting = false
@@ -534,7 +533,7 @@ final class ConnectionFormCoordinator {
                     if case PluginError.pluginNotInstalled = error {
                         self?.pluginInstallConnection = testConn
                     } else if let item = PluginDiagnosticItem.classify(
-                        error: error, connection: testConn, username: finalUsername
+                        error: error, connection: testConn, username: testConn.username
                     ) {
                         self?.pluginDiagnostic = item
                     } else {
@@ -549,11 +548,105 @@ final class ConnectionFormCoordinator {
         }
     }
 
+    /// Testing tears down first so the sheet never covers a running test, and the result is left
+    /// alone rather than marked failed: the credential was the problem, not the settings.
+    private func offerSignIn(
+        _ provider: ConnectionSignInProvider,
+        fields: [String: String],
+        testId: UUID,
+        window: NSWindow?
+    ) async {
+        cleanupTestSecrets(for: testId)
+        isTesting = false
+        testTask = nil
+        guard await ConnectionSignInPrompt.offer(provider, fields: fields, window: window) else { return }
+        AlertHelper.showInfoSheet(
+            title: String(localized: "Signed In"),
+            message: provider.signedInMessage,
+            window: window
+        )
+    }
+
+    private struct TunnelFormStates {
+        let ssh: SSHTunnelFormState
+        let cloudflare: CloudflareTunnelFormState
+        let cloudSQLProxy: CloudSQLProxyFormState
+        let socksProxy: SOCKSProxyFormState
+    }
+
+    private func persistTestSecrets(
+        for testId: UUID,
+        password: String,
+        promptForPassword: Bool,
+        tunnelStates: TunnelFormStates,
+        sslClientKeyPassphrase: String,
+        sslClientKeyPath: String,
+        connectionType: DatabaseType,
+        additionalFieldValues: [String: String]
+    ) {
+        let sshState = tunnelStates.ssh
+        let cloudflareState = tunnelStates.cloudflare
+        let cloudSQLProxyState = tunnelStates.cloudSQLProxy
+        let socksProxyState = tunnelStates.socksProxy
+
+        if !password.isEmpty && !promptForPassword {
+            services.connectionStorage.savePassword(password, for: testId)
+        }
+        if sshState.enabled && sshState.profileId == nil {
+            if (sshState.authMethod == .password || sshState.authMethod == .keyboardInteractive)
+                && !sshState.password.isEmpty
+            {
+                services.connectionStorage.saveSSHPassword(sshState.password, for: testId)
+            }
+            if sshState.authMethod == .privateKey && !sshState.keyPassphrase.isEmpty {
+                services.connectionStorage.saveKeyPassphrase(sshState.keyPassphrase, for: testId)
+            }
+            if sshState.totpMode == .autoGenerate && !sshState.totpSecret.isEmpty {
+                services.connectionStorage.saveTOTPSecret(sshState.totpSecret, for: testId)
+            }
+        }
+
+        if !sslClientKeyPassphrase.isEmpty
+            && !sslClientKeyPath.trimmingCharacters(in: .whitespaces).isEmpty
+        {
+            services.connectionStorage.saveSSLClientKeyPassphrase(sslClientKeyPassphrase, for: testId)
+        }
+
+        if cloudflareState.enabled && cloudflareState.authMethod == .serviceToken {
+            services.connectionStorage.saveCloudflareTokenId(cloudflareState.serviceTokenId, for: testId)
+            services.connectionStorage.saveCloudflareTokenSecret(cloudflareState.serviceTokenSecret, for: testId)
+        }
+
+        if cloudSQLProxyState.enabled && cloudSQLProxyState.authMode == .serviceAccountKey
+            && !cloudSQLProxyState.serviceAccountKeyJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            services.connectionStorage.saveCloudSQLProxyServiceAccountKey(
+                cloudSQLProxyState.serviceAccountKeyJSON, for: testId
+            )
+        }
+
+        if socksProxyState.enabled && !socksProxyState.password.isEmpty {
+            services.connectionStorage.saveSOCKSProxyPassword(socksProxyState.password, for: testId)
+        }
+
+        for field in services.pluginManager.additionalConnectionFields(for: connectionType)
+            where field.isSecure
+        {
+            if let value = additionalFieldValues[field.id], !value.isEmpty {
+                services.connectionStorage.savePluginSecureField(value, fieldId: field.id, for: testId)
+            }
+        }
+    }
+
     func cleanupTestSecrets(for testId: UUID) {
         services.connectionStorage.deletePassword(for: testId)
         services.connectionStorage.deleteSSHPassword(for: testId)
         services.connectionStorage.deleteKeyPassphrase(for: testId)
+        services.connectionStorage.deleteSSLClientKeyPassphrase(for: testId)
         services.connectionStorage.deleteTOTPSecret(for: testId)
+        services.connectionStorage.deleteCloudflareTokenId(for: testId)
+        services.connectionStorage.deleteCloudflareTokenSecret(for: testId)
+        services.connectionStorage.deleteCloudSQLProxyServiceAccountKey(for: testId)
+        services.connectionStorage.deleteSOCKSProxyPassword(for: testId)
         let secureFieldIds = services.pluginManager.additionalConnectionFields(for: network.type)
             .filter(\.isSecure).map(\.id)
         services.connectionStorage.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)
@@ -641,6 +734,9 @@ final class ConnectionFormCoordinator {
                 ssh.state.authMethod = .sshAgent
                 ssh.state.applyAgentSocketPath(parsed.agentSocket ?? "")
             }
+            if parsed.sshNoAuth == true {
+                ssh.state.authMethod = .none
+            }
         }
 
         if let multiHost = parsed.multiHost, !multiHost.isEmpty {
@@ -678,6 +774,8 @@ final class ConnectionFormCoordinator {
                 writeFieldByRegistry("mongoAuthMechanism", value: value)
             case "replicaSet":
                 writeFieldByRegistry("mongoReplicaSet", value: value)
+            case "uuidRepresentation":
+                writeFieldByRegistry("mongoUuidRepresentation", value: value)
             default:
                 writeFieldByRegistry("mongoParam_\(key)", value: value)
             }
@@ -691,8 +789,10 @@ final class ConnectionFormCoordinator {
         if let hex = parsed.statusColor, !hex.isEmpty {
             customization.color = ConnectionURLParser.connectionColor(fromHex: hex)
         }
-        if let env = parsed.envTag, !env.isEmpty {
-            customization.tagId = ConnectionURLParser.tagId(fromEnvName: env)
+        if let env = parsed.envTag, !env.isEmpty,
+           let resolved = ConnectionURLParser.tagId(fromEnvName: env),
+           !customization.tagIds.contains(resolved) {
+            customization.tagIds.append(resolved)
         }
         if parsed.type.pluginTypeId == "libSQL", !parsed.host.isEmpty {
             var urlString = "https://\(parsed.host)"
@@ -703,6 +803,21 @@ final class ConnectionFormCoordinator {
         }
         if parsed.type.pluginTypeId == "Cloudflare D1", !parsed.host.isEmpty {
             writeFieldByRegistry("cfAccountId", value: parsed.host)
+        }
+        if parsed.type.pluginTypeId == "DuckDB" {
+            if parsed.host.isEmpty {
+                writeFieldByRegistry("duckdbMode", value: "local")
+                writeFieldByRegistry("duckdbFilePath", value: parsed.database)
+            } else {
+                writeFieldByRegistry("duckdbMode", value: "remote")
+                writeFieldByRegistry("duckdbHost", value: parsed.host)
+                if let port = parsed.port {
+                    writeFieldByRegistry("duckdbPort", value: String(port))
+                }
+                if !parsed.database.isEmpty {
+                    writeFieldByRegistry("duckdbAlias", value: parsed.database)
+                }
+            }
         }
         if let connectionName = parsed.connectionName, !connectionName.isEmpty {
             network.name = connectionName

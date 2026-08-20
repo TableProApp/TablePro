@@ -2,7 +2,7 @@ import AppKit
 import TableProPluginKit
 import os
 
-public final class CSVDocument: NSDocument, InspectorDocument {
+public final class CSVDocument: NSDocument, CSVConfigurableDocument {
     static let logger = Logger(subsystem: "com.TablePro", category: "CSVInspector")
 
     private static let typeInferenceSampleSize = 200
@@ -187,53 +187,63 @@ public final class CSVDocument: NSDocument, InspectorDocument {
     }
 
     public func appendRow() {
+        let name = String(localized: "Add Row")
         let index = store.appendRow(values: [])
         registerUndo { document in
-            document.removeRow(at: index, suppressUndo: false)
+            document.removeRow(at: index, suppressUndo: false, actionName: name)
         }
+        setUndoActionName(name)
         onChange?()
     }
 
     public func insertRow(at index: Int) {
+        let name = String(localized: "Insert Row")
         store.insertRow([], at: index)
         registerUndo { document in
-            document.removeRow(at: index, suppressUndo: false)
+            document.removeRow(at: index, suppressUndo: false, actionName: name)
         }
+        setUndoActionName(name)
         onChange?()
     }
 
     public func removeRow(at index: Int) {
-        removeRow(at: index, suppressUndo: false)
+        removeRow(at: index, suppressUndo: false, actionName: String(localized: "Delete Row"))
     }
 
-    private func removeRow(at index: Int, suppressUndo: Bool) {
+    private func removeRow(at index: Int, suppressUndo: Bool, actionName: String) {
         guard let removed = store.removeRow(at: index) else { return }
         if !suppressUndo {
             registerUndo { document in
-                document.reinsertRow(removed, at: index)
+                document.reinsertRow(removed, at: index, actionName: actionName)
             }
+            setUndoActionName(actionName)
         }
         onChange?()
     }
 
-    private func reinsertRow(_ values: [String], at index: Int) {
+    private func reinsertRow(_ values: [String], at index: Int, actionName: String) {
         store.insertRow(values, at: index)
         registerUndo { document in
-            document.removeRow(at: index, suppressUndo: false)
+            document.removeRow(at: index, suppressUndo: false, actionName: actionName)
         }
+        setUndoActionName(actionName)
         onChange?()
     }
 
     public func removeRows(at indices: IndexSet) {
         let removed = store.removeRows(at: indices)
         guard !removed.isEmpty else { return }
+        let name = removed.count == 1
+            ? String(localized: "Delete Row")
+            : String(localized: "Delete Rows")
         registerUndo { document in
-            document.reinsertRows(removed)
+            document.reinsertRows(removed, actionName: name)
         }
+        setUndoActionName(name)
         onChange?()
     }
 
-    private func reinsertRows(_ rows: [(index: Int, cells: [String])]) {
+    private func reinsertRows(_ rows: [(index: Int, cells: [String])], actionName: String) {
         for entry in rows.sorted(by: { $0.index < $1.index }) {
             store.insertRow(entry.cells, at: entry.index)
         }
@@ -241,6 +251,7 @@ public final class CSVDocument: NSDocument, InspectorDocument {
         registerUndo { document in
             document.removeRows(at: originalIndices)
         }
+        setUndoActionName(actionName)
         onChange?()
     }
 
@@ -314,8 +325,93 @@ public final class CSVDocument: NSDocument, InspectorDocument {
         onChange?()
     }
 
+    public func splitColumn(at index: Int, separator: String, isRegex: Bool) {
+        guard index >= 0, index < store.columnCount, !separator.isEmpty else { return }
+        let spec: CSVRowStore.SplitSpec
+        if isRegex {
+            guard let regex = try? NSRegularExpression(pattern: separator) else { return }
+            spec = .regex(regex)
+        } else {
+            spec = .literal(separator)
+        }
+        performStructuralChange(name: String(localized: "Split Column")) {
+            store.splitColumn(at: index, spec: spec)
+            recomputeInferredTypes()
+        }
+    }
+
+    public func mergeColumns(at index: Int, separator: String) {
+        guard index >= 0, index + 1 < store.columnCount else { return }
+        performStructuralChange(name: String(localized: "Merge Columns")) {
+            store.mergeColumns(at: index, separator: separator)
+            recomputeInferredTypes()
+        }
+    }
+
+    public func toggleHeaderRow() {
+        guard store.hasHeaderRow || store.rowCount > 0 else { return }
+        performStructuralChange(name: String(localized: "Switch Header Row")) {
+            store.toggleHeaderRow()
+            recomputeInferredTypes()
+        }
+    }
+
+    public var csvDialect: CSVDialect { dialect }
+
+    public func reload(with newDialect: CSVDialect) {
+        let data = store.data
+        dialect = newDialect
+        store = CSVRowStore(data: data, dialect: newDialect)
+        recomputeInferredTypes()
+        undoManager?.removeAllActions()
+        updateChangeCount(.changeDone)
+        onChange?()
+    }
+
+    private func recomputeInferredTypes() {
+        let sample = store.pageRows(offset: 0, limit: Self.typeInferenceSampleSize)
+        inferredTypes = CSVTypeInferrer.inferColumns(rows: sample, columnCount: store.columnCount)
+        typeOverrides = [:]
+    }
+
+    private func performStructuralChange(name: String, _ mutate: () -> Void) {
+        let before = captureStructuralSnapshot()
+        mutate()
+        registerStructuralUndo(name: name, undoTo: before, redoTo: captureStructuralSnapshot())
+        onChange?()
+    }
+
+    private func registerStructuralUndo(name: String, undoTo: StructuralSnapshot, redoTo: StructuralSnapshot) {
+        undoManager?.registerUndo(withTarget: self) { document in
+            document.restoreStructuralSnapshot(undoTo)
+            document.registerStructuralUndo(name: name, undoTo: redoTo, redoTo: undoTo)
+            document.onChange?()
+        }
+        undoManager?.setActionName(name)
+    }
+
+    private func captureStructuralSnapshot() -> StructuralSnapshot {
+        StructuralSnapshot(store: store.captureState(), inferredTypes: inferredTypes, typeOverrides: typeOverrides)
+    }
+
+    private func restoreStructuralSnapshot(_ snapshot: StructuralSnapshot) {
+        store.restore(snapshot.store)
+        inferredTypes = snapshot.inferredTypes
+        typeOverrides = snapshot.typeOverrides
+    }
+
+    private struct StructuralSnapshot {
+        let store: CSVRowStore.StoreState
+        let inferredTypes: [InspectorColumnType]
+        let typeOverrides: [Int: InspectorColumnType]
+    }
+
     private func registerUndo(_ action: @escaping (CSVDocument) -> Void) {
         undoManager?.registerUndo(withTarget: self, handler: action)
+    }
+
+    private func setUndoActionName(_ name: String) {
+        undoManager?.setActionName(name)
     }
 
     private func shiftTypeOverrides(insertingAt index: Int) {

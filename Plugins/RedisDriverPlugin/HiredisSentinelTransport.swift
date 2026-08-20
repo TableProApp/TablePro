@@ -7,13 +7,14 @@
 
 import Foundation
 import OSLog
+import TableProPluginKit
 
 private let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "HiredisSentinelTransport")
 
 struct HiredisSentinelTransport: SentinelTransport {
-    let sslConfig: RedisSSLConfig
+    let sslConfig: SSLConfiguration
 
-    init(sslConfig: RedisSSLConfig = RedisSSLConfig()) {
+    init(sslConfig: SSLConfiguration = SSLConfiguration()) {
         self.sslConfig = sslConfig
     }
 

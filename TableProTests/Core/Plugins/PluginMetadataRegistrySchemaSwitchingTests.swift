@@ -64,6 +64,68 @@ struct PluginMetadataRegistrySchemaSwitchingTests {
         #expect(snap.postConnectActions.contains(.selectSchemaFromLastSession))
     }
 
+    // MARK: - Dameng
+
+    @Test("Dameng supports schema switching without TLS")
+    func damengSupportsSchemaSwitching() {
+        guard let snap = snapshot(forTypeId: "Dameng") else {
+            Issue.record("Registry default for Dameng missing")
+            return
+        }
+        #expect(snap.capabilities.supportsSchemaSwitching == true)
+        #expect(snap.capabilities.supportsSSL == false)
+        #expect(snap.postConnectActions.contains(.selectSchemaFromLastSession))
+    }
+
+    @Test("Dameng publishes DM8 typing suggestions")
+    func damengPublishesTypingSuggestions() {
+        guard let snap = snapshot(forTypeId: "Dameng") else {
+            Issue.record("Registry default for Dameng missing")
+            return
+        }
+        let labels = Set(snap.editor.statementCompletions.map(\.label))
+        #expect(labels.isSuperset(of: ["SET SCHEMA", "CREATE SCHEMA", "EXPLAIN", "CONNECT BY"]))
+        #expect(snap.editor.sqlDialect?.functions.contains("NVL") == true)
+        #expect(snap.editor.sqlDialect?.dataTypes.contains("VARCHAR2") == true)
+        #expect(snap.editor.sqlDialect?.dataTypes.contains("XMLTYPE") == false)
+        #expect(snap.editor.sqlDialect?.functions.contains("DBMS_RANDOM.VALUE") == false)
+    }
+
+    // MARK: - DuckDB
+
+    @Test("DuckDB supports schema switching")
+    func duckDBSupportsSchemaSwitching() {
+        guard let snap = snapshot(forTypeId: "DuckDB") else {
+            Issue.record("Registry default for DuckDB missing")
+            return
+        }
+        #expect(snap.capabilities.supportsSchemaSwitching == true)
+    }
+
+    @Test("DuckDB post-connect actions restore last schema")
+    func duckDBRestoresLastSchema() {
+        guard let snap = snapshot(forTypeId: "DuckDB") else {
+            Issue.record("Registry default for DuckDB missing")
+            return
+        }
+        #expect(snap.postConnectActions.contains(.selectSchemaFromLastSession))
+    }
+
+    /// DuckDB's default schema is `main`. Inheriting PostgreSQL's `public` made every
+    /// table in the default schema render as `main.name` and broke export preselection.
+    @Test("DuckDB's default schema is main")
+    func duckDBDefaultSchemaIsMain() {
+        #expect(snapshot(forTypeId: "DuckDB")?.schema.defaultSchemaName == "main")
+    }
+
+    /// `information_schema` and `pg_catalog` are schemas of DuckDB's `system` catalog,
+    /// not databases. The system databases are `system` and `temp`.
+    @Test("DuckDB's system databases are its built-in catalogs")
+    func duckDBSystemDatabases() {
+        let names = snapshot(forTypeId: "DuckDB")?.schema.systemDatabaseNames ?? []
+        #expect(Set(names) == ["system", "temp"])
+    }
+
     // MARK: - PostgreSQL (regression for the working reference)
 
     @Test("PostgreSQL supports schema switching")
@@ -99,7 +161,9 @@ struct PluginMetadataRegistrySchemaSwitchingTests {
 
     @Test("Quick Switcher allowlist agrees with registry capability flag")
     func quickSwitcherAllowlistMatchesRegistry() {
-        let typesThatShouldSupportSchemas = ["PostgreSQL", "Redshift", "Oracle", "SQL Server"]
+        let typesThatShouldSupportSchemas = [
+            "PostgreSQL", "Redshift", "Oracle", "Dameng", "SQL Server", "DuckDB",
+        ]
         for typeId in typesThatShouldSupportSchemas {
             guard let snap = snapshot(forTypeId: typeId) else {
                 Issue.record("Registry default for \(typeId) missing")

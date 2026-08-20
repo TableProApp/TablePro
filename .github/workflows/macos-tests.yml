@@ -1,0 +1,339 @@
+name: macOS Tests
+
+on:
+  # No paths filter here on purpose. A required status check has to report on every pull
+  # request, and a workflow skipped by a paths filter reports nothing at all, which leaves
+  # the check pending forever and blocks docs-only work. The filtering moved into the
+  # changes job below, so the gate job always runs and always reports.
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "TablePro/**"
+      - "Plugins/**"
+      - "Packages/**"
+      - "LocalPackages/**"
+      - "TableProTests/**"
+      - "TableProUITests/**"
+      - "Native/**"
+      - "project.yml"
+      - "Configs/**"
+      - "Libs/**"
+      - ".github/workflows/macos-tests.yml"
+  workflow_dispatch:
+  workflow_call:
+
+# Only one run per PR/branch at a time; new pushes cancel pending older ones.
+concurrency:
+  group: macos-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  XCODE_PROJECT: TablePro.xcodeproj
+  XCODE_SCHEME: TablePro
+  TEST_DESTINATION: "platform=macOS"
+
+jobs:
+  # Reproduces the paths filter this workflow used to carry on `on: pull_request`. Keep this
+  # list and the `push:` paths above identical, so a pull request and a push to main run the
+  # same suites. `Native/` is on both because the Dameng steps below build and test the Rust
+  # bridge that lives there, and a bridge-only change would otherwise compile nowhere.
+  # Never give this job a `permissions:` block. build.yml calls this workflow with
+  # workflow_call, and a called job may not request more than the caller holds. The repository
+  # default is read, which carries no pull-requests scope, so asking for one fails the whole
+  # release at run creation, before a single job starts. Reading the diff from git keeps this
+  # job inside contents:read, which every caller already grants.
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the macOS suites need to run
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+
+          # A release pushes the version commit to main and then tags that same commit, so the
+          # push and the tag both reach this workflow: once directly, once through build.yml's
+          # workflow_call. That tests one SHA twice on two macos-26 runners, and because the
+          # account runs five macOS jobs at a time, the duplicate is what leaves the release's
+          # own suite queued behind it. The tag run is the one that gates the release, so the
+          # push to main stands down. github.ref belongs to the caller, so build.yml's
+          # workflow_call reads refs/tags/v* here and can never match this guard, which is what
+          # keeps "a release that skipped its tests" impossible.
+          #
+          # The subject goes into a variable instead of a pipe into grep. grep -q exits on the
+          # first match, and the SIGPIPE that then kills git log would surface through pipefail
+          # as a skipped guard (the same trap scripts/check-freetds-fedauth.sh:69 documents).
+          SUBJECT="$(git log -1 --format=%s HEAD)"
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ] &&
+             [[ "$SUBJECT" =~ ^release:\ v[0-9] ]]; then
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+          fi
+
+          # Anything that is not a pull request runs the full suite: a release calls this
+          # workflow with workflow_call, and a release that skipped its tests is the failure
+          # this guard exists to prevent.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              exit 0
+          fi
+
+          # core.quotePath defaults to true, which wraps any path holding a non-ASCII byte or a
+          # control character in double quotes and C-escapes it, so `TablePro/Café.swift` arrives
+          # as `"TablePro/Caf\303\251.swift"` and the leading quote defeats the `^` anchor. This
+          # detector fails open, so a misread means every suite skips behind a green gate. Reading
+          # raw NUL-separated records removes both that and any embedded-newline trick.
+          #
+          # A file, not a variable: bash drops NUL bytes from "$(...)", which would run every path
+          # together into one record. It also keeps grep out of a pipeline, so the SIGPIPE that
+          # scripts/check-freetds-fedauth.sh:69 warns about cannot come back.
+          git -c core.quotePath=false diff --no-renames --name-only -z \
+              "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-files"
+
+          if LC_ALL=C grep -zqE '^(TablePro/|Plugins/|Packages/|LocalPackages/|TableProTests/|TableProUITests/|Native/|Configs/|Libs/|project\.yml$|\.github/workflows/macos-tests\.yml$)' "$RUNNER_TEMP/changed-files"; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  package-tests:
+    name: TableProCore Package Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: '26.4.1'
+
+      - name: Run package tests
+        run: swift test --package-path Packages/TableProCore
+
+  editor-tests:
+    name: CodeEditTextView Package Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: '26.4.1'
+
+      # CodeEditSourceEditor is deliberately not run here. `swift test` cannot build it on this
+      # runner: its CodeEditSymbols dependency fails with "type 'Bundle' has no member 'module'",
+      # after a SwiftPM cache warning about a missing maintenance.lock. It builds fine inside the
+      # Xcode project, so the app target still compiles it; only the standalone package test run
+      # is broken. Its own suites also fail on main (HighlighterTests, TagEditingTests, plus one
+      # that aborts the runner), so this needs fixing at the package level before it can gate.
+      - name: Run editor package tests
+        run: swift test --package-path LocalPackages/CodeEditTextView
+
+  # Budget on a macos-26 runner: ~7 min to generate and compile every plugin, ~14 min to build
+  # and run the unit suite, ~17 min for the UI suite. A slow runner stretches all three, and one
+  # UI retry costs another minute or two, so 40 left no headroom and killed the job mid-suite.
+  app-tests:
+    name: macOS App Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: '26.4.1'
+
+      - name: Install xcbeautify
+        run: brew list xcbeautify &>/dev/null || brew install xcbeautify
+
+      - name: Cache static libraries
+        uses: actions/cache@v6
+        with:
+          path: Libs
+          key: ${{ runner.os }}-libs-${{ hashFiles('Libs/checksums.sha256', 'Plugins/MSSQLDriverPlugin/CFreeTDS/include/sybdb.h') }}
+
+      - name: Download static libraries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/download-libs.sh
+
+      # Cargo and rustup need access outside Xcode's user-script sandbox. Build the
+      # native bridge explicitly before compiling the driver target.
+      - name: Build Dameng native bridge
+        run: scripts/build-dameng.sh arm64
+
+      # Only the bridge's own FFI tests live here. The DM8 protocol crates are a pinned
+      # revision of TableProApp/rust-dameng and carry their own suite in that repository.
+      # Run from the bridge directory so rustup reads its rust-toolchain.toml: rustup resolves
+      # that file from the working directory, not from --manifest-path, and testing on the
+      # runner's default Rust would not be the toolchain the shipped staticlib is built with.
+      - name: Test Dameng native bridge
+        working-directory: Native/DamengBridge
+        run: cargo test --locked
+
+      # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so an empty
+      # value is enough for the project to resolve $(ANALYTICS_HMAC_SECRET).
+      - name: Create Secrets.xcconfig
+        env:
+          ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
+        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Configs/Secrets.xcconfig
+
+      - name: Setup XcodeGen
+        uses: ./.github/actions/setup-xcodegen
+
+      - name: Generate Xcode project
+        run: scripts/generate-project.sh
+
+      - name: Resolve Swift package dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -skipPackagePluginValidation
+
+      # The TablePro scheme only builds the 14 bundled plugins, so a change confined to one
+      # of the 16 registry-only plugins compiles nowhere else in CI. AllPlugins is the only
+      # target that covers them, and build-plugin.yml does not run until a release tag.
+      - name: Compile every plugin
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme AllPlugins \
+            -destination "$TEST_DESTINATION" \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      # DamengDriverTests is the one plugin-owned unit bundle: its suites import CDameng, so
+      # they cannot move into TableProTests the way pure-logic plugin tests do. Without this
+      # step nothing runs them and they rot silently.
+      - name: Run Dameng driver tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project "$XCODE_PROJECT" \
+            -scheme DamengDriverTests \
+            -destination "$TEST_DESTINATION" \
+            -parallel-testing-enabled NO \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      # Quarantined suites (driver-loading, env-coupled, or hanging headless) are listed
+      # in .github/macos-test-quarantine.txt. Burn that list down over time.
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          SKIP_ARGS=()
+          while IFS= read -r line; do
+            suite="${line%%#*}"
+            suite="$(echo "$suite" | xargs)"
+            [ -z "$suite" ] && continue
+            SKIP_ARGS+=("-skip-testing:TableProTests/$suite")
+          done < .github/macos-test-quarantine.txt
+          xcodebuild test \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "$TEST_DESTINATION" \
+            -only-testing:TableProTests \
+            "${SKIP_ARGS[@]}" \
+            -parallel-testing-enabled NO \
+            -skipPackagePluginValidation \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      # UI tests drive the real app, so they need the runner's GUI session and cannot run beside
+      # the unit run. Every case launches the app against a throwaway storage sandbox that
+      # UITestCase hands it, so nothing here touches a real store.
+      #
+      # One retry is allowed. A full local suite flaked once in three runs on a single
+      # waitForExistence, which without a retry would fail roughly a third of runs and train
+      # people to re-run until green. A case that fails twice is a real failure.
+      - name: Run UI tests
+        run: |
+          set -o pipefail
+          SKIP_ARGS=()
+          while IFS= read -r line; do
+            entry="${line%%#*}"
+            entry="$(echo "$entry" | xargs)"
+            [ -z "$entry" ] && continue
+            SKIP_ARGS+=("-skip-testing:TableProUITests/$entry")
+          done < .github/macos-ui-test-quarantine.txt
+          xcodebuild test \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "$TEST_DESTINATION" \
+            -only-testing:TableProUITests \
+            "${SKIP_ARGS[@]}" \
+            -parallel-testing-enabled NO \
+            -test-iterations 2 \
+            -retry-tests-on-failure \
+            -skipPackagePluginValidation \
+            -resultBundlePath UITestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      - name: Upload UI test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-ui-test-results
+          path: UITestResults.xcresult
+          retention-days: 7
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-test-results
+          path: TestResults.xcresult
+          retention-days: 7
+
+  # The one check to mark required on main. It reports on every pull request, so a docs-only
+  # change passes on skipped suites instead of hanging, and a red suite cannot be merged past.
+  gate:
+    name: macOS Tests Gate
+    if: always()
+    needs: [changes, package-tests, editor-tests, app-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every suite to have passed or been skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "suite results: $RESULTS"
+          for result in $RESULTS; do
+              case "$result" in
+                  success|skipped) ;;
+                  *)
+                      echo "A macOS suite reported '$result'." >&2
+                      exit 1
+                      ;;
+              esac
+          done

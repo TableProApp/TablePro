@@ -15,27 +15,7 @@ struct ServerDashboardView: View {
                     description: Text("Server monitoring is not available for this database type.")
                 )
             } else {
-                VStack(spacing: 0) {
-                    if viewModel.supportedPanels.contains(.activeSessions) {
-                        SessionsTableView(viewModel: viewModel)
-                    }
-
-                    if viewModel.supportedPanels.contains(.serverMetrics) {
-                        Divider()
-                        MetricsBarView(
-                            metrics: viewModel.metrics,
-                            error: viewModel.panelErrors[.serverMetrics]
-                        )
-                    }
-
-                    if viewModel.supportedPanels.contains(.slowQueries) {
-                        Divider()
-                        SlowQueryListView(
-                            queries: viewModel.slowQueries,
-                            error: viewModel.panelErrors[.slowQueries]
-                        )
-                    }
-                }
+                ServerDashboardSplitView(viewModel: viewModel)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

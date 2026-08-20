@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Represents a filter operator for WHERE clause generation
 enum FilterOperator: String, CaseIterable, Identifiable, Codable {
@@ -43,6 +44,27 @@ enum FilterOperator: String, CaseIterable, Identifiable, Codable {
     /// Whether this operator requires two values (for BETWEEN)
     var requiresSecondValue: Bool {
         self == .between
+    }
+
+    /// Whether matching for this operator has a case dimension the user can control
+    var supportsCaseSensitivity: Bool {
+        switch self {
+        case .contains, .notContains, .startsWith, .endsWith,
+             .equal, .notEqual, .inList, .notInList, .regex:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Pattern matching ignores case by default; exact, list and regex matching does not
+    var defaultIsCaseSensitive: Bool {
+        switch self {
+        case .contains, .notContains, .startsWith, .endsWith:
+            return false
+        default:
+            return true
+        }
     }
 
     /// Display name for UI
@@ -94,13 +116,13 @@ enum FilterOperator: String, CaseIterable, Identifiable, Codable {
 /// Represents a single table filter condition
 struct TableFilter: Identifiable, Equatable, Hashable, Codable {
     let id: UUID
-    var columnName: String          // Column to filter on, or "__RAW__" for raw SQL
+    var columnName: String
     var filterOperator: FilterOperator
     var value: String
-    var secondValue: String?        // For BETWEEN operator
-    var isSelected: Bool            // For multi-select apply
-    var isEnabled: Bool             // Whether filter is active
-    var rawSQL: String?             // For raw SQL mode
+    var secondValue: String?
+    var isEnabled: Bool
+    var rawSQL: String?
+    var isCaseSensitive: Bool
 
     /// Special column name for raw SQL mode
     static let rawSQLColumn = "__RAW__"
@@ -111,18 +133,36 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
         filterOperator: FilterOperator = .equal,
         value: String = "",
         secondValue: String? = nil,
-        isSelected: Bool = false,
         isEnabled: Bool = true,
-        rawSQL: String? = nil
+        rawSQL: String? = nil,
+        isCaseSensitive: Bool? = nil
     ) {
         self.id = id
         self.columnName = columnName
         self.filterOperator = filterOperator
         self.value = value
         self.secondValue = secondValue
-        self.isSelected = isSelected
         self.isEnabled = isEnabled
         self.rawSQL = rawSQL
+        self.isCaseSensitive = isCaseSensitive ?? filterOperator.defaultIsCaseSensitive
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, columnName, filterOperator, value, secondValue, isEnabled, rawSQL, isCaseSensitive
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedOperator = try container.decodeIfPresent(FilterOperator.self, forKey: .filterOperator) ?? .equal
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.columnName = try container.decodeIfPresent(String.self, forKey: .columnName) ?? ""
+        self.filterOperator = decodedOperator
+        self.value = try container.decodeIfPresent(String.self, forKey: .value) ?? ""
+        self.secondValue = try container.decodeIfPresent(String.self, forKey: .secondValue)
+        self.isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        self.rawSQL = try container.decodeIfPresent(String.self, forKey: .rawSQL)
+        self.isCaseSensitive = try container.decodeIfPresent(Bool.self, forKey: .isCaseSensitive)
+            ?? decodedOperator.defaultIsCaseSensitive
     }
 
     /// Whether this filter is valid (has enough info to apply)
@@ -172,25 +212,82 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
     }
 }
 
+extension TableFilter {
+    var asPluginQueryFilter: PluginQueryFilter {
+        if isRawSQL {
+            return PluginQueryFilter(column: columnName, op: filterOperator.rawValue, value: rawSQL ?? "")
+        }
+        let resolvedValue: String
+        if filterOperator == .between, let second = secondValue {
+            resolvedValue = "\(value),\(second)"
+        } else {
+            resolvedValue = value
+        }
+        return PluginQueryFilter(
+            column: columnName,
+            op: filterOperator.rawValue,
+            value: resolvedValue,
+            isCaseSensitive: isCaseSensitive
+        )
+    }
+}
+
 /// Stores per-tab filter state (preserves filters when switching tabs)
 struct TabFilterState: Equatable, Hashable, Codable {
     var filters: [TableFilter]
-    var appliedFilters: [TableFilter]
+    var commit: FilterCommit?
     var isVisible: Bool
     var filterLogicMode: FilterLogicMode
+    var keyPattern: String
+    var keyTypeScope: String?
 
-    init() {
+    init(isVisible: Bool = false) {
         self.filters = []
-        self.appliedFilters = []
-        self.isVisible = false
+        self.commit = nil
+        self.isVisible = isVisible
         self.filterLogicMode = .and
+        self.keyPattern = ""
+        self.keyTypeScope = nil
     }
 
-    var hasChanges: Bool {
-        !filters.isEmpty || !appliedFilters.isEmpty
+    enum CodingKeys: String, CodingKey {
+        case filters, commit, isVisible, filterLogicMode, keyPattern, keyTypeScope
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.filters = try container.decodeIfPresent([TableFilter].self, forKey: .filters) ?? []
+        self.commit = try container.decodeIfPresent(FilterCommit.self, forKey: .commit)
+        self.isVisible = try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? false
+        self.filterLogicMode = try container.decodeIfPresent(FilterLogicMode.self, forKey: .filterLogicMode) ?? .and
+        self.keyPattern = try container.decodeIfPresent(String.self, forKey: .keyPattern) ?? ""
+        self.keyTypeScope = try container.decodeIfPresent(String.self, forKey: .keyTypeScope)
+    }
+
+    var appliedFilters: [TableFilter] {
+        guard let commit else { return [] }
+        return Self.resolve(commit, in: filters)
+    }
+
+    static func resolve(_ commit: FilterCommit, in filters: [TableFilter]) -> [TableFilter] {
+        switch commit {
+        case .all:
+            return filters.filter { $0.isEnabled && $0.isValid }
+        case .solo(let id):
+            guard var match = filters.first(where: { $0.id == id }), match.isValid else { return [] }
+            match.isEnabled = true
+            return [match]
+        }
     }
 
     var hasAppliedFilters: Bool {
         !appliedFilters.isEmpty
+    }
+
+    var allEnabledState: Bool? {
+        guard !filters.isEmpty else { return false }
+        if filters.allSatisfy({ $0.isEnabled }) { return true }
+        if filters.allSatisfy({ !$0.isEnabled }) { return false }
+        return nil
     }
 }

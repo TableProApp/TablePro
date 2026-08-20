@@ -89,14 +89,14 @@ struct ConnectionSessionEquivalenceTests {
         #expect(!a.isContentViewEquivalent(to: b))
     }
 
-    @Test("Returns false when currentSchema changes")
-    func falseWhenCurrentSchemaChanges() {
+    @Test("Returns false when browseSchema changes")
+    func falseWhenBrowseSchemaChanges() {
         let id = UUID()
         var a = makeSession(id: id)
         var b = makeSession(id: id)
 
-        a.currentSchema = "public"
-        b.currentSchema = "private"
+        a.browseSchema = "public"
+        b.browseSchema = "private"
 
         #expect(!a.isContentViewEquivalent(to: b))
     }
@@ -216,5 +216,23 @@ struct ConnectionSessionStateTests {
         let connection = TestFixtures.makeConnection()
         let session = ConnectionSession(connection: connection)
         #expect(session.id == connection.id)
+    }
+
+    @Test("seeds safe mode from the connection's saved default")
+    func seedsSafeModeFromConnection() {
+        var connection = TestFixtures.makeConnection()
+        connection.safeModeLevel = .readOnly
+        let session = ConnectionSession(connection: connection)
+        #expect(session.safeModeLevel == .readOnly)
+    }
+
+    @Test("clearCachedData preserves safe mode so reconnect keeps protection")
+    func clearCachedDataPreservesSafeMode() {
+        var connection = TestFixtures.makeConnection()
+        connection.safeModeLevel = .silent
+        var session = ConnectionSession(connection: connection)
+        session.safeModeLevel = .readOnly
+        session.clearCachedData()
+        #expect(session.safeModeLevel == .readOnly)
     }
 }

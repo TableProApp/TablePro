@@ -26,23 +26,6 @@ struct ToolbarTintModifier: ViewModifier {
     }
 }
 
-// MARK: - Focused Command Actions Modifier
-
-/// Conditionally publishes `MainContentCommandActions` as a focused scene value.
-/// `focusedSceneValue` requires a non-optional value, so this modifier
-/// only applies it when the actions object has been created.
-struct FocusedCommandActionsModifier: ViewModifier {
-    let actions: MainContentCommandActions?
-
-    func body(content: Content) -> some View {
-        if let actions {
-            content.focusedSceneValue(\.commandActions, actions)
-        } else {
-            content
-        }
-    }
-}
-
 // MARK: - Preview
 
 #Preview("With Connection") {
@@ -54,6 +37,7 @@ struct FocusedCommandActionsModifier: ViewModifier {
         connection: DatabaseConnection.preview,
         payload: nil,
         windowTitle: .constant("SQL Query"),
+        windowSubtitle: .constant(""),
         sidebarState: SharedSidebarState(),
         pendingTruncates: .constant([]),
         pendingDeletes: .constant([]),

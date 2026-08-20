@@ -13,6 +13,7 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridDeleteRows(_ indices: Set<Int>)
     func dataGridCopyRows(_ indices: Set<Int>)
     func dataGridPasteRows()
+    func dataGridCanPasteRows() -> Bool
     func dataGridUndo()
     func dataGridRedo()
     func dataGridAddRow()
@@ -20,12 +21,15 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridMoveRow(from source: Int, to destination: Int)
     func dataGridSortStateChanged(_ state: SortState)
     func dataGridFilterColumn(_ columnName: String)
-    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo)
+    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool)
     func dataGridDuplicateRow()
     func dataGridExportResults()
+    func dataGridClearResults()
+    func dataGridCanClearResults() -> Bool
     func dataGridHideColumn(_ columnName: String)
     func dataGridShowAllColumns()
-    func dataGridRefresh()
+    func dataGridColumnStructureMenuItems(forColumn dataColumnIndex: Int) -> [NSMenuItem]
+    func dataGridRowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem]
     func dataGridVisualState(forRow row: Int) -> RowVisualState?
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView?
     func dataGridEmptySpaceMenu() -> NSMenu?
@@ -33,13 +37,18 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridDidRemoveRows(at indices: IndexSet)
     func dataGridDidReplaceAllRows()
     func dataGridAttach(tableViewCoordinator: TableViewCoordinator)
+    func dataGridDisplayOrderChanged()
+    func dataGridDisplayFormatChanged()
 }
 
 extension DataGridViewDelegate {
+    func dataGridDisplayOrderChanged() {}
+    func dataGridDisplayFormatChanged() {}
     func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {}
     func dataGridDeleteRows(_ indices: Set<Int>) {}
     func dataGridCopyRows(_ indices: Set<Int>) {}
     func dataGridPasteRows() {}
+    func dataGridCanPasteRows() -> Bool { false }
     func dataGridUndo() {}
     func dataGridRedo() {}
     func dataGridAddRow() {}
@@ -47,12 +56,15 @@ extension DataGridViewDelegate {
     func dataGridMoveRow(from source: Int, to destination: Int) {}
     func dataGridSortStateChanged(_ state: SortState) {}
     func dataGridFilterColumn(_ columnName: String) {}
-    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo) {}
+    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool) {}
     func dataGridDuplicateRow() {}
     func dataGridExportResults() {}
+    func dataGridClearResults() {}
+    func dataGridCanClearResults() -> Bool { false }
     func dataGridHideColumn(_ columnName: String) {}
     func dataGridShowAllColumns() {}
-    func dataGridRefresh() {}
+    func dataGridColumnStructureMenuItems(forColumn dataColumnIndex: Int) -> [NSMenuItem] { [] }
+    func dataGridRowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem] { [] }
     func dataGridVisualState(forRow row: Int) -> RowVisualState? { nil }
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView? { nil }
     func dataGridEmptySpaceMenu() -> NSMenu? { nil }

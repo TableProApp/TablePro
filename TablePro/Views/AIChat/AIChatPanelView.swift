@@ -98,14 +98,7 @@ struct AIChatPanelView: View {
 
     private var messageList: some View {
         let visibleMessages = viewModel.messages.filter { isVisibleInMessageList($0) }
-        let spacedMessageIDs: Set<UUID> = {
-            var ids = Set<UUID>()
-            for i in 1..<visibleMessages.count
-                where visibleMessages[i].role == .user && visibleMessages[i - 1].role == .assistant {
-                ids.insert(visibleMessages[i].id)
-            }
-            return ids
-        }()
+        let spacedMessageIDs = AIChatMessageSpacing.spacedMessageIDs(for: visibleMessages)
 
         let lastMessageID = visibleMessages.last?.id
         let isUserScrolledUp = !pinnedToBottom && bottomVisibleMessageID != nil
@@ -124,12 +117,20 @@ struct AIChatPanelView: View {
                             onRetry: shouldShowRetry(for: message) ? { viewModel.retry() } : nil,
                             onRegenerate: shouldShowRegenerate(for: message) ? { viewModel.regenerate() } : nil,
                             onEdit: message.role == .user && !viewModel.isStreaming
-                                ? { viewModel.editMessage(message) } : nil
+                                ? { viewModel.editMessage(message) } : nil,
+                            onContinue: shouldShowContinue(for: message)
+                                ? { viewModel.continueToolLoop() } : nil,
+                            onAdjustToolLimit: shouldShowContinue(for: message)
+                                ? { WindowOpener.shared.openSettings(tab: .ai) } : nil,
+                            pausedToolCallCount: shouldShowContinue(for: message)
+                                ? viewModel.toolLimitPauseCount : nil
                         )
+                        .equatable()
                         .padding(.vertical, 4)
                         .id(message.id)
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
                 .scrollTargetLayout()
@@ -154,11 +155,12 @@ struct AIChatPanelView: View {
                     bottomVisibleMessageID = lastMessageID
                 }
             }
+            .environment(viewModel)
 
             if isUserScrolledUp {
                 Button {
                     pinnedToBottom = true
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withMotion(.easeOut(duration: 0.2)) {
                         bottomVisibleMessageID = lastMessageID
                     }
                 } label: {
@@ -249,7 +251,6 @@ struct AIChatPanelView: View {
                     slashCommandMenu
                     modeMenu
                     modelPicker
-                    Spacer()
                     sendOrStopButton
                 }
             }
@@ -365,9 +366,9 @@ struct AIChatPanelView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
             .help(String(localized: "Choose AI provider and model"))
         }
     }
@@ -530,7 +531,7 @@ struct AIChatPanelView: View {
                 switch block.kind {
                 case .text(let value): return !value.isEmpty
                 case .attachment, .image: return true
-                case .toolUse, .toolResult, .reasoning: return false
+                case .toolUse, .toolResult, .reasoning, .sqlWalkthrough: return false
                 }
             }
             if !hasUserContent { return false }
@@ -619,6 +620,12 @@ struct AIChatPanelView: View {
             && message.id == viewModel.messages.last?.id
             && viewModel.lastMessageFailed
             && viewModel.canRetryLastFailure
+    }
+
+    private func shouldShowContinue(for message: ChatTurn) -> Bool {
+        message.role == .assistant
+            && viewModel.isPausedAtToolLimit
+            && message.id == viewModel.messages.last(where: { $0.role == .assistant })?.id
     }
 
     private func shouldShowRegenerate(for message: ChatTurn) -> Bool {

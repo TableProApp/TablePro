@@ -18,20 +18,27 @@ struct TableProMcpBridge {
             exit(1)
         }
 
-        guard let endpoint = handshake.endpoint() else {
+        guard let credentials = handshake.credentials() else {
             logger.log(.error, "Handshake produced invalid endpoint")
             emitFatalJsonRpcError(message: "Invalid MCP server endpoint")
             exit(1)
         }
 
+        let credentialsProvider = MCPCachedUpstreamCredentialsProvider(initial: credentials) {
+            let refreshed = try await acquirer.acquire()
+            guard let credentials = refreshed.credentials() else {
+                throw MCPHandshakeError.fileNotFound
+            }
+            logger.log(.info, "Re-acquired MCP handshake after upstream rejected the bridge")
+            return credentials
+        }
+
         let upstream = MCPStreamableHttpClientTransport(
             configuration: MCPStreamableHttpClientConfiguration(
-                endpoint: endpoint,
-                bearerToken: handshake.token,
-                tlsCertFingerprint: handshake.tlsCertFingerprint,
                 requestTimeout: .seconds(60),
                 serverInitiatedStream: false
             ),
+            credentialsProvider: credentialsProvider,
             errorLogger: logger
         )
 

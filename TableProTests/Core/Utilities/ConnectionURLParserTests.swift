@@ -445,6 +445,15 @@ struct ConnectionURLParserTests {
         #expect(parsed.usePrivateKey == true)
     }
 
+    @Test("SSH URL with sshNoAuth")
+    func testSSHURLWithNoAuth() {
+        let result = ConnectionURLParser.parse("mysql+ssh://root@host:22/user:pass@localhost/db?sshNoAuth=true")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.sshNoAuth == true)
+    }
+
     @Test("SSH URL with SSH password")
     func testSSHURLWithSSHPassword() {
         let result = ConnectionURLParser.parse("mysql+ssh://root:sshpass@jumphost:22/dbuser:dbpass@localhost/db")
@@ -754,6 +763,25 @@ struct ConnectionURLParserTests {
         #expect(parsed.envTag == "production")
     }
 
+    @Test("Parse the Enviroment parameter that TablePlus and DDEV emit")
+    func testEnviromentParameterAlias() {
+        let result = ConnectionURLParser.parse("mysql://db:db@127.0.0.1:32770/db?Enviroment=local&Name=ddev-shop")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.envTag == "local")
+        #expect(parsed.connectionName == "ddev-shop")
+    }
+
+    @Test("Parse the correctly spelled environment parameter")
+    func testEnvironmentParameterAlias() {
+        let result = ConnectionURLParser.parse("postgresql://user@host/db?environment=staging")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.envTag == "staging")
+    }
+
     @Test("Parse schema parameter")
     func testSchemaParameter() {
         let result = ConnectionURLParser.parse("postgresql://user@host/db?schema=public")
@@ -943,7 +971,7 @@ struct ConnectionURLParserTests {
         #expect(parsed.sshPort == 2222)
     }
 
-    // MARK: - DuckDB (file-based)
+    // MARK: - DuckDB
 
     @Test("DuckDB absolute file path")
     func testDuckDBAbsolutePath() {
@@ -964,6 +992,28 @@ struct ConnectionURLParserTests {
         }
         #expect(parsed.type == .duckdb)
         #expect(parsed.database == "data.duckdb")
+    }
+
+    @Test("Quack scheme parses as a remote DuckDB connection")
+    func testQuackRemoteURL() {
+        let result = ConnectionURLParser.parse("quack://myhost:9495/remotedb")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.type == .duckdb)
+        #expect(parsed.host == "myhost")
+        #expect(parsed.port == 9_495)
+        #expect(parsed.database == "remotedb")
+    }
+
+    @Test("Quack default port is normalized away")
+    func testQuackDefaultPort() {
+        let result = ConnectionURLParser.parse("quack://myhost:9494/remotedb")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.host == "myhost")
+        #expect(parsed.port == nil)
     }
 
     // MARK: - etcds TLS

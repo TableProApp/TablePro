@@ -14,19 +14,32 @@ extension SourceEditor {
     @MainActor
     public class Coordinator: NSObject {
         private weak var controller: TextViewController?
-        var isUpdatingFromRepresentable: Bool = false
-        var isUpdateFromTextView: Bool = false
-        var text: TextAPI
+        let phase = RepresentableSyncPhase()
+        let textSync: TextBindingSync
         @Binding var editorState: SourceEditorState
 
         private(set) var highlightProviders: [any HighlightProviding]
 
+        /// Held strongly, unlike ``TextViewController/textCoordinators``, which holds them weakly.
+        /// SwiftUI keeps this coordinator alive for as long as the editor exists, so the teardown in
+        /// ``SourceEditor/dismantleNSViewController(_:coordinator:)`` always has something to
+        /// destroy. Going through the weak list instead would make teardown depend on SwiftUI
+        /// releasing the view's `@State` after the dismantle rather than before it, which nothing
+        /// guarantees.
+        let textCoordinators: [any TextViewCoordinator]
+
         private var cancellables: Set<AnyCancellable> = []
 
-        init(text: TextAPI, editorState: Binding<SourceEditorState>, highlightProviders: [any HighlightProviding]?) {
-            self.text = text
+        init(
+            text: TextAPI,
+            editorState: Binding<SourceEditorState>,
+            highlightProviders: [any HighlightProviding]?,
+            textCoordinators: [any TextViewCoordinator]
+        ) {
+            self.textSync = TextBindingSync(text: text, phase: phase)
             self._editorState = editorState
             self.highlightProviders = highlightProviders ?? [TreeSitterClient()]
+            self.textCoordinators = textCoordinators
             super.init()
         }
 
@@ -37,6 +50,17 @@ extension SourceEditor {
             listenToTextViewNotifications(controller: controller)
             listenToCursorNotifications(controller: controller)
             listenToFindNotifications(controller: controller)
+            listenToFoldNotifications(controller: controller)
+        }
+
+        /// Listen to fold collapse and expand events on the text view controller.
+        func listenToFoldNotifications(controller: TextViewController) {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(textControllerFoldsDidUpdate(_:)),
+                name: TextViewController.foldStateDidChangeNotification,
+                object: controller
+            )
         }
 
         // MARK: - Listeners
@@ -119,31 +143,11 @@ extension SourceEditor {
             self.highlightProviders = highlightProviders
         }
 
-        private var textBindingTask: Task<Void, Never>?
-
         @objc func textViewDidChangeText(_ notification: Notification) {
             guard let textView = notification.object as? TextView else {
                 return
             }
-            // A plain string binding is one-way (from this view, up the hierarchy) so it's not in the state binding
-            guard case .binding(let binding) = text else { return }
-
-            // For large documents, debounce the binding writeback to avoid
-            // copying megabytes of text into SwiftUI on every keystroke.
-            let docLength = textView.textStorage.length
-            // Set flag immediately so SwiftUI's updateNSViewController knows
-            // the text view is the source of truth during the debounce window.
-            isUpdateFromTextView = true
-            if docLength > 500_000 {
-                textBindingTask?.cancel()
-                textBindingTask = Task { @MainActor [weak self, weak textView] in
-                    try? await Task.sleep(for: .milliseconds(150))
-                    guard !Task.isCancelled, let self, let textView else { return }
-                    binding.wrappedValue = textView.string
-                }
-            } else {
-                binding.wrappedValue = textView.string
-            }
+            textSync.editorTextDidChange(textView)
         }
 
         @objc func textControllerCursorsDidUpdate(_ notification: Notification) {
@@ -151,6 +155,13 @@ extension SourceEditor {
                 return
             }
             updateState { $0.cursorPositions = controller.cursorPositions }
+        }
+
+        @objc func textControllerFoldsDidUpdate(_ notification: Notification) {
+            guard let controller = notification.object as? TextViewController else {
+                return
+            }
+            updateState { $0.collapsedFoldRanges = controller.collapsedFoldRanges }
         }
 
         func textControllerScrollDidChange(_ notification: Notification) {
@@ -188,8 +199,8 @@ extension SourceEditor {
         }
 
         private func updateState(_ modifyCallback: (inout SourceEditorState) -> Void) {
-            guard !isUpdatingFromRepresentable else { return }
-            self.isUpdateFromTextView = true
+            guard !phase.isApplyingRepresentableValue else { return }
+            phase.markEditorChange()
             modifyCallback(&editorState)
         }
 

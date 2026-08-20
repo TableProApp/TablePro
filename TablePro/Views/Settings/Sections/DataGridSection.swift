@@ -9,7 +9,7 @@ struct DataGridSection: View {
     @Binding var settings: DataGridSettings
 
     var body: some View {
-        Section("Data Grid") {
+        Section {
             Picker("Row height:", selection: $settings.rowHeight) {
                 ForEach(DataGridRowHeight.allCases) { height in
                     Text(height.displayName).tag(height)
@@ -43,7 +43,10 @@ struct DataGridSection: View {
                     Text(behavior.displayName).tag(behavior)
                 }
             }
-            .help(String(localized: "Applied when opening a table. Click a column header to override."))
+        } header: {
+            Text("Data Grid")
+        } footer: {
+            Text("Default row sort is applied when a table first opens. Click a column header to override it.")
         }
 
         Section("Pagination") {
@@ -70,7 +73,7 @@ struct DataGridSection: View {
 
         Section {
             Toggle("Truncate query results", isOn: $settings.truncateQueryResults)
-                .help(String(localized: "Cap user query results at the configured row count"))
+                .help(String(localized: "Apply a row limit when running queries and cap results at the configured row count"))
 
             if settings.truncateQueryResults {
                 Picker("Row cap:", selection: $settings.queryResultRowCap) {
@@ -93,7 +96,11 @@ struct DataGridSection: View {
             Text("Query Result Row Cap")
         } footer: {
             if settings.truncateQueryResults, settings.queryResultRowCapValidationError == nil {
-                Text("Capped results show a Fetch All button to load the full set")
+                Text("""
+                SELECT queries without their own LIMIT run with this cap applied. The query text in the \
+                editor never changes. Capped results show a Fetch All button, and Execute Without Limit \
+                skips the cap for one run.
+                """)
             }
         }
     }

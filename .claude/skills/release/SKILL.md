@@ -2,7 +2,7 @@
 name: release
 description: >
   Prepares and ships a new TablePro release — bumps version numbers in
-  project.pbxproj, finalizes CHANGELOG.md, commits, tags, and pushes.
+  Configs/Version.xcconfig, finalizes CHANGELOG.md, commits, tags, and pushes.
   Also handles separate plugin releases (Redis, Oracle, ClickHouse,
   DuckDB). Use this skill whenever the user says "release", "bump
   version", "ship version", "tag a release", "cut a release", or
@@ -39,10 +39,10 @@ fails, stop and tell the user what's wrong.
    are allowed.
 
 3. **Version is newer** — compare against the current `MARKETING_VERSION`
-   in `project.pbxproj`. The new version must be greater. Read the
+   in `Configs/Version.xcconfig`. The new version must be greater. Read the
    current value:
    ```
-   Grep for "MARKETING_VERSION" in TablePro.xcodeproj/project.pbxproj
+   Read Configs/Version.xcconfig
    ```
 
 4. **Tag doesn't exist** — run `git tag -l "v<version>"` to confirm the
@@ -67,35 +67,19 @@ fails, stop and tell the user what's wrong.
 
 ## Release Steps
 
-### Step 1: Bump Version in project.pbxproj
+### Step 1: Bump Version in Configs/Version.xcconfig
 
-File: `TablePro.xcodeproj/project.pbxproj`
+File: `Configs/Version.xcconfig`
 
-Update the **main app target only** (Debug + Release configs = 2 lines
-each):
+It holds exactly two lines, and they belong to the macOS app alone:
 
 - Set `MARKETING_VERSION` to the new version (e.g., `0.5.0`)
 - Increment `CURRENT_PROJECT_VERSION` by 1 from its current value
 
-**Do NOT touch** any other target's version lines. The pbxproj contains
-many targets beyond the main app — all with `MARKETING_VERSION = 1.0`
-and `CURRENT_PROJECT_VERSION = 1`:
-
-- **Test target** (TableProTests)
-- **TableProPluginKit** framework
-- **Bundled plugins** (included in app bundle): MySQLDriverPlugin,
-  PostgreSQLDriverPlugin, SQLiteDriverPlugin, plus export plugins
-  (CSV, JSON, SQL export, XLSX, MQL, SQLImport)
-- **Separate plugin bundles** (not included in app bundle, distributed
-  independently): OracleDriverPlugin, ClickHouseDriverPlugin,
-  DuckDBDriverPlugin, MSSQLDriverPlugin, MongoDBDriverPlugin,
-  RedisDriverPlugin
-
-Use `replace_all: true` for each edit — the main app target's version
-values are always unique (e.g., `MARKETING_VERSION = 0.16.1` and
-`CURRENT_PROJECT_VERSION = 30`), distinct from the `1.0` / `1` used by
-all other targets, so `replace_all` safely targets only the correct
-occurrences.
+No other file carries an app version. Plugin bundles, the test bundles, and
+TableProPluginKit pin `MARKETING_VERSION = 1.0` / `CURRENT_PROJECT_VERSION = 1`
+in `project.yml`; the iOS app and its widget read `Configs/Version-iOS.xcconfig`.
+Leave all of those alone.
 
 ### Step 2: Finalize CHANGELOG.md
 
@@ -133,7 +117,7 @@ Make these edits to `CHANGELOG.md`:
 Stage the changed files and commit:
 
 ```bash
-git add TablePro.xcodeproj/project.pbxproj CHANGELOG.md docs/changelog.mdx docs/vi/changelog.mdx
+git add Configs/Version.xcconfig CHANGELOG.md docs/changelog.mdx
 git commit -m "$(cat <<'EOF'
 release: v<version>
 EOF
@@ -322,12 +306,19 @@ supported names. New plugins must be added to the workflow mapping.
 
 ### Plugin Release Steps
 
-1. **Verify tag is available** — `git tag -l "plugin-<name>-v<version>"`
-2. **Tag** — `git tag plugin-<name>-v<version>`
-3. **Push tag** — `git push origin plugin-<name>-v<version>`
+1. **Verify tag is available**: `git tag -l "plugin-<name>-v<version>"`
+2. **Tag**: `git tag plugin-<name>-v<version>`
+3. **Push tag**: `git push origin plugin-<name>-v<version>`
+
+**If an app release is already running, wait for it to finish before pushing
+plugin tags.** The account runs five macOS jobs at a time and every plugin
+build takes one of them. On v0.66.0, seven plugin tags pushed two minutes
+after the app tag left the release's own test suite queued for nine minutes
+and pushed one plugin build back by twenty. Check with
+`gh run list --workflow build.yml --limit 1` first.
 
 No version bumps or changelog edits needed — plugin bundles keep
-`MARKETING_VERSION = 1.0` and `CURRENT_PROJECT_VERSION = 1` in pbxproj.
+`MARKETING_VERSION = 1.0` and `CURRENT_PROJECT_VERSION = 1` in `project.yml`.
 The version is embedded via the tag only.
 
 ### What CI Does

@@ -27,6 +27,12 @@ enum PgpassReader {
         return posixPerms == 0o600
     }
 
+    /// libpq resolves an unset user to the operating system login name before matching ~/.pgpass,
+    /// so a blank username field must resolve the same way here.
+    static func effectiveUsername(_ username: String) -> String {
+        username.isEmpty ? NSUserName() : username
+    }
+
     /// Resolve a password from ~/.pgpass per PostgreSQL spec.
     /// Returns the password from the first matching entry, or nil if no match.
     /// Format: hostname:port:database:username:password

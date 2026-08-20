@@ -6,10 +6,21 @@
 //
 
 import Foundation
-import TableProPluginKit
 import SwiftUI
 import Testing
 @testable import TablePro
+
+private final class SidebarMockClipboard: ClipboardProvider {
+    var lastWrittenText: String?
+
+    func readText() -> String? { lastWrittenText }
+    func readGridRows() -> GridRowsClipboardPayload? { nil }
+    func writeText(_ text: String) { lastWrittenText = text }
+    func writeCsv(_ csv: String) { lastWrittenText = csv }
+    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) { lastWrittenText = tsv }
+    var hasText: Bool { lastWrittenText != nil }
+    var hasGridRows: Bool { false }
+}
 
 // MARK: - Helper
 
@@ -213,38 +224,33 @@ struct SidebarViewModelTests {
     @Test("copySelectedTableNames copies sorted comma-separated names")
     @MainActor
     func copyTableNames() {
+        let original = ClipboardService.shared
+        defer { ClipboardService.shared = original }
+        let clipboard = SidebarMockClipboard()
+        ClipboardService.shared = clipboard
+
         let t1 = TestFixtures.makeTableInfo(name: "zebra")
         let t2 = TestFixtures.makeTableInfo(name: "alpha")
         let (vm, _, _, _, _, _) = makeSUT(selectedTables: [t1, t2])
 
-        NSPasteboard.general.clearContents()
         vm.copySelectedTableNames()
 
-        // Verify clipboard contains sorted names
-        let clipboard = NSPasteboard.general.string(forType: .string)
-        #expect(clipboard == "alpha,zebra")
+        #expect(clipboard.lastWrittenText == "alpha,zebra")
     }
 
     @Test("copySelectedTableNames does nothing when no selection")
     @MainActor
     func copyTableNamesNoSelection() {
-        let (vm, _, _, _, _, _) = makeSUT()
+        let original = ClipboardService.shared
+        defer { ClipboardService.shared = original }
+        let clipboard = SidebarMockClipboard()
+        ClipboardService.shared = clipboard
 
-        // Save current clipboard content
-        let previousClipboard = NSPasteboard.general.string(forType: .string)
-        NSPasteboard.general.clearContents()
+        let (vm, _, _, _, _, _) = makeSUT()
 
         vm.copySelectedTableNames()
 
-        // Clipboard should still be empty (nothing written)
-        let clipboard = NSPasteboard.general.string(forType: .string)
-        #expect(clipboard == nil)
-
-        // Restore clipboard
-        if let prev = previousClipboard {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(prev, forType: .string)
-        }
+        #expect(clipboard.lastWrittenText == nil)
     }
 }
 
@@ -347,6 +353,33 @@ struct SidebarViewModelMultiSectionTests {
         #expect(funcs.map(\.name) == ["calculate_age"])
     }
 
+    @Test("Sidebar filter uses substring matching, not fuzzy abbreviations")
+    @MainActor
+    func sidebarFilterUsesSubstringNotAbbreviation() {
+        let vm = makeViewModel()
+        let userProfileView = TestFixtures.makeTableInfo(name: "user_profile_view", type: .view)
+        let orders = TestFixtures.makeTableInfo(name: "orders", type: .view)
+        vm.searchText = "upv"
+
+        let matches = vm.filteredTables(of: .view, from: [userProfileView, orders])
+
+        #expect(matches.isEmpty)
+    }
+
+    @Test("Sidebar filter ranks prefix matches above interior-substring matches")
+    @MainActor
+    func sidebarFilterRanksPrefixFirst() {
+        let vm = makeViewModel()
+        let auditUser = TestFixtures.makeTableInfo(name: "audit_user", type: .table)
+        let users = TestFixtures.makeTableInfo(name: "users", type: .table)
+        let userLog = TestFixtures.makeTableInfo(name: "user_log", type: .table)
+        vm.searchText = "user"
+
+        let matches = vm.filteredTables(of: .table, from: [auditUser, users, userLog])
+
+        #expect(matches.map(\.name) == ["users", "user_log", "audit_user"])
+    }
+
     @Test("filteredRoutines search matches name case insensitively")
     @MainActor
     func filteredRoutinesSearch() {
@@ -394,52 +427,6 @@ struct SidebarViewModelMultiSectionTests {
         #expect(result == false)
     }
 
-    @Test("sectionShouldRender always shows tables")
-    @MainActor
-    func tablesAlwaysShown() {
-        let vm = makeViewModel()
-        let empty: PluginCapabilities = []
-
-        #expect(vm.sectionShouldRender(kind: .table, itemCount: 0, capabilities: empty))
-        #expect(vm.sectionShouldRender(kind: .table, itemCount: 5, capabilities: empty))
-    }
-
-    @Test("sectionShouldRender hides matview when capability missing")
-    @MainActor
-    func hidesMatviewWithoutCapability() {
-        let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 10,
-            capabilities: []
-        )
-        #expect(result == false)
-    }
-
-    @Test("sectionShouldRender shows matview when capability present and items exist")
-    @MainActor
-    func showsMatviewWithCapability() {
-        let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 3,
-            capabilities: [.materializedViews]
-        )
-        #expect(result == true)
-    }
-
-    @Test("sectionShouldRender hides matview when no items even with capability")
-    @MainActor
-    func hidesEmptyMatviewWithCapability() {
-        let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 0,
-            capabilities: [.materializedViews]
-        )
-        #expect(result == false)
-    }
-
     @Test("default expansion is true for tables only")
     @MainActor
     func defaultExpansionTablesOnly() {
@@ -464,6 +451,25 @@ struct SidebarViewModelMultiSectionTests {
         vm.expanded[.procedure] = true
 
         #expect(UserDefaults.standard.bool(forKey: key) == true)
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    @Test("recents expansion defaults to expanded and persists across init")
+    @MainActor
+    func recentsExpansionPersists() {
+        let connectionId = UUID()
+        let key = SidebarPersistenceKey.recentsExpanded(connectionId: connectionId)
+        UserDefaults.standard.removeObject(forKey: key)
+
+        let first = makeViewModel(connectionId: connectionId)
+        #expect(first.isRecentsExpanded == true)
+
+        first.isRecentsExpanded = false
+        #expect(UserDefaults.standard.bool(forKey: key) == false)
+
+        let second = makeViewModel(connectionId: connectionId)
+        #expect(second.isRecentsExpanded == false)
+
         UserDefaults.standard.removeObject(forKey: key)
     }
 
@@ -498,5 +504,95 @@ struct SidebarViewModelMultiSectionTests {
         #expect(vm.expanded[.table] == false)
         UserDefaults.standard.removeObject(forKey: perKindKey)
         UserDefaults.standard.removeObject(forKey: SidebarPersistenceKey.legacyTablesExpanded)
+    }
+}
+
+@Suite("SidebarViewModel search debounce")
+struct SidebarViewModelSearchDebounceTests {
+    @Test("filterQuery updates immediately on first non-empty input")
+    @MainActor
+    func filterQueryUpdatesImmediatelyOnFirstInput() {
+        let vm = makeViewModel()
+
+        vm.searchText = "user"
+
+        #expect(vm.filterQuery == "user")
+    }
+
+    @Test("filterQuery clears immediately when search becomes empty")
+    @MainActor
+    func filterQueryClearsImmediatelyOnEmpty() async {
+        let vm = makeViewModel()
+        vm.searchText = "user"
+        vm.searchText = "users"
+        await Task.yield()
+
+        vm.searchText = ""
+
+        #expect(vm.filterQuery == "")
+    }
+
+    @Test("filterQuery stays at previous value during debounce window")
+    @MainActor
+    func filterQueryHoldsPreviousValueDuringDebounce() async {
+        let vm = makeViewModel()
+        vm.searchText = "user"
+        #expect(vm.filterQuery == "user")
+
+        vm.searchText = "users"
+        await Task.yield()
+
+        #expect(vm.filterQuery == "user")
+    }
+
+    @Test("filterQuery catches up after debounce window elapses")
+    @MainActor
+    func filterQueryCatchesUpAfterDebounce() async {
+        let vm = makeViewModel()
+        vm.searchText = "user"
+
+        vm.searchText = "users"
+
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        await Task.yield()
+
+        #expect(vm.filterQuery == "users")
+    }
+
+    @Test("rapid consecutive keystrokes collapse to the final value")
+    @MainActor
+    func rapidKeystrokesCollapseToFinalValue() async {
+        let vm = makeViewModel()
+        vm.searchText = "u"
+
+        vm.searchText = "us"
+        vm.searchText = "use"
+        vm.searchText = "user"
+        await Task.yield()
+
+        #expect(vm.filterQuery == "u")
+
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        await Task.yield()
+
+        #expect(vm.filterQuery == "user")
+    }
+
+    @Test("filter caches still serve filteredTables using filterQuery, not searchText")
+    @MainActor
+    func filteredTablesHonorsFilterQueryNotSearchText() async {
+        let vm = makeViewModel()
+        let users = TestFixtures.makeTableInfo(name: "users", type: .table)
+        let userLog = TestFixtures.makeTableInfo(name: "user_log", type: .table)
+        let orders = TestFixtures.makeTableInfo(name: "orders", type: .table)
+        let mixed = [users, userLog, orders]
+
+        vm.searchText = "user"
+        vm.searchText = "users"
+        await Task.yield()
+
+        let matches = vm.filteredTables(of: .table, from: mixed)
+
+        #expect(matches.map(\.name) == ["users", "user_log"])
     }
 }

@@ -14,13 +14,13 @@ import TableProPluginKit
 final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "PostgreSQL Driver"
     static let pluginVersion = "1.0.0"
-    static let pluginDescription = "PostgreSQL, Redshift, and CockroachDB support via libpq"
+    static let pluginDescription = "PostgreSQL, Redshift, CockroachDB, and PGlite support via libpq"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "PostgreSQL"
     static let databaseDisplayName = "PostgreSQL"
     static let iconName = "postgresql-icon"
-    static let defaultPort = 5432
+    static let defaultPort = 5_432
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: "usePgpass",
@@ -29,7 +29,9 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             fieldType: .toggle,
             section: .authentication,
             hidesPassword: true
-        ),
+        )
+    ] + AWSAuthFields.standard() + [
+        AWSAuthFields.rdsEndpointField(),
         ConnectionField(
             id: "connectionOptions",
             label: String(localized: "Connection Options"),
@@ -38,18 +40,25 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             section: .advanced
         )
     ]
-    static let additionalDatabaseTypeIds: [String] = ["Redshift", "CockroachDB"]
+    static let additionalDatabaseTypeIds: [String] = ["Redshift", "CockroachDB", "PGlite"]
 
     // MARK: - UI/Capability Metadata
 
     static let urlSchemes: [String] = ["postgresql", "postgres"]
     static let brandColorHex = "#336791"
-    static let systemDatabaseNames: [String] = ["postgres", "template0", "template1"]
+    static let systemDatabaseNames: [String] = PostgreSQLSystemDatabases.postgreSQL
     static let supportsSchemaSwitching = true
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN (FORMAT JSON)"),
-        ExplainVariant(id: "analyze", label: "EXPLAIN ANALYZE", sqlPrefix: "EXPLAIN (ANALYZE, FORMAT JSON)"),
+        ExplainVariant(
+            id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN (FORMAT JSON)", format: .postgresJson
+        ),
+        ExplainVariant(
+            id: "analyze",
+            label: "EXPLAIN ANALYZE",
+            sqlPrefix: "EXPLAIN (ANALYZE, FORMAT JSON)",
+            format: .postgresJson
+        ),
     ]
     static let databaseGroupingStrategy: GroupingStrategy = .bySchema
     static let columnTypesByCategory: [String: [String]] = [
@@ -74,56 +83,18 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let requiresReconnectForDatabaseSwitch = true
     static let parameterStyle: ParameterStyle = .dollar
     static let supportsDropDatabase = true
+    static let supportsDropSchema = true
+    static let supportsTriggers = true
+    static let supportsTriggerEditing = true
 
-    static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
-        identifierQuote: "\"",
-        keywords: [
-            "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "CROSS", "FULL",
-            "ON", "USING", "AND", "OR", "NOT", "IN", "LIKE", "ILIKE", "BETWEEN", "AS",
-            "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "FETCH", "FIRST", "ROWS", "ONLY",
-            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
-            "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW", "DATABASE", "SCHEMA",
-            "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "CONSTRAINT",
-            "ADD", "MODIFY", "COLUMN", "RENAME",
-            "NULL", "IS", "ASC", "DESC", "DISTINCT", "ALL", "ANY", "SOME",
-            "CASE", "WHEN", "THEN", "ELSE", "END", "COALESCE", "NULLIF",
-            "UNION", "INTERSECT", "EXCEPT",
-            "RETURNING", "WITH", "RECURSIVE", "MATERIALIZED",
-            "EXPLAIN", "ANALYZE", "VERBOSE",
-            "WINDOW", "OVER", "PARTITION",
-            "LATERAL", "ORDINALITY"
-        ],
-        functions: [
-            "COUNT", "SUM", "AVG", "MAX", "MIN", "STRING_AGG", "ARRAY_AGG",
-            "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LENGTH", "LOWER", "UPPER",
-            "TRIM", "LTRIM", "RTRIM", "REPLACE", "SPLIT_PART",
-            "NOW", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP",
-            "DATE_TRUNC", "EXTRACT", "AGE", "TO_CHAR", "TO_DATE",
-            "ROUND", "CEIL", "CEILING", "FLOOR", "ABS", "MOD", "POW", "POWER", "SQRT",
-            "CAST", "TO_NUMBER", "TO_TIMESTAMP",
-            "JSON_BUILD_OBJECT", "JSON_AGG", "JSONB_BUILD_OBJECT"
-        ],
-        dataTypes: [
-            "INTEGER", "INT", "SMALLINT", "BIGINT", "SERIAL", "BIGSERIAL", "SMALLSERIAL",
-            "DECIMAL", "NUMERIC", "REAL", "DOUBLE", "PRECISION",
-            "CHAR", "CHARACTER", "VARCHAR", "TEXT",
-            "DATE", "TIME", "TIMESTAMP", "TIMESTAMPTZ", "INTERVAL",
-            "BOOLEAN", "BOOL", "JSON", "JSONB", "UUID", "BYTEA", "ARRAY"
-        ],
-        tableOptions: [
-            "INHERITS", "PARTITION BY", "TABLESPACE", "WITH", "WITHOUT OIDS"
-        ],
-        regexSyntax: .tilde,
-        booleanLiteralStyle: .truefalse,
-        likeEscapeStyle: .explicit,
-        paginationStyle: .limit
-    )
+    static let sqlDialect: SQLDialectDescriptor? = PostgreSQLDialect.descriptor
 
     static func driverVariant(for databaseTypeId: String) -> String? {
         switch databaseTypeId {
         case "PostgreSQL": return "PostgreSQL"
         case "Redshift": return "Redshift"
         case "CockroachDB": return "CockroachDB"
+        case "PGlite": return "PGlite"
         default: return nil
         }
     }
@@ -133,6 +104,7 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         switch variant {
         case "Redshift": return RedshiftPluginDriver(config: config)
         case "CockroachDB": return CockroachPluginDriver(config: config)
+        case "PGlite": return PGlitePluginDriver(config: config)
         default: return PostgreSQLPluginDriver(config: config)
         }
     }

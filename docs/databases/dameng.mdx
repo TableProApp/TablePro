@@ -1,0 +1,52 @@
+---
+title: Dameng DM8
+description: Connect to Dameng DM8 with TablePro
+---
+
+TablePro connects directly to Dameng DM8 over its native wire protocol. The macOS driver is a downloadable plugin and does not require a local DM client installation.
+
+## Install Plugin
+
+1. Open **Settings > Plugins > Browse**
+2. Find **Dameng Driver** and click **Install**
+3. Create a Dameng connection from the connection chooser
+
+## Connection Settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | `localhost` | DM8 server or tunnel endpoint |
+| **Port** | `5236` | Default DM8 listener port |
+| **Database** | - | Optional initial schema |
+| **Username** | - | DM username, such as `SYSDBA` |
+| **Password** | - | Stored in the macOS Keychain |
+
+The driver supports SSH, SOCKS, and Cloudflare tunnels. Native DM8 TLS is not yet available, so the SSL pane is hidden. Use a trusted tunnel when the database is not on a private network.
+
+## Connection URL
+
+```text
+dm://user:password@host:5236/schema
+```
+
+## Features
+
+- Browse schemas, tables, views, columns, indexes, and foreign keys
+- Complete DM8 statements, functions, data types, schemas, tables, views, and columns while typing
+- Run SQL with Unicode text, parameterized binary writes, transactions, and row limits
+- Switch schemas without reconnecting
+- Edit rows with escaped parameter values
+- Create and alter tables, indexes, primary keys, and foreign keys
+- Inspect table metadata, generated DDL, view definitions, and visual `EXPLAIN` plans
+
+## Limitations
+
+- Username and password authentication only
+- No native TLS or trigger editor
+- Stopping a query closes its connection. DM8 has no out-of-band cancel request, so TablePro stops
+  reading the reply and reconnects on your next query. A query timeout behaves the same way.
+- Native binary and off-row LOB reads are not supported by the current transport. Use `RAWTOHEX` for binary
+  columns and cast `CLOB` values to `VARCHAR` when reading them.
+- The Database field selects an initial schema; DM8 database switching is not supported
+
+If a server value fails to decode, include the DM8 version and column type in a [GitHub issue](https://github.com/TableProApp/TablePro/issues).

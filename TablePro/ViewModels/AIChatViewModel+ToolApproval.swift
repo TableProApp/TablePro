@@ -25,12 +25,13 @@ extension AIChatViewModel {
 
     func resolveAndAwaitApprovals(
         assembledBlocks: [ToolUseBlock],
-        assistantID: UUID
+        assistantID: UUID,
+        registry: ChatToolRegistry? = nil
     ) async -> [ToolUseBlock] {
         let initialBlocks = await MainActor.run { [weak self] () -> [ToolUseBlock] in
             guard let self else { return assembledBlocks }
             let initial = assembledBlocks.map { block -> ToolUseBlock in
-                let state = self.computeInitialApprovalState(for: block.name)
+                let state = self.computeInitialApprovalState(for: block.name, registry: registry)
                 return ToolUseBlock(
                     id: block.id,
                     name: block.name,
@@ -77,8 +78,11 @@ extension AIChatViewModel {
     }
 
     @MainActor
-    func computeInitialApprovalState(for toolName: String) -> ToolApprovalState {
-        let tool = ChatToolRegistry.shared.tool(named: toolName)
+    func computeInitialApprovalState(
+        for toolName: String,
+        registry: ChatToolRegistry? = nil
+    ) -> ToolApprovalState {
+        let tool = (registry ?? ChatToolRegistry.shared).tool(named: toolName)
         let toolMode = tool?.mode
 
         if toolMode == .readOnly {
@@ -89,9 +93,9 @@ extension AIChatViewModel {
         // Safe-mode level and "Always Allow" cannot bypass them — the AI must not
         // be able to drop tables, truncate, or alter-drop without an explicit click.
         if toolMode == .agentOnly {
-            if let connection, connection.safeModeLevel.blocksAllWrites {
+            if let connection, liveSafeModeLevel(for: connection).blocksAllWrites {
                 return .denied(reason: String(
-                    localized: "Connection is read-only. Destructive operations are not permitted."
+                    localized: "TablePro's Safe Mode is set to read-only for this connection. Destructive operations are not permitted."
                 ))
             }
             return .pending
@@ -101,12 +105,13 @@ extension AIChatViewModel {
             return .approved
         }
         if let connection {
-            if connection.safeModeLevel.blocksAllWrites {
+            let safeModeLevel = liveSafeModeLevel(for: connection)
+            if safeModeLevel.blocksAllWrites {
                 return .denied(reason: String(
-                    localized: "Connection is read-only. Set safe mode to Confirm Writes or higher to allow this tool."
+                    localized: "TablePro's Safe Mode is set to read-only for this connection. Set it to Confirm Writes or higher to allow this tool."
                 ))
             }
-            if !connection.safeModeLevel.requiresConfirmation {
+            if !safeModeLevel.requiresConfirmation {
                 return .approved
             }
         }
@@ -114,17 +119,22 @@ extension AIChatViewModel {
     }
 
     @MainActor
+    private func liveSafeModeLevel(for connection: DatabaseConnection) -> SafeModeLevel {
+        DatabaseManager.shared.session(for: connection.id)?.safeModeLevel ?? connection.safeModeLevel
+    }
+
+    @MainActor
     func appendPendingToolUseBlocks(_ blocks: [ToolUseBlock], assistantID: UUID) {
-        guard let idx = messages.firstIndex(where: { $0.id == assistantID }) else { return }
+        guard let turn = turn(withID: assistantID) else { return }
         for block in blocks {
-            messages[idx].appendBlock(.toolUse(block))
+            turn.appendBlock(.toolUse(block))
         }
     }
 
     @MainActor
     func updateApprovalState(blockID: String, newState: ToolApprovalState, assistantID: UUID) {
-        guard let idx = messages.firstIndex(where: { $0.id == assistantID }) else { return }
-        for chatBlock in messages[idx].blocks {
+        guard let turn = turn(withID: assistantID) else { return }
+        for chatBlock in turn.blocks {
             if case .toolUse(var block) = chatBlock.kind, block.id == blockID {
                 block.approvalState = newState
                 chatBlock.setKind(.toolUse(block))

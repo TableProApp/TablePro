@@ -10,10 +10,10 @@
 //
 
 import CFreeTDS
+import Darwin
 import Foundation
 import os
 import TableProMSSQLCore
-import TableProPluginKit
 
 private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
 
@@ -125,6 +125,11 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     private var _isConnected = false
     private var _isCancelled = false
 
+    private static let kerberosEnvLock = NSLock()
+    private static let freetdsConfEnvLock = NSLock()
+    private static let deadlineQueue = DispatchQueue(label: "com.TablePro.freetds.connect-deadline", qos: .userInitiated)
+    private static let connectDeadlineMarginSeconds = 5
+
     var isConnected: Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -138,52 +143,181 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     }
 
     func connect() async throws {
-        try await freetdsDispatchAsync(on: queue) { [self] in
-            try self.connectSync()
+        let gate = SingleResumeGate<Void>()
+        let isKerberos = options.authMethod == .windows
+        let deadline = DispatchTimeInterval.seconds(options.loginTimeoutSeconds + Self.connectDeadlineMarginSeconds)
+
+        Self.deadlineQueue.asyncAfter(deadline: .now() + deadline) {
+            gate.fail(MSSQLCoreError.connectionTimedOut(isKerberos: isKerberos))
+        }
+
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                gate.install(continuation, alreadyCancelled: Task.isCancelled)
+                queue.async { [self] in
+                    do {
+                        let proc = try openConnection()
+                        if gate.win(()) {
+                            adopt(proc)
+                        } else {
+                            teardown(proc)
+                        }
+                    } catch {
+                        gate.fail(error)
+                    }
+                }
+            }
+        } onCancel: {
+            gate.fail(CancellationError())
         }
     }
 
-    private func connectSync() throws {
+    private func openConnection() throws -> UnsafeMutablePointer<DBPROCESS> {
         guard let login = dblogin() else {
             throw MSSQLCoreError.connectionFailed("Failed to create login")
         }
         defer { dbloginfree(login) }
 
-        _ = dbsetlname(login, options.user, Int32(DBSETUSER))
-        _ = dbsetlname(login, options.password, Int32(DBSETPWD))
-        _ = dbsetlname(login, options.applicationName, Int32(DBSETAPP))
-        _ = dbsetlname(login, "us_english", Int32(DBSETNATLANG))
-        _ = dbsetlname(login, "UTF-8", Int32(DBSETCHARSET))
+        for parameter in MSSQLLoginParameters.build(
+            user: options.user,
+            password: options.password,
+            applicationName: options.applicationName,
+            encryptionFlag: options.encryptionFlag,
+            database: options.database
+        ) {
+            _ = dbsetlname(login, parameter.value, parameter.field.dbsetName)
+        }
         _ = dbsetlversion(login, UInt8(DBVERSION_74))
-        _ = dbsetlname(login, options.encryptionFlag, Int32(DBSETENCRYPT))
-
-        // dbsetlogintime is process-global; setting before dbopen bounds this call. Concurrent
-        // connectSync from another FreeTDSConnection would race, but the serial connect queue and
-        // the brief window (cleared at function exit) keeps the cost acceptable for interactive use.
         _ = dbsetlogintime(Int32(options.loginTimeoutSeconds))
 
+        // Entra ID replaces the user name and password with an access token in the LOGIN7
+        // FEDAUTH feature extension. Not macOS-only: iOS links the same patched FreeTDS.
+        if options.authMethod == .entra {
+            guard let token = options.fedAuthToken, !token.isEmpty else {
+                throw MSSQLCoreError.connectionFailed(
+                    String(localized: "No Microsoft Entra ID access token was supplied.")
+                )
+            }
+            guard dbsetlfedauthtoken(login, token) == SUCCEED else {
+                throw MSSQLCoreError.connectionFailed(
+                    String(localized: "The Microsoft Entra ID access token was rejected by the driver.")
+                )
+            }
+        }
+
+        #if os(macOS)
+        // Windows Auth cross-realm: FreeTDS otherwise builds its own SPN and only canonicalizes a
+        // short hostname (via getaddrinfo), never applying [domain_realm] to pick the realm. We
+        // resolve the canonical host + realm up front and hand FreeTDS the full SPN, so cross-realm
+        // and short-name/CNAME hosts authenticate like the JDBC driver does.
+        if options.authMethod == .windows, let spn = options.kerberosServicePrincipal, !spn.isEmpty {
+            _ = dbsetlname(login, spn, Int32(DBSETSERVERPRINCIPAL))
+        }
+        #endif
+
         freetdsClearError(for: nil)
-        let serverName = "\(options.host):\(options.port)"
-        guard let proc = dbopen(login, serverName) else {
+        let verifies = options.certificateVerification != .none
+        let serverName = verifies ? MSSQLFreeTDSConfig.serverEntryName : "\(options.host):\(options.port)"
+        guard let proc = withFreeTDSConfigIfNeeded({
+            self.withKerberosEnvironmentIfNeeded { dbopen(login, serverName) }
+        }) else {
             let detail = freetdsGetError(for: nil)
             let msg = detail.isEmpty ? "Check host, port, credentials, and TLS settings" : detail
-            if let sslError = FreeTDSConnection.classifySSLError(detail) {
-                throw sslError
+            if let kind = MSSQLTLSClassifier.classifySSLError(detail) {
+                throw MSSQLCoreError.tlsHandshakeFailed(kind: kind, serverMessage: detail)
+            }
+            if options.authMethod == .windows, let kind = MSSQLKerberosClassifier.classify(detail) {
+                throw MSSQLCoreError.kerberosAuthFailed(kind: kind, serverMessage: detail)
             }
             throw MSSQLCoreError.connectionFailed("Failed to connect to \(options.host):\(options.port): \(msg)")
         }
+        return proc
+    }
 
-        if !options.database.isEmpty {
-            if dbuse(proc, options.database) == FAIL {
-                _ = dbclose(proc)
-                throw MSSQLCoreError.connectionFailed("Cannot open database '\(options.database)'")
-            }
+    /// A verifying mode needs `ca file` and `check certificate hostname`, which dblib cannot set.
+    /// The generated config is written 0600 and FREETDSCONF points at it only for this dbopen, so
+    /// a machine's own freetds.conf is untouched on every other connection.
+    private func withFreeTDSConfigIfNeeded(
+        _ body: () -> UnsafeMutablePointer<DBPROCESS>?
+    ) -> UnsafeMutablePointer<DBPROCESS>? {
+        guard options.certificateVerification != .none else { return body() }
+
+        let contents = MSSQLFreeTDSConfig.configuration(
+            host: options.host,
+            port: options.port,
+            encryptionFlag: options.encryptionFlag,
+            verification: options.certificateVerification,
+            caCertificatePath: options.caCertificatePath
+        )
+
+        let path = NSTemporaryDirectory() + "tablepro-freetds-\(UUID().uuidString).conf"
+        guard let data = contents.data(using: .utf8),
+              FileManager.default.createFile(
+                  atPath: path,
+                  contents: data,
+                  attributes: [.posixPermissions: 0o600]
+              ) else {
+            return body()
         }
 
-        self.dbproc = proc
+        Self.freetdsConfEnvLock.lock()
+        let previous = getenv("FREETDSCONF").map { String(cString: $0) }
+        setenv("FREETDSCONF", path, 1)
+        defer {
+            if let previous {
+                setenv("FREETDSCONF", previous, 1)
+            } else {
+                unsetenv("FREETDSCONF")
+            }
+            Self.freetdsConfEnvLock.unlock()
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        return body()
+    }
+
+    private func withKerberosEnvironmentIfNeeded(
+        _ body: () -> UnsafeMutablePointer<DBPROCESS>?
+    ) -> UnsafeMutablePointer<DBPROCESS>? {
+        guard let cachePath = options.kerberosCachePath else { return body() }
+        Self.kerberosEnvLock.lock()
+        let previous = getenv("KRB5CCNAME").map { String(cString: $0) }
+        setenv("KRB5CCNAME", "FILE:\(cachePath)", 1)
+        defer {
+            if let previous {
+                setenv("KRB5CCNAME", previous, 1)
+            } else {
+                unsetenv("KRB5CCNAME")
+            }
+            Self.kerberosEnvLock.unlock()
+            try? FileManager.default.removeItem(atPath: cachePath)
+        }
+        return body()
+    }
+
+    private func adopt(_ proc: UnsafeMutablePointer<DBPROCESS>) {
         lock.lock()
+        dbproc = proc
         _isConnected = true
         lock.unlock()
+        applyMaxTextSize(proc)
+    }
+
+    private func teardown(_ proc: UnsafeMutablePointer<DBPROCESS>) {
+        freetdsUnregister(proc)
+        _ = dbclose(proc)
+    }
+
+    private func applyMaxTextSize(_ proc: UnsafeMutablePointer<DBPROCESS>) {
+        guard dbcmd(proc, "SET TEXTSIZE \(Int32.max)") != FAIL, dbsqlexec(proc) != FAIL else {
+            freetdsLogger.error("Failed to raise TEXTSIZE; large text columns may be truncated to the 2048-byte default")
+            return
+        }
+        while true {
+            let resCode = dbresults(proc)
+            if resCode == FAIL || resCode == Int32(NO_MORE_RESULTS) {
+                break
+            }
+        }
     }
 
     func switchDatabase(_ database: String) async throws {
@@ -531,24 +665,18 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         }
         return raw
     }
+}
 
-    static func classifySSLError(_ message: String) -> SSLHandshakeError? {
-        let lower = message.lowercased()
-        if lower.contains("encryption is required") || lower.contains("server requires encryption") {
-            return .serverRejectedPlaintext(serverMessage: message)
+private extension MSSQLLoginField {
+    var dbsetName: Int32 {
+        switch self {
+        case .user: return Int32(DBSETUSER)
+        case .password: return Int32(DBSETPWD)
+        case .application: return Int32(DBSETAPP)
+        case .nationalLanguage: return Int32(DBSETNATLANG)
+        case .charset: return Int32(DBSETCHARSET)
+        case .encryption: return Int32(DBSETENCRYPT)
+        case .database: return Int32(DBSETDBNAME)
         }
-        if lower.contains("encryption not supported") || lower.contains("server does not support encryption") {
-            return .serverRequiresPlaintext(serverMessage: message)
-        }
-        if lower.contains("certificate verify failed") || lower.contains("certificate is not trusted") {
-            return .untrustedCertificate(serverMessage: message)
-        }
-        if lower.contains("does not match host") {
-            return .hostnameMismatch(serverMessage: message)
-        }
-        if lower.contains("ssl handshake") || lower.contains("tls handshake") || lower.contains("openssl error") {
-            return .cipherMismatch(serverMessage: message)
-        }
-        return nil
     }
 }

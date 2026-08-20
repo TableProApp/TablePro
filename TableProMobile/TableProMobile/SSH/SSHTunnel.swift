@@ -131,6 +131,20 @@ actor SSHTunnel {
         session = sess
     }
 
+    func hostKey() throws -> (keyData: Data, keyType: String) {
+        guard let session else {
+            throw SSHTunnelError.handshakeFailed("No active session")
+        }
+
+        var keyLength = 0
+        var keyType: Int32 = 0
+        guard let keyPtr = libssh2_session_hostkey(session, &keyLength, &keyType) else {
+            throw SSHTunnelError.hostKeyRejected("The server did not present a host key.")
+        }
+
+        return (Data(bytes: keyPtr, count: keyLength), HostKeyStore.keyTypeName(keyType))
+    }
+
     // MARK: - Authentication
 
     func authenticatePassword(username: String, password: String) throws {
@@ -205,6 +219,23 @@ actor SSHTunnel {
         }
 
         Self.logger.debug("In-memory key authentication successful for \(username)")
+    }
+
+    func authenticateNone(username: String) throws {
+        guard let session else {
+            throw SSHTunnelError.authenticationFailed("No active session")
+        }
+
+        let authList = libssh2_userauth_list(session, username, UInt32(username.utf8.count))
+        guard authList == nil else {
+            throw SSHTunnelError.authenticationFailed("Server requires credentials; passwordless authentication is not permitted")
+        }
+
+        guard libssh2_userauth_authenticated(session) != 0 else {
+            throw SSHTunnelError.authenticationFailed("Passwordless authentication failed")
+        }
+
+        Self.logger.debug("Passwordless authentication successful for \(username)")
     }
 
     // MARK: - Port Forwarding

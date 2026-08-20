@@ -58,46 +58,54 @@ public struct SearchQueryHistoryTool: MCPToolImplementation {
             throw MCPProtocolError.invalidParams(detail: "'since' must be less than or equal to 'until'")
         }
 
-        let blocked = await MainActor.run { MCPTabSnapshotProvider.blockedExternalConnectionIds() }
-
-        if let connectionId, blocked.contains(connectionId) {
-            throw MCPProtocolError.forbidden(reason: "External access is disabled for this connection")
+        if let connectionId {
+            try await services.authPolicy.resolveAndAuthorize(
+                principal: context.principal,
+                tool: Self.name,
+                connectionId: connectionId,
+                sessionId: context.sessionId.rawValue
+            )
         }
 
-        let allowlist: Set<UUID>?
-        if connectionId != nil {
-            allowlist = nil
-        } else if blocked.isEmpty {
-            allowlist = nil
-        } else {
-            let allConnectionIds = await MainActor.run {
-                Set(ConnectionStorage.shared.loadConnections().map(\.id))
-            }
-            allowlist = allConnectionIds.subtracting(blocked)
+        // Query text is the most sensitive thing this store holds, so the unscoped search resolves
+        // the allowlist rather than leaving it open: a token limited to one connection, or a
+        // connection the user marked private, must not be readable by omitting connection_id.
+        let candidates = await MainActor.run {
+            Set(ConnectionStorage.shared.loadConnections().map(\.id))
         }
-
-        let entries = await QueryHistoryManager.shared.fetchHistory(
-            limit: limit,
-            offset: 0,
-            connectionId: connectionId,
-            searchText: query.isEmpty ? nil : query,
-            dateFilter: .all,
-            since: since,
-            until: until,
-            allowedConnectionIds: allowlist
+        let allowlist = await services.authPolicy.readableConnectionIds(
+            principal: context.principal,
+            from: connectionId.map { [$0] } ?? candidates
         )
 
-        let payload: [JsonValue] = entries.map { entry in
+        let page = await services.queryHistoryManager.fetch(
+            QueryHistoryFilter(
+                scope: connectionId.map { .connection($0) } ?? .all,
+                searchText: query.isEmpty ? nil : query,
+                since: since,
+                until: until,
+                allowedConnectionIds: allowlist
+            ),
+            limit: limit
+        )
+
+        let payload: [JsonValue] = page.entries.map { entry in
             var dict: [String: JsonValue] = [
                 "id": .string(entry.id.uuidString),
                 "query": .string(entry.query),
                 "connection_id": .string(entry.connectionId.uuidString),
                 "database_name": .string(entry.databaseName),
+                "database_type": .string(entry.databaseType.rawValue),
+                "source": .string(entry.source.rawValue),
+                "statement_type": .string(entry.statementType.rawValue),
                 "executed_at": .double(entry.executedAt.timeIntervalSince1970),
                 "execution_time_ms": .double(entry.executionTime * 1_000),
                 "row_count": .int(entry.rowCount),
                 "was_successful": .bool(entry.wasSuccessful)
             ]
+            if let schemaName = entry.schemaName {
+                dict["schema_name"] = .string(schemaName)
+            }
             if let error = entry.errorMessage {
                 dict["error_message"] = .string(error)
             }

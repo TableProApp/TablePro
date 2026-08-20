@@ -31,6 +31,23 @@ struct QueryResultMappingTests {
         #expect(result.statusMessage == "OK")
     }
 
+    @Test("PluginCellValue rows convert to legacy strings (null, text, bytes as hex)")
+    func mapsCellValuesToLegacyStrings() {
+        let plugin = PluginQueryResult(
+            columns: ["t", "n", "b"],
+            columnTypeNames: ["TEXT", "TEXT", "BLOB"],
+            rows: [[.text("hi"), .null, .bytes(Data([0xAB, 0xCD]))]],
+            rowsAffected: 0,
+            executionTime: 0
+        )
+
+        let result = QueryResult(from: plugin)
+
+        #expect(result.rows[0][0] == "hi")
+        #expect(result.rows[0][1] == nil)
+        #expect(result.rows[0][2] == "ABCD")
+    }
+
     @Test("Maps PluginTableInfo to TableInfo")
     func mapPluginTableInfo() {
         let tablePlugin = PluginTableInfo(name: "users", type: "TABLE", rowCount: 1000)

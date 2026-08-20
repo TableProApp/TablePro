@@ -13,8 +13,6 @@ internal struct FieldDetailView: View {
     let isPendingNull: Bool
     let isPendingDefault: Bool
     let isModified: Bool
-    let isTruncated: Bool
-    let isLoadingFullValue: Bool
     let databaseType: DatabaseType
     let onSetNull: () -> Void
     let onSetDefault: () -> Void
@@ -27,12 +25,12 @@ internal struct FieldDetailView: View {
 
     @State private var isHovered = false
 
+    private var offersNullAndDefault: Bool {
+        !context.isReadOnly && context.allowsNullAndDefault
+    }
+
     var body: some View {
-        let kind = FieldEditorResolver.resolve(
-            for: context.columnType,
-            isLongText: context.isLongText,
-            originalValue: context.originalValue
-        )
+        let kind = FieldEditorResolver.resolve(context: context)
 
         let isPickerField: Bool = {
             switch kind {
@@ -40,6 +38,7 @@ internal struct FieldDetailView: View {
             default: return false
             }
         }()
+        let showsFieldMenu = offersNullAndDefault
 
         VStack(alignment: .leading, spacing: 4) {
             fieldHeader
@@ -50,14 +49,12 @@ internal struct FieldDetailView: View {
                 PendingStateOverlay(
                     isPendingNull: isPendingNull,
                     isPendingDefault: isPendingDefault,
-                    isLoadingFullValue: isLoadingFullValue,
-                    isTruncated: isTruncated,
                     minHeight: editorMinHeight(for: kind)
                 ) {
                     resolvedEditor(for: kind)
                 }
                 .overlay(alignment: .topTrailing) {
-                    if !context.isReadOnly && isHovered {
+                    if showsFieldMenu && isHovered {
                         FieldMenuView(
                             value: context.value.wrappedValue,
                             columnType: context.columnType,
@@ -77,6 +74,22 @@ internal struct FieldDetailView: View {
         }
         .labelsHidden()
         .onHover { isHovered = $0 }
+        .contextMenu {
+            if showsFieldMenu {
+                FieldMenuContent(
+                    value: context.value.wrappedValue,
+                    columnType: context.columnType,
+                    sqlFunctions: SQLFunctionProvider.functions(for: databaseType),
+                    isPendingNull: isPendingNull,
+                    isPendingDefault: isPendingDefault,
+                    onSetNull: onSetNull,
+                    onSetDefault: onSetDefault,
+                    onSetEmpty: onSetEmpty,
+                    onSetFunction: onSetFunction,
+                    onClear: { context.value.wrappedValue = context.originalValue ?? "" }
+                )
+            }
+        }
     }
 
     // MARK: - Header
@@ -105,24 +118,19 @@ internal struct FieldDetailView: View {
 
             Spacer()
 
-            TypeBadge(context.columnType.badgeLabel)
-
-            if isTruncated && !isLoadingFullValue {
-                Text("truncated")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(.orange.opacity(0.15))
-                    .clipShape(Capsule())
+            if context.showsTypeBadge {
+                TypeBadge(context.columnType.badgeLabel)
             }
         }
+        .textSelection(.enabled)
     }
 
     private func editorMinHeight(for kind: FieldEditorKind) -> CGFloat? {
         switch kind {
         case .json:
             return context.isReadOnly ? 60 : 80
+        case .phpSerialized:
+            return 80
         case .blobHex:
             return 60
         default:
@@ -132,11 +140,19 @@ internal struct FieldDetailView: View {
 
     // MARK: - Editor Dispatch
 
-    @ViewBuilder
     private func resolvedEditor(for kind: FieldEditorKind) -> some View {
+        editorContent(for: kind)
+            .accessibilityLabel(context.columnName)
+            .accessibilityValue(context.value.wrappedValue)
+    }
+
+    @ViewBuilder
+    private func editorContent(for kind: FieldEditorKind) -> some View {
         switch kind {
         case .json:
             JsonEditorView(context: context, onExpand: onExpand, onPopOut: onPopOut)
+        case .phpSerialized:
+            PhpSerializedFieldView(context: context, onExpand: onExpand, onPopOut: onPopOut)
         case .blobHex:
             BlobHexEditorView(context: context)
         case .boolean:
@@ -144,8 +160,8 @@ internal struct FieldDetailView: View {
                 context: context,
                 isPendingNull: isPendingNull,
                 isPendingDefault: isPendingDefault,
-                onSetNull: context.isReadOnly ? nil : onSetNull,
-                onSetDefault: context.isReadOnly ? nil : onSetDefault
+                onSetNull: offersNullAndDefault ? onSetNull : nil,
+                onSetDefault: offersNullAndDefault ? onSetDefault : nil
             )
         case .enumPicker(let values):
             EnumPickerView(
@@ -153,8 +169,8 @@ internal struct FieldDetailView: View {
                 values: values,
                 isPendingNull: isPendingNull,
                 isPendingDefault: isPendingDefault,
-                onSetNull: context.isReadOnly ? nil : onSetNull,
-                onSetDefault: context.isReadOnly ? nil : onSetDefault
+                onSetNull: offersNullAndDefault ? onSetNull : nil,
+                onSetDefault: offersNullAndDefault ? onSetDefault : nil
             )
         case .setPicker(let values):
             SetPickerView(
@@ -162,9 +178,13 @@ internal struct FieldDetailView: View {
                 values: values,
                 isPendingNull: isPendingNull,
                 isPendingDefault: isPendingDefault,
-                onSetNull: context.isReadOnly ? nil : onSetNull,
-                onSetDefault: context.isReadOnly ? nil : onSetDefault
+                onSetNull: offersNullAndDefault ? onSetNull : nil,
+                onSetDefault: offersNullAndDefault ? onSetDefault : nil
             )
+        case .typePicker:
+            TypePickerFieldView(context: context, databaseType: databaseType)
+        case .schemaText:
+            SchemaTextFieldView(context: context)
         case .multiLine:
             MultiLineEditorView(context: context)
         case .singleLine:

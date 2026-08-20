@@ -17,12 +17,12 @@ final class RowVisualIndex {
         states.removeAll(keepingCapacity: true)
     }
 
-    func rebuild(from changeManager: AnyChangeManager, sortedIDs: [RowID]?) {
+    func rebuild(from changeManager: AnyChangeManager, displayIDs: [RowID]?) {
         states.removeAll(keepingCapacity: true)
 
         let insertedRowIndices = Self.insertedRowIndices(
             from: changeManager,
-            sortedIDs: sortedIDs
+            displayIDs: displayIDs
         )
 
         if !changeManager.hasChanges && insertedRowIndices.isEmpty {
@@ -45,11 +45,11 @@ final class RowVisualIndex {
         }
     }
 
-    func updateRow(_ rowIndex: Int, from changeManager: AnyChangeManager, sortedIDs: [RowID]?) {
+    func updateRow(_ rowIndex: Int, from changeManager: AnyChangeManager, displayIDs: [RowID]?) {
         let isInsertedDisplay = Self.isRowInsertedAtDisplayIndex(
             rowIndex,
             changeManager: changeManager,
-            sortedIDs: sortedIDs
+            displayIDs: displayIDs
         )
 
         if let rowChange = changeManager.rowChanges.first(where: { $0.rowIndex == rowIndex }) {
@@ -83,11 +83,11 @@ final class RowVisualIndex {
 
     private static func insertedRowIndices(
         from changeManager: AnyChangeManager,
-        sortedIDs: [RowID]?
+        displayIDs: [RowID]?
     ) -> Set<Int> {
-        guard let sortedIDs else { return changeManager.insertedRowIndices }
+        guard let displayIDs else { return changeManager.insertedRowIndices }
         var indices = Set<Int>()
-        for (displayIndex, id) in sortedIDs.enumerated() where id.isInserted {
+        for (displayIndex, id) in displayIDs.enumerated() where id.isInserted {
             indices.insert(displayIndex)
         }
         return indices
@@ -96,11 +96,11 @@ final class RowVisualIndex {
     private static func isRowInsertedAtDisplayIndex(
         _ rowIndex: Int,
         changeManager: AnyChangeManager,
-        sortedIDs: [RowID]?
+        displayIDs: [RowID]?
     ) -> Bool {
-        if let sortedIDs {
-            guard rowIndex >= 0, rowIndex < sortedIDs.count else { return false }
-            return sortedIDs[rowIndex].isInserted
+        if let displayIDs {
+            guard rowIndex >= 0, rowIndex < displayIDs.count else { return false }
+            return displayIDs[rowIndex].isInserted
         }
         return changeManager.insertedRowIndices.contains(rowIndex)
     }

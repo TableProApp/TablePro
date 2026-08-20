@@ -28,6 +28,8 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let isDownloadable = true
     static let supportsImport = false
     static let supportsSchemaEditing = true
+    static let supportsTriggers = true
+    static let supportsTriggerEditing = true
     static let supportsDropDatabase = false
     static let supportsDatabaseSwitching = false
     static let databaseGroupingStrategy: GroupingStrategy = .flat
@@ -35,7 +37,9 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let urlSchemes: [String] = ["libsql"]
 
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
+        ExplainVariant(
+            id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN", format: .sqliteQueryPlan
+        )
     ]
 
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue]
@@ -90,16 +94,37 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .limit,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let additionalConnectionFields: [ConnectionField] = [
+        ConnectionField(
+            id: "libsqlMode",
+            label: String(localized: "Connection Mode"),
+            defaultValue: "remote",
+            fieldType: .dropdown(options: [
+                ConnectionField.DropdownOption(value: "remote", label: String(localized: "Remote (Turso)")),
+                ConnectionField.DropdownOption(value: "local", label: String(localized: "Local File"))
+            ]),
+            section: .authentication,
+            hidesPassword: true
+        ),
         ConnectionField(
             id: "databaseUrl",
             label: String(localized: "Database URL"),
             placeholder: "https://your-db.turso.io",
             required: true,
-            section: .authentication
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["remote"])
+        ),
+        ConnectionField(
+            id: "libsqlFilePath",
+            label: String(localized: "Database File"),
+            placeholder: "/path/to/database.db",
+            required: true,
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"])
         )
     ]
 

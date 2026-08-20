@@ -9,58 +9,97 @@ import Foundation
 
 enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case copilot
+    case chatgptCodex
+    case cursor
     case claude
+    case claudeAgent
     case openAI
     case openRouter
     case gemini
+    case xai
     case ollama
+    case llamaCpp
+    case mlx
+    case openCode
     case custom
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .copilot:    return "GitHub Copilot"
-        case .claude:     return "Claude"
-        case .openAI:     return "OpenAI"
-        case .openRouter: return "OpenRouter"
-        case .gemini:     return "Gemini"
-        case .ollama:     return "Ollama"
-        case .custom:     return String(localized: "Custom")
+        case .copilot:      return "GitHub Copilot"
+        case .chatgptCodex: return "ChatGPT"
+        case .cursor:       return "Cursor"
+        case .claude:       return "Claude"
+        case .claudeAgent:  return "Claude Agent"
+        case .openAI:       return "OpenAI"
+        case .openRouter:   return "OpenRouter"
+        case .gemini:       return "Gemini"
+        case .xai:          return "xAI"
+        case .ollama:       return "Ollama"
+        case .llamaCpp:     return "llama.cpp"
+        case .mlx:          return "MLX"
+        case .openCode:     return "OpenCode Zen"
+        case .custom:       return String(localized: "Custom")
         }
     }
 
     var defaultEndpoint: String {
         switch self {
-        case .copilot:    return ""
-        case .claude:     return "https://api.anthropic.com"
-        case .openAI:     return "https://api.openai.com"
-        case .openRouter: return "https://openrouter.ai/api"
-        case .gemini:     return "https://generativelanguage.googleapis.com"
-        case .ollama:     return "http://localhost:11434"
-        case .custom:     return ""
+        case .copilot:      return ""
+        case .chatgptCodex: return ""
+        case .cursor:       return ""
+        case .claude:       return "https://api.anthropic.com"
+        case .claudeAgent:  return ""
+        case .openAI:       return "https://api.openai.com"
+        case .openRouter:   return "https://openrouter.ai/api"
+        case .gemini:       return "https://generativelanguage.googleapis.com"
+        case .xai:          return "https://api.x.ai"
+        case .ollama:       return "http://localhost:11434"
+        case .llamaCpp:     return "http://localhost:8080"
+        case .mlx:          return "http://localhost:8080"
+        case .openCode:     return "https://opencode.ai/zen"
+        case .custom:       return ""
         }
     }
 
-    enum AuthStyle: Sendable { case apiKey, oauth, none }
+    enum AuthStyle: Sendable {
+        case apiKey, optionalApiKey, oauth, none
+
+        var usesAPIKey: Bool { self == .apiKey || self == .optionalApiKey }
+    }
 
     var authStyle: AuthStyle {
         switch self {
-        case .copilot: return .oauth
-        case .ollama:  return .none
-        default:       return .apiKey
+        case .copilot:      return .oauth
+        case .chatgptCodex: return .oauth
+        case .cursor:       return .optionalApiKey
+        case .claudeAgent:  return .none
+        case .xai:          return .optionalApiKey
+        case .ollama:       return .none
+        case .llamaCpp:     return .none
+        case .mlx:          return .none
+        case .openCode:     return .optionalApiKey
+        default:            return .apiKey
         }
     }
 
     var symbolName: String {
         switch self {
-        case .copilot:    return "chevron.left.forwardslash.chevron.right"
-        case .claude:     return "brain"
-        case .openAI:     return "cpu"
-        case .openRouter: return "globe"
-        case .gemini:     return "wand.and.stars"
-        case .ollama:     return "desktopcomputer"
-        case .custom:     return "server.rack"
+        case .copilot:      return "chevron.left.forwardslash.chevron.right"
+        case .chatgptCodex: return "bubble.left.and.bubble.right"
+        case .cursor:       return "cursorarrow"
+        case .claude:       return "brain"
+        case .claudeAgent:  return "terminal"
+        case .openAI:       return "cpu"
+        case .openRouter:   return "globe"
+        case .gemini:       return "wand.and.stars"
+        case .xai:          return "x.circle"
+        case .ollama:       return "desktopcomputer"
+        case .llamaCpp:     return "memorychip"
+        case .mlx:          return "m.square"
+        case .openCode:     return "sparkles"
+        case .custom:       return "server.rack"
         }
     }
 }
@@ -193,11 +232,15 @@ struct AISettings: Codable, Equatable, Sendable {
     var includeCurrentQuery: Bool
     var includeQueryResults: Bool
     var maxSchemaTables: Int
+    var maxToolRoundtrips: Int
+    var maxToolRoundtripsEnabled: Bool
     var defaultConnectionPolicy: AIConnectionPolicy
     var chatMode: AIChatMode
 
     static let defaultInlineSuggestionDebounceMs: Int = 500
     static let inlineSuggestionDebounceRange: ClosedRange<Int> = 100...3_000
+    static let defaultMaxToolRoundtrips: Int = 25
+    static let maxToolRoundtripsRange: ClosedRange<Int> = 5...200
 
     static let `default` = AISettings(
         enabled: true,
@@ -209,6 +252,8 @@ struct AISettings: Codable, Equatable, Sendable {
         includeCurrentQuery: true,
         includeQueryResults: false,
         maxSchemaTables: 20,
+        maxToolRoundtrips: AISettings.defaultMaxToolRoundtrips,
+        maxToolRoundtripsEnabled: true,
         defaultConnectionPolicy: .askEachTime,
         chatMode: .ask
     )
@@ -223,6 +268,8 @@ struct AISettings: Codable, Equatable, Sendable {
         includeCurrentQuery: Bool = true,
         includeQueryResults: Bool = false,
         maxSchemaTables: Int = 20,
+        maxToolRoundtrips: Int = AISettings.defaultMaxToolRoundtrips,
+        maxToolRoundtripsEnabled: Bool = true,
         defaultConnectionPolicy: AIConnectionPolicy = .askEachTime,
         chatMode: AIChatMode = .ask
     ) {
@@ -235,6 +282,8 @@ struct AISettings: Codable, Equatable, Sendable {
         self.includeCurrentQuery = includeCurrentQuery
         self.includeQueryResults = includeQueryResults
         self.maxSchemaTables = maxSchemaTables
+        self.maxToolRoundtrips = maxToolRoundtrips
+        self.maxToolRoundtripsEnabled = maxToolRoundtripsEnabled
         self.defaultConnectionPolicy = defaultConnectionPolicy
         self.chatMode = chatMode
     }
@@ -252,6 +301,12 @@ struct AISettings: Codable, Equatable, Sendable {
         includeCurrentQuery = try container.decodeIfPresent(Bool.self, forKey: .includeCurrentQuery) ?? true
         includeQueryResults = try container.decodeIfPresent(Bool.self, forKey: .includeQueryResults) ?? false
         maxSchemaTables = try container.decodeIfPresent(Int.self, forKey: .maxSchemaTables) ?? 20
+        maxToolRoundtrips = try container.decodeIfPresent(
+            Int.self, forKey: .maxToolRoundtrips
+        ) ?? AISettings.defaultMaxToolRoundtrips
+        maxToolRoundtripsEnabled = try container.decodeIfPresent(
+            Bool.self, forKey: .maxToolRoundtripsEnabled
+        ) ?? true
         defaultConnectionPolicy = try container.decodeIfPresent(
             AIConnectionPolicy.self, forKey: .defaultConnectionPolicy
         ) ?? .askEachTime
@@ -273,6 +328,14 @@ struct AISettings: Codable, Equatable, Sendable {
         min(
             max(inlineSuggestionDebounceMs, AISettings.inlineSuggestionDebounceRange.lowerBound),
             AISettings.inlineSuggestionDebounceRange.upperBound
+        )
+    }
+
+    var effectiveMaxToolRoundtrips: Int? {
+        guard maxToolRoundtripsEnabled else { return nil }
+        return min(
+            max(maxToolRoundtrips, AISettings.maxToolRoundtripsRange.lowerBound),
+            AISettings.maxToolRoundtripsRange.upperBound
         )
     }
 }

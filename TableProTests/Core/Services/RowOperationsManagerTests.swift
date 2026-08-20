@@ -347,6 +347,51 @@ struct RowOperationsManagerTests {
         #expect(tableRows.count == 3)
     }
 
+    @Test("deleteRows marks an existing row deleted at its display index with the given values")
+    func deleteRowsMarksExistingByDisplayIndex() {
+        let (manager, changeManager) = makeManager()
+        var tableRows = makeTableRows(rowCount: 4)
+        let resolvedRow: [PluginCellValue] = [.text("42"), .text("Zoe"), .text("zoe@test.com")]
+
+        _ = manager.deleteRows(
+            existingRows: [(displayIndex: 1, originalRow: resolvedRow)],
+            insertedStorageIndices: [],
+            tableRows: &tableRows
+        )
+
+        #expect(changeManager.isRowDeleted(1))
+        #expect(tableRows.count == 4)
+        let deleteChange = changeManager.rowChanges.first { $0.type == .delete && $0.rowIndex == 1 }
+        #expect(deleteChange?.originalRow == resolvedRow)
+    }
+
+    @Test("deleteRows physically removes inserted rows by storage index")
+    func deleteRowsRemovesInsertedByStorageIndex() {
+        let (manager, _) = makeManager()
+        var tableRows = makeTableRows(rowCount: 3)
+        guard let addResult = manager.addNewRow(
+            columns: Self.testColumns, columnDefaults: [:], tableRows: &tableRows
+        ) else {
+            Issue.record("addNewRow returned nil")
+            return
+        }
+        #expect(tableRows.count == 4)
+
+        let result = manager.deleteRows(
+            existingRows: [],
+            insertedStorageIndices: [addResult.rowIndex],
+            tableRows: &tableRows
+        )
+
+        #expect(tableRows.count == 3)
+        #expect(result.physicallyRemovedIndices == [addResult.rowIndex])
+        if case .rowsRemoved(let indices) = result.delta {
+            #expect(indices == IndexSet(integer: addResult.rowIndex))
+        } else {
+            Issue.record("Expected .rowsRemoved delta")
+        }
+    }
+
     @Test("addNewRow then edit cell preserves insertion state")
     func addNewRowThenEditPreservesInsertion() {
         let (manager, changeManager) = makeManager()

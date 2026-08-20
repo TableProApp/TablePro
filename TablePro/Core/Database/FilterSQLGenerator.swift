@@ -10,15 +10,33 @@ import TableProPluginKit
 
 /// Generates SQL WHERE clauses from filter definitions
 struct FilterSQLGenerator {
+    private enum RenderedLiteral {
+        case null
+        case value(String)
+
+        var sqlText: String {
+            switch self {
+            case .null:
+                return "NULL"
+            case .value(let text):
+                return text
+            }
+        }
+    }
+
     private let dialect: SQLDialectDescriptor
     private let quoteIdentifierFn: (String) -> String
+    private let columnTypesByName: [String: ColumnType]
 
     init(
         dialect: SQLDialectDescriptor,
+        columns: [String] = [],
+        columnTypes: [ColumnType] = [],
         quoteIdentifier: ((String) -> String)? = nil
     ) {
         self.dialect = dialect
         self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
+        self.columnTypesByName = ColumnTypeSQLQuoting.lookupByName(columns: columns, columnTypes: columnTypes)
     }
 
     // MARK: - Public API
@@ -42,46 +60,53 @@ struct FilterSQLGenerator {
         guard filter.isValid else { return nil }
 
         if filter.isRawSQL, let rawSQL = filter.rawSQL {
-            guard isRawSQLSafe(rawSQL) else { return nil }
+            guard SQLBoundaryValidator.isRawFilterConditionSafe(rawSQL) else { return nil }
             return "(\(rawSQL))"
         }
 
         let quotedColumn = quoteIdentifierFn(filter.columnName)
+        let columnType = columnTypesByName[filter.columnName]
+        let folding = caseFolding(for: filter, columnType: columnType)
 
         switch filter.filterOperator {
         case .equal:
-            let escaped = escapeValue(filter.value)
-            if escaped == "NULL" { return "\(quotedColumn) IS NULL" }
-            return "\(quotedColumn) = \(escaped)"
+            switch renderLiteral(filter.value, columnType: columnType) {
+            case .null:
+                return "\(quotedColumn) IS NULL"
+            case .value(let literal):
+                return generateComparisonCondition(
+                    column: quotedColumn, literal: literal, rawValue: filter.value,
+                    negated: false, folding: folding
+                )
+            }
 
         case .notEqual:
-            let escaped = escapeValue(filter.value)
-            if escaped == "NULL" { return "\(quotedColumn) IS NOT NULL" }
-            return "\(quotedColumn) != \(escaped)"
+            switch renderLiteral(filter.value, columnType: columnType) {
+            case .null:
+                return "\(quotedColumn) IS NOT NULL"
+            case .value(let literal):
+                return generateComparisonCondition(
+                    column: quotedColumn, literal: literal, rawValue: filter.value,
+                    negated: true, folding: folding
+                )
+            }
 
-        case .contains:
-            return generateLikeCondition(column: quotedColumn, pattern: "%\(escapeLikeWildcards(filter.value))%")
-
-        case .notContains:
-            return generateNotLikeCondition(column: quotedColumn, pattern: "%\(escapeLikeWildcards(filter.value))%")
-
-        case .startsWith:
-            return generateLikeCondition(column: quotedColumn, pattern: "\(escapeLikeWildcards(filter.value))%")
-
-        case .endsWith:
-            return generateLikeCondition(column: quotedColumn, pattern: "%\(escapeLikeWildcards(filter.value))")
+        case .contains, .notContains, .startsWith, .endsWith:
+            return generateLikeFamilyCondition(
+                column: quotedColumn, filter: filter, folding: folding
+            )
 
         case .greaterThan:
-            return "\(quotedColumn) > \(escapeValue(filter.value))"
+            return "\(quotedColumn) > \(renderLiteral(filter.value, columnType: columnType).sqlText)"
 
         case .greaterOrEqual:
-            return "\(quotedColumn) >= \(escapeValue(filter.value))"
+            return "\(quotedColumn) >= \(renderLiteral(filter.value, columnType: columnType).sqlText)"
 
         case .lessThan:
-            return "\(quotedColumn) < \(escapeValue(filter.value))"
+            return "\(quotedColumn) < \(renderLiteral(filter.value, columnType: columnType).sqlText)"
 
         case .lessOrEqual:
-            return "\(quotedColumn) <= \(escapeValue(filter.value))"
+            return "\(quotedColumn) <= \(renderLiteral(filter.value, columnType: columnType).sqlText)"
 
         case .isNull:
             return "\(quotedColumn) IS NULL"
@@ -90,58 +115,103 @@ struct FilterSQLGenerator {
             return "\(quotedColumn) IS NOT NULL"
 
         case .isEmpty:
+            guard ColumnTypeSQLQuoting.supportsEmptyStringComparison(columnType) else {
+                return "\(quotedColumn) IS NULL"
+            }
             return "(\(quotedColumn) IS NULL OR \(quotedColumn) = '')"
 
         case .isNotEmpty:
+            guard ColumnTypeSQLQuoting.supportsEmptyStringComparison(columnType) else {
+                return "\(quotedColumn) IS NOT NULL"
+            }
             return "(\(quotedColumn) IS NOT NULL AND \(quotedColumn) != '')"
 
         case .inList:
-            return generateInCondition(column: quotedColumn, values: filter.value, negated: false)
+            return generateInCondition(
+                column: quotedColumn, values: filter.value, columnType: columnType,
+                negated: false, folding: folding
+            )
 
         case .notInList:
-            return generateInCondition(column: quotedColumn, values: filter.value, negated: true)
+            return generateInCondition(
+                column: quotedColumn, values: filter.value, columnType: columnType,
+                negated: true, folding: folding
+            )
 
         case .between:
             guard let secondValue = filter.secondValue, !secondValue.isEmpty else { return nil }
-            return "\(quotedColumn) BETWEEN \(escapeValue(filter.value)) AND \(escapeValue(secondValue))"
+            let lower = renderLiteral(filter.value, columnType: columnType).sqlText
+            let upper = renderLiteral(secondValue, columnType: columnType).sqlText
+            return "\(quotedColumn) BETWEEN \(lower) AND \(upper)"
 
         case .regex:
-            let syntax = dialect.regexSyntax
-            if syntax == .unsupported {
-                let escaped = escapeSQLQuote(filter.value)
-                return "\(quotedColumn) LIKE '%\(escaped)%'"
+            guard dialect.regexSyntax != .unsupported else {
+                let pattern = "'%\(escapeSQLQuote(filter.value))%'"
+                return "\(folding.foldingLikeOperand(quotedColumn)) \(folding.likeKeyword) "
+                    + folding.foldingLikeOperand(pattern)
             }
-            if syntax == .match {
-                let escapedPattern = escapeStringValue(filter.value)
-                return "match(\(quotedColumn), '\(escapedPattern)')"
-            }
-            return generateRegexCondition(column: quotedColumn, pattern: filter.value)
+            return generateRegexCondition(
+                column: quotedColumn, pattern: filter.value, ignoresCase: !filter.isCaseSensitive
+            )
         }
+    }
+
+    // MARK: - Case Sensitivity
+
+    private func caseFolding(for filter: TableFilter, columnType: ColumnType?) -> PluginSQLCaseFolding {
+        let matchesCase = filter.isCaseSensitive
+            || !filter.filterOperator.supportsCaseSensitivity
+            || !allowsCaseFolding(columnType)
+        return PluginSQLCaseFolding.resolve(
+            style: dialect.caseSensitivityStyle,
+            foldFunction: dialect.caseFoldFunction,
+            isCaseSensitive: matchesCase
+        )
+    }
+
+    /// Folding a non-text column is a type error on strict engines, so only fold
+    /// columns that are text or whose type the grid has not resolved.
+    private func allowsCaseFolding(_ columnType: ColumnType?) -> Bool {
+        columnType == nil || ColumnTypeSQLQuoting.isKnownTextLike(columnType)
+    }
+
+    private func foldedComparison(_ literal: String, folding: PluginSQLCaseFolding) -> String? {
+        guard folding.foldsComparisonOperands else { return literal }
+        guard literal.hasPrefix("'") else { return nil }
+        return folding.fold(literal)
     }
 
     // MARK: - IN Conditions
 
     /// Generate IN/NOT IN with proper NULL handling.
     /// SQL `IN (NULL)` never matches — extract NULLs into a separate IS NULL / IS NOT NULL clause.
-    private func generateInCondition(column: String, values: String, negated: Bool) -> String? {
+    private func generateInCondition(
+        column: String,
+        values: String,
+        columnType: ColumnType?,
+        negated: Bool,
+        folding: PluginSQLCaseFolding
+    ) -> String? {
         let parsed = parseListValues(values)
         guard !parsed.isEmpty else { return nil }
 
         var nonNullValues: [String] = []
         var hasNull = false
         for item in parsed {
-            if item.caseInsensitiveCompare("NULL") == .orderedSame {
+            switch renderLiteral(item, columnType: columnType) {
+            case .null:
                 hasNull = true
-            } else {
-                nonNullValues.append(escapeValue(item))
+            case .value(let literal):
+                nonNullValues.append(folding.foldingComparison(literal))
             }
         }
 
+        let foldedColumn = folding.foldingComparison(column)
         let inClause: String? = nonNullValues.isEmpty ? nil : {
             let list = nonNullValues.joined(separator: ", ")
             return negated
-                ? "\(column) NOT IN (\(list))"
-                : "\(column) IN (\(list))"
+                ? "\(foldedColumn) NOT IN (\(list))"
+                : "\(foldedColumn) IN (\(list))"
         }()
 
         let nullClause: String? = hasNull ? {
@@ -168,35 +238,102 @@ struct FilterSQLGenerator {
     /// Explicit style: requires an ESCAPE declaration.
     private var likeEscapeClause: String {
         if dialect.likeEscapeStyle == .implicit { return "" }
-        return " ESCAPE '\\'"
+        return " ESCAPE '!'"
     }
 
-    private func generateLikeCondition(column: String, pattern: String) -> String {
-        let quotedPattern = escapeSQLQuote(pattern)
-        return "\(column) LIKE '\(quotedPattern)'\(likeEscapeClause)"
+    private func generateLikeFamilyCondition(
+        column: String,
+        filter: TableFilter,
+        folding: PluginSQLCaseFolding
+    ) -> String {
+        let negated = filter.filterOperator == .notContains
+        if folding.usesRegexForLike {
+            let pattern = PluginSQLRegexPattern.pattern(
+                matchingLiteral: filter.value,
+                anchoring: regexAnchoring(for: filter.filterOperator),
+                ignoresCase: false
+            )
+            let condition = generateRegexCondition(column: column, pattern: pattern, ignoresCase: true)
+            return negated ? "NOT (\(condition))" : condition
+        }
+        let escaped = escapeLikeWildcards(filter.value)
+        let pattern: String
+        switch filter.filterOperator {
+        case .startsWith:
+            pattern = "\(escaped)%"
+        case .endsWith:
+            pattern = "%\(escaped)"
+        default:
+            pattern = "%\(escaped)%"
+        }
+        return generateLikeCondition(column: column, pattern: pattern, negated: negated, folding: folding)
     }
 
-    private func generateNotLikeCondition(column: String, pattern: String) -> String {
-        let quotedPattern = escapeSQLQuote(pattern)
-        return "\(column) NOT LIKE '\(quotedPattern)'\(likeEscapeClause)"
+    private func generateLikeCondition(
+        column: String,
+        pattern: String,
+        negated: Bool,
+        folding: PluginSQLCaseFolding
+    ) -> String {
+        let quotedPattern = "'\(escapeSQLQuote(pattern))'"
+        let keyword = negated ? folding.notLikeKeyword : folding.likeKeyword
+        let operand = folding.foldingLikeOperand(column)
+        return "\(operand) \(keyword) \(folding.foldingLikeOperand(quotedPattern))\(likeEscapeClause)"
+    }
+
+    private func generateComparisonCondition(
+        column: String,
+        literal: String,
+        rawValue: String,
+        negated: Bool,
+        folding: PluginSQLCaseFolding
+    ) -> String {
+        if folding.usesRegexForLike {
+            let pattern = PluginSQLRegexPattern.pattern(
+                matchingLiteral: rawValue, anchoring: .exact, ignoresCase: false
+            )
+            let condition = generateRegexCondition(column: column, pattern: pattern, ignoresCase: true)
+            return negated ? "NOT (\(condition))" : condition
+        }
+        let operatorText = negated ? "!=" : "="
+        guard let foldedValue = foldedComparison(literal, folding: folding) else {
+            return "\(column) \(operatorText) \(literal)"
+        }
+        let foldedColumn = folding.foldsComparisonOperands ? folding.fold(column) : column
+        return "\(foldedColumn) \(operatorText) \(foldedValue)"
+    }
+
+    private func regexAnchoring(for filterOperator: FilterOperator) -> PluginSQLRegexPattern.Anchoring {
+        switch filterOperator {
+        case .startsWith:
+            return .prefix
+        case .endsWith:
+            return .suffix
+        default:
+            return .unanchored
+        }
     }
 
     // MARK: - REGEX Conditions
 
-    private func generateRegexCondition(column: String, pattern: String) -> String {
+    private func generateRegexCondition(column: String, pattern: String, ignoresCase: Bool) -> String {
         let escapedPattern = escapeStringValue(pattern)
 
         switch dialect.regexSyntax {
         case .regexp:
-            return "\(column) REGEXP '\(escapedPattern)'"
+            guard ignoresCase else { return "\(column) REGEXP '\(escapedPattern)'" }
+            return "REGEXP_LIKE(\(column), '\(escapedPattern)', 'i')"
         case .tilde:
-            return "\(column) ~ '\(escapedPattern)'"
+            return "\(column) \(ignoresCase ? "~*" : "~") '\(escapedPattern)'"
         case .regexpMatches:
-            return "regexp_matches(\(column), '\(escapedPattern)')"
+            guard ignoresCase else { return "regexp_matches(\(column), '\(escapedPattern)')" }
+            return "regexp_matches(\(column), '\(escapedPattern)', 'i')"
         case .regexpLike:
-            return "REGEXP_LIKE(\(column), '\(escapedPattern)')"
+            guard ignoresCase else { return "REGEXP_LIKE(\(column), '\(escapedPattern)')" }
+            return "REGEXP_LIKE(\(column), '\(escapedPattern)', 'i')"
         case .match:
-            return "match(\(column), '\(escapedPattern)')"
+            guard ignoresCase else { return "match(\(column), '\(escapedPattern)')" }
+            return "match(\(column), '(?i)\(escapedPattern)')"
         case .unsupported:
             return "\(column) LIKE '%\(escapedPattern)%'"
         }
@@ -204,34 +341,52 @@ struct FilterSQLGenerator {
 
     // MARK: - Value Escaping
 
-    /// Escape a value for SQL, auto-detecting type
-    private func escapeValue(_ value: String) -> String {
+    private func renderLiteral(_ value: String, columnType: ColumnType?) -> RenderedLiteral {
         let trimmed = value.trimmingCharacters(in: .whitespaces)
 
-        // Check for NULL literal (case-insensitive without allocating uppercased copy)
-        if trimmed.caseInsensitiveCompare("NULL") == .orderedSame {
-            return "NULL"
+        if !ColumnTypeSQLQuoting.isKnownTextLike(columnType),
+           trimmed.caseInsensitiveCompare("NULL") == .orderedSame {
+            return .null
         }
 
-        // Check for boolean literals
-        if trimmed.caseInsensitiveCompare("TRUE") == .orderedSame {
-            return dialect.booleanLiteralStyle == .truefalse ? "TRUE" : "1"
-        }
-        if trimmed.caseInsensitiveCompare("FALSE") == .orderedSame {
-            return dialect.booleanLiteralStyle == .truefalse ? "FALSE" : "0"
+        if let booleanLiteral = booleanLiteral(for: trimmed, columnType: columnType) {
+            return .value(booleanLiteral)
         }
 
-        // Try to detect numeric values
-        if Int(trimmed) != nil || Double(trimmed) != nil {
-            return trimmed
+        if ColumnTypeSQLQuoting.isNumericLiteral(trimmed, for: columnType) {
+            return .value(trimmed)
         }
 
-        // String value - escape and quote
-        return "'\(escapeStringValue(trimmed))'"
+        return .value("'\(escapeStringValue(trimmed))'")
+    }
+
+    private func booleanLiteral(for value: String, columnType: ColumnType?) -> String? {
+        guard let columnType else { return legacyBooleanLiteral(for: value) }
+        guard columnType.isBooleanType else { return nil }
+        guard let synonym = ColumnTypeSQLQuoting.booleanSynonym(for: value) else { return nil }
+        switch synonym {
+        case .isTrue:
+            return booleanText(isTrue: true)
+        case .isFalse:
+            return booleanText(isTrue: false)
+        }
+    }
+
+    private func legacyBooleanLiteral(for value: String) -> String? {
+        if value.caseInsensitiveCompare("TRUE") == .orderedSame { return booleanText(isTrue: true) }
+        if value.caseInsensitiveCompare("FALSE") == .orderedSame { return booleanText(isTrue: false) }
+        return nil
+    }
+
+    private func booleanText(isTrue: Bool) -> String {
+        if dialect.booleanLiteralStyle == .truefalse {
+            return isTrue ? "TRUE" : "FALSE"
+        }
+        return isTrue ? "1" : "0"
     }
 
     /// Escape only single quotes for SQL string literal context.
-    /// Used for LIKE patterns where backslashes are already escaped
+    /// Used for LIKE patterns where wildcards are already escaped
     /// by escapeLikeWildcards for the ESCAPE clause.
     private func escapeSQLQuote(_ value: String) -> String {
         guard value.contains("'") else { return value }
@@ -255,9 +410,8 @@ struct FilterSQLGenerator {
     }
 
     private func escapeLikeWildcards(_ value: String) -> String {
-        guard value.contains("\\") || value.contains("%") || value.contains("_") else { return value }
-
         if dialect.likeEscapeStyle == .implicit {
+            guard value.contains("\\") || value.contains("%") || value.contains("_") else { return value }
             // MySQL uses \ as both string escape and default LIKE escape.
             // Need double backslash in SQL string so string layer yields single \
             // which LIKE then uses as escape char.
@@ -266,38 +420,11 @@ struct FilterSQLGenerator {
                 .replacingOccurrences(of: "%", with: "\\\\%")
                 .replacingOccurrences(of: "_", with: "\\\\_")
         }
+        guard value.contains("!") || value.contains("%") || value.contains("_") else { return value }
         return value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
-    }
-
-    // MARK: - Raw SQL Validation
-
-    private static let destructiveStatementPattern: NSRegularExpression? = {
-        let keywords = "DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|EXEC|EXECUTE"
-        let pattern = ";\\s*(\(keywords))\\b"
-        return try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
-    }()
-
-    private static let commentInjectionPattern: NSRegularExpression? = {
-        try? NSRegularExpression(pattern: "(?:^|\\s)--|\\/\\*", options: [])
-    }()
-
-    private func isRawSQLSafe(_ sql: String) -> Bool {
-        let range = NSRange(sql.startIndex..., in: sql)
-
-        if let pattern = Self.destructiveStatementPattern,
-           pattern.firstMatch(in: sql, range: range) != nil {
-            return false
-        }
-
-        if let pattern = Self.commentInjectionPattern,
-           pattern.firstMatch(in: sql, range: range) != nil {
-            return false
-        }
-
-        return true
+            .replacingOccurrences(of: "!", with: "!!")
+            .replacingOccurrences(of: "%", with: "!%")
+            .replacingOccurrences(of: "_", with: "!_")
     }
 
     // MARK: - List Parsing
@@ -317,6 +444,7 @@ extension FilterSQLGenerator {
     /// Generate a preview-friendly query string (for display, not execution)
     func generatePreviewSQL(
         tableName: String,
+        schemaName: String? = nil,
         filters: [TableFilter],
         logicMode: FilterLogicMode = .and,
         limit: Int = 1_000,
@@ -324,28 +452,26 @@ extension FilterSQLGenerator {
     ) -> String {
         // Use plugin dispatch for NoSQL drivers (MongoDB, Redis, etc.)
         if let pluginDriver {
-            let filterTuples = filters
+            let queryFilters = filters
                 .filter { $0.isEnabled && !$0.columnName.isEmpty }
-                .map { filter in
-                    let value: String
-                    if filter.filterOperator == .between, let second = filter.secondValue {
-                        value = "\(filter.value),\(second)"
-                    } else {
-                        value = filter.value
-                    }
-                    return (filter.columnName, filter.filterOperator.rawValue, value)
-                }
+                .map(\.asPluginQueryFilter)
             if let result = pluginDriver.buildFilteredQuery(
-                table: tableName, filters: filterTuples,
+                table: tableName, schema: schemaName, queryFilters: queryFilters,
                 logicMode: logicMode == .and ? "and" : "or",
                 sortColumns: [], columns: [],
-                limit: limit, offset: 0
+                limit: limit, offset: 0,
+                columnKinds: columnTypesByName.mapValues(\.pluginColumnKind)
             ) {
                 return result
             }
         }
 
-        let quotedTable = quoteIdentifierFn(tableName)
+        let quotedTable: String
+        if let schemaName, !schemaName.isEmpty {
+            quotedTable = "\(quoteIdentifierFn(schemaName)).\(quoteIdentifierFn(tableName))"
+        } else {
+            quotedTable = quoteIdentifierFn(tableName)
+        }
         var sql = "SELECT * FROM \(quotedTable)"
 
         let whereClause = generateWhereClause(from: filters, logicMode: logicMode)
@@ -355,7 +481,8 @@ extension FilterSQLGenerator {
 
         if dialect.paginationStyle == .offsetFetch {
             let orderBy = dialect.offsetFetchOrderBy
-            sql += "\n\(orderBy) OFFSET 0 ROWS FETCH NEXT \(limit) ROWS ONLY"
+            let orderByPrefix = orderBy.isEmpty ? "" : "\(orderBy) "
+            sql += "\n\(orderByPrefix)OFFSET 0 ROWS FETCH NEXT \(limit) ROWS ONLY"
         } else {
             sql += "\nLIMIT \(limit)"
         }

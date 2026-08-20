@@ -9,7 +9,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct ConnectionToolbarButton: View {
-    let coordinator: MainContentCoordinator
+    @Bindable var coordinator: MainContentCoordinator
 
     var body: some View {
         Button {
@@ -17,7 +17,14 @@ struct ConnectionToolbarButton: View {
         } label: {
             Label("Connection", systemImage: "network")
         }
-        .help(String(localized: "Switch Connection (⌘⌥C)"))
+        /// The toolbar runs icon only, and a hosted view has to honour that itself. The label is a
+        /// fixed word rather than the connection's name, which the centred status item already
+        /// shows, so drawing it put a second idiom beside the native icon-only items for nothing.
+        .labelStyle(.iconOnly)
+        .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Switch Connection"), for: .switchConnection))
+        .popover(isPresented: $coordinator.isConnectionSwitcherShown, arrowEdge: .bottom) {
+            ConnectionSwitcherPopover()
+        }
     }
 }
 
@@ -26,14 +33,16 @@ struct DatabaseToolbarButton: View {
 
     var body: some View {
         let state = coordinator.toolbarState
-        let supportsSwitch = PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType)
+        let supportsSwitch = PluginManager.shared.supportsContainerSwitching(for: state.databaseType)
+        let containerName = PluginManager.shared.containerEntityName(for: state.databaseType)
         if supportsSwitch {
             Button {
                 coordinator.commandActions?.openDatabaseSwitcher()
             } label: {
-                Label("Database", systemImage: "cylinder")
+                Label(containerName, systemImage: "cylinder")
             }
-            .help(String(localized: "Open Database (⌘K)"))
+            .labelStyle(.iconOnly)
+            .help(AppSettingsManager.shared.keyboard.shortcutHint(String(format: String(localized: "Open %@"), containerName), for: .openDatabase))
             .disabled(
                 state.connectionState != .connected
                     || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased
@@ -45,167 +54,89 @@ struct DatabaseToolbarButton: View {
     }
 }
 
-struct RefreshToolbarButton: View {
-    let coordinator: MainContentCoordinator
+struct SessionContextToolbarButton: View {
+    @Bindable var coordinator: MainContentCoordinator
 
     var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            AppCommands.shared.refreshData.send(nil)
-        } label: {
-            Label("Refresh", systemImage: "arrow.clockwise")
-        }
-        .help(String(localized: "Refresh (⌘R)"))
-        .disabled(state.connectionState != .connected)
-    }
-}
-
-struct SaveChangesToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.saveChanges()
-        } label: {
-            Label("Save Changes", systemImage: "checkmark.circle.fill")
-        }
-        .help(String(localized: "Save Changes (⌘S)"))
-        .disabled(
-            !state.hasPendingChanges
-                || state.connectionState != .connected
-                || state.safeModeLevel.blocksAllWrites
-        )
-        .tint(.accentColor)
-    }
-}
-
-struct QuickSwitcherToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.openQuickSwitcher()
-        } label: {
-            Label("Quick Switcher", systemImage: "magnifyingglass")
-        }
-        .help(String(localized: "Quick Switcher (⇧⌘O)"))
-        .disabled(state.connectionState != .connected)
-    }
-}
-
-struct NewTabToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
-        } label: {
-            Label("New Tab", systemImage: "plus.rectangle")
-        }
-        .help(String(localized: "New Query Tab (⌘T)"))
-        .disabled(state.connectionState != .connected)
-    }
-}
-
-struct PreviewSQLToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.previewSQL()
-        } label: {
-            let langName = PluginManager.shared.queryLanguageName(for: state.databaseType)
-            Label(String(format: String(localized: "Preview %@"), langName), systemImage: "eye")
-        }
-        .help(String(format: String(localized: "Preview %@ (⌘⇧P)"), PluginManager.shared.queryLanguageName(for: state.databaseType)))
-        .disabled(!state.hasDataPendingChanges || state.connectionState != .connected)
-    }
-}
-
-struct ResultsToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.toggleResults()
-        } label: {
-            Label(
-                "Results",
-                systemImage: state.isResultsCollapsed
-                    ? "rectangle.bottomhalf.inset.filled"
-                    : "rectangle.inset.filled"
-            )
-        }
-        .help(String(localized: "Toggle Results (⌘⌥R)"))
-        .disabled(state.connectionState != .connected || state.isTableTab)
-    }
-}
-
-struct DashboardToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        let supportsDashboard = coordinator.commandActions?.supportsServerDashboard ?? false
-        Button {
-            coordinator.commandActions?.showServerDashboard()
-        } label: {
-            Label(String(localized: "Dashboard"), systemImage: "gauge.with.dots.needle.33percent")
-        }
-        .help(String(localized: "Server Dashboard"))
-        .disabled(state.connectionState != .connected || !supportsDashboard)
-    }
-}
-
-struct HistoryToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        Button {
-            coordinator.commandActions?.toggleHistoryPanel()
-        } label: {
-            Label("History", systemImage: "clock")
-        }
-        .help(String(localized: "Toggle Query History (⌘Y)"))
-    }
-}
-
-struct ExportToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.exportTables()
-        } label: {
-            Label("Export", systemImage: "square.and.arrow.up")
-        }
-        .help(String(localized: "Export Data (⌘⇧E)"))
-        .disabled(state.connectionState != .connected)
-    }
-}
-
-struct ImportToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        if PluginManager.shared.supportsImport(for: state.databaseType) {
-            Button {
-                coordinator.commandActions?.importTables()
-            } label: {
-                Label("Import", systemImage: "square.and.arrow.down")
+        HStack(spacing: 4) {
+            ForEach(coordinator.sessionContexts) { context in
+                Menu {
+                    ForEach(context.availableValues, id: \.self) { value in
+                        Button {
+                            Task { await coordinator.switchSessionContext(id: context.id, to: value) }
+                        } label: {
+                            if value == context.currentValue {
+                                Label(value, systemImage: "checkmark")
+                            } else {
+                                Text(value)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(context.currentValue ?? context.label, systemImage: context.iconName)
+                }
+                .help(context.label)
             }
-            .help(String(localized: "Import Data (⌘⇧I)"))
-            .disabled(
-                state.connectionState != .connected
-                    || state.safeModeLevel.blocksAllWrites
+        }
+        .task(id: coordinator.toolbarState.connectionState) {
+            await coordinator.loadSessionContexts()
+        }
+    }
+}
+
+/// Thin wrappers so the toolbar's hosted content follows the window's subject instead of capturing
+/// one connection. Reading `subject.coordinator` inside `body` is what registers the observation,
+/// and the `id` is what makes the connection's identity the view's identity. The `if let` alone
+/// keeps one branch across a repoint, so SwiftUI carried the outgoing connection's `@State` over
+/// and left its `task(id:)` running instead of restarting it for the connection that arrived.
+internal struct ConnectionToolbarSubjectButton: View {
+    internal let subject: ToolbarSubject
+
+    internal var body: some View {
+        if let coordinator = subject.coordinator {
+            ConnectionToolbarButton(coordinator: coordinator)
+                .id(coordinator.connectionId)
+        }
+    }
+}
+
+internal struct DatabaseToolbarSubjectButton: View {
+    internal let subject: ToolbarSubject
+
+    internal var body: some View {
+        if let coordinator = subject.coordinator {
+            DatabaseToolbarButton(coordinator: coordinator)
+                .id(coordinator.connectionId)
+        }
+    }
+}
+
+internal struct SessionContextToolbarSubjectButton: View {
+    internal let subject: ToolbarSubject
+
+    internal var body: some View {
+        if let coordinator = subject.coordinator {
+            SessionContextToolbarButton(coordinator: coordinator)
+                .id(coordinator.connectionId)
+        }
+    }
+}
+
+/// The centred status item. `ConnectionToolbarState` is a reference type, so this reads it from the
+/// subject each time rather than being handed one connection's instance at build time.
+internal struct ToolbarPrincipalSubjectContent: View {
+    internal let subject: ToolbarSubject
+
+    internal var body: some View {
+        if let coordinator = subject.coordinator {
+            ToolbarPrincipalContent(
+                state: coordinator.toolbarState,
+                connectionId: coordinator.connection.id,
+                coordinator: coordinator,
+                onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() },
+                onSafeModeChange: { [weak coordinator] level in coordinator?.setSafeModeLevel(level) }
             )
+            .id(coordinator.connectionId)
         }
     }
 }

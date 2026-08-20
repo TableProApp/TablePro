@@ -11,7 +11,7 @@ import TableProPluginKit
 @MainActor @Observable
 internal final class RedisKeyTreeViewModel {
     private static let logger = Logger(subsystem: "com.TablePro", category: "RedisKeyTree")
-    private static let maxKeys = 50_000
+    internal static let maxKeys = 50_000
 
     var rootNodes: [RedisKeyNode] = []
     var isLoading = false
@@ -38,8 +38,7 @@ internal final class RedisKeyTreeViewModel {
         }
 
         do {
-            // Use KEYS command for simplicity — returns all keys matching pattern
-            let result = try await driver.execute(query: "KEYS *")
+            let result = try await driver.execute(query: "KEYTREE LIMIT \(Self.maxKeys)")
 
             let keyColumnIndex = result.columns.firstIndex(of: "Key") ?? 0
             let typeColumnIndex = result.columns.firstIndex(of: "Type") ?? 1

@@ -15,6 +15,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var _serverVersion: String?
     private var _activeDatabase: String
 
+    internal var cachedPrivilegeCatalog: PluginPrivilegeCatalog?
+
     /// Detected server type from version string after connecting
     private var isMariaDB = false
 
@@ -35,26 +37,16 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .cancelQuery,
             .storedProcedures,
             .userFunctions,
+            .userManagement,
         ]
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "`", with: "``")
-        return "`\(escaped)`"
+        mysqlQuoteIdentifier(name)
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        var result = value
-        result = result.replacingOccurrences(of: "\\", with: "\\\\")
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\n", with: "\\n")
-        result = result.replacingOccurrences(of: "\r", with: "\\r")
-        result = result.replacingOccurrences(of: "\t", with: "\\t")
-        result = result.replacingOccurrences(of: "\0", with: "\\0")
-        result = result.replacingOccurrences(of: "\u{08}", with: "\\b")
-        result = result.replacingOccurrences(of: "\u{0C}", with: "\\f")
-        result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z")
-        return result
+        mysqlEscapeStringLiteral(value)
     }
 
     private static let tableNameRegex = try? NSRegularExpression(pattern: "(?i)\\bFROM\\s+[`\"']?([\\w]+)[`\"']?")
@@ -75,7 +67,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             user: config.username,
             password: config.password,
             database: _activeDatabase,
-            sslConfig: sslConfig
+            sslConfig: sslConfig,
+            enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
+            queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0
         )
 
         try await conn.connect()
@@ -101,13 +95,38 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Transaction Management
 
     func beginTransaction() async throws {
-        _ = try await execute(query: "START TRANSACTION")
+        try await beginTransaction(mode: .serverDefault)
+    }
+
+    func beginTransaction(mode: PluginTransactionAccessMode) async throws {
+        _ = try await execute(query: mysqlBeginTransactionStatement(mode: mode))
     }
 
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
         try await executeWithReconnect(query: query, isRetry: false)
+    }
+
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
+        guard let parameters else {
+            return try await executeWithReconnect(query: query, isRetry: false, rowCap: cap)
+        }
+        guard let conn = mariadbConnection else {
+            throw MariaDBPluginError.notConnected
+        }
+        let startTime = Date()
+        let result = try await conn.executeParameterizedQuery(query, parameters: parameters, rowCap: cap)
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: Int(result.affectedRows),
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: result.isTruncated,
+            columnMeta: result.columnMeta
+        )
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
@@ -124,7 +143,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             rows: result.rows,
             rowsAffected: Int(result.affectedRows),
             executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: result.isTruncated
+            isTruncated: result.isTruncated,
+            columnMeta: result.columnMeta
         )
     }
 
@@ -132,7 +152,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         mariadbConnection?.cancelCurrentQuery()
     }
 
-    private func executeWithReconnect(query: String, isRetry: Bool) async throws -> PluginQueryResult {
+    private func executeWithReconnect(query: String, isRetry: Bool, rowCap: Int? = nil) async throws -> PluginQueryResult {
         let startTime = Date()
 
         guard let conn = mariadbConnection else {
@@ -140,7 +160,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         do {
-            let result = try await conn.executeQuery(query)
+            let result = try await conn.executeQuery(query, rowCap: rowCap)
 
             if result.columns.isEmpty && result.rows.isEmpty {
                 let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -164,11 +184,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 rows: result.rows,
                 rowsAffected: Int(result.affectedRows),
                 executionTime: Date().timeIntervalSince(startTime),
-                isTruncated: result.isTruncated
+                isTruncated: result.isTruncated,
+                columnMeta: result.columnMeta
             )
-        } catch let error as MariaDBPluginError where !isRetry && isConnectionLostError(error) {
+        } catch let error as MariaDBPluginError
+            where !isRetry && isConnectionLostError(error) && mysqlStatementIsReadOnly(query) {
             try await reconnect()
-            return try await executeWithReconnect(query: query, isRetry: true)
+            return try await executeWithReconnect(query: query, isRetry: true, rowCap: rowCap)
         }
     }
 
@@ -185,13 +207,20 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let result = try await execute(query: "SHOW FULL TABLES")
+        let query = """
+        SELECT TABLE_NAME, TABLE_TYPE, TABLE_COMMENT
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+        """
+        let result = try await execute(query: query)
 
         return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let typeStr = (row[safe: 1]?.asText) ?? "BASE TABLE"
-            let type = typeStr.contains("VIEW") ? "VIEW" : "TABLE"
-            return PluginTableInfo(name: name, type: type)
+            let isView = typeStr.contains("VIEW")
+            let type = isView ? "VIEW" : "TABLE"
+            let comment = isView ? nil : row[safe: 2]?.asText?.nilIfEmpty
+            return PluginTableInfo(name: name, type: type, comment: comment)
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -231,6 +260,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 charset: charset,
                 collation: collation == "NULL" ? nil : collation,
                 comment: comment?.isEmpty == false ? comment : nil,
+                isGenerated: mysqlColumnIsGenerated(extra: extra),
                 allowedValues: allowedValues
             )
         }
@@ -284,6 +314,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 charset: charset,
                 collation: collation == "NULL" ? nil : collation,
                 comment: comment?.isEmpty == false ? comment : nil,
+                isGenerated: mysqlColumnIsGenerated(extra: extra),
                 allowedValues: allowedValues
             )
 
@@ -360,7 +391,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let result = try await execute(query: query)
 
-        return result.rows.compactMap { row in
+        let foreignKeys: [PluginForeignKeyInfo] = result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText,
                   let column = row[safe: 1]?.asText,
                   let refTable = row[safe: 2]?.asText,
@@ -375,7 +406,64 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 onUpdate: (row[safe: 6]?.asText) ?? "NO ACTION"
             )
         }
+        Self.logger.info("[fk] mysql fetchForeignKeys db=\(dbName, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
+        return foreignKeys
     }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        let dbName = _activeDatabase
+        let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
+        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+
+        let query = """
+            SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT
+            FROM information_schema.TRIGGERS
+            WHERE EVENT_OBJECT_SCHEMA = '\(escapedDb)'
+                AND EVENT_OBJECT_TABLE = '\(escapedTable)'
+            ORDER BY TRIGGER_NAME
+            """
+
+        let result = try await execute(query: query)
+
+        let triggers: [PluginTriggerInfo] = result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText,
+                  let timing = row[safe: 1]?.asText,
+                  let event = row[safe: 2]?.asText,
+                  let body = row[safe: 3]?.asText
+            else { return nil }
+
+            let statement = """
+                CREATE TRIGGER \(quoteIdentifier(name)) \(timing) \(event)
+                ON \(quoteIdentifier(table)) FOR EACH ROW
+                \(body)
+                """
+
+            return PluginTriggerInfo(
+                name: name,
+                timing: timing,
+                event: event,
+                statement: statement
+            )
+        }
+        Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(triggers.count)")
+        return triggers
+    }
+
+    func createTriggerTemplate(table: String, schema: String?) -> String? {
+        """
+        CREATE TRIGGER \(quoteIdentifier("trigger_name")) BEFORE INSERT
+        ON \(quoteIdentifier(table)) FOR EACH ROW
+        BEGIN
+            -- SET NEW.column = ...;
+        END
+        """
+    }
+
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
+        "DROP TRIGGER \(quoteIdentifier(name))"
+    }
+
+    var providesBulkForeignKeyFetch: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let dbName = _activeDatabase
@@ -584,14 +672,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Timeout
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        guard seconds > 0 else { return }
         do {
-            if isMariaDB {
-                _ = try await execute(query: "SET SESSION max_statement_time = \(seconds)")
-            } else {
-                let ms = seconds * 1_000
-                _ = try await execute(query: "SET SESSION max_execution_time = \(ms)")
-            }
+            _ = try await execute(query: mysqlQueryTimeoutStatement(seconds: seconds, isMariaDB: isMariaDB))
         } catch {
             Self.logger.warning("Failed to set query timeout: \(error.localizedDescription)")
         }
@@ -676,48 +758,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func buildColumnDefinitionSQL(_ column: PluginColumnDefinition) -> String {
-        var def = "\(quoteIdentifier(column.name)) \(column.dataType)"
-
-        if column.unsigned {
-            def += " UNSIGNED"
-        }
-        if let charset = column.charset, !charset.isEmpty {
-            def += " CHARACTER SET \(charset)"
-        }
-        if let collation = column.collation, !collation.isEmpty {
-            def += " COLLATE \(collation)"
-        }
-        if column.isNullable {
-            def += " NULL"
-        } else {
-            def += " NOT NULL"
-        }
-        if let defaultValue = column.defaultValue {
-            let upper = defaultValue.uppercased()
-            if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
-                || defaultValue.hasPrefix("'") {
-                def += " DEFAULT \(defaultValue)"
-            } else if Int64(defaultValue) != nil || Double(defaultValue) != nil {
-                def += " DEFAULT \(defaultValue)"
-            } else {
-                def += " DEFAULT '\(escapeStringLiteral(defaultValue))'"
-            }
-        }
-        if column.autoIncrement {
-            def += " AUTO_INCREMENT"
-        }
-        if let onUpdate = column.onUpdate, !onUpdate.isEmpty {
-            let upper = onUpdate.uppercased()
-            if upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
-                || upper.hasPrefix("CURRENT_TIMESTAMP(") {
-                def += " ON UPDATE \(onUpdate)"
-            }
-        }
-        if let comment = column.comment, !comment.isEmpty {
-            def += " COMMENT '\(escapeStringLiteral(comment))'"
-        }
-
-        return def
+        mysqlColumnDefinitionSQL(column)
     }
 
     private func buildIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String {
@@ -842,44 +883,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let tableName = quoteIdentifier(table)
         let colName = quoteIdentifier(column.name)
 
-        var def = "\(column.dataType)"
-        if column.unsigned {
-            def += " UNSIGNED"
-        }
-        if let charset = column.charset, !charset.isEmpty {
-            def += " CHARACTER SET \(charset)"
-        }
-        if let collation = column.collation, !collation.isEmpty {
-            def += " COLLATE \(collation)"
-        }
-        if column.isNullable {
-            def += " NULL"
-        } else {
-            def += " NOT NULL"
-        }
-        if let defaultValue = column.defaultValue {
-            let upper = defaultValue.uppercased()
-            if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
-                || defaultValue.hasPrefix("'") {
-                def += " DEFAULT \(defaultValue)"
-            } else if Int64(defaultValue) != nil || Double(defaultValue) != nil {
-                def += " DEFAULT \(defaultValue)"
-            } else {
-                def += " DEFAULT '\(escapeStringLiteral(defaultValue))'"
-            }
-        }
-        if column.autoIncrement {
-            def += " AUTO_INCREMENT"
-        }
-        if let onUpdate = column.onUpdate, !onUpdate.isEmpty {
-            let upper = onUpdate.uppercased()
-            if upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()" || upper.hasPrefix("CURRENT_TIMESTAMP(") {
-                def += " ON UPDATE \(onUpdate)"
-            }
-        }
-        if let comment = column.comment, !comment.isEmpty {
-            def += " COMMENT '\(escapeStringLiteral(comment))'"
-        }
+        let def = "\(column.dataType)" + mysqlColumnAttributesSQL(column)
 
         let position: String
         if let afterCol = afterColumn {
@@ -961,5 +965,4 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         return columns
     }
-
 }

@@ -40,10 +40,14 @@ extension MainContentCoordinator {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: favorite.fileURL.path)[.modificationDate]) as? Date
 
         if let existing = WindowLifecycleMonitor.shared.window(forSourceFile: favorite.fileURL) {
-            let stillHasTab = MainContentCoordinator.coordinator(forWindow: existing)?
-                .tabManager.tabs.contains { $0.content.sourceFileURL == favorite.fileURL } ?? false
-            if stillHasTab {
-                existing.makeKeyAndOrderFront(nil)
+            if let hosting = MainContentCoordinator.coordinator(forWindow: existing),
+               let match = hosting.tabManager.tabs.first(where: {
+                   $0.content.sourceFileURL == favorite.fileURL
+               }) {
+                /// Selecting it, not just raising its window. An editor tab used to be a window, so
+                /// raising the window was the whole of showing the tab; now a window holds every tab
+                /// and the command did nothing whenever the file's tab is not the one in front.
+                hosting.selectTabAndFocusWindow(match.id)
                 NSApp.activate(ignoringOtherApps: true)
                 return
             }
@@ -53,7 +57,6 @@ extension MainContentCoordinator {
         if tabManager.tabs.isEmpty {
             tabManager.addTab(
                 initialQuery: loaded.content,
-                title: favorite.name,
                 sourceFileURL: favorite.fileURL
             )
             registerWindowForSourceFile(favorite.fileURL)
@@ -70,8 +73,9 @@ extension MainContentCoordinator {
                 tab.content.query = loaded.content
                 tab.content.savedFileContent = loaded.content
                 tab.content.loadMtime = mtime
-                tab.title = favorite.name
+                tab.title = QueryTab.fileDisplayTitle(for: favorite.fileURL)
             }
+            tabManager.markTabRenamed(tab.id)
             registerWindowForSourceFile(favorite.fileURL)
             return
         }
@@ -79,10 +83,9 @@ extension MainContentCoordinator {
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .query,
-            databaseName: activeDatabaseName,
+            databaseName: browseDatabaseName,
             initialQuery: loaded.content,
-            sourceFileURL: favorite.fileURL,
-            tabTitle: favorite.name
+            sourceFileURL: favorite.fileURL
         )
         WindowManager.shared.openTab(payload: payload)
     }
@@ -117,7 +120,7 @@ extension MainContentCoordinator {
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .query,
-            databaseName: activeDatabaseName,
+            databaseName: browseDatabaseName,
             initialQuery: favorite.query
         )
         WindowManager.shared.openTab(payload: payload)

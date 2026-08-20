@@ -7,44 +7,43 @@ import SwiftUI
 import TableProPluginKit
 
 struct ConnectionFormView: View {
-    let connectionId: UUID?
+    let request: ConnectionFormRequest?
+    let close: () -> Void
 
     @State private var coordinator: ConnectionFormCoordinator?
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
             if let coordinator {
-                ConnectionFormContent(coordinator: coordinator, dismiss: dismiss)
+                ConnectionFormContent(coordinator: coordinator)
             } else {
                 Color.clear
                     .frame(minWidth: 720, minHeight: 560)
             }
         }
-        .task(id: connectionId) {
+        .task(id: request) {
             guard coordinator == nil else { return }
-            let pendingImport = connectionId == nil
-                ? PendingNewConnectionImport.shared.consume()
-                : nil
-            let pendingType = connectionId == nil
-                ? PendingNewConnectionType.shared.consume()
-                : nil
+            let draft = consumeDraft()
             let new = ConnectionFormCoordinator(
-                connectionId: connectionId,
-                initialType: pendingType,
-                initialParsedURL: pendingImport
+                connectionId: request?.editedConnectionId,
+                initialType: draft?.type,
+                initialParsedURL: draft?.parsedURL
             )
-            new.dismissAction = { dismiss() }
+            new.dismissAction = close
             new.start()
             new.detectClipboardConnectionStringIfNeeded()
             coordinator = new
         }
     }
+
+    private func consumeDraft() -> ConnectionFormDraft? {
+        guard let draftId = request?.draftId else { return nil }
+        return ConnectionFormDraftStore.shared.consume(draftId)
+    }
 }
 
 private struct ConnectionFormContent: View {
     @Bindable var coordinator: ConnectionFormCoordinator
-    let dismiss: DismissAction
 
     var body: some View {
         NavigationSplitView {
@@ -97,6 +96,12 @@ private struct ConnectionFormDetail: View {
                 GeneralPaneView(coordinator: coordinator)
             case .ssh:
                 SSHPaneView(coordinator: coordinator)
+            case .cloudflareTunnel:
+                CloudflareTunnelPaneView(coordinator: coordinator)
+            case .cloudSQLProxy:
+                CloudSQLProxyPaneView(coordinator: coordinator)
+            case .socksProxy:
+                SOCKSProxyPaneView(coordinator: coordinator)
             case .ssl:
                 SSLPaneView(coordinator: coordinator)
             case .customization:

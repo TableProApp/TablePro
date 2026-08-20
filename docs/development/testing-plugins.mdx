@@ -1,0 +1,41 @@
+---
+title: Testing a Custom Plugin
+description: Load a locally built driver plugin in a debug build of TablePro
+---
+
+When you write your own driver plugin (see [Plugin Development](/development/plugin-development)), you can run it in a local build of TablePro before publishing it to the [Plugin Registry](/development/plugin-registry).
+
+## How plugin loading works
+
+TablePro loads plugins from two locations and treats them differently:
+
+- **Inside the app bundle** (`PlugIns/`): built-in plugins. No signature check runs.
+- **User plugins directory** (`~/Library/Application Support/TablePro/Plugins`): user-installed plugins. Each bundle must be signed by the same Apple team as the running app, or the app rejects it with "Plugin code signature verification failed" (shown under a "Plugin Installation Failed" alert when installing).
+
+The required team comes from the app's own signature. A plugin built by the same Xcode as your local app build carries your team, so your local build accepts it. A release build of TablePro rejects it, because your team is not TablePro's; release users get plugins through the registry, where CI signs every binary.
+
+Do not reuse a built-in plugin's bundle ID. Installing such a plugin fails with a conflict error, and during discovery the copy with the higher version wins; on a version tie the built-in wins and the user copy is deleted.
+
+## Install with the dev script
+
+```bash
+scripts/install-plugin-dev.sh MyDriverPlugin
+```
+
+The script finds `MyDriverPlugin.tableplugin` in DerivedData, copies it into the user plugins directory, and writes the registry metadata sidecar. Relaunch TablePro to load it.
+
+<Warning>
+Do not modify the copied bundle, for example by patching its `Info.plist`. Any edit invalidates the code signature and dyld refuses to load the executable. If the plugin's `TableProMinAppVersion` is newer than your built app, bump the app's `MARKETING_VERSION` and rebuild the app instead.
+</Warning>
+
+## Alternative: bundle it into the app
+
+Add your `.tableplugin` to the **Copy Plug-Ins** build phase of the **TablePro** target (Build Phases tab), then run with `Cmd+R`. The plugin lands in the app's `PlugIns/` directory and loads as a built-in plugin, so no signature check runs; the phase also re-signs it with your debug identity as it copies (`CodeSignOnCopy`).
+
+Remove it from the phase after testing so it does not ride into a release build.
+
+## Alternative: skip the signature check
+
+A debug build skips the app's signature check when the `TABLEPRO_ALLOW_UNSIGNED_PLUGINS` environment variable is set to `1`. Set it under **Product > Scheme > Edit Scheme > Run > Arguments**. Use this when the team check fails, for example with a bundle built on another machine. The bundle must still be validly signed for dyld to load it. Release builds always verify.
+
+When the plugin works, publish it through the [Plugin Registry](/development/plugin-registry) so users receive a signed binary.

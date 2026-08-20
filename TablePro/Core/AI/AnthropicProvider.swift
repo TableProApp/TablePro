@@ -35,48 +35,23 @@ final class AnthropicProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let request = try buildMessagesRequest(turns: turns, options: options)
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        throw AIProviderError.networkError("Invalid response")
-                    }
-
-                    guard httpResponse.statusCode == 200 else {
-                        let errorBody = try await collectErrorBody(from: bytes)
-                        throw AIProviderError.mapHTTPError(
-                            statusCode: httpResponse.statusCode,
-                            body: errorBody
-                        )
-                    }
-
-                    var state = AnthropicStreamState()
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        guard let json = Self.decodeStreamLine(line) else { continue }
-                        let events = try Self.parseChunk(json, state: &state)
-                        for event in events { continuation.yield(event) }
-                    }
-                    if let usage = state.finalUsageEvent() {
-                        continuation.yield(usage)
-                    }
-
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        SSEEventStream.make(
+            session: session,
+            buildRequest: { [self] in
+                try buildMessagesRequest(
+                    turns: turns,
+                    options: options,
+                    effort: options.reasoningEffort ?? configuredEffort
+                )
+            },
+            decodeLine: { Self.decodeStreamLine($0) },
+            makeState: { AnthropicStreamState() },
+            parse: { try Self.parseChunk($0, state: &$1) },
+            finalEvents: { state in state.finalUsageEvent().map { [$0] } ?? [] }
+        )
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
         guard let url = URL(string: "\(endpoint)/v1/models") else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
@@ -93,7 +68,7 @@ final class AnthropicProvider: ChatTransport {
             (data, response) = try await session.data(for: request)
         } catch {
             Self.logger.warning("Anthropic model fetch failed; using known models: \(error.localizedDescription, privacy: .public)")
-            return Self.knownModels
+            return Self.offlineModels
         }
 
         guard let httpResponse = response as? HTTPURLResponse,
@@ -102,26 +77,89 @@ final class AnthropicProvider: ChatTransport {
               let models = json["data"] as? [[String: Any]]
         else {
             Self.logger.warning("Anthropic model fetch returned unexpected response; using known models")
-            return Self.knownModels
+            return Self.offlineModels
         }
 
-        let modelIds = models.compactMap { $0["id"] as? String }
-        return modelIds.isEmpty ? Self.knownModels : modelIds
+        let fetched = models.compactMap(Self.decodeModel(_:))
+        return fetched.isEmpty ? Self.offlineModels : fetched
     }
 
-    private static let knownModels = [
-        "claude-opus-4-7-20260101",
-        "claude-sonnet-4-6-20251101",
-        "claude-haiku-4-5-20251001",
-        "claude-sonnet-4-5-20250929",
-        "claude-opus-4-5-20250929"
-    ]
+    static func decodeModel(_ json: [String: Any]) -> AIModelInfo? {
+        guard let id = json["id"] as? String else { return nil }
+        let capabilities = json["capabilities"] as? [String: Any]
+        return AIModelInfo(
+            id: id,
+            displayName: json["display_name"] as? String,
+            contextWindow: json["max_input_tokens"] as? Int,
+            maxOutputTokens: json["max_tokens"] as? Int,
+            modalities: [.text, .image],
+            reasoning: decodeReasoning(capabilities: capabilities, modelID: id)
+        )
+    }
+
+    private static func decodeReasoning(capabilities: [String: Any]?, modelID: String) -> AIReasoningSupport? {
+        guard let capabilities else { return nil }
+
+        let thinking = capabilities["thinking"] as? [String: Any]
+        let types = thinking?["types"] as? [String: Any]
+        let adaptiveSupported = supportFlag(types?["adaptive"])
+        let enabledSupported = supportFlag(types?["enabled"])
+
+        let effort = capabilities["effort"] as? [String: Any]
+        let effortSupported = supportFlag(effort) ?? false
+        let levels = effortSupported ? ReasoningEffort.allCases.filter { level in
+            supportFlag(effort?[level.anthropicEffortValue]) ?? false
+        } : []
+
+        let mode: AIReasoningMode
+        if adaptiveSupported == true {
+            mode = .adaptive
+        } else if enabledSupported == true {
+            mode = .budgeted
+        } else if supportFlag(thinking) == false {
+            mode = .unsupported
+        } else {
+            return nil
+        }
+
+        return AIReasoningSupport(
+            mode: mode,
+            effortLevels: mode == .budgeted ? [.low, .medium, .high] : uniqueLevels(levels),
+            defaultEffort: .medium
+        )
+    }
+
+    private static func uniqueLevels(_ levels: [ReasoningEffort]) -> [ReasoningEffort] {
+        var seen: Set<ReasoningEffort> = []
+        return levels.filter { seen.insert($0).inserted }
+    }
+
+    private static func supportFlag(_ value: Any?) -> Bool? {
+        (value as? [String: Any])?["supported"] as? Bool
+    }
+
+    private static let offlineModels: [AIModelInfo] = [
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-fable-5",
+        "claude-opus-4-8",
+        "claude-opus-4-7",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5"
+    ].map { AIModelInfo(id: $0) }
+
+    private static let knownModels = offlineModels.map(\.id)
 
     func testConnection() async throws -> Bool {
         let testModel = model.isEmpty ? (Self.knownModels.first ?? "") : model
         let testTurn = ChatTurnWire(role: .user, blocks: [.text("Hi")])
         let testOptions = ChatTransportOptions(model: testModel, maxOutputTokens: 1)
-        let request = try buildMessagesRequest(turns: [testTurn], options: testOptions, stream: false)
+        let request = try buildMessagesRequest(
+            turns: [testTurn],
+            options: testOptions,
+            stream: false,
+            effort: nil
+        )
 
         let (data, response) = try await session.data(for: request)
 
@@ -146,7 +184,8 @@ final class AnthropicProvider: ChatTransport {
     private func buildMessagesRequest(
         turns: [ChatTurnWire],
         options: ChatTransportOptions,
-        stream: Bool = true
+        stream: Bool = true,
+        effort: ReasoningEffort?
     ) throws -> URLRequest {
         guard let url = URL(string: "\(endpoint)/v1/messages") else {
             throw AIProviderError.invalidEndpoint(endpoint)
@@ -158,14 +197,32 @@ final class AnthropicProvider: ChatTransport {
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
 
-        let effort = options.reasoningEffort ?? configuredEffort
         let resolvedMaxTokens = options.maxOutputTokens
             ?? effort?.autoScaledMaxOutputTokens
             ?? maxOutputTokens
 
+        let body = try Self.makeRequestBody(
+            turns: turns,
+            options: options,
+            effort: effort,
+            maxTokens: resolvedMaxTokens,
+            stream: stream
+        )
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+
+    static func makeRequestBody(
+        turns: [ChatTurnWire],
+        options: ChatTransportOptions,
+        effort: ReasoningEffort?,
+        maxTokens: Int,
+        stream: Bool
+    ) throws -> [String: Any] {
         var body: [String: Any] = [
             "model": options.model,
-            "max_tokens": resolvedMaxTokens,
+            "max_tokens": maxTokens,
             "stream": stream
         ]
 
@@ -174,44 +231,60 @@ final class AnthropicProvider: ChatTransport {
         }
 
         if let effort {
-            body["thinking"] = thinkingBody(for: effort, model: options.model, maxTokens: resolvedMaxTokens)
+            let reasoning = resolvedReasoning(for: options.model)
+
+            if let thinking = thinkingBody(for: effort, reasoning: reasoning, maxTokens: maxTokens) {
+                body["thinking"] = thinking
+            }
+
+            if reasoning.sendsEffortParameter,
+               let wireEffort = reasoning.clampedEffort(effort)?.anthropicEffortValue {
+                body["output_config"] = ["effort": wireEffort]
+            }
         }
 
         if !options.tools.isEmpty {
             body["tools"] = try options.tools.map(Self.encodeToolSpec(_:))
         }
 
-        let apiMessages = try turns
+        body["messages"] = try turns
             .filter { $0.role != .system }
             .compactMap { try Self.encodeTurn($0) }
-        body["messages"] = apiMessages
 
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        return request
+        return body
     }
 
-    private func thinkingBody(for effort: ReasoningEffort, model: String, maxTokens: Int) -> [String: Any] {
-        if Self.modelSupportsAdaptiveThinking(model) {
-            var thinking: [String: Any] = ["type": "adaptive"]
-            if let adaptiveEffort = effort.anthropicAdaptiveEffort {
-                thinking["effort"] = adaptiveEffort
-            }
-            return thinking
+    static func resolvedReasoning(for model: String) -> AIReasoningSupport {
+        if let live = AIModelCatalog.shared.reasoning(
+            providerTypeID: AIProviderType.claude.rawValue,
+            modelID: model
+        ) {
+            return live
         }
-        let budget = min(effort.anthropicBudgetTokens ?? 4_096, max(maxTokens - 1, 1_024))
-        return [
-            "type": "enabled",
-            "budget_tokens": budget
-        ]
+        let capabilities = AnthropicModelCapabilities.resolve(model: model)
+        return AIReasoningSupport(
+            mode: capabilities.thinkingMode == .adaptive ? .adaptive : .budgeted,
+            effortLevels: capabilities.effortLevels,
+            defaultEffort: .medium
+        )
     }
 
-    private static func modelSupportsAdaptiveThinking(_ model: String) -> Bool {
-        let lowered = model.lowercased()
-        if lowered.contains("opus-4-7") || lowered.contains("opus-4.7") { return true }
-        if lowered.contains("opus-4-6") || lowered.contains("opus-4.6") { return true }
-        if lowered.contains("sonnet-4-6") || lowered.contains("sonnet-4.6") { return true }
-        if lowered.contains("haiku-4-5") || lowered.contains("haiku-4.5") { return true }
-        return false
+    private static func thinkingBody(
+        for effort: ReasoningEffort,
+        reasoning: AIReasoningSupport,
+        maxTokens: Int
+    ) -> [String: Any]? {
+        switch reasoning.mode {
+        case .adaptive, .effortOnly:
+            return ["type": "adaptive", "display": "summarized"]
+        case .budgeted:
+            let ceiling = maxTokens - 1
+            guard ceiling >= AnthropicModelCapabilities.minimumThinkingBudgetTokens else { return nil }
+            let budget = min(effort.anthropicBudgetTokens, ceiling)
+            return ["type": "enabled", "budget_tokens": budget]
+        case .unsupported:
+            return nil
+        }
     }
 
     static func decodeStreamLine(_ line: String) -> [String: Any]? {
@@ -338,7 +411,7 @@ final class AnthropicProvider: ChatTransport {
         let blocks = turn.blocks
         let needsTypedBlocks = blocks.contains { block in
             switch block.kind {
-            case .toolUse, .toolResult, .reasoning, .image:
+            case .toolUse, .toolResult, .reasoning, .image, .sqlWalkthrough:
                 return true
             case .text, .attachment:
                 return false
@@ -359,6 +432,10 @@ final class AnthropicProvider: ChatTransport {
     static func encodeBlock(_ block: ChatContentBlockWire) throws -> [String: Any]? {
         switch block.kind {
         case .text(let text):
+            guard !text.isEmpty else { return nil }
+            return ["type": "text", "text": text]
+        case .sqlWalkthrough(let walkthrough):
+            let text = walkthrough.transcriptText
             guard !text.isEmpty else { return nil }
             return ["type": "text", "text": text]
         case .toolUse(let toolUse):

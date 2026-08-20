@@ -1,0 +1,7 @@
+# UI tests skipped on CI, as "Suite/testMethod". Same idea as macos-test-quarantine.txt:
+# a gate that fails for reasons unrelated to the change under review is worse than no gate.
+# Burn this list down.
+#
+# Each entry needs a reason and, where known, what would take it off the list.
+
+# (empty)

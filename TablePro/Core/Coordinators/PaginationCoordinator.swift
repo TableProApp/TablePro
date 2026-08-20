@@ -21,7 +21,10 @@ final class PaginationCoordinator {
     // MARK: - Pagination
 
     func goToNextPage() {
-        paginateIfPossible(where: \.hasNextPage) { $0.goToNextPage() }
+        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
+        let loadedRowCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
+        guard tab.pagination.canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
+        paginateAfterConfirmation(tabIndex: tabIndex) { $0.goToNextPage(loadedRowCount: loadedRowCount) }
     }
 
     func goToPreviousPage() {
@@ -33,7 +36,11 @@ final class PaginationCoordinator {
     }
 
     func goToLastPage() {
-        paginateIfPossible(where: { $0.currentPage != $0.totalPages }) { $0.goToLastPage() }
+        paginateIfPossible(where: { $0.isLastPageKnown && $0.currentPage != $0.totalPages }) { $0.goToLastPage() }
+    }
+
+    func goToPage(_ page: Int) {
+        paginateIfPossible(where: { $0.isLastPageKnown && page > 0 && page <= $0.totalPages }) { $0.goToPage(page) }
     }
 
     func updatePageSize(_ newSize: Int) {
@@ -41,13 +48,49 @@ final class PaginationCoordinator {
         paginateIfPossible { $0.updatePageSize(newSize) }
     }
 
-    func updateOffset(_ newOffset: Int) {
-        guard newOffset >= 0 else { return }
-        paginateIfPossible { $0.updateOffset(newOffset) }
+    func showAllRows() {
+        guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
+              let total = tab.pagination.totalRowCount, total > 0 else { return }
+
+        let tabId = tab.id
+        confirmLargeFetch(
+            messageText: String(localized: "Show All Rows"),
+            informativeText: String(
+                format: String(localized: "This will load all %@ rows on a single page. Large result sets use significant memory. Continue?"),
+                total.formatted()
+            ),
+            confirmTitle: String(localized: "Show All")
+        ) { [weak self] in
+            guard let self,
+                  let tabIndex = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+            paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
+                pagination.updatePageSize(max(total, 1))
+                pagination.goToFirstPage()
+            }
+        }
     }
 
-    func applyPaginationSettings() {
-        reloadCurrentPage()
+    private func confirmLargeFetch(
+        messageText: String,
+        informativeText: String,
+        confirmTitle: String,
+        onConfirm: @escaping () -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = messageText
+        alert.informativeText = informativeText
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: confirmTitle)
+        alert.addButton(withTitle: String(localized: "Cancel"))
+
+        if let window = parent.contentWindow ?? NSApp.keyWindow {
+            alert.beginSheetModal(for: window) { response in
+                guard response == .alertFirstButtonReturn else { return }
+                onConfirm()
+            }
+        } else if alert.runModal() == .alertFirstButtonReturn {
+            onConfirm()
+        }
     }
 
     private func paginateIfPossible(
@@ -86,32 +129,102 @@ final class PaginationCoordinator {
     // MARK: - Cancel Current Query
 
     func cancelCurrentQuery() {
-        parent.currentQueryTask?.cancel()
-        parent.currentQueryTask = nil
-        parent.queryGeneration += 1
-        if let driver = DatabaseManager.shared.driver(for: parent.connectionId) {
-            try? driver.cancelQuery()
-        }
+        parent.cancelInFlightQueryTask()
+        parent.cancelAllRowCountTasks()
+        parent.tabExecution.invalidateAll()
         parent.toolbarState.setExecuting(false)
-        for idx in parent.tabManager.tabs.indices {
-            if parent.tabManager.tabs[idx].execution.isExecuting
-                || parent.tabManager.tabs[idx].pagination.isLoadingMore {
-                parent.tabManager.mutate(at: idx) { tab in
-                    tab.execution.isExecuting = false
-                    tab.pagination.isLoadingMore = false
-                }
+        for idx in parent.tabManager.tabs.indices
+            where parent.tabManager.tabs[idx].pagination.isLoadingMore
+                || parent.tabManager.tabs[idx].pagination.isCountingExact {
+            parent.tabManager.mutate(at: idx) { tab in
+                tab.pagination.isLoadingMore = false
+                tab.pagination.isCountingExact = false
             }
+        }
+    }
+
+    // MARK: - Exact Row Count
+
+    func requestExactRowCount() {
+        guard let (tab, index) = parent.tabManager.selectedTabAndIndex,
+              tab.tabType == .table,
+              !tab.pagination.isCountingExact,
+              let tableName = tab.tableContext.tableName, !tableName.isEmpty else { return }
+
+        guard let scope = parent.scope(for: tab) else { return }
+        let tabId = tab.id
+        let schemaName = tab.tableContext.schemaName
+        let filters = tab.filterState.hasAppliedFilters ? tab.filterState.appliedFilters : []
+        let logicMode = tab.filterState.filterLogicMode
+        let isNonSQL = PluginManager.shared.editorLanguage(for: parent.connection.type) != .sql
+        let buffer = parent.tabSessionRegistry.tableRows(for: tabId)
+        let countSQL = isNonSQL ? nil : parent.queryBuilder.buildFilteredCountQuery(
+            tableName: tableName, schemaName: schemaName, filters: filters, logicMode: logicMode,
+            columns: buffer.columns, columnTypes: buffer.columnTypes
+        )
+
+        parent.tabManager.mutate(at: index) { $0.pagination.isCountingExact = true }
+
+        let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
+        let token = UUID()
+        let task = Task(priority: .userInitiated) { [parent] in
+            let count = await Self.exactRowCount(
+                scope: scope,
+                tableName: tableName,
+                filters: filters,
+                logicMode: logicMode,
+                countSQL: countSQL
+            )
+
+            guard !Task.isCancelled else { return }
+            guard parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
+            parent.clearRowCountTask(for: tabId, token: token)
+            parent.tabManager.mutate(tabId: tabId) { tab in
+                tab.pagination.isCountingExact = false
+                guard let count, count >= 0 else { return }
+                tab.pagination.totalRowCount = count
+                tab.pagination.isApproximateRowCount = false
+            }
+        }
+        parent.setRowCountTask(task, token: token, for: tabId)
+    }
+
+    private static func exactRowCount(
+        scope: DatabaseScope,
+        tableName: String,
+        filters: [TableFilter],
+        logicMode: FilterLogicMode,
+        countSQL: String?
+    ) async -> Int? {
+        try? await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+            guard let countSQL else {
+                return try await driver.fetchExactRowCount(
+                    table: tableName, filters: filters, logicMode: logicMode
+                )
+            }
+            let result = try await driver.execute(query: countSQL)
+            guard let countStr = result.rows.first?.first?.asText else { return Int?.none }
+            return Int(countStr)
         }
     }
 
     // MARK: - Fetch All Rows
 
+    /// The scope is read before the confirmation alert, so a database change made while
+    /// the alert is open cannot send the tab's own query somewhere else.
     func fetchAllRows() {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
               !tab.pagination.isLoadingMore,
-              !tab.execution.isExecuting,
+              !parent.tabExecution.isExecuting(tab.id),
               tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
+
+        guard let scope = parent.scope(for: tab) else {
+            parent.tabManager.mutate(tabId: tab.id) {
+                $0.execution.errorMessage = String(localized: "Not connected to database")
+            }
+            return
+        }
 
         let loadedCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
         let totalEstimate = tab.pagination.totalRowCount
@@ -127,52 +240,53 @@ final class PaginationCoordinator {
             message = String(localized: "This will fetch all remaining rows. Large result sets use significant memory. Continue?")
         }
 
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Fetch All Rows")
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "Fetch All"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
-
-        let window = parent.contentWindow ?? NSApp.keyWindow
-        if let window {
-            alert.beginSheetModal(for: window) { [weak self] response in
-                guard let self, response == .alertFirstButtonReturn else { return }
-                performFetchAll(tabId: tab.id, baseQuery: baseQuery)
-            }
-        } else {
-            let response = alert.runModal()
-            guard response == .alertFirstButtonReturn else { return }
-            performFetchAll(tabId: tab.id, baseQuery: baseQuery)
+        confirmLargeFetch(
+            messageText: String(localized: "Fetch All Rows"),
+            informativeText: message,
+            confirmTitle: String(localized: "Fetch All")
+        ) { [weak self] in
+            guard let self else { return }
+            performFetchAll(tabId: tab.id, baseQuery: baseQuery, scope: scope)
         }
     }
 
-    private func performFetchAll(tabId: UUID, baseQuery: String) {
+    /// Only the driver work runs inside the lease. Applying the rows to the tab stays
+    /// outside it, because the connection's driver gate is not reentrant.
+    ///
+    /// The rows belong to the result the fetch was started on. A result switch leaves the content
+    /// epoch alone, so the fetch is fenced on the result set as well, or the full row set lands on
+    /// whichever result is showing when it arrives, normalized to that result's column count.
+    private func performFetchAll(tabId: UUID, baseQuery: String, scope: DatabaseScope) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         guard !parent.tabManager.tabs[idx].pagination.isLoadingMore else { return }
 
-        let capturedGeneration = parent.queryGeneration
+        let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
+        let resultSetId = parent.tabManager.tabs[idx].display.activeResultSetId
         let storedParamValues = parent.tabManager.tabs[idx].pagination.baseQueryParameterValues
 
         parent.tabManager.mutate(at: idx) { $0.pagination.isLoadingMore = true }
         parent.toolbarState.setExecuting(true)
 
-        parent.currentQueryTask = Task { [weak self, parent] in
+        let route = DatabaseManager.shared.executionRoute(for: scope)
+
+        let fetchAllTask = Task { [weak self, parent] in
             guard let self, !parent.isTearingDown else { return }
 
             do {
-                guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
-                    throw DatabaseError.notConnected
-                }
-
                 let start = CFAbsoluteTimeGetCurrent()
                 progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .public)")
                 let anyParams: [Any?]? = storedParamValues.map { $0.map { $0 as Any? } }
-                let result = try await driver.executeUserQuery(
-                    query: baseQuery,
-                    rowCap: nil,
-                    parameters: anyParams
-                )
+                let result = try await DatabaseManager.shared.withScopedDriver(
+                    scope: scope,
+                    route: route,
+                    cancellation: .cancellableRead
+                ) { driver in
+                    try await driver.executeUserQuery(
+                        query: baseQuery,
+                        rowCap: nil,
+                        parameters: anyParams
+                    )
+                }
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")
 
@@ -180,13 +294,15 @@ final class PaginationCoordinator {
 
                 await MainActor.run { [weak self] in
                     guard let self, !parent.isTearingDown else { return }
-                    guard capturedGeneration == parent.queryGeneration else {
+                    let stillSameResult = parent.tabManager.tabs
+                        .contains { $0.id == tabId && $0.display.activeResultSetId == resultSetId }
+                    guard parent.tabExecution.isSameContent(contentEpoch, for: tabId), stillSameResult else {
                         parent.tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
-                        parent.toolbarState.setExecuting(false)
+                        parent.retireQueryTask(for: nil)
                         return
                     }
                     guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-                        parent.toolbarState.setExecuting(false)
+                        parent.retireQueryTask(for: nil)
                         return
                     }
 
@@ -197,11 +313,11 @@ final class PaginationCoordinator {
                         tab.execution.executionTime = result.executionTime
                         tab.schemaVersion += 1
                         tab.pagination.resetLoadMore()
+                        tab.display.activeResultSet?.isTruncated = false
                     }
                     parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(replaceDelta)
-                    parent.toolbarState.setExecuting(false)
+                    parent.retireQueryTask(for: nil)
                     parent.toolbarState.lastQueryDuration = result.executionTime
-                    parent.currentQueryTask = nil
 
                     let totalTime = CFAbsoluteTimeGetCurrent() - start
                     progressLog.info("[fetchAll] DONE rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s totalTime=\(String(format: "%.3f", totalTime))s")
@@ -209,14 +325,18 @@ final class PaginationCoordinator {
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    parent.tabManager.mutate(tabId: tabId) { $0.pagination.isLoadingMore = false }
-                    parent.toolbarState.setExecuting(false)
-                    if capturedGeneration == parent.queryGeneration {
-                        parent.currentQueryTask = nil
+                    let isStale = !parent.tabExecution.isSameContent(contentEpoch, for: tabId)
+                    let isCancelled = DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled
+                    parent.tabManager.mutate(tabId: tabId) { tab in
+                        tab.pagination.isLoadingMore = false
+                        guard !isStale, !isCancelled else { return }
+                        tab.execution.errorMessage = DatabaseWriteRejectionDiagnosis.formatted(error)
                     }
+                    parent.retireQueryTask(for: nil)
                     MainContentCoordinator.logger.error("Fetch all failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
+        parent.installQueryTask(fetchAllTask, for: nil)
     }
 }

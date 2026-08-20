@@ -5,26 +5,42 @@
 
 import Foundation
 import os
+import TableProSyncTransport
 
 @MainActor
 final class FileColumnLayoutPersister: ColumnLayoutPersisting {
+    static let shared: FileColumnLayoutPersister = {
+        let persister = FileColumnLayoutPersister()
+        persister.performScopeMigration()
+        return persister
+    }()
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "ColumnLayoutPersister")
-    private static let legacyKeyPrefix = "com.TablePro.columns.layout."
-    private static let migrationCompleteKey = "com.TablePro.columnLayoutMigrationComplete"
+    private static let legacyUserDefaultsPrefix = "com.TablePro.columns.layout."
+    private static let legacyVisibilityPrefix = "com.TablePro.columns.hiddenColumns."
+    private static let scopeMigrationKey = "com.TablePro.columnLayoutSchemaScopeMigrationComplete"
 
     private struct PersistedColumnLayout: Codable {
         var columnWidths: [String: CGFloat]
+        var columnContentWidths: [String: CGFloat]?
         var columnOrder: [String]?
+        var hiddenColumns: [String]?
     }
 
+    static let syncCategoryPrefix = "columnLayout."
+
     private let storageDirectory: URL
+    private let defaults: UserDefaults
+    private let syncTracker: SyncChangeTracker
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     private var cache: [UUID: [String: PersistedColumnLayout]] = [:]
 
-    init(storageDirectory: URL? = nil) {
+    init(storageDirectory: URL? = nil, defaults: UserDefaults = .standard, syncTracker: SyncChangeTracker = .shared) {
         self.storageDirectory = storageDirectory ?? Self.resolvedStorageDirectory()
+        self.defaults = defaults
+        self.syncTracker = syncTracker
 
         do {
             try FileManager.default.createDirectory(
@@ -34,45 +50,166 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         } catch {
             Self.logger.error("Failed to create storage directory: \(error.localizedDescription)")
         }
-
-        Self.performMigrationIfNeeded(storageDirectory: self.storageDirectory)
     }
 
-    func save(_ layout: ColumnLayoutState, for tableName: String, connectionId: UUID) {
-        guard !layout.columnWidths.isEmpty else { return }
+    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {
+        guard !layout.columnWidths.isEmpty
+            || layout.columnContentWidths?.isEmpty == false
+            || layout.columnOrder != nil
+        else { return }
 
-        let persisted = PersistedColumnLayout(
-            columnWidths: layout.columnWidths,
-            columnOrder: layout.columnOrder
+        var entries = loadEntries(for: key.connectionId)
+        var entry = entries[key.storageKey] ?? PersistedColumnLayout(
+            columnWidths: [:],
+            columnContentWidths: nil,
+            columnOrder: nil,
+            hiddenColumns: nil
         )
-
-        var entries = loadEntries(for: connectionId)
-        entries[tableName] = persisted
-        cache[connectionId] = entries
-        writeEntries(entries, for: connectionId)
+        entry.columnWidths = layout.columnWidths
+        entry.columnContentWidths = layout.columnContentWidths
+        entry.columnOrder = ColumnLayoutState.mergedColumnOrder(
+            current: entry.columnOrder,
+            incoming: layout.columnOrder
+        )
+        entries[key.storageKey] = entry
+        cache[key.connectionId] = entries
+        writeEntries(entries, for: key.connectionId)
+        syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
     }
 
-    func load(for tableName: String, connectionId: UUID) -> ColumnLayoutState? {
-        let entries = loadEntries(for: connectionId)
-        guard let persisted = entries[tableName] else { return nil }
+    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? {
+        let entries = loadEntries(for: key.connectionId)
+        guard let persisted = entries[key.storageKey],
+              !persisted.columnWidths.isEmpty
+              || persisted.columnContentWidths?.isEmpty == false
+              || persisted.columnOrder != nil
+        else { return nil }
 
         var state = ColumnLayoutState()
         state.columnWidths = persisted.columnWidths
+        state.columnContentWidths = persisted.columnContentWidths
         state.columnOrder = persisted.columnOrder
         return state
     }
 
-    func clear(for tableName: String, connectionId: UUID) {
-        var entries = loadEntries(for: connectionId)
-        guard entries.removeValue(forKey: tableName) != nil else { return }
+    func loadHiddenColumns(for key: ColumnLayoutTableKey) -> Set<String> {
+        let entries = loadEntries(for: key.connectionId)
+        if let hidden = entries[key.storageKey]?.hiddenColumns {
+            return Set(hidden)
+        }
+        return migrateLegacyHidden(for: key)
+    }
+
+    func saveHiddenColumns(_ hidden: Set<String>, for key: ColumnLayoutTableKey) {
+        removeLegacyHidden(for: key)
+
+        var entries = loadEntries(for: key.connectionId)
+        var entry = entries[key.storageKey] ?? PersistedColumnLayout(
+            columnWidths: [:],
+            columnContentWidths: nil,
+            columnOrder: nil,
+            hiddenColumns: nil
+        )
+        entry.hiddenColumns = hidden.isEmpty ? nil : Array(hidden)
+
+        if entry.columnWidths.isEmpty,
+           entry.columnContentWidths?.isEmpty != false,
+           entry.columnOrder == nil,
+           entry.hiddenColumns == nil {
+            clear(for: key)
+            return
+        }
+
+        entries[key.storageKey] = entry
+        cache[key.connectionId] = entries
+        writeEntries(entries, for: key.connectionId)
+        syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
+    }
+
+    func clear(for key: ColumnLayoutTableKey) {
+        removeLegacyHidden(for: key)
+
+        var entries = loadEntries(for: key.connectionId)
+        guard entries.removeValue(forKey: key.storageKey) != nil else { return }
 
         if entries.isEmpty {
-            cache[connectionId] = [:]
-            removeFile(for: connectionId)
+            cache[key.connectionId] = [:]
+            removeFile(for: key.connectionId)
         } else {
-            cache[connectionId] = entries
-            writeEntries(entries, for: connectionId)
+            cache[key.connectionId] = entries
+            writeEntries(entries, for: key.connectionId)
         }
+        syncTracker.markDeleted(.settings, id: Self.syncCategory(for: key.storageKey))
+    }
+
+    func clearGeometry(for key: ColumnLayoutTableKey) {
+        var entries = loadEntries(for: key.connectionId)
+        guard var entry = entries[key.storageKey] else { return }
+        entry.columnWidths = [:]
+        entry.columnContentWidths = nil
+        entry.columnOrder = nil
+
+        if entry.hiddenColumns?.isEmpty == false {
+            entries[key.storageKey] = entry
+            cache[key.connectionId] = entries
+            writeEntries(entries, for: key.connectionId)
+            syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
+        } else {
+            entries.removeValue(forKey: key.storageKey)
+            if entries.isEmpty {
+                cache[key.connectionId] = [:]
+                removeFile(for: key.connectionId)
+            } else {
+                cache[key.connectionId] = entries
+                writeEntries(entries, for: key.connectionId)
+            }
+            syncTracker.markDeleted(.settings, id: Self.syncCategory(for: key.storageKey))
+        }
+    }
+
+    static func syncCategory(for storageKey: String) -> String {
+        syncCategoryPrefix + storageKey
+    }
+
+    func rawData(forStorageKey storageKey: String) -> Data? {
+        guard let scope = TableScope(storageComponent: storageKey),
+              let entry = loadEntries(for: scope.connectionId)[storageKey] else { return nil }
+        return try? encoder.encode(entry)
+    }
+
+    func applyRemote(storageKey: String, data: Data) {
+        guard let scope = TableScope(storageComponent: storageKey),
+              let entry = try? decoder.decode(PersistedColumnLayout.self, from: data) else { return }
+        var entries = loadEntries(for: scope.connectionId)
+        entries[storageKey] = entry
+        cache[scope.connectionId] = entries
+        writeEntries(entries, for: scope.connectionId)
+    }
+
+    func customizedStorageKeys() -> [String] {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: storageDirectory,
+            includingPropertiesForKeys: nil
+        ) else { return [] }
+
+        var keys: [String] = []
+        for file in files where file.pathExtension == "json" {
+            guard let connectionId = UUID(uuidString: file.deletingPathExtension().lastPathComponent) else { continue }
+            keys.append(contentsOf: loadEntries(for: connectionId).keys)
+        }
+        return keys
+    }
+
+    private func migrateLegacyHidden(for key: ColumnLayoutTableKey) -> Set<String> {
+        guard let array = defaults.stringArray(forKey: Self.legacyVisibilityPrefix + key.storageKey),
+              !array.isEmpty else { return [] }
+        let hidden = Set(array)
+        saveHiddenColumns(hidden, for: key)
+        return hidden
+    }
+
+    private func removeLegacyHidden(for key: ColumnLayoutTableKey) {
+        defaults.removeObject(forKey: Self.legacyVisibilityPrefix + key.storageKey)
     }
 
     private func loadEntries(for connectionId: UUID) -> [String: PersistedColumnLayout] {
@@ -127,62 +264,31 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
     }
 
     private static func resolvedStorageDirectory() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         return appSupport
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("ColumnLayout", isDirectory: true)
     }
 
-    private static func performMigrationIfNeeded(storageDirectory: URL) {
-        let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: migrationCompleteKey) else { return }
+    private func performScopeMigration() {
+        guard !defaults.bool(forKey: Self.scopeMigrationKey) else { return }
 
-        let allKeys = defaults.dictionaryRepresentation().keys
-        let legacyKeys = allKeys.filter { $0.hasPrefix(legacyKeyPrefix) }
-
-        var grouped: [UUID: [String: PersistedColumnLayout]] = [:]
-        let decoder = JSONDecoder()
-
-        for key in legacyKeys {
-            let suffix = String(key.dropFirst(legacyKeyPrefix.count))
-            guard let dotIndex = suffix.firstIndex(of: ".") else { continue }
-
-            let uuidString = String(suffix[..<dotIndex])
-            let tableName = String(suffix[suffix.index(after: dotIndex)...])
-
-            guard let connectionId = UUID(uuidString: uuidString),
-                  let data = defaults.data(forKey: key),
-                  let persisted = try? decoder.decode(PersistedColumnLayout.self, from: data) else {
-                defaults.removeObject(forKey: key)
-                continue
-            }
-
-            grouped[connectionId, default: [:]][tableName] = persisted
-        }
-
-        let encoder = JSONEncoder()
-        for (connectionId, entries) in grouped {
-            let fileURL = storageDirectory.appendingPathComponent("\(connectionId.uuidString).json")
-            do {
-                let data = try encoder.encode(entries)
-                try data.write(to: fileURL, options: .atomic)
-            } catch {
-                logger.error(
-                    "Migration failed for \(connectionId): \(error.localizedDescription)"
-                )
+        if let files = try? FileManager.default.contentsOfDirectory(
+            at: storageDirectory,
+            includingPropertiesForKeys: nil
+        ) {
+            for file in files where file.pathExtension == "json" {
+                try? FileManager.default.removeItem(at: file)
             }
         }
 
+        let legacyKeys = defaults.dictionaryRepresentation().keys.filter {
+            $0.hasPrefix(Self.legacyUserDefaultsPrefix) || $0.hasPrefix(Self.legacyVisibilityPrefix)
+        }
         for key in legacyKeys {
             defaults.removeObject(forKey: key)
         }
-        defaults.set(true, forKey: migrationCompleteKey)
 
-        if !grouped.isEmpty {
-            logger.trace("Migrated \(grouped.count) connection(s) of column layouts to file storage")
-        }
+        defaults.set(true, forKey: Self.scopeMigrationKey)
     }
 }

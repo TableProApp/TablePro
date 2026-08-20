@@ -1,4 +1,5 @@
 import Foundation
+import TableProDatabase
 import TableProModels
 import TableProPluginKit
 import TableProQuery
@@ -22,20 +23,13 @@ enum SQLBuilder {
         case .mssql:
             let order = orderBy.isEmpty ? "ORDER BY (SELECT NULL)" : orderBy
             return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+        case .oracle:
+            let order = orderBy.isEmpty ? "ORDER BY 1" : orderBy
+            return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
         default:
             let trailing = "LIMIT \(limit) OFFSET \(offset)"
             return orderBy.isEmpty ? trailing : "\(orderBy) \(trailing)"
         }
-    }
-
-    static func escapeString(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\0", with: "\\0")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\u{1a}", with: "\\Z")
-            .replacingOccurrences(of: "'", with: "''")
     }
 
     static func buildCount(table: String, type: DatabaseType) -> String {
@@ -52,46 +46,56 @@ enum SQLBuilder {
     static func buildDelete(
         table: String,
         type: DatabaseType,
+        driver: any DatabaseDriver,
         primaryKeys: [(column: String, value: String)]
     ) -> String {
         let quotedTable = quoteIdentifier(table, for: type)
-        let where_ = primaryKeys.map {
-            "\(quoteIdentifier($0.column, for: type)) = '\(escapeString($0.value))'"
+        let predicate = primaryKeys.map {
+            "\(quoteIdentifier($0.column, for: type)) = '\(driver.escapeStringLiteral($0.value))'"
         }.joined(separator: " AND ")
-        return "DELETE FROM \(quotedTable) WHERE \(where_)"
+        return "DELETE FROM \(quotedTable) WHERE \(predicate)"
     }
 
     static func buildUpdate(
         table: String,
         type: DatabaseType,
+        driver: any DatabaseDriver,
         changes: [(column: String, value: String?)],
         primaryKeys: [(column: String, value: String)]
     ) -> String {
         let quotedTable = quoteIdentifier(table, for: type)
-        let set_ = changes.map { col, val in
+        let assignments = changes.map { col, val in
             let qcol = quoteIdentifier(col, for: type)
-            if let val { return "\(qcol) = '\(escapeString(val))'" }
+            if let val { return "\(qcol) = '\(driver.escapeStringLiteral(val))'" }
             return "\(qcol) = NULL"
         }.joined(separator: ", ")
-        let where_ = primaryKeys.map {
-            "\(quoteIdentifier($0.column, for: type)) = '\(escapeString($0.value))'"
+        let predicate = primaryKeys.map {
+            "\(quoteIdentifier($0.column, for: type)) = '\(driver.escapeStringLiteral($0.value))'"
         }.joined(separator: " AND ")
-        return "UPDATE \(quotedTable) SET \(set_) WHERE \(where_)"
+        return "UPDATE \(quotedTable) SET \(assignments) WHERE \(predicate)"
     }
 
     static func buildInsert(
         table: String,
+        schema: String?,
         type: DatabaseType,
+        driver: any DatabaseDriver,
         columns: [String],
         values: [String?]
     ) -> String {
-        let quotedTable = quoteIdentifier(table, for: type)
+        let qualifiedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
         let cols = columns.map { quoteIdentifier($0, for: type) }.joined(separator: ", ")
         let vals = values.map { val in
-            if let val { return "'\(escapeString(val))'" }
+            if let val { return "'\(driver.escapeStringLiteral(val))'" }
             return "NULL"
         }.joined(separator: ", ")
-        return "INSERT INTO \(quotedTable) (\(cols)) VALUES (\(vals))"
+        return "INSERT INTO \(qualifiedTable) (\(cols)) VALUES (\(vals))"
+    }
+
+    static func qualifiedIdentifier(table: String, schema: String?, for type: DatabaseType) -> String {
+        let quotedTable = quoteIdentifier(table, for: type)
+        guard let schema, !schema.isEmpty else { return quotedTable }
+        return "\(quoteIdentifier(schema, for: type)).\(quotedTable)"
     }
 
     static func buildSelect(
@@ -231,7 +235,7 @@ enum SQLBuilder {
 
         let dialect = dialectDescriptor(for: type)
         let pattern = escapeLikePattern(trimmed, dialect: dialect)
-        let likeEscape: String = dialect.likeEscapeStyle == .explicit ? " ESCAPE '\\'" : ""
+        let likeEscape: String = dialect.likeEscapeStyle == .explicit ? " ESCAPE '!'" : ""
 
         let conditions = columns.map { col -> String in
             let quotedCol = quoteIdentifier(col.name, for: type)
@@ -243,6 +247,8 @@ enum SQLBuilder {
                 castExpr = "CAST(\(quotedCol) AS TEXT)"
             case .mssql:
                 castExpr = "CAST(\(quotedCol) AS NVARCHAR(MAX))"
+            case .oracle:
+                castExpr = "CAST(\(quotedCol) AS VARCHAR2(4000))"
             case .clickhouse:
                 castExpr = "toString(\(quotedCol))"
             default:
@@ -259,11 +265,18 @@ enum SQLBuilder {
         var result = value
             .replacingOccurrences(of: "'", with: "''")
             .replacingOccurrences(of: "\0", with: "")
-        if dialect.requiresBackslashEscaping {
-            result = result.replacingOccurrences(of: "\\", with: "\\\\")
+        if dialect.likeEscapeStyle == .explicit {
+            result = result
+                .replacingOccurrences(of: "!", with: "!!")
+                .replacingOccurrences(of: "%", with: "!%")
+                .replacingOccurrences(of: "_", with: "!_")
+        } else {
+            if dialect.requiresBackslashEscaping {
+                result = result.replacingOccurrences(of: "\\", with: "\\\\")
+            }
+            result = result.replacingOccurrences(of: "%", with: "\\%")
+            result = result.replacingOccurrences(of: "_", with: "\\_")
         }
-        result = result.replacingOccurrences(of: "%", with: "\\%")
-        result = result.replacingOccurrences(of: "_", with: "\\_")
         return result
     }
 
@@ -275,6 +288,10 @@ enum SQLBuilder {
         return "ORDER BY " + clauses.joined(separator: ", ")
     }
 
+    static func caseSensitivityStyle(for type: DatabaseType) -> SQLDialectDescriptor.CaseSensitivityStyle {
+        dialectDescriptor(for: type).caseSensitivityStyle
+    }
+
     private static func dialectDescriptor(for type: DatabaseType) -> SQLDialectDescriptor {
         switch type {
         case .mysql, .mariadb:
@@ -284,15 +301,26 @@ enum SQLBuilder {
                 functions: [],
                 dataTypes: [],
                 likeEscapeStyle: .implicit,
-                requiresBackslashEscaping: true
+                requiresBackslashEscaping: true,
+                caseSensitivityStyle: .collationDefined
             )
-        case .postgresql, .redshift:
+        case .postgresql:
             return SQLDialectDescriptor(
                 identifierQuote: "\"",
                 keywords: [],
                 functions: [],
                 dataTypes: [],
-                likeEscapeStyle: .explicit
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .ilikeOperator
+            )
+        case .redshift:
+            return SQLDialectDescriptor(
+                identifierQuote: "\"",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .caseFoldFunction
             )
         case .mssql:
             return SQLDialectDescriptor(
@@ -300,7 +328,26 @@ enum SQLBuilder {
                 keywords: [],
                 functions: [],
                 dataTypes: [],
-                likeEscapeStyle: .explicit
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .collationDefined
+            )
+        case .oracle:
+            return SQLDialectDescriptor(
+                identifierQuote: "\"",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .caseFoldFunction
+            )
+        case .sqlite:
+            return SQLDialectDescriptor(
+                identifierQuote: "\"",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .collationDefined
             )
         default:
             return SQLDialectDescriptor(

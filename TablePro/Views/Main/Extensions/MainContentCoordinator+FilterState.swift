@@ -11,6 +11,11 @@ extension MainContentCoordinator {
         filterCoordinator.selectedTabFilterState
     }
 
+    var currentTableName: String? {
+        guard let tab = tabManager.selectedTab, tab.tabType == .table else { return nil }
+        return tab.tableContext.tableName
+    }
+
     func addFilter(columns: [String] = [], primaryKeyColumn: String? = nil) {
         filterCoordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
     }
@@ -31,8 +36,24 @@ extension MainContentCoordinator {
         filterCoordinator.removeFilter(filter)
     }
 
+    func removeFilterAndReload(_ filter: TableFilter) {
+        filterCoordinator.removeFilterAndReload(filter)
+    }
+
     func updateFilter(_ filter: TableFilter) {
         filterCoordinator.updateFilter(filter)
+    }
+
+    func moveFilter(_ draggedID: UUID, onto targetID: UUID) {
+        filterCoordinator.moveFilter(draggedID, onto: targetID)
+    }
+
+    func moveFilter(_ filterID: UUID, direction: FilterCoordinator.FilterMoveDirection) {
+        filterCoordinator.moveFilter(filterID, direction: direction)
+    }
+
+    func canMoveFilter(_ filterID: UUID, direction: FilterCoordinator.FilterMoveDirection) -> Bool {
+        filterCoordinator.canMoveFilter(filterID, direction: direction)
     }
 
     func filterBinding(for filter: TableFilter) -> Binding<TableFilter> {
@@ -47,12 +68,12 @@ extension MainContentCoordinator {
         filterCoordinator.applySingleFilter(filter)
     }
 
-    func applySelectedFilters() {
-        filterCoordinator.applySelectedFilters()
-    }
-
     func applyAllFilters() {
         filterCoordinator.applyAllFilters()
+    }
+
+    func applySoloFilter(_ filter: TableFilter) {
+        filterCoordinator.applySoloFilter(filter)
     }
 
     func clearAppliedFilters() {
@@ -69,14 +90,6 @@ extension MainContentCoordinator {
 
     func closeFilterPanel() {
         filterCoordinator.closeFilterPanel()
-    }
-
-    func selectAllFilters(_ selected: Bool) {
-        filterCoordinator.selectAllFilters(selected)
-    }
-
-    func toggleFilterSelection(_ filter: TableFilter) {
-        filterCoordinator.toggleFilterSelection(filter)
     }
 
     func saveLastFiltersForActiveTable() {

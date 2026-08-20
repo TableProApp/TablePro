@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProImport
 
 struct ConnectionImportPreviewList: View {
     let items: [ImportItem]
@@ -73,8 +74,8 @@ struct ConnectionImportPreviewList: View {
                     set: { duplicateResolutions[item.id] = $0 }
                 )) {
                     Text(String(localized: "As Copy")).tag(ImportResolution.importAsCopy)
-                    if case .duplicate(let existing) = item.status {
-                        Text(String(localized: "Replace")).tag(ImportResolution.replace(existingId: existing.id))
+                    if case .duplicate(let existingId, _) = item.status {
+                        Text(String(localized: "Replace")).tag(ImportResolution.replace(existingId: existingId))
                     }
                     Text(String(localized: "Skip")).tag(ImportResolution.skip)
                 }
@@ -108,7 +109,7 @@ struct ConnectionImportPreviewList: View {
     @ViewBuilder
     private func warningText(for status: ImportItemStatus) -> some View {
         if case .warnings(let messages) = status, let first = messages.first {
-            Text(" — \(first)")
+            Text(", \(first)")
                 .foregroundStyle(.orange)
         }
     }

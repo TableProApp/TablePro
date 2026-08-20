@@ -6,6 +6,7 @@
 //  to keep the main class body within SwiftLint limits.
 //
 
+import CodeEditSourceEditor
 import Foundation
 import os
 
@@ -35,13 +36,35 @@ extension MainContentCoordinator {
                 let savedState = changeManager.saveState()
                 tabManager.mutate(at: oldIndex) { $0.pendingChanges = savedState }
             }
+            // One editor serves every query tab, so `cursorPositions` describes the outgoing tab
+            // only until the switch completes. Persistence writes the live caret for the selected
+            // tab alone, so a caret not captured here is gone once the editor has consumed the
+            // tab's restored value.
+            //
+            // Only a tab whose own restored caret is already consumed can be written, because the
+            // query editor subtree has no `.id(tab.id)`: selecting a restored tab reuses the same
+            // editor without re-installing it, so `cursorPositions` can still describe the tab
+            // before it. Overwriting there would destroy the very caret this is meant to keep.
+            let outgoing = tabManager.tabs[oldIndex]
+            if outgoing.tabType == .query,
+               outgoing.restoredCursorOffset == nil,
+               outgoing.restoredCursorLength == nil,
+               let range = cursorPositions.first?.range {
+                tabManager.mutate(at: oldIndex) {
+                    $0.restoredCursorOffset = range.location
+                    $0.restoredCursorLength = range.length
+                }
+            }
             if let tableName = tabManager.tabs[oldIndex].tableContext.tableName {
                 FilterSettingsStorage.shared.saveLastFilters(
                     tabManager.tabs[oldIndex].filterState.appliedFilters,
-                    for: tableName
+                    logicMode: tabManager.tabs[oldIndex].filterState.filterLogicMode,
+                    for: tableName,
+                    connectionId: connectionId,
+                    databaseName: tabManager.tabs[oldIndex].tableContext.databaseName,
+                    schemaName: tabManager.tabs[oldIndex].tableContext.schemaName
                 )
             }
-            persistOutgoingTabHiddenColumns(oldIndex: oldIndex)
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
@@ -61,20 +84,26 @@ extension MainContentCoordinator {
             let newTab = tabManager.tabs[newIndex]
             let newRows = tabSessionRegistry.tableRows(for: newId)
 
+            recordSelectedTabContainer()
+
             selectionState.indices = newTab.selectedRowIndices
             toolbarState.isTableTab = newTab.tabType == .table
             toolbarState.isResultsCollapsed = newTab.display.isResultsCollapsed
 
             let pendingState = newTab.pendingChanges
             if pendingState.hasChanges {
-                changeManager.restoreState(from: pendingState, tableName: newTab.tableContext.tableName ?? "", databaseType: connection.type)
+                changeManager.restoreState(
+                    from: pendingState,
+                    tableName: newTab.tableContext.tableName ?? "",
+                    schemaName: newTab.tableContext.schemaName,
+                    databaseType: connection.type
+                )
             } else {
                 changeManager.configureForTable(
                     tableName: newTab.tableContext.tableName ?? "",
+                    schemaName: newTab.tableContext.schemaName,
                     columns: newRows.columns,
-                    primaryKeyColumns: newTab.tableContext.primaryKeyColumns.isEmpty
-                        ? newRows.columns.prefix(1).map { $0 }
-                        : newTab.tableContext.primaryKeyColumns,
+                    primaryKeyColumns: newTab.tableContext.primaryKeyColumns,
                     databaseType: connection.type,
                     triggerReload: false
                 )
@@ -85,22 +114,8 @@ extension MainContentCoordinator {
                 "[switch] handleTabChange phases: saveOutgoing=\(saveMs)ms restoreIncoming=\(restoreMs)ms"
             )
 
-            if !newTab.tableContext.databaseName.isEmpty {
-                let currentDatabase = activeDatabaseName
-
-                if newTab.tableContext.databaseName != currentDatabase {
-                    Self.lifecycleLogger.debug(
-                        "[switch] handleTabChange triggering switchDatabase from=\(currentDatabase, privacy: .public) to=\(newTab.tableContext.databaseName, privacy: .public)"
-                    )
-                    changeManager.reloadVersion += 1
-                    Task {
-                        await switchDatabase(to: newTab.tableContext.databaseName)
-                    }
-                    return  // switchDatabase will re-execute the query
-                }
-            }
-
             changeManager.reloadVersion += 1
+            lazyLoadCurrentTabIfNeeded()
         } else {
             toolbarState.isTableTab = false
             toolbarState.isResultsCollapsed = false

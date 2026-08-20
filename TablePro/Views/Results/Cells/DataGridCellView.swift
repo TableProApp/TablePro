@@ -30,24 +30,91 @@ final class DataGridCellView: NSView {
     private var visualState: RowVisualState = .empty
     private var isFocusedCell: Bool = false
     private var onEmphasizedSelection: Bool = false
+    private var hasOverlay: Bool = false
+    private var findMatchTint: NSColor?
 
     private var cachedLine: CTLine?
 
-    private var accessoryHitRect: NSRect = .zero
+    private enum AccessoryRole: Hashable {
+        case foreignKeyNormal
+        case foreignKeyEmphasized
+        case chevronNormal
+        case chevronEmphasized
+        case chevronDisabled
 
-    private static let chevronNormal = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .secondaryLabelColor)
-    private static let chevronEmphasized = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .alternateSelectedControlTextColor)
-    private static let chevronDisabled = makeAccessoryCGImage("chevron.up.chevron.down", pointSize: 10, color: .tertiaryLabelColor)
-    private static let fkArrowNormal = makeAccessoryCGImage("arrow.right.circle.fill", pointSize: 14, color: .secondaryLabelColor)
-    private static let fkArrowEmphasized = makeAccessoryCGImage("arrow.right.circle.fill", pointSize: 14, color: .alternateSelectedControlTextColor)
+        var symbolName: String {
+            switch self {
+            case .foreignKeyNormal, .foreignKeyEmphasized:
+                return "arrow.forward"
+            case .chevronNormal, .chevronEmphasized, .chevronDisabled:
+                return "chevron.up.chevron.down"
+            }
+        }
 
-    private static func makeAccessoryCGImage(_ name: String, pointSize: CGFloat, color: NSColor) -> CGImage? {
-        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
-            .applying(.init(hierarchicalColor: color))
-        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+        /// The bare arrow spends its whole point size on the arrow itself, where the circled variant
+        /// spent most of it on the ring, so 14 here would draw an arrow half again as large as the
+        /// one it replaced. 12 keeps the ink at 11 x 9 in the 16 x 16 accessory rect, close to the
+        /// dropdown chevron's weight and to the 13pt cell text.
+        var pointSize: CGFloat {
+            switch self {
+            case .foreignKeyNormal, .foreignKeyEmphasized:
+                return 12
+            case .chevronNormal, .chevronEmphasized, .chevronDisabled:
+                return 10
+            }
+        }
+
+        var color: NSColor {
+            switch self {
+            case .foreignKeyNormal, .chevronNormal:
+                return .secondaryLabelColor
+            case .foreignKeyEmphasized, .chevronEmphasized:
+                return .alternateSelectedControlTextColor
+            case .chevronDisabled:
+                return .tertiaryLabelColor
+            }
+        }
+    }
+
+    private struct AccessoryGlyphKey: Hashable {
+        let role: AccessoryRole
+        let appearance: NSAppearance.Name
+        let increasedContrast: Bool
+    }
+
+    private struct AccessoryGlyph {
+        let image: CGImage
+        let pointSize: NSSize
+    }
+
+    private static var accessoryGlyphs: [AccessoryGlyphKey: AccessoryGlyph] = [:]
+
+    /// Rasterizing resolves the dynamic symbol color, so a cached bitmap belongs to exactly one
+    /// appearance. Keying on the appearance is what keeps a dark window from being served the
+    /// light bitmap, and `NSAppearance.currentDrawing()` only reports the cell's own appearance
+    /// while AppKit is inside `draw(_:)`, `updateLayer` or `layout`.
+    private static func accessoryGlyph(for role: AccessoryRole) -> AccessoryGlyph? {
+        let key = AccessoryGlyphKey(
+            role: role,
+            appearance: NSAppearance.currentDrawing().name,
+            increasedContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        )
+        if let cached = accessoryGlyphs[key] {
+            return cached
+        }
+        guard let glyph = makeAccessoryGlyph(role) else { return nil }
+        accessoryGlyphs[key] = glyph
+        return glyph
+    }
+
+    private static func makeAccessoryGlyph(_ role: AccessoryRole) -> AccessoryGlyph? {
+        let config = NSImage.SymbolConfiguration(pointSize: role.pointSize, weight: .regular)
+            .applying(.init(hierarchicalColor: role.color))
+        guard let image = NSImage(systemSymbolName: role.symbolName, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) else { return nil }
         var rect = CGRect(origin: .zero, size: image.size)
-        return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+        guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return nil }
+        return AccessoryGlyph(image: cgImage, pointSize: image.size)
     }
 
     override init(frame frameRect: NSRect) {
@@ -83,29 +150,36 @@ final class DataGridCellView: NSView {
         cellRow = state.row
         cellColumnIndex = state.columnIndex
 
-        let nextDisplayText: String
+        if hasOverlay {
+            hasOverlay = false
+            updateFocusPresentation()
+            needsRedraw = true
+        }
+
         let nextFont: NSFont
         let nextColor: NSColor
         let deletedTextColor = state.visualState.isDeleted ? palette.deletedRowText : nil
 
         switch content.placeholder {
         case .none:
-            nextDisplayText = content.displayText
             nextFont = palette.regularFont
             nextColor = deletedTextColor ?? .labelColor
         case .null:
-            nextDisplayText = state.isLargeDataset ? "" : nullDisplayString
             nextFont = palette.italicFont
             nextColor = deletedTextColor ?? .secondaryLabelColor
         case .empty:
-            nextDisplayText = state.isLargeDataset ? "" : String(localized: "Empty")
             nextFont = palette.italicFont
             nextColor = deletedTextColor ?? .secondaryLabelColor
         case .defaultMarker:
-            nextDisplayText = state.isLargeDataset ? "" : String(localized: "DEFAULT")
             nextFont = palette.mediumFont
             nextColor = deletedTextColor ?? .systemBlue
         }
+        let nextDisplayText = DataGridCellContent.resolvedDisplayText(
+            content.displayText,
+            placeholder: content.placeholder,
+            isLargeDataset: state.isLargeDataset,
+            nullDisplayString: nullDisplayString
+        )
 
         if displayText != nextDisplayText
             || textFont != nextFont
@@ -141,6 +215,13 @@ final class DataGridCellView: NSView {
             needsRedraw = true
         }
 
+        let nextFindTint: NSColor? = state.isCurrentFindMatch ? palette.findMatchTint : nil
+        if !colorsEqual(findMatchTint, nextFindTint) {
+            findMatchTint = nextFindTint
+            cachedLine = nil
+            needsRedraw = true
+        }
+
         if visualState != state.visualState {
             visualState = state.visualState
             needsRedraw = true
@@ -150,7 +231,6 @@ final class DataGridCellView: NSView {
             updateFocusPresentation()
             needsRedraw = true
         }
-
         setAccessibilityRowIndexRange(NSRange(location: state.row, length: 1))
         setAccessibilityColumnIndexRange(NSRange(location: state.columnIndex, length: 1))
 
@@ -159,14 +239,30 @@ final class DataGridCellView: NSView {
         }
     }
 
+    override func accessibilityValue() -> Any? {
+        accessibilityText
+    }
+
     override func accessibilityLabel() -> String? {
-        let value = rawValue ?? String(localized: "NULL")
-        return String(
+        String(
             format: String(localized: "Row %d, column %d: %@"),
             cellRow + 1,
             cellColumnIndex + 1,
-            value
+            accessibilityText
         )
+    }
+
+    private var accessibilityText: String {
+        switch placeholder {
+        case .none:
+            return displayText
+        case .null:
+            return displayText.isEmpty ? String(localized: "NULL") : displayText
+        case .empty:
+            return displayText.isEmpty ? String(localized: "Empty") : displayText
+        case .defaultMarker:
+            return displayText.isEmpty ? String(localized: "DEFAULT") : displayText
+        }
     }
 
     func applyEmphasizedSelection(_ value: Bool) {
@@ -176,18 +272,26 @@ final class DataGridCellView: NSView {
         updateFocusPresentation()
     }
 
+    func applyOverlayActive(_ value: Bool) {
+        guard hasOverlay != value else { return }
+        hasOverlay = value
+        updateFocusPresentation()
+        needsDisplay = true
+    }
+
     private func updateFocusPresentation() {
-        focusRingType = (isFocusedCell && !onEmphasizedSelection) ? .exterior : .none
+        let shouldShowRing = isFocusedCell && !onEmphasizedSelection && !hasOverlay
+        focusRingType = shouldShowRing ? .exterior : .none
         noteFocusRingMaskChanged()
         needsDisplay = true
     }
 
     override var focusRingMaskBounds: NSRect {
-        onEmphasizedSelection ? .zero : bounds
+        (onEmphasizedSelection || hasOverlay) ? .zero : bounds
     }
 
     override func drawFocusRingMask() {
-        guard !onEmphasizedSelection else { return }
+        guard !onEmphasizedSelection, !hasOverlay else { return }
         NSBezierPath(rect: bounds).fill()
     }
 
@@ -197,35 +301,35 @@ final class DataGridCellView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        if let tint = modifiedColumnTint, !onEmphasizedSelection {
+        if let tint = findMatchTint {
+            tint.setFill()
+            bounds.fill()
+        } else if let tint = modifiedColumnTint, !onEmphasizedSelection {
             tint.setFill()
             bounds.fill()
         }
 
-        let accessoryRect = computeAccessoryRect()
-        accessoryHitRect = accessoryRect
+        let accessory = currentAccessory
+        let accessoryRect = accessory.frame(in: bounds)
 
         NSGraphicsContext.current?.saveGraphicsState()
         NSBezierPath(rect: bounds).addClip()
-        drawText(reservingTrailingWidth: accessoryRect.width)
-        drawAccessory(in: accessoryRect)
+        drawText(availableWidth: accessory.availableTextWidth(in: bounds))
+        drawAccessory(accessory, in: accessoryRect)
         NSGraphicsContext.current?.restoreGraphicsState()
 
-        if isFocusedCell && onEmphasizedSelection {
+        if isFocusedCell && onEmphasizedSelection && !hasOverlay {
             drawFocusBorder()
         }
     }
 
-    private func drawText(reservingTrailingWidth trailing: CGFloat) {
+    private func drawText(availableWidth: CGFloat) {
         guard !displayText.isEmpty else { return }
-        let totalAvailable = bounds.width - 2 * DataGridMetrics.cellHorizontalInset
-        guard totalAvailable > 0 else { return }
+        guard availableWidth > 0 else { return }
         guard let context = NSGraphicsContext.current?.cgContext else { return }
 
         let fullLine = cachedCTLine()
         let typographicWidth = CTLineGetTypographicBounds(fullLine, nil, nil, nil)
-        let trailingGap: CGFloat = trailing > 0 ? trailing + 4 : 0
-        let availableWidth = max(0, totalAvailable - trailingGap)
         let ellipsisLine = makeEllipsisLine()
         let ellipsisWidth = CTLineGetTypographicBounds(ellipsisLine, nil, nil, nil)
         guard Double(availableWidth) >= ellipsisWidth else { return }
@@ -247,7 +351,8 @@ final class DataGridCellView: NSView {
     }
 
     private func resolvedTextColor() -> NSColor {
-        onEmphasizedSelection ? .alternateSelectedControlTextColor : textColor
+        if findMatchTint != nil { return .black }
+        return onEmphasizedSelection ? .alternateSelectedControlTextColor : textColor
     }
 
     private func cachedCTLine() -> CTLine {
@@ -282,50 +387,58 @@ final class DataGridCellView: NSView {
         return CTLineCreateWithAttributedString(attr as CFAttributedString)
     }
 
-    private func computeAccessoryRect() -> NSRect {
-        switch kind {
-        case .text:
-            return .zero
-        case .foreignKey:
-            guard let raw = rawValue, !raw.isEmpty else { return .zero }
-            let size = NSSize(width: 16, height: 16)
-            let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
-            let y = (bounds.height - size.height) / 2
-            return NSRect(x: x, y: y, width: size.width, height: size.height)
-        case .dropdown, .boolean, .json, .blob:
-            guard isEditableCell else { return .zero }
-            let size = NSSize(width: 12, height: 14)
-            let minRequired = size.width + 2 * DataGridMetrics.cellHorizontalInset
-            guard bounds.width >= minRequired else { return .zero }
-            let x = bounds.maxX - DataGridMetrics.cellHorizontalInset - size.width
-            let y = (bounds.height - size.height) / 2
-            return NSRect(x: x, y: y, width: size.width, height: size.height)
-        }
+    private var currentAccessory: DataGridCellAccessory {
+        DataGridCellAccessory.visible(
+            for: kind,
+            isEditable: isEditableCell,
+            rawValue: rawValue
+        )
     }
 
-    private func drawAccessory(in rect: NSRect) {
+    private func drawAccessory(_ accessory: DataGridCellAccessory, in rect: NSRect) {
         guard !rect.isEmpty else { return }
-        let image: CGImage?
-        switch kind {
-        case .text:
-            return
+        let role: AccessoryRole
+        switch accessory {
         case .foreignKey:
-            image = onEmphasizedSelection ? Self.fkArrowEmphasized : Self.fkArrowNormal
-        case .dropdown, .boolean, .json, .blob:
+            role = onEmphasizedSelection ? .foreignKeyEmphasized : .foreignKeyNormal
+        case .chevron:
             if visualState.isDeleted {
-                image = Self.chevronDisabled
+                role = .chevronDisabled
             } else if onEmphasizedSelection {
-                image = Self.chevronEmphasized
+                role = .chevronEmphasized
             } else {
-                image = Self.chevronNormal
+                role = .chevronNormal
             }
+        case .none:
+            return
         }
-        guard let cgImage = image, let context = NSGraphicsContext.current?.cgContext else { return }
+        guard let glyph = Self.accessoryGlyph(for: role),
+              let context = NSGraphicsContext.current?.cgContext else { return }
+        let drawRect = Self.centeredGlyphRect(pointSize: glyph.pointSize, in: rect)
         context.saveGState()
-        context.translateBy(x: rect.minX, y: rect.maxY)
+        context.translateBy(x: drawRect.minX, y: drawRect.maxY)
         context.scaleBy(x: 1, y: -1)
-        context.draw(cgImage, in: CGRect(origin: .zero, size: rect.size))
+        context.draw(glyph.image, in: CGRect(origin: .zero, size: drawRect.size))
         context.restoreGState()
+    }
+
+    /// A symbol stretched to fill the accessory rect stops looking like a system symbol, so the
+    /// glyph draws at its own point size and the rect only ever clamps it. The clamp is one factor
+    /// across both axes, because clamping each axis on its own would distort the glyph exactly the
+    /// way filling the rect did. The origin rounds to whole points so a glyph narrower than its rect
+    /// by an odd number of points does not land on a half point and blur at 1x.
+    private static func centeredGlyphRect(pointSize: NSSize, in rect: NSRect) -> NSRect {
+        let scale = min(1, rect.width / pointSize.width, rect.height / pointSize.height)
+        let size = NSSize(
+            width: pointSize.width * scale,
+            height: pointSize.height * scale
+        )
+        return NSRect(
+            x: (rect.midX - size.width / 2).rounded(),
+            y: (rect.midY - size.height / 2).rounded(),
+            width: size.width,
+            height: size.height
+        )
     }
 
     private func drawFocusBorder() {
@@ -337,36 +450,31 @@ final class DataGridCellView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if !accessoryHitRect.isEmpty && accessoryHitRect.contains(point) {
-            switch kind {
-            case .foreignKey:
-                accessoryDelegate?.dataGridCellDidClickFKArrow(row: cellRow, columnIndex: cellColumnIndex)
-                return
-            case .dropdown, .boolean, .json, .blob:
-                guard !visualState.isDeleted else {
-                    super.mouseDown(with: event)
-                    return
-                }
-                accessoryDelegate?.dataGridCellDidClickChevron(row: cellRow, columnIndex: cellColumnIndex)
-                return
-            case .text:
-                break
-            }
-        }
-        super.mouseDown(with: event)
-    }
-
-    override func rightMouseDown(with event: NSEvent) {
-        var view: NSView? = self
-        while let parent = view?.superview {
-            if let rowView = parent as? DataGridRowView,
-               let menu = rowView.menu(for: event) {
-                NSMenu.popUpContextMenu(menu, with: event, for: self)
+        let accessory = currentAccessory
+        let accessoryRect = accessory.frame(in: bounds)
+        guard !accessoryRect.isEmpty, accessoryRect.contains(point) else {
+            if event.clickCount == 2 {
+                accessoryDelegate?.dataGridCellDidDoubleClick(row: cellRow, columnIndex: cellColumnIndex)
                 return
             }
-            view = parent
+            super.mouseDown(with: event)
+            return
         }
-        super.rightMouseDown(with: event)
+        switch accessory {
+        case .foreignKey:
+            let openInNewTab = event.modifierFlags.contains(.command)
+            accessoryDelegate?.dataGridCellDidClickFKArrow(
+                row: cellRow,
+                columnIndex: cellColumnIndex,
+                openInNewTab: openInNewTab
+            )
+            return
+        case .chevron where !visualState.isDeleted:
+            accessoryDelegate?.dataGridCellDidClickChevron(row: cellRow, columnIndex: cellColumnIndex)
+            return
+        case .none, .chevron:
+            super.mouseDown(with: event)
+        }
     }
 
     private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {

@@ -2,8 +2,8 @@
 //  EditorEventRouter.swift
 //  TablePro
 //
-//  Shared event router that installs one set of process-global monitors
-//  and dispatches to the correct editor by window, replacing per-editor monitors.
+//  Registry of the live SQL editors, used to dispatch window-scoped commands
+//  to the editor in the key window.
 //
 
 @preconcurrency import AppKit
@@ -21,8 +21,6 @@ internal final class EditorEventRouter {
     }
 
     private var editors: [ObjectIdentifier: EditorRef] = [:]
-    private var rightClickMonitor: Any?
-    private var clipboardMonitor: Any?
 
     private init() {}
 
@@ -31,10 +29,6 @@ internal final class EditorEventRouter {
     internal func register(_ coordinator: SQLEditorCoordinator, textView: TextView) {
         let key = ObjectIdentifier(coordinator)
         editors[key] = EditorRef(coordinator: coordinator, textView: textView)
-
-        if rightClickMonitor == nil {
-            installMonitors()
-        }
 
         if textView.window != nil {
             installWindowObserver(for: key)
@@ -53,10 +47,6 @@ internal final class EditorEventRouter {
         }
         editors.removeValue(forKey: key)
         purgeStaleEntries()
-
-        if editors.isEmpty {
-            removeMonitors()
-        }
     }
 
     // MARK: - Per-Window Observer
@@ -90,115 +80,80 @@ internal final class EditorEventRouter {
 
     // MARK: - Public API
 
+    /// Whether the key window has a SQL editor a find can fall back to. A focused editor answers the
+    /// Find commands itself through the responder chain, so this only decides whether the window's
+    /// last-resort handler has anything to search once nothing nearer has claimed them.
+    internal var keyWindowHasEditor: Bool {
+        editor(for: NSApp.keyWindow) != nil
+    }
+
     internal func showFindPanelForKeyWindow() {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
         coordinator.showFindPanel()
     }
 
-    /// Called by the SwiftUI "Clear Selection" menu when its Esc key equivalent fires.
-    /// Routes the keystroke to the active editor's Vim engine if it is in a non-normal
-    /// mode. Returns true when Vim consumed the escape — caller should suppress its
-    /// normal cancelOperation fallback in that case.
+    internal func findNext() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.findNext()
+    }
+
+    internal func findPrevious() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.findPrevious()
+    }
+
+    internal func performFormatSQLForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.performFormatSQL()
+    }
+
+    internal func performToggleFoldForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.toggleFoldAtCursor()
+    }
+
+    internal func performFoldAllForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.foldAll()
+    }
+
+    internal func performUnfoldAllForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.unfoldAll()
+    }
+
+    /// Called by the SwiftUI "Clear Selection" menu when its bare-Escape key equivalent
+    /// fires. A bare-key menu equivalent preempts every local event monitor in the key
+    /// window, so the focused editor's completion popup, Vim interceptor, and
+    /// first-responder handling never see the keystroke. Routes it to the key window's
+    /// editor so it can dismiss its completion popup, hand the escape to Vim, and restore
+    /// first responder. Returns whether the editor consumed the escape so the caller
+    /// skips its cancelOperation fallback (the data grid's Clear Selection).
     @discardableResult
-    internal func handleVimEscapeFromMenu() -> Bool {
+    internal func handleEscapeFromMenu() -> Bool {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return false }
-        return coordinator.handleVimEscapeFromMenu()
+        return coordinator.handleEscapeFromMenu()
     }
 
     // MARK: - Lookup
 
+    /// Window-scoped on purpose: every caller is a command the window's front content owns rather than
+    /// whatever holds first responder, and the escape and find routes exist precisely because focus is
+    /// somewhere else. A tab switch can leave the outgoing editor registered for a moment, and the
+    /// dictionary has no order, so the focused editor wins before the remaining candidate is used.
     private func editor(for window: NSWindow?) -> (SQLEditorCoordinator, TextView)? {
         guard let window else { return nil }
+        var unfocused: (SQLEditorCoordinator, TextView)?
         for ref in editors.values {
             guard let coordinator = ref.coordinator, let textView = ref.textView,
                   textView.window === window else { continue }
-            return (coordinator, textView)
+            if window.firstResponder === textView { return (coordinator, textView) }
+            unfocused = unfocused ?? (coordinator, textView)
         }
-        return nil
+        return unfocused
     }
 
     private func purgeStaleEntries() {
         editors = editors.filter { $0.value.coordinator != nil && $0.value.textView != nil }
-    }
-
-    // MARK: - Monitor Installation
-
-    private func installMonitors() {
-        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] nsEvent in
-            guard let self else { return nsEvent }
-            nonisolated(unsafe) let event = nsEvent
-            return MainActor.assumeIsolated {
-                self.handleRightClick(event)
-            }
-        }
-
-        clipboardMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
-            guard let self else { return nsEvent }
-            nonisolated(unsafe) let event = nsEvent
-            return MainActor.assumeIsolated {
-                self.handleKeyDown(event)
-            }
-        }
-    }
-
-    private func removeMonitors() {
-        if let monitor = rightClickMonitor {
-            NSEvent.removeMonitor(monitor)
-            rightClickMonitor = nil
-        }
-        if let monitor = clipboardMonitor {
-            NSEvent.removeMonitor(monitor)
-            clipboardMonitor = nil
-        }
-    }
-
-    // MARK: - Event Handlers
-
-    private func handleRightClick(_ event: NSEvent) -> NSEvent? {
-        guard let (coordinator, textView) = editor(for: event.window) else { return event }
-
-        let locationInView = textView.convert(event.locationInWindow, from: nil)
-        guard textView.bounds.contains(locationInView) else { return event }
-
-        coordinator.showContextMenu(for: event, in: textView)
-        return nil
-    }
-
-    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
-        guard let (_, textView) = editor(for: event.window),
-              textView.window?.firstResponder === textView else {
-            return event
-        }
-
-        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard mods.contains(.command),
-              !mods.contains(.shift), !mods.contains(.option), !mods.contains(.control) else {
-            return event
-        }
-
-        let selection = textView.selectedRange()
-
-        switch event.keyCode {
-        case 8: // Cmd+C
-            guard selection.length > 0 else { return event }
-            let text = (textView.string as NSString).substring(with: selection)
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-            return nil
-        case 7: // Cmd+X
-            guard let result = LineCutCalculator.calculate(
-                text: textView.string, selection: selection
-            ) else {
-                return event
-            }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(result.clipboardText, forType: .string)
-            textView.replaceCharacters(in: result.rangeToDelete, with: "")
-            return nil
-        default:
-            break
-        }
-
-        return event
     }
 }

@@ -19,7 +19,6 @@ final class DynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "Amazon DynamoDB"
     static let iconName = "dynamodb-icon"
     static let defaultPort = 0
-    static let additionalDatabaseTypeIds: [String] = []
     static let isDownloadable = true
 
     static let connectionMode: ConnectionMode = .apiOnly
@@ -56,7 +55,8 @@ final class DynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             "begins_with", "contains", "size", "attribute_type",
             "attribute_exists", "attribute_not_exists"
         ],
-        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"]
+        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"],
+        caseSensitivityStyle: .driverManaged
     )
 
     static let columnTypesByCategory: [String: [String]] = [
@@ -114,7 +114,7 @@ final class DynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             placeholder: "default",
             section: .authentication,
             visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["profile", "sso"])
-        ),
+        ).withDynamicOptions(.awsProfiles),
         ConnectionField(
             id: "awsRegion",
             label: String(localized: "AWS Region"),

@@ -25,6 +25,10 @@ public struct DescribeTableTool: MCPToolImplementation {
                 "type": .string("string"),
                 "description": .string(String(localized: "Table name"))
             ]),
+            "database": .object([
+                "type": .string("string"),
+                "description": .string(String(localized: "Database name (uses current if omitted)"))
+            ]),
             "schema": .object([
                 "type": .string("string"),
                 "description": .string(String(localized: "Schema name (uses current if omitted)"))
@@ -42,13 +46,15 @@ public struct DescribeTableTool: MCPToolImplementation {
     ) async throws -> MCPToolCallResult {
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         let table = try MCPArgumentDecoder.requireString(arguments, key: "table")
+        let database = MCPArgumentDecoder.optionalString(arguments, key: "database")
         let schema = MCPArgumentDecoder.optionalString(arguments, key: "schema")
 
-        let payload = try await services.connectionBridge.describeTable(
+        let scope = try await services.connectionBridge.resolveScope(
             connectionId: connectionId,
-            table: table,
+            database: database,
             schema: schema
         )
+        let payload = try await services.connectionBridge.describeTable(scope: scope, table: table)
         return .structured(payload)
     }
 }

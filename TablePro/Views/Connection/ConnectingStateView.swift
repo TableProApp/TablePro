@@ -5,42 +5,42 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
-struct ConnectingStateView: View {
-    let connection: DatabaseConnection
-    let onCancel: () -> Void
-    private let iconIsSymbol: Bool
+/// Deliberately not built on `ContentUnavailableView`. Apple documents that view for content
+/// that cannot be shown, a network error or an empty list, and every case it names is a state
+/// the operation has already settled into. UIKit ships a separate `loading()` configuration for
+/// work in flight and macOS ships no equivalent, so a connecting surface is assembled here.
+internal struct ConnectingStateView: View {
+    internal let connection: DatabaseConnection
+    internal let onCancel: () -> Void
 
-    init(connection: DatabaseConnection, onCancel: @escaping () -> Void) {
+    @State private var observer: ConnectionStageObserver
+
+    internal init(connection: DatabaseConnection, onCancel: @escaping () -> Void) {
         self.connection = connection
         self.onCancel = onCancel
-        self.iconIsSymbol = NSImage(
-            systemSymbolName: connection.type.iconName,
-            accessibilityDescription: nil
-        ) != nil
+        _observer = State(wrappedValue: ConnectionStageObserver(connectionId: connection.id))
     }
 
-    var body: some View {
-        ContentUnavailableView {
-            Label {
-                Text(String(format: String(localized: "Connecting to %@"), connection.name))
-            } icon: {
-                iconView
+    internal var body: some View {
+        VStack(spacing: 18) {
+            ConnectionTypeIcon(type: connection.type, pulses: true)
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+                .frame(height: 44)
+
+            VStack(spacing: 6) {
+                Text(connection.name)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                ConnectionEndpointLabel(connection: connection)
             }
-        } description: {
-            VStack(spacing: 14) {
-                if !endpointSubtitle.isEmpty {
-                    Text(endpointSubtitle)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                ProgressView()
-                    .controlSize(.small)
-            }
-        } actions: {
+
+            progressLine
+
             Button(role: .cancel, action: onCancel) {
                 Text(String(localized: "Cancel"))
                     .frame(minWidth: 80)
@@ -48,27 +48,54 @@ struct ConnectingStateView: View {
             .controlSize(.large)
             .keyboardShortcut(.cancelAction)
         }
+        .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityStatus)
     }
 
     @ViewBuilder
-    private var iconView: some View {
-        if iconIsSymbol {
-            Image(systemName: connection.type.iconName)
-                .symbolRenderingMode(.hierarchical)
-                .symbolEffect(.pulse, options: .repeating)
-        } else {
-            Image(connection.type.iconName)
-                .resizable()
-                .scaledToFit()
+    private var progressLine: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(stepLabel)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            if observer.isTakingLonger {
+                Text(String(localized: "This is taking longer than usual."))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: 420)
+        .multilineTextAlignment(.center)
+        .onChange(of: observer.stage) { _, newStage in
+            guard let newStage else { return }
+            announce(newStage)
         }
     }
 
-    private var endpointSubtitle: String {
-        if connection.host.isEmpty { return connection.database }
-        if connection.port > 0 {
-            return "\(connection.host):\(connection.port)"
+    private var stepLabel: String {
+        guard let stage = observer.stage else { return String(localized: "Opening the connection") }
+        return ConnectionStageLabelFormatter.stepLabel(for: stage, connection: connection)
+    }
+
+    private var accessibilityStatus: String {
+        guard let stage = observer.stage else {
+            return String(format: String(localized: "Connecting to %@"), connection.name)
         }
-        return connection.host
+        return ConnectionStageLabelFormatter.announcement(for: stage, connection: connection)
+    }
+
+    /// Posted per step rather than continuously. `updatesFrequently` is documented as a hint to
+    /// poll, which is the wrong shape for a handful of discrete transitions.
+    private func announce(_ stage: ConnectionStage) {
+        AccessibilityNotification.Announcement(
+            ConnectionStageLabelFormatter.announcement(for: stage, connection: connection)
+        ).post()
     }
 }

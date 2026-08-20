@@ -22,6 +22,9 @@ internal enum TransientConnectionFactory {
                 sshConfig.authMethod = .sshAgent
                 sshConfig.agentSocketPath = parsed.agentSocket ?? ""
             }
+            if parsed.sshNoAuth == true {
+                sshConfig.authMethod = .none
+            }
         }
 
         var sslConfig = SSLConfiguration()
@@ -34,9 +37,9 @@ internal enum TransientConnectionFactory {
             color = ConnectionURLParser.connectionColor(fromHex: hex)
         }
 
-        var tagId: UUID?
-        if let envName = parsed.envTag {
-            tagId = ConnectionURLParser.tagId(fromEnvName: envName)
+        var tagIds: [UUID] = []
+        if let envName = parsed.envTag, let resolved = ConnectionURLParser.tagId(fromEnvName: envName) {
+            tagIds = [resolved]
         }
 
         let resolvedSafeMode = parsed.safeModeLevel.flatMap(SafeModeLevel.from(urlInteger:)) ?? .silent
@@ -51,7 +54,7 @@ internal enum TransientConnectionFactory {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: color,
-            tagId: tagId,
+            tagIds: tagIds,
             safeModeLevel: resolvedSafeMode,
             mongoAuthSource: parsed.authSource,
             mongoUseSrv: parsed.useSrv,

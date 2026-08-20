@@ -11,7 +11,7 @@ struct DataGridUpdateSnapshot: Equatable {
     let rowDisplayCount: Int
     let columnCount: Int
     let columns: [String]
-    let sortedIDsCount: Int?
+    let valueFilteredIDsCount: Int?
     let displayFormats: [ValueDisplayFormat?]
     let configuration: DataGridConfiguration
     let isEditable: Bool
@@ -19,4 +19,6 @@ struct DataGridUpdateSnapshot: Equatable {
     let rowHeight: CGFloat
     let alternatingRows: Bool
     let reloadVersion: Int
+    let contentRevision: Int
+    let columnComments: [String: String]
 }

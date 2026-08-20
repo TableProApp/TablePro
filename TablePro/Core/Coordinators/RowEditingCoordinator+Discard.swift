@@ -5,58 +5,43 @@
 
 import AppKit
 import Foundation
-import os
-
-private let discardLogger = Logger(subsystem: "com.TablePro", category: "RowEditingCoordinator+Discard")
+import TableProPluginKit
 
 extension RowEditingCoordinator {
     // MARK: - Sidebar Transaction
 
+    /// Edits made in the row inspector belong to the selected tab, so they run on that
+    /// tab's database. The scope is read before the authorization prompt, which awaits a
+    /// sheet and Touch ID and gives the selection time to move somewhere else.
     func executeSidebarChanges(statements: [ParameterizedStatement]) async throws {
-        let sqlPreview = statements.map(\.sql).joined(separator: "\n")
-        let window = await MainActor.run { NSApp.keyWindow }
-        let permission = await SafeModeGuard.checkPermission(
-            level: parent.safeModeLevel,
-            isWriteOperation: true,
-            sql: sqlPreview,
-            operationDescription: String(localized: "Save Sidebar Changes"),
-            window: window,
-            databaseType: parent.connection.type
-        )
-        if case .blocked = permission {
-            return
-        }
-
-        guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
+        guard let scope = parent.selectedTabScope else {
             throw DatabaseError.notConnected
         }
 
-        let useTransaction = driver.supportsTransactions
-
-        if useTransaction {
-            try await driver.beginTransaction()
+        let sqlPreview = statements.map(\.sql).joined(separator: "\n")
+        let kind = OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type))
+        let decision = await ExecutionGateProvider.shared.authorize(
+            OperationRequest(
+                connectionId: parent.connectionId,
+                databaseType: parent.connection.type,
+                sql: sqlPreview,
+                kind: kind,
+                caller: .userInterface,
+                capabilities: .interactiveUser,
+                operationDescription: String(localized: "Save Sidebar Changes")
+            )
+        )
+        guard case .authorized = decision else {
+            throw DatabaseError.queryFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
         }
 
-        do {
-            for stmt in statements {
-                if stmt.parameters.isEmpty {
-                    _ = try await driver.execute(query: stmt.sql)
-                } else {
-                    _ = try await driver.executeParameterized(query: stmt.sql, parameters: stmt.parameters)
-                }
-            }
-            if useTransaction {
-                try await driver.commitTransaction()
-            }
-        } catch {
-            if useTransaction {
-                do {
-                    try await driver.rollbackTransaction()
-                } catch {
-                    discardLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
-                }
-            }
-            throw error
+        let mode: PluginTransactionAccessMode = kind.declaresWrite ? .readWrite : .serverDefault
+        _ = try await DatabaseManager.shared.withScopedDriver(
+            scope: scope,
+            route: DatabaseManager.shared.executionRoute(for: scope),
+            cancellation: .protectedWrite
+        ) { driver in
+            try await Self.runStatementsInTransaction(statements, mode: mode, on: driver)
         }
     }
 

@@ -1,1 +1,0 @@
-../../Plugins/BigQueryDriverPlugin/BigQueryQueryBuilder.swift

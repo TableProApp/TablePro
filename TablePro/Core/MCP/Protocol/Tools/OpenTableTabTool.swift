@@ -65,7 +65,7 @@ public struct OpenTableTabTool: MCPToolImplementation {
                 schemaName: schemaName,
                 intent: .openContent
             )
-            WindowManager.shared.openTab(payload: payload)
+            WindowManager.shared.openTab(payload: payload, autoConnect: true)
             NSApp.activate(ignoringOtherApps: true)
             return payload.id
         }

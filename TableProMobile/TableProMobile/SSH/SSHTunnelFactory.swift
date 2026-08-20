@@ -24,6 +24,19 @@ enum SSHTunnelFactory {
         try await tunnel.connect(host: config.host, port: config.port)
         try await tunnel.handshake()
 
+        let presentedKey = try await tunnel.hostKey()
+        do {
+            try await HostKeyVerifier.verify(
+                keyData: presentedKey.keyData,
+                keyType: presentedKey.keyType,
+                hostname: config.host,
+                port: config.port
+            )
+        } catch {
+            await tunnel.close()
+            throw error
+        }
+
         switch config.authMethod {
         case .password:
             guard let password = sshPassword else {
@@ -47,6 +60,9 @@ enum SSHTunnelFactory {
             } else {
                 throw SSHTunnelError.authenticationFailed("No private key provided")
             }
+
+        case .none:
+            try await tunnel.authenticateNone(username: config.username)
 
         default:
             throw SSHTunnelError.authenticationFailed(

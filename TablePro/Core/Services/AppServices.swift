@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProSyncTransport
 
 @MainActor
 struct AppServices {
@@ -14,15 +15,16 @@ struct AppServices {
     let databaseManager: DatabaseManager
     let pluginManager: PluginManager
     let schemaService: SchemaService
+    let schemaRefreshService: SchemaRefreshService
     let schemaProviderRegistry: SchemaProviderRegistry
     let sqlFavoriteManager: SQLFavoriteManager
+    let favoriteTablesStorage: FavoriteTablesStorage
     let aiChatStorage: AIChatStorage
     let aiKeyStorage: AIKeyStorage
     let groupStorage: GroupStorage
     let tagStorage: TagStorage
     let sshProfileStorage: SSHProfileStorage
     let licenseManager: LicenseManager
-    let conflictResolver: ConflictResolver
     let syncMetadataStorage: SyncMetadataStorage
     let favoritesExpansionState: FavoritesExpansionState
     let linkedFolderWatcher: LinkedFolderWatcher
@@ -32,6 +34,7 @@ struct AppServices {
     let mcpServerManager: MCPServerManager
     let syncTracker: SyncChangeTracker
     let themeEngine: ThemeEngine
+    let welcomeRouter: WelcomeRouter
 
     static let live = AppServices(
         appEvents: .shared,
@@ -41,15 +44,16 @@ struct AppServices {
         databaseManager: .shared,
         pluginManager: .shared,
         schemaService: .shared,
+        schemaRefreshService: .shared,
         schemaProviderRegistry: .shared,
         sqlFavoriteManager: .shared,
+        favoriteTablesStorage: .shared,
         aiChatStorage: .shared,
         aiKeyStorage: .shared,
         groupStorage: .shared,
         tagStorage: .shared,
         sshProfileStorage: .shared,
         licenseManager: .shared,
-        conflictResolver: .shared,
         syncMetadataStorage: .shared,
         favoritesExpansionState: .shared,
         linkedFolderWatcher: .shared,
@@ -58,7 +62,8 @@ struct AppServices {
         copilotService: .shared,
         mcpServerManager: .shared,
         syncTracker: .shared,
-        themeEngine: .shared
+        themeEngine: .shared,
+        welcomeRouter: .shared
     )
 }
 

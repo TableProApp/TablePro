@@ -22,6 +22,8 @@ struct QueryResult {
     /// Optional status message from the plugin (e.g. server notices, warnings)
     var statusMessage: String?
 
+    var columnMeta: [ResultColumnMeta]?
+
     var isEmpty: Bool {
         rows.isEmpty
     }
@@ -42,6 +44,12 @@ struct QueryResult {
         executionTime: 0,
         error: nil
     )
+}
+
+struct ResultColumnMeta: Sendable {
+    let isPrimaryKey: Bool
+    let isNullable: Bool
+    let isAutoIncrement: Bool
 }
 
 /// Database error types
@@ -83,6 +91,7 @@ struct TableInfo: Identifiable, Hashable, Sendable {
     let type: TableType
     let rowCount: Int?
     let schema: String?
+    let comment: String?
 
     enum TableType: String, Sendable {
         case table = "TABLE"
@@ -90,13 +99,28 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         case materializedView = "MATERIALIZED VIEW"
         case foreignTable = "FOREIGN TABLE"
         case systemTable = "SYSTEM TABLE"
+        case partitionedTable = "PARTITIONED TABLE"
+        case externalTable = "EXTERNAL TABLE"
+
+        /// An external table lives in a catalog outside the database, has no
+        /// primary key and no row identifier to target, and rejects UPDATE and
+        /// DELETE, so the grid must not offer row editing for one.
+        var allowsRowEditing: Bool {
+            switch self {
+            case .view, .externalTable:
+                return false
+            case .table, .materializedView, .foreignTable, .systemTable, .partitionedTable:
+                return true
+            }
+        }
     }
 
-    init(name: String, type: TableType, rowCount: Int?, schema: String? = nil) {
+    init(name: String, type: TableType, rowCount: Int?, schema: String? = nil, comment: String? = nil) {
         self.name = name
         self.type = type
         self.rowCount = rowCount
         self.schema = schema
+        self.comment = comment
     }
 
     static func == (lhs: TableInfo, rhs: TableInfo) -> Bool {
@@ -122,6 +146,7 @@ struct ColumnInfo: Identifiable, Hashable {
     let charset: String?
     let collation: String?
     let comment: String?
+    let isGenerated: Bool
     let allowedValues: [String]?
 
     init(
@@ -134,6 +159,7 @@ struct ColumnInfo: Identifiable, Hashable {
         charset: String? = nil,
         collation: String? = nil,
         comment: String? = nil,
+        isGenerated: Bool = false,
         allowedValues: [String]? = nil
     ) {
         self.name = name
@@ -145,6 +171,7 @@ struct ColumnInfo: Identifiable, Hashable {
         self.charset = charset
         self.collation = collation
         self.comment = comment
+        self.isGenerated = isGenerated
         self.allowedValues = allowedValues
     }
 }
@@ -206,6 +233,29 @@ struct ForeignKeyInfo: Identifiable, Hashable {
         self.referencedSchema = referencedSchema
         self.onDelete = onDelete
         self.onUpdate = onUpdate
+    }
+}
+
+struct TriggerInfo: Identifiable, Hashable {
+    var id: String { name }
+    let name: String
+    let timing: String
+    let event: String
+    let statement: String
+    let enabled: Bool?
+
+    init(
+        name: String,
+        timing: String,
+        event: String,
+        statement: String,
+        enabled: Bool? = nil
+    ) {
+        self.name = name
+        self.timing = timing
+        self.event = event
+        self.statement = statement
+        self.enabled = enabled
     }
 }
 

@@ -10,7 +10,7 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     private let user: String
     private let password: String
     private let database: String
-    private let sslEnabled: Bool
+    private let ssl: DriverSSLConfiguration
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
@@ -19,20 +19,21 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     nonisolated(unsafe) private(set) var currentSchema: String? = "public"
     nonisolated(unsafe) private(set) var serverVersion: String?
 
-    init(host: String, port: Int, user: String, password: String, database: String, sslEnabled: Bool = false) {
+    init(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) {
         self.host = host
         self.port = port
         self.user = user
         self.password = password
         self.database = database
-        self.sslEnabled = sslEnabled
+        self.ssl = ssl
     }
 
     // MARK: - Connection
 
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
-        try await actor.connect(host: host, port: port, user: user, password: password, database: database, sslEnabled: sslEnabled)
+        try await actor.connect(host: host, port: port, user: user, password: password, database: database, ssl: ssl)
+        _ = try? await actor.execute("SET standard_conforming_strings = on")
         serverVersion = await actor.serverVersion()
     }
 
@@ -326,7 +327,7 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
 private actor PostgreSQLActor {
     private var conn: OpaquePointer?
 
-    func connect(host: String, port: Int, user: String, password: String, database: String, sslEnabled: Bool = false) throws {
+    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) throws {
         guard (1...65_535).contains(port) else {
             throw PostgreSQLError.connectionFailed(
                 "Port \(port) is out of range. Use a value between 1 and 65535."
@@ -335,14 +336,14 @@ private actor PostgreSQLActor {
         // Close existing connection if reconnecting
         if let conn { PQfinish(conn); self.conn = nil }
 
-        let escapedHost = escapeConnParam(host)
-        let escapedUser = escapeConnParam(user)
-        let escapedPass = escapeConnParam(password)
-        let escapedDb = escapeConnParam(database)
-        let sslmode = sslEnabled ? "require" : "disable"
-
-        let connStr = "host='\(escapedHost)' port='\(port)' dbname='\(escapedDb)' " +
-            "user='\(escapedUser)' password='\(escapedPass)' connect_timeout='10' sslmode='\(sslmode)'"
+        let connStr = PostgreSQLConnectionString.build(
+            host: host,
+            port: port,
+            database: database,
+            user: user,
+            password: password,
+            ssl: ssl
+        )
 
         let connection = PQconnectdb(connStr)
 
@@ -353,11 +354,6 @@ private actor PostgreSQLActor {
         }
 
         self.conn = connection
-    }
-
-    private func escapeConnParam(_ value: String) -> String {
-        value.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
     }
 
     func close() {

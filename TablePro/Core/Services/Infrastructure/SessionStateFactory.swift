@@ -62,6 +62,11 @@ enum SessionStateFactory {
             },
             tabSessionRegistry: tabSessionRegistry
         )
+        tabMgr.onTableOpened = { tableName, schemaName, databaseName, isView, isPreview in
+            SharedSidebarState.forConnection(connectionId).recordTableOpen(
+                database: databaseName, schema: schemaName, name: tableName, isView: isView, isPreview: isPreview
+            )
+        }
         let changeMgr = DataChangeManager()
         changeMgr.databaseType = connection.type
         let toolbarSt = ConnectionToolbarState(connection: connection)
@@ -82,87 +87,8 @@ enum SessionStateFactory {
             toolbarSt.currentDatabase = String(dbIndex)
         }
 
-        let activeDatabaseName = DatabaseManager.shared.activeDatabaseName(for: connection)
-
         if let payload {
-            switch payload.intent {
-            case .openContent:
-                switch payload.tabType {
-                case .table:
-                    toolbarSt.isTableTab = true
-                    if let tableName = payload.tableName {
-                        do {
-                            if payload.isPreview {
-                                try tabMgr.addPreviewTableTab(
-                                    tableName: tableName,
-                                    databaseType: connection.type,
-                                    databaseName: payload.databaseName ?? activeDatabaseName,
-                                    schemaName: payload.schemaName
-                                )
-                            } else {
-                                try tabMgr.addTableTab(
-                                    tableName: tableName,
-                                    databaseType: connection.type,
-                                    databaseName: payload.databaseName ?? activeDatabaseName,
-                                    schemaName: payload.schemaName
-                                )
-                            }
-                        } catch {
-                            sessionStateLogger.error("create tab for table failed: \(error.localizedDescription, privacy: .public)")
-                        }
-                        if let index = tabMgr.selectedTabIndex {
-                            tabMgr.tabs[index].tableContext.isView = payload.isView
-                            tabMgr.tabs[index].tableContext.isEditable = !payload.isView
-                            tabMgr.tabs[index].tableContext.schemaName = payload.schemaName
-                            if payload.showStructure {
-                                tabMgr.tabs[index].display.resultsViewMode = .structure
-                            }
-                            if let initialFilter = payload.initialFilterState {
-                                tabMgr.tabs[index].filterState = initialFilter
-                            }
-                        }
-                    } else {
-                        tabMgr.addTab(databaseName: payload.databaseName ?? activeDatabaseName)
-                    }
-                case .query:
-                    let hasContent = payload.initialQuery != nil
-                        || payload.tabTitle != nil
-                        || payload.sourceFileURL != nil
-                    if hasContent {
-                        tabMgr.addTab(
-                            initialQuery: payload.initialQuery,
-                            title: payload.tabTitle,
-                            databaseName: payload.databaseName ?? activeDatabaseName,
-                            sourceFileURL: payload.sourceFileURL
-                        )
-                    }
-                case .createTable:
-                    tabMgr.addCreateTableTab(
-                        databaseName: payload.databaseName ?? activeDatabaseName
-                    )
-                case .erDiagram:
-                    tabMgr.addERDiagramTab(
-                        schemaKey: payload.erDiagramSchemaKey ?? payload.databaseName ?? activeDatabaseName,
-                        databaseName: payload.databaseName ?? activeDatabaseName
-                    )
-                case .serverDashboard:
-                    tabMgr.addServerDashboardTab()
-                case .terminal:
-                    tabMgr.addTerminalTab(
-                        databaseName: payload.databaseName ?? activeDatabaseName
-                    )
-                }
-            case .newEmptyTab:
-                let allTabs = MainContentCoordinator.allTabs(for: connection.id)
-                let title = QueryTabManager.nextQueryTitle(existingTabs: allTabs)
-                tabMgr.addTab(
-                    initialQuery: payload.initialQuery,
-                    title: title,
-                    databaseName: payload.databaseName ?? activeDatabaseName
-                )
-            case .restoreOrDefault:
-                break
-            }
+            EditorTabOpener.apply(payload, to: tabMgr, connection: connection, toolbarState: toolbarSt)
         }
 
         let queryExecutor = QueryExecutor(connection: connection)

@@ -4,20 +4,42 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 struct FilterRowView: View {
     @Binding var filter: TableFilter
     let columns: [String]
     let completions: [String]
+    var caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle = .unsupported
     var enumValuesByColumn: [String: [String]] = [:]
+    var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
     let onAdd: () -> Void
     let onDuplicate: () -> Void
     let onRemove: () -> Void
+    let onApply: () -> Void
     let onSubmit: () -> Void
+    let onCancel: () -> Void
+    let isReorderEnabled: Bool
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
+    let onDropFilter: (UUID) -> Void
     @Binding var focusedFilterId: UUID?
+
+    @State private var isDropTargeted = false
+
+    private let rowButtonGlyphSize: CGFloat = 14
 
     private var pickerEligibleOperators: Set<FilterOperator> {
         [.equal, .notEqual]
+    }
+
+    private var rawSQLCompletionSource: FilterCompletionSource {
+        if let rawSQLCompletionProvider {
+            return .sqlTokens(rawSQLCompletionProvider)
+        }
+        return .staticValues(completions)
     }
 
     private var allowedValuesForCurrentColumn: [String]? {
@@ -29,19 +51,99 @@ struct FilterRowView: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            columnPicker
+            dragHandle
 
-            if !filter.isRawSQL {
-                operatorPicker
+            enabledToggle
+
+            Group {
+                columnPicker
+
+                if !filter.isRawSQL {
+                    operatorPicker
+                }
+
+                valueFields
             }
-
-            valueFields
+            .opacity(filter.isEnabled ? 1 : 0.5)
 
             rowButtons
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
+        .background(dropHighlight)
+        .dropDestination(for: FilterRowTransfer.self) { items, _ in
+            guard let dragged = items.first else { return false }
+            onDropFilter(dragged.filterID)
+            return true
+        } isTargeted: { targeted in
+            isDropTargeted = targeted
+        }
         .contextMenu { rowContextMenu }
+        .accessibilityElement(children: .contain)
+        .accessibilityActions {
+            if canMoveUp {
+                Button(String(localized: "Move Filter Up"), action: onMoveUp)
+            }
+            if canMoveDown {
+                Button(String(localized: "Move Filter Down"), action: onMoveDown)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var dragHandle: some View {
+        if isReorderEnabled {
+            FilterRowDragHandle()
+                .draggable(FilterRowTransfer(filterID: filter.id)) {
+                    dragPreview
+                }
+        } else {
+            Color.clear
+                .frame(width: FilterRowDragHandle.gutterWidth, height: 1)
+        }
+    }
+
+    private var dragPreview: some View {
+        HStack(spacing: 4) {
+            Text(filter.isRawSQL ? String(localized: "Raw SQL") : filter.columnName)
+
+            if !filter.isRawSQL {
+                Text(filter.filterOperator.symbol.isEmpty
+                    ? filter.filterOperator.displayName
+                    : filter.filterOperator.symbol)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(previewValue)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .font(.callout)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var previewValue: String {
+        if filter.isRawSQL {
+            return filter.rawSQL ?? ""
+        }
+        guard filter.filterOperator.requiresValue else { return "" }
+        return filter.value
+    }
+
+    private var dropHighlight: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.accentColor.opacity(isDropTargeted ? 0.18 : 0))
+    }
+
+    private var enabledToggle: some View {
+        Toggle("", isOn: $filter.isEnabled)
+            .toggleStyle(.checkbox)
+            .labelsHidden()
+            .accessibilityLabel(String(localized: "Enable filter"))
+            .accessibilityValue(filter.isEnabled ? String(localized: "Active") : String(localized: "Inactive"))
+            .help(String(localized: "Include this filter when applying"))
     }
 
     private var columnPicker: some View {
@@ -57,21 +159,74 @@ struct FilterRowView: View {
         .fixedSize()
         .labelsHidden()
         .accessibilityLabel(String(localized: "Filter column"))
+        .accessibilityValue(filter.isRawSQL ? String(localized: "Raw SQL") : filter.columnName)
         .help(String(localized: "Select filter column"))
     }
 
     private var operatorPicker: some View {
-        Picker("", selection: $filter.filterOperator) {
-            ForEach(FilterOperator.allCases) { op in
-                OperatorMenuLabel(op: op).tag(op)
+        Menu {
+            Picker("", selection: $filter.filterOperator) {
+                ForEach(FilterOperator.allCases) { op in
+                    OperatorMenuLabel(op: op).tag(op)
+                }
             }
+            .pickerStyle(.inline)
+            .labelsHidden()
+
+            if casePresentation.showsControl {
+                Divider()
+                Toggle(String(localized: "Match Case"), isOn: $filter.isCaseSensitive)
+                    .disabled(!casePresentation.isAdjustable)
+                if let reason = casePresentation.fixedReason {
+                    Text(reason).disabled(true)
+                }
+            }
+        } label: {
+            operatorMenuTitle
         }
-        .pickerStyle(.menu)
+        .menuStyle(.button)
         .controlSize(.small)
         .fixedSize()
-        .labelsHidden()
         .accessibilityLabel(String(localized: "Filter operator"))
-        .help(String(localized: "Select filter operator"))
+        .accessibilityValue(operatorAccessibilityValue)
+        .help(caseSensitivityHelp)
+    }
+
+    @ViewBuilder
+    private var operatorMenuTitle: some View {
+        HStack(spacing: 3) {
+            OperatorMenuLabel(op: filter.filterOperator)
+            if casePresentation.showsIndicator {
+                Image(systemName: "textformat")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var casePresentation: FilterCaseSensitivityPresentation {
+        FilterCaseSensitivityPresentation(
+            filterOperator: filter.filterOperator,
+            isCaseSensitive: filter.isCaseSensitive,
+            style: caseSensitivityStyle
+        )
+    }
+
+    private var caseSensitivityHelp: String {
+        let presentation = casePresentation
+        guard presentation.showsControl else { return String(localized: "Select filter operator") }
+        if let reason = presentation.fixedReason { return reason }
+        return filter.isCaseSensitive
+            ? String(localized: "Matching is case-sensitive")
+            : String(localized: "Matching ignores case")
+    }
+
+    private var operatorAccessibilityValue: String {
+        guard casePresentation.isAdjustable else { return filter.filterOperator.displayName }
+        let caseMode = filter.isCaseSensitive
+            ? String(localized: "Match Case")
+            : String(localized: "Ignore Case")
+        return "\(filter.filterOperator.displayName), \(caseMode)"
     }
 
     @ViewBuilder
@@ -85,9 +240,10 @@ struct FilterRowView: View {
                 focusedId: $focusedFilterId,
                 identity: filter.id,
                 placeholder: "e.g. id = 1",
-                completions: completions,
+                completionSource: rawSQLCompletionSource,
                 allowsMultiLine: true,
-                onSubmit: onSubmit
+                onSubmit: onSubmit,
+                onCancel: onCancel
             )
             .accessibilityLabel(String(localized: "WHERE clause"))
         } else if filter.filterOperator.requiresValue {
@@ -100,8 +256,9 @@ struct FilterRowView: View {
                     focusedId: $focusedFilterId,
                     identity: filter.id,
                     placeholder: String(localized: "Value"),
-                    completions: completions,
-                    onSubmit: onSubmit
+                    completionSource: .staticValues(completions),
+                    onSubmit: onSubmit,
+                    onCancel: onCancel
                 )
                 .frame(minWidth: 80)
                 .accessibilityLabel(String(localized: "Filter value"))
@@ -125,10 +282,7 @@ struct FilterRowView: View {
                 .onSubmit { onSubmit() }
             }
         } else {
-            Text("—")
-                .font(.callout)
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 0)
         }
     }
 
@@ -136,18 +290,18 @@ struct FilterRowView: View {
         HStack(spacing: 4) {
             Button(action: onAdd) {
                 Image(systemName: "plus")
-                    .frame(width: 24, height: 24)
+                    .frame(width: rowButtonGlyphSize, height: rowButtonGlyphSize)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
             .controlSize(.small)
             .accessibilityLabel(String(localized: "Add filter"))
             .help(String(localized: "Add filter row"))
 
             Button(action: onRemove) {
                 Image(systemName: "minus")
-                    .frame(width: 24, height: 24)
+                    .frame(width: rowButtonGlyphSize, height: rowButtonGlyphSize)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
             .controlSize(.small)
             .accessibilityLabel(String(localized: "Remove filter"))
             .help(String(localized: "Remove filter row"))
@@ -156,6 +310,15 @@ struct FilterRowView: View {
 
     @ViewBuilder
     private var rowContextMenu: some View {
+        Button {
+            onApply()
+        } label: {
+            Label(String(localized: "Apply Only This Filter"), systemImage: "checkmark.circle")
+        }
+        .disabled(!filter.isValid)
+
+        Divider()
+
         Button {
             onAdd()
         } label: {
@@ -167,6 +330,22 @@ struct FilterRowView: View {
         } label: {
             Label(String(localized: "Duplicate Filter"), systemImage: "doc.on.doc")
         }
+
+        Divider()
+
+        Button {
+            onMoveUp()
+        } label: {
+            Label(String(localized: "Move Up"), systemImage: "arrow.up")
+        }
+        .disabled(!canMoveUp)
+
+        Button {
+            onMoveDown()
+        } label: {
+            Label(String(localized: "Move Down"), systemImage: "arrow.down")
+        }
+        .disabled(!canMoveDown)
 
         Divider()
 
@@ -194,7 +373,6 @@ struct FilterRowView: View {
         .frame(minWidth: 100)
         .labelsHidden()
         .accessibilityLabel(String(localized: "Filter value"))
-        .onChange(of: filter.value) { _, _ in onSubmit() }
     }
 
     private struct OperatorMenuLabel: View {

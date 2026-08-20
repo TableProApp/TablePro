@@ -33,41 +33,6 @@ extension DatabaseManager {
         return try await operation()
     }
 
-    /// Execute a query on the current session
-    func execute(query: String) async throws -> QueryResult {
-        guard let sessionId = currentSessionId, let driver = activeDriver else {
-            throw DatabaseError.notConnected
-        }
-
-        let result = try await trackOperation(sessionId: sessionId) {
-            try await driver.execute(query: query)
-        }
-        MacAnalyticsProvider.shared.markFirstQueryExecuted()
-        return result
-    }
-
-    /// Fetch tables from the current session
-    func fetchTables() async throws -> [TableInfo] {
-        guard let sessionId = currentSessionId, let driver = activeDriver else {
-            throw DatabaseError.notConnected
-        }
-
-        return try await trackOperation(sessionId: sessionId) {
-            try await driver.fetchTables()
-        }
-    }
-
-    /// Fetch columns for a table from the current session
-    func fetchColumns(table: String) async throws -> [ColumnInfo] {
-        guard let sessionId = currentSessionId, let driver = activeDriver else {
-            throw DatabaseError.notConnected
-        }
-
-        return try await trackOperation(sessionId: sessionId) {
-            try await driver.fetchColumns(table: table)
-        }
-    }
-
     /// Test a connection without keeping it open
     func testConnection(
         _ connection: DatabaseConnection,
@@ -93,21 +58,21 @@ extension DatabaseManager {
             )
             result = try await driver.testConnection()
         } catch {
-            if tunnelWasCreated {
+            if tunnelWasCreated, let tunnelManager = activeTunnelManager(for: connection) {
                 do {
-                    try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
+                    try await tunnelManager.closeTunnel(connectionId: connection.id)
                 } catch {
-                    Self.logger.warning("SSH tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
+                    Self.logger.warning("Tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
                 }
             }
             throw error
         }
 
-        if tunnelWasCreated {
+        if tunnelWasCreated, let tunnelManager = activeTunnelManager(for: connection) {
             do {
-                try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
+                try await tunnelManager.closeTunnel(connectionId: connection.id)
             } catch {
-                Self.logger.warning("SSH tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
+                Self.logger.warning("Tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
             }
         }
 

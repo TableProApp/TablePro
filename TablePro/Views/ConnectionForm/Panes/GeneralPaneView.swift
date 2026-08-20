@@ -4,16 +4,22 @@
 //
 
 import AppKit
+import Network
 import SwiftUI
 import TableProPluginKit
 import UniformTypeIdentifiers
 
 struct GeneralPaneView: View {
     @Bindable var coordinator: ConnectionFormCoordinator
+    @FocusState private var nameFocused: Bool
 
     private var type: DatabaseType { coordinator.network.type }
     private var connectionMode: ConnectionMode {
         PluginManager.shared.connectionMode(for: type)
+    }
+
+    private var showsBuiltInDatabaseField: Bool {
+        coordinator.network.showsBuiltInDatabaseField
     }
 
     var body: some View {
@@ -35,6 +41,8 @@ struct GeneralPaneView: View {
                     text: $coordinator.network.name,
                     prompt: Text(String(localized: "Connection name"))
                 )
+                .focused($nameFocused)
+                .accessibilityIdentifier("connection-form-name")
             }
 
             connectionSection
@@ -42,6 +50,7 @@ struct GeneralPaneView: View {
             testConnectionSection
         }
         .formStyle(.grouped)
+        .defaultFocus($nameFocused, true)
     }
 
     @ViewBuilder
@@ -66,6 +75,7 @@ struct GeneralPaneView: View {
                         text: $coordinator.network.database,
                         prompt: Text(filePathPrompt)
                     )
+                    .accessibilityIdentifier("connection-form-file-path")
                     Button(String(localized: "Browse...")) {
                         browseForFile()
                     }
@@ -73,12 +83,12 @@ struct GeneralPaneView: View {
                 }
             }
         case .apiOnly:
-            if PluginManager.shared.supportsDatabaseSwitching(for: type) {
+            if showsBuiltInDatabaseField {
                 Section(String(localized: "Connection")) {
                     TextField(
-                        String(localized: "Database"),
+                        containerEntityName,
                         text: $coordinator.network.database,
-                        prompt: Text(String(localized: "database_name"))
+                        prompt: Text(containerEntityPlaceholder)
                     )
                 }
             } else {
@@ -87,11 +97,11 @@ struct GeneralPaneView: View {
         case .network:
             Section(String(localized: "Connection")) {
                 hostFieldsView
-                if PluginManager.shared.requiresAuthentication(for: type) {
+                if showsBuiltInDatabaseField {
                     TextField(
-                        String(localized: "Database"),
+                        containerEntityName,
                         text: $coordinator.network.database,
-                        prompt: Text(String(localized: "database_name"))
+                        prompt: Text(containerEntityPlaceholder)
                     )
                 }
             }
@@ -101,7 +111,7 @@ struct GeneralPaneView: View {
                 if hostsValue.contains(",") {
                     Section {
                         Label(
-                            String(localized: "SSH tunneling only forwards the first host. Other replica set members must be directly reachable from the SSH server."),
+                            String(localized: "Over an SSH tunnel, TablePro connects directly to the first host. Replica set failover is not available."),
                             systemImage: "exclamationmark.triangle"
                         )
                         .font(.caption)
@@ -110,6 +120,14 @@ struct GeneralPaneView: View {
                 }
             }
         }
+    }
+
+    private var containerEntityName: String {
+        PluginManager.shared.containerEntityName(for: type)
+    }
+
+    private var containerEntityPlaceholder: String {
+        String(format: String(localized: "%@_name"), containerEntityName.lowercased())
     }
 
     @ViewBuilder
@@ -132,11 +150,16 @@ struct GeneralPaneView: View {
                 text: $coordinator.network.host,
                 prompt: Text("localhost")
             )
+            .disabled(usesForwardSocket)
             TextField(
                 String(localized: "Port"),
                 text: $coordinator.network.port,
                 prompt: Text(defaultPortString)
             )
+            .disabled(usesForwardSocket)
+        }
+        if coordinator.ssh.state.enabled {
+            sshForwardSocketField
         }
         ForEach(connectionFields, id: \.id) { field in
             if !isHostListField(field) && coordinator.network.isFieldVisible(field) {
@@ -148,15 +171,73 @@ struct GeneralPaneView: View {
         }
     }
 
+    private var usesForwardSocket: Bool {
+        coordinator.ssh.state.enabled && coordinator.network.forwardsToUnixSocket
+    }
+
+    @ViewBuilder
+    private var sshForwardSocketField: some View {
+        TextField(
+            String(localized: "Socket Path"),
+            text: $coordinator.network.sshForwardUnixSocketPath,
+            prompt: Text(verbatim: coordinator.network.socketPathPrompt)
+        )
+        switch coordinator.network.socketPathIssue {
+        case .notAbsolute:
+            socketPathCaption(
+                String(localized: "Enter an absolute path, as it appears on the SSH server."),
+                systemImage: "exclamationmark.triangle",
+                tint: .orange
+            )
+        case .looksLikeDirectory:
+            socketPathCaption(
+                String(localized: "Point at the socket file itself, not the directory holding it."),
+                systemImage: "exclamationmark.triangle",
+                tint: .orange
+            )
+        case .none:
+            if usesForwardSocket {
+                socketPathCaption(
+                    String(localized: """
+                    The SSH server connects to this socket instead of Host and Port. \
+                    A database on a socket cannot negotiate TLS, so TablePro turns it off; \
+                    the SSH tunnel still encrypts the whole path.
+                    """),
+                    systemImage: "info.circle",
+                    tint: .secondary
+                )
+            } else {
+                socketPathCaption(
+                    String(localized: "Optional. Set this to reach a database that only listens on a Unix socket."),
+                    systemImage: "info.circle",
+                    tint: .secondary
+                )
+            }
+        }
+    }
+
+    private func socketPathCaption(
+        _ message: String,
+        systemImage: String,
+        tint: Color
+    ) -> some View {
+        Label(message, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(tint)
+    }
+
     @ViewBuilder
     private var authenticationSection: some View {
         if connectionMode != .fileBased {
+            let authFields = coordinator.auth.authFields.splitCredentialControllers()
             Section(String(localized: "Authentication")) {
-                if connectionMode == .network {
+                ForEach(authFields.controllers, id: \.id) { field in
+                    authFieldRow(field)
+                }
+                if connectionMode == .network && !coordinator.auth.hidesUsername {
                     TextField(
                         String(localized: "Username"),
-                        text: $coordinator.auth.username,
-                        prompt: Text("root")
+                        text: $coordinator.auth.username
                     )
                 }
                 if !coordinator.auth.hidesPassword {
@@ -167,17 +248,31 @@ struct GeneralPaneView: View {
                         additionalFieldValues: $coordinator.auth.additionalFieldValues
                     )
                 }
-                ForEach(coordinator.auth.authFields, id: \.id) { field in
-                    if coordinator.auth.isFieldVisible(field) {
-                        ConnectionFieldRow(
-                            field: field,
-                            value: authFieldBinding(for: field)
-                        )
-                    }
+                ForEach(authFields.rest, id: \.id) { field in
+                    authFieldRow(field)
                 }
+                kerberosCaption
                 if coordinator.auth.usePgpass {
                     pgpassStatusView
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func authFieldRow(_ field: ConnectionField) -> some View {
+        if coordinator.auth.isFieldVisible(field) {
+            if FilePathConnectionFieldRow.isFilePathField(field) {
+                FilePathConnectionFieldRow(
+                    field: field,
+                    value: authFieldBinding(for: field),
+                    onBrowse: { browseForAuthFile(field: field) }
+                )
+            } else {
+                ConnectionFieldRow(
+                    field: field,
+                    value: authFieldBinding(for: field)
+                )
             }
         }
     }
@@ -216,6 +311,32 @@ struct GeneralPaneView: View {
             .foregroundStyle(.yellow)
             .font(.caption)
         }
+    }
+
+    @ViewBuilder
+    private var kerberosCaption: some View {
+        if type.pluginTypeId == "SQL Server",
+           coordinator.auth.additionalFieldValues["mssqlAuthMethod"] == "windows" {
+            Label(
+                String(localized: "Leave the principal and password blank to use your existing Kerberos ticket. Run kinit user@REALM.COM in Terminal first if you don't have one."),
+                systemImage: "info.circle"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            if hostIsIPAddress {
+                Label(
+                    String(localized: "Windows Authentication needs the server's hostname, not an IP address. Kerberos service principals aren't registered against IP addresses."),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.yellow)
+            }
+        }
+    }
+
+    private var hostIsIPAddress: Bool {
+        let host = coordinator.network.resolvedHost.trimmingCharacters(in: .whitespaces)
+        return IPv4Address(host) != nil || IPv6Address(host) != nil
     }
 
     private func isHostListField(_ field: ConnectionField) -> Bool {
@@ -264,6 +385,18 @@ struct GeneralPaneView: View {
     }
 
     private func browseForFile() {
+        presentFilePanel { path in
+            coordinator.network.database = path
+        }
+    }
+
+    private func browseForAuthFile(field: ConnectionField) {
+        presentFilePanel { path in
+            coordinator.auth.additionalFieldValues[field.id] = path
+        }
+    }
+
+    private func presentFilePanel(onSelect: @escaping (String) -> Void) {
         guard let window = NSApp.keyWindow else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.database, .data]
@@ -272,7 +405,7 @@ struct GeneralPaneView: View {
 
         panel.beginSheetModal(for: window) { response in
             if response == .OK, let url = panel.url {
-                coordinator.network.database = url.path(percentEncoded: false)
+                onSelect(url.path(percentEncoded: false))
             }
         }
     }

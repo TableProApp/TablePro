@@ -13,6 +13,88 @@ import os
 internal struct TabDiskState: Codable {
     let tabs: [PersistedTab]
     let selectedTabId: UUID?
+    let lastActiveDatabase: String?
+    let lastActiveSchema: String?
+
+    init(
+        tabs: [PersistedTab],
+        selectedTabId: UUID?,
+        lastActiveDatabase: String? = nil,
+        lastActiveSchema: String? = nil
+    ) {
+        self.tabs = tabs
+        self.selectedTabId = selectedTabId
+        self.lastActiveDatabase = lastActiveDatabase
+        self.lastActiveSchema = lastActiveSchema
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case tabs
+        case selectedTabId
+        case lastActiveDatabase
+        case lastActiveSchema
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tabs = try container.decode([LossyTab].self, forKey: .tabs).compactMap(\.value)
+        selectedTabId = try container.decodeIfPresent(UUID.self, forKey: .selectedTabId)
+        lastActiveDatabase = try container.decodeIfPresent(String.self, forKey: .lastActiveDatabase)
+        lastActiveSchema = try container.decodeIfPresent(String.self, forKey: .lastActiveSchema)
+    }
+}
+
+private struct LossyTab: Decodable {
+    let value: PersistedTab?
+
+    init(from decoder: Decoder) throws {
+        value = try? PersistedTab(from: decoder)
+    }
+}
+
+private final class TabDiskConnectionWriteGate: @unchecked Sendable {
+    private let generation = OSAllocatedUnfairLock(initialState: UInt64.zero)
+    private let operation = OSAllocatedUnfairLock(initialState: ())
+
+    func issueToken() -> UInt64 {
+        generation.withLock { value in
+            value &+= 1
+            return value
+        }
+    }
+
+    func performIfCurrent<T>(
+        token: UInt64,
+        operation work: () throws -> T
+    ) rethrows -> T? {
+        try operation.withLock { _ in
+            guard generation.withLock({ $0 == token }) else { return nil }
+            return try work()
+        }
+    }
+
+    func perform<T>(_ work: () throws -> T) rethrows -> T {
+        try operation.withLock { _ in
+            try work()
+        }
+    }
+}
+
+private enum TabDiskWriteGate {
+    private static let gates = OSAllocatedUnfairLock(
+        initialState: [UUID: TabDiskConnectionWriteGate]()
+    )
+
+    static func gate(for connectionId: UUID) -> TabDiskConnectionWriteGate {
+        gates.withLock { gates in
+            if let gate = gates[connectionId] {
+                return gate
+            }
+            let gate = TabDiskConnectionWriteGate()
+            gates[connectionId] = gate
+            return gate
+        }
+    }
 }
 
 internal actor TabDiskActor {
@@ -47,48 +129,76 @@ internal actor TabDiskActor {
 
     // MARK: - Public API
 
-    internal func save(connectionId: UUID, tabs: [PersistedTab], selectedTabId: UUID?) throws {
-        let state = TabDiskState(tabs: tabs, selectedTabId: selectedTabId)
-        let data = try encoder.encode(state)
-        let fileURL = tabStateFileURL(for: connectionId)
-        try data.write(to: fileURL, options: .atomic)
+    internal func save(
+        connectionId: UUID,
+        tabs: [PersistedTab],
+        selectedTabId: UUID?,
+        lastActiveDatabase: String? = nil,
+        lastActiveSchema: String? = nil,
+        writeToken: UInt64
+    ) throws -> Bool {
+        let result = try Self.writeGate(for: connectionId).performIfCurrent(token: writeToken) {
+            let state = TabDiskState(
+                tabs: TabQueryOverflowStore.externalize(
+                    tabs,
+                    connectionId: connectionId,
+                    tabStateDirectory: tabStateDirectory
+                ),
+                selectedTabId: selectedTabId,
+                lastActiveDatabase: lastActiveDatabase,
+                lastActiveSchema: lastActiveSchema
+            )
+            let data = try encoder.encode(state)
+            let fileURL = tabStateFileURL(for: connectionId)
+            try data.write(to: fileURL, options: .atomic)
+        }
+        return result != nil
     }
 
     internal func load(connectionId: UUID) -> TabDiskState? {
-        let fileURL = tabStateFileURL(for: connectionId)
+        Self.writeGate(for: connectionId).perform {
+            let fileURL = tabStateFileURL(for: connectionId)
 
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            return nil
-        }
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                return nil
+            }
 
-        do {
-            let data = try Data(contentsOf: fileURL)
-            return try decoder.decode(TabDiskState.self, from: data)
-        } catch {
-            Self.logger.error("Failed to load tab state for \(connectionId): \(error.localizedDescription)")
-            return nil
+            do {
+                let data = try Data(contentsOf: fileURL)
+                let state = try decoder.decode(TabDiskState.self, from: data)
+                return TabDiskState(
+                    tabs: TabQueryOverflowStore.inline(state.tabs, tabStateDirectory: tabStateDirectory),
+                    selectedTabId: state.selectedTabId,
+                    lastActiveDatabase: state.lastActiveDatabase,
+                    lastActiveSchema: state.lastActiveSchema
+                )
+            } catch {
+                Self.logger.error("Failed to load tab state for \(connectionId): \(error.localizedDescription)")
+                return nil
+            }
         }
     }
 
-    internal func clear(connectionId: UUID) {
-        let fileURL = tabStateFileURL(for: connectionId)
+    internal func clear(connectionId: UUID, writeToken: UInt64) -> Bool {
+        let result = Self.writeGate(for: connectionId).performIfCurrent(token: writeToken) {
+            TabQueryOverflowStore.removeAll(connectionId: connectionId, tabStateDirectory: tabStateDirectory)
+            let fileURL = tabStateFileURL(for: connectionId)
 
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
 
-        do {
-            try FileManager.default.removeItem(at: fileURL)
-        } catch {
-            Self.logger.error("Failed to clear tab state for \(connectionId): \(error.localizedDescription)")
+            do {
+                try FileManager.default.removeItem(at: fileURL)
+            } catch {
+                Self.logger.error("Failed to clear tab state for \(connectionId): \(error.localizedDescription)")
+            }
         }
+        return result != nil
     }
 
     // MARK: - Static Path Helpers
 
     nonisolated private static func resolvedTabStateDirectory() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         let baseDirectory = appSupport.appendingPathComponent("TablePro", isDirectory: true)
         return baseDirectory.appendingPathComponent("TabState", isDirectory: true)
     }
@@ -97,34 +207,61 @@ internal actor TabDiskActor {
         resolvedTabStateDirectory().appendingPathComponent("\(connectionId.uuidString).json")
     }
 
+    nonisolated internal static func issueWriteToken(for connectionId: UUID) -> UInt64 {
+        writeGate(for: connectionId).issueToken()
+    }
+
+    nonisolated private static func writeGate(for connectionId: UUID) -> TabDiskConnectionWriteGate {
+        TabDiskWriteGate.gate(for: connectionId)
+    }
+
     // MARK: - Synchronous Save (quit-time only)
 
     nonisolated internal static func saveSync(
         connectionId: UUID,
         tabs: [PersistedTab],
-        selectedTabId: UUID?
+        selectedTabId: UUID?,
+        lastActiveDatabase: String? = nil,
+        lastActiveSchema: String? = nil
     ) {
-        let state = TabDiskState(tabs: tabs, selectedTabId: selectedTabId)
-        let encoder = JSONEncoder()
-
+        let writeToken = issueWriteToken(for: connectionId)
+        let directory = resolvedTabStateDirectory()
         do {
-            let data = try encoder.encode(state)
-            let directory = resolvedTabStateDirectory()
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let fileURL = tabStateFileURL(for: connectionId)
-            try data.write(to: fileURL, options: .atomic)
+            _ = try writeGate(for: connectionId).performIfCurrent(token: writeToken) {
+                let state = TabDiskState(
+                    tabs: TabQueryOverflowStore.externalize(
+                        tabs,
+                        connectionId: connectionId,
+                        tabStateDirectory: directory
+                    ),
+                    selectedTabId: selectedTabId,
+                    lastActiveDatabase: lastActiveDatabase,
+                    lastActiveSchema: lastActiveSchema
+                )
+                let data = try JSONEncoder().encode(state)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let fileURL = tabStateFileURL(for: connectionId)
+                try data.write(to: fileURL, options: .atomic)
+            }
         } catch {
             logger.fault("saveSync failed for \(connectionId): \(error.localizedDescription)")
         }
     }
 
     nonisolated internal static func clearSync(connectionId: UUID) {
-        let fileURL = tabStateFileURL(for: connectionId)
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
-        do {
-            try FileManager.default.removeItem(at: fileURL)
-        } catch {
-            logger.fault("clearSync failed for \(connectionId): \(error.localizedDescription)")
+        let writeToken = issueWriteToken(for: connectionId)
+        _ = writeGate(for: connectionId).performIfCurrent(token: writeToken) {
+            TabQueryOverflowStore.removeAll(
+                connectionId: connectionId,
+                tabStateDirectory: resolvedTabStateDirectory()
+            )
+            let fileURL = tabStateFileURL(for: connectionId)
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+            do {
+                try FileManager.default.removeItem(at: fileURL)
+            } catch {
+                logger.fault("clearSync failed for \(connectionId): \(error.localizedDescription)")
+            }
         }
     }
 
@@ -137,7 +274,7 @@ internal actor TabDiskActor {
     // MARK: - Migration from UserDefaults
 
     private static func performMigrationIfNeeded(tabStateDirectory: URL) {
-        let defaults = UserDefaults.standard
+        let defaults = AppStorageEnvironment.shared.defaults
 
         guard !defaults.bool(forKey: migrationCompleteKey) else { return }
 

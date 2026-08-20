@@ -9,6 +9,10 @@ import Testing
 
 @testable import TablePro
 
+private struct LegacyColumnLayoutPayload: Decodable {
+    let columnWidths: [String: CGFloat]
+}
+
 @Suite("FileColumnLayoutPersister")
 @MainActor
 struct FileColumnLayoutPersisterTests {
@@ -23,6 +27,20 @@ struct FileColumnLayoutPersisterTests {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    private func key(
+        _ table: String,
+        _ connectionId: UUID,
+        database: String = "app",
+        schema: String? = "public"
+    ) -> ColumnLayoutTableKey {
+        ColumnLayoutTableKey(
+            connectionId: connectionId,
+            databaseName: database,
+            schemaName: schema,
+            tableName: table
+        )
+    }
+
     @Test("Save then load returns the same widths and order")
     func roundTrip() {
         let (persister, dir) = makeIsolatedPersister()
@@ -32,11 +50,74 @@ struct FileColumnLayoutPersisterTests {
         var layout = ColumnLayoutState()
         layout.columnWidths = ["id": 60, "name": 200, "email": 240]
         layout.columnOrder = ["id", "name", "email"]
-        persister.save(layout, for: "users", connectionId: connectionId)
+        persister.save(layout, for: key("users", connectionId))
 
-        let loaded = persister.load(for: "users", connectionId: connectionId)
+        let loaded = persister.load(for: key("users", connectionId))
         #expect(loaded?.columnWidths == layout.columnWidths)
         #expect(loaded?.columnOrder == layout.columnOrder)
+    }
+
+    @Test("Content widths round-trip while legacy readers retain the actual total width")
+    func contentWidthRoundTripIsBackwardCompatible() throws {
+        let (persister, directory) = makeIsolatedPersister()
+        defer { cleanup(directory) }
+
+        let connectionId = UUID()
+        let tableKey = key("events", connectionId)
+        var layout = ColumnLayoutState()
+        layout.columnWidths = ["created_at": 176]
+        layout.columnContentWidths = ["created_at": 160]
+
+        persister.save(layout, for: tableKey)
+
+        let loaded = try #require(persister.load(for: tableKey))
+        #expect(loaded.columnWidths == ["created_at": 176])
+        #expect(loaded.columnContentWidths == ["created_at": 160])
+
+        let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
+        let data = try Data(contentsOf: fileURL)
+        let legacyEntries = try JSONDecoder().decode([String: LegacyColumnLayoutPayload].self, from: data)
+        #expect(legacyEntries[tableKey.storageKey]?.columnWidths == ["created_at": 176])
+    }
+
+    @Test("Legacy width payloads load without content-width provenance")
+    func legacyWidthPayloadLoads() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
+        defer { cleanup(directory) }
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let connectionId = UUID()
+        let tableKey = key("events", connectionId)
+        let payload: [String: Any] = [
+            tableKey.storageKey: [
+                "columnWidths": ["created_at": 160],
+            ],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        try data.write(to: directory.appendingPathComponent("\(connectionId.uuidString).json"))
+
+        let loaded = try #require(
+            FileColumnLayoutPersister(storageDirectory: directory).load(for: tableKey)
+        )
+        #expect(loaded.columnWidths == ["created_at": 160])
+        #expect(loaded.columnContentWidths == nil)
+    }
+
+    @Test("Content-only geometry is retained")
+    func contentOnlyGeometryRoundTrips() throws {
+        let (persister, directory) = makeIsolatedPersister()
+        defer { cleanup(directory) }
+
+        let tableKey = key("events", UUID())
+        var layout = ColumnLayoutState()
+        layout.columnContentWidths = ["created_at": 160]
+
+        persister.save(layout, for: tableKey)
+
+        let loaded = try #require(persister.load(for: tableKey))
+        #expect(loaded.columnWidths.isEmpty)
+        #expect(loaded.columnContentWidths == ["created_at": 160])
     }
 
     @Test("Loading an unknown table returns nil")
@@ -44,7 +125,7 @@ struct FileColumnLayoutPersisterTests {
         let (persister, dir) = makeIsolatedPersister()
         defer { cleanup(dir) }
 
-        #expect(persister.load(for: "missing", connectionId: UUID()) == nil)
+        #expect(persister.load(for: key("missing", UUID())) == nil)
     }
 
     @Test("Save with empty widths is a no-op")
@@ -53,8 +134,24 @@ struct FileColumnLayoutPersisterTests {
         defer { cleanup(dir) }
 
         let connectionId = UUID()
-        persister.save(ColumnLayoutState(), for: "users", connectionId: connectionId)
-        #expect(persister.load(for: "users", connectionId: connectionId) == nil)
+        persister.save(ColumnLayoutState(), for: key("users", connectionId))
+        #expect(persister.load(for: key("users", connectionId)) == nil)
+    }
+
+    @Test("Column order persists without promoting automatic widths")
+    func orderOnlyLayoutRoundTrips() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        var layout = ColumnLayoutState()
+        layout.columnOrder = ["name", "id"]
+
+        persister.save(layout, for: tableKey)
+
+        let restored = persister.load(for: tableKey)
+        #expect(restored?.columnWidths.isEmpty == true)
+        #expect(restored?.columnOrder == ["name", "id"])
     }
 
     @Test("Multiple tables on the same connection coexist")
@@ -68,11 +165,11 @@ struct FileColumnLayoutPersisterTests {
         var orders = ColumnLayoutState()
         orders.columnWidths = ["total": 120]
 
-        persister.save(users, for: "users", connectionId: connectionId)
-        persister.save(orders, for: "orders", connectionId: connectionId)
+        persister.save(users, for: key("users", connectionId))
+        persister.save(orders, for: key("orders", connectionId))
 
-        #expect(persister.load(for: "users", connectionId: connectionId)?.columnWidths == ["id": 60])
-        #expect(persister.load(for: "orders", connectionId: connectionId)?.columnWidths == ["total": 120])
+        #expect(persister.load(for: key("users", connectionId))?.columnWidths == ["id": 60])
+        #expect(persister.load(for: key("orders", connectionId))?.columnWidths == ["total": 120])
     }
 
     @Test("Clear removes only the targeted table")
@@ -86,12 +183,12 @@ struct FileColumnLayoutPersisterTests {
         var b = ColumnLayoutState()
         b.columnWidths = ["y": 200]
 
-        persister.save(a, for: "a", connectionId: connectionId)
-        persister.save(b, for: "b", connectionId: connectionId)
-        persister.clear(for: "a", connectionId: connectionId)
+        persister.save(a, for: key("a", connectionId))
+        persister.save(b, for: key("b", connectionId))
+        persister.clear(for: key("a", connectionId))
 
-        #expect(persister.load(for: "a", connectionId: connectionId) == nil)
-        #expect(persister.load(for: "b", connectionId: connectionId)?.columnWidths == ["y": 200])
+        #expect(persister.load(for: key("a", connectionId)) == nil)
+        #expect(persister.load(for: key("b", connectionId))?.columnWidths == ["y": 200])
     }
 
     @Test("Save survives a fresh persister instance pointed at the same directory")
@@ -107,11 +204,11 @@ struct FileColumnLayoutPersisterTests {
 
         do {
             let persister = FileColumnLayoutPersister(storageDirectory: directory)
-            persister.save(layout, for: "users", connectionId: connectionId)
+            persister.save(layout, for: key("users", connectionId))
         }
 
         let restored = FileColumnLayoutPersister(storageDirectory: directory)
-            .load(for: "users", connectionId: connectionId)
+            .load(for: key("users", connectionId))
         #expect(restored?.columnWidths == layout.columnWidths)
         #expect(restored?.columnOrder == layout.columnOrder)
     }
@@ -128,7 +225,7 @@ struct FileColumnLayoutPersisterTests {
         try Data("{not valid json".utf8).write(to: fileURL)
 
         let persister = FileColumnLayoutPersister(storageDirectory: directory)
-        #expect(persister.load(for: "users", connectionId: connectionId) == nil)
+        #expect(persister.load(for: key("users", connectionId)) == nil)
     }
 
     @Test("Saving over a corrupted file replaces it cleanly")
@@ -145,10 +242,10 @@ struct FileColumnLayoutPersisterTests {
         let persister = FileColumnLayoutPersister(storageDirectory: directory)
         var layout = ColumnLayoutState()
         layout.columnWidths = ["id": 100]
-        persister.save(layout, for: "users", connectionId: connectionId)
+        persister.save(layout, for: key("users", connectionId))
 
         let restored = FileColumnLayoutPersister(storageDirectory: directory)
-            .load(for: "users", connectionId: connectionId)
+            .load(for: key("users", connectionId))
         #expect(restored?.columnWidths == ["id": 100])
     }
 
@@ -162,12 +259,12 @@ struct FileColumnLayoutPersisterTests {
         let connectionId = UUID()
         var layout = ColumnLayoutState()
         layout.columnWidths = ["id": 100]
-        persister.save(layout, for: "users", connectionId: connectionId)
+        persister.save(layout, for: key("users", connectionId))
 
         let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
         #expect(FileManager.default.fileExists(atPath: fileURL.path))
 
-        persister.clear(for: "users", connectionId: connectionId)
+        persister.clear(for: key("users", connectionId))
         #expect(!FileManager.default.fileExists(atPath: fileURL.path))
     }
 
@@ -183,14 +280,14 @@ struct FileColumnLayoutPersisterTests {
         users.columnWidths = ["id": 60]
         var orders = ColumnLayoutState()
         orders.columnWidths = ["total": 120]
-        persister.save(users, for: "users", connectionId: connectionId)
-        persister.save(orders, for: "orders", connectionId: connectionId)
+        persister.save(users, for: key("users", connectionId))
+        persister.save(orders, for: key("orders", connectionId))
 
-        persister.clear(for: "users", connectionId: connectionId)
+        persister.clear(for: key("users", connectionId))
 
         let fresh = FileColumnLayoutPersister(storageDirectory: directory)
-        #expect(fresh.load(for: "users", connectionId: connectionId) == nil)
-        #expect(fresh.load(for: "orders", connectionId: connectionId)?.columnWidths == ["total": 120])
+        #expect(fresh.load(for: key("users", connectionId)) == nil)
+        #expect(fresh.load(for: key("orders", connectionId))?.columnWidths == ["total": 120])
     }
 
     @Test("Clearing a missing entry is a no-op and never creates a file")
@@ -201,7 +298,7 @@ struct FileColumnLayoutPersisterTests {
 
         let persister = FileColumnLayoutPersister(storageDirectory: directory)
         let connectionId = UUID()
-        persister.clear(for: "missing", connectionId: connectionId)
+        persister.clear(for: key("missing", connectionId))
 
         let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
         #expect(!FileManager.default.fileExists(atPath: fileURL.path))
@@ -219,11 +316,33 @@ struct FileColumnLayoutPersisterTests {
         var layoutB = ColumnLayoutState()
         layoutB.columnWidths = ["id": 200]
 
-        persister.save(layoutA, for: "users", connectionId: connectionA)
-        persister.save(layoutB, for: "users", connectionId: connectionB)
+        persister.save(layoutA, for: key("users", connectionA))
+        persister.save(layoutB, for: key("users", connectionB))
 
-        #expect(persister.load(for: "users", connectionId: connectionA)?.columnWidths == ["id": 60])
-        #expect(persister.load(for: "users", connectionId: connectionB)?.columnWidths == ["id": 200])
+        #expect(persister.load(for: key("users", connectionA))?.columnWidths == ["id": 60])
+        #expect(persister.load(for: key("users", connectionB))?.columnWidths == ["id": 200])
+    }
+
+    @Test("Same table name in different databases and schemas do not collide")
+    func sameTableNameAcrossDatabasesAndSchemasAreIsolated() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let connectionId = UUID()
+        var sales = ColumnLayoutState()
+        sales.columnWidths = ["id": 60]
+        var hr = ColumnLayoutState()
+        hr.columnWidths = ["id": 200]
+        var authSchema = ColumnLayoutState()
+        authSchema.columnWidths = ["id": 320]
+
+        persister.save(sales, for: key("users", connectionId, database: "sales", schema: "public"))
+        persister.save(hr, for: key("users", connectionId, database: "hr", schema: "public"))
+        persister.save(authSchema, for: key("users", connectionId, database: "sales", schema: "auth"))
+
+        #expect(persister.load(for: key("users", connectionId, database: "sales", schema: "public"))?.columnWidths == ["id": 60])
+        #expect(persister.load(for: key("users", connectionId, database: "hr", schema: "public"))?.columnWidths == ["id": 200])
+        #expect(persister.load(for: key("users", connectionId, database: "sales", schema: "auth"))?.columnWidths == ["id": 320])
     }
 
     @Test("Saving overwrites an existing entry instead of merging")
@@ -235,14 +354,14 @@ struct FileColumnLayoutPersisterTests {
         var first = ColumnLayoutState()
         first.columnWidths = ["id": 60, "name": 200]
         first.columnOrder = ["id", "name"]
-        persister.save(first, for: "users", connectionId: connectionId)
+        persister.save(first, for: key("users", connectionId))
 
         var second = ColumnLayoutState()
         second.columnWidths = ["email": 240]
         second.columnOrder = ["email"]
-        persister.save(second, for: "users", connectionId: connectionId)
+        persister.save(second, for: key("users", connectionId))
 
-        let restored = persister.load(for: "users", connectionId: connectionId)
+        let restored = persister.load(for: key("users", connectionId))
         #expect(restored?.columnWidths == ["email": 240])
         #expect(restored?.columnOrder == ["email"])
     }
@@ -256,9 +375,9 @@ struct FileColumnLayoutPersisterTests {
         var layout = ColumnLayoutState()
         layout.columnWidths = ["id": 60]
         layout.columnOrder = nil
-        persister.save(layout, for: "users", connectionId: connectionId)
+        persister.save(layout, for: key("users", connectionId))
 
-        let restored = persister.load(for: "users", connectionId: connectionId)
+        let restored = persister.load(for: key("users", connectionId))
         #expect(restored?.columnOrder == nil)
         #expect(restored?.columnWidths == ["id": 60])
     }
@@ -275,6 +394,124 @@ struct FileColumnLayoutPersisterTests {
         try Data("{}".utf8).write(to: fileURL)
 
         let persister = FileColumnLayoutPersister(storageDirectory: directory)
-        #expect(persister.load(for: "anything", connectionId: connectionId) == nil)
+        #expect(persister.load(for: key("anything", connectionId)) == nil)
+    }
+
+    @Test("Hidden columns round-trip and default to empty")
+    func hiddenColumnsRoundTrip() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        #expect(persister.loadHiddenColumns(for: tableKey).isEmpty)
+        persister.saveHiddenColumns(["a", "b"], for: tableKey)
+        #expect(persister.loadHiddenColumns(for: tableKey) == ["a", "b"])
+    }
+
+    @Test("Saving geometry preserves previously hidden columns (#1815)")
+    func saveGeometryPreservesHiddenColumns() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        persister.saveHiddenColumns(["email"], for: tableKey)
+
+        var geometry = ColumnLayoutState()
+        geometry.columnWidths = ["id": 80, "name": 200]
+        geometry.columnOrder = ["id", "name"]
+        persister.save(geometry, for: tableKey)
+
+        #expect(persister.loadHiddenColumns(for: tableKey) == ["email"])
+        #expect(persister.load(for: tableKey)?.columnWidths == ["id": 80, "name": 200])
+    }
+
+    @Test("Saving hidden columns preserves stored geometry")
+    func saveHiddenPreservesGeometry() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        var geometry = ColumnLayoutState()
+        geometry.columnWidths = ["id": 80]
+        geometry.columnContentWidths = ["id": 72]
+        geometry.columnOrder = ["id"]
+        persister.save(geometry, for: tableKey)
+        persister.saveHiddenColumns(["email"], for: tableKey)
+
+        #expect(persister.load(for: tableKey)?.columnWidths == ["id": 80])
+        #expect(persister.load(for: tableKey)?.columnContentWidths == ["id": 72])
+        #expect(persister.load(for: tableKey)?.columnOrder == ["id"])
+        #expect(persister.loadHiddenColumns(for: tableKey) == ["email"])
+    }
+
+    @Test("A hidden-only entry loads as nil geometry")
+    func hiddenOnlyEntryLoadsAsNilGeometry() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        persister.saveHiddenColumns(["email"], for: tableKey)
+        #expect(persister.load(for: tableKey) == nil)
+        #expect(persister.loadHiddenColumns(for: tableKey) == ["email"])
+    }
+
+    @Test("Saving an empty hidden set clears hidden but keeps geometry")
+    func savingEmptyHiddenClears() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        var geometry = ColumnLayoutState()
+        geometry.columnWidths = ["id": 80]
+        persister.save(geometry, for: tableKey)
+        persister.saveHiddenColumns(["email"], for: tableKey)
+        persister.saveHiddenColumns([], for: tableKey)
+
+        #expect(persister.loadHiddenColumns(for: tableKey).isEmpty)
+        #expect(persister.load(for: tableKey)?.columnWidths == ["id": 80])
+    }
+
+    @Test("Hidden columns are scoped by schema")
+    func hiddenColumnsScopedBySchema() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let connectionId = UUID()
+        let publicKey = key("users", connectionId, database: "app", schema: "public")
+        let authKey = key("users", connectionId, database: "app", schema: "auth")
+        persister.saveHiddenColumns(["a"], for: publicKey)
+        persister.saveHiddenColumns(["b"], for: authKey)
+
+        #expect(persister.loadHiddenColumns(for: publicKey) == ["a"])
+        #expect(persister.loadHiddenColumns(for: authKey) == ["b"])
+    }
+
+    @Test("Clear removes hidden columns too")
+    func clearRemovesHidden() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        persister.saveHiddenColumns(["email"], for: tableKey)
+        persister.clear(for: tableKey)
+        #expect(persister.loadHiddenColumns(for: tableKey).isEmpty)
+    }
+
+    @Test("Legacy hidden-columns UserDefaults key migrates into the store on first load")
+    func migratesLegacyVisibilityKey() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
+        defer { cleanup(directory) }
+        let defaults = try #require(UserDefaults(suiteName: "colvis-\(UUID().uuidString)"))
+        let tableKey = key("users", UUID())
+        let legacyKey = "com.TablePro.columns.hiddenColumns." + tableKey.storageKey
+        defaults.set(["email", "phone"], forKey: legacyKey)
+
+        let persister = FileColumnLayoutPersister(storageDirectory: directory, defaults: defaults)
+        #expect(persister.loadHiddenColumns(for: tableKey) == ["email", "phone"])
+        #expect(defaults.stringArray(forKey: legacyKey) == nil)
+
+        let fresh = FileColumnLayoutPersister(storageDirectory: directory, defaults: defaults)
+        #expect(fresh.loadHiddenColumns(for: tableKey) == ["email", "phone"])
     }
 }

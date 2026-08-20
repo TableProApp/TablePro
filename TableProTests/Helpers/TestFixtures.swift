@@ -36,6 +36,7 @@ enum TestFixtures {
         op: FilterOperator = .equal,
         value: String = "1",
         secondValue: String? = nil,
+        isEnabled: Bool = true,
         rawSQL: String? = nil
     ) -> TableFilter {
         return TableFilter(
@@ -44,8 +45,7 @@ enum TestFixtures {
             filterOperator: op,
             value: value,
             secondValue: secondValue,
-            isSelected: true,
-            isEnabled: true,
+            isEnabled: isEnabled,
             rawSQL: rawSQL
         )
     }
@@ -173,6 +173,8 @@ enum TestFixtures {
         query: String = "SELECT * FROM users",
         connectionId: UUID = UUID(),
         databaseName: String = "testdb",
+        databaseType: DatabaseType = .postgresql,
+        source: QueryHistorySource = .editor,
         executionTime: TimeInterval = 0.05,
         rowCount: Int = 10,
         wasSuccessful: Bool = true,
@@ -183,6 +185,8 @@ enum TestFixtures {
             query: query,
             connectionId: connectionId,
             databaseName: databaseName,
+            databaseType: databaseType,
+            source: source,
             executionTime: executionTime,
             rowCount: rowCount,
             wasSuccessful: wasSuccessful,

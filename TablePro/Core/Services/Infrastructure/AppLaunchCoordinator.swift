@@ -84,15 +84,14 @@ internal final class AppLaunchCoordinator {
         guard !intents.isEmpty else { return }
         if phase.isAcceptingIntents {
             pendingIntents.append(contentsOf: intents)
-            for window in NSApp.windows where Self.isWelcomeWindow(window) {
-                window.orderOut(nil)
-            }
+            WindowOpener.shared.closeWelcome()
         } else {
             Task { [weak self] in
                 guard let self else { return }
                 for intent in intents {
                     await LaunchIntentRouter.shared.route(intent)
                 }
+                self.dismissWelcomeIfMainWindowVisible()
             }
         }
     }
@@ -108,21 +107,57 @@ internal final class AppLaunchCoordinator {
             for intent in intents {
                 await LaunchIntentRouter.shared.route(intent)
             }
+            self.dismissWelcomeIfMainWindowVisible()
             self.runStartupBehaviorIfNeeded(skipping: intents)
             self.phase = .ready
             self.finalizeWindowsIfNoVisibleMain(intents: intents)
         }
     }
 
+    private func dismissWelcomeIfMainWindowVisible() {
+        guard NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) else { return }
+        WindowOpener.shared.closeWelcome()
+    }
+
     private func runStartupBehaviorIfNeeded(skipping intents: [LaunchIntent]) {
         guard intents.isEmpty else { return }
 
         let general = AppSettingsStorage.shared.loadGeneral()
-        if general.startupBehavior == .showWelcome {
+        switch general.startupBehavior {
+        case .showWelcome:
             for window in NSApp.windows where Self.isMainWindow(window) {
                 window.close()
             }
+        case .reopenLast:
+            reopenLastSession()
         }
+    }
+
+    private func reopenLastSession() {
+        guard !NSApp.windows.contains(where: {
+            ConnectionWindowIdentity.isConnectionWindow($0.identifier?.rawValue)
+        }) else { return }
+
+        let connectionIds = LastOpenConnectionsStorage.shared.load()
+        guard !connectionIds.isEmpty else { return }
+
+        let knownIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
+        var frontWindow: NSWindow?
+        for connectionId in connectionIds where knownIds.contains(connectionId) {
+            WindowManager.shared.openTab(
+                payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault),
+                activate: false,
+                autoConnect: true
+            )
+            if frontWindow == nil {
+                frontWindow = WindowManager.shared.window(for: connectionId)
+            }
+        }
+
+        guard let frontWindow else { return }
+        WindowOpener.shared.closeWelcome()
+        frontWindow.makeKeyAndOrderFront(nil)
+        NSApp.activate()
     }
 
     private func finalizeWindowsIfNoVisibleMain(intents: [LaunchIntent]) {
@@ -134,18 +169,11 @@ internal final class AppLaunchCoordinator {
     // MARK: - Window Identification
 
     internal static func isMainWindow(_ window: NSWindow) -> Bool {
-        guard let raw = window.identifier?.rawValue else { return false }
-        return raw == "main" || raw.hasPrefix("main-")
+        ConnectionWindowIdentity.isPrimaryWindow(window.identifier?.rawValue)
     }
 
     internal static func isWelcomeWindow(_ window: NSWindow) -> Bool {
-        guard let raw = window.identifier?.rawValue else { return false }
-        return raw == SceneId.welcome || raw.hasPrefix("\(SceneId.welcome)-")
-    }
-
-    internal static func isConnectionFormWindow(_ window: NSWindow) -> Bool {
-        guard let raw = window.identifier?.rawValue else { return false }
-        return raw == SceneId.connectionForm || raw.hasPrefix("\(SceneId.connectionForm)-")
+        ConnectionWindowIdentity.isWelcomeWindow(window.identifier?.rawValue)
     }
 
     private func showWelcomeWindow() {

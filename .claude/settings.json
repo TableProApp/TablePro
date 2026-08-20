@@ -1,10 +1,11 @@
 {
-  "includeCoAuthoredBy": false,
   "attribution": {
     "commit": "",
     "pr": ""
   },
+  "includeCoAuthoredBy": false,
   "enabledPlugins": {
-    "feature-dev@claude-plugins-official": true
+    "feature-dev@claude-plugins-official": true,
+    "codex@openai-codex": true
   }
 }

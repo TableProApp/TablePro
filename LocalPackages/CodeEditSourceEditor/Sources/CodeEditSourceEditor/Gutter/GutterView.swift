@@ -52,7 +52,35 @@ public class GutterView: NSView {
     }
 
     @Invalidating(.display)
-    var edgeInsets: EdgeInsets = EdgeInsets(leading: 20, trailing: 12)
+    var edgeInsets: EdgeInsets = EdgeInsets(leading: GutterView.windowEdgeLeadingInset, trailing: 12)
+
+    /// The margin a gutter keeps to its left when it runs down the side of a window.
+    static let windowEdgeLeadingInset: CGFloat = 20
+
+    /// The digits a gutter reserves room for when it has a document that can still grow.
+    ///
+    /// Reserving three keeps the gutter from changing width as the reader types past line nine and line ninety-nine,
+    /// which would shift the whole document sideways mid-keystroke.
+    static let growingDocumentDigits = 3
+
+    /// Whether the gutter measures itself against the document rather than against a full editor window.
+    ///
+    /// An inline listing has no window edge to keep a margin from, and its line count is whatever it was handed, so
+    /// reserving room for digits it does not have leaves a blank strip where a reader expects the number. A
+    /// single-digit listing paid 20pt of window margin plus 15pt of unused digits: 35pt of nothing to the left of a
+    /// 7pt "1". The view hosting it supplies whatever margin it wants through the editor's content insets.
+    public var fitsContent: Bool = false {
+        didSet {
+            guard fitsContent != oldValue else { return }
+            edgeInsets = EdgeInsets(
+                leading: fitsContent ? 0 : GutterView.windowEdgeLeadingInset,
+                trailing: edgeInsets.trailing
+            )
+            maxLineNumberWidth = 0
+            maxLineLength = 0
+            updateWidthIfNeeded()
+        }
+    }
 
     @Invalidating(.display)
     var backgroundEdgeInsets: EdgeInsets = EdgeInsets(leading: 0, trailing: 8)
@@ -78,6 +106,21 @@ public class GutterView: NSView {
     public var showFoldingRibbon: Bool = true {
         didSet {
             foldingRibbon.isHidden = !showFoldingRibbon
+            if showFoldingRibbon {
+                foldingRibbon.model?.refresh()
+            }
+        }
+    }
+
+    /// Toggle the visibility of the line numbers.
+    ///
+    /// The gutter stays visible either way, so an editor can show the folding ribbon on its own. That costs a column
+    /// wide enough for the fold controls with nothing in it whenever the document has nothing to fold, so an editor
+    /// that has no line numbers to show is usually better off hiding the gutter entirely.
+    @Invalidating(.display)
+    public var showLineNumbers: Bool = true {
+        didSet {
+            updateWidthIfNeeded()
         }
     }
 
@@ -102,6 +145,16 @@ public class GutterView: NSView {
 
     /// The view that draws the fold decoration in the gutter.
     var foldingRibbon: LineFoldRibbonView
+
+    /// The leading inset only exists to keep line numbers off the edge, so a gutter without them drops it rather
+    /// than leaving a blank margin where the numbers would have been.
+    private var horizontalInsets: CGFloat {
+        showLineNumbers ? edgeInsets.horizontal : edgeInsets.trailing
+    }
+
+    private var numberAreaWidth: CGFloat {
+        showLineNumbers ? maxLineNumberWidth : 0
+    }
 
     /// Syntax helper for determining the required space for the folding ribbon.
     private var foldingRibbonWidth: CGFloat {
@@ -184,6 +237,48 @@ public class GutterView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// The gutter floats on top of the text view, so a right-click on the line numbers resolves to the
+    /// gutter rather than the editor. Forward the menu so the editor answers for its own ruler.
+    override public func menu(for event: NSEvent) -> NSMenu? {
+        textView?.menu(for: event)
+    }
+
+    // MARK: - Fold Control Hover
+
+    /// The gutter owns the tracking for the fold controls, not the ribbon that draws them.
+    ///
+    /// The ribbon is only as wide as a chevron, and a strip that narrow is a poor thing to have to find with the
+    /// pointer before the controls will even appear. Tracking the whole gutter means moving anywhere near the line
+    /// numbers reveals them, which is how an outline view reveals its disclosure triangles.
+    override public func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero,
+                options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                owner: self
+            )
+        )
+    }
+
+    override public func mouseEntered(with event: NSEvent) {
+        forwardPointer(event)
+    }
+
+    override public func mouseMoved(with event: NSEvent) {
+        forwardPointer(event)
+    }
+
+    override public func mouseExited(with event: NSEvent) {
+        foldingRibbon.pointerExitedGutter()
+    }
+
+    private func forwardPointer(_ event: NSEvent) {
+        guard !foldingRibbon.isHidden else { return }
+        foldingRibbon.pointerMoved(to: foldingRibbon.convert(event.locationInWindow, from: nil))
+    }
+
     /// Updates the width of the gutter if needed to match the maximum line number found as well as the folding ribbon.
     func updateWidthIfNeeded() {
         guard let textView else { return }
@@ -191,8 +286,10 @@ public class GutterView: NSView {
             .font: font,
             .foregroundColor: textColor
         ]
-        // Reserve at least 3 digits of space no matter what
-        let lineStorageDigits = max(3, String(textView.layoutManager.lineCount).count)
+        let documentDigits = String(textView.layoutManager.lineCount).count
+        let lineStorageDigits = fitsContent
+            ? documentDigits
+            : max(GutterView.growingDocumentDigits, documentDigits)
 
         if maxLineLength < lineStorageDigits {
             // Update the max width
@@ -204,7 +301,7 @@ public class GutterView: NSView {
             maxLineLength = lineStorageDigits
         }
 
-        let newWidth = maxLineNumberWidth + edgeInsets.horizontal + foldingRibbonWidth
+        let newWidth = numberAreaWidth + horizontalInsets + foldingRibbonWidth
         if frame.size.width != newWidth {
             frame.size.width = newWidth
             delegate?.gutterViewWidthDidUpdate()
@@ -243,7 +340,9 @@ public class GutterView: NSView {
         context.setFillColor(selectedLineColor.safeCGColor)
 
         let xPos = backgroundEdgeInsets.leading
-        let width = frame.width - backgroundEdgeInsets.trailing
+        // Stops where the gutter background stops. The folding ribbon sits over the text view, so painting the
+        // selection under it would stack this colour on top of the text view's own line highlight.
+        let width = frame.width - backgroundEdgeInsets.trailing - foldingRibbonWidth
 
         for selection in selectionManager.textSelections where selection.range.isEmpty {
             guard let line = textView.layoutManager.textLineForOffset(selection.range.location),
@@ -317,7 +416,7 @@ public class GutterView: NSView {
 
             let yPos = linePosition.yPos + ascent + (fragment?.heightDifference ?? 0)/2 + fontHeightDifference
             // Leading padding + (width - linewidth)
-            let xPos = edgeInsets.leading + (maxLineNumberWidth - lineNumberWidth)
+            let xPos = edgeInsets.leading + (numberAreaWidth - lineNumberWidth)
 
             ContextSetHiddenSmoothingStyle(context, 16)
 
@@ -340,7 +439,9 @@ public class GutterView: NSView {
         context.saveGState()
         drawBackground(context, dirtyRect: dirtyRect)
         drawSelectedLines(context)
-        drawLineNumbers(context, dirtyRect: dirtyRect)
+        if showLineNumbers {
+            drawLineNumbers(context, dirtyRect: dirtyRect)
+        }
         context.restoreGState()
     }
 

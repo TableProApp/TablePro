@@ -40,7 +40,13 @@ struct TableProMobileApp: App {
                 }
             }
             .animation(.default, value: lockState.isLocked)
+            .hostKeyPrompt()
+            .entraSignInPrompt()
             .onOpenURL { url in
+                if url.isFileURL, url.pathExtension.lowercased() == "tablepro" {
+                    appState.pendingImportURL = url
+                    return
+                }
                 guard url.scheme == "tablepro",
                       url.host(percentEncoded: false) == "connect",
                       let uuidString = url.pathComponents.dropFirst().first,
@@ -65,12 +71,13 @@ struct TableProMobileApp: App {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            // Skip lifecycle side-effects under XCTest so unit tests do not
+            // Skip lifecycle side-effects under tests so unit tests do not
             // boot CloudKit sync, analytics, or biometric checks.
-            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+            guard !TestRuntime.isActive else { return }
             lockState.handleScenePhase(phase)
             switch phase {
             case .active:
+                appState.backgroundRelease.cancelPreparation()
                 MemoryPressureMonitor.shared.start()
                 appState.retryLoadIfFailed()
                 if AppPreferences.isCloudSyncEnabled && appState.loadStatus == .ready {
@@ -90,13 +97,15 @@ struct TableProMobileApp: App {
                     heartbeatService = service
                     heartbeatTask = service.startPeriodicHeartbeat()
                 }
+            case .inactive:
+                appState.backgroundRelease.prepareForSuspension()
             case .background:
                 syncTask?.cancel()
                 syncTask = nil
                 heartbeatTask?.cancel()
                 heartbeatTask = nil
                 heartbeatService = nil
-                Task { await appState.connectionManager.disconnectAll() }
+                Task { await appState.backgroundRelease.releaseForSuspension() }
                 scheduleBackgroundSync()
             default:
                 break

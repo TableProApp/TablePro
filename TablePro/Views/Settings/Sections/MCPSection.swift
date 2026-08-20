@@ -4,12 +4,36 @@ import SwiftUI
 struct MCPSection: View {
     @Binding var settings: MCPSettings
     @State private var manager = MCPServerManager.shared
+    @State private var settingsManager = AppSettingsManager.shared
     @State private var tokenList: [MCPAuthToken] = []
     @State private var showSetupSheet = false
     @State private var showCreateSheet = false
     @State private var showRevealSheet = false
     @State private var revealedToken: MCPAuthToken?
     @State private var revealedPlaintext: String = ""
+    @State private var isAuthBootstrapping = false
+
+    private var requireAuthBinding: Binding<Bool> {
+        Binding(
+            get: { settings.requireAuthentication },
+            set: { applyRequireAuthentication($0) }
+        )
+    }
+
+    private func applyRequireAuthentication(_ newValue: Bool) {
+        guard !isAuthBootstrapping else { return }
+        isAuthBootstrapping = true
+        Task { @MainActor in
+            defer { isAuthBootstrapping = false }
+            let bootstrap = await settingsManager.setRequireAuthentication(newValue)
+            if let bootstrap {
+                revealedToken = bootstrap.token
+                revealedPlaintext = bootstrap.plaintext
+                showRevealSheet = true
+            }
+            await refreshTokens()
+        }
+    }
 
     var body: some View {
         Section(String(localized: "Integrations")) {
@@ -72,7 +96,7 @@ struct MCPSection: View {
 
     private var authenticationSection: some View {
         Section(String(localized: "Authentication")) {
-            Toggle(String(localized: "Require authentication"), isOn: $settings.requireAuthentication)
+            Toggle(String(localized: "Require authentication"), isOn: requireAuthBinding)
 
             if settings.requireAuthentication {
                 MCPTokenListView(

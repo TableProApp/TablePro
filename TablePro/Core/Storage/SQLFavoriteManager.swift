@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProSyncTransport
 
 /// Manages SQL favorites with notifications
 internal final class SQLFavoriteManager: @unchecked Sendable {
@@ -13,9 +14,11 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFavoriteManager")
 
     private let storage: SQLFavoriteStorage
+    private let syncTracker: SyncChangeTracker
 
-    init(storage: SQLFavoriteStorage = SQLFavoriteStorage()) {
+    init(storage: SQLFavoriteStorage = SQLFavoriteStorage(), syncTracker: SyncChangeTracker = .shared) {
         self.storage = storage
+        self.syncTracker = syncTracker
     }
 
     // MARK: - Favorites
@@ -23,6 +26,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func addFavorite(_ favorite: SQLFavorite) async -> Bool {
         let result = await storage.addFavorite(favorite)
         if result {
+            syncTracker.markDirty(.favorite, id: favorite.id.uuidString)
             postUpdateNotification(connectionId: favorite.connectionId)
         }
         return result
@@ -31,6 +35,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func updateFavorite(_ favorite: SQLFavorite) async -> Bool {
         let result = await storage.updateFavorite(favorite)
         if result {
+            syncTracker.markDirty(.favorite, id: favorite.id.uuidString)
             postUpdateNotification(connectionId: favorite.connectionId)
         }
         return result
@@ -39,6 +44,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func deleteFavorite(id: UUID) async -> Bool {
         let result = await storage.deleteFavorite(id: id)
         if result {
+            syncTracker.markDeleted(.favorite, id: id.uuidString)
             postUpdateNotification(connectionId: nil)
         }
         return result
@@ -47,8 +53,26 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func deleteFavorites(ids: [UUID]) async {
         let result = await storage.deleteFavorites(ids: ids)
         if result {
+            for id in ids {
+                syncTracker.markDeleted(.favorite, id: id.uuidString)
+            }
             postUpdateNotification(connectionId: nil)
         }
+    }
+
+    func removeFavoritesAndFolders(for connectionId: UUID) async {
+        let removed = await storage.deleteFavoritesAndFolders(connectionId: connectionId)
+        if removed {
+            postUpdateNotification(connectionId: nil)
+        }
+    }
+
+    func pruneOrphaned(activeConnectionIds: Set<UUID>) async {
+        await storage.pruneOrphaned(retaining: activeConnectionIds)
+    }
+
+    func hasFavorites(for connectionIds: [UUID]) async -> Bool {
+        await storage.hasFavorites(connectionIds: connectionIds)
     }
 
     func fetchFavorite(id: UUID) async -> SQLFavorite? {
@@ -58,9 +82,15 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func fetchFavorites(
         connectionId: UUID? = nil,
         folderId: UUID? = nil,
-        searchText: String? = nil
+        searchText: String? = nil,
+        allowedConnectionIds: Set<UUID>? = nil
     ) async -> [SQLFavorite] {
-        await storage.fetchFavorites(connectionId: connectionId, folderId: folderId, searchText: searchText)
+        await storage.fetchFavorites(
+            connectionId: connectionId,
+            folderId: folderId,
+            searchText: searchText,
+            allowedConnectionIds: allowedConnectionIds
+        )
     }
 
     // MARK: - Folders
@@ -68,6 +98,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func addFolder(_ folder: SQLFavoriteFolder) async -> Bool {
         let result = await storage.addFolder(folder)
         if result {
+            syncTracker.markDirty(.favoriteFolder, id: folder.id.uuidString)
             postUpdateNotification(connectionId: folder.connectionId)
         }
         return result
@@ -76,6 +107,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func updateFolder(_ folder: SQLFavoriteFolder) async -> Bool {
         let result = await storage.updateFolder(folder)
         if result {
+            syncTracker.markDirty(.favoriteFolder, id: folder.id.uuidString)
             postUpdateNotification(connectionId: folder.connectionId)
         }
         return result
@@ -84,6 +116,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     func deleteFolder(id: UUID) async -> Bool {
         let result = await storage.deleteFolder(id: id)
         if result {
+            syncTracker.markDeleted(.favoriteFolder, id: id.uuidString)
             postUpdateNotification(connectionId: nil)
         }
         return result
@@ -91,6 +124,32 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
 
     func fetchFolders(connectionId: UUID? = nil) async -> [SQLFavoriteFolder] {
         await storage.fetchFolders(connectionId: connectionId)
+    }
+
+    // MARK: - Remote Apply (does not mark dirty, to avoid sync loops)
+
+    func applyRemoteFavorite(_ favorite: SQLFavorite) async {
+        if await storage.upsertFavorite(favorite) {
+            postUpdateNotification(connectionId: favorite.connectionId)
+        }
+    }
+
+    func applyRemoteFolder(_ folder: SQLFavoriteFolder) async {
+        if await storage.upsertFolder(folder) {
+            postUpdateNotification(connectionId: folder.connectionId)
+        }
+    }
+
+    func applyRemoteDeleteFavorite(id: UUID) async {
+        if await storage.deleteFavorite(id: id) {
+            postUpdateNotification(connectionId: nil)
+        }
+    }
+
+    func applyRemoteDeleteFolder(id: UUID) async {
+        if await storage.deleteFolder(id: id) {
+            postUpdateNotification(connectionId: nil)
+        }
     }
 
     // MARK: - Keyword Support

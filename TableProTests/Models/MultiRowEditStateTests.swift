@@ -41,7 +41,7 @@ struct MultiRowEditStateTests {
         func hasEditFalseWhenNoPendingChanges() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: false, isPendingDefault: false
             )
             #expect(field.hasEdit == false)
@@ -51,7 +51,7 @@ struct MultiRowEditStateTests {
         func hasEditTrueWhenPendingValueSet() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: "2", isPendingNull: false, isPendingDefault: false
             )
             #expect(field.hasEdit == true)
@@ -61,7 +61,7 @@ struct MultiRowEditStateTests {
         func hasEditTrueWhenPendingNull() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: true, isPendingDefault: false
             )
             #expect(field.hasEdit == true)
@@ -71,7 +71,7 @@ struct MultiRowEditStateTests {
         func hasEditTrueWhenPendingDefault() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: false, isPendingDefault: true
             )
             #expect(field.hasEdit == true)
@@ -81,7 +81,7 @@ struct MultiRowEditStateTests {
         func effectiveValueReturnsPendingValue() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: "updated", isPendingNull: false, isPendingDefault: false
             )
             #expect(field.effectiveValue == "updated")
@@ -91,7 +91,7 @@ struct MultiRowEditStateTests {
         func effectiveValueReturnsNilWhenPendingNull() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: true, isPendingDefault: false
             )
             #expect(field.effectiveValue == nil)
@@ -101,7 +101,7 @@ struct MultiRowEditStateTests {
         func effectiveValueReturnsDefaultWhenPendingDefault() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: false, isPendingDefault: true
             )
             #expect(field.effectiveValue == "__DEFAULT__")
@@ -111,7 +111,7 @@ struct MultiRowEditStateTests {
         func effectiveValueReturnsNilWhenNoEdit() {
             let field = FieldEditState(
                 columnIndex: 0, columnName: "id", columnTypeEnum: .text(rawType: nil),
-                isLongText: false, originalValue: "1", hasMultipleValues: false,
+                isLongText: false, isJson: false, originalValue: "1", hasMultipleValues: false,
                 pendingValue: nil, isPendingNull: false, isPendingDefault: false
             )
             #expect(field.effectiveValue == nil)
@@ -310,6 +310,27 @@ struct MultiRowEditStateTests {
                 columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
             )
             #expect(sut.fields[0].pendingValue == nil)
+        }
+
+        @Test("Reconfigure to a new row keeps a stable columnIndex resolving to the new value")
+        func reconfigureNewRowResolvesByColumnIndex() {
+            let sut = makeSUT(
+                columns: ["id", "payload"],
+                rows: [["1", "{\"reached\":\"07:53\"}"]],
+                selectedIndices: [0]
+            )
+            #expect(sut.fields.first(where: { $0.columnIndex == 1 })?.originalValue == "{\"reached\":\"07:53\"}")
+
+            sut.configure(
+                selectedRowIndices: [1],
+                allRows: [["2", "{\"reached\":\"08:40\"}"]],
+                columns: ["id", "payload"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil)]
+            )
+
+            let payloadField = sut.fields.first(where: { $0.columnIndex == 1 })
+            #expect(payloadField != nil)
+            #expect(payloadField?.originalValue == "{\"reached\":\"08:40\"}")
         }
 
         @Test("Reconfigure with added column clears all edits")
@@ -984,6 +1005,87 @@ struct MultiRowEditStateTests {
                 #expect(field.isPendingDefault == false)
                 #expect(field.pendingValue == nil)
             }
+        }
+    }
+
+    @MainActor @Suite("Schema fields")
+    struct SchemaFields {
+        private func schemaFields() -> [InspectorRowField] {
+            [
+                InspectorRowField(name: "Name", value: "email", editor: .schemaText),
+                InspectorRowField(name: "Type", value: "VARCHAR(255)", editor: .typePicker),
+                InspectorRowField(name: "Nullable", value: "YES", editor: .enumPicker(values: ["YES", "NO"]),
+                                  isModified: true)
+            ]
+        }
+
+        @Test("Schema fields keep their editor, values, and committed-edit marker")
+        func configureCarriesFieldDescription() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 2)
+
+            #expect(sut.fields.map(\.columnName) == ["Name", "Type", "Nullable"])
+            #expect(sut.fields.map(\.originalValue) == ["email", "VARCHAR(255)", "YES"])
+            #expect(sut.fields[1].editor == .typePicker)
+            #expect(sut.fields.allSatisfy { $0.isSchemaField })
+            #expect(sut.fields[2].hasCommittedEdit)
+            #expect(sut.fields[0].hasCommittedEdit == false)
+            #expect(sut.selectedRowIndices == [2])
+        }
+
+        @Test("A committed schema edit is not a pending sidebar edit")
+        func schemaFieldsAreNotPendingEdits() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 0)
+
+            #expect(sut.hasEdits == false)
+            #expect(sut.getEditedFields().isEmpty)
+        }
+
+        @Test("Reconfiguring the same row keeps field identity so editors keep focus")
+        func sameRowKeepsFieldIdentity() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 1)
+            let ids = sut.fields.map(\.id)
+
+            sut.configure(schemaFields: schemaFields(), displayRow: 1)
+            #expect(sut.fields.map(\.id) == ids)
+        }
+
+        @Test("Selecting another row gives fresh editors")
+        func differentRowResetsFieldIdentity() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 1)
+            let ids = sut.fields.map(\.id)
+
+            sut.configure(schemaFields: schemaFields(), displayRow: 2)
+            #expect(sut.fields.map(\.id) != ids)
+        }
+
+        @Test("Editing a schema field reports the new value to the owning grid")
+        func editReportsNewValue() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 0)
+
+            var committed: [(Int, String?)] = []
+            sut.onFieldChanged = { index, value in committed.append((index, value.asText)) }
+            sut.updateField(at: 0, value: "user_email")
+
+            #expect(committed.count == 1)
+            #expect(committed.first?.0 == 0)
+            #expect(committed.first?.1 == "user_email")
+        }
+
+        @Test("Retyping the existing value reports nothing")
+        func unchangedValueReportsNothing() {
+            let sut = MultiRowEditState()
+            sut.configure(schemaFields: schemaFields(), displayRow: 0)
+
+            var committed = 0
+            sut.onFieldChanged = { _, _ in committed += 1 }
+            sut.updateField(at: 0, value: "email")
+
+            #expect(committed == 0)
         }
     }
 }

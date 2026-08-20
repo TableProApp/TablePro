@@ -9,16 +9,13 @@ import os
 final class AppSettingsManager {
     static let shared = AppSettingsManager()
 
-    deinit {
-        if let observer = accessibilityTextSizeObserver {
-            NSWorkspace.shared.notificationCenter.removeObserver(observer)
-        }
-    }
-
     var general: GeneralSettings {
         didSet {
             general.language.apply()
             storage.saveGeneral(general)
+            if oldValue.showWorkspaceRail != general.showWorkspaceRail {
+                appEvents.workspaceRailVisibilityChanged.send(())
+            }
             syncTracker.markDirty(.settings, id: "general")
         }
     }
@@ -100,6 +97,8 @@ final class AppSettingsManager {
         didSet {
             storage.saveKeyboard(keyboard)
             syncTracker.markDirty(.settings, id: "keyboard")
+            MainMenuBuilder.syncKeyEquivalents(keyboard: keyboard)
+            appEvents.keyboardSettingsChanged.send(())
         }
     }
 
@@ -129,41 +128,60 @@ final class AppSettingsManager {
         }
     }
 
-    var terminal: TerminalSettings {
-        didSet {
-            storage.saveTerminal(terminal)
-            appEvents.terminalSettingsChanged.send(())
-            syncTracker.markDirty(.settings, id: "terminal")
-        }
-    }
-
     var mcp: MCPSettings {
         didSet {
             guard !isValidating else { return }
+            var validated = mcp
+            validated.maxRowLimit = mcp.validatedMaxRowLimit
+            validated.defaultRowLimit = mcp.validatedDefaultRowLimit
+            validated.queryTimeoutSeconds = mcp.validatedQueryTimeoutSeconds
+            if validated.allowRemoteConnections, !validated.requireAuthentication {
+                validated.requireAuthentication = true
+            }
 
-            if mcp.allowRemoteConnections, !mcp.requireAuthentication {
+            if validated != mcp {
                 isValidating = true
-                mcp.requireAuthentication = true
+                mcp = validated
                 isValidating = false
             }
 
-            storage.saveMCP(mcp)
+            storage.saveMCP(validated)
             syncTracker.markDirty(.settings, id: "mcp")
             let enabledChanged = mcp.enabled != oldValue.enabled
             let portChanged = mcp.port != oldValue.port
             let remoteChanged = mcp.allowRemoteConnections != oldValue.allowRemoteConnections
             let authChanged = mcp.requireAuthentication != oldValue.requireAuthentication
             if enabledChanged || portChanged || remoteChanged || authChanged {
-                let settings = mcp
-                Task { [mcpServerManager] in
-                    if settings.enabled {
-                        await mcpServerManager.restart(port: UInt16(clamping: settings.port))
-                    } else {
-                        await mcpServerManager.stop()
-                    }
+                if mcp.enabled {
+                    mcpServerManager.scheduleRestart(port: UInt16(clamping: mcp.port))
+                } else {
+                    mcpServerManager.scheduleStop()
                 }
             }
         }
+    }
+
+    @MainActor
+    func setRequireAuthentication(_ value: Bool) async -> (token: MCPAuthToken, plaintext: String)? {
+        guard value, !mcp.requireAuthentication else {
+            mcp.requireAuthentication = value
+            return nil
+        }
+
+        let tokenStore = mcpServerManager.tokenStore ?? MCPTokenStore()
+        if mcpServerManager.tokenStore == nil {
+            await tokenStore.loadFromDisk()
+        }
+        let existing = await tokenStore.list().filter { $0.name != MCPTokenStore.stdioBridgeTokenName }
+        guard existing.isEmpty else {
+            mcp.requireAuthentication = value
+            return nil
+        }
+
+        let defaultName = String(localized: "Default token")
+        let result = await tokenStore.generate(name: defaultName, permissions: .fullAccess)
+        mcp.requireAuthentication = value
+        return result
     }
 
     @ObservationIgnored private let storage: AppSettingsStorage
@@ -175,8 +193,6 @@ final class AppSettingsManager {
     @ObservationIgnored private let mcpServerManager: MCPServerManager
     @ObservationIgnored private let copilotService: CopilotService
     @ObservationIgnored private var isValidating = false
-    @ObservationIgnored private var accessibilityTextSizeObserver: NSObjectProtocol?
-    @ObservationIgnored private var lastAccessibilityScale: CGFloat = 1.0
 
     init(
         storage: AppSettingsStorage = .shared,
@@ -206,7 +222,6 @@ final class AppSettingsManager {
         self.keyboard = storage.loadKeyboard()
         self.ai = Self.migrateAI(storage.loadAI())
         self.sync = storage.loadSync()
-        self.terminal = storage.loadTerminal()
         self.mcp = storage.loadMCP()
 
         general.language.apply()
@@ -225,8 +240,6 @@ final class AppSettingsManager {
         )
 
         dateFormattingService.updateFormat(dataGrid.dateFormat)
-
-        observeAccessibilityTextSizeChanges()
 
         if ai.enabled, ai.providers.contains(where: { $0.type == .copilot }) {
             Task { [copilotService] in await copilotService.start() }
@@ -248,25 +261,6 @@ final class AppSettingsManager {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsManager")
 
-    private func observeAccessibilityTextSizeChanges() {
-        lastAccessibilityScale = EditorFontCache.computeAccessibilityScale()
-        accessibilityTextSizeObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let newScale = EditorFontCache.computeAccessibilityScale()
-                guard abs(newScale - lastAccessibilityScale) > 0.01 else { return }
-                lastAccessibilityScale = newScale
-                Self.logger.debug("Accessibility text size changed, scale: \(newScale, format: .fixed(precision: 2))")
-                themeEngine.reloadFontCaches()
-                appEvents.accessibilityTextSizeChanged.send(())
-            }
-        }
-    }
-
     private func applyHistorySettingsImmediately() async {
         await queryHistoryManager.applySettingsChange()
     }
@@ -281,7 +275,6 @@ final class AppSettingsManager {
         keyboard = .default
         ai = .default
         sync = .default
-        terminal = .default
         mcp = .default
         storage.resetToDefaults()
     }

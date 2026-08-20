@@ -13,56 +13,66 @@ import Testing
 @MainActor
 @Suite("ConnectionToolbarState")
 struct ConnectionToolbarStateTests {
-    // MARK: - chipText
+    // MARK: - scopeComponents
 
-    @Test("chipText returns currentDatabase when grouping is byDatabase")
-    func chipTextByDatabase() {
+    @Test("A database-only engine shows just its database")
+    func scopeComponentsByDatabase() {
         let state = ConnectionToolbarState()
+        state.databaseType = .mysql
         state.databaseGroupingStrategy = .byDatabase
         state.currentDatabase = "myappdb"
         state.currentSchema = "ignored"
 
-        #expect(state.chipText == "myappdb")
+        #expect(state.scopeComponents.map(\.name) == ["myappdb"])
+        #expect(state.scopeComponents.map(\.kind) == [.database])
     }
 
-    @Test("chipText returns currentSchema when grouping is bySchema and schema is set")
-    func chipTextBySchemaWithSchema() {
+    /// The chip used to show only the schema here while its click switched the database. Both
+    /// scopes are now present, each with its own chooser (#2196).
+    @Test("A schema-grouped engine shows its database and its schema")
+    func scopeComponentsBySchema() {
         let state = ConnectionToolbarState()
+        state.databaseType = .postgresql
         state.databaseGroupingStrategy = .bySchema
         state.currentDatabase = "Sales"
         state.currentSchema = "dbo"
 
-        #expect(state.chipText == "dbo")
+        #expect(state.scopeComponents.map(\.name) == ["Sales", "dbo"])
+        #expect(state.scopeComponents.map(\.kind) == [.database, .schema])
     }
 
-    @Test("chipText falls back to currentDatabase when grouping is bySchema and schema is nil")
-    func chipTextBySchemaWithNilSchema() {
+    @Test("An unresolved schema leaves only the database component")
+    func scopeComponentsBySchemaWithNilSchema() {
         let state = ConnectionToolbarState()
+        state.databaseType = .postgresql
         state.databaseGroupingStrategy = .bySchema
         state.currentDatabase = "Sales"
         state.currentSchema = nil
 
-        #expect(state.chipText == "Sales")
+        #expect(state.scopeComponents.map(\.name) == ["Sales"])
     }
 
-    @Test("chipText falls back to currentDatabase when grouping is bySchema and schema is empty")
-    func chipTextBySchemaWithEmptySchema() {
+    @Test("An empty schema leaves only the database component")
+    func scopeComponentsBySchemaWithEmptySchema() {
         let state = ConnectionToolbarState()
+        state.databaseType = .postgresql
         state.databaseGroupingStrategy = .bySchema
         state.currentDatabase = "Sales"
         state.currentSchema = ""
 
-        #expect(state.chipText == "Sales")
+        #expect(state.scopeComponents.map(\.name) == ["Sales"])
     }
 
-    @Test("chipText returns currentDatabase when grouping is flat (Redis, MongoDB)")
-    func chipTextFlat() {
+    @Test("A flat engine shows just its database (Redis, MongoDB)")
+    func scopeComponentsFlat() {
         let state = ConnectionToolbarState()
+        state.databaseType = .redis
         state.databaseGroupingStrategy = .flat
         state.currentDatabase = "0"
         state.currentSchema = "ignored"
 
-        #expect(state.chipText == "0")
+        #expect(state.scopeComponents.map(\.name) == ["0"])
+        #expect(state.scopeComponents.map(\.isSwitchable) == [false])
     }
 
     // MARK: - reset
@@ -79,7 +89,7 @@ struct ConnectionToolbarStateTests {
         #expect(state.currentDatabase == "")
         #expect(state.currentSchema == nil)
         #expect(state.databaseGroupingStrategy == .byDatabase)
-        #expect(state.chipText == "")
+        #expect(state.scopeComponents.isEmpty)
     }
 
     // MARK: - syncFromSession
@@ -92,5 +102,32 @@ struct ConnectionToolbarStateTests {
         state.syncFromSession(for: connection)
 
         #expect(state.currentDatabase == "Production")
+    }
+
+    // MARK: - safe mode
+
+    @Test("syncFromSession falls back to the connection's saved safe mode when no session exists")
+    func syncFromSessionFallsBackToConnectionSafeMode() {
+        var connection = TestFixtures.makeConnection()
+        connection.safeModeLevel = .readOnly
+        let state = ConnectionToolbarState()
+
+        state.syncFromSession(for: connection)
+
+        #expect(state.safeModeLevel == .readOnly)
+    }
+
+    @Test("A new toolbar state adopts the live session safe mode, not the stale saved default")
+    func newToolbarStateAdoptsLiveSessionSafeMode() {
+        let id = UUID()
+        var connection = TestFixtures.makeConnection(id: id)
+        connection.safeModeLevel = .silent
+        DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: id)
+        DatabaseManager.shared.setSafeModeLevel(.readOnly, for: id)
+        defer { DatabaseManager.shared.removeSession(for: id) }
+
+        let state = ConnectionToolbarState(connection: connection)
+
+        #expect(state.safeModeLevel == .readOnly)
     }
 }

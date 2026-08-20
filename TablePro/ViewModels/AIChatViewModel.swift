@@ -17,6 +17,7 @@ final class AIChatViewModel {
         case loading
         case streaming(assistantID: UUID)
         case awaitingApproval
+        case pausedAtToolLimit(count: Int)
         case failed(AIProviderError?)
     }
 
@@ -36,6 +37,9 @@ final class AIChatViewModel {
 
     var connection: DatabaseConnection?
 
+    @ObservationIgnored var streamFlushClock: StreamFlushClock = ContinuousStreamFlushClock()
+    @ObservationIgnored var streamFlushInterval: Duration = .milliseconds(50)
+
     var tables: [TableInfo] {
         guard let id = connection?.id else { return [] }
         return services.schemaService.tables(for: id)
@@ -51,7 +55,7 @@ final class AIChatViewModel {
         switch streamingState {
         case .loading, .streaming:
             return true
-        case .idle, .awaitingApproval, .failed:
+        case .idle, .awaitingApproval, .pausedAtToolLimit, .failed:
             return false
         }
     }
@@ -60,6 +64,13 @@ final class AIChatViewModel {
         if case .failed = streamingState { return true }
         return false
     }
+
+    var toolLimitPauseCount: Int? {
+        if case .pausedAtToolLimit(let count) = streamingState { return count }
+        return nil
+    }
+
+    var isPausedAtToolLimit: Bool { toolLimitPauseCount != nil }
 
     var lastError: AIProviderError? {
         if case .failed(let error) = streamingState { return error }
@@ -70,6 +81,7 @@ final class AIChatViewModel {
         lastError?.isRetryable ?? true
     }
 
+    @ObservationIgnored var pendingWalkthroughBeforeSQL: String?
     @ObservationIgnored var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
     @ObservationIgnored var inFlightSchemaLoad: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) var streamingTask: Task<Void, Never>?
@@ -151,6 +163,11 @@ final class AIChatViewModel {
         startStreaming()
     }
 
+    func sendWithWalkthroughContext(prompt: String, beforeSQL: String) {
+        pendingWalkthroughBeforeSQL = beforeSQL
+        sendWithContext(prompt: prompt)
+    }
+
     func attach(_ item: ContextItem) {
         guard !attachedContext.contains(where: { $0.stableKey == item.stableKey }) else { return }
         attachedContext.append(item)
@@ -161,7 +178,12 @@ final class AIChatViewModel {
         attachedContext.removeAll { $0.stableKey == item.stableKey }
     }
 
+    func turn(withID id: UUID) -> ChatTurn? {
+        messages.first { $0.id == id }
+    }
+
     func cancelStream() {
+        pendingWalkthroughBeforeSQL = nil
         prepTask?.cancel()
         prepTask = nil
         streamingTask?.cancel()
@@ -170,8 +192,9 @@ final class AIChatViewModel {
 
         if case .streaming(let assistantID) = streamingState,
            let idx = messages.firstIndex(where: { $0.id == assistantID }) {
-            messages[idx].finishStreamingTextBlock()
-            if messages[idx].blocks.isEmpty {
+            let turn = messages[idx]
+            turn.finishStreamingTextBlock()
+            if turn.blocks.isEmpty {
                 messages.remove(at: idx)
             }
         }
@@ -246,6 +269,7 @@ final class AIChatViewModel {
         inFlightSchemaLoad = nil
         currentQuery = nil
         queryResults = nil
+        pendingWalkthroughBeforeSQL = nil
         messages = []
         errorMessage = nil
         activeConversationID = nil
@@ -263,7 +287,7 @@ final class AIChatViewModel {
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
         let prompt = AIPromptTemplates.fixError(query: query, error: error, databaseType: databaseType)
-        sendWithContext(prompt: prompt)
+        sendWithWalkthroughContext(prompt: prompt, beforeSQL: query)
     }
 
     func loadAvailableModels() async {
@@ -275,7 +299,7 @@ final class AIChatViewModel {
             for config in pending {
                 let apiKey: String?
                 switch config.type.authStyle {
-                case .apiKey:
+                case .apiKey, .optionalApiKey:
                     apiKey = services.aiKeyStorage.loadAPIKey(for: config.id)
                 case .oauth, .none:
                     apiKey = nil
@@ -284,7 +308,8 @@ final class AIChatViewModel {
                     let transport = await AIProviderFactory.createProvider(for: config, apiKey: apiKey)
                     do {
                         let models = try await transport.fetchAvailableModels()
-                        return (config.id, models)
+                        AIModelCatalog.shared.store(providerTypeID: config.type.rawValue, models: models)
+                        return (config.id, models.map(\.id))
                     } catch is CancellationError {
                         return (config.id, nil)
                     } catch {

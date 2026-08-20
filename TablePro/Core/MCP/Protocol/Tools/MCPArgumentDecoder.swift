@@ -42,8 +42,8 @@ enum MCPArgumentDecoder {
         default defaultValue: Int? = nil,
         clamp: ClosedRange<Int>? = nil
     ) -> Int? {
-        let raw = args[key]?.intValue
-        guard let raw else { return defaultValue }
+        let raw = args[key]?.intValue ?? defaultValue
+        guard let raw else { return nil }
         guard let clamp else { return raw }
         return min(max(raw, clamp.lowerBound), clamp.upperBound)
     }

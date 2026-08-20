@@ -4,7 +4,6 @@ import Testing
 
 @Suite("ConnectionField")
 struct ConnectionFieldTests {
-
     @Test("Default values: placeholder, isRequired, defaultValue, fieldType")
     func defaultValues() {
         let field = ConnectionField(id: "host", label: "Host")
@@ -264,5 +263,25 @@ struct ConnectionFieldTests {
         #expect(decoded.label == field.label)
         #expect(decoded.defaultValue == "0")
         #expect(decoded.fieldType == .stepper(range: range))
+    }
+
+    @Test("dynamicOptions defaults to nil, round-trips, and is omitted when nil")
+    func codableDynamicOptions() throws {
+        let plain = ConnectionField(id: "host", label: "Host")
+        #expect(plain.dynamicOptions == nil)
+
+        let plainJson = try #require(String(data: try JSONEncoder().encode(plain), encoding: .utf8))
+        #expect(plainJson.contains("dynamicOptions") == false)
+
+        let field = ConnectionField(
+            id: "awsProfileName",
+            label: "Profile Name",
+            section: .authentication
+        ).withDynamicOptions(.awsProfiles)
+        let decoded = try JSONDecoder().decode(
+            ConnectionField.self,
+            from: try JSONEncoder().encode(field)
+        )
+        #expect(decoded.dynamicOptions == .awsProfiles)
     }
 }

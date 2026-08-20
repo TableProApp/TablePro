@@ -25,6 +25,8 @@ struct LibPQPluginError: Error {
         message: String(localized: "Not connected to database"), sqlState: nil, detail: nil)
     static let connectionFailed = LibPQPluginError(
         message: String(localized: "Failed to establish connection"), sqlState: nil, detail: nil)
+    static let connectionTimedOut = LibPQPluginError(
+        message: String(localized: "Timed out while connecting to the server"), sqlState: nil, detail: nil)
 }
 
 // MARK: - Query Result
@@ -67,6 +69,26 @@ private func pgOidToTypeName(_ oid: UInt32) -> String {
     case 829: return "macaddr"
     case 869: return "inet"
     case 1_009: return "text[]"
+    case 1_000: return "boolean[]"
+    case 1_001: return "bytea[]"
+    case 1_005: return "smallint[]"
+    case 1_007: return "integer[]"
+    case 1_014: return "char[]"
+    case 1_015: return "varchar[]"
+    case 1_016: return "bigint[]"
+    case 1_021: return "real[]"
+    case 1_022: return "double precision[]"
+    case 1_115: return "timestamp[]"
+    case 1_182: return "date[]"
+    case 1_183: return "time[]"
+    case 1_185: return "timestamptz[]"
+    case 1_187: return "interval[]"
+    case 1_231: return "numeric[]"
+    case 1_270: return "timetz[]"
+    case 199: return "json[]"
+    case 3_807: return "jsonb[]"
+    case 2_951: return "uuid[]"
+    case 1_041: return "inet[]"
     case 1_042: return "char"
     case 1_043: return "varchar"
     case 1_082: return "date"
@@ -84,6 +106,9 @@ private func pgOidToTypeName(_ oid: UInt32) -> String {
 // MARK: - Connection Class
 
 final class LibPQPluginConnection: @unchecked Sendable {
+    private static let connectTimeoutMicroseconds: Int64 = 10_000_000
+    private static let pollSliceMicroseconds: Int64 = 100_000
+
     private var conn: OpaquePointer?
     private let queue = DispatchQueue(label: "com.TablePro.libpq.plugin", qos: .userInitiated)
 
@@ -94,13 +119,17 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let database: String
     private let sslConfig: SSLConfiguration
     private let options: String?
+    private let suppressServerSideCancel: Bool
 
     private let stateLock = NSLock()
+    private let cancellationGate = PluginQueryCancellationGate()
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
     private var _cachedServerVersionNumber: Int32 = 0
-    private var _isCancelled: Bool = false
+    private var _isConnectCancelled: Bool = false
+    private var _postgisOidMap: [UInt32: String] = [:]
+    private var _enumOidMap: [UInt32: String] = [:]
 
     var isConnected: Bool {
         stateLock.lock()
@@ -128,7 +157,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
         password: String?,
         database: String,
         sslConfig: SSLConfiguration = SSLConfiguration(),
-        options: String? = nil
+        options: String? = nil,
+        suppressServerSideCancel: Bool = false
     ) {
         self.host = host
         self.port = port
@@ -137,6 +167,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         self.database = database
         self.sslConfig = sslConfig
         self.options = options
+        self.suppressServerSideCancel = suppressServerSideCancel
     }
 
     deinit {
@@ -152,80 +183,188 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Connection Management
 
-    func connect() async throws {
-        try await pluginDispatchAsync(on: queue) { [self] in
-            func escapeConnParam(_ value: String) -> String {
-                value.replacingOccurrences(of: "\\", with: "\\\\")
-                     .replacingOccurrences(of: "'", with: "\\'")
-            }
+    func connect(reportingStage report: @escaping ConnectionStageReporter = { _ in }) async throws {
+        stateLock.lock()
+        _isConnectCancelled = false
+        stateLock.unlock()
 
-            var connStr = "host='\(escapeConnParam(host))' port='\(port)' dbname='\(escapeConnParam(database))' connect_timeout='10'"
-
-            if !user.isEmpty {
-                connStr += " user='\(escapeConnParam(user))'"
+        try await withTaskCancellationHandler {
+            try await pluginDispatchAsyncCancellable(
+                on: queue,
+                cancellationCheck: { [weak self] in self?.isConnectCancelled ?? true }
+            ) { [self] in
+                try performConnect(reportingStage: report)
             }
-
-            if let password = password, !password.isEmpty {
-                connStr += " password='\(escapeConnParam(password))'"
-            }
-
-            connStr += " sslmode='\(LibPQSSLMapping.sslmode(for: sslConfig.mode))'"
-
-            if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
-                connStr += " sslrootcert='\(escapeConnParam(sslConfig.caCertificatePath))'"
-            }
-            if !sslConfig.clientCertificatePath.isEmpty {
-                connStr += " sslcert='\(escapeConnParam(sslConfig.clientCertificatePath))'"
-            }
-            if !sslConfig.clientKeyPath.isEmpty {
-                connStr += " sslkey='\(escapeConnParam(sslConfig.clientKeyPath))'"
-            }
-
-            if let options, !options.isEmpty {
-                connStr += " options='\(escapeConnParam(options))'"
-            }
-
-            let connection = connStr.withCString { cStr in
-                PQconnectdb(cStr)
-            }
-
-            guard let connection = connection else {
-                throw LibPQPluginError.connectionFailed
-            }
-
-            if PQstatus(connection) != CONNECTION_OK {
-                let error = self.getError(from: connection)
-                PQfinish(connection)
-                if let sslError = Self.classifySSLError(error.message) {
-                    throw sslError
-                }
-                throw error
-            }
-
-            "SET client_encoding TO 'UTF8'".withCString { cStr in
-                let result = PQexec(connection, cStr)
-                PQclear(result)
-            }
-
-            let version = PQserverVersion(connection)
-            if version > 0 {
-                self._cachedServerVersionNumber = version
-                let major = version / 10_000
-                if major >= 10 {
-                    let minor = version % 10_000
-                    self._cachedServerVersion = "\(major).\(minor)"
-                } else {
-                    let minor = (version / 100) % 100
-                    let revision = version % 100
-                    self._cachedServerVersion = "\(major).\(minor).\(revision)"
-                }
-            }
-
-            self.stateLock.lock()
-            self.conn = connection
-            self._isConnected = true
-            self.stateLock.unlock()
+        } onCancel: {
+            cancelConnect()
         }
+    }
+
+    func cancelConnect() {
+        stateLock.lock()
+        _isConnectCancelled = true
+        stateLock.unlock()
+    }
+
+    private var isConnectCancelled: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _isConnectCancelled
+    }
+
+    private func performConnect(reportingStage report: @escaping ConnectionStageReporter) throws {
+        guard let connection = buildConnectionString().withCString({ PQconnectStart($0) }) else {
+            throw LibPQPluginError.connectionFailed
+        }
+
+        var adopted = false
+        defer {
+            if !adopted { PQfinish(connection) }
+        }
+
+        guard PQstatus(connection) != CONNECTION_BAD else {
+            throw connectionError(from: connection)
+        }
+
+        try pollUntilConnected(connection, reportingStage: report)
+        configureEstablishedConnection(connection)
+
+        stateLock.lock()
+        conn = connection
+        _isConnected = true
+        stateLock.unlock()
+        adopted = true
+    }
+
+    private func pollUntilConnected(
+        _ connection: OpaquePointer,
+        reportingStage report: @escaping ConnectionStageReporter
+    ) throws {
+        let deadline = PQgetCurrentTimeUSec() + Self.connectTimeoutMicroseconds
+        var status = PGRES_POLLING_WRITING
+        var lastHandshakeStatus: ConnStatusType?
+
+        while true {
+            try checkConnectCancellation()
+            reportHandshakeStage(of: connection, last: &lastHandshakeStatus, report: report)
+
+            switch status {
+            case PGRES_POLLING_OK:
+                return
+            case PGRES_POLLING_FAILED:
+                throw connectionError(from: connection)
+            case PGRES_POLLING_READING, PGRES_POLLING_WRITING:
+                let socket = PQsocket(connection)
+                guard socket >= 0 else { throw connectionError(from: connection) }
+
+                let now = PQgetCurrentTimeUSec()
+                guard now < deadline else { throw LibPQPluginError.connectionTimedOut }
+
+                let ready = PQsocketPoll(
+                    socket,
+                    status == PGRES_POLLING_READING ? 1 : 0,
+                    status == PGRES_POLLING_WRITING ? 1 : 0,
+                    min(deadline, now + Self.pollSliceMicroseconds)
+                )
+                guard ready >= 0 else { throw LibPQPluginError.connectionFailed }
+                guard ready > 0 else { continue }
+
+                status = PQconnectPoll(connection)
+            default:
+                status = PQconnectPoll(connection)
+            }
+        }
+    }
+
+    /// `PGRES_POLLING_*` only says whether the socket wants a read or a write, so it cannot tell
+    /// a TLS handshake from an authentication exchange. `PQstatus` can, and reading it costs one
+    /// pointer dereference per poll slice.
+    private func reportHandshakeStage(
+        of connection: OpaquePointer,
+        last: inout ConnStatusType?,
+        report: ConnectionStageReporter
+    ) {
+        let current = PQstatus(connection)
+        guard current != last else { return }
+        last = current
+
+        switch current {
+        case CONNECTION_SSL_STARTUP:
+            report(.negotiatingEncryption)
+        case CONNECTION_AWAITING_RESPONSE, CONNECTION_AUTH_OK:
+            report(.authenticating)
+        default:
+            break
+        }
+    }
+
+    private func checkConnectCancellation() throws {
+        guard isConnectCancelled else { return }
+        throw CancellationError()
+    }
+
+    private func connectionError(from connection: OpaquePointer) -> Error {
+        let error = getError(from: connection)
+        if let sslError = LibPQSSLClassifier.classifySSLError(error.message) {
+            return sslError
+        }
+        return error
+    }
+
+    private func configureEstablishedConnection(_ connection: OpaquePointer) {
+        "SET client_encoding TO 'UTF8'".withCString { cStr in
+            let result = PQexec(connection, cStr)
+            PQclear(result)
+        }
+
+        let version = PQserverVersion(connection)
+        guard version > 0 else { return }
+
+        _cachedServerVersionNumber = version
+        let major = version / 10_000
+        if major >= 10 {
+            let minor = version % 10_000
+            _cachedServerVersion = "\(major).\(minor)"
+        } else {
+            let minor = (version / 100) % 100
+            let revision = version % 100
+            _cachedServerVersion = "\(major).\(minor).\(revision)"
+        }
+    }
+
+    private func buildConnectionString() -> String {
+        func escapeConnParam(_ value: String) -> String {
+            value.replacingOccurrences(of: "\\", with: "\\\\")
+                 .replacingOccurrences(of: "'", with: "\\'")
+        }
+
+        var connStr = "host='\(escapeConnParam(host))' port='\(port)' dbname='\(escapeConnParam(database))'"
+
+        if !user.isEmpty {
+            connStr += " user='\(escapeConnParam(user))'"
+        }
+
+        if let password, !password.isEmpty {
+            connStr += " password='\(escapeConnParam(password))'"
+        }
+
+        connStr += " sslmode='\(LibPQSSLMapping.sslmode(for: sslConfig.mode))'"
+
+        if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
+            connStr += " sslrootcert='\(escapeConnParam(sslConfig.caCertificatePath))'"
+        }
+        if !sslConfig.clientCertificatePath.isEmpty {
+            connStr += " sslcert='\(escapeConnParam(sslConfig.clientCertificatePath))'"
+        }
+        if !sslConfig.clientKeyPath.isEmpty {
+            connStr += " sslkey='\(escapeConnParam(sslConfig.clientKeyPath))'"
+        }
+
+        if let options, !options.isEmpty {
+            connStr += " options='\(escapeConnParam(options))'"
+        }
+
+        return connStr
     }
 
     func disconnect() {
@@ -233,6 +372,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         stateLock.lock()
         _isConnected = false
+        _isConnectCancelled = true
         let handle = conn
         conn = nil
         stateLock.unlock()
@@ -247,15 +387,43 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
+    // MARK: - PostGIS OID Map
+
+    func setPostgisOidMap(_ map: [UInt32: String]) {
+        stateLock.lock()
+        _postgisOidMap = map
+        stateLock.unlock()
+    }
+
+    private var postgisOidMap: [UInt32: String] {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _postgisOidMap
+    }
+
+    func setEnumOidMap(_ map: [UInt32: String]) {
+        stateLock.lock()
+        _enumOidMap = map
+        stateLock.unlock()
+    }
+
+    private func resolveTypeName(_ oid: UInt32) -> String {
+        stateLock.lock()
+        let mapped = _enumOidMap[oid]
+        stateLock.unlock()
+        return mapped ?? pgOidToTypeName(oid)
+    }
+
     // MARK: - Query Cancellation
 
     func cancelCurrentQuery() {
+        guard cancellationGate.cancel() != nil else { return }
+
         stateLock.lock()
-        _isCancelled = true
         let currentConn = conn
         stateLock.unlock()
 
-        guard let currentConn else { return }
+        guard let currentConn, !suppressServerSideCancel else { return }
         let cancelObj = PQgetCancel(currentConn)
         guard let cancelObj else { return }
         defer { PQfreeCancel(cancelObj) }
@@ -310,6 +478,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
             throw LibPQPluginError.notConnected
         }
 
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+
         let localQuery = String(query)
         let result: OpaquePointer? = localQuery.withCString { queryPtr in
             PQexec(conn, queryPtr)
@@ -337,13 +508,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
             )
 
         case PGRES_TUPLES_OK:
-            let queryResult = try fetchResults(from: result)
-            PQclear(result)
-            return queryResult
+            defer { PQclear(result) }
+            return try fetchResults(from: result, generation: generation)
 
         default:
             let error = getResultError(from: result)
             PQclear(result)
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
             throw error
         }
     }
@@ -356,6 +527,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         guard !isShuttingDown, let conn else {
             throw LibPQPluginError.notConnected
         }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
 
         var paramValues: [UnsafePointer<CChar>?] = []
         var paramLengths: [Int32] = []
@@ -441,22 +615,35 @@ final class LibPQPluginConnection: @unchecked Sendable {
             )
 
         case PGRES_TUPLES_OK:
-            let queryResult = try fetchResults(from: result)
-            PQclear(result)
-            return queryResult
+            defer { PQclear(result) }
+            return try fetchResults(from: result, generation: generation)
 
         default:
             let error = getResultError(from: result)
             PQclear(result)
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
             throw error
         }
     }
 
     // MARK: - Streaming Query
 
+    private static func cancelAndDrain(_ conn: OpaquePointer, suppressCancel: Bool) {
+        if !suppressCancel {
+            let cancelObj = PQgetCancel(conn)
+            if let cancelObj {
+                var errbuf = [CChar](repeating: 0, count: 256)
+                PQcancel(cancelObj, &errbuf, Int32(errbuf.count))
+                PQfreeCancel(cancelObj)
+            }
+        }
+        while let res = PQgetResult(conn) { PQclear(res) }
+    }
+
     func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
         let queue = self.queue
+        let suppressCancel = suppressServerSideCancel
 
         final class StreamState: @unchecked Sendable {
             var conn: OpaquePointer?
@@ -482,13 +669,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     streamState.drained = true
                     streamState.lock.unlock()
                     guard let conn, !alreadyDrained else { return }
-                    let cancelObj = PQgetCancel(conn)
-                    if let cancelObj {
-                        var errbuf = [CChar](repeating: 0, count: 256)
-                        PQcancel(cancelObj, &errbuf, Int32(errbuf.count))
-                        PQfreeCancel(cancelObj)
-                    }
-                    while let res = PQgetResult(conn) { PQclear(res) }
+                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
                 }
             }
 
@@ -497,6 +678,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     continuation.finish(throwing: LibPQPluginError.notConnected)
                     return
                 }
+
+                let generation = cancellationGate.beginQuery()
+                defer { cancellationGate.endQuery(generation) }
 
                 while let res = PQgetResult(conn) { PQclear(res) }
 
@@ -548,7 +732,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                                 }
                                 let oid = UInt32(PQftype(result, Int32(i)))
                                 columnOids.append(oid)
-                                columnTypeNames.append(pgOidToTypeName(oid))
+                                columnTypeNames.append(resolveTypeName(oid))
                             }
 
                             continuation.yield(.header(PluginStreamHeader(
@@ -564,31 +748,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         row.reserveCapacity(numFields)
 
                         for colIndex in 0..<numFields {
-                            if PQgetisnull(result, 0, Int32(colIndex)) == 1 {
-                                row.append(.null)
-                            } else if let valuePtr = PQgetvalue(result, 0, Int32(colIndex)) {
-                                let length = Int(PQgetlength(result, 0, Int32(colIndex)))
-                                let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
-                                let oid = columnOids[colIndex]
-
-                                if oid == 17 {
-                                    let text = String(bytes: bufferPtr, encoding: .utf8) ?? ""
-                                    if let data = LibPQByteaDecoder.decode(text) {
-                                        row.append(.bytes(data))
-                                    } else {
-                                        row.append(.text(text))
-                                    }
-                                } else if oid == 16 {
-                                    let str = String(bytes: bufferPtr, encoding: .utf8) ?? ""
-                                    row.append(.text(str == "t" ? "true" : "false"))
-                                } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                                    row.append(.text(str))
-                                } else {
-                                    row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
-                                }
-                            } else {
-                                row.append(.null)
-                            }
+                            row.append(Self.decodeCell(
+                                from: result,
+                                row: 0,
+                                column: Int32(colIndex),
+                                oid: columnOids[colIndex]
+                            ))
                         }
 
                         PQclear(result)
@@ -602,13 +767,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                             if !batch.isEmpty {
                                 continuation.yield(.rows(batch))
                             }
-                            let cancelObj = PQgetCancel(conn)
-                            if let cancelObj {
-                                var errbuf = [CChar](repeating: 0, count: 256)
-                                PQcancel(cancelObj, &errbuf, Int32(errbuf.count))
-                                PQfreeCancel(cancelObj)
-                            }
-                            while let res = PQgetResult(conn) { PQclear(res) }
+                            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
                             streamState.lock.lock()
                             streamState.drained = true
                             streamState.lock.unlock()
@@ -628,6 +787,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         streamState.lock.lock()
                         streamState.drained = true
                         streamState.lock.unlock()
+                        if cancellationGate.isCancelled(generation) {
+                            continuation.finish(throwing: CancellationError())
+                            return
+                        }
                         continuation.finish(throwing: error)
                         return
                     }
@@ -647,10 +810,36 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Result Parsing
 
-    private func fetchResults(from result: OpaquePointer) throws -> LibPQPluginQueryResult {
-        let numFields = Int(PQnfields(result))
-        let numRows = Int(PQntuples(result))
+    private func fetchResults(from result: OpaquePointer, generation: Int) throws -> LibPQPluginQueryResult {
+        let metadata = readColumnMetadata(from: result)
+        let parsed = try parseRows(
+            from: result,
+            columns: metadata.columns,
+            columnOids: metadata.columnOids,
+            columnTypeNames: metadata.columnTypeNames,
+            generation: generation
+        )
 
+        let oidMap = postgisOidMap
+        guard !oidMap.isEmpty else { return parsed }
+
+        let spatialColumns = metadata.columnOids.enumerated().compactMap { index, oid -> (index: Int, typeName: String)? in
+            guard let typeName = oidMap[oid] else { return nil }
+            return (index, typeName)
+        }
+        guard !spatialColumns.isEmpty else { return parsed }
+
+        return renderSpatialColumns(parsed, spatialColumns: spatialColumns)
+    }
+
+    private struct ColumnMetadata {
+        let columns: [String]
+        let columnOids: [UInt32]
+        let columnTypeNames: [String]
+    }
+
+    private func readColumnMetadata(from result: OpaquePointer) -> ColumnMetadata {
+        let numFields = Int(PQnfields(result))
         var columns: [String] = []
         var columnOids: [UInt32] = []
         var columnTypeNames: [String] = []
@@ -664,11 +853,132 @@ final class LibPQPluginConnection: @unchecked Sendable {
             } else {
                 columns.append("column_\(i)")
             }
-
-            let oid = PQftype(result, Int32(i))
-            columnOids.append(UInt32(oid))
-            columnTypeNames.append(pgOidToTypeName(UInt32(oid)))
+            let oid = UInt32(PQftype(result, Int32(i)))
+            columnOids.append(oid)
+            columnTypeNames.append(resolveTypeName(oid))
         }
+        return ColumnMetadata(columns: columns, columnOids: columnOids, columnTypeNames: columnTypeNames)
+    }
+
+    private func renderSpatialColumns(
+        _ result: LibPQPluginQueryResult,
+        spatialColumns: [(index: Int, typeName: String)]
+    ) -> LibPQPluginQueryResult {
+        var rows = result.rows
+        var columnTypeNames = result.columnTypeNames
+
+        for column in spatialColumns {
+            if column.index < columnTypeNames.count {
+                columnTypeNames[column.index] = column.typeName
+            }
+
+            guard let query = PostGISSpatialRewrite.conversionQuery(forTypeName: column.typeName) else { continue }
+
+            let hexValues: [String?] = rows.map { row in
+                guard column.index < row.count, case let .text(hex) = row[column.index] else { return nil }
+                return hex
+            }
+            guard hexValues.contains(where: { $0 != nil }) else { continue }
+
+            guard let converted = convertSpatialValues(hexValues, query: query),
+                  converted.count == hexValues.count else {
+                logger.warning("PostGIS value conversion failed for column \(column.index); keeping raw hex")
+                continue
+            }
+
+            for (rowIndex, value) in converted.enumerated()
+                where hexValues[rowIndex] != nil && column.index < rows[rowIndex].count {
+                rows[rowIndex][column.index] = value
+            }
+        }
+
+        return LibPQPluginQueryResult(
+            columns: result.columns,
+            columnOids: result.columnOids,
+            columnTypeNames: columnTypeNames,
+            rows: rows,
+            affectedRows: result.affectedRows,
+            commandTag: result.commandTag,
+            isTruncated: result.isTruncated
+        )
+    }
+
+    private func convertSpatialValues(_ hexValues: [String?], query: String) -> [PluginCellValue]? {
+        stateLock.lock()
+        let conn = self.conn
+        stateLock.unlock()
+        guard let conn else { return nil }
+
+        let arrayLiteral = PostGISSpatialRewrite.arrayLiteral(from: hexValues)
+        guard let paramCStr = strdup(arrayLiteral) else { return nil }
+        defer { free(paramCStr) }
+
+        let paramValues: [UnsafePointer<CChar>?] = [UnsafePointer(paramCStr)]
+        let result: OpaquePointer? = query.withCString { queryPtr in
+            PQexecParams(conn, queryPtr, 1, nil, paramValues, nil, nil, 0)
+        }
+
+        guard let result, PQresultStatus(result) == PGRES_TUPLES_OK else {
+            if let result { PQclear(result) }
+            return nil
+        }
+        defer { PQclear(result) }
+
+        let rowCount = Int(PQntuples(result))
+        var converted: [PluginCellValue] = []
+        converted.reserveCapacity(rowCount)
+        for rowIndex in 0..<rowCount {
+            if PQgetisnull(result, Int32(rowIndex), 0) == 1 {
+                converted.append(.null)
+            } else if let valuePtr = PQgetvalue(result, Int32(rowIndex), 0) {
+                let length = Int(PQgetlength(result, Int32(rowIndex), 0))
+                let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
+                converted.append(.text(String(bytes: bufferPtr, encoding: .utf8) ?? ""))
+            } else {
+                converted.append(.null)
+            }
+        }
+        return converted
+    }
+
+    private static func decodeCell(
+        from result: OpaquePointer,
+        row: Int32,
+        column: Int32,
+        oid: UInt32
+    ) -> PluginCellValue {
+        guard PQgetisnull(result, row, column) != 1,
+              let valuePtr = PQgetvalue(result, row, column) else {
+            return .null
+        }
+
+        let length = Int(PQgetlength(result, row, column))
+        let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
+
+        if oid == 17 {
+            let text = String(bytes: bufferPtr, encoding: .utf8) ?? ""
+            guard let data = LibPQByteaDecoder.decode(text) else { return .text(text) }
+            return .bytes(data)
+        }
+
+        if oid == 16 {
+            let str = String(bytes: bufferPtr, encoding: .utf8) ?? ""
+            return .text(str == "t" ? "true" : "false")
+        }
+
+        if let str = String(bytes: bufferPtr, encoding: .utf8) { return .text(str) }
+        return .text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? "")
+    }
+
+    private func parseRows(
+        from result: OpaquePointer,
+        columns: [String],
+        columnOids: [UInt32],
+        columnTypeNames: [String],
+        generation: Int
+    ) throws -> LibPQPluginQueryResult {
+        let numFields = columns.count
+        let numRows = Int(PQntuples(result))
 
         let maxRows = PluginRowLimits.emergencyMax
         let effectiveRowCount = min(numRows, maxRows)
@@ -678,44 +988,20 @@ final class LibPQPluginConnection: @unchecked Sendable {
         rows.reserveCapacity(effectiveRowCount)
 
         for rowIndex in 0..<effectiveRowCount {
-            stateLock.lock()
-            let shouldCancel = _isCancelled
-            if shouldCancel { _isCancelled = false }
-            stateLock.unlock()
-            if shouldCancel {
-                PQclear(result)
-                throw LibPQPluginError(message: "Query cancelled", sqlState: nil, detail: nil)
+            if cancellationGate.isCancelled(generation) {
+                throw CancellationError()
             }
 
             var row: [PluginCellValue] = []
             row.reserveCapacity(numFields)
 
             for colIndex in 0..<numFields {
-                if PQgetisnull(result, Int32(rowIndex), Int32(colIndex)) == 1 {
-                    row.append(.null)
-                } else if let valuePtr = PQgetvalue(result, Int32(rowIndex), Int32(colIndex)) {
-                    let length = Int(PQgetlength(result, Int32(rowIndex), Int32(colIndex)))
-                    let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
-                    let oid = columnOids[colIndex]
-
-                    if oid == 17 {
-                        let text = String(bytes: bufferPtr, encoding: .utf8) ?? ""
-                        if let data = LibPQByteaDecoder.decode(text) {
-                            row.append(.bytes(data))
-                        } else {
-                            row.append(.text(text))
-                        }
-                    } else if oid == 16 {
-                        let str = String(bytes: bufferPtr, encoding: .utf8) ?? ""
-                        row.append(.text(str == "t" ? "true" : "false"))
-                    } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                        row.append(.text(str))
-                    } else {
-                        row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
-                    }
-                } else {
-                    row.append(.null)
-                }
+                row.append(Self.decodeCell(
+                    from: result,
+                    row: Int32(rowIndex),
+                    column: Int32(colIndex),
+                    oid: columnOids[colIndex]
+                ))
             }
             rows.append(row)
         }
@@ -736,32 +1022,6 @@ final class LibPQPluginConnection: @unchecked Sendable {
     }
 
     // MARK: - Private Helpers
-
-    static func classifySSLError(_ message: String) -> SSLHandshakeError? {
-        let lower = message.lowercased()
-        if lower.contains("no pg_hba.conf entry") && lower.contains("no encryption") {
-            return .serverRejectedPlaintext(serverMessage: message)
-        }
-        if lower.contains("no pg_hba.conf entry") && lower.contains("ssl") {
-            return .serverRequiresPlaintext(serverMessage: message)
-        }
-        if lower.contains("server does not support ssl") || lower.contains("ssl is not enabled on the server") {
-            return .serverRequiresPlaintext(serverMessage: message)
-        }
-        if lower.contains("certificate verify failed") || lower.contains("self-signed certificate") || lower.contains("unable to get local issuer certificate") {
-            return .untrustedCertificate(serverMessage: message)
-        }
-        if lower.contains("server certificate") && lower.contains("does not match host name") {
-            return .hostnameMismatch(serverMessage: message)
-        }
-        if lower.contains("certificate required") || lower.contains("connection requires a valid client certificate") {
-            return .clientCertRequired(serverMessage: message)
-        }
-        if lower.contains("ssl error") || lower.contains("tls handshake") || lower.contains("ssl handshake") {
-            return .cipherMismatch(serverMessage: message)
-        }
-        return nil
-    }
 
     private func getError(from conn: OpaquePointer) -> LibPQPluginError {
         var message = "Unknown error"

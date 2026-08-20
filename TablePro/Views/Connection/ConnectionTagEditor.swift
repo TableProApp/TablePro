@@ -2,50 +2,92 @@
 //  ConnectionTagEditor.swift
 //  TablePro
 //
-//  Tag selector dropdown for connection form
-//
 
 import SwiftUI
 
-/// Tag selection for a connection — single Menu dropdown
 struct ConnectionTagEditor: View {
-    @Binding var selectedTagId: UUID?
+    @Binding var tagIds: [UUID]
     @State private var allTags: [ConnectionTag] = []
     @State private var showingCreateSheet = false
 
     private let tagStorage = TagStorage.shared
 
-    private var selectedTag: ConnectionTag? {
-        guard let id = selectedTagId else { return nil }
-        return tagStorage.tag(for: id)
+    private var selectedTags: [ConnectionTag] {
+        tagIds.compactMap { id in allTags.first { $0.id == id } }
     }
 
     var body: some View {
-        Menu {
-            // None option
-            Button {
-                selectedTagId = nil
-            } label: {
-                HStack {
-                    Text("None")
-                    if selectedTagId == nil {
-                        Spacer()
-                        Image(systemName: "checkmark")
-                    }
+        HStack(spacing: 6) {
+            selectionView
+            tagMenu
+        }
+        .task { allTags = tagStorage.loadTags() }
+        .sheet(isPresented: $showingCreateSheet) {
+            CreateTagSheet { tagName, tagColor in
+                let tag = ConnectionTag(name: tagName.lowercased(), isPreset: false, color: tagColor)
+                tagStorage.addTag(tag)
+                allTags = tagStorage.loadTags()
+                if let added = allTags.first(where: { $0.name == tag.name }) {
+                    toggleOn(added.id)
                 }
             }
+        }
+    }
 
-            Divider()
+    @ViewBuilder
+    private var selectionView: some View {
+        if selectedTags.isEmpty {
+            Text("Add tags")
+                .foregroundStyle(.secondary)
+        } else {
+            HStack(spacing: 4) {
+                ForEach(selectedTags) { tag in
+                    tagChip(tag)
+                }
+            }
+        }
+    }
 
-            // Available tags
+    private func tagChip(_ tag: ConnectionTag) -> some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(tag.color.color)
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+            Text(tag.name)
+                .lineLimit(1)
+            Button { toggle(tag) } label: {
+                Image(systemName: "xmark")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(Text(removeLabel(for: tag)))
+            .accessibilityLabel(Text(removeLabel(for: tag)))
+        }
+        .padding(.leading, 7)
+        .padding(.trailing, 5)
+        .padding(.vertical, 2)
+        .background(tag.color.color.opacity(0.14), in: Capsule())
+        .overlay(Capsule().strokeBorder(tag.color.color.opacity(0.35), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(tag.name))
+    }
+
+    private func removeLabel(for tag: ConnectionTag) -> String {
+        String(format: String(localized: "Remove tag %@"), tag.name)
+    }
+
+    private var tagMenu: some View {
+        Menu {
             ForEach(allTags) { tag in
                 Button {
-                    selectedTagId = tag.id
+                    toggle(tag)
                 } label: {
                     HStack {
                         Image(nsImage: colorDot(tag.color.color))
                         Text(tag.name)
-                        if selectedTagId == tag.id {
+                        if tagIds.contains(tag.id) {
                             Spacer()
                             Image(systemName: "checkmark")
                         }
@@ -55,14 +97,12 @@ struct ConnectionTagEditor: View {
 
             Divider()
 
-            // Create new tag
             Button {
                 showingCreateSheet = true
             } label: {
                 Label("Create New Tag...", systemImage: "plus.circle")
             }
 
-            // Manage tags (delete custom tags)
             if allTags.contains(where: { !$0.isPreset }) {
                 Divider()
 
@@ -77,33 +117,39 @@ struct ConnectionTagEditor: View {
                 }
             }
         } label: {
-            HStack(spacing: 6) {
-                if let tag = selectedTag {
-                    Circle()
-                        .fill(tag.color.color)
-                        .frame(width: 8, height: 8)
-                    Text(tag.name)
-                        .foregroundStyle(.primary)
-                } else {
-                    Text("None")
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Image(systemName: "chevron.down")
+                .imageScale(.small)
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
-        .task { allTags = tagStorage.loadTags() }
-        .sheet(isPresented: $showingCreateSheet) {
-            CreateTagSheet { tagName, tagColor in
-                let tag = ConnectionTag(name: tagName.lowercased(), isPreset: false, color: tagColor)
-                tagStorage.addTag(tag)
-                selectedTagId = tag.id
-                allTags = tagStorage.loadTags()
-            }
+        .help(Text("Add tags"))
+        .accessibilityLabel(Text("Add tags"))
+    }
+
+    private func toggle(_ tag: ConnectionTag) {
+        if tagIds.contains(tag.id) {
+            tagIds = tagIds.filter { $0 != tag.id }
+        } else {
+            toggleOn(tag.id)
         }
     }
 
-    /// Create a colored circle NSImage for use in menu items
+    private func toggleOn(_ id: UUID) {
+        guard !tagIds.contains(id) else { return }
+        var ids = tagIds
+        ids.append(id)
+        tagIds = ids
+    }
+
+    private func deleteTag(_ tag: ConnectionTag) {
+        tagIds = tagIds.filter { $0 != tag.id }
+        tagStorage.deleteTag(tag, clearingFrom: .shared)
+        allTags = tagStorage.loadTags()
+    }
+
     private func colorDot(_ color: Color) -> NSImage {
         let size = NSSize(width: 10, height: 10)
         let image = NSImage(size: size, flipped: false) { rect in
@@ -113,14 +159,6 @@ struct ConnectionTagEditor: View {
         }
         image.isTemplate = false
         return image
-    }
-
-    private func deleteTag(_ tag: ConnectionTag) {
-        if selectedTagId == tag.id {
-            selectedTagId = nil
-        }
-        tagStorage.deleteTag(tag)
-        allTags = tagStorage.loadTags()
     }
 }
 
@@ -133,32 +171,27 @@ private struct CreateTagSheet: View {
     let onSave: (String, ConnectionColor) -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 16) {
             Text("Create New Tag")
                 .font(.headline)
-                .padding(.vertical, 12)
 
-            Divider()
+            TextField("Tag name", text: $tagName)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 200)
 
-            Form {
-                Section {
-                    LabeledContent("Name") {
-                        TextField("Tag name", text: $tagName)
-                    }
-                    LabeledContent("Color") {
-                        ColorPaletteView(selectedColor: $tagColor, includesNone: false, size: .compact)
-                    }
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Color")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ColorPaletteView(selectedColor: $tagColor, includesNone: false, size: .compact)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-
-            Divider()
 
             HStack {
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
+                Button("Cancel") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
                 Button("Create") {
                     onSave(tagName, tagColor)
                     dismiss()
@@ -167,9 +200,9 @@ private struct CreateTagSheet: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(tagName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            .padding(12)
         }
-        .frame(width: 360)
+        .padding(20)
+        .frame(width: 300)
         .onExitCommand {
             dismiss()
         }
@@ -178,12 +211,12 @@ private struct CreateTagSheet: View {
 
 #Preview {
     struct PreviewWrapper: View {
-        @State private var tagId: UUID?
+        @State private var tagIds: [UUID] = []
 
         var body: some View {
             VStack(spacing: 20) {
-                ConnectionTagEditor(selectedTagId: $tagId)
-                Text("Selected: \(tagId?.uuidString ?? "none")")
+                ConnectionTagEditor(tagIds: $tagIds)
+                Text("Selected: \(tagIds.count)")
             }
             .padding()
             .frame(width: 400)

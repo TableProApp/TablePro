@@ -42,7 +42,7 @@ indent_size = 2
 [Makefile]
 indent_style = tab
 
-# Xcode project files
-[*.pbxproj]
-indent_style = tab
+# Xcode build configuration
+[*.xcconfig]
+indent_style = space
 indent_size = 4

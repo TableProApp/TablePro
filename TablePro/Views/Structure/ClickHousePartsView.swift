@@ -14,6 +14,7 @@ struct ClickHousePartsView: View {
 
     let tableName: String
     let connectionId: UUID
+    let reloadToken: Int
 
     @State private var parts: [ClickHousePartInfo] = []
     @State private var isLoading = true
@@ -50,10 +51,7 @@ struct ClickHousePartsView: View {
                 partsTable
             }
         }
-        .task { await loadParts() }
-        .onReceive(AppCommands.shared.refreshData) { _ in
-            Task { await loadParts() }
-        }
+        .task(id: reloadToken) { await loadParts() }
     }
 
     private var partsToolbar: some View {
@@ -112,8 +110,7 @@ struct ClickHousePartsView: View {
     private func optimizeTable() {
         Task {
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-            let escapedTable = tableName.replacingOccurrences(of: "`", with: "``")
-            let sql = "OPTIMIZE TABLE `\(escapedTable)` FINAL"
+            let sql = "OPTIMIZE TABLE \(driver.quoteIdentifier(tableName)) FINAL"
             do {
                 _ = try await driver.execute(query: sql)
                 await loadParts()
@@ -138,8 +135,7 @@ struct ClickHousePartsView: View {
             guard confirmed else { return }
 
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-            let escapedTable = tableName.replacingOccurrences(of: "`", with: "``")
-            let sql = "ALTER TABLE `\(escapedTable)` DROP PARTITION '\(partitionValue.replacingOccurrences(of: "'", with: "''"))'"
+            let sql = "ALTER TABLE \(driver.quoteIdentifier(tableName)) DROP PARTITION '\(driver.escapeStringLiteral(partitionValue))'"
             do {
                 _ = try await driver.execute(query: sql)
                 selection.removeAll()
@@ -165,8 +161,7 @@ struct ClickHousePartsView: View {
             guard confirmed else { return }
 
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-            let escapedTable = tableName.replacingOccurrences(of: "`", with: "``")
-            let sql = "ALTER TABLE `\(escapedTable)` DETACH PARTITION '\(partitionValue.replacingOccurrences(of: "'", with: "''"))'"
+            let sql = "ALTER TABLE \(driver.quoteIdentifier(tableName)) DETACH PARTITION '\(driver.escapeStringLiteral(partitionValue))'"
             do {
                 _ = try await driver.execute(query: sql)
                 selection.removeAll()
@@ -197,12 +192,11 @@ struct ClickHousePartsView: View {
         }
 
         do {
-            let escapedTable = tableName.replacingOccurrences(of: "'", with: "''")
             let sql = """
                 SELECT partition, name, rows, bytes_on_disk,
                        toString(modification_time) AS mod_time, active
                 FROM system.parts
-                WHERE database = currentDatabase() AND table = '\(escapedTable)'
+                WHERE database = currentDatabase() AND table = '\(driver.escapeStringLiteral(tableName))'
                 ORDER BY partition, name
                 """
             let result = try await driver.execute(query: sql)
@@ -237,15 +231,6 @@ struct ClickHousePartsView: View {
     }
 
     private func formatBytes(_ bytes: UInt64) -> String {
-        switch bytes {
-        case 0..<1_024:
-            return "\(bytes) B"
-        case 1_024..<1_048_576:
-            return String(format: "%.0f KB", Double(bytes) / 1_024)
-        case 1_048_576..<1_073_741_824:
-            return String(format: "%.1f MB", Double(bytes) / 1_048_576)
-        default:
-            return String(format: "%.2f GB", Double(bytes) / 1_073_741_824)
-        }
+        ByteSizeFormatting.string(bytes: bytes)
     }
 }

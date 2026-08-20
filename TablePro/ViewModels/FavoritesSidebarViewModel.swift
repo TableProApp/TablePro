@@ -13,6 +13,40 @@ internal struct FavoriteEditItem: Identifiable {
     let folderId: UUID?
 }
 
+internal enum FavoriteSelection: Hashable {
+    case table(database: String?, schema: String?, name: String)
+    case node(id: String)
+}
+
+extension FavoriteSelection: RawRepresentable {
+    private static let separator = "\u{1}"
+
+    init?(rawValue: String) {
+        let parts = rawValue.components(separatedBy: Self.separator)
+        switch parts.first {
+        case "table" where parts.count == 4:
+            self = .table(
+                database: parts[1].isEmpty ? nil : parts[1],
+                schema: parts[2].isEmpty ? nil : parts[2],
+                name: parts[3]
+            )
+        case "node" where parts.count >= 2:
+            self = .node(id: parts.dropFirst().joined(separator: Self.separator))
+        default:
+            return nil
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .table(let database, let schema, let name):
+            return ["table", database ?? "", schema ?? "", name].joined(separator: Self.separator)
+        case .node(let id):
+            return ["node", id].joined(separator: Self.separator)
+        }
+    }
+}
+
 internal struct FavoriteNode: Identifiable, Hashable {
     enum Content: Hashable {
         case folder(SQLFavoriteFolder)
@@ -67,6 +101,12 @@ internal struct FavoriteNode: Identifiable, Hashable {
         FavoriteNode(id: "linked-folder-\(folder.id)", content: .linkedFolder(folder), children: children)
     }
 
+    /// A disabled folder is not watched, so it has no files to disclose. It keeps its row and its id
+    /// so the contextual menu that re-enables it stays reachable and its expansion survives the round trip.
+    static func disabledLinkedFolder(_ folder: LinkedSQLFolder) -> FavoriteNode {
+        FavoriteNode(id: "linked-folder-\(folder.id)", content: .linkedFolder(folder), children: nil)
+    }
+
     static func linkedSubfolder(
         folderId: UUID,
         displayName: String,
@@ -117,11 +157,10 @@ internal extension [FavoriteNode] {
 internal final class FavoritesSidebarViewModel {
     var editDialogItem: FavoriteEditItem?
     var renamingFolderId: UUID?
-    var renamingFolderName: String = ""
     var showDeleteConfirmation = false
     var favoritesToDelete: [SQLFavorite] = []
 
-    @ObservationIgnored private let connectionId: UUID
+    @ObservationIgnored internal let connectionId: UUID
     @ObservationIgnored private let cache: ConnectionDataCache
     @ObservationIgnored private let services: AppServices
     @ObservationIgnored private var manager: SQLFavoriteManager { services.sqlFavoriteManager }
@@ -131,6 +170,10 @@ internal final class FavoritesSidebarViewModel {
     var nodes: [FavoriteNode] {
         var roots = buildNodes(folders: cache.folders, favorites: cache.favorites, parentId: nil)
         for folder in cache.linkedFolders {
+            guard folder.isEnabled else {
+                roots.append(.disabledLinkedFolder(folder))
+                continue
+            }
             let files = cache.linkedFilesByFolderId[folder.id] ?? []
             let children = buildLinkedTree(files: files, folderId: folder.id)
             roots.append(.linkedFolder(folder, children: children))
@@ -273,7 +316,8 @@ internal final class FavoritesSidebarViewModel {
             let success = await manager.addFolder(folder)
             if success {
                 services.favoritesExpansionState.setFolderExpanded(folder.id, expanded: true, for: connectionId)
-                try? await Task.sleep(for: .milliseconds(100))
+                /// No wait for the row to appear. The rename request is held until the outline
+                /// actually has that row, which it reports itself.
                 startRenameFolder(folder)
             }
         }
@@ -285,13 +329,15 @@ internal final class FavoritesSidebarViewModel {
         }
     }
 
+    /// The editor seeds itself from the folder, so there is no buffer to prime here.
     func startRenameFolder(_ folder: SQLFavoriteFolder) {
         renamingFolderId = folder.id
-        renamingFolderName = folder.name
     }
 
-    func commitRenameFolder(_ folder: SQLFavoriteFolder) {
-        let newName = renamingFolderName.trimmingCharacters(in: .whitespaces)
+    /// The name arrives from the editor rather than through observable state, so a keystroke no
+    /// longer round-trips through the view model on its way to the field.
+    func commitRenameFolder(_ folder: SQLFavoriteFolder, to proposedName: String) {
+        let newName = proposedName.trimmingCharacters(in: .whitespaces)
         renamingFolderId = nil
         guard !newName.isEmpty, newName != folder.name else { return }
         Task {
@@ -305,83 +351,6 @@ internal final class FavoritesSidebarViewModel {
     func filteredNodes(searchText: String) -> [FavoriteNode] {
         let allNodes = nodes
         guard !searchText.isEmpty else { return allNodes }
-        return filterTree(allNodes, searchText: searchText)
-    }
-
-    private func filterTree(_ items: [FavoriteNode], searchText: String) -> [FavoriteNode] {
-        items.compactMap { node in
-            switch node.content {
-            case .favorite(let fav):
-                if fav.name.localizedCaseInsensitiveContains(searchText) ||
-                    (fav.keyword?.localizedCaseInsensitiveContains(searchText) == true) ||
-                    fav.query.localizedCaseInsensitiveContains(searchText) {
-                    return node
-                }
-                return nil
-            case .folder(let folder):
-                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
-                if !filteredChildren.isEmpty ||
-                    folder.name.localizedCaseInsensitiveContains(searchText) {
-                    return .folder(folder, children: filteredChildren)
-                }
-                return nil
-            case .linkedFavorite(let linked):
-                if linked.name.localizedCaseInsensitiveContains(searchText) ||
-                    (linked.keyword?.localizedCaseInsensitiveContains(searchText) == true) ||
-                    linked.relativePath.localizedCaseInsensitiveContains(searchText) {
-                    return node
-                }
-                return nil
-            case .linkedFolder(let folder):
-                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
-                if !filteredChildren.isEmpty || folder.name.localizedCaseInsensitiveContains(searchText) {
-                    return .linkedFolder(folder, children: filteredChildren)
-                }
-                return nil
-            case .linkedSubfolder(let folderId, let displayName, let pathPrefix):
-                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
-                if !filteredChildren.isEmpty || displayName.localizedCaseInsensitiveContains(searchText) {
-                    return .linkedSubfolder(
-                        folderId: folderId,
-                        displayName: displayName,
-                        pathPrefix: pathPrefix,
-                        children: filteredChildren
-                    )
-                }
-                return nil
-            }
-        }
-    }
-
-    func favoriteForNodeId(_ id: String) -> SQLFavorite? {
-        findNode(nodes, id: id, extract: \.asFavorite)
-    }
-
-    func linkedFavoriteForNodeId(_ id: String) -> LinkedSQLFavorite? {
-        findNode(nodes, id: id, extract: \.asLinkedFavorite)
-    }
-
-    func folderForNodeId(_ id: String) -> SQLFavoriteFolder? {
-        findNode(nodes, id: id, extract: \.asFolder)
-    }
-
-    func linkedFolderForNodeId(_ id: String) -> LinkedSQLFolder? {
-        findNode(nodes, id: id, extract: \.asLinkedFolder)
-    }
-
-    private func findNode<T>(
-        _ items: [FavoriteNode],
-        id: String,
-        extract: (FavoriteNode) -> T?
-    ) -> T? {
-        for node in items {
-            if node.id == id, let value = extract(node) {
-                return value
-            }
-            if let children = node.children, let found = findNode(children, id: id, extract: extract) {
-                return found
-            }
-        }
-        return nil
+        return FavoritesTreeFilter.filterTree(allNodes, searchText: searchText)
     }
 }

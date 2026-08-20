@@ -32,17 +32,17 @@ final class LicenseSignatureVerifier {
             throw LicenseError.signatureInvalid
         }
 
-        // Encode the data portion as canonical JSON (same as server)
+        // Encode the data portion as canonical JSON (same as server). The server signs
+        // json_encode($data, JSON_UNESCAPED_SLASHES) over a ksort'ed array, so the slash must
+        // stay raw here or a signed field containing one never verifies.
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let dataJSON = try encoder.encode(payload.data)
 
-        // Decode the base64 signature
         guard let signatureData = Data(base64Encoded: payload.signature) else {
             throw LicenseError.signatureInvalid
         }
 
-        // Verify RSA-SHA256 signature
         let isValid = SecKeyVerifySignature(
             publicKey,
             .rsaSignatureMessagePKCS1v15SHA256,
@@ -73,7 +73,6 @@ final class LicenseSignatureVerifier {
 
     /// Parse a PEM-encoded public key into a SecKey
     private static func createSecKey(fromPEM pem: String) -> SecKey? {
-        // Strip PEM headers/footers and whitespace
         let stripped = pem
             .replacingOccurrences(of: "-----BEGIN PUBLIC KEY-----", with: "")
             .replacingOccurrences(of: "-----END PUBLIC KEY-----", with: "")

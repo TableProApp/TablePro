@@ -30,6 +30,7 @@ struct MainContentView: View {
 
     // Shared state from parent
     @Binding var windowTitle: String
+    @Binding var windowSubtitle: String
     @Bindable var schemaService = SchemaService.shared
     var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<String>
@@ -53,7 +54,6 @@ struct MainContentView: View {
     @State var commandActions: MainContentCommandActions?
     @State var queryResultsSummaryCache: (tabId: UUID, version: Int, summary: String?)?
     @State var inspectorUpdateTask: Task<Void, Never>?
-    @State var lazyLoadTask: Task<Void, Never>?
     /// Stable identifier for this window in WindowLifecycleMonitor
     @State var windowId = UUID()
     @State var hasInitialized = false
@@ -69,6 +69,7 @@ struct MainContentView: View {
         connection: DatabaseConnection,
         payload: EditorTabPayload?,
         windowTitle: Binding<String>,
+        windowSubtitle: Binding<String>,
         sidebarState: SharedSidebarState,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -82,6 +83,7 @@ struct MainContentView: View {
         self.connection = connection
         self.payload = payload
         self._windowTitle = windowTitle
+        self._windowSubtitle = windowSubtitle
         self.sidebarState = sidebarState
         self._pendingTruncates = pendingTruncates
         self._pendingDeletes = pendingDeletes
@@ -101,42 +103,34 @@ struct MainContentView: View {
                 sheetContent(for: sheet)
             }
             .confirmationDialog(
-                dropConfirmationTitle,
+                coordinator.containerDropRequest?.title ?? "",
                 isPresented: dropConfirmationBinding,
                 titleVisibility: .visible,
-                presenting: coordinator.databaseToDrop
-            ) { name in
-                Button(String(localized: "Drop Database"), role: .destructive) {
-                    Task { await dropDatabase(name: name) }
+                presenting: coordinator.containerDropRequest
+            ) { request in
+                Button(request.confirmButtonTitle, role: .destructive) {
+                    Task { await dropContainers(request) }
                 }
                 Button(String(localized: "Cancel"), role: .cancel) {
-                    coordinator.databaseToDrop = nil
+                    coordinator.containerDropRequest = nil
                 }
-            } message: { _ in
-                Text(String(localized: "All tables and data will be permanently deleted."))
+            } message: { request in
+                Text(request.message)
             }
-            .modifier(FocusedCommandActionsModifier(actions: commandActions))
     }
 
     private var dropConfirmationBinding: Binding<Bool> {
         Binding(
-            get: { coordinator.databaseToDrop != nil },
+            get: { coordinator.containerDropRequest != nil },
             set: { newValue in
-                if !newValue { coordinator.databaseToDrop = nil }
+                if !newValue { coordinator.containerDropRequest = nil }
             }
         )
     }
 
-    private var dropConfirmationTitle: String {
-        if let name = coordinator.databaseToDrop {
-            return String(format: String(localized: "Drop database “%@”?"), name)
-        }
-        return ""
-    }
-
-    private func dropDatabase(name: String) async {
-        await coordinator.dropDatabase(name: name)
-        coordinator.databaseToDrop = nil
+    private func dropContainers(_ request: DatabaseDropRequest) async {
+        await coordinator.dropContainers(request)
+        coordinator.containerDropRequest = nil
     }
 
     // MARK: - Sheet Content
@@ -145,8 +139,19 @@ struct MainContentView: View {
     /// so export/import dialogs see the database the user actually switched to.
     private var connectionWithCurrentDatabase: DatabaseConnection {
         var conn = connection
-        if let currentDB = DatabaseManager.shared.session(for: connection.id)?.currentDatabase {
+        if let currentDB = DatabaseManager.shared.session(for: connection.id)?.browseDatabase {
             conn.database = currentDB
+        }
+        return conn
+    }
+
+    /// Exporting a container names the database that container lives in, which is not always the
+    /// one being browsed. The dialog scopes every list and the export itself to this connection's
+    /// database, so naming it here is what makes exporting another database show that database.
+    private var exportConnection: DatabaseConnection {
+        var conn = connectionWithCurrentDatabase
+        if let scoped = coordinator.exportPreselection?.scopedDatabase, !scoped.isEmpty {
+            conn.database = scoped
         }
         return conn
     }
@@ -161,7 +166,7 @@ struct MainContentView: View {
             set: {
                 if !$0 {
                     coordinator.activeSheet = nil
-                    coordinator.exportPreselectedTableNames = nil
+                    coordinator.exportPreselection = nil
                 }
             }
         )
@@ -177,17 +182,17 @@ struct MainContentView: View {
                 databaseType: connection.type,
                 viewModel: viewModel,
                 onCreated: { newDatabaseName in
-                    Task { await coordinator.switchDatabase(to: newDatabaseName) }
+                    Task { await coordinator.switchContainer(to: newDatabaseName) }
                 }
             )
         case .exportDialog:
-            let exportConnection = connectionWithCurrentDatabase
+            let exportConnection = exportConnection
             ExportDialog(
                 isPresented: dismissBinding,
                 mode: .tables(
                     connection: exportConnection,
-                    preselectedTables: coordinator.exportPreselectedTableNames
-                        ?? Set(coordinator.windowSidebarState.selectedTables.map(\.name))
+                    preselection: coordinator.exportPreselection
+                        ?? .tables(Set(coordinator.windowSidebarState.selectedTables.map(\.name)))
                 ),
                 sidebarTables: tables
             )
@@ -214,7 +219,7 @@ struct MainContentView: View {
                     )
                 }
             }
-        case .importDialog:
+        case .importDialog(let formatId):
             let importDismiss = Binding<Bool>(
                 get: { coordinator.activeSheet != nil },
                 set: { if !$0 {
@@ -226,40 +231,56 @@ struct MainContentView: View {
             ImportDialog(
                 isPresented: importDismiss,
                 connection: connection,
-                initialFileURL: coordinator.importFileURL
+                initialFileURL: coordinator.importFileURL,
+                initialFormatId: formatId
             )
+        case .rowImport(let formatId):
+            let rowDismiss = Binding<Bool>(
+                get: { coordinator.activeSheet != nil },
+                set: { if !$0 {
+                    coordinator.activeSheet = nil
+                    coordinator.importFileURL = nil
+                }
+                }
+            )
+            if let url = coordinator.importFileURL {
+                RowImportSheet(
+                    isPresented: rowDismiss,
+                    connection: connection,
+                    fileURL: url,
+                    formatId: formatId
+                )
+            }
         case .backupDatabase:
             BackupDatabaseFlow(
                 isPresented: dismissBinding,
                 connection: connectionWithCurrentDatabase,
-                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.currentDatabase
+                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.browseDatabase
                     ?? connection.database
             )
         case .restoreDatabase(let fileURL):
             RestoreDatabaseFlow(
                 isPresented: dismissBinding,
                 connection: connectionWithCurrentDatabase,
-                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.currentDatabase
+                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.browseDatabase
                     ?? connection.database,
                 sourceURL: fileURL
             )
-        case .maintenance(let operation, let tableName):
+        case .maintenance(let operation, let tableName, let database, let schema):
             MaintenanceSheet(
                 operation: operation,
                 tableName: tableName,
                 databaseType: connection.type,
-                onExecute: coordinator.executeMaintenance
+                onExecute: { operation, tableName, options in
+                    coordinator.executeMaintenance(
+                        operation: operation,
+                        tableName: tableName,
+                        options: options,
+                        database: database,
+                        schema: schema
+                    )
+                }
             )
-        case .quickSwitcher:
-            QuickSwitcherSheet(
-                isPresented: dismissBinding,
-                schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connection.id),
-                connectionId: connection.id,
-                databaseType: connection.type,
-                onSelect: coordinator.handleQuickSwitcherSelection
-            )
-        case .connectionSwitcher:
-            ConnectionSwitcherSheet(isPresented: dismissBinding)
         case .sqlPreview:
             SQLReviewSheet(
                 isPresented: dismissBinding,
@@ -278,7 +299,8 @@ struct MainContentView: View {
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
             hasStructureChanges: toolbarState.hasStructureChanges,
-            isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false
+            isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false,
+            hasCreateTablePending: toolbarState.hasCreateTablePending
         )
     }
 
@@ -304,21 +326,11 @@ struct MainContentView: View {
                     "[open] MainContentView.onAppear start windowId=\(windowId, privacy: .public) connId=\(connection.id, privacy: .public) tabs=\(tabManager.tabs.count)"
                 )
                 coordinator.markActivated()
-
-                // Set window title for empty state (no tabs restored)
-                if tabManager.tabs.isEmpty {
-                    windowTitle = connection.name
-                }
                 setupCommandActions()
                 updateToolbarPendingState()
                 updateInspectorContext()
                 coordinator.aiViewModel = rightPanelState.aiViewModel
                 coordinator.rightPanelState = rightPanelState
-
-                // (NSToolbar install moved to `configureWindow(_:)` — at onAppear
-                // time `viewWindow` is still nil because WindowAccessor fires its
-                // callback on viewDidMoveToWindow, which runs AFTER SwiftUI's
-                // onAppear in NSHostingView-hosted content.)
 
                 Self.lifecycleLogger.info(
                     "[open] MainContentView.onAppear done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
@@ -331,13 +343,6 @@ struct MainContentView: View {
 
     private var bodyContentCore: some View {
         mainContentView
-            // Phase 3: SwiftUI `.toolbar { ... }` removed — NSToolbar is now
-            // installed directly on NSWindow by TabWindowController (see
-            // `MainWindowToolbar`). Reuses every existing SwiftUI subview
-            // (ConnectionStatusView, SafeModeBadgeView, popovers, etc.) via
-            // `NSHostingView` inside `NSToolbarItem.view`. Connection color
-            // tint is not yet ported; `ToolbarTintModifier` no-ops under
-            // NSHostingView so leaving the modifier off has no visible loss.
             .task {
                 let start = Date()
                 Self.lifecycleLogger.info(
@@ -386,17 +391,13 @@ struct MainContentView: View {
                 }
                 handleTableSelectionChange(from: oldTables, to: newTables)
             }
-            .onChange(of: tables) { _, newTables in
-                let syncAction = SidebarSyncAction.resolveOnTablesLoad(
-                    newTables: newTables,
-                    selectedTables: coordinator.windowSidebarState.selectedTables,
-                    currentTabTableName: tabManager.selectedTab?.tableContext.tableName
-                )
-                if case .select(let tableName) = syncAction,
-                    let match = newTables.first(where: { $0.name == tableName })
-                {
-                    coordinator.windowSidebarState.selectedTables = [match]
-                }
+            /// A background reload of the same container must not take a selection out from under
+            /// the user. Every other input re-asserts unconditionally: a container switch above all,
+            /// because a selection made in the container being left is not one in the container
+            /// arriving.
+            .onChange(of: tables) { _, _ in
+                guard coordinator.windowSidebarState.acceptsObjectMarkRefresh else { return }
+                coordinator.syncSidebarObjectSelection()
             }
     }
 
@@ -433,7 +434,7 @@ struct MainContentView: View {
                 {
                     coordinator.inspectorProxy?.showInspector()
                 }
-                scheduleInspectorUpdate(lazyLoadExcludedColumns: true)
+                scheduleInspectorUpdate()
             },
             onFilterColumn: { columnName in
                 coordinator.addFilterForColumn(columnName)
@@ -443,9 +444,6 @@ struct MainContentView: View {
             },
             onClearFilters: {
                 coordinator.clearFiltersAndReload()
-            },
-            onRefresh: {
-                coordinator.runQuery()
             },
             onFirstPage: {
                 coordinator.goToFirstPage()
@@ -459,14 +457,14 @@ struct MainContentView: View {
             onLastPage: {
                 coordinator.goToLastPage()
             },
-            onLimitChange: { newLimit in
-                coordinator.updatePageSize(newLimit)
+            onPageSizeChange: { newSize in
+                coordinator.updatePageSize(newSize)
             },
-            onOffsetChange: { newOffset in
-                coordinator.updateOffset(newOffset)
+            onShowAll: {
+                coordinator.showAllRows()
             },
-            onPaginationGo: {
-                coordinator.applyPaginationSettings()
+            onGoToPage: { page in
+                coordinator.goToPage(page)
             }
         )
     }

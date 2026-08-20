@@ -5,12 +5,39 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("Column Width Optimization")
 @MainActor
 struct ColumnWidthOptimizationTests {
+    private func tableRows(
+        value: String,
+        columnType: ColumnType,
+        foreignKey: ForeignKeyInfo? = nil
+    ) -> TableRows {
+        TableRows.from(
+            queryRows: [[.text(value)]],
+            columns: ["x"],
+            columnTypes: [columnType],
+            columnForeignKeys: foreignKey.map { ["x": $0] } ?? [:],
+            foreignKeysFetched: foreignKey != nil
+        )
+    }
+
+    private func optimalWidth(
+        for tableRows: TableRows,
+        accessory: DataGridCellAccessory = .none
+    ) -> CGFloat {
+        DataGridCellFactory().calculateOptimalColumnWidth(
+            for: "x",
+            columnIndex: 0,
+            tableRows: tableRows,
+            accessory: accessory
+        )
+    }
+
     @Test("Column width is within min/max bounds")
     func columnWidthWithinBounds() {
         let factory = DataGridCellFactory()
@@ -103,18 +130,6 @@ struct ColumnWidthOptimizationTests {
         }
     }
 
-    @Test("Width based on header-only method matches expected bounds")
-    func headerOnlyWidthCalculation() {
-        let factory = DataGridCellFactory()
-
-        let shortWidth = factory.calculateColumnWidth(for: "id")
-        #expect(shortWidth >= 60)
-
-        let longWidth = factory.calculateColumnWidth(for: "a_very_long_column_name_that_is_descriptive")
-        #expect(longWidth > shortWidth)
-        #expect(longWidth <= 800)
-    }
-
     @Test("Nil cell values do not crash width calculation")
     func nilCellValuesSafe() {
         let factory = DataGridCellFactory()
@@ -136,6 +151,138 @@ struct ColumnWidthOptimizationTests {
         )
         #expect(width >= 60)
         #expect(width <= 800)
+    }
+
+    @Test("Automatic width includes the exact trailing action footprint")
+    func automaticWidthIncludesTrailingAction() {
+        let value = String(repeating: "M", count: 20)
+        let plainWidth = optimalWidth(for: tableRows(value: value, columnType: .text(rawType: "TEXT")))
+        let dateWidth = optimalWidth(
+            for: tableRows(value: value, columnType: .date(rawType: "DATE")),
+            accessory: .chevron
+        )
+        let foreignKeyWidth = optimalWidth(for: tableRows(
+            value: value,
+            columnType: .text(rawType: "TEXT"),
+            foreignKey: TestFixtures.makeForeignKeyInfo(column: "x")
+        ), accessory: .foreignKey)
+
+        #expect(dateWidth == plainWidth + 16)
+        #expect(foreignKeyWidth == plainWidth + 20)
+    }
+
+    @Test("Automatic width measures the displayed empty placeholder beside an action")
+    func automaticWidthMeasuresEmptyPlaceholder() {
+        let rows = tableRows(value: "", columnType: .date(rawType: "DATE"))
+        let width = optimalWidth(for: rows, accessory: .chevron)
+        let displayedWidth = CGFloat((String(localized: "Empty") as NSString).length)
+            * ThemeEngine.shared.dataGridFonts.monoCharWidth
+
+        #expect(width - DataGridCellAccessory.chevron.measurementPadding >= displayedWidth)
+    }
+}
+
+@Suite("Fit To Content Width")
+@MainActor
+struct FitToContentWidthTests {
+    private func makeTableRows(values: [String], column: String = "data") -> TableRows {
+        TableRows.from(
+            queryRows: values.map { [PluginCellValue.fromOptional($0)] },
+            columns: [column],
+            columnTypes: [.text(rawType: nil)]
+        )
+    }
+
+    private func fitWidth(values: [String], availableWidth: CGFloat, column: String = "data") -> CGFloat {
+        DataGridCellFactory().calculateFitToContentWidth(
+            for: column,
+            columnIndex: 0,
+            tableRows: makeTableRows(values: values, column: column),
+            availableWidth: availableWidth
+        )
+    }
+
+    @Test("A very long value is capped instead of stretching the column")
+    func longValueIsCapped() {
+        let width = fitWidth(values: [String(repeating: "X", count: 5_000)], availableWidth: 1_600)
+
+        #expect(width == 800, "A 5,000 character value must not widen the column past the 800pt ceiling")
+    }
+
+    @Test("No column takes more than half the visible grid")
+    func capIsHalfTheVisibleGrid() {
+        let width = fitWidth(values: [String(repeating: "X", count: 5_000)], availableWidth: 1_000)
+
+        #expect(width == 500)
+    }
+
+    @Test("Cap holds at 300pt in a narrow window")
+    func capFloorsInNarrowWindow() {
+        #expect(fitWidth(values: [String(repeating: "X", count: 5_000)], availableWidth: 200) == 300)
+        #expect(fitWidth(values: [String(repeating: "X", count: 5_000)], availableWidth: 0) == 300)
+    }
+
+    @Test("Short values still size to their content, not to the cap")
+    func shortValuesSizeToContent() {
+        let width = fitWidth(values: ["ok", "fine"], availableWidth: 1_600, column: "status")
+
+        #expect(width >= 60)
+        #expect(width < 300, "The cap is a ceiling, not a target width")
+    }
+
+    @Test("Fitted width never exceeds the data column ceiling")
+    func fittedWidthStaysUnderColumnCeiling() {
+        for availableWidth in [CGFloat](stride(from: 0, through: 4_000, by: 250)) {
+            let width = fitWidth(values: [String(repeating: "X", count: 20_000)], availableWidth: availableWidth)
+            #expect(width <= DataGridMetrics.dataColumnMaxWidth)
+        }
+    }
+
+    @Test("Long header alone does not stretch the column")
+    func longHeaderIsCapped() {
+        let column = String(repeating: "column_name_", count: 200)
+        let width = fitWidth(values: [], availableWidth: 1_600, column: column)
+
+        #expect(width == 800)
+    }
+
+    @Test("Fit to content includes the exact trailing action footprint")
+    func fitToContentIncludesTrailingAction() {
+        let value = String(repeating: "M", count: 20)
+        let plainRows = TableRows.from(
+            queryRows: [[.text(value)]],
+            columns: ["x"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        let dateRows = TableRows.from(
+            queryRows: [[.text(value)]],
+            columns: ["x"],
+            columnTypes: [.date(rawType: "DATE")]
+        )
+        let foreignKeyRows = TableRows.from(
+            queryRows: [[.text(value)]],
+            columns: ["x"],
+            columnTypes: [.text(rawType: "TEXT")],
+            columnForeignKeys: ["x": TestFixtures.makeForeignKeyInfo(column: "x")],
+            foreignKeysFetched: true
+        )
+        let factory = DataGridCellFactory()
+
+        func width(
+            for rows: TableRows,
+            accessory: DataGridCellAccessory = .none
+        ) -> CGFloat {
+            factory.calculateFitToContentWidth(
+                for: "x",
+                columnIndex: 0,
+                tableRows: rows,
+                availableWidth: 1_600,
+                accessory: accessory
+            )
+        }
+
+        #expect(width(for: dateRows, accessory: .chevron) == width(for: plainRows) + 16)
+        #expect(width(for: foreignKeyRows, accessory: .foreignKey) == width(for: plainRows) + 20)
     }
 }
 

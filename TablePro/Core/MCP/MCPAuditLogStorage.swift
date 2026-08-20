@@ -19,12 +19,6 @@ actor MCPAuditLogStorage {
     private var dbPath: String?
     private let testDatabaseSuffix: String?
 
-    enum TimeRange: Equatable {
-        case lastHours(Int)
-        case lastDays(Int)
-        case all
-    }
-
     init() {
         self.testDatabaseSuffix = nil
         setupDatabase()
@@ -53,15 +47,7 @@ actor MCPAuditLogStorage {
 
     private func setupDatabase() {
         let fileManager = FileManager.default
-        guard
-            let appSupport = fileManager.urls(
-                for: .applicationSupportDirectory, in: .userDomainMask
-            ).first
-        else {
-            Self.logger.error("Unable to access application support directory")
-            return
-        }
-        let directory = appSupport.appendingPathComponent("TablePro")
+        let directory = AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro")
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let suffix = testDatabaseSuffix ?? ""

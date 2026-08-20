@@ -42,52 +42,18 @@ final class OpenAICompatibleProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let request = try buildChatCompletionRequest(turns: turns, options: options)
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        throw AIProviderError.networkError("Invalid response")
-                    }
-
-                    guard httpResponse.statusCode == 200 else {
-                        let errorBody = try await collectErrorBody(from: bytes)
-                        throw AIProviderError.mapHTTPError(
-                            statusCode: httpResponse.statusCode,
-                            body: errorBody
-                        )
-                    }
-
-                    var state = OpenAIStreamState()
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        guard let json = Self.decodeStreamLine(line, providerType: self.providerType) else {
-                            if line == "data: [DONE]" { break }
-                            continue
-                        }
-                        let result = Self.parseChunk(json, state: &state)
-                        for event in result.events { continuation.yield(event) }
-                        if result.shouldBreak { break }
-                    }
-                    if let reasoningEnd = state.flushReasoningEnd() {
-                        continuation.yield(reasoningEnd)
-                    }
-                    if let usage = state.finalUsageEvent() {
-                        continuation.yield(usage)
-                    }
-
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
+        let providerType = self.providerType
+        return SSEEventStream.make(
+            session: session,
+            buildRequest: { [self] in try buildChatCompletionRequest(turns: turns, options: options) },
+            decodeLine: { Self.decodeStreamLine($0, providerType: providerType) },
+            makeState: { OpenAIStreamState() },
+            parse: { Self.parseChunk($0, state: &$1).events },
+            finalEvents: { state in
+                var state = state
+                return [state.flushReasoningEnd(), state.finalUsageEvent()].compactMap { $0 }
             }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        )
     }
 
     static func decodeStreamLine(_ line: String, providerType: AIProviderType) -> [String: Any]? {
@@ -230,7 +196,11 @@ final class OpenAICompatibleProvider: ChatTransport {
         return events
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        try await fetchModelIDs().map { AIModelInfo(id: $0) }
+    }
+
+    private func fetchModelIDs() async throws -> [String] {
         switch providerType {
         case .ollama:
             return try await fetchOllamaModels()
@@ -262,8 +232,7 @@ final class OpenAICompatibleProvider: ChatTransport {
                 )
             }
         default:
-            let chatPath = "/v1/chat/completions"
-            guard let url = URL(string: "\(endpoint)\(chatPath)") else {
+            guard let url = URL(string: endpoint.openAIPath("chat/completions")) else {
                 throw AIProviderError.invalidEndpoint(endpoint)
             }
 
@@ -312,10 +281,10 @@ final class OpenAICompatibleProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) throws -> URLRequest {
-        let chatPath = providerType == .ollama
-            ? "/api/chat"
-            : "/v1/chat/completions"
-        guard let url = URL(string: "\(endpoint)\(chatPath)") else {
+        let urlString = providerType == .ollama
+            ? "\(endpoint)/api/chat"
+            : endpoint.openAIPath("chat/completions")
+        guard let url = URL(string: urlString) else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
 
@@ -374,7 +343,14 @@ final class OpenAICompatibleProvider: ChatTransport {
             if case .image(let input) = block.kind { return input }
             return nil
         }
-        let textContent = turn.plainText
+        let walkthroughText = turn.blocks.compactMap { block -> String? in
+            guard case .sqlWalkthrough(let walkthrough) = block.kind else { return nil }
+            let text = walkthrough.transcriptText
+            return text.isEmpty ? nil : text
+        }.joined(separator: "\n")
+        let textContent = [turn.plainText, walkthroughText]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
 
         if turn.role == .assistant, !toolUseBlocks.isEmpty {
             var message: [String: Any] = ["role": "assistant"]
@@ -481,7 +457,7 @@ final class OpenAICompatibleProvider: ChatTransport {
     }
 
     private func fetchOpenAIModels() async throws -> [String] {
-        guard let url = URL(string: "\(endpoint)/v1/models") else {
+        guard let url = URL(string: endpoint.openAIPath("models")) else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
 

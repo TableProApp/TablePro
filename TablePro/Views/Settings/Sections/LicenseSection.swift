@@ -54,8 +54,8 @@ struct LicenseSection: View {
             }
 
             LabeledContent("Status:") {
-                Text(license.status.displayName)
-                    .foregroundStyle(license.status.isValid ? .green : .red)
+                Text(licenseManager.status.displayName)
+                    .foregroundStyle(licenseManager.status.isValid ? .green : .red)
             }
 
             if let expiresAt = license.expiresAt {
@@ -64,7 +64,7 @@ struct LicenseSection: View {
                 LabeledContent("Expires:", value: String(localized: "Lifetime"))
             }
 
-            LabeledContent("Tier:", value: license.tier.capitalized)
+            LabeledContent("Tier:", value: LicenseTier(rawValue: license.tier).displayName)
 
             if let billingCycle = license.billingCycle {
                 LabeledContent("Billing:", value: billingCycle.capitalized)
@@ -134,6 +134,12 @@ struct LicenseSection: View {
                     Task { await licenseManager.revalidate() }
                 }
                 .disabled(licenseManager.isValidating)
+            }
+
+            if let lastError = licenseManager.lastError {
+                Label(lastError.friendlyDescription, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.callout)
             }
 
             LabeledContent("Remove license from this machine") {
@@ -215,7 +221,7 @@ struct LicenseSection: View {
         defer { isActivating = false }
 
         do {
-            try await licenseManager.activate(licenseKey: licenseKeyInput)
+            try await licenseManager.activate(codeOrKey: licenseKeyInput)
             licenseKeyInput = ""
         } catch {
             AlertHelper.showErrorSheet(

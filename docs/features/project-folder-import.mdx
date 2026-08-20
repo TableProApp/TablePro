@@ -1,0 +1,56 @@
+---
+title: Open Project Folder
+description: Create a connection from the database settings already in your project's config files
+---
+
+Point TablePro at a project folder and it reads the database settings the project already has, so you do not have to copy them out of a `.env` file by hand.
+
+## Open a folder
+
+- **File > Open Project Folder...**
+- **Add from Existing > Open Project Folder...** on the welcome screen
+
+Pick the folder in the panel that appears. TablePro scans it and lists what it found.
+
+## Pick a connection
+
+Each row shows the database type, host, port, user, and database, plus the file and key it came from. Select one and click **Continue**. The connection form opens filled in, and nothing is saved or connected until you review it and click **Save**.
+
+Passwords are never shown. A row says **Password found** when the file has one, and the value goes straight to your Keychain when you save.
+
+Rows can carry extra notes:
+
+| Note | Meaning |
+|------|---------|
+| Password found | The file has a password. It is not displayed. |
+| Looks like a placeholder value | The value matches a known template, such as `!ChangeMe!` or `password_here`. |
+| Container service name, may be unreachable | The host is a name like `db` or `postgres`, which usually only resolves inside Docker. |
+| Host and port assumed | The file had credentials but no address, so `127.0.0.1` and the default port were used. |
+| No published port, may be unreachable | A Compose service with no `ports:` mapping, so it may not be reachable from your Mac. |
+
+A connection starts at the **Alert** [Safe Mode](/features/safe-mode) level instead of Silent when `prod`, `production`, or `live` shows up as a whole word in the file path, the host, or the database name.
+
+## Files it reads
+
+| File | What it reads |
+|------|---------------|
+| `.env` and friends | `DATABASE_URL`, `MONGODB_URI`, `REDIS_URL`, `TURSO_DATABASE_URL` and similar URL keys; Laravel `DB_*` keys; Postgres, MySQL, MariaDB, Mongo and SQL Server container variables; `PG*` variables |
+| `wp-config.php` | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST` |
+| `prisma/schema.prisma` | The `datasource` provider and url, including `env("...")` references |
+| `config/database.yml` | The Rails development section, following anchors and `<<` merge keys, and resolving `ENV["..."]` |
+| `docker-compose.yml`, `compose.yaml` | Database services, using the published host port |
+| `application.properties`, `application.yml` | `spring.datasource.url`, username, and password |
+| `appsettings.json` | The `ConnectionStrings` entries |
+
+Template files are skipped, so `.env.example`, `.env.sample`, `.env.template`, and `.env.dist` never appear. `.envrc` is a shell script, so TablePro never reads or runs it.
+
+The scan does not follow symlinks, skips `node_modules`, `.git`, `vendor`, `dist`, `build` and similar directories, goes four levels deep, and ignores files over 1 MB. It reads only the folder you picked, with one exception: WordPress allows `wp-config.php` to sit one level above the site, so that single file is checked in the parent folder too. When it comes from there, the row shows the path as `../wp-config.php`.
+
+## When a value cannot be read
+
+Some settings point somewhere else instead of holding a value, like `${{Postgres.DATABASE_URL}}` on Railway or a Rails credential lookup. TablePro leaves those out rather than guessing, so a row you expected may be missing. Fill those connections in by hand, or paste the URL with [Import from URL](/databases/connection-urls).
+
+## Related
+
+- [Connection Sharing](/features/connection-sharing) for importing from other database apps
+- [Safe Mode](/features/safe-mode) for guarding production connections

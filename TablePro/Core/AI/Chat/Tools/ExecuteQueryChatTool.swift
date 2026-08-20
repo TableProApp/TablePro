@@ -17,19 +17,19 @@ struct ExecuteQueryChatTool: ChatTool {
             "connection_id": ChatToolSchemaBuilder.connectionId,
             "query": ChatToolSchemaBuilder.string(description: "SQL or NoSQL query text"),
             "max_rows": ChatToolSchemaBuilder.integer(
-                description: "Maximum rows to return (default 500, max 10000). Pass null to use default.",
+                description: "Maximum rows to return, capped at the server's configured maximum row limit. Pass null to use the configured default row limit.",
                 optional: true
             ),
             "timeout_seconds": ChatToolSchemaBuilder.integer(
-                description: "Query timeout in seconds (default 30, max 300). Pass null to use default.",
+                description: "Query timeout in seconds (max 300). Pass null to use the server's configured query timeout.",
                 optional: true
             ),
             "database": ChatToolSchemaBuilder.string(
-                description: "Switch to this database before executing. Pass null to use current.",
+                description: "Run against this database. Pass null to use current.",
                 optional: true
             ),
             "schema": ChatToolSchemaBuilder.string(
-                description: "Switch to this schema before executing. Pass null to use current.",
+                description: "Run against this schema. Pass null to use current.",
                 optional: true
             )
         ]
@@ -45,7 +45,10 @@ struct ExecuteQueryChatTool: ChatTool {
         guard (query as NSString).length <= 102_400 else {
             return ChatToolResult(content: "Query exceeds 100KB limit", isError: true)
         }
-        guard !QueryClassifier.isMultiStatement(query) else {
+
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+
+        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
             return ChatToolResult(
                 content: "Multi-statement queries are not supported. Send one statement at a time.",
                 isError: true
@@ -53,20 +56,14 @@ struct ExecuteQueryChatTool: ChatTool {
         }
 
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
-        let maxRows = ChatToolArgumentDecoder.optionalInt(
-            input,
-            key: "max_rows",
-            default: mcpSettings.defaultRowLimit,
-            clamp: 1...mcpSettings.maxRowLimit
-        ) ?? mcpSettings.defaultRowLimit
-        let timeoutSeconds = ChatToolArgumentDecoder.optionalInt(
-            input,
-            key: "timeout_seconds",
-            default: mcpSettings.queryTimeoutSeconds,
-            clamp: 1...300
-        ) ?? mcpSettings.queryTimeoutSeconds
-
-        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+        let maxRows = MCPLimitResolver.resolveMaxRows(
+            requested: ChatToolArgumentDecoder.optionalInt(input, key: "max_rows"),
+            settings: mcpSettings
+        )
+        let timeoutSeconds = MCPLimitResolver.resolveTimeoutSeconds(
+            requested: ChatToolArgumentDecoder.optionalInt(input, key: "timeout_seconds"),
+            settings: mcpSettings
+        )
 
         let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
         if tier == .destructive {
@@ -76,19 +73,24 @@ struct ExecuteQueryChatTool: ChatTool {
             )
         }
 
-        if let database {
-            _ = try await context.bridge.switchDatabase(connectionId: connectionId, database: database)
-        }
-        if let schema {
-            _ = try await context.bridge.switchSchema(connectionId: connectionId, schema: schema)
-        }
+        let scope = try await context.bridge.resolveScope(
+            connectionId: connectionId,
+            database: database,
+            schema: schema
+        )
+
+        try await context.authPolicy.checkSafeModeDialog(
+            sql: query,
+            connectionId: connectionId,
+            databaseType: meta.databaseType,
+            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
+        )
 
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
         let payload = try await ToolQueryExecutor.executeAndLog(
             services: services,
             query: query,
-            connectionId: connectionId,
-            databaseName: meta.databaseName,
+            scope: scope,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             principalLabel: String(localized: "AI Chat")

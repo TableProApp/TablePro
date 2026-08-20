@@ -50,14 +50,14 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         if let driver {
             return driver.quoteIdentifier(identifier)
         }
-        return "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
+        return SQLEscaping.quoteIdentifier(identifier)
     }
 
     func escapeStringLiteral(_ value: String) -> String {
         if let driver {
             return driver.escapeStringLiteral(value)
         }
-        return value.replacingOccurrences(of: "'", with: "''")
+        return SQLEscaping.escapeStringLiteral(value)
     }
 
     func fetchTableDDL(table: String, databaseName: String) async throws -> String {

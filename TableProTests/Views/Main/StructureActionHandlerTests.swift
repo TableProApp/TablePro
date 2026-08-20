@@ -6,9 +6,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @MainActor @Suite("StructureViewActionHandler")
 struct StructureActionHandlerTests {
@@ -88,9 +88,31 @@ struct StructureActionHandlerTests {
         #expect(count == 1)
     }
 
-    // MARK: - All Six Closures Fire Independently
+    @Test("addRow closure fires when invoked")
+    func addRow_fires() {
+        let handler = StructureViewActionHandler()
+        var count = 0
+        handler.addRow = { count += 1 }
 
-    @Test("all six closures fire independently without cross-talk")
+        handler.addRow?()
+
+        #expect(count == 1)
+    }
+
+    @Test("removeRow closure fires when invoked")
+    func removeRow_fires() {
+        let handler = StructureViewActionHandler()
+        var count = 0
+        handler.removeRow = { count += 1 }
+
+        handler.removeRow?()
+
+        #expect(count == 1)
+    }
+
+    // MARK: - All Closures Fire Independently
+
+    @Test("all closures fire independently without cross-talk")
     func allClosures_fireIndependently() {
         let handler = StructureViewActionHandler()
         var counts = [String: Int]()
@@ -101,6 +123,8 @@ struct StructureActionHandlerTests {
         handler.pasteRows = { counts["pasteRows", default: 0] += 1 }
         handler.undo = { counts["undo", default: 0] += 1 }
         handler.redo = { counts["redo", default: 0] += 1 }
+        handler.addRow = { counts["addRow", default: 0] += 1 }
+        handler.removeRow = { counts["removeRow", default: 0] += 1 }
 
         handler.saveChanges?()
         handler.previewSQL?()
@@ -108,6 +132,8 @@ struct StructureActionHandlerTests {
         handler.pasteRows?()
         handler.undo?()
         handler.redo?()
+        handler.addRow?()
+        handler.removeRow?()
 
         #expect(counts["saveChanges"] == 1)
         #expect(counts["previewSQL"] == 1)
@@ -115,6 +141,8 @@ struct StructureActionHandlerTests {
         #expect(counts["pasteRows"] == 1)
         #expect(counts["undo"] == 1)
         #expect(counts["redo"] == 1)
+        #expect(counts["addRow"] == 1)
+        #expect(counts["removeRow"] == 1)
     }
 
     // MARK: - Nil Closures Are Safe

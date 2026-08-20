@@ -30,7 +30,10 @@ struct PluginEntryTests {
             databaseTypeId: databaseTypeId,
             additionalTypeIds: additionalTypeIds,
             pluginIconName: pluginIconName,
-            defaultPort: defaultPort
+            defaultPort: defaultPort,
+            exportFormatId: nil,
+            importFormatId: nil,
+            inspectorId: nil
         )
     }
 
@@ -95,7 +98,10 @@ struct PluginEntryIdentityTests {
             databaseTypeId: nil,
             additionalTypeIds: [],
             pluginIconName: "puzzlepiece",
-            defaultPort: nil
+            defaultPort: nil,
+            exportFormatId: nil,
+            importFormatId: nil,
+            inspectorId: nil
         )
         #expect(entry.id == "com.example.test-plugin")
     }

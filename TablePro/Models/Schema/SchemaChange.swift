@@ -10,22 +10,18 @@ import Foundation
 
 /// Enum representing all possible schema change types
 enum SchemaChange: Hashable, Equatable {
-    // Column operations
     case addColumn(EditableColumnDefinition)
     case modifyColumn(old: EditableColumnDefinition, new: EditableColumnDefinition)
     case deleteColumn(EditableColumnDefinition)
 
-    // Index operations
     case addIndex(EditableIndexDefinition)
     case modifyIndex(old: EditableIndexDefinition, new: EditableIndexDefinition)
     case deleteIndex(EditableIndexDefinition)
 
-    // Foreign key operations
     case addForeignKey(EditableForeignKeyDefinition)
     case modifyForeignKey(old: EditableForeignKeyDefinition, new: EditableForeignKeyDefinition)
     case deleteForeignKey(EditableForeignKeyDefinition)
 
-    // Primary key operations
     case modifyPrimaryKey(old: [String], new: [String])
 
     /// Whether this change is a deletion

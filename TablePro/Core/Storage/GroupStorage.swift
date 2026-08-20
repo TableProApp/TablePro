@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProSyncTransport
 
 /// Service for persisting connection groups
 @MainActor
@@ -104,15 +105,15 @@ final class GroupStorage {
 
         let storage = connectionStorageProvider()
         var connections = storage.loadConnections()
-        var changed = false
+        var changed: [DatabaseConnection] = []
         for i in connections.indices {
             if let gid = connections[i].groupId, allIdsToDelete.contains(gid) {
                 connections[i].groupId = nil
-                changed = true
+                changed.append(connections[i])
             }
         }
-        if changed {
-            if !storage.saveConnections(connections) {
+        if !changed.isEmpty {
+            if !storage.updateConnections(changed) {
                 Self.logger.error("Failed to clear groupId references after group deletion")
             }
         }

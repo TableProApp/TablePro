@@ -1,6 +1,6 @@
 import SwiftUI
 import TableProModels
-import TableProSync
+import TableProSyncTransport
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage(AppLockState.lockEnabledKey) private var lockEnabled = false
     @AppStorage(AppLockState.lockTimeoutKey) private var lockTimeoutSeconds = AppLockState.AutoLockTimeout.fiveMinutes.rawValue
     @AppStorage(AppPreferences.cloudSyncEnabledKey) private var cloudSyncEnabled = true
+    @AppStorage(AppPreferences.syncPasswordsKey) private var syncPasswords = false
     @AppStorage(AppPreferences.defaultPageSizeKey) private var defaultPageSize = 100
     @AppStorage(AppPreferences.defaultSafeModeKey) private var defaultSafeModeRaw = SafeModeLevel.off.rawValue
     @AppStorage(AppPreferences.hideQueryPreviewInActivityKey) private var hideQueryPreviewInActivity = false
@@ -93,11 +94,17 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(isSyncing)
+
+                Toggle(String(localized: "Sync Passwords"), isOn: $syncPasswords)
+
+                Text("Passwords sync through iCloud Keychain, which is end-to-end encrypted. Only affects new saves. Re-save a password to update its sync.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         } header: {
             Text("Sync")
         } footer: {
-            Text("When off, connections, groups, and tags stay on this device only. Existing iCloud data is not deleted.")
+            Text("When off, connections, groups, and tags stay on this device only. Existing iCloud data is not deleted. Passwords stay on this device unless you turn on Sync Passwords.")
         }
     }
 
@@ -139,8 +146,8 @@ struct SettingsView: View {
                 Text(String(localized: "Syncing\u{2026}"))
                     .foregroundStyle(.secondary)
             }
-        case .error(let message):
-            Text(message)
+        case .error(let error):
+            Text(error.localizedDescription)
                 .foregroundStyle(.red)
                 .multilineTextAlignment(.trailing)
                 .lineLimit(2)
@@ -152,6 +159,9 @@ struct SettingsView: View {
                 Text(String(localized: "Never"))
                     .foregroundStyle(.secondary)
             }
+        case .disabled:
+            Text(String(localized: "Off"))
+                .foregroundStyle(.secondary)
         }
     }
 

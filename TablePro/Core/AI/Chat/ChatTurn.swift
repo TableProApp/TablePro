@@ -19,6 +19,7 @@ enum ChatContentBlockKind: Sendable, Equatable {
     case attachment(ContextItem)
     case reasoning(ReasoningBlock)
     case image(ChatImageInput)
+    case sqlWalkthrough(SqlWalkthroughBlock)
 }
 
 @MainActor @Observable
@@ -87,10 +88,14 @@ extension ChatContentBlock {
     static func image(_ input: ChatImageInput) -> ChatContentBlock {
         ChatContentBlock(kind: .image(input))
     }
+
+    static func sqlWalkthrough(_ block: SqlWalkthroughBlock) -> ChatContentBlock {
+        ChatContentBlock(kind: .sqlWalkthrough(block))
+    }
 }
 
-@MainActor
-struct ChatTurn: Identifiable {
+@MainActor @Observable
+final class ChatTurn: Identifiable {
     let id: UUID
     let role: ChatRole
     var blocks: [ChatContentBlock]
@@ -149,7 +154,7 @@ struct ChatTurn: Identifiable {
         )
     }
 
-    mutating func appendStreamingToken(_ chunk: String) {
+    func appendStreamingToken(_ chunk: String) {
         guard !chunk.isEmpty else { return }
         if let last = blocks.last, case .text = last.kind, last.isStreaming {
             last.appendText(chunk)
@@ -158,19 +163,19 @@ struct ChatTurn: Identifiable {
         }
     }
 
-    mutating func finishStreamingTextBlock() {
+    func finishStreamingTextBlock() {
         if let last = blocks.last, case .text = last.kind, last.isStreaming {
             last.finishStreaming()
         }
     }
 
-    mutating func appendBlock(_ block: ChatContentBlock) {
+    func appendBlock(_ block: ChatContentBlock) {
         finishStreamingTextBlock()
         blocks.append(block)
     }
 
     @discardableResult
-    mutating func appendReasoningDelta(providerBlockID: String, text: String, idMap: inout [String: UUID]) -> UUID {
+    func appendReasoningDelta(providerBlockID: String, text: String, idMap: inout [String: UUID]) -> UUID {
         if let existingUUID = idMap[providerBlockID],
            let existingBlock = blocks.first(where: { $0.id == existingUUID }) {
             existingBlock.appendReasoningText(text)
@@ -184,7 +189,7 @@ struct ChatTurn: Identifiable {
         return newUUID
     }
 
-    mutating func startReasoningBlock(providerBlockID: String, idMap: inout [String: UUID]) {
+    func startReasoningBlock(providerBlockID: String, idMap: inout [String: UUID]) {
         if idMap[providerBlockID] != nil { return }
         finishStreamingTextBlock()
         let newUUID = UUID()
@@ -192,7 +197,7 @@ struct ChatTurn: Identifiable {
         blocks.append(ChatContentBlock(id: newUUID, kind: .reasoning(ReasoningBlock()), isStreaming: true))
     }
 
-    mutating func finalizeReasoningBlock(providerBlockID: String, opaque: ReasoningOpaque?, idMap: inout [String: UUID]) {
+    func finalizeReasoningBlock(providerBlockID: String, opaque: ReasoningOpaque?, idMap: inout [String: UUID]) {
         guard let blockUUID = idMap.removeValue(forKey: providerBlockID),
               let block = blocks.first(where: { $0.id == blockUUID }) else { return }
         block.setReasoningOpaque(opaque)
@@ -257,12 +262,16 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
         ChatContentBlockWire(kind: .image(input))
     }
 
+    static func sqlWalkthrough(_ block: SqlWalkthroughBlock) -> ChatContentBlockWire {
+        ChatContentBlockWire(kind: .sqlWalkthrough(block))
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case blockId, kind, text, toolUse, toolResult, attachment, reasoning, image
+        case blockId, kind, text, toolUse, toolResult, attachment, reasoning, image, sqlWalkthrough
     }
 
     private enum KindMarker: String, Codable {
-        case text, toolUse, toolResult, attachment, reasoning, image
+        case text, toolUse, toolResult, attachment, reasoning, image, sqlWalkthrough
     }
 
     init(from decoder: Decoder) throws {
@@ -283,6 +292,8 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
             resolvedKind = .reasoning(try container.decode(ReasoningBlock.self, forKey: .reasoning))
         case .image:
             resolvedKind = .image(try container.decode(ChatImageInput.self, forKey: .image))
+        case .sqlWalkthrough:
+            resolvedKind = .sqlWalkthrough(try container.decode(SqlWalkthroughBlock.self, forKey: .sqlWalkthrough))
         }
         self.init(id: resolvedID, kind: resolvedKind)
     }
@@ -309,6 +320,9 @@ struct ChatContentBlockWire: Codable, Equatable, Sendable, Identifiable {
         case .image(let input):
             try container.encode(KindMarker.image, forKey: .kind)
             try container.encode(input, forKey: .image)
+        case .sqlWalkthrough(let block):
+            try container.encode(KindMarker.sqlWalkthrough, forKey: .kind)
+            try container.encode(block, forKey: .sqlWalkthrough)
         }
     }
 }

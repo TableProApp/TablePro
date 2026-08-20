@@ -47,6 +47,22 @@ struct TableInfoTests {
         #expect(table.id != view.id)
     }
 
+    @Test("Schema-qualified id includes the schema")
+    func testSchemaQualifiedId() {
+        let info = TableInfo(name: "events", type: .table, rowCount: nil, schema: "analytics")
+        #expect(info.id == "analytics.events_TABLE")
+    }
+
+    @Test("Same table name in different schemas has distinct id, equality, and hash")
+    func testCrossSchemaDistinctIdentity() {
+        let a = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "dataset_a")
+        let b = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "dataset_b")
+        #expect(a.id != b.id)
+        #expect(a != b)
+        let set: Set<TableInfo> = [a, b]
+        #expect(set.count == 2)
+    }
+
     // MARK: - Equatable
 
     @Test("Same name and type are equal even with different rowCount")
@@ -135,6 +151,31 @@ struct TableInfoTests {
         #expect(selected.contains(lookup))
     }
 
+    // MARK: - Comment does not affect identity
+
+    @Test("Comment does not affect equality")
+    func testCommentDoesNotAffectEquality() {
+        let a = TableInfo(name: "users", type: .table, rowCount: nil, comment: "Account records")
+        let b = TableInfo(name: "users", type: .table, rowCount: nil, comment: nil)
+        #expect(a == b)
+    }
+
+    @Test("Comment does not affect hash")
+    func testCommentDoesNotAffectHash() {
+        let a = TableInfo(name: "users", type: .table, rowCount: nil, comment: "Account records")
+        let b = TableInfo(name: "users", type: .table, rowCount: nil, comment: "Something else")
+        #expect(a.hashValue == b.hashValue)
+    }
+
+    @Test("Set deduplication ignores comment")
+    func testSetDeduplicationIgnoresComment() {
+        let a = TableInfo(name: "orders", type: .table, rowCount: nil, comment: "First")
+        let b = TableInfo(name: "orders", type: .table, rowCount: nil, comment: "Second")
+        var set: Set<TableInfo> = [a]
+        set.insert(b)
+        #expect(set.count == 1)
+    }
+
     @Test("Subtracting sets works correctly")
     func testSetSubtraction() {
         let all: Set<TableInfo> = [
@@ -151,5 +192,32 @@ struct TableInfoTests {
         #expect(!result.contains(TableInfo(name: "orders", type: .table, rowCount: nil)))
         #expect(result.contains(TableInfo(name: "users", type: .table, rowCount: nil)))
         #expect(result.contains(TableInfo(name: "products", type: .view, rowCount: nil)))
+    }
+
+    // MARK: - Row Editing
+
+    @Test("A view does not allow row editing")
+    func viewDisallowsRowEditing() {
+        #expect(!TableInfo.TableType.view.allowsRowEditing)
+    }
+
+    @Test("An external table does not allow row editing")
+    func externalTableDisallowsRowEditing() {
+        #expect(!TableInfo.TableType.externalTable.allowsRowEditing)
+    }
+
+    @Test("Local relations still allow row editing")
+    func localRelationsAllowRowEditing() {
+        #expect(TableInfo.TableType.table.allowsRowEditing)
+        #expect(TableInfo.TableType.materializedView.allowsRowEditing)
+        #expect(TableInfo.TableType.foreignTable.allowsRowEditing)
+        #expect(TableInfo.TableType.systemTable.allowsRowEditing)
+        #expect(TableInfo.TableType.partitionedTable.allowsRowEditing)
+    }
+
+    @Test("External table round-trips through its raw value")
+    func externalTableRawValue() {
+        #expect(TableInfo.TableType.externalTable.rawValue == "EXTERNAL TABLE")
+        #expect(TableInfo.TableType(rawValue: "EXTERNAL TABLE") == .externalTable)
     }
 }

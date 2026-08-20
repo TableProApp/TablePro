@@ -34,17 +34,15 @@ struct VimModeIndicatorView: View {
     private var foregroundColor: Color {
         switch mode {
         case .normal: return .secondary
-        case .insert: return .white
-        case .replace: return .white
-        case .visual: return .white
-        case .commandLine: return .white
+        case .insert: return .emphasizedSelectionLabel
+        case .replace, .visual, .commandLine: return .legibleForeground(on: backgroundColor)
         }
     }
 
     private var backgroundColor: Color {
         switch mode {
         case .normal: return Color(nsColor: .controlBackgroundColor)
-        case .insert: return .accentColor
+        case .insert: return Color(nsColor: .selectedContentBackgroundColor)
         case .replace: return .red
         case .visual: return .orange
         case .commandLine: return .purple

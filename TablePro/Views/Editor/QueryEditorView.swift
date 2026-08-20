@@ -12,26 +12,35 @@ import TableProPluginKit
 
 /// SQL query editor view with execute button
 struct QueryEditorView: View {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
-
-
     @Binding var queryText: String
     @Binding var cursorPositions: [CursorPosition]
     @Binding var parameters: [QueryParameter]
     @Binding var isParameterPanelVisible: Bool
     var onExecute: () -> Void
+    var onExecuteWithoutLimit: (() -> Void)?
+    var onExecuteAllStatements: (() -> Void)?
     var schemaProvider: SQLSchemaProvider?
     var databaseType: DatabaseType?
     var connectionId: UUID?
     var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
+    var claimFocusOnAppear: Bool = false
+    var onFocusClaimed: (() -> Void)?
+    var restoredCursorRange: NSRange?
+    var restoredFoldRanges: [Range<Int>]?
+    var onFoldRangesChanged: (([Range<Int>]) -> Void)?
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
-    var onExplain: ((ClickHouseExplainVariant?) -> Void)?
-    var onExplainVariant: ((ExplainVariant) -> Void)?
+    var onExplain: ((ExplainVariant?) -> Void)?
     var onAIExplain: ((String) -> Void)?
     var onAIOptimize: ((String) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
+    var onClearResults: (() -> Void)?
+    var availableContainers: [DatabaseMetadata] = []
+    var selectedContainerName: String = ""
+    var containerEntityName: String = ""
+    var isContainerSwitchReadOnly: Bool = false
+    var onContainerChanged: ((String) -> Void)?
 
     @State private var vimMode: VimMode = .normal
 
@@ -61,13 +70,17 @@ struct QueryEditorView: View {
                 connectionId: connectionId,
                 connectionAIPolicy: connectionAIPolicy,
                 tabID: tabID,
+                claimFocusOnAppear: claimFocusOnAppear,
+                onFocusClaimed: onFocusClaimed,
+                restoredCursorRange: restoredCursorRange,
+                restoredFoldRanges: restoredFoldRanges,
+                onFoldRangesChanged: onFoldRangesChanged,
                 vimMode: $vimMode,
                 onCloseTab: onCloseTab,
                 onExecuteQuery: onExecuteQuery,
                 onAIExplain: onAIExplain,
                 onAIOptimize: onAIOptimize,
-                onSaveAsFavorite: onSaveAsFavorite,
-                onFormatSQL: formatQuery
+                onSaveAsFavorite: onSaveAsFavorite
             )
             .frame(minHeight: 100)
             .clipped()
@@ -87,40 +100,79 @@ struct QueryEditorView: View {
                 VimModeIndicatorView(mode: vimMode)
             }
 
+            QueryContainerPicker(
+                containers: availableContainers,
+                selectedName: selectedContainerName,
+                entityName: containerEntityName,
+                isReadOnly: isContainerSwitchReadOnly,
+                onChange: { name in onContainerChanged?(name) }
+            )
+
             Spacer()
 
-            // Clear button
-            Button(action: { queryText = "" }) {
+            Button(action: {
+                queryText = ""
+                onClearResults?()
+            }) {
                 Image(systemName: "trash")
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.borderless)
             .help(String(localized: "Clear Query"))
+            .accessibilityLabel(String(localized: "Clear Query"))
 
-            // Format button
             Button(action: formatQuery) {
                 Image(systemName: "text.alignleft")
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.borderless)
-            .help(String(localized: "Format Query (⇧⌘L)"))
+            .help(shortcutHint(String(localized: "Format Query"), for: .formatQuery))
+            .accessibilityLabel(String(localized: "Format Query"))
             .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .formatQuery))
+
+            Button(action: { onSaveAsFavorite?(queryText) }) {
+                Image(systemName: "star")
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.borderless)
+            .help(shortcutHint(String(localized: "Save as Favorite"), for: .saveAsFavorite))
+            .accessibilityLabel(String(localized: "Save as Favorite"))
+            .disabled(!hasQueryText)
 
             Divider()
                 .frame(height: 16)
 
             explainButton(hasQueryText: hasQueryText)
 
-            // Execute button
-            Button(action: onExecute) {
+            Menu {
+                Button(String(localized: "Execute All Statements")) {
+                    onExecuteAllStatements?()
+                }
+                .optionalKeyboardShortcut(
+                    AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeAllStatements)
+                )
+
+                Button(String(localized: "Execute Without Limit")) {
+                    onExecuteWithoutLimit?()
+                }
+                .optionalKeyboardShortcut(
+                    AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeQueryWithoutLimit)
+                )
+            } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "play.fill")
                     Text("Execute")
                 }
+            } primaryAction: {
+                onExecute()
             }
+            .menuStyle(.button)
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .keyboardShortcut(.return, modifiers: .command)
+            .fixedSize()
+            .help(shortcutHint(String(localized: "Execute"), for: .executeQuery))
+            .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeQuery))
+            .accessibilityIdentifier("query-execute-menu")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -129,21 +181,17 @@ struct QueryEditorView: View {
 
     // MARK: - Helpers
 
+    private func shortcutHint(_ label: String, for action: ShortcutAction) -> String {
+        AppSettingsManager.shared.keyboard.shortcutHint(label, for: action)
+    }
+
     @ViewBuilder
     private func explainButton(hasQueryText: Bool) -> some View {
         let variants = databaseType?.explainVariants ?? []
 
         if variants.count <= 1 {
             Button {
-                if let variant = variants.first {
-                    if let handler = onExplainVariant {
-                        handler(variant)
-                    } else {
-                        onExplain?(nil)
-                    }
-                } else {
-                    onExplain?(nil)
-                }
+                onExplain?(variants.first)
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "chart.bar.doc.horizontal")
@@ -152,17 +200,12 @@ struct QueryEditorView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
+            .help(shortcutHint(String(localized: "Explain"), for: .explainQuery))
             .disabled(!hasQueryText)
         } else {
             Menu {
                 ForEach(variants) { variant in
-                    Button(variant.label) {
-                        if let handler = onExplainVariant {
-                            handler(variant)
-                        } else if let legacy = ClickHouseExplainVariant(rawValue: variant.label) {
-                            onExplain?(legacy)
-                        }
-                    }
+                    Button(variant.label) { onExplain?(variant) }
                 }
             } label: {
                 HStack(spacing: 4) {
@@ -172,37 +215,13 @@ struct QueryEditorView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
+            .help(shortcutHint(String(localized: "Explain"), for: .explainQuery))
             .disabled(!hasQueryText)
         }
     }
 
     private func formatQuery() {
-        // Get current database type
-        let dbType = databaseType ?? .mysql
-
-        // Create formatter service
-        let formatter = SQLFormatterService()
-        let options = SQLFormatterOptions.default
-
-        let cursorOffset = cursorPositions.first?.range.location ?? 0
-
-        do {
-            // Format SQL with cursor preservation
-            let result = try formatter.format(
-                queryText,
-                dialect: dbType,
-                cursorOffset: cursorOffset,
-                options: options
-            )
-
-            // Update text and cursor position
-            queryText = result.formattedSQL
-            if let newCursor = result.cursorOffset {
-                cursorPositions = [CursorPosition(range: NSRange(location: newCursor, length: 0))]
-            }
-        } catch {
-            Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
-        }
+        EditorEventRouter.shared.performFormatSQLForKeyWindow()
     }
 }
 

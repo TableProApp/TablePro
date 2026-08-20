@@ -180,8 +180,11 @@ final public class Typesetter {
                 constrainingWidth: displayData.maxWidth - context.fragmentContext.width
             )
 
-            // Indicates the subrange on the range that the typesetter knows about. This may not be the entire line
-            let typesetSubrange = NSRange(location: context.currentPosition - range.location, length: lineBreak)
+            // Indicates the subrange on the range that the typesetter knows about. This may not be the entire line.
+            // `lineBreak` is an offset into the run, not a length, so the fragment has to be measured from where
+            // this fragment starts. Using it as a length re-typesets everything before it once per fragment.
+            let startOffset = context.currentPosition - range.location
+            let typesetSubrange = NSRange(location: startOffset, length: lineBreak - startOffset)
             let typesetData = typesetLine(typesetter: typesetter, range: typesetSubrange)
 
             // The typesetter won't tell us if 0 characters can fit in the constrained space. This checks to

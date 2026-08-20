@@ -40,7 +40,7 @@ internal struct JsonRowConverter {
                 }
 
                 let cell = row[colIdx]
-                if cell.isNull {
+                if cell.isNull || cell.isDefaultMarker {
                     result.append("null")
                     appendPropertySuffix(to: &result, colIdx: colIdx)
                     continue
@@ -91,7 +91,7 @@ internal struct JsonRowConverter {
             return formatBoolean(value)
         case .json:
             return formatJson(value)
-        case .blob, .text, .date, .timestamp, .datetime, .enumType, .set, .spatial:
+        case .blob, .text, .date, .timestamp, .datetime, .enumType, .set, .spatial, .array:
             return quotedEscaped(value)
         }
     }
@@ -100,20 +100,18 @@ internal struct JsonRowConverter {
         if let intVal = Int64(value) {
             return String(intVal)
         }
-        if let doubleVal = Double(value), doubleVal == doubleVal.rounded(.towardZero), !doubleVal.isInfinite, !doubleVal.isNaN {
-            return String(Int64(doubleVal))
+        if let literal = JsonNumberNormalizer.integerLiteral(from: value) {
+            return literal
         }
         return quotedEscaped(value)
     }
 
     private func formatDecimal(_ value: String) -> String {
-        // Emit verbatim if already a valid JSON number — preserves full database precision
         if isValidJsonNumber(value) {
             return value
         }
-        // Fallback for non-standard formats (e.g., "1.0E5" with leading +)
-        if let doubleVal = Double(value), !doubleVal.isInfinite, !doubleVal.isNaN {
-            return String(doubleVal)
+        if let literal = JsonNumberNormalizer.numberLiteral(from: value) {
+            return literal
         }
         return quotedEscaped(value)
     }

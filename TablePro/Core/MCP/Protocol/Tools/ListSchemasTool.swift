@@ -37,11 +37,12 @@ public struct ListSchemasTool: MCPToolImplementation {
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         let database = MCPArgumentDecoder.optionalString(arguments, key: "database")
 
-        if let database {
-            _ = try await services.connectionBridge.switchDatabase(connectionId: connectionId, database: database)
-        }
-
-        let payload = try await services.connectionBridge.listSchemas(connectionId: connectionId)
+        let scope = try await services.connectionBridge.resolveScope(
+            connectionId: connectionId,
+            database: database,
+            schema: nil
+        )
+        let payload = try await services.connectionBridge.listSchemas(scope: scope)
         return .structured(payload)
     }
 }

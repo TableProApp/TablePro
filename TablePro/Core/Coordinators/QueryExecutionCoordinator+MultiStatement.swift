@@ -3,263 +3,149 @@
 //  TablePro
 //
 
-import AppKit
 import Foundation
-import os
 import TableProPluginKit
 
-private let multiStatementLogger = Logger(subsystem: "com.TablePro", category: "MultiStatement")
-
 extension QueryExecutionCoordinator {
-    func executeMultipleStatements(_ statements: [String]) {
-        guard let index = parent.tabManager.selectedTabIndex else { return }
-        guard !parent.tabManager.tabs[index].execution.isExecuting else { return }
+    func executeMultipleStatements(_ statements: [String], bypassRowLimit: Bool = false) {
+        executeMultipleStatementsWithParameters(statements, parameters: [], bypassRowLimit: bypassRowLimit)
+    }
 
-        parent.currentQueryTask?.cancel()
-        parent.queryGeneration += 1
-        let capturedGeneration = parent.queryGeneration
-
-        parent.tabManager.mutate(at: index) { tab in
-            tab.execution.isExecuting = true
-            tab.execution.executionTime = nil
-            tab.execution.errorMessage = nil
+    func executeStatement(
+        rowCap: Int?,
+        originalSQL: String,
+        driver: DatabaseDriver,
+        parameters: [Any?]? = nil
+    ) async throws -> QueryResult {
+        if rowCap != nil {
+            return try await driver.executeUserQuery(query: originalSQL, rowCap: rowCap, parameters: parameters)
         }
-        parent.toolbarState.setExecuting(true)
-
-        let conn = parent.connection
-        let tabId = parent.tabManager.tabs[index].id
-        let totalCount = statements.count
-
-        parent.currentQueryTask = Task { [weak self, parent] in
-            guard let self else { return }
-            var cumulativeTime: TimeInterval = 0
-            var lastSelectResult: QueryResult?
-            var lastSelectSQL: String?
-            var totalRowsAffected = 0
-            var executedCount = 0
-            var failedSQL: String?
-            var newResultSets: [ResultSet] = []
-
-            do {
-                guard let driver = DatabaseManager.shared.driver(for: conn.id) else {
-                    throw DatabaseError.notConnected
-                }
-
-                let useTransaction = driver.supportsTransactions
-
-                if useTransaction {
-                    try await driver.beginTransaction()
-                }
-
-                @MainActor func rollbackAndResetState() async {
-                    if useTransaction {
-                        do {
-                            try await driver.rollbackTransaction()
-                        } catch {
-                            multiStatementLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
-                        }
-                    }
-                    parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
-                    parent.currentQueryTask = nil
-                    parent.toolbarState.setExecuting(false)
-                }
-
-                for (stmtIndex, sql) in statements.enumerated() {
-                    guard !Task.isCancelled else {
-                        await rollbackAndResetState()
-                        return
-                    }
-                    guard capturedGeneration == parent.queryGeneration else {
-                        await rollbackAndResetState()
-                        return
-                    }
-
-                    failedSQL = sql
-                    let result = try await driver.execute(query: sql)
-                    failedSQL = nil
-                    executedCount = stmtIndex + 1
-                    cumulativeTime += result.executionTime
-                    totalRowsAffected += result.rowsAffected
-
-                    if !result.columns.isEmpty {
-                        lastSelectResult = result
-                        lastSelectSQL = sql
-                    }
-
-                    let stmtTableName = await MainActor.run { parent.extractTableName(from: sql) }
-                    let stmtRows = TableRows.from(
-                        queryRows: result.rows,
-                        columns: result.columns.map { String($0) },
-                        columnTypes: result.columnTypes
-                    )
-                    let rs = ResultSet(label: stmtTableName ?? "Result \(stmtIndex + 1)", tableRows: stmtRows)
-                    rs.executionTime = result.executionTime
-                    rs.rowsAffected = result.rowsAffected
-                    rs.statusMessage = result.statusMessage
-                    rs.tableName = stmtTableName
-                    newResultSets.append(rs)
-
-                    let historySQL = sql.hasSuffix(";") ? sql : sql + ";"
-                    await MainActor.run {
-                        QueryHistoryManager.shared.recordQuery(
-                            query: historySQL,
-                            connectionId: conn.id,
-                            databaseName: parent.activeDatabaseName,
-                            executionTime: result.executionTime,
-                            rowCount: result.rows.count,
-                            wasSuccessful: true,
-                            errorMessage: nil
-                        )
-                    }
-                }
-
-                if useTransaction {
-                    try await driver.commitTransaction()
-                }
-
-                await MainActor.run {
-                    applyMultiStatementResults(
-                        tabId: tabId,
-                        capturedGeneration: capturedGeneration,
-                        cumulativeTime: cumulativeTime,
-                        totalRowsAffected: totalRowsAffected,
-                        lastSelectResult: lastSelectResult,
-                        lastSelectSQL: lastSelectSQL,
-                        newResultSets: newResultSets
-                    )
-                }
-            } catch {
-                if let driver = DatabaseManager.shared.driver(for: conn.id), driver.supportsTransactions {
-                    do {
-                        try await driver.rollbackTransaction()
-                    } catch {
-                        multiStatementLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
-                    }
-                }
-
-                if capturedGeneration != parent.queryGeneration
-                    || error is CancellationError
-                    || Task.isCancelled {
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
-                        parent.currentQueryTask = nil
-                        parent.toolbarState.setExecuting(false)
-                    }
-                    return
-                }
-
-                let failedStmtIndex = executedCount + 1
-                let contextMsg = "Statement \(failedStmtIndex)/\(totalCount) failed: "
-                    + error.localizedDescription
-
-                let errorRS = ResultSet(label: "Error \(failedStmtIndex)")
-                errorRS.errorMessage = error.localizedDescription
-                newResultSets.append(errorRS)
-
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    parent.currentQueryTask = nil
-                    parent.toolbarState.setExecuting(false)
-
-                    parent.tabManager.mutate(tabId: tabId) { tab in
-                        tab.execution.errorMessage = contextMsg
-                        tab.execution.isExecuting = false
-                        tab.execution.executionTime = cumulativeTime
-
-                        let pinnedResults = tab.display.resultSets.filter(\.isPinned)
-                        tab.display.resultSets = pinnedResults + newResultSets
-                        tab.display.activeResultSetId = newResultSets.last?.id
-                    }
-
-                    let rawSQL = failedSQL ?? statements[min(executedCount, totalCount - 1)]
-                    let recordSQL = rawSQL.hasSuffix(";") ? rawSQL : rawSQL + ";"
-                    QueryHistoryManager.shared.recordQuery(
-                        query: recordSQL,
-                        connectionId: conn.id,
-                        databaseName: parent.activeDatabaseName,
-                        executionTime: cumulativeTime,
-                        rowCount: 0,
-                        wasSuccessful: false,
-                        errorMessage: error.localizedDescription
-                    )
-
-                    AlertHelper.showErrorSheet(
-                        title: String(localized: "Query Execution Failed"),
-                        message: contextMsg,
-                        window: parent.contentWindow
-                    )
-                }
-            }
+        if let parameters {
+            return try await driver.executeParameterized(query: originalSQL, parameters: parameters)
         }
+        return try await driver.execute(query: originalSQL)
+    }
+
+    func makeStatementResultSet(
+        result: QueryResult,
+        sql: String,
+        index: Int,
+        baseQuery: String,
+        baseQueryParameterValues: [String?]? = nil,
+        tabId: UUID
+    ) -> ResultSet {
+        let tableName = parent.extractTableName(from: sql)
+        let rows = TableRows.from(
+            queryRows: result.rows,
+            columns: result.columns.map { String($0) },
+            columnTypes: result.columnTypes
+        )
+        let resultSet = ResultSet(label: tableName ?? "Result \(index + 1)", tableRows: rows)
+        resultSet.executionTime = result.executionTime
+        resultSet.rowsAffected = result.rowsAffected
+        resultSet.statusMessage = result.statusMessage
+        if !result.columns.isEmpty {
+            resultSet.isTruncated = result.isTruncated
+            resultSet.baseQuery = baseQuery
+            resultSet.baseQueryParameterValues = baseQueryParameterValues
+        }
+        resultSet.origin = statementOrigin(sql: sql, tabId: tabId, producesRows: !result.columns.isEmpty)
+        return resultSet
+    }
+
+    /// Each statement in a multi-statement run targets its own table, so each result carries its
+    /// own identity. Nothing fetches key columns for these statements, so the origin says so and
+    /// the result is read-only until something does. Inheriting the previous run's keys made an
+    /// UPDATE match by another table's key names, and calling them "no keys" would hand the
+    /// generator a whole-row WHERE that changes every duplicate row.
+    private func statementOrigin(sql: String, tabId: UUID, producesRows: Bool) -> ResultOrigin? {
+        guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return nil }
+        let resolved = parent.resolveTableEditability(tab: tab, sql: sql)
+        return ResultOrigin(
+            tableName: resolved.tableName,
+            schemaName: tab.tableContext.schemaName,
+            databaseName: historyDatabaseName(tabId: tabId),
+            primaryKeyColumns: [],
+            isEditable: resolved.isEditable && producesRows,
+            isView: tab.tableContext.isView,
+            keysResolved: false
+        )
+    }
+
+    func recordStatementHistory(
+        sql: String,
+        result: QueryResult,
+        connection: DatabaseConnection,
+        databaseName: String,
+        parameterValues: [QueryParameter]? = nil
+    ) {
+        let historySQL = sql.hasSuffix(";") ? sql : sql + ";"
+        recordHistory(
+            QueryHistoryRecordRequest(
+                query: historySQL,
+                connectionId: connection.id,
+                databaseName: databaseName,
+                databaseType: connection.type,
+                source: .editor,
+                executionTime: result.executionTime,
+                rowCount: result.rows.count,
+                wasSuccessful: true
+            )
+        )
     }
 
     func applyMultiStatementResults(
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         cumulativeTime: TimeInterval,
         totalRowsAffected: Int,
-        lastSelectResult: QueryResult?,
-        lastSelectSQL: String?,
         newResultSets: [ResultSet]
     ) {
-        parent.currentQueryTask = nil
-        parent.toolbarState.setExecuting(false)
+        guard parent.tabExecution.settle(claim) else { return }
+        parent.retireQueryTask(for: claim)
         parent.toolbarState.lastQueryDuration = cumulativeTime
 
-        if capturedGeneration != parent.queryGeneration {
-            parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
-            return
-        }
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             return
         }
 
         let currentTab = parent.tabManager.tabs[idx]
-        let resolvedTableName: String?
-        if let selectResult = lastSelectResult {
-            let safeColumns = selectResult.columns.map { String($0) }
-            let safeColumnTypes = selectResult.columnTypes
-            let safeRows = selectResult.rows
-            if currentTab.tabType == .table, let existing = currentTab.tableContext.tableName {
-                resolvedTableName = existing
-            } else {
-                resolvedTableName = lastSelectSQL.flatMap { parent.extractTableName(from: $0) }
-            }
+        let activeResult = newResultSets.last
+        let activeOrigin = activeResult?.origin
 
-            parent.setActiveTableRows(
-                TableRows.from(queryRows: safeRows, columns: safeColumns, columnTypes: safeColumnTypes),
-                for: currentTab.id
-            )
-        } else {
-            resolvedTableName = nil
-            parent.setActiveTableRows(TableRows(), for: currentTab.id)
-        }
+        parent.flushBufferToActiveResult(tabId: currentTab.id, pinnedOnly: true)
+        parent.setActiveTableRows(activeResult?.tableRows ?? TableRows(), for: currentTab.id)
 
         parent.tabManager.mutate(at: idx) { tab in
-            if lastSelectResult != nil {
-                tab.tableContext.tableName = resolvedTableName
-                tab.tableContext.isEditable = resolvedTableName != nil && tab.tableContext.isEditable
-            } else {
-                if tab.tabType != .table {
-                    tab.tableContext.tableName = nil
-                }
+            if tab.tabType == .query {
+                tab.tableContext.tableName = activeOrigin?.tableName
+                tab.tableContext.schemaName = activeOrigin?.schemaName
+                tab.tableContext.primaryKeyColumns = activeOrigin?.primaryKeyColumns ?? []
+                tab.tableContext.isEditable = activeOrigin?.isEditable ?? false
+            } else if activeOrigin?.tableName == nil {
                 tab.tableContext.isEditable = false
             }
 
             tab.schemaVersion += 1
             tab.execution.executionTime = cumulativeTime
             tab.execution.rowsAffected = totalRowsAffected
-            tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
             tab.execution.errorMessage = nil
 
-            let pinnedResults = tab.display.resultSets.filter(\.isPinned)
-            tab.display.resultSets = pinnedResults + newResultSets
-            tab.display.activeResultSetId = newResultSets.last?.id
+            tab.display.replaceUnpinnedResults(with: newResultSets)
             if tab.display.isResultsCollapsed {
                 tab.display.isResultsCollapsed = false
             }
+
+            let activeResultSet = activeResult
+            if activeResultSet?.isTruncated == true {
+                tab.pagination.hasMoreRows = true
+                tab.pagination.isLoadingMore = false
+            } else {
+                tab.pagination.resetLoadMore()
+            }
+            tab.pagination.baseQueryForMore = activeResultSet?.baseQuery
+            tab.pagination.baseQueryParameterValues = activeResultSet?.baseQueryParameterValues
         }
         parent.toolbarState.isResultsCollapsed = false
 

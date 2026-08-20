@@ -24,7 +24,6 @@ struct OnboardingContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Main content area
             ZStack {
                 switch currentPage {
                 case 0:
@@ -40,7 +39,6 @@ struct OnboardingContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Bottom navigation bar
             navigationBar
         }
         .onKeyPress(.leftArrow) {
@@ -67,7 +65,7 @@ struct OnboardingContentView: View {
 
     private func goToPage(_ page: Int) {
         navigatingForward = page > currentPage
-        withAnimation(.easeInOut(duration: 0.35)) {
+        withMotion(.easeInOut(duration: 0.35)) {
             currentPage = page
         }
     }
@@ -202,6 +200,7 @@ struct OnboardingContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .transition(.opacity)
                 } else {
                     Button("Get Started") {
@@ -209,6 +208,7 @@ struct OnboardingContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .transition(.opacity)
                 }
             }

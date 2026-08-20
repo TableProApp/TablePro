@@ -9,7 +9,8 @@ extension DatabaseType {
         case .redshift: return "5439"
         case .redis: return "6379"
         case .mssql: return "1433"
-        case .sqlite: return ""
+        case .oracle: return "1521"
+        case .sqlite, .duckdb: return ""
         default: return "3306"
         }
     }
@@ -21,8 +22,10 @@ extension DatabaseType {
         case .postgresql: "PostgreSQL"
         case .redshift: "Redshift"
         case .sqlite: "SQLite"
+        case .duckdb: "DuckDB"
         case .redis: "Redis"
         case .mssql: "SQL Server"
+        case .oracle: "Oracle"
         default: rawValue.uppercased()
         }
     }
@@ -32,7 +35,9 @@ extension DatabaseType {
         .mariadb,
         .postgresql,
         .sqlite,
+        .duckdb,
         .redis,
-        .mssql
+        .mssql,
+        .oracle
     ]
 }

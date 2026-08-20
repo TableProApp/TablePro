@@ -3,19 +3,41 @@
 //  TableProTests
 //
 
+import AppKit
+import CodeEditSourceEditor
 import Foundation
+import SwiftUI
 import TableProPluginKit
 import Testing
 
 @testable import TablePro
 
+@MainActor
+private final class RetargetColumnLayoutPersister: ColumnLayoutPersisting {
+    var stored: [String: ColumnLayoutState] = [:]
+
+    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? {
+        stored[key.tableName]
+    }
+
+    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {
+        stored[key.tableName] = layout
+    }
+
+    func clear(for key: ColumnLayoutTableKey) {
+        stored.removeValue(forKey: key.tableName)
+    }
+}
+
 @Suite("MainContentCoordinator handleTabChange")
 @MainActor
 struct MainContentCoordinatorTabSwitchTests {
-    private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
+    private func makeCoordinator(
+        connection: DatabaseConnection = TestFixtures.makeConnection()
+    ) -> (MainContentCoordinator, QueryTabManager) {
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
+            connection: connection,
             tabManager: tabManager,
             changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
@@ -66,6 +88,218 @@ struct MainContentCoordinatorTabSwitchTests {
         coordinator.setActiveTableRows(tableRows, for: tabId)
     }
 
+    private func attachPendingQueryGrid(
+        to coordinator: MainContentCoordinator,
+        tabId: UUID,
+        width: CGFloat
+    ) throws -> (TableViewCoordinator, DataTabGridDelegate) {
+        let rows = TableRows.from(
+            queryRows: [[.text("Ada")]],
+            columns: ["name"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        let gridCoordinator = TableViewCoordinator(
+            changeManager: AnyChangeManager(DataChangeManager()),
+            isEditable: true,
+            selectedRowIndices: .constant([]),
+            delegate: nil,
+            layoutPersister: RetargetColumnLayoutPersister()
+        )
+        gridCoordinator.tabType = .query
+        gridCoordinator.tableRowsProvider = { rows }
+        gridCoordinator.rebuildColumnMetadataCache(from: rows)
+
+        let tableView = NSTableView()
+        gridCoordinator.tableView = tableView
+        let column = NSTableColumn(identifier: try #require(gridCoordinator.columnIdentifier(for: 0)))
+        column.width = width
+        tableView.addTableColumn(column)
+        gridCoordinator.updateColumnPresentations(from: rows)
+        #expect(gridCoordinator.markColumnWidthUserSized(column))
+        gridCoordinator.onColumnLayoutDidChange = { [weak coordinator] layout in
+            coordinator?.applyColumnGeometry(from: layout, toTabId: tabId)
+        }
+        gridCoordinator.scheduleLayoutPersist()
+
+        let gridDelegate = DataTabGridDelegate()
+        gridDelegate.dataGridAttach(tableViewCoordinator: gridCoordinator)
+        coordinator.dataTabDelegate = gridDelegate
+        return (gridCoordinator, gridDelegate)
+    }
+
+    @Test("Retargeting a table flushes its pending width before the tab geometry resets")
+    func retargetFlushesOutgoingColumnLayoutBeforeReset() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "orders", databaseName: "app")
+        let rows = TableRows.from(
+            queryRows: [[.text("Ada")]],
+            columns: ["name"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        let persister = RetargetColumnLayoutPersister()
+        let gridCoordinator = TableViewCoordinator(
+            changeManager: AnyChangeManager(DataChangeManager()),
+            isEditable: true,
+            selectedRowIndices: .constant([]),
+            delegate: nil,
+            layoutPersister: persister
+        )
+        gridCoordinator.connectionId = coordinator.connectionId
+        gridCoordinator.databaseName = "app"
+        gridCoordinator.tableName = "orders"
+        gridCoordinator.tabType = .table
+        gridCoordinator.tableRowsProvider = { rows }
+        gridCoordinator.rebuildColumnMetadataCache(from: rows)
+
+        let tableView = NSTableView()
+        gridCoordinator.tableView = tableView
+        let column = NSTableColumn(identifier: try #require(gridCoordinator.columnIdentifier(for: 0)))
+        column.width = 180
+        tableView.addTableColumn(column)
+        gridCoordinator.updateColumnPresentations(from: rows)
+        #expect(gridCoordinator.markColumnWidthUserSized(column))
+        gridCoordinator.onColumnLayoutDidChange = { [weak coordinator] layout in
+            coordinator?.applyColumnGeometry(from: layout, toTabId: tabId)
+        }
+        gridCoordinator.scheduleLayoutPersist()
+
+        let gridDelegate = DataTabGridDelegate()
+        gridDelegate.dataGridAttach(tableViewCoordinator: gridCoordinator)
+        coordinator.dataTabDelegate = gridDelegate
+
+        try tabManager.replaceTabContent(
+            tableName: "customers",
+            databaseType: .mysql,
+            databaseName: "app"
+        )
+
+        let retargetedTab = try #require(tabManager.tabs.first(where: { $0.id == tabId }))
+        #expect(persister.stored["orders"]?.columnWidths == ["name": 180])
+        #expect(gridCoordinator.pendingColumnLayoutPersistence == nil)
+        #expect(retargetedTab.tableContext.tableName == "customers")
+        #expect(retargetedTab.columnLayout == ColumnLayoutState())
+    }
+
+    @Test("Closing a window flushes a pending query width before saving tabs")
+    func windowCloseFlushesPendingQueryColumnLayout() async throws {
+        let wasTerminating = MainContentCoordinator.isAppTerminating
+        MainContentCoordinator.isAppTerminating = false
+        defer { MainContentCoordinator.isAppTerminating = wasTerminating }
+
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addQueryTab(to: tabManager)
+        let (gridCoordinator, gridDelegate) = try attachPendingQueryGrid(
+            to: coordinator,
+            tabId: tabId,
+            width: 180
+        )
+        _ = gridDelegate
+        coordinator.registerEagerly()
+        coordinator.persistence.markObservedTabs()
+        TabDiskActor.clearSync(connectionId: coordinator.connectionId)
+
+        coordinator.handleWindowWillClose()
+        let restored = await coordinator.persistence.restoreFromDisk()
+
+        #expect(gridCoordinator.pendingColumnLayoutPersistence == nil)
+        #expect(restored.tabs.first?.columnLayout.columnWidths == ["name": 180])
+        #expect(restored.tabs.first?.columnLayout.columnContentWidths == ["name": 180])
+
+        coordinator.persistence.clearForUserClosedAllTabs()
+    }
+
+    @Test("Disconnect persistence flushes pending query widths from every coordinator")
+    func disconnectPersistenceFlushesEveryPendingQueryColumnLayout() async throws {
+        let connection = TestFixtures.makeConnection()
+        let (firstCoordinator, firstTabManager) = makeCoordinator(connection: connection)
+        let (secondCoordinator, secondTabManager) = makeCoordinator(connection: connection)
+        let firstTabId = addQueryTab(to: firstTabManager, title: "First")
+        let secondTabId = addQueryTab(to: secondTabManager, title: "Second")
+        let (firstGrid, firstDelegate) = try attachPendingQueryGrid(
+            to: firstCoordinator,
+            tabId: firstTabId,
+            width: 180
+        )
+        let (secondGrid, secondDelegate) = try attachPendingQueryGrid(
+            to: secondCoordinator,
+            tabId: secondTabId,
+            width: 220
+        )
+        _ = (firstDelegate, secondDelegate)
+
+        firstCoordinator.registerEagerly()
+        secondCoordinator.registerEagerly()
+        firstCoordinator.persistence.markObservedTabs()
+        secondCoordinator.persistence.markObservedTabs()
+        TabDiskActor.clearSync(connectionId: connection.id)
+        defer {
+            TabDiskActor.clearSync(connectionId: connection.id)
+            firstCoordinator.teardown()
+            secondCoordinator.teardown()
+        }
+
+        SessionTabStatePersister().persistTabState(for: connection.id)
+        let restored = await firstCoordinator.persistence.restoreFromDisk()
+        let firstTab = try #require(restored.tabs.first(where: { $0.id == firstTabId }))
+        let secondTab = try #require(restored.tabs.first(where: { $0.id == secondTabId }))
+
+        #expect(firstGrid.pendingColumnLayoutPersistence == nil)
+        #expect(secondGrid.pendingColumnLayoutPersistence == nil)
+        #expect(firstTab.columnLayout.columnWidths == ["name": 180])
+        #expect(secondTab.columnLayout.columnWidths == ["name": 220])
+    }
+
+    @Test("Connection-close persistence runs before coordinator teardown")
+    func connectionClosePersistencePrecedesCoordinatorTeardown() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addQueryTab(to: tabManager)
+        let (gridCoordinator, gridDelegate) = try attachPendingQueryGrid(
+            to: coordinator,
+            tabId: tabId,
+            width: 180
+        )
+        _ = gridDelegate
+        coordinator.registerEagerly()
+        coordinator.persistence.markObservedTabs()
+        TabDiskActor.clearSync(connectionId: coordinator.connectionId)
+        defer { TabDiskActor.clearSync(connectionId: coordinator.connectionId) }
+
+        SessionTabStatePersister().persistTabState(for: coordinator.connectionId)
+        coordinator.teardown()
+        let restored = await coordinator.persistence.restoreFromDisk()
+
+        #expect(gridCoordinator.pendingColumnLayoutPersistence == nil)
+        #expect(tabManager.tabs.isEmpty)
+        #expect(restored.tabs.first?.columnLayout.columnWidths == ["name": 180])
+        #expect(restored.tabs.first?.columnLayout.columnContentWidths == ["name": 180])
+    }
+
+    @Test("Closing a query tab flushes its pending width into recently closed state")
+    func closingQueryTabFlushesPendingColumnLayout() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addQueryTab(to: tabManager)
+        let (gridCoordinator, gridDelegate) = try attachPendingQueryGrid(
+            to: coordinator,
+            tabId: tabId,
+            width: 180
+        )
+        _ = gridDelegate
+        defer {
+            RecentlyClosedTabStore.shared.removeEntries(for: coordinator.connectionId)
+            coordinator.teardown()
+        }
+
+        coordinator.closeTabsByUser(ids: [tabId])
+
+        let closedTab = RecentlyClosedTabStore.shared.entries.first {
+            $0.connectionId == coordinator.connectionId && $0.tab.id == tabId
+        }
+        #expect(gridCoordinator.pendingColumnLayoutPersistence == nil)
+        #expect(tabManager.tabs.isEmpty)
+        #expect(closedTab?.tab.columnWidths == ["name": 180])
+        #expect(closedTab?.tab.columnContentWidths == ["name": 180])
+    }
+
     // MARK: - Save outgoing state
 
     @Test("Filter state set on the active tab survives a tab switch")
@@ -82,7 +316,7 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         var state = TabFilterState()
         state.filters = [TestFixtures.makeTableFilter(column: "id", op: .equal, value: "42")]
-        state.appliedFilters = state.filters
+        state.commit = .all
         state.isVisible = true
         tabManager.tabs[oldIndex].filterState = state
 
@@ -169,7 +403,7 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         var savedFilter = TabFilterState()
         savedFilter.filters = [TestFixtures.makeTableFilter(column: "name", op: .equal, value: "Bob")]
-        savedFilter.appliedFilters = savedFilter.filters
+        savedFilter.commit = .all
         savedFilter.isVisible = true
         tabManager.tabs[newIndex].filterState = savedFilter
 
@@ -442,15 +676,166 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         tabManager.tabs[index].filterState.filters = [f1, f2]
         tabManager.tabs[index].filterState.filterLogicMode = .or
+        tabManager.tabs[index].filterState.isVisible = true
 
-        coordinator.applySelectedFilters()
+        coordinator.applyAllFilters()
         #expect(coordinator.selectedTabFilterState.appliedFilters.count == 2)
         #expect(coordinator.selectedTabFilterState.filterLogicMode == .or)
 
         coordinator.clearFilterState()
         #expect(coordinator.selectedTabFilterState.filters.isEmpty)
         #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
-        #expect(coordinator.selectedTabFilterState.isVisible == false)
+        #expect(coordinator.selectedTabFilterState.isVisible == true)
+    }
+
+    @Test("Apply All runs only enabled filters but keeps disabled ones in the panel")
+    func applyAllExcludesDisabledFilters() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+
+        let active = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let inactive = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [active, inactive]
+
+        coordinator.applyAllFilters()
+
+        #expect(coordinator.selectedTabFilterState.filters.count == 2)
+        #expect(coordinator.selectedTabFilterState.appliedFilters == [active])
+    }
+
+    @Test("Removing the soloed filter clears the applied set")
+    func removingSoloedFilterClearsCommit() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+
+        let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [first, second]
+
+        coordinator.applySoloFilter(second)
+        #expect(coordinator.selectedTabFilterState.appliedFilters.map(\.id) == [second.id])
+
+        coordinator.removeFilter(second)
+        #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
+    }
+
+    @Test("Soloing an invalid filter does nothing")
+    func soloingInvalidFilterIsNoOp() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+
+        let invalid = TestFixtures.makeTableFilter(column: "", value: "")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [invalid]
+
+        coordinator.applySoloFilter(invalid)
+        #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
+    }
+
+    @Test("Apply on a single row queries by only that row without changing checkbox state")
+    func applySoloFilterRunsOnlyThatRowAndKeepsState() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+
+        let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
+        let third = TestFixtures.makeTableFilter(column: "email", op: .contains, value: "b")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [first, second, third]
+
+        coordinator.applySoloFilter(second)
+
+        let state = coordinator.selectedTabFilterState
+        #expect(state.filters.map(\.isEnabled) == [true, false, true])
+        #expect(state.appliedFilters.map(\.id) == [second.id])
+        #expect(state.appliedFilters.first?.isEnabled == true)
+    }
+
+    @Test("Applying filters persists them immediately so a reopened table restores them")
+    func applyFiltersPersistForReopen() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        defer {
+            FilterSettingsStorage.shared.clearLastFilters(
+                for: "users",
+                connectionId: coordinator.connectionId,
+                databaseName: "",
+                schemaName: nil
+            )
+        }
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [
+            TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        ]
+
+        coordinator.applyAllFilters()
+
+        let persisted = FilterSettingsStorage.shared.loadLastFilters(
+            for: "users",
+            connectionId: coordinator.connectionId,
+            databaseName: "",
+            schemaName: nil
+        )
+        #expect(persisted.count == 1)
+        #expect(persisted.first?.columnName == "id")
+    }
+
+    @Test("Disabled filters persist so they are available again after reopening a table")
+    func disabledFiltersPersistForReopen() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        defer {
+            FilterSettingsStorage.shared.clearLastFilters(
+                for: "users",
+                connectionId: coordinator.connectionId,
+                databaseName: "",
+                schemaName: nil
+            )
+        }
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [
+            TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1"),
+            TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
+        ]
+
+        coordinator.applyAllFilters()
+
+        let persisted = FilterSettingsStorage.shared.loadLastFilters(
+            for: "users",
+            connectionId: coordinator.connectionId,
+            databaseName: "",
+            schemaName: nil
+        )
+        #expect(persisted.count == 2)
+        #expect(persisted.contains { $0.columnName == "name" && !$0.isEnabled })
     }
 
     @Test("DataChangeManager restoreState rehydrates table context and changes")
@@ -506,5 +891,63 @@ struct MainContentCoordinatorTabSwitchTests {
             return
         }
         #expect(tabManager.tabs[index].columnLayout.hiddenColumns == ["email", "phone"])
+    }
+
+    // MARK: - The caret of the tab being left
+
+    /// One editor serves every query tab, so the live caret describes the outgoing tab only until
+    /// the switch completes. Persistence writes it for the selected tab alone, and the tab's own
+    /// restored value was already cleared when its editor consumed it, so a caret not captured on
+    /// the way out is simply gone.
+    @Test("Switching away from a query tab keeps its caret on the tab")
+    func switchingAwayCapturesTheCaret() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let first = addQueryTab(to: tabManager, title: "A", query: String(repeating: "SELECT 1;\n", count: 200))
+        let second = addQueryTab(to: tabManager, title: "B")
+
+        coordinator.cursorPositions = [CursorPosition(range: NSRange(location: 120, length: 8))]
+        tabManager.selectedTabId = second
+        coordinator.handleTabChange(from: first, to: second, tabs: tabManager.tabs)
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == first }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        #expect(tabManager.tabs[index].restoredCursorOffset == 120)
+        #expect(tabManager.tabs[index].restoredCursorLength == 8)
+    }
+
+    @Test("A captured caret survives into the persisted record")
+    func capturedCaretIsPersisted() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let first = addQueryTab(to: tabManager, title: "A", query: String(repeating: "SELECT 1;\n", count: 200))
+        let second = addQueryTab(to: tabManager, title: "B")
+
+        coordinator.cursorPositions = [CursorPosition(range: NSRange(location: 90, length: 0))]
+        tabManager.selectedTabId = second
+        coordinator.handleTabChange(from: first, to: second, tabs: tabManager.tabs)
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == first }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        #expect(tabManager.tabs[index].toPersistedTab().cursorOffset == 90)
+    }
+
+    @Test("Leaving a table tab records no caret")
+    func tableTabRecordsNoCaret() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let table = addTableTab(to: tabManager, tableName: "users")
+        let query = addQueryTab(to: tabManager, title: "B")
+
+        coordinator.cursorPositions = [CursorPosition(range: NSRange(location: 42, length: 0))]
+        tabManager.selectedTabId = query
+        coordinator.handleTabChange(from: table, to: query, tabs: tabManager.tabs)
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == table }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        #expect(tabManager.tabs[index].restoredCursorOffset == nil)
     }
 }

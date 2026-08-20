@@ -2,25 +2,48 @@ import AppKit
 
 final class KeyHandlingTableView: NSTableView {
     weak var coordinator: TableViewCoordinator?
+    weak var selectionOverlay: GridSelectionOverlay?
 
-    private var isRaisingOverlayEditor = false
+    private var isRaisingOverlay = false
 
     override var acceptsFirstResponder: Bool {
         true
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard coordinator?.tabType == .table, let window,
+              let mainCoordinator = (coordinator?.delegate as? DataTabGridDelegate)?.coordinator,
+              mainCoordinator.consumePendingGridFocus() else { return }
+        window.makeFirstResponder(self)
+    }
+
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
-        guard !isRaisingOverlayEditor else { return }
-        guard let editor = coordinator?.overlayEditor,
-              editor.isActive,
-              let container = editor.containerView,
+        guard !isRaisingOverlay else { return }
+        isRaisingOverlay = true
+        defer { isRaisingOverlay = false }
+        raiseSelectionOverlayIfNeeded(subview: subview)
+        raiseOverlayIfNeeded(coordinator?.overlayEditor, subview: subview)
+        raiseOverlayIfNeeded(coordinator?.overlayViewer, subview: subview)
+    }
+
+    private func raiseSelectionOverlayIfNeeded(subview: NSView) {
+        guard let selectionOverlay,
+              selectionOverlay.superview === self,
+              subview !== selectionOverlay,
+              subviews.last !== selectionOverlay else { return }
+        addSubview(selectionOverlay)
+    }
+
+    private func raiseOverlayIfNeeded(_ overlay: CellOverlayBase?, subview: NSView) {
+        guard let overlay,
+              overlay.isActive,
+              let container = overlay.containerView,
               container !== subview,
               container.superview === self,
               subviews.last !== container else { return }
-        isRaisingOverlayEditor = true
-        editor.raiseToFront()
-        isRaisingOverlayEditor = false
+        overlay.raiseToFront()
     }
 
     var selection = TableSelection() {
@@ -67,6 +90,23 @@ final class KeyHandlingTableView: NSTableView {
         set { selection.focusedColumn = newValue }
     }
 
+    private var gridSelection: GridSelectionController? { coordinator?.selectionController }
+
+    private func withProgrammaticRowSelection(_ work: () -> Void) {
+        let coordinator = coordinator
+        let wasApplying = coordinator?.isApplyingProgrammaticRowSelection ?? false
+        coordinator?.isApplyingProgrammaticRowSelection = true
+        work()
+        coordinator?.isApplyingProgrammaticRowSelection = wasApplying
+    }
+
+    private func totalRows() -> Int { numberOfRows }
+
+    private func totalDataColumns() -> Int {
+        guard let schema = coordinator?.identitySchema else { return 0 }
+        return schema.totalDataColumns
+    }
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
 
@@ -79,54 +119,140 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        let alreadyFocusedHere = clickedRow >= 0
-            && clickedColumn >= 0
-            && clickedRow == focusedRow
-            && clickedColumn == focusedColumn
-
-        super.mouseDown(with: event)
-
         guard clickedRow >= 0,
               clickedColumn >= 0,
               clickedColumn < numberOfColumns else {
+            gridSelection?.clear()
+            super.mouseDown(with: event)
             return
         }
 
         let column = tableColumns[clickedColumn]
-        if column.identifier == ColumnIdentitySchema.rowNumberIdentifier {
-            focusedRow = -1
-            focusedColumn = -1
+        let isDataColumn = column.identifier != ColumnIdentitySchema.rowNumberIdentifier
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        if event.clickCount >= 2 {
+            super.mouseDown(with: event)
             return
         }
 
-        focusedRow = clickedRow
-        focusedColumn = clickedColumn
-
-        if alreadyFocusedHere && event.clickCount == 1 && selectedRowIndexes.count == 1 {
-            if let schema = coordinator?.identitySchema,
-               let dataColumnIndex = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema),
-               coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumnIndex) == true {
-                coordinator?.beginCellEdit(row: clickedRow, tableColumnIndex: clickedColumn)
+        guard isDataColumn,
+              let schema = coordinator?.identitySchema,
+              let dataColumn = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema) else {
+            gridSelection?.clear()
+            super.mouseDown(with: event)
+            if !isDataColumn {
+                focusedRow = -1
+                focusedColumn = -1
             }
+            return
         }
+
+        let alreadyFocusedHere = clickedRow == focusedRow && clickedColumn == focusedColumn
+        let coord = GridCoord(row: clickedRow, column: dataColumn)
+        guard let controller = gridSelection else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        let disposition = controller.beginDrag(at: coord, modifiers: modifiers)
+        switch disposition {
+        case .replaceFocus(let activeCoord):
+            withProgrammaticRowSelection {
+                selectRowIndexes(IndexSet(integer: activeCoord.row), byExtendingSelection: false)
+            }
+            focusedRow = activeCoord.row
+            focusedColumn = coordinator?.tableColumnIndex(for: activeCoord.column) ?? clickedColumn
+        case .clearFocus:
+            deselectAll(nil)
+            focusedRow = -1
+            focusedColumn = -1
+        case .clickThrough:
+            super.mouseDown(with: event)
+        }
+
+        trackDrag(initial: coord, schema: schema)
+
+        if modifiers.isEmpty,
+           alreadyFocusedHere,
+           selectedRowIndexes.count == 1,
+           coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumn) == true {
+            coordinator?.handleCellInteraction(
+                row: clickedRow,
+                tableColumn: clickedColumn,
+                columnIndex: dataColumn,
+                tableView: self
+            )
+        }
+    }
+
+    private func trackDrag(initial: GridCoord, schema: ColumnIdentitySchema) {
+        guard let window, let controller = gridSelection else { return }
+        var dragged = false
+        let mask: NSEvent.EventTypeMask = [.leftMouseDragged, .leftMouseUp]
+        while let event = window.nextEvent(matching: mask) {
+            if event.type == .leftMouseUp {
+                controller.endDrag(dragged: dragged, originalCoord: initial)
+                return
+            }
+            let point = convert(event.locationInWindow, from: nil)
+            autoscroll(with: event)
+            let rowIdx = clampRow(row(at: point))
+            let columnIdx = clampDataColumn(column(at: point), schema: schema)
+            guard rowIdx >= 0, columnIdx >= 0 else { continue }
+            let coord = GridCoord(row: rowIdx, column: columnIdx)
+            if coord != initial { dragged = true }
+            controller.continueDrag(to: coord)
+        }
+    }
+
+    private func clampRow(_ value: Int) -> Int {
+        guard numberOfRows > 0 else { return -1 }
+        if value < 0 { return 0 }
+        if value >= numberOfRows { return numberOfRows - 1 }
+        return value
+    }
+
+    private func clampDataColumn(_ value: Int, schema: ColumnIdentitySchema) -> Int {
+        let firstData = DataGridView.firstDataTableColumnIndex
+        let candidate = value < firstData ? firstData : value
+        guard candidate >= 0, candidate < numberOfColumns else { return -1 }
+        return DataGridView.dataColumnIndex(for: candidate, in: self, schema: schema) ?? -1
     }
 
     @objc func delete(_ sender: Any?) {
-        guard coordinator?.isEditable == true else { return }
-        guard !selectedRowIndexes.isEmpty else { return }
-        coordinator?.delegate?.dataGridDeleteRows(Set(selectedRowIndexes))
+        guard let coordinator, coordinator.isEditable else { return }
+        let indices = coordinator.currentRowSelection()
+        guard !indices.isEmpty else { return }
+        coordinator.delegate?.dataGridDeleteRows(indices)
     }
 
     @objc func copy(_ sender: Any?) {
+        if let controller = gridSelection, !controller.isEmpty {
+            coordinator?.copyGridSelection(controller.selection)
+            return
+        }
         if let cell = focusedDataCell() {
             coordinator?.copyCellValue(at: cell.row, columnIndex: cell.columnIndex)
-        } else {
-            coordinator?.delegate?.dataGridCopyRows(Set(selectedRowIndexes))
+            return
         }
+        coordinator?.delegate?.dataGridCopyRows(Set(selectedRowIndexes))
     }
 
     @objc func copyRowsAsTSV(_ sender: Any?) {
-        coordinator?.delegate?.dataGridCopyRows(Set(selectedRowIndexes))
+        guard let coordinator else { return }
+        coordinator.delegate?.dataGridCopyRows(coordinator.currentRowSelection())
+    }
+
+    @objc override func selectAll(_ sender: Any?) {
+        let totalRows = totalRows()
+        let totalColumns = totalDataColumns()
+        guard totalRows > 0, totalColumns > 0 else {
+            super.selectAll(sender)
+            return
+        }
+        gridSelection?.selectAll(totalRows: totalRows, totalColumns: totalColumns)
+        selectRowIndexes(IndexSet(integersIn: 0..<totalRows), byExtendingSelection: false)
     }
 
     private func focusedDataCell() -> (row: Int, columnIndex: Int)? {
@@ -142,28 +268,53 @@ final class KeyHandlingTableView: NSTableView {
 
     @objc func paste(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
-        if focusedRow >= 0,
-           DataGridView.isDataTableColumn(focusedColumn),
-           let schema = coordinator?.identitySchema,
-           let dataCol = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
-           coordinator?.pasteCellsFromClipboard(anchorRow: focusedRow, anchorColumn: dataCol) == true {
+        if let anchor = pasteAnchorCell(),
+           coordinator?.pasteCellsFromClipboard(anchorRow: anchor.row, anchorColumn: anchor.column) == true {
             return
         }
         coordinator?.delegate?.dataGridPasteRows()
     }
 
+    /// The cell a paste would land in. Deliberately looser than `focusedDataCell()`, which also
+    /// requires a single selected row: a paste anchors on the focused cell alone.
+    private func pasteAnchorCell() -> (row: Int, column: Int)? {
+        guard focusedRow >= 0,
+              DataGridView.isDataTableColumn(focusedColumn),
+              let schema = coordinator?.identitySchema,
+              let dataCol = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
+            return nil
+        }
+        return (focusedRow, dataCol)
+    }
+
+    /// Both routes `paste(_:)` can take, asked before the menu item is enabled. The item used to be
+    /// enabled whenever the grid was editable and had a delegate, which lit it over query-result
+    /// tabs where `pasteRows()` returns at its first guard. AppKit gives a disabled item its key
+    /// equivalent anyway, so an enabled-but-dead item swallows Command+V in silence.
+    private var canPaste: Bool {
+        guard let coordinator, coordinator.isEditable else { return false }
+        if coordinator.delegate?.dataGridCanPasteRows() == true { return true }
+        guard let anchor = pasteAnchorCell() else { return false }
+        return coordinator.canPasteCellsFromClipboard(anchorRow: anchor.row, anchorColumn: anchor.column)
+    }
+
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         switch item.action {
         case #selector(delete(_:)), #selector(deleteBackward(_:)):
-            return coordinator?.isEditable == true && !selectedRowIndexes.isEmpty
-        case #selector(copy(_:)), #selector(copyRowsAsTSV(_:)):
-            return !selectedRowIndexes.isEmpty
+            let hasGridSelection = gridSelection?.isEmpty == false
+            return coordinator?.isEditable == true && (hasGridSelection || !selectedRowIndexes.isEmpty)
+        case #selector(copy(_:)):
+            let hasGridSelection = gridSelection?.isEmpty == false
+            return hasGridSelection || !selectedRowIndexes.isEmpty
+        case #selector(copyRowsAsTSV(_:)):
+            let hasGridSelection = gridSelection?.isEmpty == false
+            return hasGridSelection || !selectedRowIndexes.isEmpty
         case #selector(paste(_:)):
-            return coordinator?.isEditable == true && coordinator?.delegate != nil
+            return canPaste
         case #selector(insertNewline(_:)):
-            return selectedRow >= 0 && DataGridView.isDataTableColumn(focusedColumn) && coordinator?.isEditable == true
-        case #selector(cancelOperation(_:)):
-            return false
+            return selectedRow >= 0 && DataGridView.isDataTableColumn(focusedColumn)
+        case #selector(selectAll(_:)):
+            return numberOfRows > 0
         default:
             return super.validateUserInterfaceItem(item)
         }
@@ -175,37 +326,30 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        if key == .tab {
-            if event.modifierFlags.contains(.shift) {
-                handleShiftTabKey()
-            } else {
-                handleTabKey()
-            }
-            return
-        }
-
-        let row = selectedRow
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let row = selectedRow
 
         switch key {
         case .leftArrow:
-            handleLeftArrow(currentRow: row)
+            handleArrow(.left, modifiers: modifiers, currentRow: row, event: event)
             return
-
         case .rightArrow:
-            handleRightArrow(currentRow: row)
+            handleArrow(.right, modifiers: modifiers, currentRow: row, event: event)
             return
-
-        case .upArrow, .downArrow, .home, .end, .pageUp, .pageDown:
+        case .upArrow:
+            handleArrow(.up, modifiers: modifiers, currentRow: row, event: event)
+            return
+        case .downArrow:
+            handleArrow(.down, modifiers: modifiers, currentRow: row, event: event)
+            return
+        case .home, .end, .pageUp, .pageDown:
             super.keyDown(with: event)
             return
-
         case .delete, .forwardDelete:
-            if modifiers.isEmpty || modifiers == .command {
+            if modifiers.isEmpty || matchesDeleteShortcut(event) {
                 deleteSelectedRowsIfPossible()
                 return
             }
-
         default:
             break
         }
@@ -229,48 +373,71 @@ final class KeyHandlingTableView: NSTableView {
         interpretKeyEvents([event])
     }
 
+    private func matchesDeleteShortcut(_ event: NSEvent) -> Bool {
+        guard let combo = AppSettingsManager.shared.keyboard.shortcut(for: .delete), !combo.isCleared else {
+            return false
+        }
+        return combo.matches(event)
+    }
+
+    private func handleArrow(_ direction: GridSelectionController.Direction, modifiers: NSEvent.ModifierFlags, currentRow: Int, event: NSEvent) {
+        if modifiers.contains(.shift) {
+            if extendGridSelection(direction: direction, jumpToEdge: modifiers.contains(.command)) {
+                return
+            }
+            super.keyDown(with: event)
+            return
+        }
+        gridSelection?.clear()
+        switch direction {
+        case .left: handleLeftArrow(currentRow: currentRow)
+        case .right: handleRightArrow(currentRow: currentRow)
+        case .up, .down: super.keyDown(with: event)
+        }
+    }
+
+    private func extendGridSelection(direction: GridSelectionController.Direction, jumpToEdge: Bool) -> Bool {
+        guard let controller = gridSelection else { return false }
+        let seed = controller.isEmpty ? focusedGridCoord() : nil
+        guard !controller.isEmpty || seed != nil else { return false }
+        controller.extendActiveCell(
+            from: seed,
+            direction: direction,
+            jumpToEdge: jumpToEdge,
+            totalRows: totalRows(),
+            totalColumns: totalDataColumns()
+        )
+        return true
+    }
+
+    private func focusedGridCoord() -> GridCoord? {
+        guard let cell = focusedDataCell() else { return nil }
+        return GridCoord(row: cell.row, column: cell.columnIndex)
+    }
+
     @objc override func insertNewline(_ sender: Any?) {
         let row = selectedRow
         guard row >= 0,
               DataGridView.isDataTableColumn(focusedColumn),
-              coordinator?.isEditable == true,
               let schema = coordinator?.identitySchema,
               let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
               let coordinator else {
             return
         }
-
-        // Dropdown / type-picker columns: Return opens the popup, matching the
-        // chevron and double-click paths. Without this branch, Return on a focused
-        // dropdown cell does nothing because beginCellEdit is blocked by editEligibility.
-        if coordinator.dropdownColumns?.contains(columnIndex) == true ||
-           coordinator.typePickerColumns?.contains(columnIndex) == true {
-            coordinator.handleChevronAction(row: row, columnIndex: columnIndex)
-            return
-        }
-
-        let tableRows = coordinator.tableRowsProvider()
-        if columnIndex < tableRows.columnTypes.count,
-           tableRows.columnTypes[columnIndex].isBlobType {
-            coordinator.showBlobEditorPopover(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex)
-            return
-        }
-
-        if let value = coordinator.cellValue(at: row, column: columnIndex),
-           value.containsLineBreak {
-            coordinator.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)
-            return
-        }
-
-        coordinator.beginCellEdit(row: row, tableColumnIndex: focusedColumn)
+        coordinator.handleCellInteraction(row: row, tableColumn: focusedColumn, columnIndex: columnIndex, tableView: self)
     }
 
     @objc override func cancelOperation(_ sender: Any?) {
+        guard let controller = gridSelection, !controller.isEmpty else {
+            super.cancelOperation(sender)
+            return
+        }
+        controller.clear()
     }
 
     private func deleteSelectedRowsIfPossible() {
         guard coordinator?.isEditable == true else { return }
-        guard !selectedRowIndexes.isEmpty else { return }
+        guard gridSelection?.isEmpty == false || !selectedRowIndexes.isEmpty else { return }
         delete(nil)
     }
 
@@ -335,65 +502,137 @@ final class KeyHandlingTableView: NSTableView {
     private func isVisibleDataColumn(at index: Int) -> Bool {
         guard index >= 0, index < numberOfColumns else { return false }
         let column = tableColumns[index]
-        return !column.isHidden && column.identifier != ColumnIdentitySchema.rowNumberIdentifier
+        return coordinator?.presentsColumn(column) ?? !column.isHidden
     }
 
-    private func handleTabKey() {
-        let row = selectedRow
-        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
+    /// `NSResponder` declares these two but does not implement them, so calling `super` raises
+    /// `doesNotRecognizeSelector`. With no cell cursor to move, Tab has to leave the grid the way
+    /// it leaves any other view, or focus is trapped here for the rest of the session.
+    /// VoiceOver follows the focused element, and a table view reports itself rather than the
+    /// cell the grid's own cursor is on, so the cursor was invisible to it. The selected-cells
+    /// override is clamped to the visible rows: AppKit will happily ask for every cell in a
+    /// million-row selection otherwise.
+    /// The cursor moved, so assistive technology is told to re-read where focus now is. The
+    /// element itself stays the table: `NSTableView`'s own focused-element resolution already
+    /// walks to the cell, and overriding it in Swift is not available on this type.
+    internal func postCellCursorMoved() {
+        guard selectedRow >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
+        guard let cell = view(atColumn: focusedColumn, row: selectedRow, makeIfNecessary: false) else { return }
+        NSAccessibility.post(element: cell, notification: .focusedUIElementChanged)
+    }
 
-        var nextColumn = focusedColumn + 1
+    override func accessibilitySelectedCells() -> [Any]? {
+        guard let controller = gridSelection, !controller.isEmpty else {
+            return super.accessibilitySelectedCells()
+        }
+        let visible = rows(in: visibleRect)
+        guard visible.length > 0 else { return [] }
+        var cells: [Any] = []
+        for rectangle in controller.selection.rectangles {
+            for row in rectangle.rows where NSLocationInRange(row, visible) {
+                for column in rectangle.columns {
+                    guard let cell = view(atColumn: column, row: row, makeIfNecessary: false) else { continue }
+                    cells.append(cell)
+                }
+            }
+        }
+        return cells
+    }
+
+    override func insertTab(_ sender: Any?) {
+        guard !moveFocusToNextCell() else { return }
+        window?.selectKeyView(following: self)
+    }
+
+    override func insertBacktab(_ sender: Any?) {
+        guard !moveFocusToPreviousCell() else { return }
+        window?.selectKeyView(preceding: self)
+    }
+
+    private func moveFocusToNextCell() -> Bool {
+        let row = selectedRow
+        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return false }
+
+        var nextColumn = nextVisibleDataColumn(after: focusedColumn)
         var nextRow = row
-
-        if nextColumn >= numberOfColumns {
-            nextColumn = DataGridView.firstDataTableColumnIndex
-            nextRow += 1
+        if nextColumn < 0 {
+            let wrapped = firstVisibleDataColumn()
+            guard wrapped >= 0, row + 1 < numberOfRows else { return true }
+            nextColumn = wrapped
+            nextRow = row + 1
         }
-        if nextRow >= numberOfRows {
-            nextRow = numberOfRows - 1
-            nextColumn = numberOfColumns - 1
-        }
-
-        selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
-        focusedRow = nextRow
-        focusedColumn = nextColumn
-        scrollRowToVisible(nextRow)
-        scrollColumnToVisible(nextColumn)
+        focusCell(row: nextRow, column: nextColumn)
+        return true
     }
 
-    private func handleShiftTabKey() {
+    private func moveFocusToPreviousCell() -> Bool {
         let row = selectedRow
-        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
+        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return false }
 
-        var prevColumn = focusedColumn - 1
-        var prevRow = row
-
-        if !DataGridView.isDataTableColumn(prevColumn) {
-            prevColumn = numberOfColumns - 1
-            prevRow -= 1
+        var previousColumn = previousVisibleDataColumn(before: focusedColumn)
+        var previousRow = row
+        if previousColumn < 0 {
+            let wrapped = lastVisibleDataColumn()
+            guard wrapped >= 0, row > 0 else { return true }
+            previousColumn = wrapped
+            previousRow = row - 1
         }
-        if prevRow < 0 {
-            prevRow = 0
-            prevColumn = DataGridView.firstDataTableColumnIndex
-        }
+        focusCell(row: previousRow, column: previousColumn)
+        return true
+    }
 
-        selectRowIndexes(IndexSet(integer: prevRow), byExtendingSelection: false)
-        focusedRow = prevRow
-        focusedColumn = prevColumn
-        scrollRowToVisible(prevRow)
-        scrollColumnToVisible(prevColumn)
+    private func focusCell(row: Int, column: Int) {
+        selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        focusedRow = row
+        focusedColumn = column
+        scrollRowToVisible(row)
+        scrollColumnToVisible(column)
+        postCellCursorMoved()
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let clickedRow = row(at: point)
+        if clickedRow >= 0, clickIsInsideSelection(row: clickedRow, point: point) {
+            window?.makeFirstResponder(self)
+            if let menu = menu(for: event) {
+                NSMenu.popUpContextMenu(menu, with: event, for: self)
+            }
+            return
+        }
+        super.rightMouseDown(with: event)
+    }
+
+    private func clickIsInsideSelection(row clickedRow: Int, point: NSPoint) -> Bool {
+        if selectedRowIndexes.contains(clickedRow) { return true }
+        guard let controller = gridSelection, !controller.isEmpty else { return false }
+        let clickedColumn = column(at: point)
+        guard clickedColumn >= 0,
+              let schema = coordinator?.identitySchema,
+              let dataColumn = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema) else {
+            return false
+        }
+        return controller.selection.contains(row: clickedRow, column: dataColumn)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let clickedRow = row(at: point)
+        let clickedColumn = column(at: point)
 
-        if clickedRow >= 0,
-           let rowView = rowView(atRow: clickedRow, makeIfNecessary: false) {
+        if clickedRow >= 0, let rowView = rowView(atRow: clickedRow, makeIfNecessary: false) as? DataGridRowView {
+            if let schema = coordinator?.identitySchema,
+               clickedColumn >= 0,
+               let dataColumn = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema),
+               let controller = gridSelection,
+               !controller.isEmpty,
+               controller.selection.contains(row: clickedRow, column: dataColumn) {
+                return rowView.contextMenu(for: event)
+            }
             if !selectedRowIndexes.contains(clickedRow) {
                 selectRowIndexes(IndexSet(integer: clickedRow), byExtendingSelection: false)
             }
-            return rowView.menu(for: event)
+            return rowView.contextMenu(for: event)
         }
 
         if let menu = coordinator?.delegate?.dataGridEmptySpaceMenu() {

@@ -1,5 +1,11 @@
 import Foundation
 
+public enum WritePermission: Sendable {
+    case proceed
+    case requiresConfirmation
+    case blocked
+}
+
 public enum SafeModeLevel: String, Codable, Sendable, CaseIterable, Identifiable {
     case off = "off"
     case confirmWrites = "confirmWrites"
@@ -11,11 +17,17 @@ public enum SafeModeLevel: String, Codable, Sendable, CaseIterable, Identifiable
 
     public var requiresConfirmation: Bool { self == .confirmWrites }
 
+    public var writePermission: WritePermission {
+        if blocksWrites { return .blocked }
+        if requiresConfirmation { return .requiresConfirmation }
+        return .proceed
+    }
+
     public var displayName: String {
         switch self {
-        case .off: return "Off"
-        case .confirmWrites: return "Confirm Writes"
-        case .readOnly: return "Read-Only"
+        case .off: return String(localized: "Off")
+        case .confirmWrites: return String(localized: "Confirm Writes")
+        case .readOnly: return String(localized: "Read-Only")
         }
     }
 }

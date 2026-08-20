@@ -11,19 +11,22 @@ import SwiftUI
 struct AIChatCodeBlockView: View, Equatable {
     let code: String
     let language: String?
+    var prefersLightweightRendering: Bool = false
 
     static func == (lhs: AIChatCodeBlockView, rhs: AIChatCodeBlockView) -> Bool {
-        lhs.code == rhs.code && lhs.language == rhs.language
+        lhs.code == rhs.code
+            && lhs.language == rhs.language
+            && lhs.prefersLightweightRendering == rhs.prefersLightweightRendering
     }
 
     @State private var isCopied: Bool = false
     @State private var isEditorReady = false
     @State private var editorState = SourceEditorState()
-    @FocusedValue(\.commandActions) private var focusedActions
-    @Bindable private var commandRegistry = CommandActionsRegistry.shared
+    @State private var measuredWidth: CGFloat = 0
+    @Environment(\.commandActions) private var actions
 
-    private var actions: MainContentCommandActions? {
-        focusedActions ?? commandRegistry.current
+    private var usesLightweightContent: Bool {
+        prefersLightweightRendering || !isEditorReady
     }
 
     var body: some View {
@@ -33,7 +36,11 @@ struct AIChatCodeBlockView: View, Equatable {
             codeBlockHeader
         }
         .groupBoxStyle(CodeBlockGroupBoxStyle())
-        .task {
+        .task(id: prefersLightweightRendering) {
+            guard !prefersLightweightRendering else {
+                isEditorReady = false
+                return
+            }
             isEditorReady = true
         }
         .onDisappear {
@@ -42,19 +49,20 @@ struct AIChatCodeBlockView: View, Equatable {
     }
 
     private var codeBlockHeader: some View {
-        HStack {
+        HStack(spacing: 8) {
             if let resolved = resolvedLanguage {
                 Text(resolved.uppercased())
                     .font(.caption2)
                     .fontWeight(.medium)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color(nsColor: .separatorColor))
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
             Button {
                 ClipboardService.shared.writeText(code)
@@ -69,9 +77,11 @@ struct AIChatCodeBlockView: View, Equatable {
                     systemImage: isCopied ? "checkmark" : "doc.on.doc"
                 )
                 .font(.caption2)
+                .lineLimit(1)
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .fixedSize()
 
             if isInsertable {
                 Button {
@@ -79,9 +89,11 @@ struct AIChatCodeBlockView: View, Equatable {
                 } label: {
                     Label(String(localized: "Insert"), systemImage: "square.and.pencil")
                         .font(.caption2)
+                        .lineLimit(1)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .fixedSize()
                 .disabled(actions == nil)
                 .help(actions == nil
                     ? String(localized: "Open a connection to insert")
@@ -92,17 +104,33 @@ struct AIChatCodeBlockView: View, Equatable {
 
     @ViewBuilder
     private var codeContent: some View {
-        if isEditorReady {
-            SourceEditor(
-                .constant(code),
-                language: treeSitterLanguage,
-                configuration: Self.makeConfiguration(),
-                state: $editorState
-            )
-            .frame(height: editorHeight)
-        } else {
-            Color(nsColor: .textBackgroundColor)
-                .frame(height: editorHeight)
+        Group {
+            if usesLightweightContent {
+                Text(code.isEmpty ? " " : code)
+                    .font(Font(Self.editorFont))
+                    .lineSpacing(CodeBlockHeightEstimator.extraLineSpacing(for: Self.editorFont))
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .frame(minHeight: CodeBlockHeightEstimator.minimumHeight, alignment: .topLeading)
+                    .background(Color(nsColor: .textBackgroundColor))
+            } else {
+                SourceEditor(
+                    .constant(code),
+                    language: treeSitterLanguage,
+                    configuration: Self.makeConfiguration(),
+                    state: $editorState,
+                    foldProvider: FoldProviderResolver.provider(for: treeSitterLanguage)
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: contentHeight)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { newWidth in
+            measuredWidth = newWidth
         }
     }
 
@@ -118,11 +146,8 @@ struct AIChatCodeBlockView: View, Equatable {
         guard !trimmed.isEmpty else { return nil }
         let firstNonCommentLine = trimmed
             .split(whereSeparator: { $0.isNewline })
-            .first(where: { line in
-                let head = line.trimmingCharacters(in: .whitespaces)
-                return !head.isEmpty && !head.hasPrefix("--") && !head.hasPrefix("/*")
-            })
-            .map(String.init) ?? trimmed
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first(where: { !$0.isEmpty && !$0.hasPrefix("--") && !$0.hasPrefix("/*") }) ?? trimmed
 
         let sqlPrefixes = [
             "SELECT ", "INSERT ", "UPDATE ", "DELETE ", "WITH ",
@@ -157,21 +182,22 @@ struct AIChatCodeBlockView: View, Equatable {
         treeSitterLanguage.id != CodeLanguage.default.id
     }
 
-    private var editorHeight: CGFloat {
-        let lineHeight: CGFloat = 18
-        let editorInsets: CGFloat = 16
-        let lineCount = code.reduce(into: 1) { count, char in
-            if char == "\n" { count += 1 }
-        }
-        let height = CGFloat(lineCount) * lineHeight + editorInsets
-        return min(max(height, 32), 400)
+    private var contentHeight: CGFloat {
+        CodeBlockHeightEstimator.height(
+            for: code,
+            font: Self.editorFont,
+            availableWidth: measuredWidth
+        )
     }
+
+    private static let editorFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
 
     private static func makeConfiguration() -> SourceEditorConfiguration {
         SourceEditorConfiguration(
             appearance: .init(
                 theme: TableProEditorTheme.make(),
-                font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+                font: editorFont,
+                lineHeightMultiple: Double(CodeBlockHeightEstimator.lineHeightMultiple),
                 wrapLines: true
             ),
             behavior: .init(
@@ -180,10 +206,8 @@ struct AIChatCodeBlockView: View, Equatable {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
             ),
-            peripherals: .init(
-                showGutter: false,
-                showMinimap: false,
-                showFoldingRibbon: false
+            peripherals: EditorPeripherals.preview(
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }
@@ -200,6 +224,7 @@ private struct CodeBlockGroupBoxStyle: GroupBoxStyle {
 
             configuration.content
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(

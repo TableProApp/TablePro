@@ -14,9 +14,14 @@ final class NetworkPaneViewModel {
     var host: String = ""
     var port: String = ""
     var database: String = ""
+    var sshForwardUnixSocketPath: String = ""
     var additionalFieldValues: [String: String] = [:]
 
     var coordinator: WeakCoordinatorRef?
+
+    var forwardsToUnixSocket: Bool {
+        !sshForwardUnixSocketPath.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var connectionMode: ConnectionMode {
         PluginManager.shared.connectionMode(for: type)
@@ -39,11 +44,42 @@ final class NetworkPaneViewModel {
         return port == 0 ? "" : String(port)
     }
 
-    var supportsDatabaseField: Bool {
-        let mode = connectionMode
-        return mode == .fileBased
-            || (mode == .apiOnly && PluginManager.shared.supportsDatabaseSwitching(for: type))
-            || (mode == .network && PluginManager.shared.requiresAuthentication(for: type))
+    var socketPathPrompt: String {
+        PluginManager.shared.defaultUnixSocketPath(for: type) ?? "/path/to/database.sock"
+    }
+
+    var resolvedHost: String {
+        host.trimmingCharacters(in: .whitespaces).isEmpty ? (type.defaultHost ?? "localhost") : host
+    }
+
+    var resolvedPort: Int {
+        Int(port) ?? type.defaultPort
+    }
+
+    var hidesBuiltInDatabase: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)?
+            .connection.hidesBuiltInDatabase ?? false
+    }
+
+    /// Whether the form renders the built-in Database field. A driver opts out through
+    /// `hidesBuiltInDatabase` when it names its container some other way, or has none.
+    /// This is deliberately not `requiresAuthentication`: whether a driver needs credentials
+    /// says nothing about whether it accepts a database name.
+    var showsBuiltInDatabaseField: Bool {
+        switch connectionMode {
+        case .fileBased:
+            return false
+        case .apiOnly:
+            return PluginManager.shared.supportsDatabaseSwitching(for: type) && !hidesBuiltInDatabase
+        default:
+            return !hidesBuiltInDatabase
+        }
+    }
+
+    /// Never require a value the form does not render. A file-based connection stores its
+    /// path in `database` and renders it as the Database File field.
+    var requiresDatabaseValue: Bool {
+        connectionMode == .fileBased || (connectionMode == .apiOnly && showsBuiltInDatabaseField)
     }
 
     var validationIssues: [String] {
@@ -52,9 +88,7 @@ final class NetworkPaneViewModel {
             issues.append(String(localized: "Connection name is required"))
         }
         let mode = connectionMode
-        let needsDatabaseField = mode == .fileBased
-            || (mode == .apiOnly && PluginManager.shared.supportsDatabaseSwitching(for: type))
-        if needsDatabaseField && database.trimmingCharacters(in: .whitespaces).isEmpty {
+        if requiresDatabaseValue && database.trimmingCharacters(in: .whitespaces).isEmpty {
             let label = mode == .fileBased
                 ? String(localized: "Database file path is required")
                 : String(localized: "Database name is required")
@@ -77,6 +111,9 @@ final class NetworkPaneViewModel {
 
     func applyTypeDefaults(forNewType newType: DatabaseType) {
         port = String(newType.defaultPort)
+        if host.trimmingCharacters(in: .whitespaces).isEmpty, let defaultHost = newType.defaultHost {
+            host = defaultHost
+        }
         var values: [String: String] = [:]
         for field in PluginManager.shared.additionalConnectionFields(for: newType)
             where field.section == .connection
@@ -107,6 +144,7 @@ final class NetworkPaneViewModel {
         port = connection.port > 0 ? String(connection.port) : ""
         database = connection.database
         type = connection.type
+        sshForwardUnixSocketPath = connection.sshForwardUnixSocketPath ?? ""
 
         var values: [String: String] = [:]
         let allFields = PluginManager.shared.additionalConnectionFields(for: connection.type)
@@ -130,5 +168,31 @@ final class NetworkPaneViewModel {
         for (key, value) in additionalFieldValues {
             fields[key] = value
         }
+        let socketPath = sshForwardUnixSocketPath.trimmingCharacters(in: .whitespaces)
+        if !socketPath.isEmpty {
+            fields[DatabaseConnection.sshForwardUnixSocketPathKey] = socketPath
+        }
+    }
+}
+
+/// Advisory only. `ssh -L` needs the socket file itself, while libpq's own `host` convention
+/// names the directory holding it, and mixing the two up is the usual mistake. Save is never
+/// blocked on this: the SSH server is the only authority on whether the path resolves.
+enum SSHForwardSocketPathIssue: Equatable {
+    case notAbsolute
+    case looksLikeDirectory
+}
+
+extension NetworkPaneViewModel {
+    nonisolated static func socketPathIssue(for rawPath: String) -> SSHForwardSocketPathIssue? {
+        let path = rawPath.trimmingCharacters(in: .whitespaces)
+        guard !path.isEmpty else { return nil }
+        guard path.hasPrefix("/") else { return .notAbsolute }
+        guard !path.hasSuffix("/") else { return .looksLikeDirectory }
+        return nil
+    }
+
+    var socketPathIssue: SSHForwardSocketPathIssue? {
+        Self.socketPathIssue(for: sshForwardUnixSocketPath)
     }
 }

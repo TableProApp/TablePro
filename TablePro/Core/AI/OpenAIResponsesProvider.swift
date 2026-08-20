@@ -6,6 +6,18 @@
 import Foundation
 import os
 
+enum ResponsesDialect: Sendable {
+    case openAI
+    case xai
+
+    var defaultTestModel: String {
+        switch self {
+        case .openAI: return "gpt-5.5"
+        case .xai:    return "grok-4.5"
+        }
+    }
+}
+
 final class OpenAIResponsesProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "OpenAIResponsesProvider")
 
@@ -13,6 +25,7 @@ final class OpenAIResponsesProvider: ChatTransport {
     private let apiKey: String?
     private let model: String
     private let maxOutputTokens: Int?
+    private let dialect: ResponsesDialect
     private let session: URLSession
 
     init(
@@ -20,12 +33,14 @@ final class OpenAIResponsesProvider: ChatTransport {
         apiKey: String?,
         model: String = "",
         maxOutputTokens: Int? = nil,
+        dialect: ResponsesDialect = .openAI,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
         self.endpoint = endpoint.normalizedEndpoint()
         self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
+        self.dialect = dialect
         self.session = session
     }
 
@@ -33,46 +48,17 @@ final class OpenAIResponsesProvider: ChatTransport {
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let request = try buildRequest(turns: turns, options: options, stream: true)
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        throw AIProviderError.networkError("Invalid response")
-                    }
-                    guard httpResponse.statusCode == 200 else {
-                        let errorBody = try await collectErrorBody(from: bytes)
-                        throw AIProviderError.mapHTTPError(
-                            statusCode: httpResponse.statusCode,
-                            body: errorBody
-                        )
-                    }
-
-                    var state = ResponsesStreamState()
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        guard let json = Self.decodeStreamLine(line) else { continue }
-                        let events = try Self.parseEvent(json, state: &state)
-                        for event in events { continuation.yield(event) }
-                    }
-                    if let usage = state.finalUsageEvent() {
-                        continuation.yield(usage)
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        ResponsesEventStream.make(
+            session: session,
+            buildRequest: { [self] in try buildRequest(turns: turns, options: options, stream: true) }
+        )
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        try await fetchModelIDs().map { AIModelInfo(id: $0) }
+    }
+
+    private func fetchModelIDs() async throws -> [String] {
         guard let url = URL(string: "\(endpoint)/v1/models") else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }
@@ -100,7 +86,7 @@ final class OpenAIResponsesProvider: ChatTransport {
     }
 
     func testConnection() async throws -> Bool {
-        let testModel = model.isEmpty ? "gpt-5.5" : model
+        let testModel = model.isEmpty ? dialect.defaultTestModel : model
         let testOptions = ChatTransportOptions(model: testModel, maxOutputTokens: 16)
         let testTurn = ChatTurnWire(role: .user, blocks: [.text("Hi")])
         let request = try buildRequest(turns: [testTurn], options: testOptions, stream: false)
@@ -150,8 +136,13 @@ final class OpenAIResponsesProvider: ChatTransport {
         }
 
         if let effort = options.reasoningEffort {
-            body["reasoning"] = ["effort": effort.openAIWireValue, "summary": "auto"]
-            body["include"] = ["reasoning.encrypted_content"]
+            switch dialect {
+            case .openAI:
+                body["reasoning"] = ["effort": effort.openAIWireValue, "summary": "auto"]
+                body["include"] = ["reasoning.encrypted_content"]
+            case .xai:
+                body["reasoning"] = ["effort": effort.xaiReasoningEffort]
+            }
         }
 
         if !options.tools.isEmpty {
@@ -189,9 +180,14 @@ final class OpenAIResponsesProvider: ChatTransport {
                     items.append([
                         "type": "reasoning",
                         "id": opaque.itemID,
+                        "summary": [Any](),
                         "encrypted_content": opaque.value
                     ])
                 case .text(let text):
+                    guard !text.isEmpty else { continue }
+                    messageParts.append(["type": "output_text", "text": text])
+                case .sqlWalkthrough(let walkthrough):
+                    let text = walkthrough.transcriptText
                     guard !text.isEmpty else { continue }
                     messageParts.append(["type": "output_text", "text": text])
                 case .toolUse(let useBlock):
@@ -239,7 +235,7 @@ final class OpenAIResponsesProvider: ChatTransport {
                     if let part = inputImagePart(input) {
                         userParts.append(part)
                     }
-                case .toolUse, .toolResult, .attachment, .reasoning:
+                case .toolUse, .toolResult, .attachment, .reasoning, .sqlWalkthrough:
                     continue
                 }
             }
@@ -307,7 +303,7 @@ final class OpenAIResponsesProvider: ChatTransport {
                 return [.textDelta(delta)]
             }
             return []
-        case "response.reasoning_summary_text.delta":
+        case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
             guard let itemID = json["item_id"] as? String,
                   let delta = json["delta"] as? String, !delta.isEmpty else { return [] }
             return [.reasoningDelta(id: itemID, text: delta)]
@@ -347,6 +343,10 @@ final class OpenAIResponsesProvider: ChatTransport {
             case "function_call":
                 guard let callID = item["call_id"] as? String,
                       state.openFunctionCallIDs.remove(callID) != nil else { return [] }
+                if !state.functionCallArgDeltaIDs.contains(callID),
+                   let arguments = item["arguments"] as? String, !arguments.isEmpty {
+                    return [.toolUseDelta(id: callID, inputJSONDelta: arguments), .toolUseEnd(id: callID)]
+                }
                 return [.toolUseEnd(id: callID)]
             default:
                 return []
@@ -354,6 +354,7 @@ final class OpenAIResponsesProvider: ChatTransport {
         case "response.function_call_arguments.delta":
             guard let callID = json["call_id"] as? String ?? json["item_id"] as? String,
                   let delta = json["delta"] as? String, !delta.isEmpty else { return [] }
+            state.functionCallArgDeltaIDs.insert(callID)
             return [.toolUseDelta(id: callID, inputJSONDelta: delta)]
         case "response.refusal.delta":
             if let delta = json["delta"] as? String, !delta.isEmpty {
@@ -392,6 +393,7 @@ struct ResponsesStreamState {
     var outputTokens: Int = 0
     var openReasoningItemIDs: Set<String> = []
     var openFunctionCallIDs: Set<String> = []
+    var functionCallArgDeltaIDs: Set<String> = []
 
     func finalUsageEvent() -> ChatStreamEvent? {
         guard inputTokens > 0 || outputTokens > 0 else { return nil }

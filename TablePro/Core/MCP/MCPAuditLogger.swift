@@ -22,6 +22,16 @@ enum MCPAuditLogger {
         )
     }
 
+    static func logAuthAllowedAnonymous(ip: String) {
+        serverAuth.info("Auth allowed anonymously (loopback, requireAuthentication=false): ip=\(ip, privacy: .public)")
+        record(
+            category: .auth,
+            action: "auth.anonymousLoopback",
+            outcome: .success,
+            details: "ip=\(ip)"
+        )
+    }
+
     static func logAuthFailure(reason: String, ip: String) {
         serverAuth.warning("Auth failure: reason=\(reason, privacy: .public) ip=\(ip, privacy: .public)")
         record(

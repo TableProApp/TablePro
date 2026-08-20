@@ -1,7 +1,12 @@
 import Foundation
 
 struct RoutineInfo: Identifiable, Hashable, Sendable {
-    var id: String { "\(kind.rawValue)_\(qualifiedName)" }
+    var id: String {
+        guard let signature, !signature.isEmpty else {
+            return "\(kind.rawValue)_\(qualifiedName)"
+        }
+        return "\(kind.rawValue)_\(qualifiedName)_\(signature)"
+    }
     let name: String
     let schema: String?
     let kind: Kind

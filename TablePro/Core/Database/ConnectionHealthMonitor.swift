@@ -18,6 +18,12 @@ extension ConnectionHealthMonitor {
         case checking
         case reconnecting(attempt: Int) // 1-based attempt number
     }
+
+    enum ReconnectOutcome: Sendable, Equatable {
+        case success
+        case retry
+        case abort
+    }
 }
 
 // MARK: - ConnectionHealthMonitor
@@ -40,7 +46,7 @@ actor ConnectionHealthMonitor {
 
     private let connectionId: UUID
     private let pingHandler: @Sendable () async -> Bool
-    private let reconnectHandler: @Sendable () async -> Bool
+    private let reconnectHandler: @Sendable () async -> ReconnectOutcome
     private let onStateChanged: @Sendable (UUID, HealthState) async -> Void
 
     // MARK: - State
@@ -59,12 +65,12 @@ actor ConnectionHealthMonitor {
     ///   - pingHandler: Closure that executes a lightweight query (e.g., `SELECT 1`)
     ///     and returns `true` if the connection is alive.
     ///   - reconnectHandler: Closure that attempts to re-establish the connection
-    ///     and returns `true` on success.
+    ///     and reports whether the monitor should mark success, retry later, or stop.
     ///   - onStateChanged: Closure invoked whenever the health state transitions.
     init(
         connectionId: UUID,
         pingHandler: @escaping @Sendable () async -> Bool,
-        reconnectHandler: @escaping @Sendable () async -> Bool,
+        reconnectHandler: @escaping @Sendable () async -> ReconnectOutcome,
         onStateChanged: @escaping @Sendable (UUID, HealthState) async -> Void
     ) {
         self.connectionId = connectionId
@@ -188,15 +194,17 @@ actor ConnectionHealthMonitor {
                 return
             }
 
-            let success = await reconnectHandler()
-
-            if success {
+            switch await reconnectHandler() {
+            case .success:
                 Self.logger.info("Reconnect succeeded on attempt \(attempt) for connection \(self.connectionId)")
                 await transitionTo(.healthy)
                 return
+            case .abort:
+                Self.logger.info("Reconnect aborted for connection \(self.connectionId)")
+                return
+            case .retry:
+                Self.logger.warning("Reconnect attempt \(attempt) failed for connection \(self.connectionId)")
             }
-
-            Self.logger.warning("Reconnect attempt \(attempt) failed for connection \(self.connectionId)")
         }
 
         Self.logger.debug("Reconnect loop cancelled after \(attempt) attempts for connection \(self.connectionId)")

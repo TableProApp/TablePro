@@ -5,47 +5,197 @@
 
 import AppKit
 import Combine
+import Observation
 import os
 import SwiftUI
 import TableProPluginKit
 
 @MainActor
 internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
-    private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    internal static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    weak var coordinator: MainContentCoordinator?
+    internal static let toolbarIdentifier = NSToolbar.Identifier("com.TablePro.main.toolbar.v2")
+
+    /// Which connection the toolbar is about. Every item reads through this rather than capturing
+    /// a coordinator, so a switch repoints one reference instead of rebuilding eight items, two
+    /// `NSHostingController`s and the window's whole titlebar.
+    internal let subject = ToolbarSubject()
+
+    internal var coordinator: MainContentCoordinator? { subject.coordinator }
 
     internal let managedToolbar: NSToolbar
+    private var pendingChangeObservationGeneration = 0
+    private var cancellables: Set<AnyCancellable> = []
+
+    /// Which shortcut each item advertises, and the wording it advertises it with. The item cannot
+    /// be asked: `NSToolbarItem` has no shortcut of its own, and its `menuFormRepresentation` keeps
+    /// only the resolved key, not the action that produced it. Recorded by the factory that already
+    /// receives both, so this is not a second list anyone has to keep in step by hand.
+    private var shortcutBindings: [NSToolbarItem.Identifier: ToolbarShortcutBinding] = [:]
+
+    /// Which item an overflow-menu entry stands for. AppKit validates an overflowed item as a menu
+    /// item rather than as a toolbar item, so `validateToolbarItem(_:)` never runs for it and the
+    /// entry stayed enabled while the same button was disabled on a wider window. Recorded by the
+    /// factory that already receives both the identifier and the action, for the same reason
+    /// `shortcutBindings` is: a second hand-written table drifts.
+    private var menuFormIdentifiers: [Selector: NSToolbarItem.Identifier] = [:]
+
+    /// How a hosted item answers "how wide are you". `.intrinsicContentSize` only overrides the
+    /// hosting view's `intrinsicContentSize`, and AppKit measures a view-backed item when it is
+    /// inserted and never reads that value again. Repointing the subject then left the item at the
+    /// width of the connection that had gone: the content redrew correctly inside a container
+    /// measured for the other engine, and only a click on the toolbar resized it. Under
+    /// `.preferredContentSize` the hosting view resizes itself, which is what AppKit follows.
+    internal static let hostedItemSizingOptions: NSHostingSizingOptions = .preferredContentSize
 
     /// Retain hosting controllers per item identifier. NSHostingController is not retained by NSToolbarItem,
     /// so without this its view orphans and the toolbar item collapses to zero width.
     internal var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
-    var sidebarButtons: [NSButton] = []
-    var sidebarObservationTask: Task<Void, Never>?
-    var splitViewObserver: NSObjectProtocol?
+    private(set) var sidebarGroup: NSToolbarItemGroup?
 
-    internal init(coordinator: MainContentCoordinator) {
-        self.coordinator = coordinator
-        // Unique identifier per toolbar instance prevents tab-group merging that would collapse
-        // all tabs into one toolbar and leave subsequent windows blank.
-        self.managedToolbar = NSToolbar(identifier: "com.TablePro.main.toolbar.\(UUID().uuidString)")
+    override internal convenience init() {
+        self.init(managedToolbar: NSToolbar(identifier: Self.toolbarIdentifier))
+    }
+
+    internal init(managedToolbar: NSToolbar) {
+        self.managedToolbar = managedToolbar
         super.init()
         self.managedToolbar.delegate = self
         self.managedToolbar.displayMode = .iconOnly
         self.managedToolbar.allowsUserCustomization = true
-        self.managedToolbar.autosavesConfiguration = false
+        self.managedToolbar.autosavesConfiguration = true
+        self.managedToolbar.centeredItemIdentifiers = [Self.principal]
+        /// The hop off `AppSettingsManager.keyboard`'s own `didSet` matters: without it the toolbar
+        /// items are mutated re-entrantly, part way through the settings write that triggered them.
+        AppEvents.shared.keyboardSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.refreshShortcutHints() }
+            .store(in: &cancellables)
+    }
+
+    /// A toolbar item's tooltip and its overflow-menu key equivalent are written once, when the
+    /// delegate vends the item, and AppKit never revisits either. A rebind in Settings therefore
+    /// reaches the menu bar and stops there, leaving the toolbar advertising a key that no longer
+    /// runs the command.
+    private func refreshShortcutHints() {
+        for item in allItems() {
+            applyShortcutBinding(to: item)
+        }
+    }
+
+    /// Records what an item advertises and pushes it onto the item for the first time.
+    internal func bindShortcut(_ shortcut: ShortcutAction?, description: String, to item: NSToolbarItem) {
+        guard let shortcut else {
+            item.toolTip = description
+            return
+        }
+        shortcutBindings[item.itemIdentifier] = ToolbarShortcutBinding(
+            shortcut: shortcut,
+            description: description
+        )
+        applyShortcutBinding(to: item)
+    }
+
+    /// Records which item an overflow-menu action belongs to, so validation can reach it.
+    internal func bindMenuForm(action: Selector, to itemIdentifier: NSToolbarItem.Identifier) {
+        menuFormIdentifiers[action] = itemIdentifier
+    }
+
+    /// Nil for a menu item this toolbar did not build, which is nobody else's item to validate.
+    internal func itemIdentifier(forMenuFormAction action: Selector?) -> NSToolbarItem.Identifier? {
+        action.flatMap { menuFormIdentifiers[$0] }
+    }
+
+    /// Re-words an item whose description follows the connection, keeping its shortcut hint. Setting
+    /// `toolTip` directly at those call sites is what dropped the hint on every connection switch.
+    internal func updateShortcutDescription(_ description: String, for id: NSToolbarItem.Identifier) {
+        shortcutBindings[id]?.description = description
+    }
+
+    internal func applyShortcutBinding(to item: NSToolbarItem) {
+        guard let binding = shortcutBindings[item.itemIdentifier] else { return }
+        let keyboard = AppSettingsManager.shared.keyboard
+        item.toolTip = keyboard.shortcutHint(binding.description, for: binding.shortcut)
+        /// An item that opens a submenu has no key equivalent to carry; its menu form is the menu.
+        guard let menuItem = item.menuFormRepresentation, menuItem.submenu == nil else { return }
+        MenuItemFactory.apply(shortcut: binding.shortcut, keyboard: keyboard, to: menuItem)
+    }
+
+    /// `@Observable` generates no equality check, so assigning the same coordinator still fires
+    /// every observer. `windowDidBecomeKey` runs on activation with the connection unchanged, so
+    /// without this guard the window would pay for a switch every time it came forward.
+    internal func repoint(to coordinator: MainContentCoordinator?) {
+        guard subject.coordinator !== coordinator else { return }
+        pendingChangeObservationGeneration += 1
+        subject.coordinator = coordinator
+        observePendingChangeState()
+        refreshConnectionScopedItems()
+        syncSidebarSelection()
+        managedToolbar.validateVisibleItems()
     }
 
     func invalidate() {
-        sidebarObservationTask?.cancel()
-        sidebarObservationTask = nil
-        if let observer = splitViewObserver {
-            NotificationCenter.default.removeObserver(observer)
-            splitViewObserver = nil
-        }
-        sidebarButtons = []
+        pendingChangeObservationGeneration += 1
+        sidebarGroup = nil
         hostingControllers.removeAll()
-        coordinator = nil
+        subject.coordinator = nil
+    }
+
+    private func observePendingChangeState() {
+        let generation = pendingChangeObservationGeneration
+        let coordinatorIdentifier = coordinator.map { ObjectIdentifier($0) }
+        withObservationTracking { [weak self] in
+            _ = self?.coordinator?.toolbarState.hasPendingChanges
+            _ = self?.coordinator?.toolbarState.hasDataPendingChanges
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      generation == self.pendingChangeObservationGeneration,
+                      coordinatorIdentifier == self.coordinator.map({ ObjectIdentifier($0) })
+                else { return }
+                self.observePendingChangeState()
+                self.managedToolbar.validateVisibleItems()
+            }
+        }
+    }
+
+    /// Three items carry text derived from the connection's database type, and none of them can be
+    /// repointed by validation: a subitem of a view-backed group is never sent `validate()`, and a
+    /// menu built at construction keeps whatever it was built with. They are pushed here instead.
+    private func refreshConnectionScopedItems() {
+        for item in allItems() {
+            switch item.itemIdentifier {
+            case Self.database:
+                apply(label: containerEntityName, to: item)
+                updateShortcutDescription(
+                    String(format: String(localized: "Open %@"), containerEntityName),
+                    for: Self.database
+                )
+                applyShortcutBinding(to: item)
+            case Self.previewSQL:
+                updateShortcutDescription(previewDescription, for: Self.previewSQL)
+                applyShortcutBinding(to: item)
+            case Self.importTables:
+                (item as? NSMenuToolbarItem)?.menu = buildImportSubmenu()
+                item.menuFormRepresentation?.submenu = buildImportSubmenu()
+            default:
+                continue
+            }
+        }
+    }
+
+    /// The overflow menu keeps the title it was built with, so a label change has to reach it too.
+    private func apply(label: String, to item: NSToolbarItem) {
+        item.label = label
+        item.paletteLabel = label
+        item.menuFormRepresentation?.title = label
+    }
+
+    private func allItems() -> [NSToolbarItem] {
+        managedToolbar.items.flatMap { item -> [NSToolbarItem] in
+            guard let group = item as? NSToolbarItemGroup else { return [item] }
+            return [item] + group.subitems
+        }
     }
 
     // MARK: - Identifiers
@@ -71,269 +221,111 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     // MARK: - NSToolbarDelegate
 
+    /// Items ahead of `.sidebarTrackingSeparator` lay out in the sidebar's own titlebar strip,
+    /// so the control that switches what the sidebar shows sits over the pane it drives.
+    ///
+    /// A tracking separator divides the toolbar into pane-aligned sections; it does not align the
+    /// items inside one. Everything after `.inspectorTrackingSeparator` therefore lays out from
+    /// that section's leading edge, which is the inspector divider, so the toggle walked inward as
+    /// the pane opened and only looked right while the inspector was closed. The `.flexibleSpace`
+    /// is what anchors it to the window's trailing edge, and it is the order Apple ships in
+    /// WWDC23 session 10054. Keep the toggle last: ahead of the separator it lands in the content
+    /// section and is wrong in both states.
+    internal static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
+        sidebarToggle,
+        .sidebarTrackingSeparator,
+        connectionGroup,
+        principal,
+        .flexibleSpace,
+        refreshSaveGroup,
+        quickSwitcher,
+        newTab,
+        previewSQL,
+        .inspectorTrackingSeparator,
+        .flexibleSpace,
+        inspector,
+    ]
+
+    internal static let allowedItemIdentifiers: [NSToolbarItem.Identifier] = defaultItemIdentifiers + [
+        results,
+        exportImportGroup,
+        dashboard,
+        history,
+    ]
+
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [
-            Self.sidebarToggle,
-            .sidebarTrackingSeparator,
-            Self.connectionGroup,
-            Self.refreshSaveGroup,
-            .flexibleSpace,
-            Self.principal,
-            .flexibleSpace,
-            Self.quickSwitcher,
-            Self.newTab,
-            Self.previewSQL,
-            Self.inspector,
-        ]
+        Self.defaultItemIdentifiers
     }
 
     internal func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar) + [
-            Self.results,
-            Self.exportImportGroup,
-            Self.dashboard,
-            Self.history,
-        ]
-    }
-
-    internal func toolbar(
-        _ toolbar: NSToolbar,
-        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
-        willBeInsertedIntoToolbar flag: Bool
-    ) -> NSToolbarItem? {
-        Self.lifecycleLogger.info(
-            "[open] toolbar delegate buildItem id=\(itemIdentifier.rawValue, privacy: .public) hasCoordinator=\(self.coordinator != nil)"
-        )
-        guard let coordinator else { return nil }
-
-        switch itemIdentifier {
-        case Self.sidebarToggle:
-            return makeSidebarToggleItem(coordinator: coordinator)
-        case Self.connectionGroup:
-            return makeGroup(
-                id: itemIdentifier,
-                label: String(localized: "Connection"),
-                subitems: [subitemConnection(), subitemDatabase()],
-                content: HStack(spacing: 4) {
-                    ConnectionToolbarButton(coordinator: coordinator)
-                    DatabaseToolbarButton(coordinator: coordinator)
-                }
-            )
-        case Self.principal:
-            let item = hostingItem(
-                id: itemIdentifier,
-                label: "",
-                symbol: nil,
-                action: nil,
-                keyEquivalent: "",
-                modifiers: [],
-                content: ToolbarPrincipalContent(
-                    state: coordinator.toolbarState,
-                    onSwitchDatabase: { [weak coordinator] in coordinator?.commandActions?.openDatabaseSwitcher() },
-                    onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() }
-                )
-            )
-            item.visibilityPriority = .high
-            return item
-        case Self.quickSwitcher:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "Quick Switcher"),
-                symbol: "magnifyingglass",
-                action: #selector(performOpenQuickSwitcher(_:)),
-                keyEquivalent: "o",
-                modifiers: [.command, .shift],
-                content: QuickSwitcherToolbarButton(coordinator: coordinator)
-            )
-        case Self.newTab:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "New Tab"),
-                symbol: "plus.rectangle",
-                action: #selector(performNewTab(_:)),
-                keyEquivalent: "t",
-                modifiers: .command,
-                content: NewTabToolbarButton(coordinator: coordinator)
-            )
-        case Self.previewSQL:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "Preview"),
-                symbol: "eye",
-                action: #selector(performPreviewSQL(_:)),
-                keyEquivalent: "p",
-                modifiers: [.command, .shift],
-                content: PreviewSQLToolbarButton(coordinator: coordinator)
-            )
-        case Self.results:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "Results"),
-                symbol: "rectangle.bottomhalf.inset.filled",
-                action: #selector(performToggleResults(_:)),
-                keyEquivalent: "r",
-                modifiers: [.command, .option],
-                content: ResultsToolbarButton(coordinator: coordinator)
-            )
-        case Self.inspector:
-            let item = NSToolbarItem(itemIdentifier: Self.inspector)
-            item.label = String(localized: "Inspector")
-            item.paletteLabel = String(localized: "Inspector")
-            return item
-        case Self.dashboard:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "Dashboard"),
-                symbol: "gauge.with.dots.needle.33percent",
-                action: #selector(performShowDashboard(_:)),
-                keyEquivalent: "",
-                modifiers: [],
-                content: DashboardToolbarButton(coordinator: coordinator)
-            )
-        case Self.history:
-            return hostingItem(
-                id: itemIdentifier,
-                label: String(localized: "History"),
-                symbol: "clock",
-                action: #selector(performToggleHistory(_:)),
-                keyEquivalent: "y",
-                modifiers: .command,
-                content: HistoryToolbarButton(coordinator: coordinator)
-            )
-        case Self.refreshSaveGroup:
-            return makeGroup(
-                id: itemIdentifier,
-                label: String(localized: "Refresh & Save"),
-                subitems: [subitemRefresh(), subitemSaveChanges()],
-                content: HStack(spacing: 4) {
-                    RefreshToolbarButton(coordinator: coordinator)
-                    SaveChangesToolbarButton(coordinator: coordinator)
-                }
-            )
-        case Self.exportImportGroup:
-            return makeGroup(
-                id: itemIdentifier,
-                label: String(localized: "Export & Import"),
-                subitems: [subitemExport(), subitemImport()],
-                content: HStack(spacing: 4) {
-                    ExportToolbarButton(coordinator: coordinator)
-                    ImportToolbarButton(coordinator: coordinator)
-                }
-            )
-        default:
-            return nil
-        }
+        Self.allowedItemIdentifiers
     }
 }
 
 // MARK: - Sidebar Toggle
 
 extension MainWindowToolbar {
-    fileprivate func makeSidebarToggleItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: Self.sidebarToggle)
-        item.label = String(localized: "Sidebar")
-        item.paletteLabel = String(localized: "Sidebar")
+    private static let sidebarSegmentTabs: [SidebarTab] = [.tables, .favorites]
 
-        let container = NSStackView()
-        container.orientation = .horizontal
-        container.spacing = 2
-
-        let tablesButton = makeSidebarNSButton(
-            icon: "list.bullet",
-            label: String(localized: "Tables"),
-            tag: 0
+    /// A one-of-N segmented toolbar control is `NSToolbarItemGroup` with `.selectOne`.
+    /// Hand-building two `NSButton`s meant faking selection with border tricks and a
+    /// deprecated bezel, and polling `@Observable` state to keep them in sync.
+    ///
+    /// The group must not be navigational. `isNavigational` lets AppKit lift an item out of its
+    /// declared slot and pin it to the leading edge of the content title area, the way Finder
+    /// places back and forward, which put this control past the sidebar divider no matter where
+    /// `defaultItemIdentifiers` listed it. Without the flag it lays out in the sidebar's own
+    /// titlebar strip, and follows the divider when the sidebar collapses.
+    internal static func makeSidebarSegmentGroup(target: AnyObject?, action: Selector) -> NSToolbarItemGroup {
+        let images = ["list.bullet", "star"].compactMap {
+            NSImage(systemSymbolName: $0, accessibilityDescription: nil)
+        }
+        let group = NSToolbarItemGroup(
+            itemIdentifier: sidebarToggle,
+            images: images,
+            selectionMode: .selectOne,
+            labels: [String(localized: "Tables"), String(localized: "Favorites")],
+            target: target,
+            action: action
         )
-        let favoritesButton = makeSidebarNSButton(
-            icon: "star",
-            label: String(localized: "Favorites"),
-            tag: 1
-        )
-
-        container.addArrangedSubview(tablesButton)
-        container.addArrangedSubview(favoritesButton)
-
-        sidebarButtons = [tablesButton, favoritesButton]
-        item.view = container
-
-        syncSidebarButtonState(coordinator: coordinator)
-        startSidebarObservation(coordinator: coordinator)
-
-        return item
+        group.label = String(localized: "Sidebar")
+        group.paletteLabel = group.label
+        group.controlRepresentation = .expanded
+        return group
     }
 
-    private func makeSidebarNSButton(icon: String, label: String, tag: Int) -> NSButton {
-        let button = NSButton()
-        button.bezelStyle = .recessed
-        button.setButtonType(.momentaryPushIn)
-        button.showsBorderOnlyWhileMouseInside = true
-        button.isBordered = true
-        button.image = NSImage(systemSymbolName: icon, accessibilityDescription: label)
-        button.imagePosition = .imageOnly
-        button.tag = tag
-        button.target = self
-        button.action = #selector(sidebarButtonClicked(_:))
-        button.setAccessibilityLabel(label)
-        button.toolTip = label
-        return button
+    /// `sidebarGroup` is the one handle `syncSidebarSelection()` has on the live control, so only
+    /// the item actually going into the toolbar may claim it. A Customize Toolbar palette copy
+    /// that took the slot left every later sync writing into a discarded group, and the segments
+    /// stopped following the sidebar until the window was reopened.
+    internal func makeSidebarToggleItem(claimsSlot: Bool) -> NSToolbarItem {
+        let group = Self.makeSidebarSegmentGroup(target: self, action: #selector(sidebarSegmentChanged(_:)))
+        bindMenuForm(action: #selector(sidebarSegmentChanged(_:)), to: Self.sidebarToggle)
+        guard claimsSlot else { return group }
+        sidebarGroup = group
+        syncSidebarSelection()
+        return group
     }
 
-    @objc fileprivate func sidebarButtonClicked(_ sender: NSButton) {
-        guard let coordinator else { return }
-        let tabs: [SidebarTab] = [.tables, .favorites]
-        guard sender.tag >= 0, sender.tag < tabs.count else { return }
-        coordinator.splitViewController?.setSidebarTab(tabs[sender.tag])
+    /// `@objc` does not type-check the sender, and this action is reachable from the overflow menu
+    /// as well as from the control, where AppKit sends an `NSMenuItem`. A typed parameter would
+    /// read `selectedIndex` off it and trap on `doesNotRecognizeSelector`.
+    @objc fileprivate func sidebarSegmentChanged(_ sender: Any?) {
+        guard let group = sender as? NSToolbarItemGroup else { return }
+        let index = group.selectedIndex
+        guard Self.sidebarSegmentTabs.indices.contains(index) else { return }
+        coordinator?.splitViewController?.setSidebarTab(Self.sidebarSegmentTabs[index])
     }
 
-    fileprivate func syncSidebarButtonState(coordinator: MainContentCoordinator) {
-        guard sidebarButtons.count == 2 else { return }
-        let state = coordinator.toolbarState
+    /// Pushed from the split view controller whenever the sidebar tab or its collapsed
+    /// state changes, instead of an observation loop watching for it.
+    internal func syncSidebarSelection() {
+        guard let group = sidebarGroup, let coordinator else { return }
         let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
-        let isConnected = state.connectionState == .connected || state.connectionState == .executing
         let sidebarVisible = !(coordinator.splitViewController?.isSidebarCollapsed ?? true)
-        let icons = ["list.bullet", "star"]
-        let activeIcons = ["list.bullet", "star.fill"]
-
-        for (index, button) in sidebarButtons.enumerated() {
-            let isActive = sidebarVisible && isConnected
-                && (index == 0 ? sidebarState.selectedSidebarTab == .tables : sidebarState.selectedSidebarTab == .favorites)
-            button.isEnabled = isConnected
-            button.showsBorderOnlyWhileMouseInside = !isActive
-            let icon = isActive ? activeIcons[index] : icons[index]
-            button.image = NSImage(systemSymbolName: icon, accessibilityDescription: button.accessibilityLabel())
-        }
-    }
-
-    fileprivate func startSidebarObservation(coordinator: MainContentCoordinator) {
-        sidebarObservationTask?.cancel()
-
-        sidebarObservationTask = Task { [weak self, weak coordinator] in
-            guard let coordinator else { return }
-            while !Task.isCancelled {
-                let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
-                await withCheckedContinuation { continuation in
-                    withObservationTracking {
-                        _ = coordinator.toolbarState.connectionState
-                        _ = sidebarState.selectedSidebarTab
-                    } onChange: {
-                        continuation.resume()
-                    }
-                }
-                guard !Task.isCancelled, let self else { return }
-                await MainActor.run {
-                    self.syncSidebarButtonState(coordinator: coordinator)
-                }
-            }
-        }
-
-        splitViewObserver = NotificationCenter.default.addObserver(
-            forName: NSSplitView.didResizeSubviewsNotification,
-            object: coordinator.splitViewController?.splitView,
-            queue: .main
-        ) { [weak self, weak coordinator] _ in
-            MainActor.assumeIsolated {
-                guard let self, let coordinator else { return }
-                self.syncSidebarButtonState(coordinator: coordinator)
-            }
-        }
+        group.selectedIndex = sidebarVisible
+            ? (Self.sidebarSegmentTabs.firstIndex(of: sidebarState.selectedSidebarTab) ?? -1)
+            : -1
+        managedToolbar.validateVisibleItems()
     }
 }

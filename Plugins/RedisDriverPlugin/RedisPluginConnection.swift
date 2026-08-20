@@ -99,10 +99,10 @@ final class RedisPluginConnection: @unchecked Sendable {
     private let sslConfig: SSLConfiguration
 
     private let stateLock = NSLock()
+    private let cancellationGate = PluginQueryCancellationGate()
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
-    private var _isCancelled: Bool = false
     private var _currentDatabase: Int
 
     var isConnected: Bool {
@@ -165,74 +165,22 @@ final class RedisPluginConnection: @unchecked Sendable {
 
     // MARK: - Connection Management
 
-    func connect() async throws {
+    func connect(reportingStage report: @escaping ConnectionStageReporter = { _ in }) async throws {
         #if canImport(CRedis)
         _ = Self.initOnce
         try await pluginDispatchAsync(on: queue) { [self] in
             logger.debug("Connecting to Redis at \(self.host):\(self.port)")
 
-            let connectTimeout = timeval(tv_sec: 10, tv_usec: 0)
-            guard let ctx = redisConnectWithTimeout(host, Int32(port), connectTimeout) else {
-                logger.error("Failed to create Redis context")
-                throw RedisPluginError.connectionFailed
-            }
+            try openContextSync(selectDatabase: database, reportingStage: report)
 
-            if ctx.pointee.err != 0 {
-                let errMsg = withUnsafePointer(to: &ctx.pointee.errstr) { ptr in
-                    ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
-                }
-                logger.error("Redis connection error: \(errMsg)")
-                let errCode = Int(ctx.pointee.err)
-                redisFree(ctx)
-                throw RedisPluginError(code: errCode, message: errMsg)
-            }
-
-            let commandTimeout = timeval(tv_sec: 30, tv_usec: 0)
-            redisSetTimeout(ctx, commandTimeout)
-            redisEnableKeepAliveWithInterval(ctx, 60)
-
-            stateLock.lock()
-            self.context = ctx
-            stateLock.unlock()
-
+            report(.preparingSession)
             do {
-                if sslConfig.isEnabled {
-                    try connectSSL(ctx)
-                }
-
-                if let password = password, !password.isEmpty {
-                    let authArgs: [String]
-                    if let username = username, !username.isEmpty {
-                        authArgs = ["AUTH", username, password]
-                    } else {
-                        authArgs = ["AUTH", password]
-                    }
-                    let reply = try executeCommandSync(authArgs)
-                    if case .error(let msg) = reply {
-                        throw RedisPluginError(code: 1, message: "AUTH failed: \(msg)")
-                    }
-                }
-
-                if database != 0 {
-                    let reply = try executeCommandSync(["SELECT", String(database)])
-                    if case .error(let msg) = reply {
-                        throw RedisPluginError(code: 2, message: "SELECT \(database) failed: \(msg)")
-                    }
-                }
-
                 let pingReply = try executeCommandSync(["PING"])
                 if case .error(let msg) = pingReply {
                     throw RedisPluginError(code: 3, message: "PING failed: \(msg)")
                 }
             } catch {
-                stateLock.lock()
-                let handle = self.context
-                self.context = nil
-                let ssl = self.sslContext
-                self.sslContext = nil
-                stateLock.unlock()
-                if let handle { redisFree(handle) }
-                if let ssl { redisFreeSSLContext(ssl) }
+                freeContextSync()
                 throw error
             }
 
@@ -263,7 +211,6 @@ final class RedisPluginConnection: @unchecked Sendable {
         #endif
         _isConnected = false
         _cachedServerVersion = nil
-        _isCancelled = false
         _currentDatabase = database
         stateLock.unlock()
 
@@ -285,25 +232,12 @@ final class RedisPluginConnection: @unchecked Sendable {
     // MARK: - Cancellation
 
     func cancelCurrentQuery() {
-        stateLock.lock()
-        _isCancelled = true
-        stateLock.unlock()
+        cancellationGate.cancel()
     }
 
-    private func checkCancelled() throws {
-        stateLock.lock()
-        let cancelled = _isCancelled
-        if cancelled { _isCancelled = false }
-        stateLock.unlock()
-        if cancelled {
-            throw RedisPluginError(code: 0, message: "Query cancelled")
-        }
-    }
-
-    func resetCancellation() {
-        stateLock.lock()
-        _isCancelled = false
-        stateLock.unlock()
+    private func throwIfCancelled(_ generation: Int) throws {
+        guard cancellationGate.isCancelled(generation) else { return }
+        throw CancellationError()
     }
 
     // MARK: - Server Information
@@ -323,6 +257,14 @@ final class RedisPluginConnection: @unchecked Sendable {
     // MARK: - Command Execution
 
     func executeCommand(_ args: [String]) async throws -> RedisReply {
+        try await executeCommand(args.map { Data($0.utf8) })
+    }
+
+    func executePipeline(_ commands: [[String]]) async throws -> [RedisReply] {
+        try await executePipeline(commands.map { $0.map { Data($0.utf8) } })
+    }
+
+    func executeCommand(_ args: [Data]) async throws -> RedisReply {
         #if canImport(CRedis)
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else {
@@ -334,9 +276,10 @@ final class RedisPluginConnection: @unchecked Sendable {
                 throw RedisPluginError.notConnected
             }
             stateLock.unlock()
-            try checkCancelled()
-            let result = try executeCommandSync(args)
-            try checkCancelled()
+            let generation = cancellationGate.beginQuery()
+            defer { cancellationGate.endQuery(generation) }
+            let result = try executeCommandSyncRetrying(args)
+            try throwIfCancelled(generation)
             return result
         }
         #else
@@ -344,7 +287,7 @@ final class RedisPluginConnection: @unchecked Sendable {
         #endif
     }
 
-    func executePipeline(_ commands: [[String]]) async throws -> [RedisReply] {
+    func executePipeline(_ commands: [[Data]]) async throws -> [RedisReply] {
         #if canImport(CRedis)
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else {
@@ -356,9 +299,10 @@ final class RedisPluginConnection: @unchecked Sendable {
                 throw RedisPluginError.notConnected
             }
             stateLock.unlock()
-            try checkCancelled()
-            let results = try executePipelineSync(commands)
-            try checkCancelled()
+            let generation = cancellationGate.beginQuery()
+            defer { cancellationGate.endQuery(generation) }
+            let results = try executePipelineSyncRetrying(commands)
+            try throwIfCancelled(generation)
             return results
         }
         #else
@@ -380,8 +324,9 @@ final class RedisPluginConnection: @unchecked Sendable {
                 throw RedisPluginError.notConnected
             }
             stateLock.unlock()
-            try checkCancelled()
-            let reply = try executeCommandSync(["SELECT", String(index)])
+            let generation = cancellationGate.beginQuery()
+            defer { cancellationGate.endQuery(generation) }
+            let reply = try executeCommandSyncRetrying(["SELECT", String(index)])
             if case .error(let msg) = reply {
                 throw RedisPluginError(code: 2, message: "SELECT \(index) failed: \(msg)")
             }
@@ -392,26 +337,6 @@ final class RedisPluginConnection: @unchecked Sendable {
         #else
         throw RedisPluginError.hiredisUnavailable
         #endif
-    }
-
-    static func classifySSLError(_ message: String) -> SSLHandshakeError? {
-        let lower = message.lowercased()
-        if lower.contains("certificate verify failed") || lower.contains("unable to get local issuer") {
-            return .untrustedCertificate(serverMessage: message)
-        }
-        if lower.contains("hostname") {
-            return .hostnameMismatch(serverMessage: message)
-        }
-        if lower.contains("sslv3") || lower.contains("unsupported protocol") || lower.contains("no shared cipher") {
-            return .cipherMismatch(serverMessage: message)
-        }
-        if lower.contains("ssl handshake failed") || lower.contains("tlsv1") {
-            return .cipherMismatch(serverMessage: message)
-        }
-        if lower.contains("client certificate") {
-            return .clientCertRequired(serverMessage: message)
-        }
-        return nil
     }
 }
 
@@ -457,10 +382,8 @@ private extension RedisPluginConnection {
         let result = redisInitiateSSLWithContext(ctx, ssl)
         if result != REDIS_OK {
             redisFreeSSLContext(ssl)
-            let errMsg = withUnsafePointer(to: &ctx.pointee.errstr) { ptr in
-                ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
-            }
-            if let sslError = Self.classifySSLError(errMsg) {
+            let errMsg = Self.contextErrorMessage(ctx)
+            if let sslError = RedisSSLClassifier.classifySSLError(errMsg) {
                 throw sslError
             }
             throw RedisPluginError(code: Int(result), message: "SSL handshake failed: \(errMsg)")
@@ -470,7 +393,120 @@ private extension RedisPluginConnection {
         logger.debug("SSL connection established")
     }
 
+    static func contextErrorMessage(_ ctx: UnsafeMutablePointer<redisContext>) -> String {
+        withUnsafePointer(to: &ctx.pointee.errstr) { ptr in
+            ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
+        }
+    }
+
+    func openContextSync(
+        selectDatabase dbIndex: Int,
+        reportingStage report: ConnectionStageReporter = { _ in }
+    ) throws {
+        let connectTimeout = timeval(tv_sec: 10, tv_usec: 0)
+        guard let ctx = redisConnectWithTimeout(host, Int32(port), connectTimeout) else {
+            logger.error("Failed to create Redis context")
+            throw RedisPluginError.connectionFailed
+        }
+
+        if ctx.pointee.err != 0 {
+            let errMsg = Self.contextErrorMessage(ctx)
+            logger.error("Redis connection error: \(errMsg)")
+            let errCode = Int(ctx.pointee.err)
+            redisFree(ctx)
+            throw RedisPluginError(code: errCode, message: errMsg)
+        }
+
+        let commandTimeout = timeval(tv_sec: 30, tv_usec: 0)
+        redisSetTimeout(ctx, commandTimeout)
+        redisEnableKeepAliveWithInterval(ctx, 60)
+
+        stateLock.lock()
+        self.context = ctx
+        stateLock.unlock()
+
+        do {
+            if sslConfig.isEnabled {
+                report(.negotiatingEncryption)
+                try connectSSL(ctx)
+            }
+            if let password, !password.isEmpty {
+                report(.authenticating)
+            }
+            try authenticateSync()
+            if dbIndex != 0 {
+                let reply = try executeCommandSync(["SELECT", String(dbIndex)])
+                if case .error(let msg) = reply {
+                    throw RedisPluginError(code: 2, message: "SELECT \(dbIndex) failed: \(msg)")
+                }
+            }
+        } catch {
+            freeContextSync()
+            throw error
+        }
+    }
+
+    func authenticateSync() throws {
+        guard let authArgs = RedisAuthCommand.arguments(username: username, password: password) else { return }
+        let reply = try executeCommandSync(authArgs)
+        if case .error(let msg) = reply {
+            throw RedisPluginError(code: 1, message: "AUTH failed: \(msg)")
+        }
+    }
+
+    func freeContextSync() {
+        stateLock.lock()
+        let handle = context
+        let ssl = sslContext
+        context = nil
+        sslContext = nil
+        stateLock.unlock()
+        if let handle { redisFree(handle) }
+        if let ssl { redisFreeSSLContext(ssl) }
+    }
+
+    func reconnectSync() throws {
+        guard !isShuttingDown else { throw RedisPluginError.notConnected }
+        let targetDatabase = currentDatabase()
+        logger.warning("Redis connection lost; reconnecting to \(self.host):\(self.port), database \(targetDatabase)")
+        freeContextSync()
+        try openContextSync(selectDatabase: targetDatabase)
+        stateLock.lock()
+        _isConnected = true
+        stateLock.unlock()
+    }
+
+    func isConnectionError(_ error: RedisPluginError) -> Bool {
+        error.code == Int(REDIS_ERR_EOF) || error.code == Int(REDIS_ERR_IO)
+    }
+
     func executeCommandSync(_ args: [String]) throws -> RedisReply {
+        try executeCommandSync(args.map { Data($0.utf8) })
+    }
+
+    func executeCommandSyncRetrying(_ args: [String]) throws -> RedisReply {
+        try executeCommandSyncRetrying(args.map { Data($0.utf8) })
+    }
+
+    func executeCommandSyncRetrying(_ args: [Data]) throws -> RedisReply {
+        do {
+            return try executeCommandSync(args)
+        } catch let error as RedisPluginError where isConnectionError(error) && !isShuttingDown {
+            try reconnectSync()
+            return try executeCommandSync(args)
+        }
+    }
+
+    func executePipelineSyncRetrying(_ commands: [[Data]]) throws -> [RedisReply] {
+        do {
+            return try executePipelineSync(commands)
+        } catch let error as RedisPluginError where isConnectionError(error) && !isShuttingDown {
+            try reconnectSync()
+            return try executePipelineSync(commands)
+        }
+    }
+
+    func executeCommandSync(_ args: [Data]) throws -> RedisReply {
         stateLock.lock()
         guard let ctx = context else {
             stateLock.unlock()
@@ -479,15 +515,11 @@ private extension RedisPluginConnection {
         stateLock.unlock()
 
         let argc = Int32(args.count)
-        let lengths = args.map { $0.utf8.count }
 
-        return try withArgvPointers(args: args, lengths: lengths) { argv, argvlen in
+        return try withArgvPointers(args: args) { argv, argvlen in
             guard let rawReply = redisCommandArgv(ctx, argc, argv, argvlen) else {
                 if ctx.pointee.err != 0 {
-                    let errMsg = withUnsafePointer(to: &ctx.pointee.errstr) { ptr in
-                        ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
-                    }
-                    throw RedisPluginError(code: Int(ctx.pointee.err), message: errMsg)
+                    throw RedisPluginError(code: Int(ctx.pointee.err), message: Self.contextErrorMessage(ctx))
                 }
                 throw RedisPluginError(code: -1, message: "No reply from Redis")
             }
@@ -499,7 +531,7 @@ private extension RedisPluginConnection {
         }
     }
 
-    func executePipelineSync(_ commands: [[String]]) throws -> [RedisReply] {
+    func executePipelineSync(_ commands: [[Data]]) throws -> [RedisReply] {
         stateLock.lock()
         guard let ctx = context else {
             stateLock.unlock()
@@ -511,8 +543,7 @@ private extension RedisPluginConnection {
         var appendedCount = 0
         for args in commands {
             let argc = Int32(args.count)
-            let lengths = args.map { $0.utf8.count }
-            try withArgvPointers(args: args, lengths: lengths) { argv, argvlen in
+            try withArgvPointers(args: args) { argv, argvlen in
                 let status = redisAppendCommandArgv(ctx, argc, argv, argvlen)
                 if status != REDIS_OK {
                     for _ in 0 ..< appendedCount {
@@ -521,9 +552,7 @@ private extension RedisPluginConnection {
                         if let d = discard { freeReplyObject(d) }
                     }
                     let errCode = Int(ctx.pointee.err)
-                    let errMsg = withUnsafePointer(to: &ctx.pointee.errstr) { ptr in
-                        ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
-                    }
+                    let errMsg = Self.contextErrorMessage(ctx)
                     markDisconnected()
                     throw RedisPluginError(code: errCode, message: errMsg)
                 }
@@ -538,9 +567,7 @@ private extension RedisPluginConnection {
             let status = redisGetReply(ctx, &rawReply)
             guard status == REDIS_OK, let reply = rawReply else {
                 let errCode = Int(ctx.pointee.err)
-                let errMsg = withUnsafePointer(to: &ctx.pointee.errstr) { ptr in
-                    ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
-                }
+                let errMsg = Self.contextErrorMessage(ctx)
                 for _ in (i + 1) ..< commands.count {
                     var discard: UnsafeMutableRawPointer?
                     if redisGetReply(ctx, &discard) == REDIS_OK, let d = discard {
@@ -575,26 +602,22 @@ private extension RedisPluginConnection {
     }
 
     func withArgvPointers<T>(
-        args: [String],
-        lengths: [Int],
+        args: [Data],
         body: (UnsafeMutablePointer<UnsafePointer<CChar>?>, UnsafeMutablePointer<Int>) throws -> T
     ) rethrows -> T {
         let count = args.count
 
-        let cStrings: [UnsafeMutablePointer<CChar>] = args.map { arg in
-            let utf8 = Array(arg.utf8)
-            let ptr = UnsafeMutablePointer<CChar>.allocate(capacity: utf8.count + 1)
-            utf8.withUnsafeBufferPointer { buffer in
-                if let base = buffer.baseAddress {
-                    base.withMemoryRebound(to: CChar.self, capacity: utf8.count) { src in
-                        ptr.initialize(from: src, count: utf8.count)
-                    }
+        let buffers: [UnsafeMutablePointer<CChar>] = args.map { arg in
+            let ptr = UnsafeMutablePointer<CChar>.allocate(capacity: arg.count + 1)
+            arg.withUnsafeBytes { raw in
+                if let base = raw.bindMemory(to: CChar.self).baseAddress {
+                    ptr.initialize(from: base, count: arg.count)
                 }
             }
-            ptr[utf8.count] = 0
+            ptr[arg.count] = 0
             return ptr
         }
-        defer { cStrings.forEach { $0.deallocate() } }
+        defer { buffers.forEach { $0.deallocate() } }
 
         let argv = UnsafeMutablePointer<UnsafePointer<CChar>?>.allocate(capacity: count)
         let argvlen = UnsafeMutablePointer<Int>.allocate(capacity: count)
@@ -604,8 +627,8 @@ private extension RedisPluginConnection {
         }
 
         for i in 0 ..< count {
-            argv[i] = UnsafePointer(cStrings[i])
-            argvlen[i] = lengths[i]
+            argv[i] = UnsafePointer(buffers[i])
+            argvlen[i] = args[i].count
         }
 
         return try body(argv, argvlen)

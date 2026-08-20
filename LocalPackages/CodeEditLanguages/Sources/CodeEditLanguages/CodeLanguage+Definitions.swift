@@ -13,6 +13,7 @@ public extension CodeLanguage {
     static let allLanguages: [CodeLanguage] = [
         .bash,
         .javascript,
+        .json,
         .jsx,
         .sql
     ]
@@ -65,6 +66,15 @@ public extension CodeLanguage {
         lineCommentString: "//",
         rangeCommentStrings: ("/*", "*/"),
         highlights: ["highlights-jsx", "injections"]
+    )
+
+    /// A language structure for `JSON`
+    static let json: CodeLanguage = .init(
+        id: .json,
+        tsName: "json",
+        extensions: ["json"],
+        lineCommentString: "",
+        rangeCommentStrings: ("", "")
     )
 
     /// A language structure for `SQL`

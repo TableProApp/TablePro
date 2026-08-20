@@ -36,14 +36,15 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
                 isError: true
             )
         }
-        guard !QueryClassifier.isMultiStatement(query) else {
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+
+        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
             return ChatToolResult(
                 content: "Multi-statement queries are not supported. Send one statement at a time.",
                 isError: true
             )
         }
 
-        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
         let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
         guard tier == .destructive else {
             return ChatToolResult(
@@ -52,15 +53,26 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             )
         }
 
+        try await context.authPolicy.checkSafeModeDialog(
+            sql: query,
+            connectionId: connectionId,
+            databaseType: meta.databaseType,
+            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
+        )
+
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
+        let scope = try await context.bridge.resolveScope(
+            connectionId: connectionId,
+            database: nil,
+            schema: nil
+        )
         let payload = try await ToolQueryExecutor.executeAndLog(
             services: services,
             query: query,
-            connectionId: connectionId,
-            databaseName: meta.databaseName,
+            scope: scope,
             maxRows: 0,
-            timeoutSeconds: mcpSettings.queryTimeoutSeconds,
+            timeoutSeconds: MCPLimitResolver.resolveTimeoutSeconds(requested: nil, settings: mcpSettings),
             principalLabel: String(localized: "AI Chat")
         )
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))

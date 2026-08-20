@@ -8,13 +8,22 @@ import Foundation
 private final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var isConnected = false
     var shouldFailConnect = false
+    var holdsSuspensionBlockingResource = false
+    var onConnect: (@Sendable () -> Void)?
+    var beforeDisconnect: (@Sendable () async -> Void)?
+    private(set) var disconnectCount = 0
 
     func connect() async throws {
         if shouldFailConnect { throw NSError(domain: "test", code: 1) }
+        onConnect?()
         isConnected = true
     }
 
-    func disconnect() async throws { isConnected = false }
+    func disconnect() async throws {
+        await beforeDisconnect?()
+        isConnected = false
+        disconnectCount += 1
+    }
     func ping() async throws -> Bool { isConnected }
 
     func execute(query: String) async throws -> QueryResult {
@@ -68,6 +77,58 @@ private final class MockSecureStore: SecureStore, Sendable {
     func delete(forKey key: String) throws {}
 }
 
+// MARK: - Synchronisation Helpers
+
+private actor Gate {
+    private var isOpen = false
+    private var hasEntered = false
+    private var blocked: [CheckedContinuation<Void, Never>] = []
+    private var observers: [CheckedContinuation<Void, Never>] = []
+
+    func enter() async {
+        hasEntered = true
+        for observer in observers { observer.resume() }
+        observers.removeAll()
+        guard !isOpen else { return }
+        await withCheckedContinuation { blocked.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        for waiter in blocked { waiter.resume() }
+        blocked.removeAll()
+    }
+
+    func waitUntilEntered() async {
+        guard !hasEntered else { return }
+        await withCheckedContinuation { observers.append($0) }
+    }
+}
+
+private actor Barrier {
+    private static let pollInterval: UInt64 = 20_000_000
+    private static let maxPolls = 250
+
+    private let expected: Int
+    private var arrived = 0
+    private(set) var overlapped = 0
+
+    init(expected: Int) {
+        self.expected = expected
+    }
+
+    func arriveAndWait() async {
+        arrived += 1
+        var polls = 0
+        while arrived < expected, polls < Self.maxPolls {
+            try? await Task.sleep(nanoseconds: Self.pollInterval)
+            polls += 1
+        }
+        guard arrived >= expected else { return }
+        overlapped += 1
+    }
+}
+
 @Suite("ConnectionManager Tests")
 struct ConnectionManagerTests {
     @Test("Connect creates a session")
@@ -109,6 +170,30 @@ struct ConnectionManagerTests {
 
         let session = manager.session(for: connection.id)
         #expect(session == nil)
+    }
+
+    @Test("Reconnecting for the same id tears down the previous session")
+    func reconnectDisconnectsPrevious() async throws {
+        let factory = MockDriverFactory()
+        let store = MockSecureStore()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: store)
+
+        let connection = DatabaseConnection(
+            name: "Test",
+            type: DatabaseType(rawValue: "mock")
+        )
+
+        let first = MockDatabaseDriver()
+        factory.drivers["mock"] = first
+        _ = try await manager.connect(connection)
+
+        let second = MockDatabaseDriver()
+        factory.drivers["mock"] = second
+        _ = try await manager.connect(connection)
+
+        #expect(first.disconnectCount == 1)
+        #expect(second.isConnected)
+        #expect(manager.session(for: connection.id)?.driver === second)
     }
 
     @Test("Connect with unknown type throws driverNotFound")
@@ -169,6 +254,117 @@ struct ConnectionManagerTests {
         }
 
         #expect(sshProvider.closedTunnels.contains(connection.id))
+    }
+
+    @Test("Only sessions holding a suspension blocking resource are released")
+    func releaseOnlyTouchesBlockingSessions() async throws {
+        let factory = MockDriverFactory()
+        let store = MockSecureStore()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: store)
+
+        let blockingDriver = MockDatabaseDriver()
+        blockingDriver.holdsSuspensionBlockingResource = true
+        factory.drivers["blocking"] = blockingDriver
+        let blocking = DatabaseConnection(name: "File", type: DatabaseType(rawValue: "blocking"))
+        _ = try await manager.connect(blocking)
+
+        let remoteDriver = MockDatabaseDriver()
+        factory.drivers["remote"] = remoteDriver
+        let remote = DatabaseConnection(name: "Remote", type: DatabaseType(rawValue: "remote"))
+        _ = try await manager.connect(remote)
+
+        #expect(manager.hasSuspensionBlockingResources)
+
+        await manager.releaseSuspensionBlockingResources()
+
+        #expect(blockingDriver.disconnectCount == 1)
+        #expect(remoteDriver.disconnectCount == 0)
+        #expect(manager.session(for: blocking.id) == nil)
+        #expect(manager.session(for: remote.id) != nil)
+        #expect(!manager.hasSuspensionBlockingResources)
+    }
+
+    @Test("Releasing several blocking sessions runs them concurrently")
+    func releaseRunsConcurrently() async throws {
+        let factory = MockDriverFactory()
+        let store = MockSecureStore()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: store)
+        let barrier = Barrier(expected: 2)
+
+        let firstDriver = MockDatabaseDriver()
+        firstDriver.holdsSuspensionBlockingResource = true
+        firstDriver.beforeDisconnect = { await barrier.arriveAndWait() }
+        factory.drivers["first"] = firstDriver
+        _ = try await manager.connect(DatabaseConnection(name: "First", type: DatabaseType(rawValue: "first")))
+
+        let secondDriver = MockDatabaseDriver()
+        secondDriver.holdsSuspensionBlockingResource = true
+        secondDriver.beforeDisconnect = { await barrier.arriveAndWait() }
+        factory.drivers["second"] = secondDriver
+        _ = try await manager.connect(DatabaseConnection(name: "Second", type: DatabaseType(rawValue: "second")))
+
+        await manager.releaseSuspensionBlockingResources()
+
+        #expect(await barrier.overlapped == 2)
+        #expect(firstDriver.disconnectCount == 1)
+        #expect(secondDriver.disconnectCount == 1)
+    }
+
+    @Test("A teardown still in flight keeps counting as a blocking resource")
+    func inFlightTeardownStillBlocks() async throws {
+        let factory = MockDriverFactory()
+        let store = MockSecureStore()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: store)
+        let connection = DatabaseConnection(name: "File", type: DatabaseType(rawValue: "mock"))
+        let gate = Gate()
+
+        let driver = MockDatabaseDriver()
+        driver.holdsSuspensionBlockingResource = true
+        driver.beforeDisconnect = { await gate.enter() }
+        factory.drivers["mock"] = driver
+        _ = try await manager.connect(connection)
+
+        let teardown = Task { await manager.disconnect(connection.id) }
+        await gate.waitUntilEntered()
+
+        #expect(manager.session(for: connection.id) == nil)
+        #expect(manager.hasSuspensionBlockingResources)
+
+        await gate.open()
+        await teardown.value
+
+        #expect(!manager.hasSuspensionBlockingResources)
+    }
+
+    @Test("Connecting waits for an in-flight teardown of the same connection")
+    func connectWaitsForInFlightTeardown() async throws {
+        let factory = MockDriverFactory()
+        let store = MockSecureStore()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: store)
+        let connection = DatabaseConnection(name: "Test", type: DatabaseType(rawValue: "mock"))
+        let gate = Gate()
+
+        let first = MockDatabaseDriver()
+        first.beforeDisconnect = { await gate.enter() }
+        factory.drivers["mock"] = first
+        _ = try await manager.connect(connection)
+
+        let teardown = Task { await manager.disconnect(connection.id) }
+        await gate.waitUntilEntered()
+
+        let second = MockDatabaseDriver()
+        factory.drivers["mock"] = second
+        let reconnect = Task { try await manager.connect(connection) }
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        #expect(!second.isConnected)
+
+        await gate.open()
+        _ = try await reconnect.value
+        await teardown.value
+
+        #expect(first.disconnectCount == 1)
+        #expect(second.isConnected)
     }
 }
 

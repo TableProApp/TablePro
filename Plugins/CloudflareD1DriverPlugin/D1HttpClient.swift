@@ -377,7 +377,7 @@ final class D1HttpClient: @unchecked Sendable {
             Self.logger.warning("D1 rate limited. Retry-After: \(retryAfter ?? "not specified")")
             if let seconds = retryAfter {
                 throw D1HttpError(
-                    message: String(localized: "Rate limited by Cloudflare. Retry after \(seconds) seconds.")
+                    message: String(format: String(localized: "Rate limited by Cloudflare. Retry after %@ seconds."), seconds)
                 )
             } else {
                 throw D1HttpError(

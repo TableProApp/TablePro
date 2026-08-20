@@ -49,6 +49,18 @@ final class RowDisplayCache {
         totalCost = 0
     }
 
+    /// Drops one row's formatted values while keeping its box, so the next read
+    /// reformats from the current cell values. Row ids are positional, so a row
+    /// whose content changed in place keeps its id and would otherwise be served
+    /// its pre-edit text.
+    func clearValues(forID id: RowID) {
+        guard let box = storage[id] else { return }
+        totalCost -= rowCost(box.values)
+        for index in box.values.indices {
+            box.values[index] = nil
+        }
+    }
+
     private func evictIfNeeded() {
         while storage.count > countLimit || totalCost > costLimit {
             guard insertionHead < insertionOrder.count else { break }

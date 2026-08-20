@@ -1,6 +1,7 @@
 import Foundation
 import TableProPluginKit
 import Testing
+
 @testable import TablePro
 
 @Suite("QueryTab.hasUserActiveSort")
@@ -42,25 +43,9 @@ struct QueryTabHasUserActiveSortTests {
     }
 }
 
-@Suite("QueryTabManager.replaceTabContent resets default-sort gate")
+@Suite("QueryTabManager.replaceTabContent resets sort state")
 @MainActor
 struct ReplaceTabContentDefaultSortResetTests {
-    @Test("replaceTabContent clears didEvaluateDefaultSort")
-    func replaceClearsGate() throws {
-        let manager = QueryTabManager()
-        try manager.addTableTab(tableName: "users")
-        guard let index = manager.selectedTabIndex else {
-            Issue.record("selectedTabIndex was nil after addTableTab")
-            return
-        }
-        manager.mutate(at: index) { $0.execution.didEvaluateDefaultSort = true }
-        #expect(manager.tabs[index].execution.didEvaluateDefaultSort)
-
-        try manager.replaceTabContent(tableName: "orders")
-
-        #expect(!manager.tabs[index].execution.didEvaluateDefaultSort)
-    }
-
     @Test("replaceTabContent clears sortState (back to .user default)")
     func replaceClearsSortState() throws {
         let manager = QueryTabManager()
@@ -102,9 +87,9 @@ struct DataGridSettingsDefaultSortDecoderTests {
             "queryResultRowCap": 10000,
             "truncateQueryResults": true
         }
-        """.data(using: .utf8)!
+        """
 
-        let settings = try JSONDecoder().decode(DataGridSettings.self, from: legacyJSON)
+        let settings = try JSONDecoder().decode(DataGridSettings.self, from: Data(legacyJSON.utf8))
 
         #expect(settings.defaultSortBehavior == .none)
     }

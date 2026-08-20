@@ -3,8 +3,8 @@
 //  TableProTests
 //
 
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import XCTest
 
 final class SQLStatementScannerTests: XCTestCase {
@@ -109,6 +109,152 @@ final class SQLStatementScannerTests: XCTestCase {
         )
     }
 
+    // MARK: - Comment-Only Segments
+
+    func testTrailingLineCommentAfterSemicolonIsDropped() {
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: "SELECT 1; -- note"),
+            ["SELECT 1"]
+        )
+    }
+
+    func testTrailingBlockCommentAfterSemicolonIsDropped() {
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: "SELECT 1; /* note */"),
+            ["SELECT 1"]
+        )
+    }
+
+    func testMiddleCommentOnlySegmentIsDropped() {
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: "SELECT 1; /* x */; SELECT 2"),
+            ["SELECT 1", "SELECT 2"]
+        )
+    }
+
+    func testCommentOnlyWholeInputReturnsNoStatements() {
+        XCTAssertEqual(SQLStatementScanner.allStatements(in: "-- note"), [])
+        XCTAssertEqual(SQLStatementScanner.allStatements(in: "/* note */"), [])
+    }
+
+    func testMixedCommentAndWhitespaceMultilineSegmentIsDropped() {
+        let sql = "SELECT 1;\n  -- first\n  /* second */  \n; SELECT 2"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql),
+            ["SELECT 1", "SELECT 2"]
+        )
+    }
+
+    func testConsecutiveSemicolonsStillDropped() {
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: "SELECT 1;;"),
+            ["SELECT 1"]
+        )
+    }
+
+    func testUnclosedTrailingBlockCommentIsDropped() {
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: "SELECT 1; /* note"),
+            ["SELECT 1"]
+        )
+    }
+
+    func testLineCommentAtEndOfInputIsDropped() {
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: "SELECT 1; --"),
+            ["SELECT 1"]
+        )
+    }
+
+    func testMySQLVersionedCommentSegmentIsKept() {
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */; SELECT 1", dialect: .mysql),
+            ["/*!40101 SET @OLD=1 */", "SELECT 1"]
+        )
+    }
+
+    func testVersionedCommentKeptRegardlessOfDialect() {
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: "/*!40101 SET @OLD=1 */;", dialect: .generic),
+            ["/*!40101 SET @OLD=1 */"]
+        )
+    }
+
+    func testInStatementCommentsArePreserved() {
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: "SELECT 1 -- hint\n; SELECT 2 /* keep */"),
+            ["SELECT 1 -- hint", "SELECT 2 /* keep */"]
+        )
+    }
+
+    func testPreservingSemicolonsDropsCommentOnlySegment() {
+        XCTAssertEqual(
+            SQLStatementScanner.allStatementsPreservingSemicolons(in: "SELECT 1; -- note"),
+            ["SELECT 1;"]
+        )
+    }
+
+    // MARK: - Dollar Quoting (PostgreSQL)
+
+    func testDollarQuotedDoBlockKeepsInternalSemicolons() {
+        let sql = "DO $$ BEGIN PERFORM 1; PERFORM 2; END $$; SELECT 1;"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            ["DO $$ BEGIN PERFORM 1; PERFORM 2; END $$", "SELECT 1"]
+        )
+    }
+
+    func testTaggedDollarQuoteKeepsInternalSemicolons() {
+        let sql = "CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END $body$ LANGUAGE plpgsql; SELECT f();"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            [
+                "CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END $body$ LANGUAGE plpgsql",
+                "SELECT f()"
+            ]
+        )
+    }
+
+    func testNestedDifferentDollarTags() {
+        let sql = "DO $outer$ SELECT $inner$ a;b $inner$; END $outer$; SELECT 1;"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            ["DO $outer$ SELECT $inner$ a;b $inner$; END $outer$", "SELECT 1"]
+        )
+    }
+
+    func testPositionalParameterIsNotDollarQuote() {
+        let sql = "SELECT $1; SELECT $2;"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            ["SELECT $1", "SELECT $2"]
+        )
+    }
+
+    func testDollarPairInsideIdentifierIsNotOpener() {
+        let sql = "SELECT 1 AS a$$; SELECT 2;"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .postgres),
+            ["SELECT 1 AS a$$", "SELECT 2"]
+        )
+    }
+
+    func testGenericDialectIgnoresDollarQuotes() {
+        let sql = "DO $$ SELECT 1; SELECT 2 $$;"
+        XCTAssertEqual(
+            SQLStatementScanner.allStatements(in: sql, dialect: .generic),
+            ["DO $$ SELECT 1", "SELECT 2 $$"]
+        )
+    }
+
+    func testCursorInsideDollarBodyReturnsWholeStatement() {
+        let sql = "DO $$ BEGIN PERFORM 1; END $$; SELECT 1;"
+        XCTAssertEqual(
+            SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 20, dialect: .postgres),
+            "DO $$ BEGIN PERFORM 1; END $$"
+        )
+    }
+
     // MARK: - allStatementsPreservingSemicolons
 
     func testPreservingSemicolons() {
@@ -177,7 +323,7 @@ final class SQLStatementScannerTests: XCTestCase {
         )
     }
 
-    func testNoSemicolonsFastPath() {
+    func testNoSemicolonsWholeInputIsOneStatement() {
         let sql = "SELECT * FROM users"
         XCTAssertEqual(
             SQLStatementScanner.statementAtCursor(in: sql, cursorPosition: 5),

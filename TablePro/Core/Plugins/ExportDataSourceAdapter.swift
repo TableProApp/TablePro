@@ -20,23 +20,28 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         self.databaseTypeId = databaseType.rawValue
     }
 
+    private var pluginDriver: (any PluginDatabaseDriver)? {
+        (driver as? PluginDriverAdapter)?.schemaPluginDriver
+    }
+
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard let pluginDriver else {
+            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
+        }
         let query: String
-        if let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver,
-           let customQuery = pluginDriver.defaultExportQuery(table: table) {
+        if let customQuery = pluginDriver.defaultExportQuery(table: table, schema: exportSchema(for: databaseName)) {
             query = customQuery
         } else {
-            let tableRef = qualifiedTableRef(table: table, databaseName: databaseName)
-            query = "SELECT * FROM \(tableRef)"
-        }
-        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
-            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
+            query = "SELECT * FROM \(qualifiedTableRef(table: table, databaseName: databaseName))"
         }
         return pluginDriver.streamRows(query: query)
     }
 
     func fetchTableDDL(table: String, databaseName: String) async throws -> String {
-        try await driver.fetchTableDDL(table: table)
+        guard let pluginDriver else {
+            return try await driver.fetchTableDDL(table: table)
+        }
+        return try await pluginDriver.fetchTableDDL(table: table, schema: exportSchema(for: databaseName))
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
@@ -53,48 +58,71 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     }
 
     func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? {
-        try await driver.fetchApproximateRowCount(table: table)
+        guard let pluginDriver else {
+            return try await driver.fetchApproximateRowCount(table: table)
+        }
+        return try await pluginDriver.fetchApproximateRowCount(
+            table: table,
+            schema: exportSchema(for: databaseName)
+        )
     }
 
     func fetchDependentSequences(table: String, databaseName: String) async throws -> [PluginSequenceInfo] {
-        let sequences = try await driver.fetchDependentSequences(forTable: table)
+        let sequences: [(name: String, ddl: String)]
+        if let pluginDriver {
+            sequences = try await pluginDriver.fetchDependentSequences(
+                table: table,
+                schema: exportSchema(for: databaseName)
+            )
+        } else {
+            sequences = try await driver.fetchDependentSequences(forTable: table)
+        }
         return sequences.map { PluginSequenceInfo(name: $0.name, ddl: $0.ddl) }
     }
 
     func fetchDependentTypes(table: String, databaseName: String) async throws -> [PluginEnumTypeInfo] {
-        let types = try await driver.fetchDependentTypes(forTable: table)
+        let types: [(name: String, labels: [String])]
+        if let pluginDriver {
+            types = try await pluginDriver.fetchDependentTypes(
+                table: table,
+                schema: exportSchema(for: databaseName)
+            )
+        } else {
+            types = try await driver.fetchDependentTypes(forTable: table)
+        }
         return types.map { PluginEnumTypeInfo(name: $0.name, labels: $0.labels) }
     }
 
     func fetchColumns(table: String, databaseName: String) async throws -> [PluginColumnInfo] {
-        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
-            return []
-        }
-        return try await pluginDriver.fetchColumns(table: table, schema: pluginDriver.currentSchema)
+        guard let pluginDriver else { return [] }
+        return try await pluginDriver.fetchColumns(table: table, schema: exportSchema(for: databaseName))
     }
 
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
-        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
-            return [:]
-        }
-        return try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)
+        guard let pluginDriver else { return [:] }
+        return try await pluginDriver.fetchAllColumns(schema: exportSchema(for: databaseName))
     }
 
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
-        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
-            return []
-        }
-        return try await pluginDriver.fetchForeignKeys(table: table, schema: pluginDriver.currentSchema)
+        guard let pluginDriver else { return [] }
+        return try await pluginDriver.fetchForeignKeys(table: table, schema: exportSchema(for: databaseName))
     }
 
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
-        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
-            return [:]
-        }
-        return try await pluginDriver.fetchAllForeignKeys(schema: pluginDriver.currentSchema)
+        guard let pluginDriver else { return [:] }
+        return try await pluginDriver.fetchAllForeignKeys(schema: exportSchema(for: databaseName))
     }
 
     // MARK: - Helpers
+
+    /// The export tree names every group after a schema on a schema-aware engine and after a
+    /// database everywhere else, so only a schema-aware driver can read that name as its
+    /// schema. An empty name means the table sits in the driver's own container.
+    private func exportSchema(for databaseName: String) -> String? {
+        guard let pluginDriver else { return nil }
+        guard pluginDriver.supportsSchemas, !databaseName.isEmpty else { return pluginDriver.currentSchema }
+        return databaseName
+    }
 
     private func qualifiedTableRef(table: String, databaseName: String) -> String {
         if databaseName.isEmpty {

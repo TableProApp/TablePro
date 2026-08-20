@@ -17,6 +17,9 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     var onOptimizeWithAI: ((String) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
     var onFormatSQL: (() -> Void)?
+    /// Whether the cursor sits inside a collapsed fold. `nil` when there is no fold at the cursor.
+    var foldStateAtCursor: (() -> Bool?)?
+    var onToggleFold: (() -> Void)?
 
     override init(title: String) {
         super.init(title: title)
@@ -33,7 +36,6 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        // Standard editing items
         let cutItem = NSMenuItem(title: String(localized: "Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "")
         menu.addItem(cutItem)
 
@@ -57,8 +59,26 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
         )
         formatItem.target = self
         formatItem.image = NSImage(systemSymbolName: "text.alignleft", accessibilityDescription: nil)
-        formatItem.isEnabled = (fullText?()?.isEmpty == false) && (onFormatSQL != nil)
+        if (fullText?()?.isEmpty ?? true) || onFormatSQL == nil {
+            formatItem.action = nil
+        }
         menu.addItem(formatItem)
+
+        let collapsed = foldStateAtCursor?()
+        let foldItem = NSMenuItem(
+            title: collapsed == true ? String(localized: "Unfold") : String(localized: "Fold"),
+            action: #selector(handleToggleFold),
+            keyEquivalent: ""
+        )
+        foldItem.target = self
+        foldItem.image = NSImage(
+            systemSymbolName: collapsed == true ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left",
+            accessibilityDescription: nil
+        )
+        if collapsed == nil || onToggleFold == nil {
+            foldItem.action = nil
+        }
+        menu.addItem(foldItem)
 
         menu.addItem(.separator())
 
@@ -106,6 +126,10 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     @objc private func handleOptimizeWithAI() {
         guard let text = selectedText?() else { return }
         onOptimizeWithAI?(text)
+    }
+
+    @objc private func handleToggleFold() {
+        onToggleFold?()
     }
 
     @objc private func handleFormatSQL() {

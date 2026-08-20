@@ -31,12 +31,13 @@ public struct FilterSQLGenerator: Sendable {
 
         let quotedColumn = quoteIdentifier(filter.columnName)
         let escapedValue = escapeValue(filter.value)
+        let folding = caseFolding(for: filter)
 
         switch filter.filterOperator {
         case .equal:
-            return "\(quotedColumn) = \(escapedValue)"
+            return comparisonCondition(quotedColumn, "=", escapedValue, folding: folding)
         case .notEqual:
-            return "\(quotedColumn) != \(escapedValue)"
+            return comparisonCondition(quotedColumn, "!=", escapedValue, folding: folding)
         case .greaterThan:
             return "\(quotedColumn) > \(escapedValue)"
         case .greaterThanOrEqual:
@@ -46,38 +47,72 @@ public struct FilterSQLGenerator: Sendable {
         case .lessThanOrEqual:
             return "\(quotedColumn) <= \(escapedValue)"
         case .like:
-            return "\(quotedColumn) LIKE \(escapedValue)\(likeEscape)"
+            return likeCondition(quotedColumn, escapedValue, negated: false, folding: folding)
         case .notLike:
-            return "\(quotedColumn) NOT LIKE \(escapedValue)\(likeEscape)"
+            return likeCondition(quotedColumn, escapedValue, negated: true, folding: folding)
         case .isNull:
             return "\(quotedColumn) IS NULL"
         case .isNotNull:
             return "\(quotedColumn) IS NOT NULL"
         case .in:
-            let values = parseInValues(filter.value)
-            return "\(quotedColumn) IN (\(values))"
+            return listCondition(quotedColumn, filter.value, negated: false, folding: folding)
         case .notIn:
-            let values = parseInValues(filter.value)
-            return "\(quotedColumn) NOT IN (\(values))"
+            return listCondition(quotedColumn, filter.value, negated: true, folding: folding)
         case .between:
             let escapedSecond = escapeValue(filter.secondValue)
             return "\(quotedColumn) BETWEEN \(escapedValue) AND \(escapedSecond)"
         case .contains:
             let pattern = escapeLikePattern(filter.value)
-            return "\(quotedColumn) LIKE '%\(pattern)%'\(likeEscape)"
+            return likeCondition(quotedColumn, "'%\(pattern)%'", negated: false, folding: folding)
         case .startsWith:
             let pattern = escapeLikePattern(filter.value)
-            return "\(quotedColumn) LIKE '\(pattern)%'\(likeEscape)"
+            return likeCondition(quotedColumn, "'\(pattern)%'", negated: false, folding: folding)
         case .endsWith:
             let pattern = escapeLikePattern(filter.value)
-            return "\(quotedColumn) LIKE '%\(pattern)'\(likeEscape)"
+            return likeCondition(quotedColumn, "'%\(pattern)'", negated: false, folding: folding)
         }
+    }
+
+    private func caseFolding(for filter: TableFilter) -> PluginSQLCaseFolding {
+        PluginSQLCaseFolding.resolve(
+            style: dialect.caseSensitivityStyle,
+            foldFunction: dialect.caseFoldFunction,
+            isCaseSensitive: filter.isCaseSensitive || !filter.filterOperator.supportsCaseSensitivity
+        )
+    }
+
+    private func comparisonCondition(
+        _ column: String, _ operatorText: String, _ literal: String, folding: PluginSQLCaseFolding
+    ) -> String {
+        guard folding.foldsComparisonOperands, literal.hasPrefix("'") else {
+            return "\(column) \(operatorText) \(literal)"
+        }
+        return "\(folding.fold(column)) \(operatorText) \(folding.fold(literal))"
+    }
+
+    private func likeCondition(
+        _ column: String, _ pattern: String, negated: Bool, folding: PluginSQLCaseFolding
+    ) -> String {
+        let keyword = negated ? folding.notLikeKeyword : folding.likeKeyword
+        return "\(folding.foldingLikeOperand(column)) \(keyword) \(folding.foldingLikeOperand(pattern))\(likeEscape)"
+    }
+
+    private func listCondition(
+        _ column: String, _ rawValue: String, negated: Bool, folding: PluginSQLCaseFolding
+    ) -> String {
+        let keyword = negated ? "NOT IN" : "IN"
+        let items = rawValue.split(separator: ",")
+            .map { escapeValue($0.trimmingCharacters(in: .whitespaces)) }
+        let foldable = folding.foldsComparisonOperands && items.allSatisfy { $0.hasPrefix("'") }
+        let rendered = foldable ? items.map { folding.fold($0) } : items
+        let subject = foldable ? folding.fold(column) : column
+        return "\(subject) \(keyword) (\(rendered.joined(separator: ", ")))"
     }
 
     private var likeEscape: String {
         switch dialect.likeEscapeStyle {
         case .explicit:
-            return " ESCAPE '\\'"
+            return " ESCAPE '!'"
         case .implicit:
             return ""
         }
@@ -103,19 +138,20 @@ public struct FilterSQLGenerator: Sendable {
         var result = value
             .replacingOccurrences(of: "'", with: "''")
             .replacingOccurrences(of: "\0", with: "")
-        if dialect.requiresBackslashEscaping {
-            result = result.replacingOccurrences(of: "\\", with: "\\\\")
+        switch dialect.likeEscapeStyle {
+        case .explicit:
+            result = result
+                .replacingOccurrences(of: "!", with: "!!")
+                .replacingOccurrences(of: "%", with: "!%")
+                .replacingOccurrences(of: "_", with: "!_")
+        case .implicit:
+            if dialect.requiresBackslashEscaping {
+                result = result.replacingOccurrences(of: "\\", with: "\\\\")
+            }
+            result = result
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_")
         }
-        result = result.replacingOccurrences(of: "%", with: "\\%")
-        result = result.replacingOccurrences(of: "_", with: "\\_")
         return result
-    }
-
-    private func parseInValues(_ value: String) -> String {
-        let parts = value.components(separatedBy: ",")
-        return parts.map { part in
-            let trimmed = part.trimmingCharacters(in: .whitespaces)
-            return escapeValue(trimmed)
-        }.joined(separator: ", ")
     }
 }

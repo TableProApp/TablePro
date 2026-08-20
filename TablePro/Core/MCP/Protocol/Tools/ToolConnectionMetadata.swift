@@ -11,8 +11,8 @@ struct ToolConnectionMetadata {
             case .live(_, let session):
                 return ToolConnectionMetadata(
                     databaseType: session.connection.type,
-                    safeModeLevel: session.connection.safeModeLevel,
-                    databaseName: session.activeDatabase
+                    safeModeLevel: session.safeModeLevel,
+                    databaseName: session.resolvedBrowseDatabase
                 )
             case .stored(let conn):
                 return ToolConnectionMetadata(

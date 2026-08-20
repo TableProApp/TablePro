@@ -12,12 +12,25 @@ import OSLog
 import TableProPluginKit
 
 // MySQL/MariaDB field flag and charset constants
+internal let mysqlNotNullFlag: UInt = 0x0001
+internal let mysqlPriKeyFlag: UInt = 0x0002
 internal let mysqlBinaryFlag: UInt = 0x0080
 internal let mysqlEnumFlag: UInt = 0x0100
+internal let mysqlAutoIncrementFlag: UInt = 0x0200
 internal let mysqlSetFlag: UInt = 0x0800
 internal let mysqlBinaryCharset: UInt32 = 63
 
 private let logger = Logger(subsystem: "com.TablePro", category: "MariaDBPluginConnection")
+
+internal func makeColumnMeta(name: String, typeName: String, flags: UInt) -> PluginColumnInfo {
+    PluginColumnInfo(
+        name: name,
+        dataType: typeName,
+        isNullable: (flags & mysqlNotNullFlag) == 0,
+        isPrimaryKey: (flags & mysqlPriKeyFlag) != 0,
+        identityKind: (flags & mysqlAutoIncrementFlag) != 0 ? .byDefault : nil
+    )
+}
 
 // MARK: - Error Types
 
@@ -44,6 +57,7 @@ struct MariaDBPluginQueryResult {
     let affectedRows: UInt64
     let insertId: UInt64
     let isTruncated: Bool
+    let columnMeta: [PluginColumnInfo]
 }
 
 // MARK: - SSL Configuration
@@ -144,12 +158,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let password: String?
     private let database: String
     private let sslConfig: SSLConfiguration
+    private let enableCleartextPlugin: Bool
+    private let queryTimeoutSeconds: Int
 
     private let stateLock = NSLock()
+    private let cancellationGate = PluginQueryCancellationGate()
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
-    private var _isCancelled: Bool = false
 
     var isConnected: Bool {
         stateLock.lock()
@@ -176,7 +192,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         user: String,
         password: String?,
         database: String,
-        sslConfig: SSLConfiguration
+        sslConfig: SSLConfiguration,
+        enableCleartextPlugin: Bool = false,
+        queryTimeoutSeconds: Int = 0
     ) {
         self.host = host
         self.port = UInt32(port)
@@ -184,6 +202,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.password = password
         self.database = database
         self.sslConfig = sslConfig
+        self.enableCleartextPlugin = enableCleartextPlugin
+        self.queryTimeoutSeconds = queryTimeoutSeconds
     }
 
     deinit {
@@ -199,30 +219,24 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Connection Management
 
-    private static let sslOnlyErrorCodes: Set<UInt32> = [
-        2_026,
-        2_012,
-        1_043
-    ]
-
     func connect() async throws {
         try await pluginDispatchAsync(on: queue) { [self] in
             let mode = self.sslConfig.mode
             let handle: UnsafeMutablePointer<MYSQL>
             do {
                 handle = try self.attemptConnect(enforceSSL: mode != .disabled)
-            } catch let error as MariaDBPluginError where mode == .preferred && Self.sslOnlyErrorCodes.contains(error.code) {
+            } catch let error as MariaDBPluginError where mode == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(error.code) {
                 logger.notice("MySQL SSL handshake failed (code \(error.code)); falling back to plaintext for .preferred mode")
                 do {
                     handle = try self.attemptConnect(enforceSSL: false)
                 } catch let fallbackError as MariaDBPluginError {
-                    if let sslError = Self.classifySSLError(fallbackError) {
+                    if let sslError = MariaDBSSLClassifier.classifySSLError(code: fallbackError.code, message: fallbackError.message) {
                         throw sslError
                     }
                     throw fallbackError
                 }
             } catch let error as MariaDBPluginError {
-                if let sslError = Self.classifySSLError(error) {
+                if let sslError = MariaDBSSLClassifier.classifySSLError(code: error.code, message: error.message) {
                     throw sslError
                 }
                 throw error
@@ -239,20 +253,6 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
     }
 
-    static func classifySSLError(_ error: MariaDBPluginError) -> SSLHandshakeError? {
-        let lower = error.message.lowercased()
-        if lower.contains("insecure transport") || lower.contains("require_secure_transport") {
-            return .serverRejectedPlaintext(serverMessage: error.message)
-        }
-        if Self.sslOnlyErrorCodes.contains(error.code) {
-            if lower.contains("certificate") {
-                return .untrustedCertificate(serverMessage: error.message)
-            }
-            return .cipherMismatch(serverMessage: error.message)
-        }
-        return nil
-    }
-
     private func attemptConnect(enforceSSL: Bool) throws -> UnsafeMutablePointer<MYSQL> {
         guard let mysql = mysql_init(nil) else {
             throw MariaDBPluginError.initFailed
@@ -264,14 +264,17 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var timeout: UInt32 = 10
         mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &timeout)
 
-        var readTimeout: UInt32 = 30
+        var readTimeout = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds)
         mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, &readTimeout)
 
-        var writeTimeout: UInt32 = 30
+        var writeTimeout = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds)
         mysql_options(mysql, MYSQL_OPT_WRITE_TIMEOUT, &writeTimeout)
 
         var protocol_tcp = UInt32(MYSQL_PROTOCOL_TCP.rawValue)
         mysql_options(mysql, MYSQL_OPT_PROTOCOL, &protocol_tcp)
+
+        var allowLocalInfile: UInt32 = 0
+        mysql_options(mysql, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
 
         var sslEnforce: my_bool = enforceSSL ? 1 : 0
         mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
@@ -290,6 +293,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         mysql_options(mysql, MYSQL_SET_CHARSET_NAME, "utf8mb4")
+
+        if enableCleartextPlugin {
+            var enableCleartext: my_bool = 1
+            mysql_options(mysql, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &enableCleartext)
+        }
 
         let dbToUse = database.isEmpty ? nil : database
         let passToUse = password
@@ -374,12 +382,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     // MARK: - Query Cancellation
 
     func cancelCurrentQuery() {
-        stateLock.lock()
-        _isCancelled = true
-        stateLock.unlock()
+        guard cancellationGate.cancel() != nil else { return }
 
         guard let mysql = mysql else { return }
-        let threadId = mysql_thread_id(mysql)
+        killQueryOnServer(threadId: mysql_thread_id(mysql))
+    }
+
+    private func killQueryOnServer(threadId: UInt) {
         guard threadId > 0 else { return }
 
         let killConn = mysql_init(nil)
@@ -387,6 +396,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         var killTimeout: UInt32 = 5
         mysql_options(killConn, MYSQL_OPT_CONNECT_TIMEOUT, &killTimeout)
+        mysql_options(killConn, MYSQL_OPT_READ_TIMEOUT, &killTimeout)
+        mysql_options(killConn, MYSQL_OPT_WRITE_TIMEOUT, &killTimeout)
+
+        var killAllowLocalInfile: UInt32 = 0
+        mysql_options(killConn, MYSQL_OPT_LOCAL_INFILE, &killAllowLocalInfile)
 
         let killResult = host.withCString { hostPtr in
             user.withCString { userPtr in
@@ -410,31 +424,42 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         mysql_close(killConn)
     }
 
+    private static func isExpectedInterruption(errno: UInt32, wasTruncated: Bool) -> Bool {
+        wasTruncated && errno == UInt32(ER_QUERY_INTERRUPTED)
+    }
+
     // MARK: - Query Execution
 
-    func executeQuery(_ query: String) async throws -> MariaDBPluginQueryResult {
+    func executeQuery(_ query: String, rowCap: Int? = nil) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
-            return try executeQuerySync(queryToRun)
+            return try executeQuerySync(queryToRun, rowCap: rowCap)
         }
     }
 
-    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> MariaDBPluginQueryResult {
+    func executeParameterizedQuery(
+        _ query: String,
+        parameters: [PluginCellValue],
+        rowCap: Int? = nil
+    ) async throws -> MariaDBPluginQueryResult {
         let queryToRun = String(query)
         let params = parameters
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
-            return try executeParameterizedQuerySync(queryToRun, parameters: params)
+            return try executeParameterizedQuerySync(queryToRun, parameters: params, rowCap: rowCap)
         }
     }
 
-    private func executeQuerySync(_ query: String) throws -> MariaDBPluginQueryResult {
+    private func executeQuerySync(_ query: String, rowCap: Int? = nil) throws -> MariaDBPluginQueryResult {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
 
         let queryStatus = query.withCString { queryPtr in
             mysql_real_query(mysql, queryPtr, UInt(query.utf8.count))
@@ -453,7 +478,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 let insertId = mysql_insert_id(mysql)
                 return MariaDBPluginQueryResult(
                     columns: [], columnTypes: [], columnTypeNames: [],
-                    rows: [], affectedRows: affected, insertId: insertId, isTruncated: false
+                    rows: [], affectedRows: affected, insertId: insertId, isTruncated: false,
+                    columnMeta: []
                 )
             } else {
                 throw self.getError()
@@ -465,55 +491,44 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var columnTypes: [UInt32] = []
         var columnTypeNames: [String] = []
         var columnIsBinary: [Bool] = []
+        var columnMeta: [PluginColumnInfo] = []
         columns.reserveCapacity(numFields)
         columnTypes.reserveCapacity(numFields)
         columnTypeNames.reserveCapacity(numFields)
         columnIsBinary.reserveCapacity(numFields)
+        columnMeta.reserveCapacity(numFields)
 
         if let fields = mysql_fetch_fields(resultPtr) {
             for i in 0..<numFields {
                 let field = fields[i]
-                if let namePtr = field.name {
-                    columns.append(String(cString: namePtr))
-                } else {
-                    columns.append("column_\(i)")
-                }
+                let columnName = field.name.map { String(cString: $0) } ?? "column_\(i)"
+                columns.append(columnName)
                 let fieldFlags = UInt(field.flags)
                 var fieldType = field.type.rawValue
                 if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
-                columnTypeNames.append(mysqlTypeToString(fields + i))
+                let typeName = mysqlTypeToString(fields + i)
+                columnTypeNames.append(typeName)
                 columnIsBinary.append(
                     MariaDBFieldClassifier.isBinary(
                         typeRaw: field.type.rawValue,
                         charset: field.charsetnr
                     )
                 )
+                columnMeta.append(makeColumnMeta(name: columnName, typeName: typeName, flags: fieldFlags))
             }
         }
 
         var rows: [[PluginCellValue]] = []
         rows.reserveCapacity(min(1_000, PluginRowLimits.emergencyMax))
 
-        let maxRows = PluginRowLimits.emergencyMax
+        let maxRows = rowCap.map { min(max($0, 1), PluginRowLimits.emergencyMax) } ?? PluginRowLimits.emergencyMax
         var truncated = false
 
         while let rowPtr = mysql_fetch_row(resultPtr) {
-            stateLock.lock()
-            let shouldCancel = _isCancelled
-            if shouldCancel { _isCancelled = false }
-            stateLock.unlock()
-            if shouldCancel {
+            if cancellationGate.isCancelled(generation) {
                 while mysql_fetch_row(resultPtr) != nil {}
-                if mysql_errno(mysql) != 0 {
-                    let errorMsg = String(cString: mysql_error(mysql))
-                    mysql_free_result(resultPtr)
-                    throw MariaDBPluginError(
-                        code: mysql_errno(mysql),
-                        message: "Error draining result set during cancellation: \(errorMsg)",
-                        sqlState: nil)
-                }
                 mysql_free_result(resultPtr)
                 throw CancellationError()
             }
@@ -553,22 +568,28 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         if truncated {
             logger.warning("Result set truncated at \(maxRows) rows")
+            killQueryOnServer(threadId: mysql_thread_id(mysql))
             while mysql_fetch_row(resultPtr) != nil {}
-            if mysql_errno(mysql) != 0 {
-                let errorMsg = String(cString: mysql_error(mysql))
-                mysql_free_result(resultPtr)
-                throw MariaDBPluginError(
-                    code: mysql_errno(mysql),
-                    message: "Error draining result set: \(errorMsg)",
-                    sqlState: nil)
-            }
+        }
+
+        if cancellationGate.isCancelled(generation) {
+            mysql_free_result(resultPtr)
+            throw CancellationError()
+        }
+
+        let fetchErrno = mysql_errno(mysql)
+        if fetchErrno != 0, !Self.isExpectedInterruption(errno: fetchErrno, wasTruncated: truncated) {
+            let error = getError()
+            mysql_free_result(resultPtr)
+            throw error
         }
 
         mysql_free_result(resultPtr)
 
         return MariaDBPluginQueryResult(
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
-            rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: truncated
+            rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: truncated,
+            columnMeta: columnMeta
         )
     }
 
@@ -654,7 +675,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         columns: [String],
         columnTypes: [UInt32],
         columnTypeNames: [String],
-        columnIsBinary: [Bool]
+        columnIsBinary: [Bool],
+        rowCap: Int? = nil,
+        generation: Int
     ) throws -> (rows: [[PluginCellValue]], isTruncated: Bool) {
         let numFields = columns.count
         var resultBinds: [MYSQL_BIND] = Array(repeating: MYSQL_BIND(), count: numFields)
@@ -689,18 +712,17 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         var rows: [[PluginCellValue]] = []
-        let maxRows = PluginRowLimits.emergencyMax
+        let maxRows = rowCap.map { min(max($0, 1), PluginRowLimits.emergencyMax) } ?? PluginRowLimits.emergencyMax
         var truncated = false
 
         while true {
             let fetchStatus = mysql_stmt_fetch(stmt)
-            if fetchStatus != 0 && fetchStatus != MYSQL_DATA_TRUNCATED { break }
+            if fetchStatus == MYSQL_NO_DATA { break }
+            if fetchStatus != 0, fetchStatus != MYSQL_DATA_TRUNCATED {
+                throw getStmtError(stmt)
+            }
 
-            stateLock.lock()
-            let shouldCancel = _isCancelled
-            if shouldCancel { _isCancelled = false }
-            stateLock.unlock()
-            if shouldCancel {
+            if cancellationGate.isCancelled(generation) {
                 throw CancellationError()
             }
 
@@ -757,10 +779,17 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return (rows: rows, isTruncated: truncated)
     }
 
-    private func executeParameterizedQuerySync(_ query: String, parameters: [PluginCellValue]) throws -> MariaDBPluginQueryResult {
+    private func executeParameterizedQuerySync(
+        _ query: String,
+        parameters: [PluginCellValue],
+        rowCap: Int? = nil
+    ) throws -> MariaDBPluginQueryResult {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
 
         guard let stmt = mysql_stmt_init(mysql) else {
             throw MariaDBPluginError(code: 0, message: "Failed to initialize prepared statement", sqlState: nil)
@@ -807,7 +836,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             let insertId = mysql_stmt_insert_id(stmt)
             return MariaDBPluginQueryResult(
                 columns: [], columnTypes: [], columnTypeNames: [],
-                rows: [], affectedRows: UInt64(affected), insertId: UInt64(insertId), isTruncated: false
+                rows: [], affectedRows: UInt64(affected), insertId: UInt64(insertId), isTruncated: false,
+                columnMeta: []
             )
         }
 
@@ -823,41 +853,42 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var columnTypes: [UInt32] = []
         var columnTypeNames: [String] = []
         var columnIsBinary: [Bool] = []
+        var columnMeta: [PluginColumnInfo] = []
         let numFields = Int(mysql_num_fields(metadata))
 
         if let fields = mysql_fetch_fields(metadata) {
             for i in 0..<numFields {
                 let field = fields[i]
-                if let namePtr = field.name {
-                    columns.append(String(cString: namePtr))
-                } else {
-                    columns.append("column_\(i)")
-                }
+                let columnName = field.name.map { String(cString: $0) } ?? "column_\(i)"
+                columns.append(columnName)
                 let fieldFlags = UInt(field.flags)
                 var fieldType = field.type.rawValue
                 if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
-                columnTypeNames.append(mysqlTypeToString(fields + i))
+                let typeName = mysqlTypeToString(fields + i)
+                columnTypeNames.append(typeName)
                 columnIsBinary.append(
                     MariaDBFieldClassifier.isBinary(
                         typeRaw: field.type.rawValue,
                         charset: field.charsetnr
                     )
                 )
+                columnMeta.append(makeColumnMeta(name: columnName, typeName: typeName, flags: fieldFlags))
             }
         }
 
         let fetchResult = try fetchResultSet(
             from: stmt, metadata: metadata,
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
-            columnIsBinary: columnIsBinary
+            columnIsBinary: columnIsBinary, rowCap: rowCap, generation: generation
         )
 
         return MariaDBPluginQueryResult(
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
             rows: fetchResult.rows, affectedRows: UInt64(fetchResult.rows.count),
-            insertId: 0, isTruncated: fetchResult.isTruncated
+            insertId: 0, isTruncated: fetchResult.isTruncated,
+            columnMeta: columnMeta
         )
     }
 

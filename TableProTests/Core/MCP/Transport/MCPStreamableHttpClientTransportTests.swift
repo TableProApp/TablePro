@@ -232,16 +232,264 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
         await transport.close()
     }
 
-    private func makeTransport() -> MCPStreamableHttpClientTransport {
-        let url = URL(string: "http://127.0.0.1:\(server.port)/mcp")!
-        let configuration = MCPStreamableHttpClientConfiguration(
-            endpoint: url,
-            bearerToken: "test-token",
-            tlsCertFingerprint: nil,
-            requestTimeout: .seconds(5),
-            serverInitiatedStream: false
+    func testSessionExpiryTriggersTransparentReinitializeAndReplay() async throws {
+        let fake = FakeMcpServer()
+        await server.setResponder { fake.respond(to: $0) }
+
+        let transport = makeTransport()
+        try await completeHandshake(transport: transport, fake: fake)
+        let originalSessionId = fake.currentSessionId
+
+        fake.expireSession()
+
+        try await transport.send(.request(
+            JsonRpcRequest(id: .number(42), method: "tools/call", params: nil)
+        ))
+
+        let received = try await firstInbound(transport: transport)
+        guard case .successResponse(let success) = received else {
+            XCTFail("Expected the replayed tools/call to succeed, got \(received)")
+            return
+        }
+        XCTAssertEqual(success.id, .number(42))
+        XCTAssertEqual(success.result["echo"]?.stringValue, "tools/call")
+
+        XCTAssertEqual(fake.initializeCount, 2)
+        XCTAssertNotEqual(fake.currentSessionId, originalSessionId)
+        XCTAssertEqual(
+            fake.rpcMethods.suffix(3),
+            ["initialize", "notifications/initialized", "tools/call"]
         )
-        return MCPStreamableHttpClientTransport(configuration: configuration, errorLogger: nil)
+
+        await transport.close()
+    }
+
+    func testRecoveryInitializeResponseNeverReachesTheHost() async throws {
+        let fake = FakeMcpServer()
+        await server.setResponder { fake.respond(to: $0) }
+
+        let transport = makeTransport()
+        try await completeHandshake(transport: transport, fake: fake)
+        fake.expireSession()
+
+        try await transport.send(.request(
+            JsonRpcRequest(id: .number(9), method: "tools/list", params: nil)
+        ))
+
+        let received = try await firstInbound(transport: transport)
+        guard case .successResponse(let success) = received else {
+            XCTFail("Expected successResponse, got \(received)")
+            return
+        }
+        XCTAssertEqual(success.id, .number(9), "Recovery handshake must not surface on the host stream")
+
+        await transport.close()
+    }
+
+    func testConcurrentSessionExpiryCollapsesToSingleReinitialize() async throws {
+        let fake = FakeMcpServer()
+        await server.setResponder { fake.respond(to: $0) }
+
+        let transport = makeTransport()
+        try await completeHandshake(transport: transport, fake: fake)
+        fake.expireSession()
+
+        let callCount = 5
+        for index in 0..<callCount {
+            try await transport.send(.request(
+                JsonRpcRequest(id: .number(Int64(100 + index)), method: "tools/call", params: nil)
+            ))
+        }
+
+        let received = try await collectInbound(transport: transport, count: callCount)
+        XCTAssertEqual(received.count, callCount)
+        for message in received {
+            guard case .successResponse = message else {
+                XCTFail("Expected every replayed call to succeed, got \(message)")
+                return
+            }
+        }
+
+        XCTAssertEqual(fake.initializeCount, 2, "Concurrent 404s must share one re-initialize")
+
+        await transport.close()
+    }
+
+    func testRecoveryFailureSurfacesActionableError() async throws {
+        let fake = FakeMcpServer()
+        await server.setResponder { fake.respond(to: $0) }
+
+        let transport = makeTransport()
+        try await completeHandshake(transport: transport, fake: fake)
+
+        fake.expireSession()
+        fake.rejectInitialize = true
+
+        try await transport.send(.request(
+            JsonRpcRequest(id: .number(13), method: "tools/call", params: nil)
+        ))
+
+        let received = try await firstInbound(transport: transport)
+        guard case .errorResponse(let response) = received else {
+            XCTFail("Expected errorResponse, got \(received)")
+            return
+        }
+        XCTAssertEqual(response.id, .number(13))
+        XCTAssertTrue(
+            response.error.message.contains("TablePro"),
+            "Expected an actionable message, got \(response.error.message)"
+        )
+        XCTAssertFalse(response.error.message.contains("Session not found"))
+
+        await transport.close()
+    }
+
+    func testUnauthorizedRefreshesCredentialsAndReplays() async throws {
+        let fake = FakeMcpServer()
+        await server.setResponder { fake.respond(to: $0) }
+
+        let rotatedToken = "rotated-token"
+        let provider = QueuedCredentialsProvider(
+            initial: makeCredentials(port: server.port, token: "test-token"),
+            queued: [makeCredentials(port: server.port, token: rotatedToken)]
+        )
+
+        let transport = makeTransport(credentialsProvider: provider)
+        try await completeHandshake(transport: transport, fake: fake)
+
+        fake.rotateToken(rotatedToken)
+        fake.expireSession()
+
+        try await transport.send(.request(
+            JsonRpcRequest(id: .number(21), method: "tools/call", params: nil)
+        ))
+
+        let received = try await firstInbound(transport: transport)
+        guard case .successResponse(let success) = received else {
+            XCTFail("Expected the replay to succeed against the rotated token, got \(received)")
+            return
+        }
+        XCTAssertEqual(success.id, .number(21))
+
+        let refreshCount = await provider.refreshCount
+        XCTAssertEqual(refreshCount, 1)
+
+        await transport.close()
+    }
+
+    func testKeepalivePingKeepsSessionWarmAndStaysInvisibleToHost() async throws {
+        let fake = FakeMcpServer()
+        await server.setResponder { fake.respond(to: $0) }
+
+        let clock = MCPTestClock()
+        let transport = makeTransport(keepaliveInterval: .seconds(300), clock: clock)
+        try await completeHandshake(transport: transport, fake: fake)
+
+        await clock.advance(by: .seconds(300))
+        try await waitUntil { fake.rpcMethods.contains("ping") }
+
+        XCTAssertEqual(fake.initializeCount, 1, "A warm session must not be re-initialized")
+
+        try await transport.send(.request(
+            JsonRpcRequest(id: .number(77), method: "tools/list", params: nil)
+        ))
+        let received = try await firstInbound(transport: transport)
+        guard case .successResponse(let success) = received else {
+            XCTFail("Expected successResponse, got \(received)")
+            return
+        }
+        XCTAssertEqual(success.id, .number(77), "The keepalive ping must not surface on the host stream")
+
+        await transport.close()
+    }
+
+    func testProtocolVersionHeaderIsSentAfterInitialize() async throws {
+        let fake = FakeMcpServer()
+        await server.setResponder { fake.respond(to: $0) }
+
+        let transport = makeTransport()
+        try await completeHandshake(transport: transport, fake: fake)
+
+        try await transport.send(.request(
+            JsonRpcRequest(id: .number(31), method: "tools/list", params: nil)
+        ))
+        _ = try await firstInbound(transport: transport)
+
+        XCTAssertNil(
+            fake.protocolVersionHeader(forRpcMethod: "initialize"),
+            "initialize must not carry MCP-Protocol-Version"
+        )
+        XCTAssertEqual(fake.protocolVersionHeader(forRpcMethod: "tools/list"), FakeMcpServer.protocolVersion)
+
+        await transport.close()
+    }
+
+    func testCloseTerminatesTheUpstreamSession() async throws {
+        let fake = FakeMcpServer()
+        await server.setResponder { fake.respond(to: $0) }
+
+        let transport = makeTransport()
+        try await completeHandshake(transport: transport, fake: fake)
+
+        await transport.close()
+
+        try await waitUntil { fake.deleteCount == 1 }
+    }
+
+    private func completeHandshake(
+        transport: MCPStreamableHttpClientTransport,
+        fake: FakeMcpServer
+    ) async throws {
+        try await transport.send(.request(
+            JsonRpcRequest(id: .number(1), method: "initialize", params: .object(["client": .string("test")]))
+        ))
+        _ = try await firstInbound(transport: transport)
+        try await transport.send(.notification(
+            JsonRpcNotification(method: "notifications/initialized", params: nil)
+        ))
+        try await waitUntil { fake.rpcMethods.contains("notifications/initialized") }
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 3.0,
+        condition: @escaping @Sendable () -> Bool
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() {
+                return
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        throw TransportTestError.timeout
+    }
+
+    private func makeCredentials(port: UInt16, token: String = "test-token") -> MCPUpstreamCredentials {
+        MCPUpstreamCredentials(
+            endpoint: URL(string: "http://127.0.0.1:\(port)/mcp")!,
+            bearerToken: token
+        )
+    }
+
+    private func makeTransport(
+        keepaliveInterval: Duration? = nil,
+        clock: any MCPClock = MCPSystemClock(),
+        credentialsProvider: (any MCPUpstreamCredentialsProviding)? = nil
+    ) -> MCPStreamableHttpClientTransport {
+        let credentials = makeCredentials(port: server.port)
+        let provider = credentialsProvider
+            ?? MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials }
+        let configuration = MCPStreamableHttpClientConfiguration(
+            requestTimeout: .seconds(5),
+            serverInitiatedStream: false,
+            keepaliveInterval: keepaliveInterval
+        )
+        return MCPStreamableHttpClientTransport(
+            configuration: configuration,
+            credentialsProvider: provider,
+            clock: clock,
+            errorLogger: nil
+        )
     }
 
     private func firstInbound(
@@ -297,6 +545,214 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
 
 private enum TransportTestError: Error {
     case timeout
+    case noQueuedCredentials
+}
+
+private actor QueuedCredentialsProvider: MCPUpstreamCredentialsProviding {
+    private var current: MCPUpstreamCredentials
+    private var queued: [MCPUpstreamCredentials]
+    private(set) var refreshCount = 0
+
+    init(initial: MCPUpstreamCredentials, queued: [MCPUpstreamCredentials]) {
+        self.current = initial
+        self.queued = queued
+    }
+
+    func currentCredentials() async -> MCPUpstreamCredentials {
+        current
+    }
+
+    func refreshCredentials() async throws -> MCPUpstreamCredentials {
+        refreshCount += 1
+        guard !queued.isEmpty else {
+            throw TransportTestError.noQueuedCredentials
+        }
+        current = queued.removeFirst()
+        return current
+    }
+}
+
+private final class FakeMcpServer: @unchecked Sendable {
+    static let protocolVersion = "2025-06-18"
+
+    private let lock = NSLock()
+    private var activeSessionId: String?
+    private var sessionCounter = 0
+    private var expectedToken = "test-token"
+    private var recorded: [(method: String?, headers: [(String, String)])] = []
+    private var initializes = 0
+    private var deletes = 0
+    private var refuseInitialize = false
+
+    var rejectInitialize: Bool {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return refuseInitialize
+        }
+        set {
+            lock.lock()
+            refuseInitialize = newValue
+            lock.unlock()
+        }
+    }
+
+    var currentSessionId: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return activeSessionId
+    }
+
+    var initializeCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return initializes
+    }
+
+    var deleteCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return deletes
+    }
+
+    var rpcMethods: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded.compactMap(\.method)
+    }
+
+    func protocolVersionHeader(forRpcMethod method: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let entry = recorded.last(where: { $0.method == method }) else { return nil }
+        return entry.headers.first { $0.0.lowercased() == "mcp-protocol-version" }?.1
+    }
+
+    func expireSession() {
+        lock.lock()
+        activeSessionId = nil
+        lock.unlock()
+    }
+
+    func rotateToken(_ token: String) {
+        lock.lock()
+        expectedToken = token
+        lock.unlock()
+    }
+
+    func respond(to request: MockHttpRequest) -> MockHttpResponse {
+        if request.method == "DELETE" {
+            lock.lock()
+            deletes += 1
+            activeSessionId = nil
+            lock.unlock()
+            return MockHttpResponse(status: 204, headers: [], body: Data())
+        }
+
+        let decoded = try? JsonRpcCodec.decode(request.body)
+        let rpcMethod = Self.method(of: decoded)
+
+        lock.lock()
+        recorded.append((method: rpcMethod, headers: request.headers))
+        let token = expectedToken
+        let refusing = refuseInitialize
+        lock.unlock()
+
+        let authorization = request.headers.first { $0.0.lowercased() == "authorization" }?.1
+        guard authorization == "Bearer \(token)" else {
+            return MockHttpResponse(
+                status: 401,
+                headers: [
+                    ("Content-Type", "text/plain"),
+                    ("WWW-Authenticate", "Bearer realm=\"TablePro\"")
+                ],
+                body: Data("Unauthenticated".utf8)
+            )
+        }
+
+        guard let decoded else {
+            return MockHttpResponse(
+                status: 400,
+                headers: [("Content-Type", "text/plain")],
+                body: Data("Bad request".utf8)
+            )
+        }
+
+        if case .request(let rpc) = decoded, rpc.method == "initialize" {
+            if refusing {
+                return MockHttpResponse(
+                    status: 503,
+                    headers: [("Content-Type", "text/plain")],
+                    body: Data("Service unavailable".utf8)
+                )
+            }
+            return mintSession(for: rpc)
+        }
+
+        let sessionHeader = request.headers.first { $0.0.lowercased() == "mcp-session-id" }?.1
+        guard isKnownSession(sessionHeader) else {
+            return MockHttpResponse(
+                status: 404,
+                headers: [("Content-Type", "text/plain")],
+                body: Data("Session not found".utf8)
+            )
+        }
+
+        guard case .request(let rpc) = decoded else {
+            return MockHttpResponse(status: 202, headers: [], body: Data())
+        }
+
+        let body = try? JsonRpcCodec.encode(.successResponse(
+            JsonRpcSuccessResponse(id: rpc.id, result: .object(["echo": .string(rpc.method)]))
+        ))
+        return MockHttpResponse(
+            status: 200,
+            headers: [("Content-Type", "application/json")],
+            body: body ?? Data()
+        )
+    }
+
+    private func mintSession(for rpc: JsonRpcRequest) -> MockHttpResponse {
+        lock.lock()
+        sessionCounter += 1
+        initializes += 1
+        let sessionId = "session-\(sessionCounter)"
+        activeSessionId = sessionId
+        lock.unlock()
+
+        let body = try? JsonRpcCodec.encode(.successResponse(
+            JsonRpcSuccessResponse(
+                id: rpc.id,
+                result: .object(["protocolVersion": .string(Self.protocolVersion)])
+            )
+        ))
+        return MockHttpResponse(
+            status: 200,
+            headers: [
+                ("Content-Type", "application/json"),
+                ("Mcp-Session-Id", sessionId)
+            ],
+            body: body ?? Data()
+        )
+    }
+
+    private func isKnownSession(_ sessionId: String?) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let activeSessionId, let sessionId else { return false }
+        return activeSessionId == sessionId
+    }
+
+    private static func method(of message: JsonRpcMessage?) -> String? {
+        switch message {
+        case .request(let request):
+            return request.method
+        case .notification(let notification):
+            return notification.method
+        default:
+            return nil
+        }
+    }
 }
 
 private struct MockHttpRequest: Sendable {

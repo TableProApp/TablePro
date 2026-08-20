@@ -1,0 +1,6 @@
+// Single source of truth for the macOS app version.
+// The release skill and .github/workflows/build-plugin.yml read this file.
+// Do not restate these values anywhere else.
+
+MARKETING_VERSION = 0.66.0
+CURRENT_PROJECT_VERSION = 119

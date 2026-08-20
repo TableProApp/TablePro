@@ -24,13 +24,6 @@ enum RoutineRowLogic {
         }
     }
 
-    static func iconColor(for kind: RoutineInfo.Kind) -> Color {
-        switch kind {
-        case .procedure: return Color(nsColor: .systemTeal)
-        case .function:  return Color(nsColor: .systemCyan)
-        }
-    }
-
     static func tooltip(for routine: RoutineInfo) -> String? {
         guard let signature = routine.signature, !signature.isEmpty else { return nil }
         return signature
@@ -43,38 +36,16 @@ struct RoutineRowView: View {
     var body: some View {
         Label {
             Text(routine.name)
-                .font(.system(.callout, design: .monospaced))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .sidebarTint(.primary)
         } icon: {
             Image(systemName: RoutineRowLogic.iconName(for: routine.kind))
-                .sidebarTint(RoutineRowLogic.iconColor(for: routine.kind))
-                .frame(width: 14)
+                .selectionAwareTint(Color.accentColor)
+                .frame(width: 16)
         }
-        .padding(.vertical, 2)
+        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(RoutineRowLogic.accessibilityLabel(for: routine))
         .help(RoutineRowLogic.tooltip(for: routine) ?? routine.name)
-    }
-}
-
-struct RoutineContextMenu: View {
-    let routine: RoutineInfo
-    let onShowDDL: (RoutineInfo) -> Void
-
-    var body: some View {
-        Button(String(localized: "Copy Name")) {
-            ClipboardService.shared.writeText(routine.name)
-        }
-        if let signature = routine.signature, !signature.isEmpty {
-            Button(String(localized: "Copy with Signature")) {
-                ClipboardService.shared.writeText("\(routine.name)\(signature)")
-            }
-        }
-        Divider()
-        Button(String(localized: "Show DDL")) {
-            onShowDDL(routine)
-        }
     }
 }
