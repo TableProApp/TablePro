@@ -144,7 +144,9 @@ For MySQL the checkbox runs `SET FOREIGN_KEY_CHECKS = 0` and works on standard a
 | **Stop and Commit** | Stops on first error. Commits statements that succeeded before the error. |
 | **Skip and Continue** | Logs failed statements and continues. Transaction wrapping is disabled in this mode. |
 
-In **Skip and Continue** mode, failed statements are collected (up to 1,000) with line numbers and error messages. After import completes, a summary shows how many succeeded vs failed, with a scrollable error list and a **Copy Errors to Clipboard** button.
+In **Skip and Continue** mode, failed statements are collected (up to 1,000) with line numbers and error messages. After import completes, a summary shows how many succeeded vs failed, with a scrollable error list and a **Copy Details** button.
+
+When an import stops on an error, the same panel shows the line it stopped at, the database's own message, and the statement that failed. The dialog stays open behind it so you can change a setting and run the import again.
 
 ### Import JSON Data
 
