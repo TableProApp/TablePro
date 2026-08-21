@@ -42,7 +42,7 @@ extension MainContentCoordinator {
     static func hasRunningQuery(forConnection connectionId: UUID) -> Bool {
         activeCoordinators.values
             .filter { $0.connectionId == connectionId }
-            .contains { $0.toolbarState.isExecuting }
+            .contains { $0.tabExecution.isAnyExecuting }
     }
 
     static func allTabs(for connectionId: UUID) -> [QueryTab] {

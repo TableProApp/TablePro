@@ -22,6 +22,7 @@ struct ExecutionIndicatorView: View {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityLabel(String(localized: "Query executing"))
+                    .accessibilityIdentifier("execution-indicator")
                 if let progress = clickHouseProgress {
                     Text(progress.formattedLive)
                         .font(.system(.subheadline, design: .monospaced).weight(.regular))
@@ -39,6 +40,7 @@ struct ExecutionIndicatorView: View {
                 }
                 .buttonStyle(.plain)
                 .controlSize(.small)
+                .accessibilityIdentifier("execution-stop")
                 .help(String(localized: "Cancel Query (⌘.)"))
             } else if let chProgress = lastClickHouseProgress {
                 Text(chProgress.formattedSummary)

@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fixed a crash on macOS 26 and later when the editor redrew a diagnostic underline or search highlight whose text had been edited away.
+- The toolbar can no longer sit on "Executing…" after a query has ended, so Stop is not the only way back. (#2342)
+- The session context buttons no longer empty out for the length of every query.
 - The XLSX, MQL and SQL Import plugins linked to a documentation page that did not exist. They now point at Import & Export.
 
 ## [0.67.0] - 2026-08-21

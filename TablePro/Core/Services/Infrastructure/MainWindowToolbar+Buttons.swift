@@ -78,6 +78,11 @@ struct SessionContextToolbarButton: View {
                 .help(context.label)
             }
         }
+        /// Keyed on the connection alone. It used to reload on every query as well, because the
+        /// toolbar's `executing` case made one look like a connection change, and the load then
+        /// refused to run and emptied the row of buttons for the query's duration. The only driver
+        /// that answers `fetchSessionContexts` is Snowflake, which pays two round trips for it, so
+        /// per-query reloading was not free either. A context the reader switches reloads itself.
         .task(id: coordinator.toolbarState.connectionState) {
             await coordinator.loadSessionContexts()
         }

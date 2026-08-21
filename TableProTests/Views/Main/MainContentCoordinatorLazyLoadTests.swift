@@ -285,6 +285,24 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.tabSessionRegistry.isEvicted(foreground) == false)
     }
 
+    /// A claim with no task behind it is healed on the next lazy load. That heal never lowered the
+    /// window's stored busy flag, so the titlebar kept reporting a query that had no task and no way
+    /// to finish, and only Stop could clear it (#2342). The window's state is derived now, so the
+    /// heal is the whole fix.
+    @Test("Healing an abandoned claim leaves the window reporting idle")
+    func abandonedClaimLeavesTheWindowIdle() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        let claim = coordinator.tabExecution.claim(tabId)
+        #expect(coordinator.currentQueryTask == nil)
+        #expect(coordinator.tabExecution.isAnyExecuting)
+
+        coordinator.lazyLoadCurrentTabIfNeeded()
+
+        #expect(coordinator.tabExecution.isCurrent(claim) == false)
+        #expect(coordinator.tabExecution.isAnyExecuting == false)
+    }
+
     // MARK: - Regression: handleWindowDidBecomeKey does NOT trigger query work
 
     @Test("handleWindowDidBecomeKey does not change tab execution state")
@@ -297,13 +315,13 @@ struct MainContentCoordinatorLazyLoadTests {
         }
         let executingBefore = coordinator.tabExecution.isExecuting(tabId)
         let executedAtBefore = tabManager.tabs[idx].execution.lastExecutedAt
-        let toolbarBefore = coordinator.toolbarState.isExecuting
+        let toolbarBefore = coordinator.tabExecution.isAnyExecuting
 
         coordinator.handleWindowDidBecomeKey()
 
         let executingAfter = coordinator.tabExecution.isExecuting(tabId)
         let executedAtAfter = tabManager.tabs[idx].execution.lastExecutedAt
-        let toolbarAfter = coordinator.toolbarState.isExecuting
+        let toolbarAfter = coordinator.tabExecution.isAnyExecuting
 
         #expect(executingAfter == executingBefore)
         #expect(executedAtAfter == executedAtBefore)

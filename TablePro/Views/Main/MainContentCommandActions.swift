@@ -293,7 +293,7 @@ final class MainContentCommandActions {
     /// existing proves nothing: it is kept alive across a lost session so a reconnect can restore
     /// the user's tabs.
     var isConnected: Bool { coordinator?.splitViewController?.isConnected ?? false }
-    var isQueryExecuting: Bool { coordinator?.toolbarState.isExecuting ?? false }
+    var isQueryExecuting: Bool { coordinator?.tabExecution.isAnyExecuting ?? false }
 
     var safeModeLevel: SafeModeLevel { coordinator?.toolbarState.safeModeLevel ?? connection.safeModeLevel }
 

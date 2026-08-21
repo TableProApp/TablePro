@@ -948,7 +948,7 @@ final class MainContentCoordinator {
         toolbarState.update(from: connection)
 
         if let session = services.databaseManager.session(for: connectionId) {
-            toolbarState.connectionState = mapSessionStatus(session.status)
+            toolbarState.updateConnectionState(from: session.status)
             if let driver = session.driver {
                 toolbarState.databaseVersion = driver.serverVersion
             }
@@ -967,16 +967,6 @@ final class MainContentCoordinator {
     func initializeView() async {
         initializeToolbar()
         await loadSchemaIfNeeded()
-    }
-
-    /// Map ConnectionStatus to ToolbarConnectionState
-    private func mapSessionStatus(_ status: ConnectionStatus) -> ToolbarConnectionState {
-        switch status {
-        case .connected: return .connected
-        case .connecting: return .executing
-        case .disconnected: return .disconnected
-        case .error: return .error("")
-        }
     }
 
     // MARK: - Query Execution
@@ -1231,7 +1221,6 @@ final class MainContentCoordinator {
             tab.execution.errorMessage = nil
         }
         let tab = tabManager.tabs[index]
-        toolbarState.setExecuting(true)
 
         if services.pluginManager.supportsQueryProgress(for: connection.type) {
             installClickHouseProgressHandler()
@@ -1262,7 +1251,6 @@ final class MainContentCoordinator {
             tabManager.mutate(at: index) { tab in
                 tab.execution.errorMessage = String(localized: "Not connected to database")
             }
-            toolbarState.setExecuting(false)
             return
         }
 
@@ -1417,14 +1405,16 @@ final class MainContentCoordinator {
         currentQueryTaskOwner = claim
     }
 
-    /// Retires the window's task handle and the spinner it drives, but only for the execution that
-    /// installed them. A completion that owns its own tab can still be a stranger to the query the
-    /// window is running, and clearing that one's spinner reports on work still in flight.
+    /// Retires the window's Stop handle, but only for the execution that installed it. A completion
+    /// that owns its own tab can still be a stranger to the query the window is running, and taking
+    /// that one's handle down would leave a live query with nothing to cancel it.
+    ///
+    /// It no longer reports anything: what the titlebar shows is derived from `tabExecution`, so a
+    /// completion that cannot retire the handle can no longer leave the window claiming to be busy.
     internal func retireQueryTask(for claim: TabExecutionClaim?) {
         guard currentQueryTaskOwner == claim else { return }
         currentQueryTask = nil
         currentQueryTaskOwner = nil
-        toolbarState.setExecuting(false)
     }
 
     internal func cancelInFlightQueryTask(reach: DriverCancellationReach = .userStop) {
@@ -1443,19 +1433,14 @@ final class MainContentCoordinator {
     /// new claim is minted is what makes "the user navigated away and no successor ever ran" still
     /// discard the old result, which a counter that only moved on a successful start could not do.
     ///
-    /// Clearing the spinner here is what makes the cancelled execution's own completion free to stay
-    /// silent. A retarget need not be followed by a successor, so nothing else would put the
-    /// titlebar back to idle, and a stuck spinner keeps Stop enabled and makes Disconnect warn about
-    /// a query that is not running.
+    /// Removing the entry is also what puts the titlebar back to idle, because the indicator reads
+    /// the registry. A retarget need not be followed by a successor, and nothing else would have
+    /// lowered a stored flag.
     internal func supersedeExecution(for tabId: UUID) {
         reportEndedExecutions(tabExecution.invalidate(tabId, reason: .supersededNavigation).map { [$0] } ?? [])
         cancelTableLoad(for: tabId)
         cancelRowCountTask(for: tabId)
-        let hadInFlightQuery = currentQueryTask != nil
         cancelInFlightQueryTask(reach: .supersededNavigation)
-        if hadInFlightQuery {
-            toolbarState.setExecuting(false)
-        }
     }
 
     /// Reset execution state when a query is cancelled. The task handle is retired through the same

@@ -115,7 +115,6 @@ extension QueryExecutionCoordinator {
             tab.execution.errorMessage = nil
         }
         let tab = parent.tabManager.tabs[index]
-        parent.toolbarState.setExecuting(true)
 
         if PluginManager.shared.supportsQueryProgress(for: parent.connection.type) {
             parent.installClickHouseProgressHandler()
@@ -269,7 +268,6 @@ extension QueryExecutionCoordinator {
             tab.execution.executionTime = nil
             tab.execution.errorMessage = nil
         }
-        parent.toolbarState.setExecuting(true)
 
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id

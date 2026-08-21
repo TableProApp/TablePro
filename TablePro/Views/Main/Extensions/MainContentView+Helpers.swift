@@ -35,10 +35,7 @@ extension MainContentView {
                 coordinator.lazyLoadCurrentTabIfNeeded()
             }
         }
-        let mappedState = mapSessionStatus(session.status)
-        if mappedState != toolbarState.connectionState {
-            toolbarState.connectionState = mappedState
-        }
+        toolbarState.updateConnectionState(from: session.status)
         toolbarState.syncFromSession(for: connection)
     }
 
@@ -50,15 +47,6 @@ extension MainContentView {
             coordinator.lazyLoadCurrentTabIfNeeded(trigger: trigger)
         } else {
             coordinator.runQuery(trigger: trigger)
-        }
-    }
-
-    private func mapSessionStatus(_ status: ConnectionStatus) -> ToolbarConnectionState {
-        switch status {
-        case .connected: return .connected
-        case .connecting: return .executing
-        case .disconnected: return .disconnected
-        case .error: return .error("")
         }
     }
 

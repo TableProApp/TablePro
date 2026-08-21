@@ -140,7 +140,6 @@ final class PaginationCoordinator {
         parent.cancelAllRowCountTasks()
         parent.releaseAllExactCounts()
         parent.reportEndedExecutions(parent.tabExecution.invalidateAll(reason: .cancelledByUser))
-        parent.toolbarState.setExecuting(false)
         for idx in parent.tabManager.tabs.indices where parent.tabManager.tabs[idx].pagination.isBusy {
             parent.tabManager.mutate(at: idx) { tab in
                 tab.pagination.isLoadingMore = false
@@ -288,12 +287,18 @@ final class PaginationCoordinator {
         let storedParamValues = parent.tabManager.tabs[idx].pagination.baseQueryParameterValues
 
         parent.tabManager.mutate(at: idx) { $0.pagination.isLoadingMore = true }
-        parent.toolbarState.setExecuting(true)
+
+        /// Fetch All extends the result already on screen instead of replacing it, so it validates
+        /// against the tab's content epoch and cannot claim the tab: claiming mints a new epoch and
+        /// would discard its own rows. It registers as unclaimed work instead, which is what keeps
+        /// the titlebar reporting it, and releases that on every exit including cancellation.
+        let workToken = parent.tabExecution.beginUnclaimedWork(for: tabId)
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
 
         let startedAt = ContinuousClock.Instant.now
         let fetchAllTask = Task { [weak self, parent] in
+            defer { parent.tabExecution.endUnclaimedWork(workToken, for: tabId) }
             guard let self, !parent.isTearingDown else { return }
 
             do {

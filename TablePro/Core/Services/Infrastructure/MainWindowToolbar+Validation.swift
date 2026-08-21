@@ -26,11 +26,15 @@ extension MainWindowToolbar: NSToolbarItemValidation {
     }
 
     /// Listed exhaustively so a new state has to choose a side instead of inheriting "alive".
+    ///
+    /// `.connecting` counts because the health monitor writes it on every reconnect attempt, and
+    /// the window keeps showing the session's tabs and rows throughout. Graying the whole toolbar
+    /// out for the length of a backoff would take Sidebar Toggle with it.
     static func hasLiveSession(_ state: ToolbarConnectionState) -> Bool {
         switch state {
-        case .connected, .executing:
+        case .connected, .connecting:
             return true
-        case .disconnected, .connecting, .error:
+        case .disconnected, .error:
             return false
         }
     }

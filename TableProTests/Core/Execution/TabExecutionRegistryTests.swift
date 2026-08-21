@@ -153,6 +153,86 @@ struct TabExecutionRegistryTests {
     }
 
 
+    /// Fetch All extends the result already on screen, so it validates against the content epoch and
+    /// cannot claim the tab without discarding its own rows. The window still has to call it busy.
+    @Test("Unclaimed work makes the window busy without claiming the tab")
+    func unclaimedWorkCountsAsBusy() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let epochBefore = registry.contentEpoch(for: tabId)
+
+        let token = registry.beginUnclaimedWork(for: tabId)
+
+        #expect(registry.isAnyExecuting)
+        #expect(registry.isExecuting(tabId) == false)
+        #expect(registry.contentEpoch(for: tabId) == epochBefore)
+
+        registry.endUnclaimedWork(token, for: tabId)
+        #expect(registry.isAnyExecuting == false)
+    }
+
+    @Test("Two pieces of unclaimed work on one tab end independently")
+    func unclaimedWorkTokensAreIndependent() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let first = registry.beginUnclaimedWork(for: tabId)
+        let second = registry.beginUnclaimedWork(for: tabId)
+
+        registry.endUnclaimedWork(first, for: tabId)
+        #expect(registry.isAnyExecuting)
+
+        registry.endUnclaimedWork(second, for: tabId)
+        #expect(registry.isAnyExecuting == false)
+    }
+
+    /// Work unwinding after Stop must not put the window back to busy.
+    @Test("Ending a token the registry has already released is a no-op")
+    func endingAReleasedTokenIsANoOp() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        let token = registry.beginUnclaimedWork(for: tabId)
+
+        _ = registry.invalidateAll(reason: .cancelledByUser)
+        #expect(registry.isAnyExecuting == false)
+
+        registry.endUnclaimedWork(token, for: tabId)
+        #expect(registry.isAnyExecuting == false)
+    }
+
+    @Test("Retargeting a tab releases its unclaimed work with its claim")
+    func invalidateReleasesUnclaimedWork() {
+        var registry = TabExecutionRegistry()
+        let tabId = UUID()
+        _ = registry.claim(tabId)
+        _ = registry.beginUnclaimedWork(for: tabId)
+
+        _ = registry.invalidate(tabId, reason: .supersededNavigation)
+
+        #expect(registry.isAnyExecuting == false)
+    }
+
+    /// The window's chrome reads `isAnyExecuting`, so every way an execution can end has to leave it
+    /// false. A stored second copy of this answer is what kept the titlebar busy after the work was
+    /// over, recoverable only by pressing Stop (#2342).
+    @Test("Every way an execution ends leaves the window idle")
+    func everyEndingLeavesTheWindowIdle() {
+        for reason: ExecutionEndReason in [.cancelledByUser, .supersededNavigation, .sessionEnded, .abandoned] {
+            var registry = TabExecutionRegistry()
+            let tabId = UUID()
+            _ = registry.claim(tabId)
+            #expect(registry.isAnyExecuting)
+
+            _ = registry.invalidate(tabId, reason: reason)
+            #expect(registry.isAnyExecuting == false)
+        }
+
+        var settling = TabExecutionRegistry()
+        let claim = settling.claim(UUID())
+        let settled = settling.settle(claim)
+        #expect(settled)
+        #expect(settling.isAnyExecuting == false)
+    }
+
     /// Epochs are window-global so two tabs never share one, which keeps a claim comparable on its
     /// own without also carrying the tab's mutable identity fields.
     @Test("Epochs are unique across tabs")

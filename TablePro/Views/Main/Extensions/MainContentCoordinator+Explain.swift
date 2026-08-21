@@ -132,7 +132,6 @@ extension MainContentCoordinator {
         let conn = connection
 
         tabManager.mutate(at: index) { $0.execution.errorMessage = nil }
-        toolbarState.setExecuting(true)
 
         let explainTask = Task { [weak self] in
             guard let self else { return }
