@@ -76,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Open Quickly no longer shows a faint rectangular outline outside its rounded Liquid Glass surface. Its native drop shadow now follows the panel's continuous corners. (#2321)
 - Import and export results no longer flash and vanish before you can read them. The dialog put its result alert on whichever window was in front, which at that moment was the progress sheet closing behind it, so macOS took the alert down with it. Both the failure and the completion alerts are affected, in the SQL, CSV and JSON import dialogs and in export. (#2314)
 - A failed import now says what actually failed. When the rollback failed too, TablePro reported only the rollback and threw away the line number, the statement and the database's own message. An import you cancelled could also be reported as a rollback error, and an import that committed could be reported as failed when only the foreign key restore afterwards went wrong. (#2314)
 - The failed statement list is copyable again, with a Copy Details button on both the failure and the completed-with-errors alerts.
