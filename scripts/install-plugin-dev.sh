@@ -24,8 +24,17 @@ TARGET="${1:-ElasticsearchDriverPlugin}"
 BUNDLE="${TARGET}.tableplugin"
 DEST_DIR="${HOME}/Library/Application Support/TablePro/Plugins"
 
-SRC="$(find "${HOME}/Library/Developer/Xcode/DerivedData/TablePro-"*/Build/Products/Debug \
-  -maxdepth 1 -name "${BUNDLE}" -print 2>/dev/null | head -n 1)"
+# The newest build, not whichever one the filesystem happened to list first. This repo carries
+# several worktrees and each gets its own DerivedData, so `head -n 1` routinely installed a stale
+# bundle from somebody else's checkout and the mismatch only showed up as a load failure later.
+CANDIDATES="$(find "${HOME}/Library/Developer/Xcode/DerivedData/TablePro-"*/Build/Products/Debug \
+  -maxdepth 1 -name "${BUNDLE}" -print0 2>/dev/null | xargs -0 stat -f '%m %N' 2>/dev/null | sort -rn)"
+SRC="$(printf '%s' "${CANDIDATES}" | head -n 1 | cut -d' ' -f2-)"
+
+if [[ "$(printf '%s' "${CANDIDATES}" | grep -c .)" -gt 1 ]]; then
+    echo "note: several builds of ${BUNDLE} exist; using the most recent:"
+    echo "      ${SRC}"
+fi
 
 if [[ -z "${SRC}" ]]; then
     echo "error: ${BUNDLE} not found in DerivedData. Build the app (or the ${TARGET} target) first." >&2
