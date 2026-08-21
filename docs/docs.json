@@ -13,8 +13,8 @@
   },
   "favicon": "/favicon.png",
   "logo": {
-    "light": "/logo/logo.png",
-    "dark": "/logo/logo.png",
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png",
     "href": "https://tablepro.app"
   },
   "seo": {
