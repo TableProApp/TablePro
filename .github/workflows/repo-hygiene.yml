@@ -14,7 +14,10 @@ on:
       - ".github/actions/**"
       - ".github/scripts/**"
       - ".github/plugin-registry.json"
+      - ".github/duplicate-contract-baseline.txt"
       - "Plugins/**/*.swift"
+      - "TablePro/**/*.swift"
+      - "Packages/**/*.swift"
   push:
     branches: [main]
     paths:
@@ -23,7 +26,10 @@ on:
       - ".github/actions/**"
       - ".github/scripts/**"
       - ".github/plugin-registry.json"
+      - ".github/duplicate-contract-baseline.txt"
       - "Plugins/**/*.swift"
+      - "TablePro/**/*.swift"
+      - "Packages/**/*.swift"
   workflow_dispatch:
 
 concurrency:
@@ -68,3 +74,11 @@ jobs:
 
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py
+
+      # Two checks that guarded real invariants and ran nowhere. Both are pure bash and grep, so
+      # they belong on the free Linux runner rather than in the macOS suite.
+      - name: Check the MongoDB filter shapes against the query builder
+        run: scripts/check-mongodb-filter-shapes.sh
+
+      - name: Check the shared-contract drift gates
+        run: scripts/audit-refactor-health.sh --check

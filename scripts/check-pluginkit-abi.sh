@@ -90,22 +90,17 @@ if diff -u "$work/base.txt" "$work/head.txt"; then
     exit 0
 fi
 
-if [ "${ABI_ACKNOWLEDGED_ADDITIVE:-}" = "1" ]; then
-    cat <<'EOF'
-
-::notice::TableProPluginKit public ABI changed vs base (diff above).
-The PR carries the abi-additive label: a maintainer reviewed the diff as additive (new defaulted
-requirements or non-frozen types), so no version bump is required and the gate passes.
-Remove the label if the diff gains a breaking change; the gate will fail again.
-EOF
-    exit 0
-fi
-
+# This is run by hand, per CLAUDE.md, not by a workflow. It used to have a branch that passed when
+# ABI_ACKNOWLEDGED_ADDITIVE=1, set by a CI job that no longer exists, alongside instructions to add
+# an `abi-additive` label and re-run. Nothing can set the variable and nothing reads the label, so
+# both were telling the reader to do something that has no effect.
 cat <<'EOF'
 
-::error::TableProPluginKit public ABI changed vs base (diff above). Decide additive vs breaking:
-  Additive: no version bump. After review, add the abi-additive label to the PR and re-run.
-  Breaking: bump currentPluginKitVersion + every plugin Info.plist TableProPluginKitVersion,
-            then run scripts/release-all-plugins.sh <newVersion>.
+TableProPluginKit public ABI changed vs base (diff above). Decide additive vs breaking:
+  Additive: a new requirement with a default, a reordering, or a field on a non-frozen transfer
+            struct. No version bump, nothing further to do.
+  Breaking: a changed or removed requirement, a requirement without a default, a case on a @frozen
+            enum, or a frozen type's layout. Bump currentPluginKitVersion and every plugin
+            Info.plist TableProPluginKitVersion, then run scripts/release-all-plugins.sh <version>.
 EOF
 exit 1
