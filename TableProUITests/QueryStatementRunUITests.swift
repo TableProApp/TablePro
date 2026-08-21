@@ -15,7 +15,7 @@ final class QueryStatementRunUITests: UITestCase {
 
         let controls = runControls(in: app)
         XCTAssertTrue(
-            controls.firstMatch.waitForExistence(timeout: 10),
+            controls.firstMatch.waitToExist(timeout: 10),
             "Every statement must publish a run control"
         )
         XCTAssertEqual(controls.count, 3, "Three statements must produce three run controls")
@@ -35,7 +35,7 @@ final class QueryStatementRunUITests: UITestCase {
         for line in 1...3 {
             let control = runControl(onLine: line, in: app)
             XCTAssertTrue(
-                control.waitForExistence(timeout: 10),
+                control.waitToExist(timeout: 10),
                 "The statement on line \(line) must have its own run control"
             )
         }
@@ -55,7 +55,7 @@ final class QueryStatementRunUITests: UITestCase {
         XCTAssertTrue(waitForEditorText(containing: "DELETE FROM c", in: editor))
 
         let controls = runControls(in: app)
-        XCTAssertTrue(controls.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(controls.firstMatch.waitToExist(timeout: 10))
         XCTAssertEqual(controls.count, 1, "The whole BEGIN ... END body is one statement")
         XCTAssertTrue(
             runControl(onLine: 1, in: app).exists,
@@ -71,7 +71,7 @@ final class QueryStatementRunUITests: UITestCase {
         XCTAssertTrue(waitForEditorText(containing: "just a note", in: editor))
 
         let controls = runControls(in: app)
-        XCTAssertTrue(controls.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(controls.firstMatch.waitToExist(timeout: 10))
         XCTAssertEqual(controls.count, 1, "A comment carries no statement, so it gets no run control")
     }
 
@@ -90,17 +90,8 @@ final class QueryStatementRunUITests: UITestCase {
     private func openQueryTab(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("t", modifierFlags: .command)
         let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         return editor
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
     }
 
     private func waitForEditorText(

@@ -13,12 +13,12 @@ final class QueryStatementNavigationUITests: UITestCase {
         XCTAssertTrue(waitForEditorText(containing: "SELECT 3", in: editor))
 
         let queryMenu = app.menuBars.menuBarItems["Query"]
-        XCTAssertTrue(queryMenu.waitForExistence(timeout: 10))
+        XCTAssertTrue(queryMenu.waitToExist(timeout: 10))
         queryMenu.click()
 
         for title in ["Previous Statement", "Next Statement", "Run Statement and Advance"] {
             let item = app.menuBars.menuItems[title]
-            XCTAssertTrue(item.waitForExistence(timeout: 10), "Query > \(title) must exist")
+            XCTAssertTrue(item.waitToExist(timeout: 10), "Query > \(title) must exist")
             XCTAssertTrue(item.isEnabled, "Query > \(title) must be enabled on a query tab")
         }
 
@@ -64,11 +64,11 @@ final class QueryStatementNavigationUITests: UITestCase {
 
     private func clickQueryMenuItem(_ title: String, in app: XCUIApplication) {
         let queryMenu = app.menuBars.menuBarItems["Query"]
-        XCTAssertTrue(queryMenu.waitForExistence(timeout: 10), "The Query menu must exist")
+        XCTAssertTrue(queryMenu.waitToExist(timeout: 10), "The Query menu must exist")
         queryMenu.click()
 
         let item = app.menuBars.menuItems[title]
-        XCTAssertTrue(item.waitForExistence(timeout: 10), "Query > \(title) must exist")
+        XCTAssertTrue(item.waitToExist(timeout: 10), "Query > \(title) must exist")
         XCTAssertTrue(waitUntilHittable(item, timeout: 10), "Query > \(title) must be clickable")
         item.click()
     }
@@ -76,17 +76,8 @@ final class QueryStatementNavigationUITests: UITestCase {
     private func openQueryTab(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("t", modifierFlags: .command)
         let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         return editor
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
     }
 
     private func waitForEditorText(

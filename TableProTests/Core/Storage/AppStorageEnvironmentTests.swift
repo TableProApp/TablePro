@@ -49,19 +49,23 @@ struct AppStorageEnvironmentTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let suiteDirectory = root.appendingPathComponent("TableProUITests")
-        let names = try FileManager.default.contentsOfDirectory(atPath: suiteDirectory.path)
-            .filter { $0.hasSuffix(".swift") }
-        #expect(!names.isEmpty, "The UI test directory should not be empty at \(suiteDirectory.path)")
+        /// Walked rather than listed. XcodeGen globs the target recursively, so a suite added under
+        /// TableProUITests/Editor/ would compile and run while a top-level listing never saw it.
+        let enumerator = FileManager.default.enumerator(atPath: suiteDirectory.path)
+        let baseClass = "Support/UITestCase.swift"
+        let paths = (enumerator?.allObjects as? [String] ?? [])
+            .filter { $0.hasSuffix(".swift") && $0 != baseClass }
+        #expect(!paths.isEmpty, "The UI test directory should not be empty at \(suiteDirectory.path)")
 
-        for name in names {
-            let source = try String(contentsOf: suiteDirectory.appendingPathComponent(name), encoding: .utf8)
+        for path in paths {
+            let source = try String(contentsOf: suiteDirectory.appendingPathComponent(path), encoding: .utf8)
             #expect(
                 !source.contains("XCUIApplication()"),
-                "\(name) constructs an application directly; use UITestCase.launchApp() so it gets a sandbox"
+                "\(path) constructs an application directly; use UITestCase.launchApp() so it gets a sandbox"
             )
             #expect(
                 !source.contains(": XCTestCase"),
-                "\(name) subclasses XCTestCase; UI tests must subclass UITestCase"
+                "\(path) subclasses XCTestCase; UI tests must subclass UITestCase"
             )
         }
     }

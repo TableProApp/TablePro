@@ -10,7 +10,7 @@ final class SwitcherEscapeUITests: UITestCase {
 
         app.typeKey("c", modifierFlags: [.command, .control])
         let field = connectionSearchField(in: app)
-        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        XCTAssertTrue(field.waitToExist(timeout: 15))
 
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(
@@ -28,13 +28,13 @@ final class SwitcherEscapeUITests: UITestCase {
 
         app.typeKey("c", modifierFlags: [.command, .control])
         let field = connectionSearchField(in: app)
-        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        XCTAssertTrue(field.waitToExist(timeout: 15))
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
 
         app.typeKey("c", modifierFlags: [.command, .control])
         XCTAssertTrue(
-            field.waitForExistence(timeout: 10),
+            field.waitToExist(timeout: 10),
             "The switcher must reopen after an Escape dismissal"
         )
     }
@@ -42,7 +42,7 @@ final class SwitcherEscapeUITests: UITestCase {
     private func waitForGrid(in app: XCUIApplication) throws {
         XCTAssertTrue(
             app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-                .waitForExistence(timeout: 30)
+                .waitToExist(timeout: 30)
         )
         app.activate()
     }

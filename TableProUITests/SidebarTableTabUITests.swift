@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 /// Issue #2235. Clicking a table opens it in a preview tab that the next click reuses, so browsing
@@ -46,7 +47,7 @@ final class SidebarTableTabUITests: UITestCase {
 
     private func readyWindow(of app: XCUIApplication) throws -> XCUIElement {
         let window = app.windows.firstMatch
-        XCTAssertTrue(window.waitForExistence(timeout: 30))
+        XCTAssertTrue(window.waitToExist(timeout: 30))
         XCTAssertTrue(
             waitForPredicate(timeout: 30) { window.outlines.firstMatch.outlineRows.count > 1 },
             "The object browser must list the sample database's tables"
@@ -61,18 +62,26 @@ final class SidebarTableTabUITests: UITestCase {
         let match = window.outlines.firstMatch.staticTexts
             .matching(NSPredicate(format: "value == %@", "Table: \(name)"))
             .firstMatch
-        XCTAssertTrue(match.waitForExistence(timeout: 20), "The object browser must list \(name)")
+        XCTAssertTrue(match.waitToExist(timeout: 20), "The object browser must list \(name)")
         return match
     }
 
     private func click(_ element: XCUIElement) {
-        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-        _ = waitForPredicate(timeout: 3) { false }
+        clickAtCenter(element)
+        settleBetweenClicks()
     }
 
     private func doubleClick(_ element: XCUIElement) {
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
-        _ = waitForPredicate(timeout: 3) { false }
+        settleBetweenClicks()
+    }
+
+    /// A genuine delay, not a poll: there is no state to observe between two clicks, and the only
+    /// thing being waited out is the window in which macOS would coalesce the next click into this
+    /// one. `waitForPredicate(timeout:) { false }` was three seconds of the same thing written as a
+    /// condition that cannot succeed.
+    private func settleBetweenClicks() {
+        Thread.sleep(forTimeInterval: NSEvent.doubleClickInterval)
     }
 
     /// The strip is drawn only once a connection holds more than one tab, so one tab reads as zero

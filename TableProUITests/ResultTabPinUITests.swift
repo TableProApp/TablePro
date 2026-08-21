@@ -15,13 +15,13 @@ final class ResultTabPinUITests: UITestCase {
 
         app.typeKey("t", modifierFlags: .command)
         let queryEditor = editorTextView(in: app)
-        XCTAssertTrue(queryEditor.waitForExistence(timeout: 10))
+        XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
         queryEditor.click()
         app.typeText(paddedQuery)
         app.typeKey(.return, modifierFlags: .command)
 
         let resultTab = app.buttons["result-tab"].firstMatch
-        XCTAssertTrue(resultTab.waitForExistence(timeout: 20), "The query must produce a result tab")
+        XCTAssertTrue(resultTab.waitToExist(timeout: 20), "The query must produce a result tab")
         resultTab.rightClick()
 
         /// A contextual menu opens inside the window; the menu-bar menus hang off `MenuBar`, so
@@ -30,7 +30,7 @@ final class ResultTabPinUITests: UITestCase {
         /// build exposes the menu without it.
         let contextMenu = app.windows.firstMatch.menus.firstMatch
         XCTAssertTrue(
-            contextMenu.menuItems["Close Others"].waitForExistence(timeout: 5),
+            contextMenu.menuItems["Close Others"].waitToExist(timeout: 5),
             "Right-clicking a result tab must open the result menu, not the editor menu"
         )
         contextMenu.menuItems["Pin Result"].click()
@@ -38,22 +38,15 @@ final class ResultTabPinUITests: UITestCase {
         let menuBar = app.menuBars.firstMatch
         menuBar.menuBarItems["View"].click()
         let unpinItem = menuBar.menuItems["Unpin Result"]
-        XCTAssertTrue(unpinItem.waitForExistence(timeout: 5), "A pinned result reads as Unpin Result")
+        XCTAssertTrue(unpinItem.waitToExist(timeout: 5), "A pinned result reads as Unpin Result")
         XCTAssertTrue(unpinItem.isEnabled)
         app.typeKey(.escape, modifierFlags: [])
     }
 
+    /// Sixty blank lines, not sixty comments. The editor ends up the same height either way, but
+    /// XCUITest synthesizes typing at roughly 113ms per character, so the 660-character version
+    /// spent 74 seconds of this test's 103 pressing keys.
     private var paddedQuery: String {
-        let padding = (1...60).map { "-- line \($0)" }.joined(separator: "\n")
-        return "\(padding)\nSELECT 1;"
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
+        String(repeating: "\n", count: 60) + "SELECT 1;"
     }
 }

@@ -47,7 +47,7 @@ final class BackgroundLaunchDockPresenceUITests: UITestCase {
 
         XCTAssertTrue(waitForActivationPolicy(.accessory))
         XCTAssertFalse(
-            app.windows["welcome"].waitForExistence(timeout: 5),
+            app.windows["welcome"].waitToExist(timeout: 5),
             "Nobody asked for a window, so a background launch must not present one"
         )
     }
@@ -76,7 +76,7 @@ final class BackgroundLaunchDockPresenceUITests: UITestCase {
             "Opening TablePro must give it back its Dock icon"
         )
         XCTAssertTrue(
-            app.windows["welcome"].waitForExistence(timeout: 10),
+            app.windows["welcome"].waitToExist(timeout: 10),
             "Opening TablePro with nothing on screen must show the welcome window"
         )
     }
@@ -84,7 +84,7 @@ final class BackgroundLaunchDockPresenceUITests: UITestCase {
     func testAnOrdinaryLaunchIsInTheDockFromTheStart() throws {
         let app = try launchApp()
 
-        XCTAssertTrue(app.windows["welcome"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.windows["welcome"].waitToExist(timeout: 10))
         XCTAssertEqual(
             appUnderTest()?.activationPolicy,
             .regular,

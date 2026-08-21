@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 /// Issue #2316. Following a reference used to be one-way: the view you came from was gone, with no
@@ -64,7 +65,7 @@ final class NavigationHistoryUITests: UITestCase {
 
     private func readyWindow(of app: XCUIApplication) throws -> XCUIElement {
         let window = app.windows.firstMatch
-        XCTAssertTrue(window.waitForExistence(timeout: 30))
+        XCTAssertTrue(window.waitToExist(timeout: 30))
         XCTAssertTrue(
             waitForPredicate(timeout: 30) { window.outlines.firstMatch.outlineRows.count > 1 },
             "The object browser must list the sample database's tables"
@@ -79,13 +80,13 @@ final class NavigationHistoryUITests: UITestCase {
         let match = window.outlines.firstMatch.staticTexts
             .matching(NSPredicate(format: "value == %@", "Table: \(name)"))
             .firstMatch
-        XCTAssertTrue(match.waitForExistence(timeout: 20), "The object browser must list \(name)")
+        XCTAssertTrue(match.waitToExist(timeout: 20), "The object browser must list \(name)")
         return match
     }
 
     private func click(_ element: XCUIElement) {
-        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-        _ = waitForPredicate(timeout: 2) { false }
+        clickAtCenter(element)
+        Thread.sleep(forTimeInterval: NSEvent.doubleClickInterval)
     }
 
     private func title(of window: XCUIElement) -> String {
@@ -94,12 +95,12 @@ final class NavigationHistoryUITests: UITestCase {
 
     private func viewMenuItem(_ name: String, in app: XCUIApplication) throws -> XCUIElement {
         let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
+        XCTAssertTrue(menuBar.waitToExist(timeout: 10))
         let viewMenu = menuBar.menuBarItems["View"]
-        XCTAssertTrue(viewMenu.waitForExistence(timeout: 10))
+        XCTAssertTrue(viewMenu.waitToExist(timeout: 10))
         viewMenu.click()
         let item = viewMenu.menuItems[name]
-        XCTAssertTrue(item.waitForExistence(timeout: 10), "View must offer \(name)")
+        XCTAssertTrue(item.waitToExist(timeout: 10), "View must offer \(name)")
         return item
     }
 

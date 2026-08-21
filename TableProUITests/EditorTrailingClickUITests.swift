@@ -43,18 +43,9 @@ final class EditorTrailingClickUITests: UITestCase {
     private func openQueryTab(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("t", modifierFlags: .command)
         let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         XCTAssertTrue(waitForValue("", in: editor), "A new tab starts with an empty editor")
         return editor
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
     }
 
     private func waitForValue(_ expected: String, in element: XCUIElement) -> Bool {

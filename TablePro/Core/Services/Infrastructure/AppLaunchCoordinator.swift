@@ -28,6 +28,7 @@ internal final class AppLaunchCoordinator {
 
     internal func didFinishLaunching() {
         hasFinishedLaunching = true
+        deliver(UITestLaunchEnvironment.launchIntents)
         let deadline = Date().addingTimeInterval(0.150)
         phase = .collectingIntents(deadline: deadline)
         deadlineTask = Task { [weak self] in

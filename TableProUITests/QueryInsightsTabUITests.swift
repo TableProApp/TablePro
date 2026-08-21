@@ -55,7 +55,7 @@ final class QueryInsightsTabUITests: UITestCase {
         ] {
             let control = window.descendants(matching: .any).matching(identifier: identifier).firstMatch
             XCTAssertTrue(
-                control.waitForExistence(timeout: 10),
+                control.waitToExist(timeout: 10),
                 "The insights toolbar must expose \(identifier)"
             )
         }
@@ -69,14 +69,14 @@ final class QueryInsightsTabUITests: UITestCase {
         let window = app.windows.firstMatch
         let insightsScope = window.descendants(matching: .any)
             .matching(identifier: "query-insights-scope-picker").firstMatch
-        XCTAssertTrue(insightsScope.waitForExistence(timeout: 10))
+        XCTAssertTrue(insightsScope.waitToExist(timeout: 10))
 
         app.typeKey("y", modifierFlags: .command)
 
         let historyScope = window.descendants(matching: .any)
             .matching(identifier: "query-history-scope-picker").firstMatch
         XCTAssertTrue(
-            historyScope.waitForExistence(timeout: 10),
+            historyScope.waitToExist(timeout: 10),
             "The drawer keeps its own scope picker identifier while the insights tab is open"
         )
     }
@@ -93,7 +93,7 @@ final class QueryInsightsTabUITests: UITestCase {
         XCTAssertTrue(
             window.descendants(matching: .any)
                 .matching(NSPredicate(format: "label CONTAINS[c] %@", "Query Insights"))
-                .firstMatch.waitForExistence(timeout: 10),
+                .firstMatch.waitToExist(timeout: 10),
             "The tab still opens without a license"
         )
 
@@ -119,7 +119,7 @@ final class QueryInsightsTabUITests: UITestCase {
             .matching(identifier: "editor-tab")
             .matching(NSPredicate(format: "label == %@", "Query Insights"))
             .firstMatch
-        XCTAssertTrue(insightsTab.waitForExistence(timeout: 10), "The insights tab must reach the strip")
+        XCTAssertTrue(insightsTab.waitToExist(timeout: 10), "The insights tab must reach the strip")
         XCTAssertTrue(
             waitForPredicate(timeout: 10) { insightsTab.isSelected },
             "Opening it the first time selects it"
@@ -161,11 +161,11 @@ final class QueryInsightsTabUITests: UITestCase {
     /// equivalent and the menu item is the only way in.
     private func openInsights(in app: XCUIApplication) {
         let databaseMenu = app.menuBars.menuBarItems["Database"]
-        XCTAssertTrue(databaseMenu.waitForExistence(timeout: 10), "The Database menu must exist")
+        XCTAssertTrue(databaseMenu.waitToExist(timeout: 10), "The Database menu must exist")
         databaseMenu.click()
 
         let item = app.menuBars.menuItems["Query Insights"]
-        XCTAssertTrue(item.waitForExistence(timeout: 10), "Database > Query Insights must exist")
+        XCTAssertTrue(item.waitToExist(timeout: 10), "Database > Query Insights must exist")
         XCTAssertTrue(waitUntilHittable(item, timeout: 10), "The menu item must be clickable")
         item.click()
     }
@@ -173,20 +173,11 @@ final class QueryInsightsTabUITests: UITestCase {
     private func runQuery(in app: XCUIApplication) {
         app.typeKey("t", modifierFlags: .command)
         let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         app.typeText(query)
         app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: .command)
 
         let results = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-        XCTAssertTrue(results.waitForExistence(timeout: 15), "The query must produce a result grid")
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
+        XCTAssertTrue(results.waitToExist(timeout: 15), "The query must produce a result grid")
     }
 }

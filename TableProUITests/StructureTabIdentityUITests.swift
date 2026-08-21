@@ -15,12 +15,12 @@ final class StructureTabIdentityUITests: UITestCase {
         let window = app.windows.firstMatch
 
         let row = objectBrowserRow("Album", in: window)
-        XCTAssertTrue(row.waitForExistence(timeout: 20), "The object browser must list Album")
+        XCTAssertTrue(row.waitToExist(timeout: 20), "The object browser must list Album")
         clickAtCenter(row)
 
         showStructure(in: window)
         let indexes = subTab(named: "Indexes", in: window)
-        XCTAssertTrue(indexes.waitForExistence(timeout: 20), "The structure editor must offer Indexes")
+        XCTAssertTrue(indexes.waitToExist(timeout: 20), "The structure editor must offer Indexes")
         indexes.click()
         XCTAssertTrue(
             waitForPredicate(timeout: 10) { isSelected(indexes) },
@@ -29,12 +29,12 @@ final class StructureTabIdentityUITests: UITestCase {
 
         row.rightClick()
         let openInNewTab = app.menuItems["Open in New Tab"].firstMatch
-        XCTAssertTrue(openInNewTab.waitForExistence(timeout: 15), "The sidebar must offer Open in New Tab")
+        XCTAssertTrue(openInNewTab.waitToExist(timeout: 15), "The sidebar must offer Open in New Tab")
         openInNewTab.click()
 
         showStructure(in: window)
         let columns = subTab(named: "Columns", in: window)
-        XCTAssertTrue(columns.waitForExistence(timeout: 20), "The second tab must have its own structure editor")
+        XCTAssertTrue(columns.waitToExist(timeout: 20), "The second tab must have its own structure editor")
         XCTAssertTrue(
             waitForPredicate(timeout: 10) { isSelected(columns) },
             "The second tab opens on Columns rather than inheriting the first tab's Indexes"
@@ -49,9 +49,9 @@ final class StructureTabIdentityUITests: UITestCase {
 
     private func showStructure(in window: XCUIElement) {
         let modePicker = window.radioGroups["results-view-mode-picker"].firstMatch
-        XCTAssertTrue(modePicker.waitForExistence(timeout: 20), "The result must expose its view modes")
+        XCTAssertTrue(modePicker.waitToExist(timeout: 20), "The result must expose its view modes")
         let structure = modePicker.radioButtons["Structure"].firstMatch
-        XCTAssertTrue(structure.waitForExistence(timeout: 20), "Structure must be one of them")
+        XCTAssertTrue(structure.waitToExist(timeout: 20), "Structure must be one of them")
         structure.click()
     }
 

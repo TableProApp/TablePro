@@ -12,10 +12,10 @@ final class ResultStatusBarUITests: UITestCase {
         let grid = runQuery(in: app)
 
         let modePicker = window.radioGroups["results-view-mode-picker"].firstMatch
-        XCTAssertTrue(modePicker.waitForExistence(timeout: 10), "The result must expose its view modes")
+        XCTAssertTrue(modePicker.waitToExist(timeout: 10), "The result must expose its view modes")
 
         let readout = window.staticTexts["result-status-readout"].firstMatch
-        XCTAssertTrue(readout.waitForExistence(timeout: 10), "The status bar must report what the result holds")
+        XCTAssertTrue(readout.waitToExist(timeout: 10), "The status bar must report what the result holds")
 
         /// Automatic grammar agreement is resolved from the String Catalog. A key that never made it
         /// into the catalog renders its markup verbatim, which ships "^[12 rows](inflect: true)".
@@ -48,10 +48,10 @@ final class ResultStatusBarUITests: UITestCase {
         let grid = runQuery(in: app)
 
         let readout = window.staticTexts["result-status-readout"].firstMatch
-        XCTAssertTrue(readout.waitForExistence(timeout: 10))
+        XCTAssertTrue(readout.waitToExist(timeout: 10))
 
         let modePicker = window.radioGroups["results-view-mode-picker"].firstMatch
-        XCTAssertTrue(modePicker.waitForExistence(timeout: 10))
+        XCTAssertTrue(modePicker.waitToExist(timeout: 10))
         let offsetIntoPane = modePicker.frame.minX - grid.frame.minX
         XCTAssertLessThan(
             offsetIntoPane, 40,
@@ -69,18 +69,18 @@ final class ResultStatusBarUITests: UITestCase {
 
         for table in ["Album", "Artist", "Track"] {
             let row = objectBrowserRow(table, in: window)
-            guard row.waitForExistence(timeout: 15) else {
+            guard row.waitToExist(timeout: 15) else {
                 XCTFail("The object browser must list \(table)")
                 return
             }
             clickAtCenter(row)
 
             let readout = window.staticTexts["result-status-readout"].firstMatch
-            XCTAssertTrue(readout.waitForExistence(timeout: 15), "\(table): the readout must survive the switch")
+            XCTAssertTrue(readout.waitToExist(timeout: 15), "\(table): the readout must survive the switch")
 
             for identifier in ["result-status-columns", "result-status-filters", "pagination-page-size"] {
                 XCTAssertTrue(
-                    window.descendants(matching: .any)[identifier].firstMatch.waitForExistence(timeout: 15),
+                    window.descendants(matching: .any)[identifier].firstMatch.waitToExist(timeout: 15),
                     "\(table): \(identifier) left the bar"
                 )
             }
@@ -96,22 +96,13 @@ final class ResultStatusBarUITests: UITestCase {
     private func runQuery(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("t", modifierFlags: .command)
         let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         editor.click()
         app.typeText("SELECT Name, Milliseconds FROM Track ORDER BY TrackId LIMIT 12;")
         app.typeKey(.return, modifierFlags: .command)
 
         let grid = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-        XCTAssertTrue(grid.waitForExistence(timeout: 15), "The query must produce a result grid")
+        XCTAssertTrue(grid.waitToExist(timeout: 15), "The query must produce a result grid")
         return grid
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
     }
 }

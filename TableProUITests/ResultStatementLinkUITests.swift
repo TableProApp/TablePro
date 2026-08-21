@@ -66,7 +66,7 @@ final class ResultStatementLinkUITests: UITestCase {
 
         app.typeKey("t", modifierFlags: .command)
         let queryEditor = editorTextView(in: app)
-        XCTAssertTrue(queryEditor.waitForExistence(timeout: 10))
+        XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
         queryEditor.click()
         app.typeText(script)
 
@@ -75,7 +75,7 @@ final class ResultStatementLinkUITests: UITestCase {
         app.menuBars.firstMatch.menuItems["Execute All Statements"].click()
 
         XCTAssertTrue(
-            app.buttons.matching(identifier: "result-tab").element(boundBy: 2).waitForExistence(timeout: 20),
+            app.buttons.matching(identifier: "result-tab").element(boundBy: 2).waitToExist(timeout: 20),
             "The script must produce a result per statement"
         )
         return app
@@ -87,14 +87,5 @@ final class ResultStatementLinkUITests: UITestCase {
         let hittable = NSPredicate(format: "isHittable == true")
         let expectation = XCTNSPredicateExpectation(predicate: hittable, object: element)
         XCTAssertEqual(XCTWaiter().wait(for: [expectation], timeout: 10), .completed)
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
     }
 }

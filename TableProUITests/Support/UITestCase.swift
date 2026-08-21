@@ -42,7 +42,6 @@ internal class UITestCase: XCTestCase {
 
         if let sandboxRoot {
             try? FileManager.default.removeItem(at: sandboxRoot)
-            removeDefaultsSuite(forSandboxAt: sandboxRoot)
         }
         sandboxRoot = nil
         if let privacyAlertMonitor {
@@ -103,34 +102,58 @@ internal class UITestCase: XCTestCase {
         return app
     }
 
-    /// The sample database is opened from the Help menu. Three suites used to reach for File, which
-    /// has never carried this item, so they failed on any machine rather than flakily.
+    /// Asks for the sample database at launch instead of clicking `Help > Open Sample Database`.
     ///
-    /// Never click the parent menu first. `click()` on a menu item runs its own menu traversal and
-    /// opens the parent as part of it, so an already-open menu makes that traversal fail with "open
-    /// menu during menu traversal"; XCUITest then falls back to hovering and resolves the item to an
-    /// unhittable zero-size frame. That failed every suite this helper serves.
+    /// The menu route cost ten seconds on every call. XCUITest resolves a menu item by opening its
+    /// parent, and a probe that resolved the item first left the menu open, so the click's own
+    /// traversal failed with "open menu during menu traversal", waited out a ten second watchdog,
+    /// snapshotted the whole accessibility hierarchy and only then retried. Every one of the 66
+    /// tests that opened the sample paid it: 11 minutes of a 39 minute suite. None of those tests
+    /// is about the Help menu, so they no longer go through it.
+    ///
+    /// `SingleWindowMenuContractUITests.testHelpMenuOpensTheSampleDatabase` still drives the menu
+    /// item the way a person does, so the route keeps its coverage.
+    ///
+    /// The variable is read by `UITestLaunchEnvironment` in the app, which turns it into an
+    /// ordinary `LaunchIntent`. Both sides spell it out because a UI test target cannot import the
+    /// app, the same as `TABLEPRO_UI_TESTING` below.
     @discardableResult
     internal func launchWithSampleDatabase(
         environment: [String: String] = [:],
         arguments: [String] = []
     ) throws -> XCUIApplication {
-        let app = try launchApp(environment: environment, arguments: arguments)
+        var launchEnvironment = environment
+        launchEnvironment["TABLEPRO_UI_TEST_OPEN_SAMPLE"] = "1"
+        let app = try launchApp(environment: launchEnvironment, arguments: arguments)
+        XCTAssertTrue(
+            waitForSampleDatabaseWindow(in: app),
+            "The sample database never finished opening"
+        )
+        return app
+    }
+
+    /// Returning as soon as the launch was requested is what used to leave fourteen suites poking
+    /// at a window that had no connection yet, and every one of those misses cost an XCUITest
+    /// retry. The object browser having rows is the cheapest proof the connection is live.
+    internal func waitForSampleDatabaseWindow(in app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
+        waitForPredicate(timeout: timeout) {
+            app.windows.firstMatch.outlines.firstMatch.staticTexts.count > 0
+        }
+    }
+
+    /// Opens the sample database the way a person does. Only the menu contract suite needs this;
+    /// everything else takes the launch route above.
+    @discardableResult
+    internal func launchAndOpenSampleDatabaseFromHelpMenu() throws -> XCUIApplication {
+        let app = try launchApp()
         let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
-        let openSample = menuBar.menuItems["Open Sample Database"]
-        XCTAssertTrue(openSample.waitForExistence(timeout: 10))
-        openSample.click()
+        XCTAssertTrue(menuBar.waitToExist(timeout: 10))
+        menuBar.menuItems["Open Sample Database"].click()
         return app
     }
 
     internal func waitForPredicate(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
-        let deadline = Date(timeIntervalSinceNow: timeout)
-        while Date() < deadline {
-            if condition() { return true }
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-        }
-        return condition()
+        UITestPoll.until(timeout: timeout, condition)
     }
 
     /// The precondition a click actually has. `waitForExistence` only says the element is in the
@@ -156,16 +179,26 @@ internal class UITestCase: XCTestCase {
             .firstMatch
     }
 
+    /// The query editor's text view. Eighteen suites carried a byte-identical private copy of this
+    /// before it moved here.
+    ///
+    /// The identifier branch is the specific query and the `firstMatch` fallback is what actually
+    /// resolves today, because the identifier is applied to the SwiftUI representable rather than
+    /// to the `NSTextView` underneath it. Both are kept: the fallback is what works, and the
+    /// identified lookup is what should start working the day the identifier reaches the text view.
+    internal func editorTextView(in app: XCUIApplication) -> XCUIElement {
+        let window = app.windows.firstMatch
+        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
+        if identified.exists {
+            return identified
+        }
+        return window.textViews.firstMatch
+    }
+
     /// AppKit reports those rows as disabled, so they never become hittable and a plain `click()`
     /// waits for a state that cannot arrive. Clicking through a coordinate reaches them.
     internal func clickAtCenter(_ element: XCUIElement) {
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-    }
-
-    /// A defaults suite is a file in the user's preferences directory, so removing the sandbox
-    /// directory alone would leave one behind for every test that ever ran.
-    private func removeDefaultsSuite(forSandboxAt root: URL) {
-        UITestCase.removeSuite(named: "com.TablePro.uitest.\(root.lastPathComponent)")
     }
 
     /// The app removes its own defaults domain as it terminates, which is the only point that

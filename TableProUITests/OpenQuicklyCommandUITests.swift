@@ -7,13 +7,13 @@ final class OpenQuicklyCommandUITests: UITestCase {
         let app = try launchWithSampleDatabase()
         XCTAssertTrue(
             app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-                .waitForExistence(timeout: 30)
+                .waitToExist(timeout: 30)
         )
         app.activate()
 
         app.typeKey("o", modifierFlags: [.command, .shift])
         let searchField = switcherPanel(in: app).textFields["quick-switcher-search-field"]
-        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+        XCTAssertTrue(searchField.waitToExist(timeout: 15))
 
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(
@@ -27,17 +27,17 @@ final class OpenQuicklyCommandUITests: UITestCase {
         let app = try launchWithSampleDatabase()
         XCTAssertTrue(
             app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-                .waitForExistence(timeout: 30)
+                .waitToExist(timeout: 30)
         )
         app.activate()
 
         app.typeKey("o", modifierFlags: [.command, .shift])
         let panel = switcherPanel(in: app)
         let searchField = panel.textFields["quick-switcher-search-field"]
-        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+        XCTAssertTrue(searchField.waitToExist(timeout: 15))
 
         searchField.typeText("album")
-        XCTAssertTrue(panel.buttons["Album"].waitForExistence(timeout: 10))
+        XCTAssertTrue(panel.buttons["Album"].waitToExist(timeout: 10))
 
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(
@@ -62,21 +62,21 @@ final class OpenQuicklyCommandUITests: UITestCase {
         let app = try launchWithSampleDatabase()
         XCTAssertTrue(
             app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-                .waitForExistence(timeout: 30)
+                .waitToExist(timeout: 30)
         )
         app.activate()
 
         app.typeKey("o", modifierFlags: [.command, .shift])
         let panel = switcherPanel(in: app)
         let searchField = panel.textFields["quick-switcher-search-field"]
-        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+        XCTAssertTrue(searchField.waitToExist(timeout: 15))
 
         let scopes = scopePicker(in: panel)
-        XCTAssertTrue(scopes.waitForExistence(timeout: 10))
+        XCTAssertTrue(scopes.waitToExist(timeout: 10))
 
         for title in Self.scopeTitles {
             XCTAssertTrue(
-                scopes.radioButtons[title].waitForExistence(timeout: 5),
+                scopes.radioButtons[title].waitToExist(timeout: 5),
                 "the \(title) segment is missing on an empty query"
             )
         }
@@ -87,7 +87,7 @@ final class OpenQuicklyCommandUITests: UITestCase {
         XCTAssertTrue(isSelected(scopes.radioButtons["All"]), "The panel opens in the All scope")
 
         searchField.typeText("a")
-        XCTAssertTrue(panel.buttons["Album"].waitForExistence(timeout: 10))
+        XCTAssertTrue(panel.buttons["Album"].waitToExist(timeout: 10))
 
         for title in Self.scopeTitles {
             XCTAssertTrue(
@@ -122,23 +122,23 @@ final class OpenQuicklyCommandUITests: UITestCase {
         let app = try launchWithSampleDatabase()
         XCTAssertTrue(
             app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-                .waitForExistence(timeout: 30)
+                .waitToExist(timeout: 30)
         )
         app.activate()
 
         app.typeKey("o", modifierFlags: [.command, .shift])
         let panel = switcherPanel(in: app)
         let searchField = panel.textFields["quick-switcher-search-field"]
-        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+        XCTAssertTrue(searchField.waitToExist(timeout: 15))
 
         XCTAssertTrue(
-            hint(in: panel, "Escape closes Open Quickly").waitForExistence(timeout: 5),
+            hint(in: panel, "Escape closes Open Quickly").waitToExist(timeout: 5),
             "An empty field promises Escape closes the panel"
         )
 
         searchField.typeText(" ")
         XCTAssertTrue(
-            hint(in: panel, "Escape clears the search text").waitForExistence(timeout: 5),
+            hint(in: panel, "Escape clears the search text").waitToExist(timeout: 5),
             "A whitespace-only query still has something to clear, so the hint must say so"
         )
 
@@ -179,21 +179,21 @@ final class OpenQuicklyCommandUITests: UITestCase {
         let app = try launchWithSampleDatabase()
         XCTAssertTrue(
             app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-                .waitForExistence(timeout: 30)
+                .waitToExist(timeout: 30)
         )
         app.activate()
 
         let fileMenu = app.menuBars.menuBarItems["File"]
-        XCTAssertTrue(fileMenu.waitForExistence(timeout: 10))
+        XCTAssertTrue(fileMenu.waitToExist(timeout: 10))
         fileMenu.click()
 
         let openQuickly = app.menuBars.menuItems["Open Quickly…"]
-        XCTAssertTrue(openQuickly.waitForExistence(timeout: 5))
+        XCTAssertTrue(openQuickly.waitToExist(timeout: 5))
         XCTAssertTrue(waitUntilHittable(openQuickly, timeout: 5))
         openQuickly.click()
 
         let searchField = switcherPanel(in: app).textFields["quick-switcher-search-field"]
-        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+        XCTAssertTrue(searchField.waitToExist(timeout: 15))
 
         XCTAssertFalse(
             app.menuBars.menuItems["Quick Switcher..."].exists,
@@ -207,32 +207,32 @@ final class OpenQuicklyCommandUITests: UITestCase {
         let app = try launchWithSampleDatabase()
         XCTAssertTrue(
             app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-                .waitForExistence(timeout: 30)
+                .waitToExist(timeout: 30)
         )
         app.activate()
 
         app.typeKey("o", modifierFlags: [.command, .shift])
         let panel = switcherPanel(in: app)
         let searchField = panel.textFields["quick-switcher-search-field"]
-        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+        XCTAssertTrue(searchField.waitToExist(timeout: 15))
 
         searchField.typeText("album")
-        XCTAssertTrue(panel.buttons["Album"].waitForExistence(timeout: 10))
+        XCTAssertTrue(panel.buttons["Album"].waitToExist(timeout: 10))
         searchField.typeKey(.return, modifierFlags: .command)
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
 
         /// A second tab is what brings the strip out of hiding, so both tabs become assertable.
-        XCTAssertTrue(tab(in: app, named: "Album").waitForExistence(timeout: 10))
+        XCTAssertTrue(tab(in: app, named: "Album").waitToExist(timeout: 10))
         XCTAssertEqual(app.children(matching: .window).count, 1)
 
         app.typeKey("o", modifierFlags: [.command, .shift])
-        XCTAssertTrue(searchField.waitForExistence(timeout: 10))
+        XCTAssertTrue(searchField.waitToExist(timeout: 10))
         searchField.typeText("artist")
-        XCTAssertTrue(panel.buttons["Artist"].waitForExistence(timeout: 10))
+        XCTAssertTrue(panel.buttons["Artist"].waitToExist(timeout: 10))
         searchField.typeKey(.return, modifierFlags: .option)
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
 
-        XCTAssertTrue(tab(in: app, named: "Artist").waitForExistence(timeout: 10))
+        XCTAssertTrue(tab(in: app, named: "Artist").waitToExist(timeout: 10))
         XCTAssertTrue(tab(in: app, named: "Album").exists)
         XCTAssertEqual(app.children(matching: .window).count, 1)
     }

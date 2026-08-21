@@ -16,7 +16,7 @@ final class QueryErrorBannerUITests: UITestCase {
 
         let banner = app.windows.firstMatch.staticTexts["query-error-message"].firstMatch
         XCTAssertTrue(
-            banner.waitForExistence(timeout: 20),
+            banner.waitToExist(timeout: 20),
             "A query the database rejects must show its error, not an empty result area"
         )
         XCTAssertTrue(
@@ -30,7 +30,7 @@ final class QueryErrorBannerUITests: UITestCase {
         runQuery("SELECT * FROM nope;", in: app)
 
         let banner = app.windows.firstMatch.staticTexts["query-error-message"].firstMatch
-        XCTAssertTrue(banner.waitForExistence(timeout: 20))
+        XCTAssertTrue(banner.waitToExist(timeout: 20))
 
         app.windows.firstMatch.buttons["Dismiss error"].firstMatch.click()
         XCTAssertTrue(
@@ -42,19 +42,10 @@ final class QueryErrorBannerUITests: UITestCase {
     private func runQuery(_ sql: String, in app: XCUIApplication) {
         app.typeKey("t", modifierFlags: .command)
         let queryEditor = editorTextView(in: app)
-        XCTAssertTrue(queryEditor.waitForExistence(timeout: 10))
+        XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
         queryEditor.click()
         app.typeText(sql)
         app.typeKey(.return, modifierFlags: .command)
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
     }
 
     private func waitForDisappearance(of element: XCUIElement, timeout: TimeInterval) -> Bool {

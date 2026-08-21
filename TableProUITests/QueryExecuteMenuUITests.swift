@@ -15,13 +15,13 @@ final class QueryExecuteMenuUITests: UITestCase {
 
         app.typeKey("t", modifierFlags: .command)
         let queryEditor = editorTextView(in: app)
-        XCTAssertTrue(queryEditor.waitForExistence(timeout: 10))
+        XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
         queryEditor.click()
         app.typeText("SELECT 1;\nSELECT 2;")
 
         let menu = openExecuteMenu(in: app)
         XCTAssertTrue(
-            menu.menuItems["Execute All Statements"].waitForExistence(timeout: 5),
+            menu.menuItems["Execute All Statements"].waitToExist(timeout: 5),
             "The Execute button's menu must offer Execute All Statements"
         )
         XCTAssertTrue(
@@ -39,7 +39,7 @@ final class QueryExecuteMenuUITests: UITestCase {
 
         app.typeKey("t", modifierFlags: .command)
         let queryEditor = editorTextView(in: app)
-        XCTAssertTrue(queryEditor.waitForExistence(timeout: 10))
+        XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
         queryEditor.click()
         app.typeText("SELECT 1;\nSELECT 2;")
 
@@ -68,14 +68,5 @@ final class QueryExecuteMenuUITests: UITestCase {
         )
         executeMenu.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).click()
         return window.menus.firstMatch
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
     }
 }

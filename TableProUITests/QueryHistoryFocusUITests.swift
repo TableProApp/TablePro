@@ -8,7 +8,7 @@ final class QueryHistoryFocusUITests: UITestCase {
         runQueries(in: app, ["SELECT * FROM Genre;", "SELECT * FROM Album;", "SELECT * FROM Artist;"])
 
         let editor = app.windows.firstMatch.textViews.firstMatch
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         let editorBeforeClick = editor.value as? String ?? ""
 
         let list = showHistoryDrawer(in: app)
@@ -34,7 +34,7 @@ final class QueryHistoryFocusUITests: UITestCase {
         )
 
         let preview = app.textViews["query-history-detail-query"]
-        XCTAssertTrue(preview.waitForExistence(timeout: 10), "A selected row must show in the preview")
+        XCTAssertTrue(preview.waitToExist(timeout: 10), "A selected row must show in the preview")
         let previewAfterClick = preview.value as? String ?? ""
         XCTAssertFalse(previewAfterClick.isEmpty, "Clicking a row must show that row in the preview")
 
@@ -57,7 +57,7 @@ final class QueryHistoryFocusUITests: UITestCase {
     private func showHistoryDrawer(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("y", modifierFlags: .command)
         let list = app.windows.firstMatch.tables.matching(identifier: "query-history-list").firstMatch
-        XCTAssertTrue(list.waitForExistence(timeout: 10), "Cmd+Y must show the query history drawer")
+        XCTAssertTrue(list.waitToExist(timeout: 10), "Cmd+Y must show the query history drawer")
         return list
     }
 
@@ -65,11 +65,11 @@ final class QueryHistoryFocusUITests: UITestCase {
         for query in queries {
             app.typeKey("t", modifierFlags: .command)
             let editor = app.windows.firstMatch.textViews.firstMatch
-            XCTAssertTrue(editor.waitForExistence(timeout: 10))
+            XCTAssertTrue(editor.waitToExist(timeout: 10))
             app.typeText(query)
             app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: .command)
             _ = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-                .waitForExistence(timeout: 15)
+                .waitToExist(timeout: 15)
         }
     }
 }

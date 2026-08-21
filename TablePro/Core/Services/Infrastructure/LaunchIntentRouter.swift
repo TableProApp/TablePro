@@ -45,6 +45,9 @@ internal final class LaunchIntentRouter {
 
             case .installPlugin(let url):
                 try await installPlugin(url)
+
+            case .openSampleDatabase:
+                SampleDatabaseLauncher.open()
             }
         } catch let error as TabRouterError where error == .userCancelled {
             Self.logger.info("Intent cancelled by user")
@@ -111,8 +114,11 @@ internal final class LaunchIntentRouter {
             title = String(localized: "Pairing Failed")
         case .installPlugin:
             title = String(localized: "Plugin Installation Failed")
+        /// `openSampleDatabase` presents its own failure through `SampleDatabaseLauncher` and never
+        /// throws out of `route`, so this arm exists to keep the switch exhaustive rather than to
+        /// be reached. Grouped with the connection cases because that is what it opens.
         case .openConnection, .openTable, .openQuery, .openDatabaseURL, .openDatabaseFile,
-             .reopenClosedTab:
+             .reopenClosedTab, .openSampleDatabase:
             title = String(localized: "Connection Failed")
         case .openSQLFile, .openInspectorFile:
             title = String(localized: "Could Not Open File")

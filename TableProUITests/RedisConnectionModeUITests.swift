@@ -15,12 +15,12 @@ final class RedisConnectionModeUITests: UITestCase {
 
     func testSwitchingConnectionModeShowsOnlyThatModesFields() throws {
         let app = try launchApp()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.windows.firstMatch.waitToExist(timeout: 10))
 
         let window = try openRedisConnectionForm(in: app)
         let picker = window.popUpButtons[modePicker]
         XCTAssertTrue(
-            picker.waitForExistence(timeout: 10),
+            picker.waitToExist(timeout: 10),
             "The Redis form should offer a Connection Mode picker"
         )
 
@@ -33,7 +33,7 @@ final class RedisConnectionModeUITests: UITestCase {
             waitForPredicate(timeout: 5) { hasField(sentinelNodes, in: window) },
             "Sentinel mode replaces Host and Port with the Sentinel node list"
         )
-        XCTAssertTrue(window.textFields[sentinelGroupName].waitForExistence(timeout: 5))
+        XCTAssertTrue(window.textFields[sentinelGroupName].waitToExist(timeout: 5))
         XCTAssertFalse(hasField(clusterNodes, in: window))
         XCTAssertFalse(window.textFields["connection-form-host"].exists)
 
@@ -47,7 +47,7 @@ final class RedisConnectionModeUITests: UITestCase {
 
         select(option: "Standalone", in: picker)
         XCTAssertTrue(
-            window.textFields["connection-form-host"].waitForExistence(timeout: 5),
+            window.textFields["connection-form-host"].waitToExist(timeout: 5),
             "Going back to Standalone restores Host and Port"
         )
         XCTAssertFalse(hasField(sentinelNodes, in: window))
@@ -62,23 +62,23 @@ final class RedisConnectionModeUITests: UITestCase {
 
     private func openRedisConnectionForm(in app: XCUIApplication) throws -> XCUIElement {
         let newConnection = app.menuBars.menuItems["New Connection…"]
-        XCTAssertTrue(newConnection.waitForExistence(timeout: 10))
+        XCTAssertTrue(newConnection.waitToExist(timeout: 10))
         newConnection.click()
 
         let chooser = app.windows.firstMatch
         let search = chooser.searchFields.firstMatch
-        XCTAssertTrue(search.waitForExistence(timeout: 10), "The chooser should offer its search field")
+        XCTAssertTrue(search.waitToExist(timeout: 10), "The chooser should offer its search field")
         search.click()
         app.typeText("Redis")
 
         let redis = chooser.outlines.firstMatch.staticTexts
             .matching(NSPredicate(format: "value == %@", "Redis"))
             .firstMatch
-        XCTAssertTrue(redis.waitForExistence(timeout: 10), "The chooser should list Redis")
+        XCTAssertTrue(redis.waitToExist(timeout: 10), "The chooser should list Redis")
         redis.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
 
         let form = app.windows["connection-form"]
-        XCTAssertTrue(form.waitForExistence(timeout: 10), "Choosing Redis should open the connection form")
+        XCTAssertTrue(form.waitToExist(timeout: 10), "Choosing Redis should open the connection form")
         return form
     }
 
@@ -86,7 +86,7 @@ final class RedisConnectionModeUITests: UITestCase {
         XCTAssertTrue(waitUntilHittable(picker, timeout: 10))
         picker.click()
         let item = picker.menuItems[option]
-        XCTAssertTrue(item.waitForExistence(timeout: 5), "The mode picker should offer \(option)")
+        XCTAssertTrue(item.waitToExist(timeout: 5), "The mode picker should offer \(option)")
         item.click()
     }
 }
