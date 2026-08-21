@@ -10,7 +10,18 @@
 import XCTest
 
 final class QueryPlanResultUITests: UITestCase {
-    func testExplainProducesAResultTabAlongsideTheData() throws {
+    /// One launch for one plan.
+    ///
+    /// All four of these ran the same `EXPLAIN QUERY PLAN` against the same sample database and
+    /// then looked at a different part of the result, each paying its own app launch to get there.
+    ///
+    /// The order follows the plan's own modes: Diagram is what it opens in, Tree is a click away,
+    /// and pinning comes last because it is the only step that changes the tab.
+    ///
+    /// `continueAfterFailure` is on because the phases are independent: with it off, a missing
+    /// diagram canvas would hide whether Tree mode still lists the plan's steps.
+    func testAPlanArrivesAsAResultTabWithEveryModeAndCanBePinned() throws {
+        continueAfterFailure = true
         let app = try launchWithSampleDatabase()
         runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track;", in: app)
 
@@ -25,38 +36,18 @@ final class QueryPlanResultUITests: UITestCase {
             modePicker.waitToExist(timeout: 10),
             "A parsed plan must offer the Diagram, Tree and Raw modes"
         )
-    }
-
-    func testTreeModeShowsTheOutlineWithColumns() throws {
-        let app = try launchWithSampleDatabase()
-        runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track;", in: app)
-
-        let modePicker = app.radioGroups["query-plan-mode-picker"].firstMatch
-        XCTAssertTrue(modePicker.waitToExist(timeout: 20))
-        modePicker.radioButtons["Tree"].click()
-
-        let outline = app.outlines["query-plan-outline"].firstMatch
-        XCTAssertTrue(outline.waitToExist(timeout: 10), "Tree mode must show the plan outline")
-        XCTAssertTrue(outline.outlineRows.count > 0, "The outline must list the plan's steps")
-
-        let detail = app.descendants(matching: .any).matching(identifier: "query-plan-detail-pane").firstMatch
-        XCTAssertTrue(detail.waitToExist(timeout: 10), "Selecting a step must fill the detail pane")
-    }
-
-    func testDiagramModeShowsTheScrollableCanvas() throws {
-        let app = try launchWithSampleDatabase()
-        runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track;", in: app)
 
         let canvas = app.descendants(matching: .any).matching(identifier: "query-plan-diagram").firstMatch
         XCTAssertTrue(canvas.waitToExist(timeout: 20), "Diagram mode must show the plan canvas")
-    }
 
-    func testAPlanCanBePinnedLikeAnyResult() throws {
-        let app = try launchWithSampleDatabase()
-        runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track;", in: app)
+        modePicker.radioButtons["Tree"].click()
+        let outline = app.outlines["query-plan-outline"].firstMatch
+        XCTAssertTrue(outline.waitToExist(timeout: 10), "Tree mode must show the plan outline")
+        XCTAssertGreaterThan(outline.outlineRows.count, 0, "The outline must list the plan's steps")
 
-        let resultTab = app.buttons["result-tab"].firstMatch
-        XCTAssertTrue(resultTab.waitToExist(timeout: 20))
+        let detail = app.descendants(matching: .any).matching(identifier: "query-plan-detail-pane").firstMatch
+        XCTAssertTrue(detail.waitToExist(timeout: 10), "Selecting a step must fill the detail pane")
+
         resultTab.rightClick()
 
         /// A contextual menu opens inside the window; the menu-bar menus hang off `MenuBar`, so

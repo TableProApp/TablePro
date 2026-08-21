@@ -6,36 +6,37 @@ import XCTest
 final class QueryStatementRunUITests: UITestCase {
     private let script = "SELECT 1;\nSELECT 2;\nSELECT 3;"
 
-    func testEachStatementPublishesItsOwnRunControl() throws {
+    /// One launch, one query tab, four scripts.
+    ///
+    /// Each of these used to launch the app and open the sample database to type a different script
+    /// into an empty editor. The editor is the only thing they need, and selecting all and retyping
+    /// empties it just as well as a new app does.
+    ///
+    /// The text is replaced rather than typed into a new tab each time, so a control left behind by
+    /// a previous script cannot be counted by the next one: `runControls` matches on the window,
+    /// and every count assertion here would be wrong if an earlier script's gutter survived.
+    ///
+    /// `continueAfterFailure` is on because the phases are independent.
+    func testTheGutterPublishesOneRunControlPerStatement() throws {
+        continueAfterFailure = true
         let app = try launchWithSampleDatabase()
         let editor = openQueryTab(in: app)
 
-        app.typeText(script)
-        XCTAssertTrue(waitForEditorText(containing: "SELECT 3", in: editor))
-
+        replace(editor, in: app, with: script, settleOn: "SELECT 3")
         let controls = runControls(in: app)
         XCTAssertTrue(
             controls.firstMatch.waitToExist(timeout: 10),
             "Every statement must publish a run control"
         )
         XCTAssertEqual(controls.count, 3, "Three statements must produce three run controls")
-    }
 
-    /// The control has to sit beside the statement it runs, so its label names the line the statement starts on.
-    /// Pressing it is covered by `StatementRunControllerTests`, because XCUITest resolves a click through a positional
-    /// accessibility lookup and cannot map a drawn element inside the gutter, which floats over the text view. The
-    /// existing fold tests drive the Query menu for the same reason.
-    func testEachRunControlIsAnchoredOnItsOwnStatementsLine() throws {
-        let app = try launchWithSampleDatabase()
-        let editor = openQueryTab(in: app)
-
-        app.typeText(script)
-        XCTAssertTrue(waitForEditorText(containing: "SELECT 3", in: editor))
-
-        for line in 1...3 {
-            let control = runControl(onLine: line, in: app)
+        /// The control has to sit beside the statement it runs, so its label names the line the statement starts on.
+        /// Pressing it is covered by `StatementRunControllerTests`, because XCUITest resolves a click through a
+        /// positional accessibility lookup and cannot map a drawn element inside the gutter, which floats over the
+        /// text view. The existing fold tests drive the Query menu for the same reason.
+        for line in 1 ... 3 {
             XCTAssertTrue(
-                control.waitToExist(timeout: 10),
+                runControl(onLine: line, in: app).waitToExist(timeout: 10),
                 "The statement on line \(line) must have its own run control"
             )
         }
@@ -43,36 +44,29 @@ final class QueryStatementRunUITests: UITestCase {
             runControl(onLine: 4, in: app).exists,
             "A line with no statement on it must have no run control"
         )
-    }
 
-    /// A routine body is one statement, so it gets one control on its opening line rather than one per statement
-    /// inside it. Splitting there is what used to send a fragment to the driver.
-    func testARoutineBodyGetsASingleRunControl() throws {
-        let app = try launchWithSampleDatabase()
-        let editor = openQueryTab(in: app)
-
-        app.typeText("CREATE TRIGGER t AFTER INSERT ON a BEGIN\nUPDATE b SET x = 1;\nDELETE FROM c;\nEND;\n")
-        XCTAssertTrue(waitForEditorText(containing: "DELETE FROM c", in: editor))
-
-        let controls = runControls(in: app)
-        XCTAssertTrue(controls.firstMatch.waitToExist(timeout: 10))
-        XCTAssertEqual(controls.count, 1, "The whole BEGIN ... END body is one statement")
+        /// A routine body is one statement, so it gets one control on its opening line rather than one per statement
+        /// inside it. Splitting there is what used to send a fragment to the driver.
+        replace(
+            editor,
+            in: app,
+            with: "CREATE TRIGGER t AFTER INSERT ON a BEGIN\nUPDATE b SET x = 1;\nDELETE FROM c;\nEND;\n",
+            settleOn: "DELETE FROM c"
+        )
+        XCTAssertTrue(runControls(in: app).firstMatch.waitToExist(timeout: 10))
+        XCTAssertEqual(runControls(in: app).count, 1, "The whole BEGIN ... END body is one statement")
         XCTAssertTrue(
             runControl(onLine: 1, in: app).exists,
             "The one control belongs on the line the routine opens"
         )
-    }
 
-    func testAControlOnlyAppearsForAStatementThatCarriesSomething() throws {
-        let app = try launchWithSampleDatabase()
-        let editor = openQueryTab(in: app)
-
-        app.typeText("SELECT 1;\n-- just a note\n")
-        XCTAssertTrue(waitForEditorText(containing: "just a note", in: editor))
-
-        let controls = runControls(in: app)
-        XCTAssertTrue(controls.firstMatch.waitToExist(timeout: 10))
-        XCTAssertEqual(controls.count, 1, "A comment carries no statement, so it gets no run control")
+        replace(editor, in: app, with: "SELECT 1;\n-- just a note\n", settleOn: "just a note")
+        XCTAssertTrue(runControls(in: app).firstMatch.waitToExist(timeout: 10))
+        XCTAssertEqual(
+            runControls(in: app).count,
+            1,
+            "A comment carries no statement, so it gets no run control"
+        )
     }
 
     // MARK: - Helpers
@@ -92,6 +86,18 @@ final class QueryStatementRunUITests: UITestCase {
         let editor = editorTextView(in: app)
         XCTAssertTrue(editor.waitToExist(timeout: 10))
         return editor
+    }
+
+    /// Select all and type over it. The editor keeps its identity, so the gutter republishes its
+    /// controls for the new text instead of adding to the old ones.
+    private func replace(_ editor: XCUIElement, in app: XCUIApplication, with text: String, settleOn needle: String) {
+        editor.click()
+        app.typeKey("a", modifierFlags: .command)
+        app.typeText(text)
+        XCTAssertTrue(
+            waitForEditorText(containing: needle, in: editor),
+            "The editor must hold the script before its run controls mean anything"
+        )
     }
 
     private func waitForEditorText(
