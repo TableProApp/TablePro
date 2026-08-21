@@ -3,7 +3,7 @@
 # These suites fail or hang in the headless XCTest host for reasons documented below,
 # not because the app code is wrong. The gate runs every other suite. Burn this list
 # down: fix a suite, delete its line, and it rejoins the gate. See
-# specs/claude-code-refactor-roadmap.md and the macOS-test gotchas note.
+# specs/ci-and-scripts-roadmap.md, which tracks this list among the rest of the CI work.
 #
 # Format: one Swift Testing suite type name per line. '#' starts a comment.
 
