@@ -82,11 +82,37 @@ if [ ! -d "$PLUGINS_DIR" ]; then
 fi
 echo "✅ PlugIns directory exists"
 
-REQUIRED_PLUGINS=(
-  "MySQLDriver.tableplugin"
-  "PostgreSQLDriver.tableplugin"
-  "SQLiteDriver.tableplugin"
+# Derived from project.yml's copy phase, which is what decides what ends up in the bundle.
+# This used to be a hardcoded list of three, so a release could ship missing eleven of the
+# fourteen embedded plugins and still print "All bundled plugin bundles present".
+REQUIRED_PLUGINS=()
+while IFS= read -r plugin; do
+  REQUIRED_PLUGINS+=("${plugin}.tableplugin")
+done < <(python3 -c '
+import re, sys
+
+# Parsed without PyYAML on purpose: this runs on the release path and the module is not part of
+# a stock runner image. The shape being read is fixed and small:
+#
+#       - target: MySQLDriver
+#         copy:
+#           destination: plugins
+#
+text = open("project.yml").read()
+names = re.findall(
+    r"-\s*target:\s*(\S+)[^\n]*\n(?:\s+\w+:[^\n]*\n)*?\s*copy:\s*\{\s*destination:\s*plugins\s*\}",
+    text,
 )
+if not names:
+    sys.exit("project.yml declares no plugins copied into the app bundle")
+print("\n".join(names))
+')
+
+if [ "${#REQUIRED_PLUGINS[@]}" -eq 0 ]; then
+  echo "❌ ERROR: could not read the bundled plugin list from project.yml"
+  exit 1
+fi
+echo "project.yml embeds ${#REQUIRED_PLUGINS[@]} plugins"
 
 MISSING_PLUGINS=0
 for PLUGIN in "${REQUIRED_PLUGINS[@]}"; do

@@ -229,17 +229,24 @@ jobs:
           echo "Contents of artifacts directory:"
           ls -la artifacts/
 
-          # Note: DMG files should already have correct names from build
-          # ZIP files need to be renamed
+          # The DMGs are already versioned by package-artifacts.sh; the ZIPs are not.
+          # Both renames used to be guarded by `if [ -f ... ]` with no else, so a missing or
+          # differently named ZIP printed "organized successfully" and the release published
+          # whatever the upload glob happened to match.
+          for ARCH in arm64 x86_64; do
+            if [ ! -f "artifacts/TablePro-${ARCH}.zip" ]; then
+              echo "::error::artifacts/TablePro-${ARCH}.zip is missing; the ${ARCH} build did not produce an update archive"
+              ls -la artifacts/ >&2
+              exit 1
+            fi
+            mv "artifacts/TablePro-${ARCH}.zip" "artifacts/TablePro-${VERSION}-${ARCH}.zip"
 
-          # Rename ZIP files if they exist
-          if [ -f "artifacts/TablePro-arm64.zip" ]; then
-            mv artifacts/TablePro-arm64.zip "artifacts/TablePro-${VERSION}-arm64.zip"
-          fi
-
-          if [ -f "artifacts/TablePro-x86_64.zip" ]; then
-            mv artifacts/TablePro-x86_64.zip "artifacts/TablePro-${VERSION}-x86_64.zip"
-          fi
+            if [ ! -f "artifacts/TablePro-${VERSION}-${ARCH}.dmg" ]; then
+              echo "::error::artifacts/TablePro-${VERSION}-${ARCH}.dmg is missing"
+              ls -la artifacts/ >&2
+              exit 1
+            fi
+          done
 
           echo "✅ Artifacts organized successfully"
           echo "Final artifacts:"
