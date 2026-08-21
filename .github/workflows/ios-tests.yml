@@ -19,14 +19,18 @@ concurrency:
   group: ios-tests-${{ github.ref }}
   cancel-in-progress: true
 
+# A downgrade or an exact match is always allowed for a called workflow; only asking for more than
+# the caller holds fails at run creation. Declaring read cannot break a caller, and it stops every
+# job here from inheriting a write token if the repository default is ever flipped.
+permissions:
+  contents: read
+
 env:
   XCODE_PROJECT: TableProMobile/TableProMobile.xcodeproj
   XCODE_SCHEME: TableProMobile
   TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=latest"
 
 jobs:
-  # No `permissions:` block here either. See the note in macos-tests.yml: this workflow has no
-  # workflow_call caller today, but the same shape must not be copied back into one.
   changes:
     name: Detect relevant changes
     runs-on: ubuntu-latest

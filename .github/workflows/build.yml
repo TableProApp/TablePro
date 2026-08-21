@@ -15,6 +15,11 @@ concurrency:
   group: build-tablepro-${{ github.ref }}
   cancel-in-progress: false
 
+# The release job raises this to write for itself. Everything else here builds and notarizes and
+# needs nothing beyond the checkout.
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: SwiftLint
@@ -31,10 +36,12 @@ jobs:
       - name: Run SwiftLint
         run: swiftlint lint --strict
 
+  # No `secrets: inherit`. That handed the suite CERTIFICATES_P12, CERTIFICATES_PASSWORD,
+  # NOTARY_PASSWORD, PROVISIONING_PROFILE, SPARKLE_PRIVATE_KEY, TELEGRAM_BOT_TOKEN and
+  # REGISTRY_DEPLOY_KEY, none of which it reads.
   test:
     name: macOS Tests
     uses: ./.github/workflows/macos-tests.yml
-    secrets: inherit
 
   build-arm64:
     name: Build ARM64
@@ -100,8 +107,8 @@ jobs:
           security create-keychain -p "" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "" "$KEYCHAIN_PATH"
-          echo "$CERTIFICATES_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 -P "$CERTIFICATES_PASSWORD" \
+          echo "$CERTIFICATES_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATES_PASSWORD" \
             -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
@@ -206,8 +213,8 @@ jobs:
           security create-keychain -p "" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "" "$KEYCHAIN_PATH"
-          echo "$CERTIFICATES_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 -P "$CERTIFICATES_PASSWORD" \
+          echo "$CERTIFICATES_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATES_PASSWORD" \
             -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain

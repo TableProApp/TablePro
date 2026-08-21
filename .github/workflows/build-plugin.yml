@@ -13,8 +13,17 @@ on:
         required: true
         type: string
 
+# Declared per job rather than here. resolve-tags reads two integers out of a Swift file and needs
+# nothing, and a workflow-level grant hands it a write token it has no use for.
 permissions:
-  contents: write
+  contents: read
+
+# Without this, two runs for the same tag race each other through a delete-and-recreate of the same
+# GitHub Release. Never cancel one in flight: it holds a notarization submission open with Apple and
+# publishes release assets.
+concurrency:
+  group: build-plugin-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   resolve-tags:
@@ -58,12 +67,29 @@ jobs:
           JSON='{"include":['
           FIRST=true
           for ITEM in "${RAW_TAGS[@]}"; do
-            ITEM=$(echo "$ITEM" | xargs)
+            ITEM="${ITEM#"${ITEM%%[![:space:]]*}"}"
+            ITEM="${ITEM%"${ITEM##*[![:space:]]}"}"
             TAG=$(echo "$ITEM" | cut -d: -f1)
             PKV=$(echo "$ITEM" | cut -d: -f2 -s)
             if [ -z "$PKV" ]; then
               PKV="$DEFAULT_PKV"
             fi
+
+            # Both values are checked here, on ubuntu, before any macOS job exists to import a
+            # signing certificate. TAG reaches a shell and PKV is spliced unquoted into the JSON
+            # below, and neither had ever been validated: nothing downstream checks the version
+            # format either, and update-registry.py takes --version as an arbitrary string, so a
+            # malformed tag publishes a garbage version into the plugins.json every app reads.
+            # Checked against all 366 existing plugin-* tags: every one matches.
+            if [[ ! "$TAG" =~ ^plugin-[a-z0-9-]+-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Malformed plugin tag: $TAG"
+              exit 1
+            fi
+            if [[ ! "$PKV" =~ ^[0-9]+$ ]]; then
+              echo "::error::Non-numeric pluginKitVersion for $TAG: $PKV"
+              exit 1
+            fi
+
             if [ "$FIRST" = true ]; then FIRST=false; else JSON+=','; fi
             JSON+="{\"tag\":\"$TAG\",\"pluginKitVersion\":$PKV}"
           done
@@ -74,6 +100,8 @@ jobs:
   build-plugin:
     name: "Build ${{ matrix.tag }} (PluginKit ${{ matrix.pluginKitVersion }})"
     needs: resolve-tags
+    permissions:
+      contents: write
     runs-on: macos-26
     timeout-minutes: 30
     strategy:
@@ -111,8 +139,8 @@ jobs:
           security create-keychain -p "" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "" "$KEYCHAIN_PATH"
-          echo "$CERTIFICATES_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 -P "$CERTIFICATES_PASSWORD" \
+          echo "$CERTIFICATES_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATES_PASSWORD" \
             -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
@@ -296,9 +324,11 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           NOTARY_PROFILE: TablePro
           NOTARIZE: "true"
+          TARGET: ${{ steps.plugin.outputs.target }}
+          VERSION: ${{ steps.plugin.outputs.version }}
         run: |
-          ./scripts/build-plugin.sh "${{ steps.plugin.outputs.target }}" arm64 "${{ steps.plugin.outputs.version }}"
-          ./scripts/build-plugin.sh "${{ steps.plugin.outputs.target }}" x86_64 "${{ steps.plugin.outputs.version }}"
+          ./scripts/build-plugin.sh "$TARGET" arm64 "$VERSION"
+          ./scripts/build-plugin.sh "$TARGET" x86_64 "$VERSION"
 
       # Assert the result rather than trusting the flag. The previous notarization step was
       # gated on an environment variable nothing defined, so it never ran and nothing noticed
@@ -360,10 +390,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MATRIX_TAG: ${{ matrix.tag }}
           MATRIX_PKV: ${{ matrix.pluginKitVersion }}
+          PLUGIN_VERSION: ${{ steps.plugin.outputs.version }}
         run: |
           TAG="$MATRIX_TAG"
           DISPLAY_NAME="${{ steps.plugin.outputs.displayName }}"
-          VERSION="${{ steps.plugin.outputs.version }}"
+          VERSION="$PLUGIN_VERSION"
           BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
           ARM64_SHA="${{ steps.sha.outputs.arm64 }}"
           X86_SHA="${{ steps.sha.outputs.x86_64 }}"
@@ -435,18 +466,18 @@ jobs:
           done
 
       - name: Update plugin registry
-        if: ${{ env.REGISTRY_DEPLOY_KEY != '' }}
         env:
           REGISTRY_DEPLOY_KEY: ${{ secrets.REGISTRY_DEPLOY_KEY }}
           GH_TOKEN: ${{ github.token }}
           MATRIX_TAG: ${{ matrix.tag }}
           MATRIX_PKV: ${{ matrix.pluginKitVersion }}
+          PLUGIN_VERSION: ${{ steps.plugin.outputs.version }}
         run: |
           TAG="$MATRIX_TAG"
           BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
           BUNDLE_ID="${{ steps.plugin.outputs.bundleId }}"
           DISPLAY_NAME="${{ steps.plugin.outputs.displayName }}"
-          VERSION="${{ steps.plugin.outputs.version }}"
+          VERSION="$PLUGIN_VERSION"
           SUMMARY="${{ steps.plugin.outputs.summary }}"
           DB_TYPE_IDS='${{ steps.plugin.outputs.dbTypeIds }}'
           MIN_APP_VERSION="${{ steps.plugin.outputs.minAppVersion }}"

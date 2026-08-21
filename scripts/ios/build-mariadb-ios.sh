@@ -11,6 +11,12 @@ set -eo pipefail
 #   ./scripts/ios/build-mariadb-ios.sh
 
 MARIADB_VERSION="3.4.4"
+# MariaDB publishes a digest for this tarball independently of the tarball itself, at
+# https://archive.mariadb.org/connector-c-$MARIADB_VERSION/sha256sums.txt, which is why the source
+# moved here from the GitHub tag archive: GitHub publishes no digest, so pinning one would only
+# record whatever was served the first time anybody looked. Note the upstream tarball unpacks to a
+# "-src" directory, unlike the GitHub one.
+MARIADB_SHA256="58876fad1c2d33979d78bbfa61d7a3476e8faa2cd0af0f7f8bfeb06deaa1034e"
 IOS_DEPLOY_TARGET="17.0"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -66,11 +72,12 @@ setup_openssl_prefix() {
 # --- Download MariaDB Connector/C ---
 
 echo "=> Downloading MariaDB Connector/C $MARIADB_VERSION..."
-curl -fSL "https://github.com/mariadb-corporation/mariadb-connector-c/archive/refs/tags/v$MARIADB_VERSION.tar.gz" \
+curl -fSL "https://archive.mariadb.org/connector-c-$MARIADB_VERSION/mariadb-connector-c-$MARIADB_VERSION-src.tar.gz" \
     -o "$BUILD_DIR/mariadb.tar.gz"
+echo "$MARIADB_SHA256  $BUILD_DIR/mariadb.tar.gz" | shasum -a 256 -c -
 
 tar xzf "$BUILD_DIR/mariadb.tar.gz" -C "$BUILD_DIR"
-MARIADB_SRC="$BUILD_DIR/mariadb-connector-c-$MARIADB_VERSION"
+MARIADB_SRC="$BUILD_DIR/mariadb-connector-c-$MARIADB_VERSION-src"
 
 # --- Build function ---
 

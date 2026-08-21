@@ -18,6 +18,12 @@ set -eo pipefail
 # Usage: ./scripts/build-mariadb.sh
 
 MARIADB_VERSION="3.4.4"
+# MariaDB publishes a digest for this tarball independently of the tarball itself, at
+# https://archive.mariadb.org/connector-c-$MARIADB_VERSION/sha256sums.txt, which is why the source
+# moved here from the GitHub tag archive: GitHub publishes no digest, so pinning one would only
+# record whatever was served the first time anybody looked. Note the upstream tarball unpacks to a
+# "-src" directory, unlike the GitHub one.
+MARIADB_SHA256="58876fad1c2d33979d78bbfa61d7a3476e8faa2cd0af0f7f8bfeb06deaa1034e"
 MIN_MACOS="14.0"
 OPENSSL_ROOT="${OPENSSL_ROOT:-$(brew --prefix openssl@3 2>/dev/null || true)}"
 
@@ -47,10 +53,11 @@ trap cleanup EXIT
 echo "Building MariaDB Connector/C $MARIADB_VERSION for macOS (OpenSSL: $OPENSSL_ROOT)"
 
 echo "=> Downloading source..."
-curl -fSL "https://github.com/mariadb-corporation/mariadb-connector-c/archive/refs/tags/v$MARIADB_VERSION.tar.gz" \
+curl -fSL "https://archive.mariadb.org/connector-c-$MARIADB_VERSION/mariadb-connector-c-$MARIADB_VERSION-src.tar.gz" \
     -o "$BUILD_DIR/mariadb.tar.gz"
+echo "$MARIADB_SHA256  $BUILD_DIR/mariadb.tar.gz" | shasum -a 256 -c -
 tar xzf "$BUILD_DIR/mariadb.tar.gz" -C "$BUILD_DIR"
-MARIADB_SRC="$BUILD_DIR/mariadb-connector-c-$MARIADB_VERSION"
+MARIADB_SRC="$BUILD_DIR/mariadb-connector-c-$MARIADB_VERSION-src"
 
 build_slice() {
     local ARCH=$1
@@ -100,17 +107,18 @@ lipo -create "$BUILD_DIR/libmariadb_arm64.a" "$BUILD_DIR/libmariadb_x86_64.a" \
     -output "$LIBS_DIR/libmariadb_universal.a"
 cp "$LIBS_DIR/libmariadb_universal.a" "$LIBS_DIR/libmariadb.a"
 
+# The cleartext plugin is the whole reason this script exists, so a build without it is a failed
+# build, not a warning somebody might read in a 200 line log.
 echo "=> Verifying mysql_clear_password is now built in:"
-if [ "$(nm "$LIBS_DIR/libmariadb_arm64.a" 2>/dev/null | grep -c "clear_password_client_plugin")" -gt 0 ]; then
-    echo "   OK: mysql_clear_password_client_plugin present"
-else
-    echo "   WARNING: clear_password plugin symbol not found; check the build" >&2
+if [ "$(nm "$LIBS_DIR/libmariadb_arm64.a" 2>/dev/null | grep -c "clear_password_client_plugin")" -eq 0 ]; then
+    echo "ERROR: mysql_clear_password_client_plugin is missing from the build" >&2
+    exit 1
 fi
+echo "   OK: mysql_clear_password_client_plugin present"
 lipo -info "$LIBS_DIR/libmariadb_universal.a"
 
 echo ""
 echo "Done. Libs/libmariadb*.a rebuilt with the cleartext plugin."
 echo "Next: rebuild the app and test MySQL IAM. When confirmed working, publish the libs:"
-echo "  shasum -a 256 Libs/*.a > Libs/checksums.sha256"
-echo "  tar czf /tmp/tablepro-libs-v1.tar.gz -C Libs . && gh release upload libs-v1 /tmp/tablepro-libs-v1.tar.gz --clobber --repo TableProApp/TablePro"
-echo "  git add Libs/checksums.sha256 && git commit -m 'build: rebuild libmariadb with cleartext auth plugin'"
+echo "  scripts/publish-libs.sh libmariadb_arm64.a libmariadb_x86_64.a libmariadb_universal.a libmariadb.a"
+echo "  git add Libs/checksums.sha256 && git commit -m 'build: update static library checksums'"
