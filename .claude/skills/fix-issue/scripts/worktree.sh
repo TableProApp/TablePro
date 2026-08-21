@@ -55,7 +55,10 @@ link() {
     ln -sfn "$1" "$2"
 }
 
-link "$MAIN_ROOT/Secrets.xcconfig" "$DIR/Secrets.xcconfig"
+# The build reads Configs/Secrets.xcconfig. A stale empty Secrets.xcconfig at the repo root
+# used to be linked instead, so every fresh worktree failed with "Unable to open base
+# configuration reference file" until it was linked by hand.
+link "$MAIN_ROOT/Configs/Secrets.xcconfig" "$DIR/Configs/Secrets.xcconfig"
 mkdir -p "$DIR/Libs"
 for archive in "$MAIN_ROOT"/Libs/*.a; do
     [ -e "$archive" ] && ln -sf "$archive" "$DIR/Libs/$(basename "$archive")"
@@ -65,7 +68,7 @@ link "$MAIN_ROOT/Libs/ios" "$DIR/Libs/ios"
 link "$MAIN_ROOT/Native/DamengBridge/lib" "$DIR/Native/DamengBridge/lib"
 
 missing=""
-[ -e "$DIR/Secrets.xcconfig" ] || missing="$missing Secrets.xcconfig"
+[ -e "$DIR/Configs/Secrets.xcconfig" ] || missing="$missing Configs/Secrets.xcconfig"
 [ -e "$DIR/Libs/dylibs" ] || missing="$missing Libs/dylibs"
 [ -e "$DIR/Native/DamengBridge/lib" ] || missing="$missing Native/DamengBridge/lib"
 ls "$DIR"/Libs/*.a > /dev/null 2>&1 || missing="$missing Libs/*.a"

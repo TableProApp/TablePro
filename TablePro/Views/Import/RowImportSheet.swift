@@ -64,6 +64,11 @@ struct RowImportSheet: View {
     @State private var showErrorDialog = false
     @State private var importTask: Task<Void, Never>?
 
+    /// Tables this sheet created, against the CREATE that made each one. A failed import leaves its
+    /// table behind, so a retry has to know it already owns that table rather than trying to create
+    /// it a second time and failing on the name.
+    @State private var createdTables: [String: String] = [:]
+
     /// The window this sheet is hosted in, used for presenting its alerts.
     /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
     /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
@@ -632,7 +637,7 @@ struct RowImportSheet: View {
         importTask = Task {
             do {
                 if let createTableSQL {
-                    try await createTable(sql: createTableSQL)
+                    try await prepareTable(named: targetTable, sql: createTableSQL)
                 }
                 let result = try await service.importFile(
                     from: fileURL,
@@ -656,6 +661,40 @@ struct RowImportSheet: View {
                 }
             }
         }
+    }
+
+    @MainActor
+    private func prepareTable(named tableName: String, sql: String) async throws {
+        switch NewTableImportPlanner.plan(
+            forTable: tableName, createTableSQL: sql, alreadyCreated: createdTables
+        ) {
+        case .create:
+            try await createTable(sql: sql)
+            createdTables[tableName] = sql
+        case .reuseAfterClearing:
+            try await clearRows(of: tableName)
+        case .nameTakenWithDifferentColumns:
+            throw PluginImportError.importFailed(
+                String(
+                    format: String(localized: "The table %@ was already created with different columns. Choose another name."),
+                    tableName
+                )
+            )
+        }
+    }
+
+    @MainActor
+    private func clearRows(of tableName: String) async throws {
+        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
+            throw DatabaseError.notConnected
+        }
+        let generator = try SQLStatementGenerator(
+            tableName: tableName,
+            columns: [],
+            primaryKeyColumns: [],
+            databaseType: connection.type
+        )
+        _ = try await driver.execute(query: generator.deleteAllRowsStatement())
     }
 
     private func createTable(sql: String) async throws {

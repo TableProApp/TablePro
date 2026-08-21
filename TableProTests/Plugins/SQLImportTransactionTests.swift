@@ -89,7 +89,11 @@ struct SQLImportTransactionTests {
         errorHandling: ImportErrorHandling,
         sink: RecordingSink
     ) async -> (any Error)? {
+        /// `settings` persists through plugin storage, so a test that writes it changes the
+        /// developer's own preference unless it puts the value back.
         let plugin = SQLImportPlugin()
+        let original = plugin.settings
+        defer { plugin.settings = original }
         plugin.settings.errorHandling = errorHandling
         plugin.settings.wrapInTransaction = true
         plugin.settings.disableForeignKeyChecks = true
