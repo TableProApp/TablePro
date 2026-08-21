@@ -223,12 +223,14 @@ final class MainContentCoordinator {
     var cursorPositions: [CursorPosition] = []
     var tableMetadata: TableMetadata?
     var activeSheet: ActiveSheet?
-    var isDatabaseSwitcherShown = false
     /// Which scope the toolbar chip is showing a chooser for, so the popover opens against the
-    /// component the user clicked. Separate from `isDatabaseSwitcherShown`, which belongs to the
-    /// toolbar button, and the two are cleared together so a window never holds two of them.
+    /// component the user clicked. Separate from the switchers the presenter owns, and cleared
+    /// alongside them so a window never holds two of them.
     var presentedScopeSwitcher: ContainerSwitchTarget?
-    var isConnectionSwitcherShown = false
+    /// Owns the connection and database switcher surfaces. The commands present through this
+    /// rather than flipping a flag a toolbar-hosted view has to observe, because that view is
+    /// absent whenever its item is clipped into the overflow menu or removed by the user.
+    @ObservationIgnored lazy var switcherPresenter = ToolbarSwitcherPresenter(panelController: quickSwitcherPanel)
     var sessionContexts: [PluginSessionContext] = []
     var containerDropRequest: DatabaseDropRequest?
     var importFileURL: URL?

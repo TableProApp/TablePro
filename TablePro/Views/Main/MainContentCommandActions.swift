@@ -1306,7 +1306,7 @@ final class MainContentCommandActions {
         guard PluginManager.shared.connectionMode(for: type) != .fileBased else { return }
         coordinator.contentWindow?.makeFirstResponder(nil)
         coordinator.presentedScopeSwitcher = nil
-        coordinator.isDatabaseSwitcherShown = true
+        presentDatabaseSwitcher(on: coordinator, target: nil)
     }
 
     /// The same chooser, opened from the toolbar chip so it appears against the scope it switches.
@@ -1317,7 +1317,7 @@ final class MainContentCommandActions {
         let type = coordinator.connection.type
         guard PluginManager.shared.switchableContainers(for: type).contains(target) else { return }
         coordinator.contentWindow?.makeFirstResponder(nil)
-        coordinator.isDatabaseSwitcherShown = false
+        coordinator.switcherPresenter.dismiss()
         coordinator.presentedScopeSwitcher = target
     }
 
@@ -1326,8 +1326,29 @@ final class MainContentCommandActions {
     }
 
     func openConnectionSwitcher() {
-        coordinator?.contentWindow?.makeFirstResponder(nil)
-        coordinator?.isConnectionSwitcherShown = true
+        guard let coordinator else { return }
+        coordinator.contentWindow?.makeFirstResponder(nil)
+        coordinator.presentedScopeSwitcher = nil
+        coordinator.switcherPresenter.present(
+            from: coordinator.contentWindow,
+            anchoredTo: MainWindowToolbar.connectionGroup,
+            contentSize: ConnectionSwitcherPopover.contentSize
+        ) { dismiss in
+            ConnectionSwitcherPopover(dismiss: dismiss)
+        }
+    }
+
+    /// Anchored to the connection group rather than to the Database button inside it, because the
+    /// group is the only item AppKit draws a frame for: its subitems exist to populate the overflow
+    /// menu and carry no frame of their own.
+    private func presentDatabaseSwitcher(on coordinator: MainContentCoordinator, target: ContainerSwitchTarget?) {
+        coordinator.switcherPresenter.present(
+            from: coordinator.contentWindow,
+            anchoredTo: MainWindowToolbar.connectionGroup,
+            contentSize: DatabaseSwitcherPopover.contentSize
+        ) { dismiss in
+            DatabaseSwitcherPopoverHost(coordinator: coordinator, target: target, dismiss: dismiss)
+        }
     }
 
     // MARK: - Undo/Redo (Group A — Called Directly)

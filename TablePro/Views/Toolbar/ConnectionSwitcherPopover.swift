@@ -36,14 +36,19 @@ struct ConnectionSwitcherEntry: Identifiable {
 }
 
 struct ConnectionSwitcherPopover: View {
-    @Environment(\.dismiss) private var dismiss
+    /// An explicit closure rather than `@Environment(\.dismiss)`, because the presenter owns the
+    /// surface: `dismiss` reaches a SwiftUI presentation, and this content is hosted in an AppKit
+    /// popover or panel that SwiftUI knows nothing about. `PopoverPresenter` hands every caller the
+    /// same shape.
+    let dismiss: () -> Void
 
     @State private var savedConnections: [DatabaseConnection] = []
     @State private var selectedConnectionId: UUID?
     @State private var searchText = ""
 
-    private static let popoverWidth: CGFloat = 400
-    private static let popoverHeight: CGFloat = 460
+    /// One declaration, read by this view's own frame and by whoever presents it, so the
+    /// surface and its host can never disagree about how big it is.
+    static let contentSize = NSSize(width: 400, height: 460)
 
     private var activeSessions: [UUID: ConnectionSession] {
         DatabaseManager.shared.activeSessions
@@ -85,7 +90,7 @@ struct ConnectionSwitcherPopover: View {
 
             manageButton
         }
-        .frame(width: Self.popoverWidth, height: Self.popoverHeight)
+        .frame(width: Self.contentSize.width, height: Self.contentSize.height)
         .onAppear {
             savedConnections = ConnectionStorage.shared.loadConnections()
             if selectedConnectionId == nil {

@@ -7,6 +7,7 @@ struct DatabaseSwitcherPopoverHost: View {
     /// Which container dimension this presentation switches. An engine can have both, so the caller
     /// names the one it opened rather than the popover guessing from the engine's primary target.
     var target: ContainerSwitchTarget?
+    let dismiss: () -> Void
 
     var body: some View {
         if let coordinator {
@@ -38,7 +39,8 @@ struct DatabaseSwitcherPopoverHost: View {
                 },
                 onRequestExport: { [weak coordinator] containers in
                     coordinator?.openExportDialog(containers: containers)
-                }
+                },
+                dismiss: dismiss
             )
         } else {
             EmptyView()
@@ -60,12 +62,15 @@ struct DatabaseSwitcherPopover: View {
     let onRequestDrop: ([DatabaseContainerRef]) -> Void
     let onRequestExport: ([DatabaseContainerRef]) -> Void
 
-    @Environment(\.dismiss) private var dismiss
+    /// An explicit closure rather than `@Environment(\.dismiss)`: the presenter owns the surface,
+    /// and this content is hosted in an AppKit popover or panel that SwiftUI cannot dismiss.
+    let dismiss: () -> Void
     @State private var viewModel: DatabaseSwitcherViewModel
     @State private var supportsCreateDatabase = false
 
-    private static let popoverWidth: CGFloat = 320
-    private static let popoverHeight: CGFloat = 360
+    /// One declaration, read by this view's own frame and by whoever presents it, so the
+    /// surface and its host can never disagree about how big it is.
+    static let contentSize = NSSize(width: 320, height: 360)
 
     private var supportsDropDatabase: Bool {
         PluginManager.shared.supportsDropDatabase(for: databaseType)
@@ -98,7 +103,8 @@ struct DatabaseSwitcherPopover: View {
         onSelect: @escaping (String) -> Void,
         onRequestCreate: @escaping () -> Void,
         onRequestDrop: @escaping ([DatabaseContainerRef]) -> Void,
-        onRequestExport: @escaping ([DatabaseContainerRef]) -> Void
+        onRequestExport: @escaping ([DatabaseContainerRef]) -> Void,
+        dismiss: @escaping () -> Void
     ) {
         self.currentDatabase = currentDatabase
         self.activeDatabase = activeDatabase
@@ -110,6 +116,7 @@ struct DatabaseSwitcherPopover: View {
         self.onRequestCreate = onRequestCreate
         self.onRequestDrop = onRequestDrop
         self.onRequestExport = onRequestExport
+        self.dismiss = dismiss
         self._viewModel = State(
             wrappedValue: DatabaseSwitcherViewModel(
                 connectionId: connectionId,
@@ -133,7 +140,7 @@ struct DatabaseSwitcherPopover: View {
                 createButton
             }
         }
-        .frame(width: Self.popoverWidth, height: Self.popoverHeight)
+        .frame(width: Self.contentSize.width, height: Self.contentSize.height)
         .background(refreshShortcut)
         .task { await viewModel.fetchDatabases() }
         .task { await refreshCreateSupport() }

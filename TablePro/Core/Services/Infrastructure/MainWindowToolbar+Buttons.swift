@@ -22,9 +22,6 @@ struct ConnectionToolbarButton: View {
         /// shows, so drawing it put a second idiom beside the native icon-only items for nothing.
         .labelStyle(.iconOnly)
         .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Switch Connection"), for: .switchConnection))
-        .popover(isPresented: $coordinator.isConnectionSwitcherShown, arrowEdge: .bottom) {
-            ConnectionSwitcherPopover()
-        }
     }
 }
 
@@ -47,9 +44,6 @@ struct DatabaseToolbarButton: View {
                 state.connectionState != .connected
                     || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased
             )
-            .popover(isPresented: $coordinator.isDatabaseSwitcherShown, arrowEdge: .bottom) {
-                DatabaseSwitcherPopoverHost(coordinator: coordinator)
-            }
         }
     }
 }
