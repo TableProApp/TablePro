@@ -71,17 +71,19 @@
         "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting Started",
+            "group": "Start here",
             "pages": [
               "index",
-              "quickstart",
               "installation",
+              "quickstart",
               "switching",
+              "faq",
+              "troubleshooting",
               "changelog"
             ]
           },
           {
-            "group": "Database Connections",
+            "group": "Connections",
             "pages": [
               "databases/overview",
               "databases/connection-urls",
@@ -89,58 +91,39 @@
               "databases/cloudflare-tunnel",
               "databases/cloud-sql-proxy",
               "databases/socks-proxy",
-              "databases/aws-iam",
-              {
-                "group": "SQL",
-                "pages": [
-                  "databases/mysql",
-                  "databases/mariadb",
-                  "databases/postgresql",
-                  "databases/redshift",
-                  "databases/cockroachdb",
-                  "databases/pglite",
-                  "databases/mssql",
-                  "databases/oracle",
-                  "databases/dameng"
-                ]
-              },
-              {
-                "group": "NoSQL & Key-Value",
-                "pages": [
-                  "databases/mongodb",
-                  "databases/redis",
-                  "databases/cassandra",
-                  "databases/etcd",
-                  "databases/elasticsearch",
-                  "databases/surrealdb"
-                ]
-              },
-              {
-                "group": "File-Based & Embedded",
-                "pages": [
-                  "databases/sqlite",
-                  "databases/duckdb",
-                  "databases/beancount",
-                  "databases/libsql"
-                ]
-              },
-              {
-                "group": "Cloud & API",
-                "pages": [
-                  "databases/dynamodb",
-                  "databases/bigquery",
-                  "databases/snowflake",
-                  "databases/cloudflare-d1"
-                ]
-              },
-              {
-                "group": "Analytics",
-                "pages": [
-                  "databases/clickhouse",
-                  "databases/teradata",
-                  "databases/trino"
-                ]
-              }
+              "databases/aws-iam"
+            ]
+          },
+          {
+            "group": "Databases",
+            "icon": "database",
+            "pages": [
+              "databases/beancount",
+              "databases/bigquery",
+              "databases/cassandra",
+              "databases/clickhouse",
+              "databases/cloudflare-d1",
+              "databases/cockroachdb",
+              "databases/dameng",
+              "databases/duckdb",
+              "databases/dynamodb",
+              "databases/elasticsearch",
+              "databases/etcd",
+              "databases/libsql",
+              "databases/mariadb",
+              "databases/mongodb",
+              "databases/mssql",
+              "databases/mysql",
+              "databases/oracle",
+              "databases/pglite",
+              "databases/postgresql",
+              "databases/redis",
+              "databases/redshift",
+              "databases/snowflake",
+              "databases/sqlite",
+              "databases/surrealdb",
+              "databases/teradata",
+              "databases/trino"
             ]
           },
           {
@@ -200,11 +183,9 @@
                 ]
               },
               {
-                "group": "Security & Sharing",
+                "group": "Sharing",
                 "pages": [
-                  "features/safe-mode",
                   "features/ssh-profiles",
-                  "features/ssl",
                   "features/connection-sharing"
                 ]
               },
@@ -236,22 +217,59 @@
             ]
           },
           {
-            "group": "External API",
+            "group": "iPhone and iPad",
+            "icon": "mobile",
+            "pages": [
+              "ios/index"
+            ]
+          },
+          {
+            "group": "Security and privacy",
+            "icon": "shield",
+            "pages": [
+              "security/privacy",
+              "features/safe-mode",
+              "features/ssl"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "External API",
+        "icon": "code",
+        "groups": [
+          {
+            "group": "Overview",
             "pages": [
               "external-api/index",
+              "external-api/versioning"
+            ]
+          },
+          {
+            "group": "Drive the app",
+            "pages": [
               "external-api/url-scheme",
               "external-api/terminal",
-              "external-api/ios-shortcuts",
               "external-api/raycast",
+              "external-api/ios-shortcuts"
+            ]
+          },
+          {
+            "group": "MCP",
+            "pages": [
               "external-api/mcp-clients",
-              "external-api/pairing",
-              "external-api/tokens",
               "external-api/mcp-protocol",
               "external-api/mcp-tools",
               "external-api/mcp-resources",
               "external-api/mcp-prompts",
-              "external-api/mcp-subscriptions",
-              "external-api/versioning"
+              "external-api/mcp-subscriptions"
+            ]
+          },
+          {
+            "group": "Auth",
+            "pages": [
+              "external-api/pairing",
+              "external-api/tokens"
             ]
           }
         ]
