@@ -1,8 +1,9 @@
 # Fact checks
 
 The mechanical lint catches how a sentence reads. This catches whether it is true. Work it top
-to bottom against the finished draft. Each item below has already been shipped wrong at least
-once.
+to bottom against every published artifact: the blog post first, because it is the announcement
+and the other two are written from it, then the newsletter and the X posts. Each item below has
+already been shipped wrong at least once.
 
 ## 1. A fix does not get credited to a version until git agrees
 
@@ -114,9 +115,9 @@ docs deploy, so the changelog link is a pre-send blocker rather than a broken li
 
 ## 9. The app release has to exist
 
-Both calls to action in the email, Check for Updates and Download, point at a build. A pushed
-tag is not a build: the workflow takes a long time, and the GitHub Release and the appcast
-entry only appear when its final job succeeds.
+Every call to action, Check for Updates and Download, points at a build. A pushed tag is not a
+build: the workflow takes about 45 minutes, and the GitHub Release and the appcast entry only
+appear when its final job succeeds.
 
 ```bash
 gh release view v<version> --json tagName,assets -q '"\(.tagName) assets=\(.assets|length)"'
@@ -157,7 +158,11 @@ propagating a wrong one.
 Separate from the draft, list what has to be true before it can go out:
 
 - The GitHub Release exists with its assets, and the appcast carries the new version.
-- Plugin tags built, published, and in the registry, for every plugin section.
+- Plugin tags built, published, and in the registry, for every plugin an artifact names.
 - Screenshots captured against a build that contains the change, light and dark.
 - `docs/changelog.mdx` deployed with the new version.
 - The fix count recounted after `[Unreleased]` closes.
+- **The blog post is live**, because the newsletter and the X posts link to it. Send either one
+  before the post deploys and every reader lands on a 404. This is the only blocker whose fix is
+  in a different repository, so check it by fetching the URL rather than by remembering that the
+  file was written.

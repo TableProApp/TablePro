@@ -3,7 +3,7 @@
 
 Catches the things that are decidable by looking at the text: house-style violations, sentence
 length, subject and preview budgets, and links or images that cannot be resolved. It cannot
-tell you whether a sentence is true; that pass is references/checks.md.
+tell you whether a sentence is true; that pass is references/fact-checks.md.
 
 Usage:
     python3 lint-draft.py <draft.md> [--repo <path-to-TablePro>]
@@ -202,7 +202,7 @@ def main():
         print()
 
     if not findings:
-        print("Nothing mechanical to report. The factual pass is references/checks.md.")
+        print("Nothing mechanical to report. The factual pass is references/fact-checks.md.")
 
     return 1 if hard else 0
 
