@@ -67,9 +67,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        with:
-          xcode-version: '26.4.1'
+        uses: ./.github/actions/setup-xcode
 
       - name: Download static libraries
         env:
@@ -103,14 +101,6 @@ jobs:
 
       - name: Prepare libraries
         run: scripts/ci/prepare-libs.sh ${{ matrix.arch }}
-
-      # The only thing that proves the pinned toolchain was actually selected before a twenty
-      # minute build starts.
-      - name: Verify Xcode
-        run: |
-          echo "Active Xcode:"
-          xcode-select -p
-          xcodebuild -version
 
       - name: Create Secrets.xcconfig
         env:
@@ -188,9 +178,7 @@ jobs:
           fetch-depth: 0
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        with:
-          xcode-version: '26.4.1'
+        uses: ./.github/actions/setup-xcode
 
       - name: Download build artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

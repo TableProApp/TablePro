@@ -121,9 +121,7 @@ jobs:
         run: git lfs pull
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        with:
-          xcode-version: "26.4.1"
+        uses: ./.github/actions/setup-xcode
 
       - name: Setup XcodeGen
         uses: ./.github/actions/setup-xcodegen

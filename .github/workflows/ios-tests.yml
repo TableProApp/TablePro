@@ -47,24 +47,15 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        # Shared with macos-tests.yml; see scripts/ci/detect-changed-paths.sh.
         run: |
           set -euo pipefail
-
-          if [ "$EVENT_NAME" != "pull_request" ]; then
-              echo "run=true" >> "$GITHUB_OUTPUT"
-              exit 0
-          fi
-
-          # Raw NUL-separated records, read from a file. See the note in macos-tests.yml for what
-          # core.quotePath and a pipeline each break here.
-          git -c core.quotePath=false diff --no-renames --name-only -z \
-              "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-files"
-
-          if LC_ALL=C grep -zqE '^(TableProMobile/|Configs/|Packages/TableProCore/|Libs/|\.github/workflows/ios-tests\.yml$)' "$RUNNER_TEMP/changed-files"; then
-              echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-              echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
+          RUN=$(scripts/ci/detect-changed-paths.sh \
+            --event "$EVENT_NAME" \
+            --base "$BASE_SHA" \
+            'TableProMobile/' 'Configs/' 'Packages/TableProCore/' 'Libs/' 'scripts/' \
+            '\.github/actions/' '\.github/workflows/ios-tests\.yml$')
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
 
   test:
     name: Run iOS Tests
