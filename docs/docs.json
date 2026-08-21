@@ -140,6 +140,7 @@
             "group": "Databases",
             "icon": "database",
             "pages": [
+              "databases/index",
               "features/plugins",
               "databases/dynamodb",
               "databases/redshift",

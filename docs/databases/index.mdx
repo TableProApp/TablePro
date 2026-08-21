@@ -1,0 +1,70 @@
+---
+title: Supported Databases
+description: All 27 engines TablePro connects to, their default ports, and which ones need a plugin
+---
+
+import DriverCounts from "/snippets/driver-counts.mdx";
+
+Twenty-seven engines, and every one of them is free to use. What differs between them is where the
+driver comes from, not what the license covers.
+
+<DriverCounts />
+
+## The full list
+
+| Database | Default port | Driver |
+|---|---|---|
+| [Amazon Redshift](/databases/redshift) | 5439 | Built-in |
+| [Beancount](/databases/beancount) | File-based | Plugin |
+| [BigQuery](/databases/bigquery) | API-based | Plugin |
+| [Cassandra](/databases/cassandra) | 9042 | Plugin |
+| [ClickHouse](/databases/clickhouse) | 8123 | Built-in |
+| [Cloudflare D1](/databases/cloudflare-d1) | API-based | Plugin |
+| [CockroachDB](/databases/cockroachdb) | 26257 | Built-in |
+| [Dameng DM8](/databases/dameng) | 5236 | Plugin |
+| [DuckDB](/databases/duckdb) | File, or 9494 remote | Plugin |
+| [DynamoDB](/databases/dynamodb) | API-based | Plugin |
+| [Elasticsearch](/databases/elasticsearch) | 9200 | Plugin |
+| [etcd](/databases/etcd) | 2379 | Plugin |
+| [libSQL / Turso](/databases/libsql) | API-based | Plugin |
+| [MariaDB](/databases/mariadb) | 3306 | Built-in |
+| [Microsoft SQL Server](/databases/mssql) | 1433 | Plugin |
+| [MongoDB](/databases/mongodb) | 27017 | Plugin |
+| [MySQL](/databases/mysql) | 3306 | Built-in |
+| [Oracle Database](/databases/oracle) | 1521 | Plugin |
+| [PGlite](/databases/pglite) | 5432 | Built-in |
+| [PostgreSQL](/databases/postgresql) | 5432 | Built-in |
+| [Redis](/databases/redis) | 6379 | Built-in |
+| [ScyllaDB](/databases/cassandra) | 9042 | Plugin |
+| [Snowflake](/databases/snowflake) | 443 | Plugin |
+| [SQLite](/databases/sqlite) | File-based | Built-in |
+| [SurrealDB](/databases/surrealdb) | 8000 | Plugin |
+| [Teradata](/databases/teradata) | 1025 | Plugin |
+| [Trino](/databases/trino) | 8080 | Plugin |
+
+Rows sharing a page share a driver. MariaDB reads as MySQL, ScyllaDB as Cassandra, and Redshift,
+CockroachDB and PGlite all speak the PostgreSQL wire protocol.
+
+## Built-in against plugin
+
+A built-in driver is already in the app and connects with nothing else installed. A plugin is a
+signed bundle TablePro fetches the first time you pick that engine, before the connection form
+opens and without a restart. After that the two behave the same: same grid, same editor, same
+export.
+
+The split is about size, not capability. Bundling every client library would put hundreds of
+megabytes of Oracle and MongoDB code in an app most people use for one database.
+
+Plugins update on their own schedule, so a driver fix can reach you without waiting for an app
+release. [Plugins & Themes](/features/plugins) covers installing, updating and removing them.
+
+## When yours is not here
+
+Two of these engines already stand in for others. Anything that speaks the PostgreSQL or MySQL wire
+protocol will usually connect through those drivers, including managed services that never say so:
+Neon, Supabase, Heroku, Aurora and Cloud SQL all work this way. Point the connection at the
+host they give you.
+
+If it speaks neither, open a request on
+[GitHub](https://github.com/TableProApp/TablePro/issues). Drivers are plugins, so a new one is a
+bundle rather than a new version of the app.
