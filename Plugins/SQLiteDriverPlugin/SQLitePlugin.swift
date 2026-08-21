@@ -99,12 +99,75 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
+// MARK: - Busy Wait
+
+/// Ends a wait on a locked database when the user presses Stop, and after the configured timeout.
+///
+/// `sqlite3_busy_timeout` cannot do the first of those: it sleeps inside SQLite with nothing to
+/// interrupt it, and `sqlite3_interrupt` does not reach a connection that is waiting for a lock
+/// rather than running a statement. Measured against SQLite 3.54.0 with a second connection
+/// holding `BEGIN EXCLUSIVE`: the interrupt was ignored and the waiter ran the full 60 seconds
+/// before returning `SQLITE_BUSY`. A busy handler is the documented way to keep that decision,
+/// because it is called back on every retry and stops the wait by returning zero.
+///
+/// Read and written from whichever thread is stepping a statement and from the caller of Stop, so
+/// every access takes the lock.
+private final class SQLiteBusyState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isCancelled = false
+    private var timeoutMilliseconds: Int32 = 0
+
+    /// How long one retry waits. Also the granularity at which Stop is noticed.
+    static let retryIntervalMilliseconds: Int32 = 10
+
+    func setTimeout(milliseconds: Int32) {
+        lock.lock()
+        defer { lock.unlock() }
+        timeoutMilliseconds = milliseconds
+    }
+
+    func beginOperation() {
+        lock.lock()
+        defer { lock.unlock() }
+        isCancelled = false
+    }
+
+    func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+        isCancelled = true
+    }
+
+    /// - Parameter retryCount: How many times SQLite has already called back for this lock.
+    /// - Returns: `true` to wait and retry, `false` to give up and let the step return `SQLITE_BUSY`.
+    func shouldRetry(afterRetryCount retryCount: Int32) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isCancelled else { return false }
+        guard timeoutMilliseconds > 0 else { return true }
+        return retryCount * Self.retryIntervalMilliseconds < timeoutMilliseconds
+    }
+}
+
+private let sqliteBusyHandler: @convention(c) (UnsafeMutableRawPointer?, Int32) -> Int32 = { context, retryCount in
+    guard let context else { return 0 }
+    let state = Unmanaged<SQLiteBusyState>.fromOpaque(context).takeUnretainedValue()
+    guard state.shouldRetry(afterRetryCount: retryCount) else { return 0 }
+    usleep(UInt32(SQLiteBusyState.retryIntervalMilliseconds) * 1_000)
+    return 1
+}
+
 // MARK: - SQLite Connection Actor
 
 private actor SQLiteConnectionActor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteConnectionActor")
 
     private var db: OpaquePointer?
+    private let busyState: SQLiteBusyState
+
+    init(busyState: SQLiteBusyState) {
+        self.busyState = busyState
+    }
 
     var isConnected: Bool { db != nil }
 
@@ -116,6 +179,7 @@ private actor SQLiteConnectionActor {
                 ?? "Unknown SQLite error"
             throw SQLitePluginError.connectionFailed(errorMessage)
         }
+        installBusyHandler()
     }
 
     func close() {
@@ -126,8 +190,16 @@ private actor SQLiteConnectionActor {
     }
 
     func applyBusyTimeout(_ milliseconds: Int32) {
+        busyState.setTimeout(milliseconds: milliseconds)
+    }
+
+    func beginBusyOperation() {
+        busyState.beginOperation()
+    }
+
+    private func installBusyHandler() {
         guard let db else { return }
-        sqlite3_busy_timeout(db, milliseconds)
+        sqlite3_busy_handler(db, sqliteBusyHandler, Unmanaged.passUnretained(busyState).toOpaque())
     }
 
     var dbHandleForInterrupt: Int { db.map { Int(bitPattern: $0) } ?? 0 }
@@ -136,6 +208,7 @@ private actor SQLiteConnectionActor {
         guard let db else {
             throw SQLitePluginError.notConnected
         }
+        busyState.beginOperation()
 
         let startTime = Date()
         var statement: OpaquePointer?
@@ -225,6 +298,7 @@ private actor SQLiteConnectionActor {
     }
 
     func streamQuery(_ query: String, continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation) throws {
+        busyState.beginOperation()
         guard let db else {
             throw SQLitePluginError.notConnected
         }
@@ -326,6 +400,7 @@ private actor SQLiteConnectionActor {
         guard let db else {
             throw SQLitePluginError.notConnected
         }
+        busyState.beginOperation()
 
         let startTime = Date()
         var statement: OpaquePointer?
@@ -454,7 +529,8 @@ private struct SQLiteRawResult: Sendable {
 
 final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
-    private let connectionActor = SQLiteConnectionActor()
+    private let busyState = SQLiteBusyState()
+    private let connectionActor: SQLiteConnectionActor
     private let interruptLock = NSLock()
     nonisolated(unsafe) private var _dbHandleForInterrupt: OpaquePointer?
 
@@ -484,6 +560,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
+        self.connectionActor = SQLiteConnectionActor(busyState: busyState)
     }
 
     // MARK: - Connection
@@ -514,8 +591,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        guard seconds > 0 else { return }
-        await connectionActor.applyBusyTimeout(Int32(seconds * 1_000))
+        await connectionActor.applyBusyTimeout(Int32(max(0, seconds) * 1_000))
     }
 
     // MARK: - Query Execution
@@ -544,7 +620,10 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    /// `sqlite3_interrupt` ends a statement that is running. A connection waiting for a lock is
+    /// not running one, and measurably ignores it, so the busy handler is what ends that wait.
     func cancelQuery() throws {
+        busyState.cancel()
         interruptLock.lock()
         defer { interruptLock.unlock() }
         guard let db = _dbHandleForInterrupt else { return }

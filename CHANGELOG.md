@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A search highlight or diagnostic underline whose text you delete now disappears, instead of staying put or jumping to the end of the editor. (#2341)
 - Fixed crashes when the editor's layout, syntax highlighting or accessibility read text that a newer edit had already removed. (#2340)
 - A SQLite query that stops early, because the database is locked or the volume returns an error, now says so instead of showing an empty table.
+- Stop now ends a SQLite query that is waiting on a database another program has locked, instead of leaving it to wait out the query timeout.
 - The XLSX, MQL and SQL Import plugins linked to a documentation page that did not exist. They now point at Import & Export.
 
 ## [0.67.0] - 2026-08-21
