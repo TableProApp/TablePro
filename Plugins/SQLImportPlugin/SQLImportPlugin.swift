@@ -46,6 +46,7 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Send
         let startTime = Date()
         var executedCount = 0
         var skippedCount = 0
+        var didCommit = false
         var errors: [PluginImportResult.ImportStatementError] = []
         let maxErrors = 1_000
 
@@ -88,6 +89,7 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Send
                         if useTransaction {
                             do {
                                 try await sink.commitTransaction()
+                                didCommit = true
                             } catch {
                                 Self.logger.warning("Failed to commit partial import: \(error.localizedDescription)")
                             }
@@ -124,20 +126,27 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Send
 
             if useTransaction {
                 try await sink.commitTransaction()
+                didCommit = true
             }
 
             if settings.disableForeignKeyChecks {
-                try await sink.enableForeignKeyChecks()
+                do {
+                    try await sink.enableForeignKeyChecks()
+                } catch {
+                    Self.logger.warning("Failed to re-enable foreign key checks: \(error.localizedDescription)")
+                }
             }
         } catch {
             let importError = error
             var rollbackError: Error?
 
-            if useTransaction {
+            if useTransaction, !didCommit {
                 do {
                     try await sink.rollbackTransaction()
                 } catch {
-                    Self.logger.error("Import failed: \(importError.localizedDescription). Rollback also failed.")
+                    Self.logger.error(
+                        "Import failed: \(importError.localizedDescription). Rollback also failed: \(error.localizedDescription)"
+                    )
                     rollbackError = error
                 }
             }
@@ -150,16 +159,7 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Send
                 }
             }
 
-            if let rollbackError {
-                throw PluginImportError.rollbackFailed(underlyingError: rollbackError)
-            }
-            if importError is PluginImportCancellationError {
-                throw importError
-            }
-            if importError is PluginImportError {
-                throw importError
-            }
-            throw PluginImportError.importFailed(importError.localizedDescription)
+            throw SQLImportFailure.error(cause: importError, rollbackError: rollbackError)
         }
 
         progress.finalize()

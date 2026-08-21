@@ -7,12 +7,15 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 import TableProPluginKit
 import UniformTypeIdentifiers
 
 /// Main export dialog view
 struct ExportDialog: View {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ExportDialog")
+
     @Binding var isPresented: Bool
     let mode: ExportMode
     var sidebarTables: [TableInfo] = []
@@ -29,6 +32,11 @@ struct ExportDialog: View {
     @State private var exportedFileURL: URL?
     @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var exportSucceeded = false
+
+    /// The window this dialog is hosted in, used for presenting its alerts and panels.
+    /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
+    /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
+    @State private var hostWindow: NSWindow?
 
     // MARK: - User Preferences
 
@@ -92,6 +100,11 @@ struct ExportDialog: View {
         }
         .frame(width: dialogWidth)
         .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            WindowAccessor { window in
+                hostWindow = window
+            }
+        }
         .onAppear {
             let available = availableFormats
             if let lastFormatId = TransferDialogStorage.shared.loadLastExportFormatId(),
@@ -148,7 +161,7 @@ struct ExportDialog: View {
         }
         .onChange(of: showSuccessDialog) { _, isShowing in
             guard isShowing else { return }
-            TransferResultAlert.presentExportSuccess(window: NSApp.keyWindow) { choice in
+            TransferResultAlert.presentExportSuccess(window: hostWindow) { choice in
                 showSuccessDialog = false
                 if choice == .openFolder {
                     openContainingFolder()
@@ -660,7 +673,7 @@ struct ExportDialog: View {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Export Error"),
                 message: String(format: String(localized: "Failed to load databases: %@"), error.localizedDescription),
-                window: nil
+                window: hostWindow
             )
         }
     }
@@ -726,7 +739,10 @@ struct ExportDialog: View {
 
     @MainActor
     private func performExport() async {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        guard let window = hostWindow else {
+            Self.logger.warning("No host window captured, cannot present the file panel")
+            return
+        }
 
         let savePanel = NSSavePanel()
         savePanel.canCreateDirectories = true
@@ -791,7 +807,7 @@ struct ExportDialog: View {
         AlertHelper.showErrorSheet(
             title: String(localized: "Export Error"),
             message: error.localizedDescription,
-            window: nil
+            window: hostWindow
         )
     }
 

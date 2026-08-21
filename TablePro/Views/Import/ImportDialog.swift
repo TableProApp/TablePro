@@ -43,6 +43,11 @@ struct ImportDialog: View {
     @State private var importResult: PluginImportResult?
     @State private var importError: (any Error)?
 
+    /// The window this dialog is hosted in, used for presenting its alerts and panels.
+    /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
+    /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
+    @State private var hostWindow: NSWindow?
+
     @State private var hasPreviewError = false
     @State private var tempPreviewURL: URL?
     @State private var loadFileTask: Task<Void, Never>?
@@ -79,6 +84,11 @@ struct ImportDialog: View {
             footerView
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            WindowAccessor { window in
+                hostWindow = window
+            }
+        }
         .onAppear {
             let available = availableFormats
             if !available.contains(where: { type(of: $0).formatId == selectedFormatId }) {
@@ -117,7 +127,7 @@ struct ImportDialog: View {
         }
         .onChange(of: showSuccessDialog) { _, isShowing in
             guard isShowing else { return }
-            TransferResultAlert.presentImportSuccess(result: importResult, window: NSApp.keyWindow) {
+            TransferResultAlert.presentImportSuccess(result: importResult, window: hostWindow) {
                 showSuccessDialog = false
                 isPresented = false
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
@@ -125,7 +135,7 @@ struct ImportDialog: View {
         }
         .onChange(of: showErrorDialog) { _, isShowing in
             guard isShowing else { return }
-            TransferResultAlert.presentImportFailure(error: importError, window: NSApp.keyWindow) {
+            TransferResultAlert.presentImportFailure(error: importError, window: hostWindow) {
                 showErrorDialog = false
             }
         }
@@ -335,7 +345,10 @@ struct ImportDialog: View {
 
     @MainActor
     private func selectFile() async {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        guard let window = hostWindow else {
+            Self.logger.warning("No host window captured, cannot present the file panel")
+            return
+        }
 
         let panel = NSOpenPanel()
 

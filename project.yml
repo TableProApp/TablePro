@@ -386,6 +386,10 @@ targets:
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
+      - Plugins/SQLImportPlugin/SQLImportFailure.swift
+      - Plugins/SQLImportPlugin/SQLImportOptions.swift
+      - Plugins/SQLImportPlugin/SQLImportOptionsView.swift
+      - Plugins/SQLImportPlugin/SQLImportPlugin.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeAuth.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeBindingEncoder.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeDDLGenerator.swift
