@@ -173,7 +173,8 @@ private actor SQLiteConnectionActor {
         var rowsAffected = 0
         var truncated = false
 
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
             if rows.count >= PluginRowLimits.emergencyMax {
                 truncated = true
                 break
@@ -200,6 +201,11 @@ private actor SQLiteConnectionActor {
             }
 
             rows.append(row)
+            stepResult = sqlite3_step(statement)
+        }
+
+        if !truncated, stepResult != SQLITE_DONE {
+            throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
         }
 
         if columns.isEmpty {
@@ -259,7 +265,8 @@ private actor SQLiteConnectionActor {
         var batch: [PluginRow] = []
         batch.reserveCapacity(batchSize)
 
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
             if Task.isCancelled {
                 if !batch.isEmpty {
                     continuation.yield(.rows(batch))
@@ -294,10 +301,21 @@ private actor SQLiteConnectionActor {
                 continuation.yield(.rows(batch))
                 batch.removeAll(keepingCapacity: true)
             }
+            stepResult = sqlite3_step(statement)
         }
 
         if !batch.isEmpty {
             continuation.yield(.rows(batch))
+        }
+
+        // A step that ends on anything but `SQLITE_DONE` stopped early: a locked database, an I/O
+        // error on the volume, a corrupt page. Finishing the stream normally would report the rows
+        // read so far as the whole table, which is indistinguishable from an empty one.
+        guard stepResult == SQLITE_DONE else {
+            let message = String(cString: sqlite3_errmsg(db))
+            sqlite3_finalize(statement)
+            continuation.finish(throwing: SQLitePluginError.queryFailed(message))
+            return
         }
 
         sqlite3_finalize(statement)
@@ -371,7 +389,8 @@ private actor SQLiteConnectionActor {
         var rowsAffected = 0
         var truncated = false
 
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
             if rows.count >= PluginRowLimits.emergencyMax {
                 truncated = true
                 break
@@ -398,6 +417,11 @@ private actor SQLiteConnectionActor {
             }
 
             rows.append(row)
+            stepResult = sqlite3_step(statement)
+        }
+
+        if !truncated, stepResult != SQLITE_DONE {
+            throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
         }
 
         if columns.isEmpty {
