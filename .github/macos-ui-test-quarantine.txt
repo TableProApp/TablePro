@@ -1,7 +1,24 @@
-# UI tests skipped on CI, as "Suite/testMethod". Same idea as macos-test-quarantine.txt:
+# UI tests skipped on CI, as "Suite/testMethod()". Same idea as macos-test-quarantine.txt:
 # a gate that fails for reasons unrelated to the change under review is worse than no gate.
 # Burn this list down.
 #
 # Each entry needs a reason and, where known, what would take it off the list.
+# list-tests.sh fails the job on an entry that matches no enumerated case, so a line here cannot
+# quietly stop meaning anything.
 
-# (empty)
+# --- Needs a display the runner does not have.
+#     The test pins a 1512x861 window and measures the inspector toggle's distance from the
+#     window's trailing edge. The runner's screen is 1024x768. A window pinned wider than the
+#     screen is placed partly off it and its toolbar collapses the trailing items into the
+#     overflow menu, so there is no toggle in the toolbar to measure: it reported "No inspector
+#     toggle in the toolbar" on every run while passing on any real display.
+#
+#     It has an XCTSkipUnless for exactly this, so it has never failed CI. It has also never run
+#     there, and a skip inside the test is not visible to anyone reading the gate. Listing it here
+#     is what makes "this gates nothing" reviewable.
+#
+#     Getting it back: the assertion is geometric, and geometry does not need a screen. An NSWindow
+#     can be made larger than the display as long as it is not ordered front, so building the
+#     window and its toolbar in a TableProTests case and measuring there would run at any
+#     resolution. That is a rewrite, not a configuration change, which is why it is not in this PR.
+InspectorToolbarPlacementUITests/testTheInspectorToggleHoldsTheTrailingEdgeThroughBothTransitions()

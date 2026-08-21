@@ -66,21 +66,22 @@ def main():
     quarantine = os.environ.get("QUARANTINE")
     skipped = quarantined_names(quarantine)
 
-    def is_quarantined(identifier):
+    def forms(identifier):
+        """Every spelling an entry may use: full identifier, Suite/case(), and bare Suite."""
         parts = identifier.split("/")
-        suite = parts[1] if len(parts) > 1 else identifier
-        return suite in skipped or identifier in skipped
+        if len(parts) <= 1:
+            return {identifier}
+        return {identifier, "/".join(parts[1:]), parts[1]}
+
+    def is_quarantined(identifier):
+        return bool(forms(identifier) & skipped)
 
     # An entry that matches nothing is not harmless: it reads like a working skip and the case it
     # was meant to hold back is running. The unit quarantine kept one such line for 479 commits.
     # Entries are matched unqualified, so compare against both halves of every identifier.
     known = set()
     for identifier in identifiers:
-        parts = identifier.split("/")
-        known.add(identifier)
-        if len(parts) > 1:
-            known.add(parts[1])
-            known.add("/".join(parts[1:]))
+        known |= forms(identifier)
     inert = sorted(skipped - known)
     if inert:
         sys.exit(
