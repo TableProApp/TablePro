@@ -1,0 +1,56 @@
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+      - 'TablePro/Core/Menu/**'
+      - 'TablePro/Core/Plugins/PluginManager.swift'
+      - 'TablePro/Models/UI/KeyboardShortcutModels.swift'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Validate docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Pinned because the CLI self-upgrades inside its own command handlers, so an
+      # unpinned install lets a release land mid-run and change what the gate checks.
+      - name: Install the Mintlify CLI
+        run: npm install --global mint@4.2.816
+
+      - name: Validate the build
+        working-directory: docs
+        run: mint validate
+
+      - name: Check links, anchors and redirects
+        working-directory: docs
+        run: mint broken-links --check-anchors --check-redirects
+
+      - name: Check accessibility
+        working-directory: docs
+        run: mint a11y
+
+      # The three claims that rot fastest, each checked against the source that
+      # defines it. All three were wrong at once in August 2026.
+      - name: Check docs against the source
+        run: python3 docs/scripts/check-docs-against-source.py
+
+      - name: Check writing style
+        run: bash docs/scripts/check-writing-style.sh
