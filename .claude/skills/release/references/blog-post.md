@@ -33,9 +33,11 @@ Read `mcp-database-claude.md` in full. It is the reference post: it is the only 
 with figures, so it is the one that shows the image convention, and its structure is
 the house structure.
 
-Shipped posts run **885 to 1,332 words**. A release round-up with six figures can run
-longer, to about 1,900. Length follows the content, but a 2,500-word post means you
-kept material that belongs in the changelog.
+Shipped posts run **885 to 1,332 words**, and a release round-up carrying six figures
+lands lower, around 900. Do not treat the top of that range as a target. The 0.67
+draft that reached 1,877 words was rejected on sight; the 872-word rewrite says
+everything it did. If a post is running long, the fix is cutting sections to bullets,
+not trimming adjectives.
 
 ## 2. Frontmatter
 
@@ -69,11 +71,18 @@ intro          two paragraphs, no heading
 ## closing     how to actually do it in TablePro, or how to get it
 ```
 
-**The intro carries the problem, not the product.** Every shipped post opens on
-something true about the reader's situation and reaches TablePro in the second
-paragraph. `mongodb-native-vs-compass` opens on Compass being Electron.
-`mcp-database-claude` opens on the protocol existing. Do not open with "TablePro
-0.67 adds".
+**How the intro opens depends on the kind of post.**
+
+A topical post carries the problem, not the product: it opens on something true about
+the reader's situation and reaches TablePro in the second paragraph.
+`mongodb-native-vs-compass` opens on Compass being Electron, `mcp-database-claude` on
+the protocol existing. Never open one with "TablePro 0.67 adds".
+
+A release post opens with the number and gets out of the way, the way Ghostty does
+("6 months of work, 149 contributors, 2,676 commits") and Tailwind does. Two lines is
+plenty: "TablePro 0.67 is out: 200 changes, 144 of them fixes. Almost all of it lands
+in two places." Nobody arriving at a release post needs to be sold on why releases
+exist.
 
 **Headings are plain statements or plain names.** "The Electron tax", "Where the
 320 MB goes", "What the AI gets", "When D1 is not the right call". No questions, no
@@ -113,7 +122,8 @@ Raw HTML, not markdown image syntax. The markdown pipeline allows HTML and
   cannot see it should know what is on screen, not just which feature it is.
 - **Figcaption says what the picture proves.** One sentence, and it may repeat a
   fact from the prose. It is read on its own.
-- Roughly one figure per 250 to 350 words. The reference post has 4 in 1,330 words.
+- One figure per 150 to 350 words. The reference post has 4 in 1,330; the 0.67
+  release post has 6 in 872, because a release post is mostly showing things.
 - Screenshots are Retina and unpadded: shipped ones are 1440x1176, 1920x1200,
   3024x1722, 3024x1788. There is no fixed size. Do not upscale a small capture.
 
@@ -143,7 +153,62 @@ A screenshot that already exists in the docs repo can be copied rather than
 re-captured, but rename it to the blog's own scheme (`<area>-<thing>.png`, as in
 `sql-editor-code-folding.png`) instead of carrying the docs name over.
 
-## 5. Voice
+## 5. Weight, and the thing that makes a post read as machine-written
+
+The first draft of the 0.67 post was rejected as "AI vibe, too long-winded to bother
+reading". Its sentence and paragraph metrics were **fine**: 17.9 words a sentence,
+2.4 sentences a paragraph, both inside the range of every site worth copying. So the
+tell is not sentence length, and shortening sentences will not fix it.
+
+The tell was that **every section was the same weight**: nine sections, each between
+181 and 273 words. A ratio of 1.5 between the longest and the shortest. That says the
+writer made no judgement about what mattered, and a reader feels it as a wall.
+
+Measured from posts people actually read:
+
+| Source | Words per feature |
+|---|---|
+| Linear changelog | 80 to 280 |
+| Ghostty release notes | 150 for a simple one, 500 for a hard one |
+| Raycast changelog | 8 to 20, a fragment per line |
+| Tailwind release posts | a long lead feature, then short ones |
+
+**Aim for a 3x spread or more between your biggest and smallest section.** The 0.67
+rewrite landed at 3.7x: 122 words for Charts, 49 for the closing, and the minor
+features collapsed into one bulleted "Also new" section instead of five prose
+sections nobody asked for.
+
+Decide per feature, before writing:
+
+- **Prose plus a figure** for something a reader will change their behaviour over.
+  Four of these is usually the ceiling.
+- **One bullet** for everything else. A bullet is not a demotion; it is what lets the
+  four real features breathe.
+- **A bold one-liner** for a breaking change, wherever it lands, so it cannot be
+  skimmed past.
+
+The other machine signature is **explaining in every section**. Ghostty explains
+rationale, but selectively. The rejected draft editorialised everywhere: "That sounds
+obvious and a lot of GUI charting gets it wrong", "The details that make folding
+usable rather than annoying". Cut those. State the behaviour and stop. Earn one
+aside per post, not one per section.
+
+Check yourself before shipping:
+
+```bash
+python3 - <<'PY'
+import re, statistics
+t = open("resources/blog/<slug>.md", encoding="utf-8").read()
+body = t.split('---\n', 2)[2]
+strip = lambda s: re.sub(r'<figure>.*?</figure>', '', s, flags=re.S)
+ws = [len(strip(s).split()) for s in re.split(r'\n## ', body)[1:]]
+print(f"{len(strip(body).split())} words, sections {min(ws)}-{max(ws)}, spread {max(ws)/min(ws):.1f}x")
+PY
+```
+
+A spread under 2x means you have not edited yet.
+
+## 6. Voice
 
 Derived from the shipped posts, not invented.
 
@@ -168,7 +233,7 @@ Check yourself:
 grep -nE '—|seamless|robust|comprehensive|intuitive|effortless|streamlined|leverage|elevate|delve|utilize|game-changer' resources/blog/<slug>.md
 ```
 
-## 6. Facts
+## 7. Facts
 
 The blog is indexed and quoted, so a wrong number outlives the release.
 
@@ -187,7 +252,7 @@ The blog is indexed and quoted, so a wrong number outlives the release.
   curl -s https://raw.githubusercontent.com/TableProApp/plugins/main/plugins.json
   ```
 
-## 7. Wire it up
+## 8. Wire it up
 
 Adding the file is not enough. Three things follow.
 
@@ -213,7 +278,7 @@ the punchline off the card.
 **Sitemap needs nothing.** `public/sitemap.xml` is gitignored and regenerated on
 deploy. Run `php artisan sitemap:generate` only to verify the URL appears.
 
-## 8. Verify
+## 9. Verify
 
 ```bash
 php artisan test --compact                  # whole suite, not just BlogTest
@@ -238,7 +303,7 @@ grep -o 'src="/images/blog/[^"]*"' resources/blog/<slug>.md \
   | while read -r f; do [ -f "public/$f" ] && echo "OK $f" || echo "MISSING $f"; done
 ```
 
-## 9. Before it goes live
+## 10. Before it goes live
 
 `main` self-deploys on green tests. Pushing publishes the post.
 
