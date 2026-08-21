@@ -1,6 +1,6 @@
 ---
 title: Trino
-description: Connect to a Trino cluster with TablePro's native Swift driver.
+description: Catalogs and schemas, type mapping, EXPLAIN variants, and the auth a Trino cluster accepts
 ---
 
 Trino publishes its client protocol over plain HTTP, and this driver is a REST client for it rather than a bridge to something else. A query is one `POST /v1/statement`; the rows arrive a page at a time until the cluster says it has finished.
