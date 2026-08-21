@@ -140,12 +140,24 @@ else
   exit 1
 fi
 
-# Verify notarization staple (if notarized)
-if xcrun stapler validate "$APP_BUNDLE" 2>&1 | grep -q "The validate action worked"; then
-  echo "✅ Notarization ticket stapled"
-else
-  echo "⚠️  No notarization ticket stapled (may not have been notarized yet)"
+# The release path always notarizes, so there is no legitimate "not yet" case: a warning here
+# meant an unnotarized build passed verification and shipped. Checked by exit code rather than by
+# grepping for a message, matching scripts/build-plugin.sh.
+if ! xcrun stapler validate "$APP_BUNDLE"; then
+  echo "❌ ERROR: No notarization ticket stapled to $APP_BUNDLE"
+  exit 1
 fi
+echo "✅ Notarization ticket stapled"
+
+# spctl is what a user's Mac runs. It accepts an unstapled but notarized bundle over the network,
+# so it proves the app will launch but never that it will launch offline. The staple check above
+# is what covers that, and both have to pass.
+if ! spctl -a -vvv -t exec "$APP_BUNDLE" 2>&1 | grep -q "accepted"; then
+  echo "❌ ERROR: Gatekeeper rejects $APP_BUNDLE"
+  spctl -a -vvv -t exec "$APP_BUNDLE" 2>&1 || true
+  exit 1
+fi
+echo "✅ Accepted by Gatekeeper"
 
 # Display info
 echo "✅ Build verified successfully"

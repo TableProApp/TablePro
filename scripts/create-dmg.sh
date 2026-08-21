@@ -6,7 +6,20 @@ set -e
 
 # Configuration
 APP_NAME="TablePro"
-VERSION="${1:-0.1.13}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION="${1:-}"
+if [ -z "$VERSION" ]; then
+    # Configs/Version.xcconfig is the single declaration of the app version. The literal that
+    # used to sit here as a default was 0.1.13, 66 releases behind, so a run without an explicit
+    # version produced a correctly built DMG under a badly wrong name.
+    VERSION=$(sed -n 's/^MARKETING_VERSION[[:space:]]*=[[:space:]]*//p' \
+        "$REPO_ROOT/Configs/Version.xcconfig" | tr -d ' ')
+fi
+if [ -z "$VERSION" ]; then
+    # sed exits 0 when it matches nothing, so set -e does not cover this.
+    echo "❌ ERROR: MARKETING_VERSION missing from Configs/Version.xcconfig" >&2
+    exit 1
+fi
 ARCH="${2:-universal}"
 SOURCE_APP="${3:-build/Release/${APP_NAME}.app}"
 DMG_NAME="${APP_NAME}-${VERSION}-${ARCH}.dmg"
@@ -234,6 +247,9 @@ if [ "$NOTARIZE" = "true" ]; then
     echo "📮 Notarizing DMG..."
     if xcrun notarytool submit "$FINAL_DMG" --keychain-profile "TablePro" --wait; then
         xcrun stapler staple "$FINAL_DMG"
+        # Stapling can report success and still leave no usable ticket, which is why
+        # build-plugin.sh validates after stapling. The DMG had no such check.
+        xcrun stapler validate "$FINAL_DMG"
         echo "✅ DMG notarized and stapled"
     else
         echo "❌ DMG notarization failed"

@@ -390,8 +390,10 @@ build_for_arch() {
         exit 1
     }
 
-    # Copy and rename app
+    # Copy and rename app. Removed first: cp -R onto an existing bundle merges into it, so a
+    # rebuild carried the previous build's files into the one being signed and shipped.
     OUTPUT_NAME="TablePro-${arch}.app"
+    rm -rf "$BUILD_DIR/$OUTPUT_NAME"
     echo "Copying app bundle to release directory..."
     if ! cp -R "$APP_PATH" "$BUILD_DIR/$OUTPUT_NAME"; then
         echo "❌ FATAL: Failed to copy app bundle"
@@ -405,11 +407,6 @@ build_for_arch() {
         echo "❌ FATAL: App bundle was not copied successfully"
         exit 1
     fi
-
-    # Remove any stale nested .app bundles in the bundle root (breaks codesign)
-    for nested in "$BUILD_DIR/$OUTPUT_NAME"/*.app; do
-        [ -d "$nested" ] && rm -rf "$nested"
-    done
 
     # Strip plugin binaries — removes debug symbols, code coverage (__LLVM_COV),
     # and dead LINKEDIT metadata that bloat the bundle (e.g., OracleDriver 43MB → ~15MB)
@@ -671,8 +668,11 @@ if [ "$NOTARIZE" = "true" ]; then
         ditto -c -k --keepParent "$app" "$zip_path"
 
         echo "   Submitting $name for notarization..."
-        submit_output=$(xcrun notarytool submit "$zip_path" --keychain-profile "TablePro" --wait 2>&1)
-        submit_status=$?
+        # Assigned before the substitution, then overwritten on failure. Written the other way
+        # round, `submit_status=$?` reads the exit status of the assignment, which is always 0,
+        # so every failure took the success branch and the log fetch below was unreachable.
+        submit_status=0
+        submit_output=$(xcrun notarytool submit "$zip_path" --keychain-profile "TablePro" --wait 2>&1) || submit_status=$?
         echo "$submit_output"
 
         submission_id=$(echo "$submit_output" | grep "id:" | head -1 | awk '{print $2}')

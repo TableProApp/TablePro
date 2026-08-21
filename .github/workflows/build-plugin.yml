@@ -130,31 +130,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh
 
-      - name: Import signing certificate
-        env:
-          CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
-          CERTIFICATES_PASSWORD: ${{ secrets.CERTIFICATES_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          security create-keychain -p "" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "" "$KEYCHAIN_PATH"
-          echo "$CERTIFICATES_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATES_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
-
-      - name: Configure notarization
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
-        run: |
-          xcrun notarytool store-credentials "TablePro" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$NOTARY_PASSWORD"
+      # No provisioning profile: a .tableplugin is signed with Developer ID and notarized, and
+      # never carries an embedded profile the way the app does.
+      - name: Set up Apple signing
+        uses: ./.github/actions/apple-signing
+        with:
+          certificate-p12: ${{ secrets.CERTIFICATES_P12 }}
+          certificate-password: ${{ secrets.CERTIFICATES_PASSWORD }}
+          apple-id: ${{ secrets.APPLE_ID }}
+          team-id: ${{ secrets.APPLE_TEAM_ID }}
+          notary-password: ${{ secrets.NOTARY_PASSWORD }}
 
       - name: Resolve plugin info
         id: plugin

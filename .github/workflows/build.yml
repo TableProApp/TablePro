@@ -43,10 +43,24 @@ jobs:
     name: macOS Tests
     uses: ./.github/workflows/macos-tests.yml
 
-  build-arm64:
-    name: Build ARM64
+  build:
+    name: Build ${{ matrix.arch }}
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      # No fail-fast. A failing arch would otherwise cancel its sibling mid-notarization, which is
+      # the same thing the concurrency block above exists to prevent.
+      fail-fast: false
+      matrix:
+        include:
+          # Separate timeouts because the two arms genuinely differ: measured over v0.62 to v0.67,
+          # x86_64 was never the faster of the two and once ran 22 minutes longer than an ARM64
+          # sibling that started in the same second, so this is the architecture rather than the
+          # notary queue.
+          - arch: arm64
+            timeout: 30
+          - arch: x86_64
+            timeout: 45
 
     steps:
       - name: Checkout code
@@ -72,18 +86,26 @@ jobs:
           key: ${{ runner.os }}-spm-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: ${{ runner.os }}-spm-
 
-      # create-dmg is the only Homebrew formula either build job needs. The MySQL plugin
-      # links Libs/libmariadb.a, which download-libs.sh vendors and prepare-libs.sh selects
-      # per architecture, and its headers live in Plugins/MySQLDriverPlugin/CMariaDB/include.
+      # create-dmg is the only Homebrew formula either arm needs. The MySQL plugin links
+      # Libs/libmariadb.a, which download-libs.sh vendors and prepare-libs.sh selects per
+      # architecture, and its headers live in Plugins/MySQLDriverPlugin/CMariaDB/include.
       # LIBRARY_SEARCH_PATHS names $(SRCROOT)/Libs and no Homebrew prefix, so nothing in the
-      # build ever read mariadb-connector-c. macos-tests.yml proves it: the app-tests job
-      # links all 31 plugin bundles with no Homebrew mariadb installed at all.
+      # build ever read mariadb-connector-c. macos-tests.yml proves it: its build job links all
+      # 31 plugin bundles with no Homebrew mariadb installed at all.
+      #
+      # The x86_64 arm is a cross-compile on an arm64 runner: every tool that runs during the
+      # build is native and the x86_64 slices of the static libraries are vendored in Libs.
+      # Bootstrapping a second Homebrew prefix cost five minutes a release to install a
+      # mariadb-connector-c the build never opened. create-dmg is a shell script, so the native
+      # prefix serves both arms.
       - name: Install create-dmg
         run: brew list create-dmg &>/dev/null || brew install create-dmg
 
       - name: Prepare libraries
-        run: scripts/ci/prepare-libs.sh arm64
+        run: scripts/ci/prepare-libs.sh ${{ matrix.arch }}
 
+      # The only thing that proves the pinned toolchain was actually selected before a twenty
+      # minute build starts.
       - name: Verify Xcode
         run: |
           echo "Active Xcode:"
@@ -98,163 +120,34 @@ jobs:
       - name: Setup XcodeGen
         uses: ./.github/actions/setup-xcodegen
 
-      - name: Import signing certificate
-        env:
-          CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
-          CERTIFICATES_PASSWORD: ${{ secrets.CERTIFICATES_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          security create-keychain -p "" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "" "$KEYCHAIN_PATH"
-          echo "$CERTIFICATES_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATES_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+      - name: Set up Apple signing
+        uses: ./.github/actions/apple-signing
+        with:
+          certificate-p12: ${{ secrets.CERTIFICATES_P12 }}
+          certificate-password: ${{ secrets.CERTIFICATES_PASSWORD }}
+          apple-id: ${{ secrets.APPLE_ID }}
+          team-id: ${{ secrets.APPLE_TEAM_ID }}
+          notary-password: ${{ secrets.NOTARY_PASSWORD }}
+          provisioning-profile: ${{ secrets.PROVISIONING_PROFILE }}
 
-      - name: Configure notarization
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
-        run: |
-          xcrun notarytool store-credentials "TablePro" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$NOTARY_PASSWORD"
-
-      - name: Install provisioning profile
-        env:
-          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
-        run: |
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/tablepro.provisionprofile
-
-      - name: Build ARM64
+      - name: Build ${{ matrix.arch }}
         env:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
           NOTARIZE: "true"
-        run: scripts/build-release.sh arm64
+        run: scripts/build-release.sh ${{ matrix.arch }}
 
       - name: Verify build
-        run: scripts/ci/verify-build.sh arm64
+        run: scripts/ci/verify-build.sh ${{ matrix.arch }}
 
       - name: Package artifacts
         env:
           NOTARIZE: "true"
-        run: scripts/ci/package-artifacts.sh arm64
+        run: scripts/ci/package-artifacts.sh ${{ matrix.arch }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: artifacts-arm64
-          path: |
-            build/Release/TablePro-*.dmg
-            build/Release/TablePro-*.zip
-
-  build-x86_64:
-    name: Build x86_64
-    runs-on: macos-26
-    timeout-minutes: 45
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        with:
-          xcode-version: '26.4.1'
-
-      - name: Download static libraries
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: scripts/download-libs.sh --force
-
-      - name: Cache Swift package checkouts
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.spm-cache
-          key: ${{ runner.os }}-spm-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: ${{ runner.os }}-spm-
-
-      # No Rosetta and no x86_64 Homebrew here. This is a cross-compile on an arm64 runner:
-      # every tool that runs during the build is native, and the x86_64 slices of the static
-      # libraries are vendored in Libs. Bootstrapping a second Homebrew prefix cost five
-      # minutes a release to install a mariadb-connector-c the build never opened. create-dmg
-      # is a shell script, so the native prefix serves both jobs.
-      - name: Install create-dmg
-        run: brew list create-dmg &>/dev/null || brew install create-dmg
-
-      - name: Prepare libraries
-        run: scripts/ci/prepare-libs.sh x86_64
-
-      - name: Verify Xcode
-        run: |
-          echo "Active Xcode:"
-          xcode-select -p
-          xcodebuild -version
-
-      - name: Create Secrets.xcconfig
-        env:
-          ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
-        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Configs/Secrets.xcconfig
-
-      - name: Setup XcodeGen
-        uses: ./.github/actions/setup-xcodegen
-
-      - name: Import signing certificate
-        env:
-          CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
-          CERTIFICATES_PASSWORD: ${{ secrets.CERTIFICATES_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          security create-keychain -p "" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "" "$KEYCHAIN_PATH"
-          echo "$CERTIFICATES_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATES_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
-
-      - name: Configure notarization
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
-        run: |
-          xcrun notarytool store-credentials "TablePro" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$NOTARY_PASSWORD"
-
-      - name: Install provisioning profile
-        env:
-          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
-        run: |
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/tablepro.provisionprofile
-
-      - name: Build x86_64
-        env:
-          ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
-          NOTARIZE: "true"
-        run: scripts/build-release.sh x86_64
-
-      - name: Verify build
-        run: scripts/ci/verify-build.sh x86_64
-
-      - name: Package artifacts
-        env:
-          NOTARIZE: "true"
-        run: scripts/ci/package-artifacts.sh x86_64
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: artifacts-x86_64
+          name: artifacts-${{ matrix.arch }}
           path: |
             build/Release/TablePro-*.dmg
             build/Release/TablePro-*.zip
@@ -282,7 +175,7 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: macos-26
-    needs: [lint, test, build-arm64, build-x86_64, registry-readiness]
+    needs: [lint, test, build, registry-readiness]
     if: startsWith(github.ref, 'refs/tags/v')
     timeout-minutes: 10
     permissions:
@@ -312,6 +205,16 @@ jobs:
           rm -rf artifacts-raw/
           echo "Artifacts:"
           ls -lh artifacts/
+
+      - name: Verify the tag matches the declared version
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          XCCONFIG_VERSION=$(sed -n 's/^MARKETING_VERSION[[:space:]]*=[[:space:]]*//p' Configs/Version.xcconfig | tr -d ' ')
+          if [ "$TAG_VERSION" != "$XCCONFIG_VERSION" ]; then
+            echo "::error::tag v$TAG_VERSION does not match MARKETING_VERSION $XCCONFIG_VERSION"
+            exit 1
+          fi
+          echo "tag and MARKETING_VERSION agree on $TAG_VERSION"
 
       - name: Verify and organize artifacts for release
         run: |
@@ -346,9 +249,19 @@ jobs:
       # so the key is always meant to be present, and gating on it meant a missing or rotated
       # secret published a release that no existing install could ever see. A signing key that
       # is not there is now a red job, not a silent skip.
+      # The tag's own appcast.xml is the feed as of that commit. Seeding from it drops every
+      # version published since, and generate_appcast keeps only what it is handed, so the
+      # committed feed would silently rewind and those releases would stop being offered.
+      - name: Seed the appcast from the published feed
+        run: |
+          git fetch origin main
+          mkdir -p appcast
+          git show origin/main:appcast.xml > appcast/seed.xml
+
       - name: Sign update archives with Sparkle
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          SEED_APPCAST: appcast/seed.xml
         run: scripts/ci/sign-and-appcast.sh "${GITHUB_REF#refs/tags/v}"
 
       - name: Upload appcast artifact
@@ -391,6 +304,17 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git checkout main
+
+          # Refuse to publish a feed that drops a version main already advertises. Sparkle serves
+          # this file to every install, so a rewind stops offering updates that were shipped.
+          missing=$(comm -23 \
+            <(git show origin/main:appcast.xml | grep -o '<sparkle:shortVersionString>[^<]*' | sed 's/.*>//' | sort -u) \
+            <(grep -o '<sparkle:shortVersionString>[^<]*' appcast/appcast.xml | sed 's/.*>//' | sort -u))
+          if [ -n "$missing" ]; then
+            echo "❌ ERROR: the generated feed drops versions already published on main: $missing" >&2
+            exit 1
+          fi
+
           cp appcast/appcast.xml appcast.xml
           git add appcast.xml
 
@@ -406,7 +330,9 @@ jobs:
               exit 0
             fi
             echo "Push rejected, rebasing onto origin/main (attempt ${attempt})"
-            git pull --rebase origin main
+            # A conflicting rebase leaves the repo mid-rebase with main still at the pre-rebase
+            # commit, so the next attempt pushed a stale ref and failed differently every time.
+            git pull --rebase origin main || git rebase --abort || true
           done
 
           echo "❌ ERROR: could not push appcast.xml after 3 attempts" >&2

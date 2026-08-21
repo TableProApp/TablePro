@@ -11,6 +11,7 @@ set -euo pipefail
 # Usage: sign-and-appcast.sh <version>
 # Requires: SPARKLE_PRIVATE_KEY env var, artifacts/ directory with ZIPs.
 
+SEED_APPCAST="${SEED_APPCAST:-appcast.xml}"
 VERSION="${1:?Usage: sign-and-appcast.sh <version>}"
 
 if [ -z "${SPARKLE_PRIVATE_KEY:-}" ]; then
@@ -84,9 +85,11 @@ for arch in "${ARCHS[@]}"; do
   basename="${STAGING}/TablePro-${VERSION}-${arch}"
   echo "$RELEASE_HTML" > "${basename}.html"
 
-  # Copy existing appcast for history preservation (only for first arch)
-  if [ "${#APPCAST_XMLS[@]}" -eq 0 ] && [ -f appcast.xml ]; then
-    cp appcast.xml "$STAGING/"
+  # Seed the generator with the feed that is actually published, so every version already in it
+  # survives. The default is the checkout's own appcast.xml, which is the file as of the tag
+  # rather than the state of main, and generate_appcast only keeps what it is given.
+  if [ "${#APPCAST_XMLS[@]}" -eq 0 ] && [ -f "$SEED_APPCAST" ]; then
+    cp "$SEED_APPCAST" "$STAGING/appcast.xml"
   fi
 
   "$SPARKLE_BIN/generate_appcast" \
