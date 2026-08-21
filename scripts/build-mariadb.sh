@@ -24,8 +24,10 @@ MARIADB_VERSION="3.4.4"
 # record whatever was served the first time anybody looked. Note the upstream tarball unpacks to a
 # "-src" directory, unlike the GitHub one.
 MARIADB_SHA256="58876fad1c2d33979d78bbfa61d7a3476e8faa2cd0af0f7f8bfeb06deaa1034e"
-MIN_MACOS="14.0"
 OPENSSL_ROOT="${OPENSSL_ROOT:-$(brew --prefix openssl@3 2>/dev/null || true)}"
+
+# shellcheck source=lib/macos.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -37,15 +39,6 @@ if [ -z "$OPENSSL_ROOT" ] || [ ! -d "$OPENSSL_ROOT" ]; then
     echo "ERROR: OpenSSL 3 not found. Install with 'brew install openssl@3' or set OPENSSL_ROOT." >&2
     exit 1
 fi
-
-run_quiet() {
-    local logfile
-    logfile=$(mktemp)
-    if ! "$@" > "$logfile" 2>&1; then
-        echo "FAILED: $*"; tail -50 "$logfile"; rm -f "$logfile"; return 1
-    fi
-    rm -f "$logfile"
-}
 
 cleanup() { rm -rf "$BUILD_DIR"; }
 trap cleanup EXIT
@@ -69,7 +62,7 @@ build_slice() {
     echo "=> Building $ARCH..."
     run_quiet cmake .. \
         -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
-        -DCMAKE_OSX_DEPLOYMENT_TARGET="$MIN_MACOS" \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOY_TARGET" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DCMAKE_C_FLAGS="-w -Wno-error -Wno-inline-asm -Wno-deprecated-non-prototype -Wno-macro-redefined" \

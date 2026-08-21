@@ -1,17 +1,6 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-# Run a command silently, showing output only on failure.
-run_quiet() {
-    local logfile
-    logfile=$(mktemp)
-    if ! "$@" > "$logfile" 2>&1; then
-        tail -30 "$logfile"
-        rm -f "$logfile"
-        return 1
-    fi
-    rm -f "$logfile"
-}
 
 # Build static libssh2 (with OpenSSL backend) for TablePro
 #
@@ -32,15 +21,12 @@ run_quiet() {
 #   - CMake (brew install cmake)
 #   - curl (for downloading source tarballs)
 
-DEPLOY_TARGET="14.0"
 LIBSSH2_VERSION="1.11.1"
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/openssl-version.sh"
+# shellcheck source=lib/macos.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
 LIBSSH2_SHA256="d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7"
 
 ARCH="${1:-both}"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-LIBS_DIR="$PROJECT_DIR/Libs"
 BUILD_DIR="$(mktemp -d)"
 NCPU=$(sysctl -n hw.ncpu)
 
@@ -59,11 +45,7 @@ trap cleanup EXIT
 download_sources() {
     echo "📥 Downloading source tarballs..."
 
-    if [ ! -f "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" ]; then
-        curl -fSL "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz" \
-            -o "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz"
-    fi
-    echo "$OPENSSL_SHA256  $BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" | shasum -a 256 -c -
+    fetch_openssl
 
     if [ ! -f "$BUILD_DIR/libssh2-$LIBSSH2_VERSION.tar.gz" ]; then
         curl -fSL "https://github.com/libssh2/libssh2/releases/download/libssh2-$LIBSSH2_VERSION/libssh2-$LIBSSH2_VERSION.tar.gz" \
@@ -72,43 +54,6 @@ download_sources() {
     echo "$LIBSSH2_SHA256  $BUILD_DIR/libssh2-$LIBSSH2_VERSION.tar.gz" | shasum -a 256 -c -
 
     echo "✅ Sources downloaded"
-}
-
-build_openssl() {
-    local arch=$1
-    local prefix="$BUILD_DIR/install-openssl-$arch"
-
-    echo ""
-    echo "🔨 Building OpenSSL $OPENSSL_VERSION for $arch..."
-
-    # Extract fresh copy for this arch
-    rm -rf "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-    mkdir -p "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-    tar xzf "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" -C "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch" --strip-components=1
-
-    cd "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-
-    local target
-    if [ "$arch" = "arm64" ]; then
-        target="darwin64-arm64-cc"
-    else
-        target="darwin64-x86_64-cc"
-    fi
-
-    MACOSX_DEPLOYMENT_TARGET=$DEPLOY_TARGET \
-    ./Configure \
-        "$target" \
-        no-shared \
-        no-tests \
-        no-apps \
-        no-docs \
-        --prefix="$prefix" \
-        -mmacosx-version-min=$DEPLOY_TARGET > /dev/null 2>&1
-
-    run_quiet make -j"$NCPU"
-    run_quiet make install_sw
-
-    echo "✅ OpenSSL $arch: $(ls -lh "$prefix/lib/libssl.a" | awk '{print $5}') (libssl) $(ls -lh "$prefix/lib/libcrypto.a" | awk '{print $5}') (libcrypto)"
 }
 
 # libssh2 1.11.1 is the newest release and is still vulnerable to CVE-2026-55200 (CVSS 9.2):
@@ -201,7 +146,7 @@ install_libs() {
 install_headers() {
     local arch=$1
     local prefix="$BUILD_DIR/install-libssh2-$arch"
-    local dest="$PROJECT_DIR/TablePro/Core/SSH/CLibSSH2/include"
+    local dest="$REPO_ROOT/TablePro/Core/SSH/CLibSSH2/include"
 
     echo "📦 Installing libssh2 headers..."
 
@@ -213,54 +158,12 @@ install_headers() {
     echo "✅ Headers installed to $dest"
 }
 
-create_universal() {
-    echo ""
-    echo "🔗 Creating universal (fat) library..."
-    if [ -f "$LIBS_DIR/libssh2_arm64.a" ] && [ -f "$LIBS_DIR/libssh2_x86_64.a" ]; then
-        lipo -create \
-            "$LIBS_DIR/libssh2_arm64.a" \
-            "$LIBS_DIR/libssh2_x86_64.a" \
-            -output "$LIBS_DIR/libssh2_universal.a"
-        if ! [ "$LIBS_DIR/libssh2_universal.a" -ef "$LIBS_DIR/libssh2.a" ]; then
-            cp "$LIBS_DIR/libssh2_universal.a" "$LIBS_DIR/libssh2.a"
-        fi
-        echo "   libssh2_universal.a ($(ls -lh "$LIBS_DIR/libssh2_universal.a" | awk '{print $5}'))"
-    fi
-}
-
 build_for_arch() {
     local arch=$1
     build_openssl "$arch"
     build_libssh2 "$arch"
     install_libs "$arch"
     install_headers "$arch"
-}
-
-verify_deployment_target() {
-    echo ""
-    echo "🔍 Verifying deployment targets..."
-    local failed=0
-    for lib in "$LIBS_DIR"/libssh2_*.a; do
-        [ -f "$lib" ] || continue
-        local name min_ver
-        name=$(basename "$lib")
-        min_ver=$(otool -l "$lib" 2>/dev/null | awk '/LC_BUILD_VERSION/{found=1} found && /minos/{print $2; found=0}' | sort -V | tail -1)
-        if [ -z "$min_ver" ]; then
-            min_ver=$(otool -l "$lib" 2>/dev/null | awk '/LC_VERSION_MIN_MACOSX/{found=1} found && /version/{print $2; found=0}' | sort -V | tail -1)
-        fi
-        if [ -n "$min_ver" ]; then
-            if [ "$(printf '%s\n' "$DEPLOY_TARGET" "$min_ver" | sort -V | tail -1)" != "$DEPLOY_TARGET" ]; then
-                echo "   ❌ $name targets macOS $min_ver (expected $DEPLOY_TARGET)"
-                failed=1
-            else
-                echo "   ✅ $name targets macOS $min_ver"
-            fi
-        fi
-    done
-    if [ "$failed" -eq 1 ]; then
-        echo "❌ FATAL: Some libraries have incorrect deployment targets"
-        exit 1
-    fi
 }
 
 # Main
@@ -277,7 +180,7 @@ case "$ARCH" in
     both)
         build_for_arch arm64
         build_for_arch x86_64
-        create_universal
+        make_universal libssh2
         ;;
     *)
         echo "Usage: $0 [arm64|x86_64|both]"
@@ -285,8 +188,7 @@ case "$ARCH" in
         ;;
 esac
 
-verify_deployment_target
-
+verify_deployment_target "$LIBS_DIR"/libssh2_*.a
 echo ""
 echo "🎉 Build complete! Libraries in Libs/:"
 ls -lh "$LIBS_DIR"/libssh2*.a 2>/dev/null

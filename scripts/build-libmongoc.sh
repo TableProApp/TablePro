@@ -1,17 +1,6 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-run_quiet() {
-    local logfile
-    logfile=$(mktemp)
-    if ! "$@" > "$logfile" 2>&1; then
-        tail -30 "$logfile"
-        rm -f "$logfile"
-        return 1
-    fi
-    rm -f "$logfile"
-}
-
 # Build static libmongoc + libbson for TablePro
 #
 # Produces architecture-specific and universal static libraries in Libs/:
@@ -37,15 +26,12 @@ run_quiet() {
 #   - CMake 3.15+ (brew install cmake)
 #   - curl
 
-DEPLOY_TARGET="14.0"
 MONGOC_VERSION="1.28.1"
 MONGOC_SHA256="a93259840f461b28e198311e32144f5f8dc9fbd74348029f2793774d781bb7da"
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/openssl-version.sh"
+# shellcheck source=lib/macos.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
 
 ARCH="${1:-both}"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-LIBS_DIR="$PROJECT_DIR/Libs"
 BUILD_DIR="$(mktemp -d)"
 NCPU=$(sysctl -n hw.ncpu)
 
@@ -64,11 +50,7 @@ trap cleanup EXIT
 download_sources() {
     echo "📥 Downloading source tarballs..."
 
-    if [ ! -f "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" ]; then
-        curl -fSL "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz" \
-            -o "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz"
-    fi
-    echo "$OPENSSL_SHA256  $BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" | shasum -a 256 -c -
+    fetch_openssl
 
     if [ ! -f "$BUILD_DIR/mongo-c-driver-$MONGOC_VERSION.tar.gz" ]; then
         curl -fSL "https://github.com/mongodb/mongo-c-driver/releases/download/$MONGOC_VERSION/mongo-c-driver-$MONGOC_VERSION.tar.gz" \
@@ -77,42 +59,6 @@ download_sources() {
     echo "$MONGOC_SHA256  $BUILD_DIR/mongo-c-driver-$MONGOC_VERSION.tar.gz" | shasum -a 256 -c -
 
     echo "✅ Sources downloaded"
-}
-
-build_openssl() {
-    local arch=$1
-    local prefix="$BUILD_DIR/install-openssl-$arch"
-
-    echo ""
-    echo "🔨 Building OpenSSL $OPENSSL_VERSION for $arch..."
-
-    rm -rf "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-    mkdir -p "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-    tar xzf "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" -C "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch" --strip-components=1
-
-    cd "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-
-    local target
-    if [ "$arch" = "arm64" ]; then
-        target="darwin64-arm64-cc"
-    else
-        target="darwin64-x86_64-cc"
-    fi
-
-    MACOSX_DEPLOYMENT_TARGET=$DEPLOY_TARGET \
-    run_quiet ./Configure \
-        "$target" \
-        no-shared \
-        no-tests \
-        no-apps \
-        no-docs \
-        --prefix="$prefix" \
-        -mmacosx-version-min=$DEPLOY_TARGET
-
-    run_quiet make -j"$NCPU"
-    run_quiet make install_sw
-
-    echo "✅ OpenSSL $arch: $(ls -lh "$prefix/lib/libssl.a" | awk '{print $5}') (libssl) $(ls -lh "$prefix/lib/libcrypto.a" | awk '{print $5}') (libcrypto)"
 }
 
 build_mongoc() {
@@ -191,7 +137,7 @@ install_libs() {
 install_headers() {
     local arch=$1
     local prefix="$BUILD_DIR/install-mongoc-$arch"
-    local dest="$PROJECT_DIR/Plugins/MongoDBDriverPlugin/CLibMongoc/include"
+    local dest="$REPO_ROOT/Plugins/MongoDBDriverPlugin/CLibMongoc/include"
 
     echo "📦 Installing libmongoc headers..."
 
@@ -204,23 +150,6 @@ install_headers() {
     cp "$inc_dir/libbson-1.0/bson/"*.h "$dest/bson/"
 
     echo "✅ Headers installed to $dest"
-}
-
-create_universal() {
-    echo ""
-    echo "🔗 Creating universal (fat) libraries..."
-    for lib in libmongoc libbson; do
-        if [ -f "$LIBS_DIR/${lib}_arm64.a" ] && [ -f "$LIBS_DIR/${lib}_x86_64.a" ]; then
-            lipo -create \
-                "$LIBS_DIR/${lib}_arm64.a" \
-                "$LIBS_DIR/${lib}_x86_64.a" \
-                -output "$LIBS_DIR/${lib}_universal.a"
-            if ! [ "$LIBS_DIR/${lib}_universal.a" -ef "$LIBS_DIR/${lib}.a" ]; then
-                cp "$LIBS_DIR/${lib}_universal.a" "$LIBS_DIR/${lib}.a"
-            fi
-            echo "   ${lib}_universal.a ($(ls -lh "$LIBS_DIR/${lib}_universal.a" | awk '{print $5}'))"
-        fi
-    done
 }
 
 build_for_arch() {
@@ -253,36 +182,6 @@ verify_tls_backend() {
     echo "   ✅ libmongoc has no Secure Transport references"
 }
 
-verify_deployment_target() {
-    echo ""
-    echo "🔍 Verifying deployment targets..."
-    local failed=0
-    for lib in "$LIBS_DIR"/lib{mongoc,bson}_*.a; do
-        [ -f "$lib" ] || continue
-        local name min_ver
-        name=$(basename "$lib")
-        min_ver=$(otool -l "$lib" 2>/dev/null | awk '/LC_BUILD_VERSION/{found=1} found && /minos/{print $2; found=0}' | sort -V | tail -1)
-        if [ -z "$min_ver" ]; then
-            min_ver=$(otool -l "$lib" 2>/dev/null | awk '/LC_VERSION_MIN_MACOSX/{found=1} found && /version/{print $2; found=0}' | sort -V | tail -1)
-        fi
-        if [ -n "$min_ver" ]; then
-            # max(target, minos) must be the target: a library built for a NEWER macOS than the
-            # app cannot run on the app's floor, while one built for an older macOS is fine. The
-            # head form asked the opposite question, so it passed exactly the libraries that break.
-            if [ "$(printf '%s\n' "$DEPLOY_TARGET" "$min_ver" | sort -V | tail -1)" != "$DEPLOY_TARGET" ]; then
-                echo "   ❌ $name targets macOS $min_ver (expected $DEPLOY_TARGET)"
-                failed=1
-            else
-                echo "   ✅ $name targets macOS $min_ver"
-            fi
-        fi
-    done
-    if [ "$failed" -eq 1 ]; then
-        echo "❌ FATAL: Some libraries have incorrect deployment targets"
-        exit 1
-    fi
-}
-
 mkdir -p "$LIBS_DIR"
 download_sources
 
@@ -296,7 +195,7 @@ case "$ARCH" in
     both)
         build_for_arch arm64
         build_for_arch x86_64
-        create_universal
+        make_universal libmongoc libbson
         ;;
     *)
         echo "Usage: $0 [arm64|x86_64|both]"
@@ -305,8 +204,7 @@ case "$ARCH" in
 esac
 
 verify_tls_backend
-verify_deployment_target
-
+verify_deployment_target "$LIBS_DIR"/libmongoc_*.a "$LIBS_DIR"/libbson_*.a
 echo ""
 echo "🎉 Build complete! Libraries in Libs/:"
 ls -lh "$LIBS_DIR"/lib{mongoc,bson}*.a 2>/dev/null

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+# shellcheck source=../lib/common.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/common.sh"
+
 # Build static libssh2 for iOS → xcframework
 #
 # Requires: OpenSSL xcframework already built (run build-openssl-ios.sh first)
@@ -15,18 +18,6 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LIBS_DIR="$PROJECT_DIR/Libs/ios"
 BUILD_DIR="$(mktemp -d)"
 NCPU=$(sysctl -n hw.ncpu)
-
-run_quiet() {
-    local logfile
-    logfile=$(mktemp)
-    if ! "$@" > "$logfile" 2>&1; then
-        echo "FAILED: $*"
-        tail -50 "$logfile"
-        rm -f "$logfile"
-        return 1
-    fi
-    rm -f "$logfile"
-}
 
 cleanup() {
     echo "   Cleaning up build directory..."
