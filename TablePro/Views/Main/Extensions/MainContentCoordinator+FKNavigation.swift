@@ -109,17 +109,26 @@ extension MainContentCoordinator {
 
     /// Toggle FK preview for the currently focused cell in the data grid.
     /// Called from the menu command system (Settings > Keyboard rebindable).
+    /// `focusedColumn` is a position in `tableView.tableColumns`, which carries the row-number
+    /// column and a hidden spacer before the data, and which the reader can reorder. Subtracting a
+    /// fixed offset from it named a different column than the one they were on, or none at all, so
+    /// this resolves it by column identity the way the key-equivalent path already does.
     func toggleFKPreviewForFocusedCell() {
         guard let tableView = NSApp.keyWindow?.firstResponder as? KeyHandlingTableView,
               let coordinator = tableView.coordinator,
               tableView.selectedRow >= 0,
-              tableView.focusedColumn >= 1
+              DataGridView.isDataTableColumn(tableView.focusedColumn),
+              let columnIndex = DataGridView.dataColumnIndex(
+                  for: tableView.focusedColumn,
+                  in: tableView,
+                  schema: coordinator.identitySchema
+              )
         else { return }
         coordinator.toggleForeignKeyPreview(
             tableView: tableView,
             row: tableView.selectedRow,
             column: tableView.focusedColumn,
-            columnIndex: tableView.focusedColumn - 1
+            columnIndex: columnIndex
         )
     }
 
