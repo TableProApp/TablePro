@@ -104,4 +104,15 @@ struct QuickSwitcherPanelControllerTests {
         #expect(panel.styleMask.contains(.borderless))
         panel.close()
     }
+
+    @Test("panel shadow follows the rounded content surface")
+    func panelShadowMask() throws {
+        let panel = QuickSwitcherPanel(hostingController: NSHostingController(rootView: Text(verbatim: "content")))
+        let contentLayer = try #require(panel.contentView?.layer)
+        #expect(panel.hasShadow)
+        #expect(contentLayer.cornerRadius == QuickSwitcherMetrics.cornerRadius)
+        #expect(contentLayer.cornerCurve == .continuous)
+        #expect(contentLayer.masksToBounds)
+        panel.close()
+    }
 }

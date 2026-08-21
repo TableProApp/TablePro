@@ -35,6 +35,15 @@ internal final class QuickSwitcherPanel: NSPanel {
         animationBehavior = .utilityWindow
         contentViewController = hostingController
         setContentSize(contentSize)
+
+        // WindowServer derives a transparent window's shadow from its root view. SwiftUI's glass
+        // shape does not update that root mask, so an otherwise rounded panel gets a thin outline
+        // around its rectangular window bounds. Match the hosting layer to the visible surface so
+        // the native shadow follows the same continuous corners.
+        hostingController.view.wantsLayer = true
+        hostingController.view.layer?.cornerRadius = QuickSwitcherMetrics.cornerRadius
+        hostingController.view.layer?.cornerCurve = .continuous
+        hostingController.view.layer?.masksToBounds = true
     }
 
     override var canBecomeKey: Bool { true }
