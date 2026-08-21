@@ -22,7 +22,7 @@ A failed connect paints the window with **Could not connect to `<name>`** and th
 
 ## TLS and certificates
 
-A handshake failure is reported with the cause named and a specific SSL Mode to switch to, with the driver's original error underneath. The ladder is Disabled, Preferred, Required, Verify CA, Verify Identity. Every handshake error string and the mode that fixes it is on [SSL/TLS](/features/ssl).
+A handshake failure is reported with the cause named and a specific SSL Mode to switch to, with the driver's original error underneath. The ladder is Disabled, Preferred, Required, Verify CA, Verify Identity. Every handshake error string and the mode that fixes it is on [SSL/TLS](/connections/ssl).
 
 ## A plugin will not install or load
 
@@ -60,7 +60,7 @@ The server presented a key that does not match the stored one, or you declined t
 
 The tunnel binds a local port between 60000 and 65000 and found none free. List what is holding them with `lsof -nP -iTCP -sTCP:LISTEN`. Quit those processes and reconnect.
 
-Failures on the far side start with "The SSH server could not reach …". Those and the authentication rejections are in [SSH Tunneling](/databases/ssh-tunneling).
+Failures on the far side start with "The SSH server could not reach …". Those and the authentication rejections are in [SSH Tunneling](/connections/ssh-tunneling).
 
 ## A query is slow, or the results stop short
 

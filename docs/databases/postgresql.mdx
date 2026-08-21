@@ -14,7 +14,7 @@ TablePro supports PostgreSQL 12 and later via the libpq C connector. The same dr
 | **Username** | - | Not pre-filled; most servers use `postgres` |
 | **Database** | - | **Required** (unlike MySQL) |
 
-Fill in the form and click **Save & Connect**. For remote servers use [SSH tunneling](/databases/ssh-tunneling); Google Cloud SQL instances can connect through the [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy).
+Fill in the form and click **Save & Connect**. For remote servers use [SSH tunneling](/connections/ssh-tunneling); Google Cloud SQL instances can connect through the [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy).
 
 <Frame caption="PostgreSQL connection form">
   <img className="block dark:hidden" src="/images/postgresql-connection-form.png" alt="PostgreSQL connection form" />
@@ -27,11 +27,11 @@ Fill in the form and click **Save & Connect**. For remote servers use [SSH tunne
 postgresql://user:password@host:5432/database
 ```
 
-`postgres://` also works. Opening a URL connects directly. See [Connection URL Reference](/databases/connection-urls).
+`postgres://` also works. Opening a URL connects directly. See [Connection URL Reference](/connections/urls).
 
 ## AWS IAM authentication
 
-Connect to RDS or Aurora with your AWS identity instead of a static password: set **Authentication** to an AWS IAM option and set **Username** to a database role granted `rds_iam`. See [AWS IAM Authentication](/databases/aws-iam) for setup, credential sources, and troubleshooting.
+Connect to RDS or Aurora with your AWS identity instead of a static password: set **Authentication** to an AWS IAM option and set **Username** to a database role granted `rds_iam`. See [AWS IAM Authentication](/connections/aws-iam) for setup, credential sources, and troubleshooting.
 
 ## Features
 
@@ -71,7 +71,7 @@ That separate connection means the tab does not share temp tables, session varia
 
 ## SSL/TLS
 
-New connections default to **Preferred** (libpq `sslmode=prefer`), which tries TLS first and falls back to plain. Pick **Verify CA** to validate the server certificate. See [SSL/TLS](/features/ssl).
+New connections default to **Preferred** (libpq `sslmode=prefer`), which tries TLS first and falls back to plain. Pick **Verify CA** to validate the server certificate. See [SSL/TLS](/connections/ssl).
 
 ## Troubleshooting
 

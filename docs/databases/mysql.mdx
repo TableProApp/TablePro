@@ -31,7 +31,7 @@ MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no au
 mysql://user:password@host:3306/database
 ```
 
-Opening a URL connects directly. See [Connection URL Reference](/databases/connection-urls).
+Opening a URL connects directly. See [Connection URL Reference](/connections/urls).
 
 ## Common setups
 
@@ -40,17 +40,17 @@ Opening a URL connects directly. See [Connection URL Reference](/databases/conne
 | Homebrew | `localhost:3306` |
 | Docker | `localhost` with the mapped port, password from `MYSQL_ROOT_PASSWORD` |
 | MAMP Pro | `localhost:8889`, user and password `root` |
-| AWS RDS / Aurora | Endpoint hostname, password or [AWS IAM](/databases/aws-iam) |
-| Google Cloud SQL | [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy) |
-| Remote production | [SSH tunnel](/databases/ssh-tunneling) |
+| AWS RDS / Aurora | Endpoint hostname, password or [AWS IAM](/connections/aws-iam) |
+| Google Cloud SQL | [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy) |
+| Remote production | [SSH tunnel](/connections/ssh-tunneling) |
 
 ## AWS IAM authentication
 
-RDS and Aurora connections can use your AWS identity instead of a static password: TablePro signs a fresh 15-minute token on every connect and reconnect. Setup and troubleshooting are on [AWS IAM Authentication](/databases/aws-iam).
+RDS and Aurora connections can use your AWS identity instead of a static password: TablePro signs a fresh 15-minute token on every connect and reconnect. Setup and troubleshooting are on [AWS IAM Authentication](/connections/aws-iam).
 
 ## Google Cloud SQL
 
-Turn on **Cloud SQL Auth Proxy** in the connection form and enter the instance connection name; TablePro starts and stops the proxy for you. See [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy).
+Turn on **Cloud SQL Auth Proxy** in the connection form and enter the instance connection name; TablePro starts and stops the proxy for you. See [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy).
 
 ## Users & Roles
 
@@ -71,11 +71,11 @@ The sidebar lists all accessible databases with each table's structure (columns,
 
 Table and column comments show in the UI: the sidebar dims a table's comment after its name, and the data grid header tooltip includes the column comment. Toggle this by right-clicking the sidebar and choosing **View Options > Comments**.
 
-Set session variables (timezone, encoding) on connect with [Startup Commands](/databases/overview#startup-commands).
+Set session variables (timezone, encoding) on connect with [Startup Commands](/connections#startup-commands).
 
 ## SSL/TLS
 
-New connections default to **Preferred**: the driver tries TLS first and retries in plain text only after an SSL handshake error (auth and network errors are not retried). This works for Cloud SQL, Azure MySQL, and local Docker alike. Use **Verify CA** with the provider's certificate for strict validation. See [SSL/TLS](/features/ssl).
+New connections default to **Preferred**: the driver tries TLS first and retries in plain text only after an SSL handshake error (auth and network errors are not retried). This works for Cloud SQL, Azure MySQL, and local Docker alike. Use **Verify CA** with the provider's certificate for strict validation. See [SSL/TLS](/connections/ssl).
 
 ## Troubleshooting
 

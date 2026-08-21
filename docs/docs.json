@@ -63,6 +63,42 @@
     {
       "source": "/features/import",
       "destination": "/features/import-export"
+    },
+    {
+      "source": "/databases/connection-urls",
+      "destination": "/connections/urls"
+    },
+    {
+      "source": "/databases/ssh-tunneling",
+      "destination": "/connections/ssh-tunneling"
+    },
+    {
+      "source": "/databases/cloudflare-tunnel",
+      "destination": "/connections/cloudflare-tunnel"
+    },
+    {
+      "source": "/databases/cloud-sql-proxy",
+      "destination": "/connections/cloud-sql-proxy"
+    },
+    {
+      "source": "/databases/socks-proxy",
+      "destination": "/connections/socks-proxy"
+    },
+    {
+      "source": "/databases/aws-iam",
+      "destination": "/connections/aws-iam"
+    },
+    {
+      "source": "/databases/overview",
+      "destination": "/connections"
+    },
+    {
+      "source": "/features/ssh-profiles",
+      "destination": "/connections/ssh-profiles"
+    },
+    {
+      "source": "/features/ssl",
+      "destination": "/connections/ssl"
     }
   ],
   "navigation": {
@@ -84,41 +120,47 @@
           },
           {
             "group": "Connections",
+            "icon": "plug",
             "pages": [
-              "databases/overview",
-              "databases/connection-urls",
-              "databases/ssh-tunneling",
-              "databases/cloudflare-tunnel",
-              "databases/cloud-sql-proxy",
-              "databases/socks-proxy",
-              "databases/aws-iam"
+              "connections/index",
+              "connections/urls",
+              "connections/ssh-tunneling",
+              "connections/ssh-profiles",
+              "connections/cloudflare-tunnel",
+              "connections/cloud-sql-proxy",
+              "connections/socks-proxy",
+              "connections/aws-iam",
+              "connections/ssl",
+              "features/connection-sharing",
+              "features/project-folder-import"
             ]
           },
           {
             "group": "Databases",
             "icon": "database",
             "pages": [
+              "features/plugins",
+              "databases/dynamodb",
+              "databases/redshift",
               "databases/beancount",
-              "databases/bigquery",
               "databases/cassandra",
               "databases/clickhouse",
               "databases/cloudflare-d1",
               "databases/cockroachdb",
               "databases/dameng",
               "databases/duckdb",
-              "databases/dynamodb",
               "databases/elasticsearch",
               "databases/etcd",
+              "databases/bigquery",
               "databases/libsql",
               "databases/mariadb",
-              "databases/mongodb",
               "databases/mssql",
+              "databases/mongodb",
               "databases/mysql",
               "databases/oracle",
               "databases/pglite",
               "databases/postgresql",
               "databases/redis",
-              "databases/redshift",
               "databases/snowflake",
               "databases/sqlite",
               "databases/surrealdb",
@@ -127,84 +169,76 @@
             ]
           },
           {
-            "group": "Features",
+            "group": "Write SQL",
+            "icon": "code",
+            "pages": [
+              "features/sql-editor",
+              "features/autocomplete",
+              "features/query-parameters",
+              "features/vim-mode",
+              "features/query-history",
+              "features/query-insights"
+            ]
+          },
+          {
+            "group": "Browse and edit data",
+            "icon": "table",
+            "pages": [
+              "features/data-grid",
+              "features/filtering",
+              "features/change-tracking",
+              "features/json-viewer",
+              "features/csv-inspector"
+            ]
+          },
+          {
+            "group": "Schema and server",
+            "icon": "sitemap",
+            "pages": [
+              "features/table-structure",
+              "features/table-operations",
+              "features/er-diagram",
+              "features/explain-visualization",
+              "features/server-dashboard",
+              "features/users-roles"
+            ]
+          },
+          {
+            "group": "Import and export",
+            "icon": "arrow-right-arrow-left",
+            "pages": [
+              "features/import-export",
+              "features/backup-restore"
+            ]
+          },
+          {
+            "group": "AI",
+            "icon": "sparkles",
+            "pages": [
+              "features/ai-assistant",
+              "features/mcp"
+            ]
+          },
+          {
+            "group": "Around the app",
+            "icon": "window-maximize",
             "pages": [
               "features/overview",
-              {
-                "group": "Editor & Data",
-                "pages": [
-                  "features/sql-editor",
-                  "features/query-parameters",
-                  "features/data-grid",
-                  "features/table-structure",
-                  "features/table-operations",
-                  "features/autocomplete",
-                  "features/vim-mode"
-                ]
-              },
-              {
-                "group": "AI",
-                "pages": [
-                  "features/ai-assistant",
-                  "features/mcp"
-                ]
-              },
-              {
-                "group": "Views & Visualization",
-                "pages": [
-                  "features/er-diagram",
-                  "features/explain-visualization",
-                  "features/json-viewer",
-                  "features/server-dashboard",
-                  "features/users-roles"
-                ]
-              },
-              {
-                "group": "Data Management",
-                "pages": [
-                  "features/csv-inspector",
-                  "features/import-export",
-                  "features/backup-restore",
-                  "features/change-tracking",
-                  "features/filtering"
-                ]
-              },
-              {
-                "group": "Workflow",
-                "pages": [
-                  "features/tabs",
-                  "features/workspace-rail",
-                  "features/open-quickly",
-                  "features/query-history",
-                  "features/query-insights",
-                  "features/favorites",
-                  "features/project-folder-import",
-                  "features/keyboard-shortcuts"
-                ]
-              },
-              {
-                "group": "Sharing",
-                "pages": [
-                  "features/ssh-profiles",
-                  "features/connection-sharing"
-                ]
-              },
-              {
-                "group": "Sync",
-                "pages": [
-                  "features/icloud-sync",
-                  "features/handoff"
-                ]
-              },
-              {
-                "group": "Team & Licensing",
-                "pages": [
-                  "features/team",
-                  "features/licensing"
-                ]
-              },
-              "features/plugins",
-              "features/acknowledgements"
+              "features/tabs",
+              "features/workspace-rail",
+              "features/open-quickly",
+              "features/favorites",
+              "features/keyboard-shortcuts"
+            ]
+          },
+          {
+            "group": "Sync and licensing",
+            "icon": "arrows-rotate",
+            "pages": [
+              "features/icloud-sync",
+              "features/handoff",
+              "features/licensing",
+              "features/team"
             ]
           },
           {
@@ -229,7 +263,7 @@
             "pages": [
               "security/privacy",
               "features/safe-mode",
-              "features/ssl"
+              "features/acknowledgements"
             ]
           }
         ]

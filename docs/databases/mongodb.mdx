@@ -61,7 +61,7 @@ Over an SSH tunnel TablePro connects to the first host only and drops the rest o
 
 ## SSL/TLS
 
-The MongoDB driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). For unencrypted local instances, use **Disabled** or [SSH tunneling](/databases/ssh-tunneling). See [SSL/TLS](/features/ssl) for details.
+The MongoDB driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). For unencrypted local instances, use **Disabled** or [SSH tunneling](/connections/ssh-tunneling). See [SSL/TLS](/connections/ssl) for details.
 
 ## Connection URL
 
@@ -72,7 +72,7 @@ mongodb+srv://user:password@cluster.mongodb.net/database
 
 The `mongodb+srv://` scheme resolves hosts through DNS SRV records and does not allow a port. If you paste an SRV URL that includes one (for example `cluster.mongodb.net:27017`), TablePro strips it before connecting. The plain `mongodb://` scheme keeps any port you provide.
 
-See [Connection URL Reference](/databases/connection-urls) for all parameters.
+See [Connection URL Reference](/connections/urls) for all parameters.
 
 ## Features
 

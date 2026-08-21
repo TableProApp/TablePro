@@ -36,7 +36,7 @@ TablePro connects to 27 databases through its plugin system. This page covers cr
 | [Cloudflare D1](/databases/cloudflare-d1) | Cloud API | No | No | No | No | No |
 | [libSQL / Turso](/databases/libsql) | URL | No | No | No | No | No |
 
-Transport details: [SSH Tunneling](/databases/ssh-tunneling), [SSL/TLS](/features/ssl), [Cloudflare Tunnel](/databases/cloudflare-tunnel), [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy), [SOCKS Proxy](/databases/socks-proxy).
+Transport details: [SSH Tunneling](/connections/ssh-tunneling), [SSL/TLS](/connections/ssl), [Cloudflare Tunnel](/connections/cloudflare-tunnel), [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy), [SOCKS Proxy](/connections/socks-proxy).
 
 ## Creating a connection
 
@@ -62,7 +62,7 @@ The chooser groups drivers by category: Relational, Document, Key-Value, Analyti
 
 ### Import from URL
 
-Paste a connection string and let TablePro fill in the form. In the chooser sheet footer, click **Import from URL…**, paste the URL, review the parsed preview, and click **Import**. The form opens pre-filled so you can review and save. See [Connection URL Reference](/databases/connection-urls) for schemes and formats.
+Paste a connection string and let TablePro fill in the form. In the chooser sheet footer, click **Import from URL…**, paste the URL, review the parsed preview, and click **Import**. The form opens pre-filled so you can review and save. See [Connection URL Reference](/connections/urls) for schemes and formats.
 
 <Frame caption="Import from URL sheet with parsed preview">
   <img className="block dark:hidden" src="/images/import-from-url.png" alt="Import from URL" />
@@ -89,7 +89,7 @@ What happens on open:
 - If a saved connection matches the host, port, database, and username, TablePro reuses it. Otherwise it creates a temporary session that is not added to your connection list
 - The URL password stays in memory for the session. It is never written to the Keychain
 - If the connection has a pre-connect script, TablePro shows the script and asks before running it
-- URLs can target a table or apply a filter via query parameters; filters also require confirmation. See [Connection URL Reference](/databases/connection-urls)
+- URLs can target a table or apply a filter via query parameters; filters also require confirmation. See [Connection URL Reference](/connections/urls)
 
 ## Connection form
 
@@ -98,11 +98,11 @@ The form is a sidebar with up to nine panes. Tunnel and SSL panes appear only fo
 | Pane | Contents |
 |------|----------|
 | **General** | Name, host, port, database, credentials, Test Connection |
-| **SSH Tunnel** | Reach databases behind a bastion host. See [SSH Tunneling](/databases/ssh-tunneling) |
-| **Cloudflare Tunnel** | Connect through `cloudflared`. See [Cloudflare Tunnel](/databases/cloudflare-tunnel) |
-| **Cloud SQL Auth Proxy** | Google Cloud SQL proxy for MySQL, PostgreSQL, SQL Server. See [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy) |
-| **SOCKS Proxy** | Route the connection through a SOCKS5 proxy. See [SOCKS Proxy](/databases/socks-proxy) |
-| **SSL/TLS** | Encryption mode and certificates. See [SSL/TLS](/features/ssl) |
+| **SSH Tunnel** | Reach databases behind a bastion host. See [SSH Tunneling](/connections/ssh-tunneling) |
+| **Cloudflare Tunnel** | Connect through `cloudflared`. See [Cloudflare Tunnel](/connections/cloudflare-tunnel) |
+| **Cloud SQL Auth Proxy** | Google Cloud SQL proxy for MySQL, PostgreSQL, SQL Server. See [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy) |
+| **SOCKS Proxy** | Route the connection through a SOCKS5 proxy. See [SOCKS Proxy](/connections/socks-proxy) |
+| **SSL/TLS** | Encryption mode and certificates. See [SSL/TLS](/connections/ssl) |
 | **Customization** | Color, tags, group, Safe Mode |
 | **Advanced** | Startup commands, pre-connect script, external access, plugin-specific fields |
 | **AI Rules** | Per-connection guidance the AI assistant sees on every chat turn. See [AI Assistant](/features/ai-assistant) |

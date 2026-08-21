@@ -137,7 +137,7 @@ sqlserver://user:password@host:1433/database
 mssql://user:password@host:1433/database
 ```
 
-See [Connection URL Reference](/databases/connection-urls) for all parameters.
+See [Connection URL Reference](/connections/urls) for all parameters.
 
 ## Databases and schemas
 
@@ -170,11 +170,11 @@ TablePro maps the SSL mode to FreeTDS `DBSETENCRYPT`. New connections default to
 
 FreeTDS reads certificate settings from a config file rather than from the connection, so the two verifying modes make TablePro write a one-entry config for that connection and point FreeTDS at it. Nothing on your machine changes: your own `freetds.conf` is used for every other connection.
 
-Verification uses the macOS system roots at `/etc/ssl/cert.pem`, which covers Azure SQL and any server with a publicly trusted certificate. For a private authority, set the CA certificate on the SSL tab and that file is used instead. See [SSL/TLS](/features/ssl) for concepts.
+Verification uses the macOS system roots at `/etc/ssl/cert.pem`, which covers Azure SQL and any server with a publicly trusted certificate. For a private authority, set the CA certificate on the SSL tab and that file is used instead. See [SSL/TLS](/connections/ssl) for concepts.
 
 ## Google Cloud SQL
 
-SQL Server connections can run through the Cloud SQL Auth Proxy; TablePro starts and stops the proxy for you. See [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy).
+SQL Server connections can run through the Cloud SQL Auth Proxy; TablePro starts and stops the proxy for you. See [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy).
 
 ## Troubleshooting
 

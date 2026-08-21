@@ -18,11 +18,11 @@ Click **Create Connection…**, select **ClickHouse**, enter host, port, credent
 | **Username** | `default` | Leave empty and TablePro sends `default`. Set a password in production |
 | **Database** | `default` | Leave empty and the server uses `default`. Switch with Cmd+K |
 
-**SSL/TLS**: Setting any non-Disabled SSL Mode switches the URL scheme to `https`. **Preferred** and **Required** skip certificate verification, **Verify CA** validates against the supplied CA file, **Verify Identity** uses system default HTTPS trust (certificate chain plus hostname). Use **Verify Identity** for ClickHouse Cloud (port 8443); its certificates chain to a public CA. Use **Required** only for a self-signed certificate you have no CA file for. See [SSL/TLS](/features/ssl).
+**SSL/TLS**: Setting any non-Disabled SSL Mode switches the URL scheme to `https`. **Preferred** and **Required** skip certificate verification, **Verify CA** validates against the supplied CA file, **Verify Identity** uses system default HTTPS trust (certificate chain plus hostname). Use **Verify Identity** for ClickHouse Cloud (port 8443); its certificates chain to a public CA. Use **Required** only for a self-signed certificate you have no CA file for. See [SSL/TLS](/connections/ssl).
 
 The CA file may be PEM or DER. If **Verify CA** cannot read the file you point it at, the connection fails rather than falling back to the public root store.
 
-For unencrypted HTTP to a remote server, use [SSH tunneling](/databases/ssh-tunneling).
+For unencrypted HTTP to a remote server, use [SSH tunneling](/connections/ssh-tunneling).
 
 ## Connection URL
 
@@ -30,7 +30,7 @@ For unencrypted HTTP to a remote server, use [SSH tunneling](/databases/ssh-tunn
 clickhouse://user:password@host:8123/database
 ```
 
-See [Connection URL Reference](/databases/connection-urls) for all parameters.
+See [Connection URL Reference](/connections/urls) for all parameters.
 
 ## Features
 

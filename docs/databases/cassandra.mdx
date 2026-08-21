@@ -29,7 +29,7 @@ cassandra://user:password@host:9042/keyspace
 scylladb://user:password@host:9042/keyspace
 ```
 
-`cql://` and `scylla://` work too. See [Connection URL Reference](/databases/connection-urls#cassandra-/-scylladb).
+`cql://` and `scylla://` work too. See [Connection URL Reference](/connections/urls#cassandra-/-scylladb).
 
 ## Example configurations
 
@@ -37,7 +37,7 @@ scylladb://user:password@host:9042/keyspace
 
 **Docker**: `cassandra:latest`, user/pass `cassandra:cassandra`
 
-**Remote**: use [SSH tunneling](/databases/ssh-tunneling) for production clusters
+**Remote**: use [SSH tunneling](/connections/ssh-tunneling) for production clusters
 
 ## Amazon Keyspaces (IAM)
 
@@ -45,7 +45,7 @@ Set **Authentication** to an AWS IAM mode (Access Key, Profile, or SSO) to conne
 
 ## SSL/TLS
 
-The Cassandra driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). Use **Verify CA** with a CA certificate path for private PKI. For mutual TLS, set the client certificate and key paths; if the key is encrypted, enter its passphrase in the **Key Passphrase** field (stored in the Keychain). See [SSL/TLS](/features/ssl) for details.
+The Cassandra driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). Use **Verify CA** with a CA certificate path for private PKI. For mutual TLS, set the client certificate and key paths; if the key is encrypted, enter its passphrase in the **Key Passphrase** field (stored in the Keychain). See [SSL/TLS](/connections/ssl) for details.
 
 ## Features
 

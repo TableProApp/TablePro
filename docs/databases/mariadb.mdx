@@ -3,7 +3,7 @@ title: MariaDB
 description: Connect to MariaDB 10.x and later through the bundled MySQL driver
 ---
 
-Setup lives on the [MySQL](/databases/mysql) page. Picking **MySQL** or **MariaDB** in the connection form loads the same plugin, built on MariaDB Connector/C 3.4.8, so the fields, [AWS IAM](/databases/aws-iam), SSL/TLS and the rest of the feature set behave identically. Cloud SQL Auth Proxy is the one exception: that pane is offered for MySQL, PostgreSQL, and SQL Server only.
+Setup lives on the [MySQL](/databases/mysql) page. Picking **MySQL** or **MariaDB** in the connection form loads the same plugin, built on MariaDB Connector/C 3.4.8, so the fields, [AWS IAM](/connections/aws-iam), SSL/TLS and the rest of the feature set behave identically. Cloud SQL Auth Proxy is the one exception: that pane is offered for MySQL, PostgreSQL, and SQL Server only.
 
 ## Connection URL
 
@@ -13,7 +13,7 @@ Both schemes open a connection; `mariadb://` creates a MariaDB connection, `mysq
 mariadb://user:password@host:3306/database
 ```
 
-See [Connection URL Reference](/databases/connection-urls).
+See [Connection URL Reference](/connections/urls).
 
 ## Differences from MySQL
 
@@ -28,4 +28,4 @@ See [Connection URL Reference](/databases/connection-urls).
 ## See also
 
 - [MySQL](/databases/mysql): setup, connection fields, SSL/TLS, troubleshooting
-- [SSH Tunneling](/databases/ssh-tunneling)
+- [SSH Tunneling](/connections/ssh-tunneling)

@@ -25,7 +25,7 @@ AWS IAM authentication is not available for Redshift connections (unlike MySQL a
 redshift://user:password@my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com:5439/dev
 ```
 
-See [Connection URL Reference](/databases/connection-urls).
+See [Connection URL Reference](/connections/urls).
 
 ## Features
 
@@ -64,7 +64,7 @@ Redshift is a columnar warehouse, not a general-purpose RDBMS.
 
 ## Troubleshooting
 
-**Connection refused**: check the security group allows port 5439, the cluster is publicly accessible (or use an [SSH tunnel](/databases/ssh-tunneling)), and the cluster is not paused.
+**Connection refused**: check the security group allows port 5439, the cluster is publicly accessible (or use an [SSH tunnel](/connections/ssh-tunneling)), and the cluster is not paused.
 
 **Auth failed**: verify the master username and password in the AWS Console.
 
