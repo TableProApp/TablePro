@@ -4,6 +4,24 @@ description: Downloads the products the build job produced and points XCTESTRUN 
 runs:
   using: composite
   steps:
+    # The app cannot launch without these, so a test job needs them even though it does not build.
+    # project.yml puts $(SRCROOT)/Libs/dylibs on LD_RUNPATH_SEARCH_PATHS, which bakes an absolute
+    # path into the binary, and TablePro.debug.dylib (the app's own code, loaded at launch) links
+    # @rpath/libssl.3.dylib and @rpath/libcrypto.3.dylib. Those are not copied into the bundle in a
+    # Debug build, so with Libs/dylibs absent dyld cannot load the app and the test host aborts with
+    # SIGABRT before XCTest ever connects, reporting zero tests rather than a missing file.
+    - name: Cache static libraries
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: Libs
+        key: ${{ runner.os }}-libs-${{ hashFiles('Libs/checksums.sha256', 'Plugins/MSSQLDriverPlugin/CFreeTDS/include/sybdb.h') }}
+
+    - name: Download static libraries
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: scripts/download-libs.sh
+
     - name: Download the built products
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
@@ -39,3 +57,13 @@ runs:
             echo "XCTESTRUN=$(locate TablePro)"
             echo "DAMENG_XCTESTRUN=$(locate DamengDriverTests)"
         } >> "$GITHUB_ENV"
+
+        # Checked here rather than discovered at test time. A missing one of these surfaces as
+        # "crashed with signal abrt before establishing connection" with zero executed tests, which
+        # names neither the library nor the reason.
+        for lib in libssl.3.dylib libcrypto.3.dylib; do
+            if [ ! -f "Libs/dylibs/$lib" ]; then
+                echo "::error::Libs/dylibs/$lib is missing; the app links it through an absolute rpath and will abort on launch"
+                exit 1
+            fi
+        done
