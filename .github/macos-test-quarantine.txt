@@ -1,51 +1,92 @@
-# Quarantined macOS test suites (skipped by the macOS Tests CI gate).
+# Quarantined macOS test cases (skipped by the macOS Tests CI gate).
 #
-# These suites fail or hang in the headless XCTest host for reasons documented below,
-# not because the app code is wrong. The gate runs every other suite. Burn this list
-# down: fix a suite, delete its line, and it rejoins the gate. See
-# specs/claude-code-refactor-roadmap.md and the macOS-test gotchas note.
+# One test case per line, as xcodebuild enumerates it: Suite/case(). '#' starts a comment.
+# quarantine-args.sh checks every line against the real enumeration and fails the job on any entry
+# that would skip nothing, so a renamed case cannot leave an inert line behind and a Swift Testing
+# case cannot lose its parentheses and silently rejoin the run.
 #
-# Format: one Swift Testing suite type name per line. '#' starts a comment.
+# This file used to name whole suites. 39 suites were listed, and running them measured 483 passing
+# cases against 53 failing ones: nine suites in the list were entirely green and the rest were
+# failing in ones and twos. Nine tenths of what the gate skipped was skipped because a sibling case
+# in the same file was broken.
+#
+# Burn this list down: fix a case, delete its line, and it rejoins the gate.
 
-# --- Driver-dependent: bundled .tableplugin drivers do not activate in the headless test
-#     host (only plugin metadata loads), so driver-backed SQL generation returns empty.
-TableOperationsPluginTests
-TableQueryBuilderFilteredQueryTests
-SQLCompletionProviderTests
-SQLStatementGeneratorPKRegressionTests
-SQLStatementGeneratorCompositePKTests
-EtcdQueryBuilderBrowseTests
-EtcdQueryBuilderCountTests
-EtcdQueryBuilderFilteredTests
-EtcdQueryBuilderTagTests
-EtcdPrefixRangeEndTests
-DataChangeManagerClickHouseTests
-QueryExecutorTests
-ClickHouseDialectTests
-ValidateDriverDescriptorTests
-PluginCapabilityTests
-DatabaseTypeCassandraTests
-RowOperationsManagerTests
-StructureGridDelegateAddRowTests
-SaveCompletionTests
-ChangeReapplyVersionTests
+# --- Asserts a fallback that no longer exists.
+#     TableOperationSQLBuilder delegates every statement to the connected plugin adapter and returns
+#     nothing when there is none: `adapterProvider()?.foreignKeyDisableStatements() ?? []`. The
+#     built-in DatabaseType switches these expect were deleted, so the empty result is correct and
+#     the expectation is what is stale. Each needs rewriting against a stub adapter.
+TableOperationsPluginTests/combinedMySQLWithFK()
+TableOperationsPluginTests/dropMySQL()
+TableOperationsPluginTests/dropPostgreSQLCascade()
+TableOperationsPluginTests/fkDisableMariaDB()
+TableOperationsPluginTests/fkDisableMySQL()
+TableOperationsPluginTests/fkDisableSQLite()
+TableOperationsPluginTests/fkEnableMySQL()
+TableOperationsPluginTests/fkEnableSQLite()
+TableOperationsPluginTests/sortedOrder()
+TableOperationsPluginTests/truncateMySQL()
+TableOperationsPluginTests/truncatePostgreSQLCascade()
+TableOperationsPluginTests/truncatePostgreSQLNoCascade()
+TableQueryBuilderFilteredQueryTests/filteredQueryExcludesDisabledFilter()
+TableQueryBuilderFilteredQueryTests/filteredQueryWithEnabledFilter()
+ClickHouseDialectTests/testFactoryFallbackWithoutPlugin()
+SQLStatementGeneratorPKRegressionTests/testClickHouseDeleteWithPK()
+DataChangeManagerClickHouseTests/alterTableUpdateCounted()
+DataChangeManagerClickHouseTests/clickhouseUpdateWithoutPrimaryKey()
+SQLCompletionProviderTests/testCommaFromScopesColumnsToAllTables()
+SQLCompletionProviderTests/testMySQLProviderTypes()
+SQLCompletionProviderTests/testProviderAcceptsDatabaseType()
 
-# --- Persistence-entangled: tests assume lowercase enum values but rawValues are
-#     display-style ("Red"/"Private Key"); changing them needs a Codable migration.
-ConnectionURLFormatterSSHProfileTests
-DatabaseConnectionExternalAccessTests
-DataGridSettingsDefaultSortDecoderTests
+# --- Needs a driver actually registered in the host.
+#     Both duplicate-ID checks report "an error was expected but none was thrown", which is what an
+#     empty registry produces: with nothing registered there is no duplicate to reject.
+ValidateDriverDescriptorTests/rejectsDuplicateAdditionalTypeId()
+ValidateDriverDescriptorTests/rejectsDuplicatePrimaryTypeId()
+PluginCapabilityTests/decodingRemovedRawValueFails()
 
-# --- Environment-coupled: iCloud entitlement, locally-installed apps, or live network.
-TablePlusImporterTests
-SequelAceImporterTests
-HostKeyStoreTests
-KeychainHelperTests
+# --- Stale fixture: the model gained a field the fixture JSON does not carry, so decoding throws
+#     before the assertion is reached.
+DatabaseConnectionExternalAccessTests/decodeJSONWithExplicitValue()
+DatabaseConnectionExternalAccessTests/decodeLegacyJSONDefaultsToReadOnly()
+DataGridSettingsDefaultSortDecoderTests/missingKeyFallsBackToNone()
 
-# --- Genuine drift needing per-test investigation (some tests are likely wrong).
-StructureChangeManagerUndoTests
-DataChangeManagerExtendedTests
-DataChangeManagerTests
-CoordinatorEditorLoadTests
-CommandActionsDispatchTests
-ChatToolSpecCopilotTests
+# --- Asserts a string the app no longer produces. The behaviour changed on purpose; the expected
+#     value did not follow.
+ConnectionURLFormatterSSHProfileTests/inlineSSHConfigInURL()
+ConnectionURLFormatterSSHProfileTests/noProfileFallbackUsesInlineConfig()
+ConnectionURLFormatterSSHProfileTests/profileSSHConfigInURL()
+DatabaseTypeCassandraTests/scylladbIconName()
+SaveCompletionTests/alertLevel_pendingTruncates_clearsParams()
+SaveCompletionTests/pendingTruncatesReadOnly_setsError()
+SaveCompletionTests/readOnly_setsErrorMessage()
+SaveCompletionTests/safeModeLevel_pendingDeletes_clearsParams()
+SaveCompletionTests/silentLevel_pendingTruncates_clearsViaNormalPath()
+
+# --- Change-tracking semantics drifted: reloadVersion no longer increments where these expect it
+#     to, and undo restores a different working set. Needs deciding case by case whether the manager
+#     or the expectation is wrong.
+ChangeReapplyVersionTests/dataChangeManagerVersionIncrements()
+DataChangeManagerTests/reloadVersionIncrementsOnChange()
+DataChangeManagerExtendedTests/discardChangesPreservesUndoRedoUnlikeClearChanges()
+DataChangeManagerExtendedTests/insertThenEditThenUndoRevertsCell()
+DataChangeManagerExtendedTests/recordRowInsertionIncrementsReloadVersion()
+RowOperationsManagerTests/addNewRowIncrementsReloadVersion()
+RowOperationsManagerTests/addNewRowUsesNilForNoDefaults()
+StructureChangeManagerUndoTests/multipleUndos()
+StructureChangeManagerUndoTests/undoDeleteNewColumnReAdds()
+StructureChangeManagerUndoTests/undoTwoDeletesNoDuplicates()
+StructureGridDelegateAddRowTests/sqliteIndexes_deleteIsNoOp()
+StructureGridDelegateAddRowTests/sqliteIndexes_isNoOp()
+
+# --- Environment-coupled: reads the login keychain or an app installed on the machine.
+KeychainHelperTests/writeOverwritesExistingValue()
+SequelAceImporterTests/testIsAvailable_whenFileExists_returnsTrue()
+TablePlusImporterTests/testImportConnections_mapsDriverCorrectly()
+
+# --- Genuine behaviour difference, needs investigation.
+#     allMaxBytes: an all-0xFF prefix returns the replacement characters rather than "\0".
+ChatToolSpecCopilotTests/addsRequiredWhenMissing()
+CommandActionsDispatchTests/insertQueryFromAI_appendsToExisting()
+EtcdPrefixRangeEndTests/allMaxBytes()

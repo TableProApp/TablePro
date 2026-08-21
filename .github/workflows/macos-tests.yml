@@ -313,10 +313,11 @@ jobs:
 
       - uses: ./.github/actions/unpack-test-products
 
-      # Quarantined suites (driver-loading, env-coupled, or hanging headless) are listed
-      # in .github/macos-test-quarantine.txt. Burn that list down. The script refuses to run if
-      # an entry no longer names a suite, because xcodebuild accepts -skip-testing for a suite
-      # that does not exist and says nothing, which left one line inert for 479 commits.
+      # Quarantined cases are listed one per line in .github/macos-test-quarantine.txt. Burn that
+      # list down. The script enumerates the target first and refuses to run if any entry would
+      # skip nothing, because xcodebuild accepts -skip-testing for a case that does not exist and
+      # says nothing: that left one line inert for 479 commits, and it is also what happens to a
+      # Swift Testing case written without its parentheses.
       - name: Run unit tests
         run: |
           set -o pipefail
@@ -325,7 +326,7 @@ jobs:
           SKIP_ARGS=()
           while IFS= read -r arg; do
             SKIP_ARGS+=("$arg")
-          done < <(scripts/ci/quarantine-args.sh .github/macos-test-quarantine.txt TableProTests TableProTests)
+          done < <(scripts/ci/quarantine-args.sh .github/macos-test-quarantine.txt TableProTests "$XCTESTRUN" "$TEST_DESTINATION")
           xcodebuild test-without-building \
             -xctestrun "$XCTESTRUN" \
             -destination "$TEST_DESTINATION" \

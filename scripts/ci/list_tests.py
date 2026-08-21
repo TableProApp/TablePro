@@ -63,12 +63,30 @@ def main():
     if not identifiers:
         sys.exit(f"test enumeration returned no cases for {target}")
 
-    skipped = quarantined_names(os.environ.get("QUARANTINE"))
+    quarantine = os.environ.get("QUARANTINE")
+    skipped = quarantined_names(quarantine)
 
     def is_quarantined(identifier):
         parts = identifier.split("/")
         suite = parts[1] if len(parts) > 1 else identifier
         return suite in skipped or identifier in skipped
+
+    # An entry that matches nothing is not harmless: it reads like a working skip and the case it
+    # was meant to hold back is running. The unit quarantine kept one such line for 479 commits.
+    # Entries are matched unqualified, so compare against both halves of every identifier.
+    known = set()
+    for identifier in identifiers:
+        parts = identifier.split("/")
+        known.add(identifier)
+        if len(parts) > 1:
+            known.add(parts[1])
+            known.add("/".join(parts[1:]))
+    inert = sorted(skipped - known)
+    if inert:
+        sys.exit(
+            f"{quarantine}: these entries match no enumerated case, so they skip nothing: "
+            + ", ".join(inert)
+        )
 
     runnable = [identifier for identifier in identifiers if not is_quarantined(identifier)]
     if not runnable:
