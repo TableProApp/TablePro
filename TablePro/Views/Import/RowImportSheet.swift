@@ -8,6 +8,7 @@
 //  field-detection options shown in this sheet.
 //
 
+import AppKit
 import Combine
 import os
 import SwiftUI
@@ -63,6 +64,11 @@ struct RowImportSheet: View {
     @State private var showErrorDialog = false
     @State private var importTask: Task<Void, Never>?
 
+    /// The window this sheet is hosted in, used for presenting its alerts.
+    /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
+    /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
+    @State private var hostWindow: NSWindow?
+
     var body: some View {
         VStack(spacing: 0) {
             headerView
@@ -87,6 +93,11 @@ struct RowImportSheet: View {
                 .padding()
         }
         .frame(width: 720, height: 640)
+        .background {
+            WindowAccessor { window in
+                hostWindow = window
+            }
+        }
         .task {
             await loadTables()
             await loadNewColumns()
@@ -109,7 +120,7 @@ struct RowImportSheet: View {
         }
         .onChange(of: showSuccessDialog) { _, isShowing in
             guard isShowing else { return }
-            TransferResultAlert.presentImportSuccess(result: importResult, window: NSApp.keyWindow) {
+            TransferResultAlert.presentImportSuccess(result: importResult, window: hostWindow) {
                 showSuccessDialog = false
                 isPresented = false
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
@@ -117,7 +128,7 @@ struct RowImportSheet: View {
         }
         .onChange(of: showErrorDialog) { _, isShowing in
             guard isShowing else { return }
-            TransferResultAlert.presentImportFailure(error: importError, window: NSApp.keyWindow) {
+            TransferResultAlert.presentImportFailure(error: importError, window: hostWindow) {
                 showErrorDialog = false
             }
         }

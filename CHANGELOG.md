@@ -76,6 +76,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Import and export results no longer flash and vanish before you can read them. The dialog put its result alert on whichever window was in front, which at that moment was the progress sheet closing behind it, so macOS took the alert down with it. Both the failure and the completion alerts are affected, in the SQL, CSV and JSON import dialogs and in export. (#2314)
+- A failed import now says what actually failed. When the rollback failed too, TablePro reported only the rollback and threw away the line number, the statement and the database's own message. An import you cancelled could also be reported as a rollback error, and an import that committed could be reported as failed when only the foreign key restore afterwards went wrong. (#2314)
+- The failed statement list is copyable again, with a Copy Details button on both the failure and the completed-with-errors alerts.
 - Deleting a connection that has saved queries now always warns that they go with it. The confirmation used to appear before the check for saved queries had finished, so it usually showed the shorter message and the warning was missed. (#2310)
 - Deleting a connection you had published to the Team Library no longer deletes your own local copy of it instead. The shared row was reusing the local connection's identity, so its Edit and Delete acted on the wrong one, taking the saved passwords with it.
 - Opening a connection from a linked folder or the Team Library now works. Double-clicking one, or selecting it and pressing Return, used to do nothing at all, with no window, no error, and nothing on screen to say why.
