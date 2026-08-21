@@ -293,8 +293,8 @@ struct BsonDocumentFlattener {
     }
 
     /// Dominant BSON kind per dotted path, for the value coercion a filter on that path needs.
-    /// Shares one traversal with `fieldPaths` so the kind a path reports and the type name it
-    /// displays can never disagree.
+    /// Derived from the same walk `fieldPaths` uses, so the kind a path reports and the type name
+    /// it displays can never disagree. Call one or the other; calling both walks twice.
     static func fieldPathKinds(
         from documents: [[String: Any]],
         representation: MongoDBUuidRepresentation,

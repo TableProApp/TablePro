@@ -51,6 +51,9 @@ int main(void) {
     check("elemMatch single",       "{\"items\": {\"$elemMatch\": {\"sku\": \"A100\"}}}");
     check("elemMatch dotted inner", "{\"orders\": {\"$elemMatch\": {\"customer.country\": \"US\"}}}");
     check("elemMatch colliding key","{\"items\": {\"$elemMatch\": {\"$and\": [{\"price\": {\"$gt\": 10}}, {\"price\": {\"$lt\": 90}}]}}}");
+    check("elemMatch match-any",    "{\"items\": {\"$elemMatch\": {\"$or\": [{\"price\": {\"$gt\": 500}}, {\"name\": \"Laptop\"}]}}}");
+    check("elemMatch non-BMP key",  "{\"🎁items\": {\"$elemMatch\": {\"sku\": \"A100\"}}}");
+    check("string field quoted",    "{\"customer.zip\": \"12345\"}");
     check("elemMatch regex",        "{\"items\": {\"$elemMatch\": {\"name\": {\"$regex\": \"^Lap\", \"$options\": \"i\"}}}}");
     check("elemMatch not regex",    "{\"items\": {\"$elemMatch\": {\"name\": {\"$not\": {\"$regex\": \"^Lap\"}}}}}");
     check("and of clauses",         "{\"$and\": [{\"items.sku\": \"A100\"}, {\"customer.country\": \"US\"}]}");

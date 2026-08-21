@@ -271,10 +271,6 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             filter: "{}", sort: nil, projection: nil, skip: 0, limit: max(1, limit)
         ).docs
 
-        rememberFieldPathKinds(
-            BsonDocumentFlattener.fieldPathKinds(from: docs, representation: uuidRepresentation),
-            collection: table
-        )
         return BsonDocumentFlattener.fieldPaths(from: docs, representation: uuidRepresentation)
     }
 
@@ -1077,6 +1073,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             for: columns, documents: documents, representation: uuidRepresentation
         )
         rememberColumnKinds(kinds, for: columns, collection: collection)
+        rememberFieldPathKinds(from: documents, collection: collection)
         let typeNames = kinds.map { BsonDocumentFlattener.typeName(for: $0, representation: uuidRepresentation) }
         let rows = BsonDocumentFlattener.flatten(
             documents: documents, columns: columns, kinds: kinds, representation: uuidRepresentation
@@ -1138,8 +1135,15 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return columnKindLock.withLock { columnKindsByCollection[key] ?? [:] }
     }
 
-    private func rememberFieldPathKinds(_ kinds: [String: BsonValueKind], collection: String) {
-        guard !collection.isEmpty, !kinds.isEmpty else { return }
+    /// Recorded from the documents a browse already fetched, on the session driver that will
+    /// build the filter. Sampling through `sampleFieldPaths` cannot do it: that call is routed
+    /// through `MetadataConnectionPool`, so it lands on a different driver instance whose cache
+    /// the filter path never reads.
+    private func rememberFieldPathKinds(from documents: [[String: Any]], collection: String) {
+        guard !collection.isEmpty, !documents.isEmpty else { return }
+        let sampled = Array(documents.prefix(MongoStreamProjection.sampleSize))
+        let kinds = BsonDocumentFlattener.fieldPathKinds(from: sampled, representation: uuidRepresentation)
+        guard !kinds.isEmpty else { return }
         let key = columnKindKey(collection)
         columnKindLock.withLock { fieldPathKindsByCollection[key] = kinds }
     }

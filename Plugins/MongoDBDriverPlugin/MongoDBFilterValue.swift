@@ -24,6 +24,8 @@ enum MongoDBFilterValue {
         case .decimal128:
             guard MongoDBJsonNumber.isValid(value) else { return untypedJson(value) }
             return "{\"$numberDecimal\": \"\(MongoDBQueryBuilder.escapeJsonString(value))\"}"
+        case .string:
+            return "\"\(MongoDBQueryBuilder.escapeJsonString(value))\""
         default:
             return untypedJson(value)
         }

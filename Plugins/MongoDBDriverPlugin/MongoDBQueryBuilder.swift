@@ -129,7 +129,9 @@ struct MongoDBQueryBuilder {
         }
 
         for scope in scopeOrder {
-            guard let clause = elementMatchClause(scope: scope, filters: scoped[scope] ?? []) else { continue }
+            guard let clause = elementMatchClause(
+                scope: scope, filters: scoped[scope] ?? [], logicMode: logicMode
+            ) else { continue }
             clauses.append(clause)
         }
 
@@ -158,20 +160,37 @@ struct MongoDBQueryBuilder {
 
     /// One `$elemMatch` per array prefix. Every condition is re-keyed to its path relative to the
     /// prefix, because `$elemMatch` matches against an element, not against the document.
-    private func elementMatchClause(scope: String, filters: [PluginQueryFilter]) -> MongoDBFilterClause? {
+    ///
+    /// The panel's logic mode applies inside the group as well as between the rows: under "match
+    /// any", the user asked for one element satisfying any of these rows, not all of them.
+    private func elementMatchClause(
+        scope: String,
+        filters: [PluginQueryFilter],
+        logicMode: String
+    ) -> MongoDBFilterClause? {
         let inner = filters.compactMap { filter -> MongoDBFilterClause? in
             buildClause(for: filter, field: Self.relativePath(filter.column, under: scope))
         }
-        guard let merged = MongoDBFilterClause.merge(inner) else { return nil }
+        guard !inner.isEmpty else { return nil }
+
+        let body: String
+        if logicMode == "and" || inner.count == 1 {
+            guard let merged = MongoDBFilterClause.merge(inner) else { return nil }
+            body = "{\(merged)}"
+        } else {
+            let docs = inner.map { "{\($0.json)}" }
+            body = "{\"$or\": [\(docs.joined(separator: ", "))]}"
+        }
         return MongoDBFilterClause(
             key: Self.escapeJsonString(scope),
-            body: "{\"$elemMatch\": {\(merged)}}"
+            body: "{\"$elemMatch\": \(body)}"
         )
     }
 
     static func relativePath(_ column: String, under scope: String) -> String {
-        guard column.hasPrefix(scope + ".") else { return column }
-        return String(column.dropFirst((scope as NSString).length + 1))
+        let prefix = scope + "."
+        guard column.hasPrefix(prefix) else { return column }
+        return String(column.dropFirst(prefix.count))
     }
 
     private static func mongoCollectionAccessor(_ name: String) -> String {
@@ -272,12 +291,19 @@ struct MongoDBQueryBuilder {
         }
     }
 
-    /// `secondValue` is authoritative when the caller supplies it. Splitting the joined form on a
-    /// comma is only a fallback, and it cannot tell a separator from a comma inside either bound.
+    /// `secondValue` is authoritative when the caller supplies it. `value` still arrives joined as
+    /// `lower + "," + upper`, because plugins built before `secondValue` existed parse that form,
+    /// so the upper bound and its separator are stripped off the end rather than split on the
+    /// first comma. Splitting is only the fallback, and it cannot tell a separator from a comma
+    /// inside either bound.
     private func betweenBounds(_ filter: PluginQueryFilter) -> (lower: String, upper: String)? {
         if let second = filter.secondValue {
-            let lower = filter.value.trimmingCharacters(in: .whitespaces)
             let upper = second.trimmingCharacters(in: .whitespaces)
+            let joinedSuffix = ",\(second)"
+            let lowerSource = filter.value.hasSuffix(joinedSuffix)
+                ? String(filter.value.dropLast(joinedSuffix.count))
+                : filter.value
+            let lower = lowerSource.trimmingCharacters(in: .whitespaces)
             guard !lower.isEmpty, !upper.isEmpty else { return nil }
             return (lower, upper)
         }

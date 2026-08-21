@@ -70,7 +70,7 @@ A row on a field inside an array gets one more control, because MongoDB has two 
 
 Filtering `items.price` greater than 500 and `items.name` equal to `Laptop` with **any element** returns an order that has an expensive item and, separately, an item called Laptop. With **same element** on both rows it returns only orders holding one item that is both. **any element** is the default, and it is what dot notation means in MongoDB.
 
-Rows sharing an array and set to **same element** are grouped together automatically. Open **SQL Preview** in the **⋯** menu to see the query this produces.
+Rows sharing an array and set to **same element** are grouped together automatically, and the header's **Match all** / **Match any** setting applies inside the group too: with **Match any**, one array entry satisfying any of those rows is enough. Open **SQL Preview** in the **⋯** menu to see the query this produces.
 
 Sorting still works on the grid's own columns only, so a nested path can be filtered but not sorted.
 

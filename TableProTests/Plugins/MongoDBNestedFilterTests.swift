@@ -10,6 +10,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+@testable import TablePro
+
 @Suite("MongoDB Nested Field Filtering")
 struct MongoDBNestedFilterTests {
     private func filter(
@@ -197,6 +199,29 @@ struct MongoDBNestedFilterTests {
 
     // MARK: - BETWEEN
 
+    /// Built from the real `asPluginQueryFilter` output rather than a hand-made fixture: the app
+    /// still joins `value` as `lower,upper` for older plugins, so a fixture that passes the bare
+    /// lower bound tests a shape the app never sends.
+    @Test("BETWEEN from the app's own encoding uses the lower bound, not the joined string")
+    func betweenFromAppEncoding() {
+        let plugin = TableFilter(
+            columnName: "age", filterOperator: .between, value: "18", secondValue: "65"
+        ).asPluginQueryFilter
+        #expect(plugin.value == "18,65")
+
+        let doc = MongoDBQueryBuilder().buildFilterDocument(from: [plugin])
+        #expect(doc == "{\"age\": {\"$gte\": 18, \"$lte\": 65}}")
+    }
+
+    @Test("BETWEEN from the app's encoding survives a comma inside either bound")
+    func betweenFromAppEncodingWithComma() {
+        let plugin = TableFilter(
+            columnName: "name", filterOperator: .between, value: "Smith, John", secondValue: "Zed"
+        ).asPluginQueryFilter
+        let doc = MongoDBQueryBuilder().buildFilterDocument(from: [plugin])
+        #expect(doc == "{\"name\": {\"$gte\": \"Smith, John\", \"$lte\": \"Zed\"}}")
+    }
+
     @Test("BETWEEN reads secondValue, so a bound holding a comma survives")
     func betweenUsesSecondValue() {
         let doc = MongoDBQueryBuilder().buildFilterDocument(
@@ -338,5 +363,80 @@ struct MongoDBNestedFilterTests {
     func relativePathLeavesUnrelatedPath() {
         #expect(MongoDBQueryBuilder.relativePath("customer.name", under: "items") == "customer.name")
         #expect(MongoDBQueryBuilder.relativePath("itemsTotal", under: "items") == "itemsTotal")
+    }
+
+    @Test("A scope whose name is outside the BMP strips exactly its own characters")
+    func relativePathHandlesNonBmpScope() {
+        #expect(MongoDBQueryBuilder.relativePath("🎁items.sku", under: "🎁items") == "sku")
+        #expect(MongoDBQueryBuilder.relativePath("café.name", under: "café") == "name")
+    }
+
+    @Test("A non-BMP array field still produces a usable $elemMatch")
+    func elementMatchWithNonBmpScope() {
+        let doc = MongoDBQueryBuilder().buildFilterDocument(
+            from: [filter("🎁items.sku", "=", "A100", elementScope: "🎁items")]
+        )
+        #expect(doc == "{\"🎁items\": {\"$elemMatch\": {\"sku\": \"A100\"}}}")
+    }
+
+    // MARK: - Logic Mode Inside a Scope
+
+    @Test("Two same-element rows under match-any become $or inside the $elemMatch")
+    func scopedRowsHonourOrLogicMode() {
+        let doc = MongoDBQueryBuilder().buildFilterDocument(
+            from: [
+                filter("items.price", ">", "500", elementScope: "items"),
+                filter("items.name", "=", "Laptop", elementScope: "items"),
+            ],
+            logicMode: "or"
+        )
+        #expect(doc.contains("$elemMatch"))
+        #expect(doc.contains("\"$or\""))
+        #expect(!doc.contains("\"$and\""))
+    }
+
+    @Test("Two same-element rows under match-all stay a plain $elemMatch body")
+    func scopedRowsHonourAndLogicMode() {
+        let doc = MongoDBQueryBuilder().buildFilterDocument(
+            from: [
+                filter("items.price", ">", "500", elementScope: "items"),
+                filter("items.name", "=", "Laptop", elementScope: "items"),
+            ],
+            logicMode: "and"
+        )
+        #expect(doc == "{\"items\": {\"$elemMatch\": {\"price\": {\"$gt\": 500}, \"name\": \"Laptop\"}}}")
+    }
+
+    @Test("A single same-element row is unaffected by the logic mode")
+    func singleScopedRowIgnoresLogicMode() {
+        let expected = "{\"items\": {\"$elemMatch\": {\"sku\": \"A100\"}}}"
+        for mode in ["and", "or"] {
+            let doc = MongoDBQueryBuilder().buildFilterDocument(
+                from: [filter("items.sku", "=", "A100", elementScope: "items")], logicMode: mode
+            )
+            #expect(doc == expected)
+        }
+    }
+
+    // MARK: - String Columns
+
+    @Test("A numeric-looking value on a known string field stays quoted")
+    func stringColumnKeepsQuotes() {
+        let builder = MongoDBQueryBuilder(columnKinds: ["customer.zip": .string])
+        let doc = builder.buildFilterDocument(from: [filter("customer.zip", "=", "12345")])
+        #expect(doc == "{\"customer.zip\": \"12345\"}")
+    }
+
+    @Test("A range on a known string field compares against strings")
+    func stringColumnRangeKeepsQuotes() {
+        let builder = MongoDBQueryBuilder(columnKinds: ["sku": .string])
+        let doc = builder.buildFilterDocument(from: [filter("sku", ">=", "100")])
+        #expect(doc == "{\"sku\": {\"$gte\": \"100\"}}")
+    }
+
+    @Test("A value on an unsampled field is still typed by its own spelling")
+    func unknownColumnStillAutoTypes() {
+        let doc = MongoDBQueryBuilder().buildFilterDocument(from: [filter("qty", "=", "12345")])
+        #expect(doc == "{\"qty\": 12345}")
     }
 }
