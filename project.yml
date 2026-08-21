@@ -110,6 +110,22 @@ targets:
       - path: TablePro/Resources/ThirdPartyLicenses
         type: folder
         buildPhase: resources
+      # Copied into the bundle rather than reached through an absolute rpath into the source
+      # tree. TablePro.debug.dylib and the MySQL, PostgreSQL and Redis plugins all link
+      # @rpath/libssl.3.dylib and @rpath/libcrypto.3.dylib, and both dylibs already carry an
+      # @rpath install name, so @executable_path/../Frameworks resolves them once they are here.
+      #
+      # Without this the app only launched from a checkout that had Libs/dylibs on disk, which is
+      # what made the sharded test jobs abort with SIGABRT before XCTest could connect (#2334).
+      # A release build was already self-contained, because build-release.sh copies them in.
+      - path: Libs/dylibs/libssl.3.dylib
+        buildPhase:
+          copyFiles:
+            destination: frameworks
+      - path: Libs/dylibs/libcrypto.3.dylib
+        buildPhase:
+          copyFiles:
+            destination: frameworks
     configFiles:
       Debug: Configs/Version.xcconfig
       Release: Configs/Version.xcconfig
@@ -198,7 +214,9 @@ targets:
         LD_RUNPATH_SEARCH_PATHS:
           - $(inherited)
           - "@executable_path/../Frameworks"
-          - $(SRCROOT)/Libs/dylibs
+          # No $(SRCROOT)/Libs/dylibs here. The two dylibs are copied into Contents/Frameworks
+          # above, so @executable_path/../Frameworks resolves them and the built app no
+          # longer depends on the checkout it was built from.
         LIBRARY_SEARCH_PATHS:
           - $(inherited)
           - $(SRCROOT)/Libs/dylibs
