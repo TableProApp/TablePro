@@ -3,104 +3,94 @@ title: Quick Start
 description: Connect to your first database and run a query in a few minutes
 ---
 
-You can finish this page without a database server. With no connections saved yet, the welcome window offers **Try Sample Database**, which opens a bundled Chinook SQLite file and puts you at step 4. Otherwise start at step 1.
+With no connections saved, the welcome window offers **Try Sample Database**, a bundled Chinook SQLite file that needs no server and drops you at step 4. Reset it any time from **Help > Reset Sample Database…**.
 
-## Step 1: install
+<Steps>
+  <Step title="Install TablePro">
+    `brew install --cask tablepro`, or the DMG from GitHub Releases. See [Installation](/installation).
+  </Step>
 
-Install via Homebrew (`brew install --cask tablepro`) or download the DMG from GitHub Releases. See [Installation](/installation).
+  <Step title="Create a connection">
+    Click **Create Connection…** in the welcome window, pick a type in the **Choose a Database** sheet, then click **Continue**. A type badged **Not Installed** downloads its driver before the form opens, with no restart.
 
-## Step 2: create your first connection
+    <Frame caption="Pick a database type">
+      <img
+        className="block dark:hidden"
+        src="/images/database-type-chooser.png"
+        alt="Database type chooser"
+      />
+      <img
+        className="hidden dark:block"
+        src="/images/database-type-chooser-dark.png"
+        alt="Database type chooser"
+      />
+    </Frame>
 
-The welcome window has an actions panel on the left with **Create Connection…** and an **Add from Existing** menu. Your saved connections are on the right. The `+` button, the group button, and the search field sit at the top of the connections panel. Press `Cmd+F` to focus search. Each connection shows its tags and group.
+    <Tip>
+    Already have a connection URL, another client's connections, or a repository with a `.env`? **Add from Existing** takes all three. See [Switching to TablePro](/switching).
+    </Tip>
+  </Step>
 
-- **Add from Existing** holds **Import from URL…**, **Import from Other App…** (TablePlus, DataGrip, DBeaver, Beekeeper Studio, Sequel Ace, and others), **Open Project Folder…**, and **Import Connections…**.
-- With no connections saved yet, the right panel offers **Try Sample Database**. It opens the bundled Chinook SQLite database, no server needed. Reset it any time from **Help > Reset Sample Database…**.
+  <Step title="Fill in the form, test it, save it">
+    The host pre-fills to `localhost` and the port to the engine's default. Username is optional: leave it empty and the database applies its own default. SQLite asks for a `.sqlite` or `.db` file instead of a host, with no credentials.
 
-Click **Create Connection…**. A chooser sheet lists every supported database type grouped by category. Pick one and click **Continue**.
+    <Frame caption="PostgreSQL connection form">
+      <img
+        className="block dark:hidden"
+        src="/images/connection-form-general.png"
+        alt="Connection form"
+      />
+      <img
+        className="hidden dark:block"
+        src="/images/connection-form-general-dark.png"
+        alt="Connection form"
+      />
+    </Frame>
 
-<Frame caption="Pick a database type">
-  <img
-    className="block dark:hidden"
-    src="/images/database-type-chooser.png"
-    alt="Database type chooser"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/database-type-chooser-dark.png"
-    alt="Database type chooser"
-  />
-</Frame>
+    Click **Test Connection** in the **Status** row at the bottom of the General pane. It turns into **Connected** with a green checkmark. Now click **Save & Connect** in the toolbar.
 
-<Note>
-Databases beyond the bundled drivers (MongoDB, Oracle, MSSQL, and others) run as plugins. The first time you pick one, TablePro asks to download the driver before opening the form.
-</Note>
+    <Frame caption="Test Connection succeeded">
+      <img
+        className="block dark:hidden"
+        src="/images/connection-test.png"
+        alt="Connection test success"
+      />
+      <img
+        className="hidden dark:block"
+        src="/images/connection-test-dark.png"
+        alt="Connection test success"
+      />
+    </Frame>
 
-## Step 3: fill in, test, and save
+    <Check>
+    The window switches to the main layout: databases and tables in the sidebar, the open tab in the middle, the inspector on the right.
+    </Check>
 
-The form pre-fills the host (`localhost`) and the default port. The username is optional; leave it empty and the database uses its own default, the same way `psql` and `mysql` do. Typical values:
+    A failed attempt paints the window with the driver's own message and a **Try Again** button instead. [Troubleshooting](/troubleshooting) sorts refused from timed out.
+  </Step>
 
-- **MySQL**: port `3306`
-- **PostgreSQL**: port `5432`
-- **MongoDB**: port `27017`
-- **SQLite**: browse to a `.sqlite` or `.db` file, no auth needed
+  <Step title="Run a query">
+    Click a table in the sidebar to browse it. For SQL, press `Cmd+T` for a query tab, type, and press `Cmd+Enter` to run the statement under the cursor.
 
-<Frame caption="PostgreSQL connection form">
-  <img
-    className="block dark:hidden"
-    src="/images/connection-form-general.png"
-    alt="Connection form"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/connection-form-general-dark.png"
-    alt="Connection form"
-  />
-</Frame>
+    <Frame caption="A table tab showing the data grid">
+      <img
+        className="block dark:hidden"
+        src="/images/app.png"
+        alt="Main interface"
+      />
+      <img
+        className="hidden dark:block"
+        src="/images/app-dark.png"
+        alt="Main interface"
+      />
+    </Frame>
 
-<Tip>
-Already have a connection URL? Click **Import from URL…** in the chooser footer. TablePro detects the database type and pre-fills the form for you.
-</Tip>
-
-Click **Test Connection** in the **Status** row at the bottom of the General pane. When it shows a green checkmark, click **Save & Connect** in the toolbar.
-
-<Frame caption="Test Connection succeeded">
-  <img
-    className="block dark:hidden"
-    src="/images/connection-test.png"
-    alt="Connection test success"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/connection-test-dark.png"
-    alt="Connection test success"
-  />
-</Frame>
-
-## Step 4: run your first query
-
-The main window has a sidebar on the left (databases and tables), the open tab in the middle, and an inspector on the right. A table tab shows the data grid. A query tab puts the SQL editor above the result grid.
-
-<Frame caption="A table tab showing the data grid">
-  <img
-    className="block dark:hidden"
-    src="/images/app.png"
-    alt="Main interface"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/app-dark.png"
-    alt="Main interface"
-  />
-</Frame>
-
-Click a table in the sidebar to browse it. For SQL, press `Cmd+T` to open a query tab, type a query, and press `Cmd+Enter`:
-
-```sql
-SELECT * FROM users LIMIT 10;
-```
+    ```sql
+    SELECT * FROM users LIMIT 10;
+    ```
+  </Step>
+</Steps>
 
 ## What's next
 
-Explore [connections](/connections), [SSH tunneling](/connections/ssh-tunneling), [keyboard shortcuts](/features/keyboard-shortcuts), or [AI features](/features/ai-assistant).
-
-Need help? [Open an issue](https://github.com/TableProApp/TablePro/issues) on GitHub.
+[Managing connections](/connections), [SSH tunneling](/connections/ssh-tunneling), [keyboard shortcuts](/features/keyboard-shortcuts), and [AI features](/features/ai-assistant). Anything that goes wrong is worth an [issue](https://github.com/TableProApp/TablePro/issues).

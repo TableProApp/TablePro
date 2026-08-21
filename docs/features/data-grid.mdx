@@ -1,174 +1,74 @@
 ---
 title: Data Grid
-description: Sort, filter, edit, and copy query results in a spreadsheet-style grid
+description: Sort, size, hide, chart and copy the rows a table or a query puts in the grid
 ---
 
-A cell you change is not saved yet. Changes queue in the tab: the toolbar counts them, `Cmd+Shift+P` shows the statements they will produce, and nothing reaches the database until you press `Cmd+S`. The same grid holds a table's rows and a query's output, and both accept changes when the rows come from one table.
+Most of the grid's controls sit in the status bar beneath it. The view switcher is at the leading edge, the row count in the middle, then the columns, filter and page buttons at the trailing edge.
 
 <Frame caption="Data grid with query results">
   <img className="block dark:hidden" src="/images/data-grid.png" alt="Data grid" />
   <img className="hidden dark:block" src="/images/data-grid-dark.png" alt="Data grid" />
 </Frame>
 
-## View modes
+## Sorting
 
-Switch between **Data**, **Structure**, **JSON**, and **Chart** with the switcher at the left of the status bar, or from **View > Result View**. Query tabs show Data, JSON, and Chart only. The mode is remembered per tab.
+Click a header to cycle through ascending, descending, and off. `Shift`-click a second header to sort by both. Sorting re-runs the query with a new `ORDER BY`, so it orders the whole table rather than the page in front of you.
 
-JSON mode shows the rows as a JSON array, with **Text** and **Tree** views. It follows the grid: the same rows in the same order, with a column value filter applied and hidden columns left out. Select rows in Data mode first to limit what JSON shows, then use **Copy JSON**.
-
-Rows marked for deletion are held back, since a Save would remove them, and the count line says how many. **Copy as JSON** in the grid's context menu copies every row you selected, including those.
-
-### Chart mode
-
-Chart mode is a Starter feature. Pick a bar, line, area, or scatter chart, then choose a numeric Y column. X can use row numbers, another numeric column, a date or timestamp column, or a categorical column; an optional text, boolean, enum, or set column splits the result into series. Date and timestamp columns plot on a real time axis, so points sit at their true spacing whatever order the rows arrive in. Hover the plot to inspect exact X, Y and series values. Controls stack vertically when the result pane is narrow.
-
-Your chart type and axis choices belong to the tab and follow the column names, so they survive a page turn, a sort, a refresh and a re-run. A column that is missing from the next result is remembered rather than cleared, and comes back when the column does.
-
-Charts draw the active result's loaded rows, up to 2,000 points, 20 series, and 50,000 inspected rows. Past a limit the chart still draws what fits and the toolbar says how much, for example "Showing the first 2,000 points of 8,431 loaded rows". Null, binary and unrepresentable axis values are skipped and counted. The status bar keeps the row count, the pagination controls and **Fetch All** in Chart mode, so you can load the rest without leaving the chart. Grid selection, Find, hidden columns and value filters do not narrow the chart.
-
-## Columns
-
-### Sort
-
-Click a header to cycle through ascending, descending, and off. `Shift`-click another header to add it to the sort, so you can order by several columns at once. Sort re-runs the query with `ORDER BY` appended, replacing any existing one.
-
-To sort on open, set **Settings > Data > Default row sort** to **Primary key** or **First column** (default is **No sorting**). A click on any header still overrides it.
+To sort on open, set **Default row sort** in [Settings > Data](/customization/data-settings) to **Primary key** or **First column**; out of the box the order is the server's. A click on any header overrides it.
 
 <Warning>
-If the sort column can't be ordered on the server (a `BLOB`, `JSON`, or spatial column), the query fails. Pick another column or set the default back to No sorting.
+Sorting on a `BLOB`, `JSON`, or spatial column the server cannot order on fails the query. Sort on another column, or set **Default row sort** back to the engine's order.
 </Warning>
 
-### Filter
+## Filtering
 
-The header gives you two filters:
+The header menu carries two filters that answer different questions.
 
-- **Filter Values…** (or the funnel icon on hover) filters the loaded rows by picking values, without re-querying. The popover lists each value with its count; search to narrow, check the values to keep, and click **Apply**. NULL and empty values appear as their own entries. `Return` applies, `Escape` cancels. Filter several columns at once and rows must match every filter. Clear from the header menu (**Clear Value Filter**, **Clear All Value Filters**). The filter belongs to the tab, so it survives switching to JSON or Structure mode and back, and switching to another tab and back. Replacing the result clears it, since the values you picked came from the rows being replaced: running a query, turning a page, refreshing, or moving to another result of the same script. **Fetch All** keeps it and applies it to the rows it loads, because that extends the same result.
-- **Filter with column** adds a filter row for that column to the [Filter Panel](/features/filtering) and opens it. Use this to filter the whole table on the server.
+| Header menu item | What it filters |
+|---|---|
+| **Filter Values…**, or the funnel icon on hover | The rows already loaded, without a re-query |
+| **Filter with column** | The whole table. It adds a row to the [filter bar](/features/filtering) and opens it |
+
+**Filter Values…** lists every value in the column with its count, NULL and empty among them. Select the values to keep and click **Apply**. Filter several columns and a row has to match all of them; **Clear Value Filter** and **Clear All Value Filters** are on the same menu.
 
 <Frame caption="Filter a column by its values">
   <img className="block dark:hidden" src="/images/value-filter-popover.png" alt="Value filter popover" />
   <img className="hidden dark:block" src="/images/value-filter-popover-dark.png" alt="Value filter popover" />
 </Frame>
 
-<Warning>
-Value filters run on the rows already loaded, so they cover the current page only.
-</Warning>
+A value filter lives as long as the result does: switching view mode or tab keeps it, replacing the result clears it. **Fetch All** keeps it and applies it to the rows it loads.
 
-### Resize and hide
+## Columns
 
-Drag a column border to resize, or double-click it to fit the content. The header menu has **Size to Fit** for one column and **Size All Columns to Fit** for all of them. Fitting reads the loaded page rather than a sample of it, and leaves room for any action button the cells draw, such as the arrows on a date. Sizing every column of a very wide result reads fewer rows per column so the command stays quick. Fitted columns stop at half the visible grid width, so one long-text column can't push the rest off screen.
+Drag a border to resize a column, or double-click it to fit the content; **Size to Fit** and **Size All Columns to Fit** on the header menu do the same. A fitted column stops at half the visible grid width.
 
-Hide columns from the columns button in the status bar or the header menu. A hidden column isn't fetched, so hiding a large column makes the table load faster. The primary key is always fetched, so editing still works, and so is the column you are sorting by, so hiding it leaves the order alone.
+Hide columns from the columns button in the status bar or from the header menu. A hidden column is not fetched, so hiding a large one makes the table load faster; the primary key and the sorted column are fetched either way. On a schemaless store the popover lists every field the grid can draw, including ones that turn up only in later documents.
 
-On a schemaless store such as MongoDB, the popover lists every field the grid can draw, including ones that only turn up in later documents, so **Hide All** covers all of them.
+Widths, order, and hidden columns are remembered per table, scoped to the connection, database, and schema; **Reset Columns** in the popover puts them back. Right-click a header and choose **Display As** to render a column as a UUID, a Unix timestamp, JSON, or PHP serialized data; see [Cell and Row Viewers](/features/json-viewer).
 
-Column widths, order, and which columns are hidden are remembered per table, scoped to the connection, database, and schema. Hiding a column keeps its place in that order, so showing it again puts it back where it was. Click **Reset Columns** in the columns popover to put everything back to defaults.
+## Foreign keys
 
-A result with hundreds of columns only builds the ones near the viewport, so scrolling stays smooth on very wide tables. The horizontal scroller still covers the whole result, and columns are built as you reach them.
+A foreign key cell carries an arrow on its right edge. Click it to open the referenced table filtered to the matching row, or right-click for **Preview Referenced Row**, which shows that row in a popover. `Cmd`-click always opens a new tab; otherwise the reference takes over the current tab unless that tab holds a query or unsaved edits.
 
-### Display format
-
-UUIDs and Unix timestamps render in a readable form when the column type and name match (for example a `BINARY(16)` column named `uuid`). Right-click a header and choose **Display As** to set the format per column: Raw Value, UUID, Unix Timestamp (seconds or milliseconds), JSON, or PHP Serialized. See [Cell and Row Viewers](/features/json-viewer) for what each format does, and for how MongoDB binary columns differ. Toggle the automatic detection in **Settings > Data > Smart value detection**.
-
-## Editing
-
-<Warning>
-Editing works when the results come from one table, with or without an alias, as in `SELECT * FROM orders o WHERE o.id = 1`. Comments, `DISTINCT`, `ORDER BY`, `LIMIT` and `FOR UPDATE` are fine. Joins, comma joins, subqueries in `FROM`, CTEs, `UNION`, `EXCEPT`, `INTERSECT` and `FROM ONLY` are read-only, and so is any connection set to the Read-Only [safe mode](/features/safe-mode) level.
-
-You can write the schema in front of the table, as in `SELECT * FROM public.orders o`, as long as it is the schema you are browsing. Naming a different schema keeps the results read-only: the saved edit does not repeat the schema, so it would go to the browsed one instead of the table you queried. Switch to that schema first if you want to edit through it.
-
-Two shapes look editable but refuse to save. A column renamed with `AS` cannot be written back, though the other columns in the same row still can. A query that renames or omits the primary key blocks the whole save, because there is nothing to match the row on.
-</Warning>
-
-Double-click a cell to edit it. Press `Enter` to confirm or `Escape` to cancel. Some types open a dedicated editor:
-
-| Column type | Editor |
-|---|---|
-| Date, time, datetime, timestamp | Calendar and time picker, or edit as text |
-| Foreign key | Searchable list of referenced values |
-| Boolean, `BIT`, `TINYINT(1)` | Checkbox, with a third state for nullable columns |
-| `ENUM` | Searchable value list |
-| `SET` (MySQL/MariaDB) | Multi-select checkboxes |
-| Array of a simple type (PostgreSQL) | Ordered list, one row per element |
-| `JSON`, `JSONB`, `BLOB`, binary | [Cell viewers](/features/json-viewer); hex editor is read-only over 10 KB |
-
-<Frame caption="Type-specific cell editor">
-  <img className="block dark:hidden" src="/images/date-picker-editor.png" alt="Cell editor" />
-  <img className="hidden dark:block" src="/images/date-picker-editor-dark.png" alt="Cell editor" />
-</Frame>
-
-Right-click an editable cell and open **Set Value** for common values without typing: **Empty**, **NULL** (nullable columns), **Default** (columns with a default), and date functions like `NOW()` or `CURRENT_DATE` on date columns.
-
-### Foreign Keys
-
-Foreign key cells show an arrow on the right edge. Click it to open the referenced table filtered to the matching row. If the current tab holds a query or unsaved edits, the reference opens in its own tab instead of replacing it, and clicking the same reference again returns to that tab. `Cmd`-click always opens a new tab. Right-click for **Preview Referenced Row**, which shows the row in a popover.
-
-Step back through the references you followed with the Back and Forward buttons at the leading edge of the toolbar, or **View > Back** (`Ctrl+Cmd+[`) and **View > Forward** (`Ctrl+Cmd+]`). Back puts the table you came from back as you left it, with the same filters, sort, page and selected row. Opening a table from the object browser over the current tab is recorded the same way. Each tab keeps its own history, so a reference you opened in its own tab has nothing to go back to, and Back never closes a tab. Back is unavailable while a tab holds unsaved edits, since going back would discard them.
+Step back with the Back and Forward buttons at the leading edge of the toolbar, or **View > Back** (`Ctrl+Cmd+[`) and **View > Forward** (`Ctrl+Cmd+]`). Back restores the table you came from as you left it: same filters, sort, page, and selected row. Each tab keeps its own history, Back never closes a tab, and it is unavailable while a tab holds unsaved edits.
 
 <Frame caption="Foreign key lookup">
   <img className="block dark:hidden" src="/images/fk-lookup-popover.png" alt="Foreign key lookup" />
   <img className="hidden dark:block" src="/images/fk-lookup-popover-dark.png" alt="Foreign key lookup" />
 </Frame>
 
-### Row operations
-
-- **Add** (`Cmd+Shift+N`): click **+** in the toolbar, use **Edit > Add Row**, or press the shortcut.
-- **Duplicate** (`Cmd+Shift+D`): right-click a row and choose **Duplicate**. The primary key resets to `DEFAULT` so the database assigns a new one.
-- **Delete**: select rows by their row number (`Shift`-click for a range, `Cmd`-click for separate rows) and press `Delete`.
-- **Paste**: copy rows, then right-click and choose **Paste** to insert them as new rows.
-- **Fill Column**: right-click a header to set one value across all loaded rows. It skips primary key columns.
-
-### Saving changes
-
-Edits are queued, not applied right away. The toolbar shows the pending count, modified cells are highlighted, and new and deleted rows are marked.
-
-- **Preview SQL** (`Cmd+Shift+P`): review the statements before applying.
-- **Save Changes** (`Cmd+S`): apply all pending changes.
-- **Undo / Redo** (`Cmd+Z` / `Cmd+Shift+Z`): step through edits before saving.
-
-There is no discard button. Undo your edits, or let the confirmation prompt drop them when you refresh, re-sort, change filters, or close the tab. See [Change Tracking](/features/change-tracking) for how the queue works.
-
 ## Inspector
 
-Toggle the inspector with `Cmd+Option+I`, or with the button at the right end of the toolbar. With a row selected, it lists every column value with full editors for long text and JSON; see [Cell and Row Viewers](/features/json-viewer) for details. Turn on **Settings > Data > Auto-show inspector on row select** to open it automatically.
-
-With no row selected, it shows table statistics: data, index, and total size, row count, average row size, engine, collation, and created and updated dates (fields vary by database).
-
-In the Structure tab, the inspector follows the structure grid instead: select a column, index, or foreign key and it lists that row's own fields. The fields are editable where the grid is, with the same type list and YES/NO menus, and an edit joins the pending changes you apply with Save. A row you have marked for deletion is read-only.
+`Cmd+Option+I`, or the button at the trailing end of the toolbar, opens the inspector beside the grid. With a row selected it lists every column with an editor matched to the value; with no row selected it shows the table's statistics. [Cell and Row Viewers](/features/json-viewer) covers both. **Auto-show inspector on row select** in [Settings > Data](/customization/data-settings) opens it whenever you pick a row.
 
 <Frame caption="Row inspector">
   <img className="block dark:hidden" src="/images/cell-inspector.png" alt="Row inspector" />
   <img className="hidden dark:block" src="/images/cell-inspector-dark.png" alt="Row inspector" />
 </Frame>
 
-## Select and copy
+## Find in the loaded rows
 
-Click a cell to select it, drag or `Shift`-click for a range, and click row numbers for whole rows. Copy, **Copy as**, and Delete act on the whole current selection, whether that is a cell range, a column (`Cmd`-click its header), or rows picked by their row numbers.
-
-- `Cmd+C`: the focused cell, or the selected rows as TSV.
-- `Cmd+Shift+C`: the selected rows as TSV.
-- `Cmd+Option+J`: the selected rows as JSON.
-
-Right-click a row and choose **Copy as** for more formats:
-
-| Format | Output |
-|---|---|
-| With Headers | TSV with a header row |
-| JSON | Array of row objects |
-| CSV / CSV with Headers | RFC 4180 CSV |
-| Markdown | Markdown table |
-| IN Clause | `('a', 'b', 'c')` for `WHERE col IN (…)` |
-| INSERT Statement(s) / UPDATE Statement(s) | SQL statements per row (SQL databases) |
-
-Copies follow the grid as shown: hidden columns are left out and columns keep their current order. When you select specific cells, **Copy as** (JSON, CSV, Markdown, INSERT, and UPDATE) includes only the columns you selected; select whole rows to include every column. The UPDATE format still keys its WHERE clause on the primary key, even when the primary key cell is not part of the selection. Right-click a header and choose **Copy Column Values** to copy a whole column, one value per line.
-
-## Find in results
-
-`Cmd+F` on a table tab opens a find bar above the grid. Type a term and the matching cell is highlighted and scrolled into view. `Return` and `Cmd+G` step forward, `Cmd+Shift+G` steps back, and `Escape` clears the term, then closes the bar.
-
-Matching is case and accent insensitive, and it runs over the text you see, so a value reads the same in the find bar as it does in the cell. Binary and spatial columns are skipped, since they render as hex rather than as text.
-
-**The find bar searches the rows already loaded, not the whole table.** Results are paginated at the database, so the counter always says which it means:
+`Cmd+F` opens the find bar above the grid. `Return` and `Cmd+G` step forward, `Cmd+Shift+G` back, `Escape` clears the term and then closes the bar. Matching ignores case and accents and runs over the text as displayed; binary and spatial columns are skipped. The counter says which rows were searched:
 
 | What you see | What it means |
 |---|---|
@@ -177,30 +77,45 @@ Matching is case and accent insensitive, and it runs over the text you see, so a
 | `No matches` | Every row is loaded and none match |
 | `Not on this page` | None of the loaded rows match, and more rows exist |
 
-When nothing matches on the page and more rows exist, **Search All Rows** turns the term into a filter that runs on the server, so the answer covers the whole table. That button replaces the filters on the tab, so it only appears when you have none applied. With filters already set, add your search to the filter bar instead.
+**Search All Rows** turns the term into a filter that runs at the database, covering the whole table. It replaces the tab's filters, so it appears only when none are applied; with a filter set, add the term to the filter bar instead.
 
-## Pagination and limits
+## Pages and row counts
 
-**Table tabs** page through data. The status bar has a rows-per-page menu (5 to 1,000, a custom size up to 1,000,000, or **All rows**) and First / Previous / Next / Last controls. Click the page indicator (for example `3 / 12`) to type a page number and jump to it. Set the default page size in **Settings > Data**.
+A table tab pages. The status bar offers 5, 10, 20, 100, 500 or 1,000 rows per page, **Custom…** up to 1,000,000, and **All rows…**, plus First, Previous, Next and Last; `Cmd+[` and `Cmd+]` step pages, and clicking the page indicator (`3 / 12`) jumps to a page number. The size a table opens with is a [data setting](/customization/data-settings).
 
-These controls stay on a table tab whatever it holds. On a table that fits in one page they are dimmed rather than hidden, and while a table is loading they dim until its rows arrive, so the bar keeps the same shape as you move between tables.
+A large table shows an estimated total prefixed with `~` instead of running a slow `COUNT(*)`. **Count Exactly** beside it runs the real count in the background, and `Cmd+.` cancels that. While a total is an estimate, **Last** and **All rows…** stay unavailable and **Next** works as long as the last page came back full.
 
-Large tables show an estimated total instead of running a slow `COUNT(*)`. **Settings > Data > Count rows if estimate less than** sets the threshold below which TablePro counts exactly. An estimated total is prefixed with `~`. **Count Exactly** next to the total replaces an estimate, or fills in a total shown as `?`, with a real count. That count can take a while on a large table, so it runs in the background and `Cmd+.` cancels it. **Count Exactly** appears once the total has settled, so it does not flicker in and out while a table loads, and a real count stays put: the automatic estimate that runs after each page turn will not overwrite it. **Refresh** works the total out again.
+A query tab does not page. It stops at the [row cap](/customization/data-settings) instead and offers **Fetch All** to load the rest, and a query carrying its own `LIMIT`, `FETCH FIRST`, or `TOP` is never capped. `Cmd+.` cancels a running query or a Fetch All.
 
-An estimate of zero from a table the server has never analyzed is treated as unknown rather than as an empty table, so you get no total instead of a wrong one.
+## Copying
 
-While the total is an estimate it never bounds navigation: the page indicator marks it (`3 / ~12`), **Last** and **All rows** stay unavailable, and **Next** keeps working as long as the page came back full. Run **Count Exactly** to turn the estimate into a real count and get all four back.
+Click a cell to select it, drag or `Shift`-click for a range, and click a row number for a whole row. Copy acts on the whole selection.
 
-**Query tabs** cap results at 10,000 rows by default. Your query is sent exactly as you wrote it; TablePro stops reading once it reaches the cap. A query with its own `LIMIT`, `FETCH FIRST`, or `TOP` is not capped. When the cap trims a result, the status bar shows **Fetch All** to load the rest (with a confirmation, since large results use a lot of memory). Run one query without the cap via **Execute Without Limit** (`Option+Cmd+Enter`). Adjust the cap in **Settings > Data** (**Truncate query results**, **Row cap**).
+| Shortcut | Copies |
+|---|---|
+| `Cmd+C` | The focused cell, or the selected rows as TSV |
+| `Cmd+Shift+C` | The selected rows as TSV |
+| `Cmd+Option+C` | The same, with a header row |
+| `Cmd+Option+J` | The selected rows as JSON |
 
-Press `Cmd+.` to cancel a running query or a Fetch All.
+Right-click and open **Copy as** for CSV, CSV with Headers, Markdown, and **IN Clause**, which writes `('a', 'b', 'c')` for a `WHERE col IN (…)`. **INSERT Statement(s)** and **UPDATE Statement(s)** appear when the result comes from a single table, and never on MongoDB or Redis. **Copy Column Values** on the header menu copies one column, one value per line.
 
-## Display settings
+Every copy follows the grid as shown: hidden columns are left out, columns keep their current order, and over a cell selection only those columns go out. UPDATE keys its `WHERE` clause on the primary key even when that cell is outside the selection.
 
-NULL shows as styled `NULL` text. Set the NULL display, date format, row height, row numbers, and alternate row backgrounds in **Settings > Data**.
+## View modes
 
-## MongoDB collections
+Switch between **Data**, **Structure**, **JSON**, and **Chart** with the switcher at the leading edge of the status bar, or from **View > Result View**. Query tabs have no Structure mode, the mode is remembered per tab, and [Cell and Row Viewers](/features/json-viewer) covers JSON mode.
 
-MongoDB has no fixed schema, so TablePro infers columns by sampling up to 50 documents. Missing fields show as NULL, and the `_id` column is read-only (delete and re-insert to change it). BSON values display as `ObjectId("…")`, ISO 8601 dates, `BinData(…)`, decimal strings, and `DBRef(…)`.
+### Chart mode
 
-Changes preview as shell commands: `insertMany`, `updateOne` with `$set`, and `deleteMany`.
+<Info>Needs a [Starter license](/features/licensing).</Info>
+
+Pick a bar, line, area, or scatter chart, then a numeric Y column. X takes row numbers, another numeric column, a date or timestamp column, or a categorical column; an optional text, boolean, enum, or set column splits the result into series. Date and timestamp columns plot on a real time axis, whatever order the rows arrive in. Hover the plot for exact values.
+
+A chart draws the loaded rows, up to 2,000 points, 20 series, and 50,000 inspected rows, and the toolbar says when it hit one: "Showing the first 2,000 points of 8,431 loaded rows". Null, binary, and unrepresentable axis values are skipped and counted. Grid selection, Find, hidden columns, and value filters do not narrow a chart, and the page controls and **Fetch All** stay in the status bar. Chart type and axes belong to the tab and follow the column names, so they survive a page turn, a sort, and a re-run.
+
+## Editing and display
+
+Double-click a cell to edit it. Nothing reaches the database until you save, and [Change Tracking](/features/change-tracking) covers the type-specific editors, the row operations, and what a Save runs.
+
+NULL renders as styled `NULL` text. That text, the date format, row height, row numbers, and alternate row backgrounds are [data settings](/customization/data-settings). Every shortcut the grid answers to, and how to rebind it, is in [Keyboard Shortcuts](/features/keyboard-shortcuts).

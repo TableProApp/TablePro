@@ -3,11 +3,16 @@ title: PGlite
 description: Connect to a PGlite database over its socket server using the PostgreSQL wire protocol
 ---
 
-[PGlite](https://pglite.dev) is PostgreSQL 17 compiled to WebAssembly, and it runs inside a JavaScript process rather than listening on a socket of its own. A network client reaches it only through `@electric-sql/pglite-socket`, which you start yourself before opening the connection form. Once that is up, the connection behaves like [PostgreSQL](/databases/postgresql), down to the same libpq driver, schema introspection, DDL, and EXPLAIN.
+[PGlite](https://pglite.dev) is PostgreSQL 17 compiled to WebAssembly, and it runs inside a JavaScript process instead of listening on a socket of its own. Nothing can reach it until you start `@electric-sql/pglite-socket` yourself. After that the connection is ordinary [PostgreSQL](/databases/postgresql), served by the same driver, with the same introspection, DDL, and EXPLAIN, and nothing extra to install.
+
+<Frame caption="The PGlite connection form pointed at a running socket server">
+  <img className="block dark:hidden" src="/images/pglite-connection-form.png" alt="PGlite connection form" />
+  <img className="hidden dark:block" src="/images/pglite-connection-form-dark.png" alt="PGlite connection form" />
+</Frame>
 
 ## Start the socket server
 
-PGlite has no server of its own, so start one first. It listens on `127.0.0.1:5432` by default:
+It listens on `127.0.0.1:5432` unless `--port` says otherwise. Leave it running for as long as the connection is open.
 
 ```bash
 # In-memory database, gone when the server stops
@@ -17,8 +22,6 @@ npx @electric-sql/pglite-socket
 npx @electric-sql/pglite-socket --db=./my-pgdata
 ```
 
-Leave it running while you use the connection. TablePro opens a single connection to PGlite and serializes all of its own background work (schema browsing, autocomplete, row counts) over that one connection.
-
 ## Connection settings
 
 | Field | Default | Notes |
@@ -26,9 +29,9 @@ Leave it running while you use the connection. TablePro opens a single connectio
 | **Host** | `127.0.0.1` | The socket server binds loopback IPv4, not `localhost` |
 | **Port** | `5432` | Match the server's `--port` |
 | **Database** | `postgres` | The single database PGlite exposes |
-| **Username** | `postgres` | PGlite uses trust auth; any username connects |
+| **Username** | `postgres` | Trust auth; any username connects |
 
-The socket server never checks a password, so the form has no password field. SSL is off and cannot be enabled: the socket server has no TLS. Fill in the form and click **Save & Connect**.
+The socket server never checks a password, so the form has no password field, and it has no TLS, so SSL Mode is fixed to Disabled. Fill in the form and click **Save & Connect**.
 
 ## Connection URL
 
@@ -38,22 +41,19 @@ pglite://postgres@127.0.0.1:5432/postgres
 
 See [Connection URL Reference](/connections/urls) for all parameters.
 
-## Features
+## What you get
 
-**Schemas**: like PostgreSQL, default schema `public`. The toolbar shows the active database and schema side by side; click the schema to switch it, or use Database > Schema. Cmd+K opens the database switcher, which on PGlite lists only `postgres`.
-
-**DDL, EXPLAIN, editing**: PGlite is real PostgreSQL 17, so `pg_catalog` and `information_schema` are complete. Table and view definitions, indexes, foreign keys, structure editing, and the visual `EXPLAIN` / `EXPLAIN ANALYZE` plan tree all work as they do for PostgreSQL.
-
-**Import & Export**: export to CSV, JSON, SQL, or XLSX. Import from CSV, JSON, or SQL. See [Import & Export](/features/import-export).
+Real PostgreSQL 17, so `pg_catalog` and `information_schema` are complete: table and view definitions, indexes, foreign keys, structure editing, and the visual `EXPLAIN` and `EXPLAIN ANALYZE` plan tree all behave as they do on a server. The default schema is `public`, and `postgres` is the only entry in the `Cmd+K` database list.
 
 ## Limitations
 
-- **Single connection.** PGlite serves one connection at a time. TablePro is built for this and keeps to one connection, but other tools that open connections in parallel will fail against the same server. This also means PGlite cannot back a [cross-database tab](/databases/postgresql#cross-database-tabs) the way PostgreSQL, Redshift, and CockroachDB do: a PGlite tab bound to a database the connection is not on reports an error naming that database instead of running the query against the wrong one.
-- **No TLS.** The socket server rejects SSL, so SSL Mode is fixed to Disabled and the SSH, Cloudflare Tunnel, and SOCKS panes do not apply.
-- **Cancel does nothing.** PGlite has no backend process to signal, so cancelling a running query has no effect at the protocol level. Let long queries finish.
+- One connection at a time. A second client, or a second TablePro window on the same server, is refused: close the other one first.
+- No cross-database tabs. A tab bound to a database the connection is not on refuses to run and names that database instead of guessing.
+- Cancel has no effect. `Cmd+.` returns without stopping anything and the query runs to completion, so keep exploratory queries small.
+- No TLS. SSL Mode is fixed to Disabled, and the SSH, Cloudflare Tunnel, and SOCKS panes do not apply.
 
 ## Troubleshooting
 
-**Can't reach a PGlite socket server**: the server is not running or is on a different address. Start it with `npx @electric-sql/pglite-socket` and confirm the host and port match. TablePro needs loopback `127.0.0.1`, not `localhost`, which can resolve to IPv6 first.
+**Can't reach a PGlite socket server**: nothing is listening at that address. Start it with `npx @electric-sql/pglite-socket`, and check the host is `127.0.0.1` rather than `localhost`, which can resolve to IPv6 first.
 
-**Too many connections**: something else is already connected to the socket server, which serves one client at a time. Close the other client and reconnect.
+**Too many connections**: something else is already talking to the socket server. Close that client and connect again.

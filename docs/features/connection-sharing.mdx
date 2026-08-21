@@ -3,118 +3,93 @@ title: Connection Sharing
 description: Export connections to a file, share links, import from other apps, and resolve passwords from secret managers
 ---
 
-Export connections to a `.tablepro` file and share with your team. Passwords are left out of the file and stay in your Keychain unless you make an encrypted export. Sections tagged Starter or Team need a [license](/features/licensing) of that tier.
+Passwords stay in your Keychain, so every route here hands over a connection definition and leaves the other person to supply their own credential. An encrypted export is the one exception.
+
+| Route | Use it when | Passwords | Needs |
+|---|---|---|---|
+| `.tablepro` file | One-off, any number of connections | Only with **Include Credentials** | Nothing |
+| `tablepro://` link | One connection, pasted into a chat | Never | Nothing |
+| [Linked Folder](#linked-folders) | A shared set has to stay current | Never | Starter |
+| [Team Catalog](#team-catalog) | Your team already shares a repo or a drive | Never | Team |
+| [Team Library](/features/team#share-connections-with-your-team) | Your team shares nothing on disk | Never | Team |
+| [iCloud Sync](/features/icloud-sync) | Your own second Mac, not a colleague | Optional | Starter |
 
 ## Export
 
-Right-click a connection > **Share > Export to File…**. Select multiple first to export together. **File > Export Connections…** exports all.
+Right-click a connection > **Share > Export to File…**, selecting several first to export them together, or **File > Export > Export Connections…** for all of them.
 
-Exported: name, host, port, database, username, type, SSH/SSL config, color, tags, group, Safe Mode level, Startup Commands, Pre-Connect Script, AI Policy, the Local only flag, the Redis database index, and any driver field the plugin does not mark secret (region, project ID, and so on). Not exported: passwords, key passphrases, TOTP secrets, or any driver field marked secret.
-
-The Share menu also has three copy items. **Copy Connection String** writes a full database URL, and that URL carries the password in plain text, plus the SSH password when the connection tunnels. Treat what it puts on the clipboard as a credential. **Copy TablePro Link** and **Copy as JSON** carry no secrets.
+The file carries what the connection form holds, from host and port through SSH and SSL configuration, color, tags, group, Safe Mode level, startup commands, AI policy, the Local only flag, and any driver field the plugin does not mark secret. Passwords, key passphrases, TOTP secrets, and secret driver fields stay behind.
 
 <Frame caption="Export connections">
   <img className="block dark:hidden" src="/images/connection-export-menu.png" alt="Export connections" />
   <img className="hidden dark:block" src="/images/connection-export-menu-dark.png" alt="Export connections" />
 </Frame>
 
-## Import
+<Warning>
+**Copy Connection String** writes a database URL that carries the password in plain text, plus the SSH password when the connection tunnels. TablePro marks the clipboard item concealed, which keeps it out of the history of clipboard managers that follow that convention and out of nothing else. **Copy TablePro Link** and **Copy as JSON** carry no secrets.
+</Warning>
 
-- **File > Import Connections…**
-- **File > Import from URL…** (paste a database URL, see [Connection URLs](/connections/urls))
-- Right-click empty area > **Import Connections…**
-- Double-click a `.tablepro` file
-- Drag onto TablePro
-
-A preview shows each connection before importing:
-
-| Badge | Meaning |
-|-------|---------|
-| Green checkmark | Ready |
-| Yellow triangle | SSH key or cert not found |
-| "duplicate" tag | Already exists |
-
-Duplicates match by host, port, database, and username, and start unchecked. Check to import, then pick **As Copy**, **Replace**, or **Skip**.
-
-<Frame caption="Import preview">
-  <img className="block dark:hidden" src="/images/connection-import-preview.png" alt="Import preview" />
-  <img className="hidden dark:block" src="/images/connection-import-preview-dark.png" alt="Import preview" />
-</Frame>
-
-## On iPhone
-
-TablePro for iPhone reads and writes the same `.tablepro` file. Import: tap the **more** menu (•••) above the connection list > **Import Connections**, or open a `.tablepro` file from Files or AirDrop. Export: **more** menu > **Export Connections** shares through the system share sheet. Passwords are left out unless you turn on **Include passwords** and set a passphrase.
-
-## Import from other apps
-
-1. **File > Import from Other App…**
-2. Pick the source app. Navicat asks for the `.ncx` file you exported from Navicat.
-3. Review the list, uncheck what you don't want, resolve duplicates, click **Import**.
-
-<Frame caption="Pick the source app">
-  <img className="block dark:hidden" src="/images/import-from-app-picker.png" alt="Import from other app - source picker" />
-  <img className="hidden dark:block" src="/images/import-from-app-picker-dark.png" alt="Import from other app - source picker" />
-</Frame>
-
-| App | Databases | Passwords |
-|-----|-----------|-----------|
-| TablePlus | MySQL, PostgreSQL, MongoDB, SQLite, Redis, and more | From Keychain |
-| Sequel Ace | MySQL | From Keychain |
-| DBeaver | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from config file |
-| DataGrip | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | From Keychain or `c.kdbx` |
-| Beekeeper Studio | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from its `app.db` store |
-| Navicat | MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, MongoDB | Decrypted from `.ncx` file |
-
-Groups and folders carry over. The source app doesn't need to be running. DBeaver is read from its data folder, so every edition works. DataGrip imports from its recent projects with SSH tunnel and SSL settings; master-password-protected connections can't be read. Beekeeper Studio imports include encrypted passwords and SSH bastion hosts. Navicat needs an export first: **File > Export Connections** in Navicat, with **Export Password** on to bring passwords across.
-
-## Share via link
-
-Right-click a connection > **Share > Copy TablePro Link**. Produces a `tablepro://import?…` URL with the name, host, port, type, username, database, and any SSH or SSL settings. No passwords, key passphrases, or TOTP secrets. The recipient opens the link, reviews the prefilled form, adds their own password, and saves.
-
-```text
-tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&username=admin
-```
-
-TablePro also opens `tablepro://connect/<uuid>` URLs that launch a saved connection. There is no menu item for this form; build the URL from the connection's UUID. See [URL Scheme](/external-api/url-scheme#open-a-connection).
-
-### What a link cannot set
-
-A link comes from outside, so TablePro drops the settings that decide where a connection finds or sends a credential. These are ignored on import, whether they arrive from a link or a `.tablepro` file:
-
-- Any `aws*` option, including IAM authentication, the region, the profile name, and the RDS endpoint used to sign a token
-- `usePgpass`
-- `preTunnelHost` and `preTunnelPort`
-- `preConnectScript`
-- `promptForPassword`
-- `sslClientKeyPassphrase`
-
-Startup SQL and the remaining driver options do carry across, and the confirmation sheet lists them in full before you add the connection. Read the startup SQL: it runs on every connect, with your credentials.
-
-## Encrypted Export
+### Encrypted export
 
 <Info>Needs a [Starter license](/features/licensing).</Info>
 
-Include passwords in the export, protected by a passphrase.
-
-1. Right-click > **Share > Export to File…**
-2. Turn on **Include Credentials**
-3. Enter a passphrase (8+ characters), confirm
-4. **Export…**
-
-Credentials are encrypted with AES-256-GCM; the key derives from your passphrase via PBKDF2 (600,000 iterations). Importing prompts for the passphrase.
+Turn on **Include Credentials** in the export sheet and enter a passphrase of 8 characters or more. Credentials go out under AES-256-GCM, keyed from the passphrase with PBKDF2 at 600,000 iterations. Importing asks for the passphrase.
 
 <Frame caption="Encrypted export">
   <img className="block dark:hidden" src="/images/connection-export-encrypted.png" alt="Encrypted export" />
   <img className="hidden dark:block" src="/images/connection-export-encrypted-dark.png" alt="Encrypted export" />
 </Frame>
 
+## Import
+
+Open a `.tablepro` file through **File > Import > Import Connections…**, by right-clicking the empty area of the connection list, by double-clicking the file, or by dragging it onto TablePro. **File > Import > Import from URL…** takes a database URL instead, described in [Connection URLs](/connections/urls).
+
+A preview badges each connection before anything is saved: a green checkmark for ready, a yellow triangle when an SSH key or certificate is missing, a "duplicate" tag for one that already exists. Duplicates match by host, port, database, and username and start unchecked. Check one, then pick **As Copy**, **Replace**, or **Skip**.
+
+<Frame caption="Import preview">
+  <img className="block dark:hidden" src="/images/connection-import-preview.png" alt="Import preview" />
+  <img className="hidden dark:block" src="/images/connection-import-preview-dark.png" alt="Import preview" />
+</Frame>
+
+Anything that decides where a credential comes from is stripped on the way in, from a file and from a link alike: AWS options including IAM authentication, the region, the profile and the RDS endpoint; **Use Password File**; **Prompt for password**; the SSL client key passphrase; the pre-tunnel host and port; and the **Pre-Connect Script**. Startup SQL does arrive, and the confirmation sheet shows it in full. Read it before you save, because it runs on every connect with your credentials.
+
+## Share via link
+
+**Share > Copy TablePro Link** produces a `tablepro://import?…` URL with the name, host, port, type, username, database, and any SSH or SSL settings. The recipient opens it, reviews the prefilled form, adds a password, and saves.
+
+```text
+tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&username=admin
+```
+
+`tablepro://connect/<uuid>` opens a saved connection rather than importing one. No menu item builds it; see [URL Scheme](/external-api/url-scheme#open-a-connection).
+
+## Import from other apps
+
+Choose **File > Import > Import from Other App…**, pick the source, then review the list and resolve duplicates before clicking **Import**. Groups and folders carry over, and the source app does not have to be running.
+
+<Frame caption="Pick the source app">
+  <img className="block dark:hidden" src="/images/import-from-app-picker.png" alt="Import from other app - source picker" />
+  <img className="hidden dark:block" src="/images/import-from-app-picker-dark.png" alt="Import from other app - source picker" />
+</Frame>
+
+| App | Databases | Passwords | Notes |
+|-----|-----------|-----------|-------|
+| TablePlus | MySQL, PostgreSQL, MongoDB, SQLite, Redis, and more | From Keychain | |
+| Sequel Ace | MySQL | From Keychain | |
+| DBeaver | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from config file | Read from the data folder, so every edition works |
+| DataGrip | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | From Keychain or `c.kdbx` | Reads recent projects with SSH and SSL settings. A master password blocks it |
+| Beekeeper Studio | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from its `app.db` store | Brings SSH bastion hosts across |
+| Navicat | MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, MongoDB | Decrypted from `.ncx` file | Export from Navicat first, with **Export Password** on, then pick the `.ncx` |
+
+## On iPhone
+
+TablePro for iPhone reads and writes the same file. Tap the **more** menu (•••) above the connection list and choose **Import Connections**, or open a `.tablepro` file from Files or AirDrop. **Export Connections** shares through the system share sheet, leaving passwords out unless you turn on **Include passwords** and set a passphrase.
+
 ## Linked Folders
 
 <Info>Needs a [Starter license](/features/licensing).</Info>
 
-Watch a shared directory for `.tablepro` files. Connections appear read-only in the sidebar. Each person enters their own password. Works with Git repos, Dropbox, network drives.
-
-Press `Cmd+,`, then go to **Settings > Account > Linked Folders > Add Folder…**
+Press `Cmd+,`, then **Settings > Account > Linked Folders > Add Folder…** and point it at a directory of `.tablepro` files: a Git repo, a Dropbox folder, a network drive. Those connections appear read-only in the sidebar, and each person enters their own password.
 
 <Frame caption="Linked Folders settings">
   <img className="block dark:hidden" src="/images/linked-folders-settings.png" alt="Linked Folders" />
@@ -125,60 +100,47 @@ Press `Cmd+,`, then go to **Settings > Account > Linked Folders > Add Folder…*
 
 <Info>Needs a [Team license](/features/licensing).</Info>
 
-Right-click a connection > **Share > Publish to Team Catalog…** writes each selected connection as its own `.tablepro` file into a shared folder. The first time, TablePro asks for the folder: a Git repo, Dropbox folder, or network drive your team shares. Republishing overwrites the file. Passwords, passphrases, and TOTP secrets are never written. Teammates add the same folder as a [Linked Folder](#linked-folders) and get the connections read-only.
+**Share > Publish to Team Catalog…** writes each selected connection as its own `.tablepro` file into a shared folder, asking for the folder the first time. Republishing overwrites the file, and passwords, passphrases, and TOTP secrets are never written. Teammates add that folder as a Linked Folder.
 
-## Environment Variables
+## Environment variables
 
 <Info>Needs a [Starter license](/features/licensing).</Info>
 
-Use `$VAR` and `${VAR}` in `.tablepro` files. Resolved from TablePro's process environment at connect time, so set variables with `launchctl setenv NAME value` or launch TablePro from a terminal.
+Write `$VAR` or `${VAR}` in a `.tablepro` file and it resolves from TablePro's process environment at connect time. An app launched from the Dock inherits no shell exports, so set the variable with `launchctl setenv NAME value` or launch TablePro from a terminal.
 
 ```json
-{
-  "host": "${DB_HOST}",
-  "username": "$DB_USER"
-}
+{ "host": "${DB_HOST}", "username": "$DB_USER" }
 ```
 
 ## Password sources
 
-Connections in `~/Library/Application Support/TablePro/connections.json` can declare where their password comes from instead of storing it in the Keychain. Useful when a script provisions connections, for example one Docker database per git worktree. The password resolves at connect time and is not synced to iCloud, since the path, variable, or command is specific to one Mac.
-
-TablePro keeps a signature for `connections.json`, so it can tell whether the file it is reading is the one it last wrote. If the file changed outside the app, password sources do not run and the connection reports why. Open the connection and save it from TablePro to accept the change. This is what stops a program that can write to your home folder from adding a `command` source and getting it executed the next time TablePro reopens your session.
-
-Add a `passwordSource` object to the connection:
+A connection in `~/Library/Application Support/TablePro/connections.json` can say where its password comes from instead of keeping one in the Keychain, which suits a script that provisions connections. The source resolves at connect time, replaces the Keychain lookup rather than supplementing it, and never syncs to iCloud. A source that fails to resolve fails the connection.
 
 ```json
 { "passwordSource": { "kind": "file", "path": "~/.config/tablepro/secrets/feature-x.pw" } }
 { "passwordSource": { "kind": "env", "variable": "STAGING_DB_PASSWORD" } }
 { "passwordSource": { "kind": "command", "shell": "op read op://vault/feature-x/password" } }
-```
-
-- `file`: reads the password from the file. A trailing newline is trimmed. Use `chmod 600` to keep it private.
-- `env`: reads the named environment variable. Apps launched from the Dock don't inherit shell exports; use `launchctl setenv` or launch from a terminal.
-- `command`: runs the command through `/bin/bash` and reads stdout. A trailing newline is trimmed, a non-zero exit fails the connection, and the command has a 30 second timeout.
-
-When `passwordSource` is set it replaces the Keychain lookup. If resolution fails, the connection reports the error instead of falling back to the Keychain.
-
-### Secret managers
-
-1Password, HashiCorp Vault, and AWS Secrets Manager have dedicated kinds. They build the CLI call for you and quote every argument, so a reference can't break out into the shell.
-
-```json
 { "passwordSource": { "kind": "onePassword", "reference": "op://vault/feature-x/password" } }
 { "passwordSource": { "kind": "vault", "path": "secret/data/staging/db", "field": "password" } }
 { "passwordSource": { "kind": "awsSecretsManager", "secretId": "prod/db", "jsonKey": "password" } }
 ```
 
-- `onePassword`: runs `op read` on the reference. Sign in to the 1Password CLI first (`op signin`).
-- `vault`: runs `vault kv get` for one field at a path. Set `VAULT_ADDR` and `VAULT_TOKEN` in TablePro's environment.
-- `awsSecretsManager`: runs `aws secretsmanager get-secret-value`. Set `jsonKey` to pull one field out of a JSON secret; leave it off to use the whole value.
+| `kind` | Reads from | Set up first |
+|---|---|---|
+| `file` | The file at `path`, minus a trailing newline | `chmod 600` the file |
+| `env` | The named environment variable | Same Dock caveat as environment variables |
+| `command` | stdout of the command, run through `/bin/bash`. A non-zero exit fails the connect | |
+| `onePassword` | `op read` on the reference | `op signin` |
+| `vault` | `vault kv get` for one field at a path | `VAULT_ADDR` and `VAULT_TOKEN` in TablePro's environment |
+| `awsSecretsManager` | `aws secretsmanager get-secret-value`. `jsonKey` pulls one field out of a JSON secret; omit it for the whole value | |
 
-The CLI tools must be on `PATH`; TablePro also looks in `/usr/local/bin` and `/opt/homebrew/bin`. Same 30 second timeout as `command`.
+Every command gets 30 seconds. The three CLI kinds quote each argument, so a reference cannot break out into the shell, and they need the tool on `PATH`, in `/usr/local/bin`, or in `/opt/homebrew/bin`.
+
+Editing `connections.json` by hand costs one extra step. TablePro stamps the file when it writes it, and a file that changed underneath it fails the connect with *"Your connections file was changed outside TablePro, so this connection's password source was not run. Open the connection and save it again to confirm the change."* Save it once from the app and sources run again.
 
 ## File format
 
-JSON. The envelope needs `formatVersion`, `exportedAt`, and `appVersion`; each connection needs `name`, `host`, `port`, `database`, `username`, and `type` (empty strings are fine where a value doesn't apply).
+JSON. The envelope needs `formatVersion`, `exportedAt`, and `appVersion`; each connection needs `name`, `host`, `port`, `database`, `username`, and `type`, and an empty string is fine where a value does not apply. Groups and tags match by name and are created when missing. Groups export flat, name and color only. Paths use `~/` so they travel.
 
 ```json
 {
@@ -200,14 +162,3 @@ JSON. The envelope needs `formatVersion`, `exportedAt`, and `appVersion`; each c
   "tags": [{ "name": "production", "color": "Red" }]
 }
 ```
-
-Groups and tags match by name; missing ones are created. Groups export flat: name and color only, no hierarchy. Paths use `~/` for portability.
-
-## Sharing vs iCloud Sync
-
-| | Sharing | iCloud Sync |
-|---|---|---|
-| **For** | Team | Your Macs |
-| **How** | Files, links | CloudKit |
-| **Passwords** | Per-user (encrypted export with a license) | Optional sync |
-| **Requires** | Nothing (Starter for extras) | Starter license + iCloud |

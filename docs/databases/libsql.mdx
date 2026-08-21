@@ -3,90 +3,97 @@ title: libSQL / Turso
 description: Connect to Turso cloud databases, self-hosted sqld, or local libSQL files
 ---
 
-**Connection Mode** in the connection form decides everything else on it. Remote runs the Hrana HTTP protocol against Turso or a self-hosted sqld; Local opens a libSQL file from disk, and the fields change to match. The driver is a downloadable plugin; the install is offered the first time you select it. See [Plugins](/features/plugins).
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-## Connection settings
+**Connection Mode** decides every other field on the form. Remote speaks the Hrana HTTP protocol to Turso or a self-hosted sqld; Local File opens a libSQL file through the system SQLite engine.
 
-Pick a mode with the **Connection Mode** dropdown:
+<RegistryPlugin name="libSQL / Turso" plugin="libSQL / Turso Driver" />
 
-| Mode | Description |
-|------|-------------|
-| **Remote (Turso)** | Connects over HTTP using the Hrana protocol. For Turso cloud and self-hosted sqld. |
-| **Local File** | Opens a libSQL database file directly from disk using the system SQLite engine. Unencrypted libSQL files use the standard SQLite file format. |
+## Quick setup
 
-### Remote fields
-
-| Field | Description |
-|-------|-------------|
-| **Database URL** | Full URL to your database, e.g. `https://your-db-name.turso.io` or `http://localhost:8080`. `libsql://` URLs are rewritten to `https://` automatically. |
-| **API Token** | Bearer token, entered in the built-in password field (labeled **API Token** for this driver). Optional for self-hosted sqld without auth. Stored in the macOS Keychain. |
-
-### Local file fields
-
-| Field | Description |
-|-------|-------------|
-| **Database File** | Path to the file. Use **Browse…** to pick it, or type a path (`~` is expanded). |
-
-In Local File mode the API Token field is hidden; local files need no authentication.
+Click **Create Connection…**, select **libSQL / Turso**, pick a **Connection Mode**, fill in the fields it leaves on screen, then click **Test Connection** and **Save & Connect**.
 
 <Frame caption="The libSQL connection form with the Connection Mode dropdown">
   <img className="block dark:hidden" src="/images/libsql-connection-mode.png" alt="libSQL connection form showing Remote (Turso) and Local File modes" />
   <img className="hidden dark:block" src="/images/libsql-connection-mode-dark.png" alt="libSQL connection form showing Remote (Turso) and Local File modes" />
 </Frame>
 
-Click **Test Connection** to verify, then **Save & Connect**.
+## Connection settings
 
-## Getting your credentials
+### Remote (Turso)
 
-### Turso Cloud
+| Field | Description |
+|-------|-------------|
+| **Database URL** | `https://your-db-name.turso.io`, or `http://localhost:8080` for sqld. A `libsql://` URL is rewritten to `https://`, and trailing slashes are dropped |
+| **API Token** | The bearer token, in the password field, labeled **API Token** for this driver. Leave it empty for a sqld started without `--auth-jwt-key-file`. Stored in the macOS Keychain |
 
-Find the database URL on the [Turso dashboard](https://turso.tech/app) or with the CLI:
+There is no host, no port and no Database field: the URL names one database and the connection stays on it. Any Turso database works, as does any sqld serving the Hrana v2 pipeline endpoint.
+
+### Local File
+
+| Field | Description |
+|-------|-------------|
+| **Database File** | Path to the file. **Browse…** picks one and `~` expands. A path that does not exist is created, along with any missing folders |
+
+The API Token field is hidden here; a local file needs no authentication.
+
+<Danger>
+Do not open a file that is being synced as a Turso embedded replica while the owning app is running. Concurrent access to a syncing replica can corrupt it.
+</Danger>
+
+## Connection URL
+
+```text
+libsql://your-db-name.turso.io
+https://your-db-name.turso.io
+```
+
+Importing either creates a Remote connection. See [Connection URL Reference](/connections/urls).
+
+## Getting a token
+
+Take the URL and a fresh token from the Turso [dashboard](https://turso.tech/app) or the CLI:
 
 ```bash
 turso db show <database-name> --url
 turso db tokens create <database-name>
 ```
 
-### Self-hosted sqld
+A self-hosted sqld answers on `http://localhost:8080` by default. With JWT authentication on, generate a token matching the key the server started with.
 
-The default sqld HTTP endpoint is `http://localhost:8080`. If you started sqld without `--auth-jwt-key-file`, leave the token empty. With JWT authentication enabled, generate a token matching your configured key.
+## Schema and SQL
 
-<Danger>
-Do not open a file that is being synced as a Turso embedded replica while the owning app is running. Concurrent access to a syncing replica can corrupt it.
-</Danger>
+libSQL takes SQLite syntax, so browsing, `EXPLAIN QUERY PLAN`, data editing and export behave as they do on [SQLite](/databases/sqlite). The structure editor creates tables, adds and drops columns, and adds and drops indexes; **Triggers** in the Structure tab creates, edits and drops those.
 
-## Schema and triggers
+## SSL/TLS
 
-The structure editor creates tables, adds and drops columns, and creates and drops indexes. It cannot change an existing column's name, type, nullability, or default: recreate the table for that. Triggers appear under **Triggers** in the Structure tab, where you can create, edit, and drop them.
-
-## SQL dialect
-
-libSQL uses SQLite syntax; browsing, EXPLAIN QUERY PLAN, data editing, and export work as they do for SQLite. See [SQLite](/databases/sqlite).
-
-## Troubleshooting
-
-**Authentication failed (HTTP 401)**: The token is wrong or expired. Generate a new one with `turso db tokens create <name>`; for sqld, check the JWT matches the configured key. Watch for stray whitespace in the pasted token.
-
-**Invalid URL**: Use `https://your-db.turso.io` for Turso or `http://localhost:8080` for sqld, without a trailing slash or path. `libsql://` URLs are accepted. Verify the database exists with `turso db list`.
-
-**File not found (local mode)**: Re-pick the file with **Browse…** if it was moved or renamed. Encrypted libSQL files cannot be opened in local mode.
+There is no SSL/TLS pane. A Remote connection is encrypted when its **Database URL** starts with `https://` and is not when it starts with `http://`, and a local file is not networked at all. See [SSL/TLS](/connections/ssl).
 
 ## Limitations
 
-Remote mode:
+- Remote mode runs no transaction. Each statement is its own HTTP request and auto-commits, and `BEGIN` fails with `Transactions are not supported in this mode`. Use Local File mode for transactional work.
+- Local File mode does not sync. The file opens standalone, with no embedded-replica sync to a remote Turso database. Reach the remote copy through Remote mode.
+- libSQL-only SQL such as `ALTER TABLE ALTER COLUMN` does not run in Local File mode. The system SQLite engine gets the statement and rejects it. Rewrite it as standard SQLite DDL.
+- Encrypted libSQL files do not open in Local File mode.
+- The structure editor cannot rename a column, change its type, nullability or default, or edit a foreign key. Recreate the table instead.
+- One connection, one database. A switch returns `Switching databases is not supported`, and there is no create or drop.
+- No bulk import, no SSH tunnel, no custom TLS settings. Load data with the Turso CLI or a direct sqld import.
 
-- No persistent connections: each query is an independent HTTP request via the Hrana protocol
-- No multi-statement transactions: each SQL statement auto-commits independently
-- No custom SSL/SSH tunnels: connections use HTTPS (Turso Cloud) or HTTP (local sqld)
+## Troubleshooting
 
-Local mode:
+### Authentication failed
 
-- No embedded replica sync: local files open standalone, without syncing to a remote Turso database
-- No encrypted database files
-- libSQL-only SQL extensions (e.g. `ALTER TABLE ALTER COLUMN`) are unavailable; local mode uses the system SQLite engine
+The full message is `Authentication failed. Check your auth token.` The server answered 401 or 403. Generate a new token with `turso db tokens create <name>`; for sqld, check the JWT matches the configured key. Watch for whitespace picked up in the paste.
 
-Both modes:
+### Server not found
 
-- No column rename, retype, or foreign key editing in the structure editor
-- No database creation or switching from TablePro; a connection targets a single database
-- No bulk import through the plugin: use the Turso CLI or direct sqld import
+`Server not found. Check your database URL.` is a 404. The URL wants the bare origin, `https://your-db.turso.io` or `http://localhost:8080`, with no path. Confirm the database exists with `turso db list`.
+
+### Rate limited
+
+`Rate limited. Retry after … seconds.` means Turso is throttling the connection. Wait out the interval it names, then retry.
+
+## Related
+
+- [SQLite](/databases/sqlite)
+- [Import & Export](/features/import-export)

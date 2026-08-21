@@ -3,68 +3,48 @@ title: Beancount
 description: Backend requirements, the table layout, source locations, includes, and BQL support
 ---
 
-Point TablePro at a `.beancount` file and you get a read-only SQL database over it. The driver projects the ledger into 17 tables: transactions, postings, accounts, prices, computed balances, balance assertions, the other directives, metadata, and the source files themselves. The plugin is not bundled with the app, so the first time you open a `.beancount` file you get a prompt to download it.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-The plugin uses either `rledger` (the rustledger project) or Python Beancount to parse ledgers. TablePro does not bundle either one, so install one yourself before opening a ledger. When both are available, TablePro uses `rledger`; Python Beancount is the fallback for browsing projected SQL tables.
+Install `rledger` or Python Beancount before you connect. The plugin parses nothing itself: it shells out to one of those two and projects the answer into 17 read-only SQL tables.
 
-The plugin also supports BQL queries through `rledger`. BQL requires the `rledger` executable even when the ledger was opened through Python Beancount.
+<RegistryPlugin name="Beancount" plugin="Beancount Driver" />
 
 ## Backend requirements
 
-Install the Python backend with pip:
+Either backend browses the tables, at any version. Install `rledger` if you are choosing: it wins when both are present, it is the only one that fills `diagnostics`, and BQL runs through it and nothing else.
 
-```bash
-pip3 install beancount
-```
-
-For `rledger`, build or download the rustledger project and put the executable on `PATH`, in `/opt/homebrew/bin`, or in `/usr/local/bin`.
-
-TablePro then discovers backends in this order:
-
-1. `rledger` from `TABLEPRO_RUSTLEDGER_BINARY`, then `PATH`, then `/opt/homebrew/bin` and `/usr/local/bin`.
-2. A `python3` that can `import beancount`, from `TABLEPRO_BEANCOUNT_PYTHON`, then `PATH`, then `/opt/homebrew/bin/python3`, `/usr/local/bin/python3`, and `/usr/bin/python3`.
-
-The names are exact: an executable called `rledger`, and a `python3` that imports `beancount`. Any other Beancount-compatible parser has to be installed under one of those names, or pointed at with the environment variables below.
-
-To verify `rledger`:
-
-```bash
+<CodeGroup>
+```bash rledger
+# build or download rustledger, put it on PATH, then:
 rledger --version
 ```
 
-To verify Python Beancount:
-
-```bash
+```bash Python Beancount
+pip3 install beancount
 python3 -c "import beancount"
 ```
+</CodeGroup>
 
-If TablePro cannot find a supported backend, set the executable path before launching the app:
+An app launched from Finder does not inherit your shell's `PATH`, so a backend that answers in Terminal can still be invisible. Name it outright, then relaunch:
 
 ```bash
 launchctl setenv TABLEPRO_RUSTLEDGER_BINARY /opt/homebrew/bin/rledger
 launchctl setenv TABLEPRO_BEANCOUNT_PYTHON /opt/homebrew/bin/python3
 ```
 
-To force a backend:
+`TABLEPRO_BEANCOUNT_BACKEND` overrides which one wins. It takes `rledger` or `python`.
 
-```bash
-launchctl setenv TABLEPRO_BEANCOUNT_BACKEND python
-```
-
-## Connecting to a Beancount ledger
+## Quick setup
 
 <Steps>
-  <Step title="Create a new connection">
-    Open TablePro and click **Create Connection…** or press `Cmd+N`.
+  <Step title="Create a connection">
+    Click **Create Connection…** and choose **Beancount**.
   </Step>
-  <Step title="Select Beancount">
-    Choose **Beancount** from the database type list.
-  </Step>
-  <Step title="Choose your ledger file">
-    Click **Browse…** and select a `.beancount` file.
+  <Step title="Choose your ledger">
+    Click **Browse…** and select a `.beancount` file. No host, no port, no password, no Database field: the ledger path is the whole connection.
   </Step>
   <Step title="Connect">
-    Click **Save & Connect** to open the ledger.
+    Click **Save & Connect**.
   </Step>
 </Steps>
 
@@ -79,14 +59,14 @@ launchctl setenv TABLEPRO_BEANCOUNT_BACKEND python
 beancount:///path/to/main.beancount
 ```
 
-See [Connection URL Reference](/connections/urls) for all parameters.
+Three slashes: the path is absolute. See [Connection URL Reference](/connections/urls).
 
 ## Tables
 
 | Table | Contents |
 |-------|----------|
-| `transactions` | Transaction date, flag, payee, narration, and source location, including transactions with no postings |
-| `postings` | Posting account, amount, commodity, resolved cost basis (`cost_number`, `cost_currency`), and source location |
+| `transactions` | Date, flag, payee, narration, source location. Includes transactions with no postings |
+| `postings` | Account, amount, commodity, resolved cost basis (`cost_number`, `cost_currency`), source location |
 | `accounts` | Opened accounts and declared currencies |
 | `prices` | Price directives |
 | `balances` | Computed account balances by commodity |
@@ -96,62 +76,65 @@ See [Connection URL Reference](/connections/urls) for all parameters.
 | `notes` | Account notes |
 | `events` | Event type and description directives |
 | `closes` | Close directives |
-| `transaction_metadata` | Transaction metadata key/value pairs |
-| `posting_metadata` | Posting metadata key/value pairs |
-| `transaction_tags` | Transaction tags |
-| `transaction_links` | Transaction links |
-| `diagnostics` | Validation diagnostics from `rledger check` |
+| `transaction_metadata`, `posting_metadata` | Metadata key/value pairs |
+| `transaction_tags`, `transaction_links` | Tags and links |
+| `diagnostics` | Validation output from `rledger check` |
 | `source_files` | Parsed ledger and include files |
 
-Amounts come from whichever backend parsed the ledger, so thousands separators, arithmetic, cost (`{}`), and price (`@`/`@@`) annotations arrive already resolved to their booked values.
+`postings.transaction_id` points at `transactions.id`, and so do `transaction_metadata`, `transaction_tags`, and `transaction_links`. `posting_metadata.posting_id` points at `postings.id`. The rest join by name: an account column against `accounts.name`, a `source_file` column against `source_files.path`.
 
-Metadata values are projected as text. Booleans keep their Beancount spelling, `TRUE` and `FALSE`.
+```sql
+SELECT t.date, t.payee, p.account, p.amount, p.commodity
+FROM postings p
+JOIN transactions t ON t.id = p.transaction_id
+WHERE p.account LIKE 'Expenses:%'
+ORDER BY t.date DESC;
+```
+
+Amounts arrive booked, so thousands separators, arithmetic, cost (`{}`) and price (`@`/`@@`) annotations are resolved before they reach a cell. Metadata values are text, and booleans keep their Beancount spelling of `TRUE` and `FALSE`.
+
+Every ledger file, glob directory, and referenced document is watched by modification date, size, and directory listing. Change one and the next query rebuilds the projection first, so an edit in your text editor lands without reconnecting.
 
 ## Source locations
 
-`transactions` and `postings` carry `source_file`, `line`, and `source_location`. `source_location` is formatted as `path:line`, so it can be copied, filtered, or exported directly. A posting points at its own line rather than the line of the transaction that contains it.
+`transactions` and `postings` carry `source_file`, `line`, and `source_location`, the last formatted `path:line` so it copies, filters, and exports as it stands. A posting points at its own line, not at its transaction's.
 
-Valid transactions with no postings remain in `transactions` with their metadata, tags, links, and source location.
-
-A transaction the backend generates rather than reads, such as the one inserted for a `pad`, has whatever location that backend gives it. `rledger` leaves these columns empty; Python Beancount points them at the `pad` directive.
+The backends disagree about generated entries. For the transaction a `pad` inserts, `rledger` leaves these columns empty and Python Beancount points them at the `pad`.
 
 ## Diagnostics
 
-The `diagnostics` table holds structured validation output: `source_file`, `line`, `source_location`, `column_number`, `end_line`, `end_column`, `severity`, `phase`, `code`, and `message`.
-
-The table is populated by `rledger check`. A ledger opened through `rledger` is projected even when it fails validation, so the entries the projection skipped are readable here rather than only on the command line. Ledgers opened on the Python Beancount backend leave the table empty.
-
-TablePro refreshes the projection when a referenced document file is created or removed, so document existence diagnostics stay current without editing the ledger.
+`diagnostics` carries `source_file`, `line`, `source_location`, `column_number`, `end_line`, `end_column`, `severity`, `phase`, `code`, and `message`. A ledger opened through `rledger` is projected even when validation fails, so whatever the projection skipped is readable here. The Python backend leaves the table empty.
 
 ## Includes
 
-The parser follows Beancount `include` directives. Literal includes and glob patterns such as `include "imports/*.beancount"` and `include "imports/**/*.beancount"` are supported.
+`include` directives are followed, both literal paths and glob patterns such as `include "imports/*.beancount"` and `include "imports/**/*.beancount"`.
 
 ## BQL
 
-Prefix a query with `BQL:` to run it through your configured `rledger` executable:
+Prefix a query with `BQL:` to send it to `rledger` instead of the projection.
 
 ```sql
 BQL: SELECT account FROM accounts ORDER BY account
 ```
 
-Table browsing, row counts, and pagination work for BQL results. BQL queries do not support SQL parameters.
+Table browsing, row counts, and pagination work on a BQL result. SQL parameters do not.
+
+## Limitations
+
+- No writes. INSERT, UPDATE, DELETE, and every form of schema editing are rejected. Edit the ledger in a text editor; the next query picks the change up.
+- No import, SSH, SSL, or ledger switching. One connection is one ledger file.
+- BQL needs `rledger` even when the ledger opened on the Python backend. The query is refused. Install `rledger`, or drop the `BQL:` prefix and query the projected tables.
+- `pad` directives get no table of their own. The balancing transaction they insert is projected; read the directive in the source file.
+- Directives outside the 17 tables are not projected. They stay in the source files.
 
 ## Troubleshooting
 
-**Beancount needs rledger or Python Beancount**: No backend was found. An app launched from Finder does not inherit your shell's `PATH`, so `rledger --version` working in Terminal is not enough. Set `TABLEPRO_RUSTLEDGER_BINARY` or `TABLEPRO_BEANCOUNT_PYTHON` with `launchctl setenv`, then relaunch TablePro.
+**Beancount needs rledger or Python Beancount**: Neither was found on `PATH`, in `/opt/homebrew/bin`, or in `/usr/local/bin`. Set `TABLEPRO_RUSTLEDGER_BINARY` or `TABLEPRO_BEANCOUNT_PYTHON` with `launchctl setenv`, then relaunch.
 
 **TABLEPRO_BEANCOUNT_PYTHON points to a Python executable that cannot import beancount**: Run `pip3 install beancount` with that exact interpreter, or point the variable at one that already has the package.
 
-**BQL queries need rledger**: BQL always runs through `rledger`, even when the ledger opened on the Python backend. Install `rledger`, or drop the `BQL:` prefix and query the projected tables instead.
+**BQL queries need rledger**: Install rustledger so `rledger` lands on `PATH` or in Homebrew, or point `TABLEPRO_RUSTLEDGER_BINARY` at it.
 
 **File does not exist**: The ledger moved or was renamed. Re-pick it with **Browse…** in the connection form.
 
 **Beancount include cycle detected**: Two ledger files include each other. Break the loop in the source files.
-
-## Limitations
-
-- Beancount connections are read-only.
-- Schema editing, imports, SSH, SSL, and database switching are not available for ledgers.
-- `pad` directives are not projected as their own table. `rledger` does not expose the padded and source accounts, so the directive is only visible through the balancing transaction it inserts. The directive itself remains in the original source files.
-- The SQL projection covers common ledger directives; unsupported directives remain available in the original source files.

@@ -3,51 +3,54 @@ title: Connection URL Reference
 description: Every supported database URL scheme, format, and query parameter for imports and direct connections
 ---
 
-TablePro parses standard database connection URLs for importing connections, opening them directly from a browser or terminal, and configuring SSH tunnels.
+Two readers take these URLs, and not the same set. The **Import from URL…** sheet accepts every scheme in this reference, while `open` and browser links reach TablePro only through the ones it registers with macOS.
+
+<Frame caption="The Import from URL sheet accepts every scheme in this reference">
+  <img className="block dark:hidden" src="/images/import-from-url.png" alt="Import from URL sheet with a pasted connection URL" />
+  <img className="hidden dark:block" src="/images/import-from-url-dark.png" alt="Import from URL sheet with a pasted connection URL" />
+</Frame>
 
 ## URL schemes
 
-| Scheme | Database |
-|--------|----------|
-| `postgresql://` | PostgreSQL |
-| `postgres://` | PostgreSQL (alias) |
-| `mysql://` | MySQL |
-| `mariadb://` | MariaDB |
-| `sqlite://` | SQLite |
-| `mongodb://` | MongoDB |
-| `mongodb+srv://` | MongoDB (SRV) |
-| `redis://` | Redis |
-| `rediss://` | Redis with TLS |
-| `redshift://` | Amazon Redshift |
-| `cockroachdb://` | CockroachDB |
-| `cockroach://` | CockroachDB (alias) |
-| `pglite://` | PGlite |
-| `mssql://` | Microsoft SQL Server |
-| `sqlserver://` | Microsoft SQL Server (alias) |
-| `jdbc:sqlserver://` | Microsoft SQL Server (JDBC) |
-| `oracle://` | Oracle Database |
-| `dm://` | Dameng DM8 |
-| `jdbc:oracle:thin://` | Oracle Database (JDBC thin) |
-| `cassandra://` | Cassandra |
-| `cql://` | Cassandra (alias) |
-| `scylladb://` | ScyllaDB |
-| `scylla://` | ScyllaDB (alias) |
-| `clickhouse://` | ClickHouse |
-| `ch://` | ClickHouse (alias) |
-| `teradata://` | Teradata |
-| `trino://` | Trino |
-| `duckdb://` | DuckDB file |
-| `quack://` | DuckDB remote (Quack protocol) |
-| `beancount://` | Beancount ledger file |
-| `etcd://` | etcd |
-| `etcds://` | etcd with TLS |
-| `d1://` | Cloudflare D1 |
-| `libsql://` | libSQL / Turso |
-| `surrealdb://` | SurrealDB |
+| Scheme | Database | `open` |
+|--------|----------|:---:|
+| `postgresql://` | PostgreSQL | Yes |
+| `postgres://` | PostgreSQL (alias) | Yes |
+| `mysql://` | MySQL | Yes |
+| `mariadb://` | MariaDB | Yes |
+| `sqlite://` | SQLite | Yes |
+| `mongodb://` | MongoDB | Yes |
+| `mongodb+srv://` | MongoDB (SRV) | Yes |
+| `redis://` | Redis | Yes |
+| `rediss://` | Redis with TLS | Yes |
+| `redshift://` | Amazon Redshift | Yes |
+| `cockroachdb://` | CockroachDB | Yes |
+| `cockroach://` | CockroachDB (alias) | Yes |
+| `pglite://` | PGlite | No |
+| `mssql://` | Microsoft SQL Server | Yes |
+| `sqlserver://` | Microsoft SQL Server (alias) | Yes |
+| `jdbc:sqlserver://` | Microsoft SQL Server (JDBC) | No |
+| `oracle://` | Oracle Database | Yes |
+| `dm://` | Dameng DM8 | Yes |
+| `jdbc:oracle:thin://` | Oracle Database (JDBC thin) | No |
+| `cassandra://` | Cassandra | Yes |
+| `cql://` | Cassandra (alias) | Yes |
+| `scylladb://` | ScyllaDB | Yes |
+| `scylla://` | ScyllaDB (alias) | Yes |
+| `clickhouse://` | ClickHouse | Yes |
+| `ch://` | ClickHouse (alias) | Yes |
+| `teradata://` | Teradata | No |
+| `trino://` | Trino | No |
+| `duckdb://` | DuckDB file | Yes |
+| `quack://` | DuckDB remote (Quack protocol) | No |
+| `beancount://` | Beancount ledger file | No |
+| `etcd://` | etcd | Yes |
+| `etcds://` | etcd with TLS | Yes |
+| `d1://` | Cloudflare D1 | Yes |
+| `libsql://` | libSQL / Turso | Yes |
+| `surrealdb://` | SurrealDB | Yes |
 
-Every scheme above works in the **Import from URL…** sheet. Only these are registered with macOS, so only these can be launched with `open` or a browser link: `postgresql`, `postgres`, `mysql`, `mariadb`, `sqlite`, `mongodb`, `mongodb+srv`, `redis`, `rediss`, `redshift`, `cockroachdb`, `cockroach`, `mssql`, `sqlserver`, `oracle`, `dm`, `clickhouse`, `ch`, `cassandra`, `cql`, `scylladb`, `scylla`, `duckdb`, `etcd`, `etcds`, `d1`, `libsql`, `surrealdb`.
-
-Append `+ssh` to any non-file-based scheme (not `sqlite`, `duckdb`, or `beancount`) to use an SSH tunnel:
+Append `+ssh` to any non-file scheme (so not `sqlite`, `duckdb`, or `beancount`) to carry SSH settings in the same string:
 
 ```text
 postgresql+ssh://
@@ -55,15 +58,13 @@ mysql+ssh://
 mariadb+ssh://
 ```
 
-## Standard format
+No `+ssh` scheme is registered with macOS, so `open` and browser links cannot route one. Import those through the sheet.
 
-If the URL you want is already in a project's `.env` file, [Open Project Folder](/features/project-folder-import) reads it for you instead.
+## Standard format
 
 ```text
 scheme://[username[:password]@]host[:port][/database][?param=value&…]
 ```
-
-**Examples:**
 
 ```text
 postgresql://alice:secret@db.example.com:5432/myapp
@@ -73,19 +74,21 @@ redis://:password@cache.host:6379/1
 sqlite:///Users/alice/data/local.db
 ```
 
+If the URL is already in a project's `.env` file, [Open Project Folder](/features/project-folder-import) reads it for you instead of asking you to paste it.
+
 <Note>
-Passwords containing special characters (`@`, `#`, `%`, `:`) must be percent-encoded. For example, `p@ss#word` becomes `p%40ss%23word`.
+Passwords containing `@`, `#`, `%`, or `:` must be percent-encoded. `p@ss#word` becomes `p%40ss%23word`.
 </Note>
+
+A URL the parser cannot read is reported as `Could not parse database URL: …`, with the password stripped out of the echoed string.
 
 ## SSH tunnel format
 
-SSH tunnel URLs encode both SSH and database credentials in a single string:
+Both sets of credentials go in one string, SSH first:
 
 ```text
 scheme+ssh://[ssh_user@]ssh_host[:ssh_port]/[db_user[:db_pass]@]db_host[:db_port][/database][?params]
 ```
-
-**Examples:**
 
 ```text
 postgresql+ssh://deploy@bastion.host:22/dbuser:dbpass@internal-pg:5432/mydb
@@ -93,26 +96,30 @@ mysql+ssh://ec2-user@jump.host/root:secret@10.0.0.5/shop
 mariadb+ssh://admin@ssh.host/maria_user@db.internal/store?usePrivateKey=true
 ```
 
-If `db_host` is omitted, it defaults to `127.0.0.1`.
+An omitted `db_host` defaults to `127.0.0.1`.
 
 ## Query parameters
+
+Names are matched case-insensitively. Anything unrecognized is ignored, except on a MongoDB URL, where every unknown parameter is passed to the driver unchanged.
 
 ### Connection
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `name` | Override the connection name shown in the sidebar | `?name=Production+DB` |
-| `safeModeLevel` | Set [Safe Mode](/features/safe-mode) for the connection: 0=silent, 1=alert, 2=read-only | `?safeModeLevel=2` |
+| `name` | Connection name shown in the sidebar, and part of what a trusted link is matched on | `?name=Production+DB` |
+| `safeModeLevel` | [Safe Mode](/features/safe-mode) for this connection: 0=silent, 1=alert, 2=read-only | `?safeModeLevel=2` |
+| `statusColor` | Connection color as hex, matched to the nearest palette color | `?statusColor=FF3B30` |
+| `env` | Assign an existing tag by name. `environment` is accepted too | `?env=production` |
 
-### SSL / TLS
+### SSL/TLS
 
 | Parameter | Values | Description |
 |-----------|--------|-------------|
-| `sslmode` | `disable`, `prefer`, `require`, `verify-ca`, `verify-full` | SSL mode (standard PostgreSQL names) |
-| `tlsmode` | `0`-`4` | SSL mode as integer: 0=disable, 1=prefer, 2=require, 3=verify-ca, 4=verify-full |
-| `tls` / `ssl` | `true` | Sets SSL mode to Required |
+| `sslmode` | `disable`, `prefer`, `require`, `verify-ca`, `verify-full` | SSL mode under libpq's names |
+| `tlsmode` | `0`-`4` | The same modes as integers: 0=disable, 1=prefer, 2=require, 3=verify-ca, 4=verify-full |
+| `tls` / `ssl` | `true` | Sets the mode to Required |
 
-**Example:**
+`sslmode` wins if more than one of these is present.
 
 ```text
 postgresql://user:pass@host/db?sslmode=require
@@ -121,17 +128,13 @@ postgresql://user:pass@host/db?tlsmode=2
 
 ### Navigation
 
-These parameters open a specific table, view, or schema immediately after connecting.
-
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `table` | Open the named table | `?table=users` |
-| `view` | Open the named view | `?view=active_orders` |
-| `schema` | Switch to this schema before opening | `?schema=reporting` |
+| `table` | Open this table once connected | `?table=users` |
+| `view` | Open this view once connected | `?view=active_orders` |
+| `schema` | Switch here first | `?schema=reporting` |
 
-On databases that support schema switching (PostgreSQL, Redshift, SQL Server, Oracle), `schema` switches the schema. On databases that don't, the value is treated as a database name and switches the database instead.
-
-**Example:**
+On PostgreSQL, Redshift, SQL Server, and Oracle, `schema` switches the schema. Everywhere else the value is read as a database name and switches the database.
 
 ```text
 postgresql://user:pass@host/mydb?schema=reporting&table=monthly_sales
@@ -139,158 +142,78 @@ postgresql://user:pass@host/mydb?schema=reporting&table=monthly_sales
 
 ### Filtering
 
-Apply a filter to the opened table automatically.
+These apply a filter to the table the URL opened. Applying one needs its own confirmation.
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `column` | Column name to filter on | `?column=status` |
-| `operation` | Filter operator (e.g. `=`, `!=`, `LIKE`) | `?operation=LIKE` |
+| `column` | Column to filter on | `?column=status` |
+| `operation` | Filter operator. Symbols and names both work (`=`, `LIKE`, `Equal`, `Contains`, `Is Null`); `operator` is an alias for the parameter | `?operation=LIKE` |
 | `value` | Filter value | `?value=active` |
-| `condition` | Raw SQL WHERE condition (overrides column/operation/value) | `?condition=status%3D'active'+AND+role%3D'admin'` |
-
-`operator` is accepted as an alias for `operation`. `raw` and `query` are accepted as aliases for `condition`.
-
-**Example:**
+| `condition` | Raw SQL WHERE condition, which overrides `column`, `operation`, and `value`. `raw` and `query` are aliases | `?condition=status%3D'active'` |
 
 ```text
 postgresql://user:pass@host/mydb?table=orders&column=status&operation==&value=pending
 postgresql://user:pass@host/mydb?table=orders&condition=total%3E1000
 ```
 
-### Appearance
+### SSH tunnel
 
-| Parameter | Description | Example |
-|-----------|-------------|---------|
-| `statusColor` | Assign a color to the connection (hex, matched to nearest palette color) | `?statusColor=FF3B30` |
-| `env` | Assign an existing tag by name (`environment` also accepted) | `?env=production` |
-
-**Example:**
+| Parameter | Description |
+|-----------|-------------|
+| `usePrivateKey` | `true` for key-based SSH authentication |
+| `useSSHAgent` | `true` to authenticate through an SSH agent |
+| `sshNoAuth` | `true` to send no credentials at all, for servers like Tailscale SSH. See [Authentication methods](/connections/ssh-tunneling#authentication-methods) |
+| `agentSocket` | Path to a non-default agent socket |
 
 ```text
-postgresql://user:pass@host/db?statusColor=FF3B30&env=production
+postgresql+ssh://ubuntu@bastion/dbuser@10.0.0.5/mydb?usePrivateKey=true
 ```
 
 ### MongoDB
 
 | Parameter | Description |
 |-----------|-------------|
-| `authSource` | Authentication database (defaults to `admin`) |
-| `authMechanism` | Authentication mechanism (e.g. `SCRAM-SHA-256`) |
+| `authSource` | Authentication database, `admin` by default |
+| `authMechanism` | For example `SCRAM-SHA-256` |
 | `replicaSet` | Replica set name |
 
-Any other query parameter on a MongoDB URL passes through to the driver unchanged. Multi-host URIs with comma-separated hosts are supported.
-
-**Example:**
+Comma-separated hosts work for a replica set URI.
 
 ```text
 mongodb://user:pass@host:27017/mydb?authSource=admin
 mongodb://user:pass@host1:27017,host2:27017,host3:27017/mydb?replicaSet=rs0
 ```
 
-### Redis
+## What the path component means
 
-The path component sets the database index (0-15). The `rediss://` scheme automatically enables TLS.
+The part after the host is the database name on most schemes. Seven read it differently:
+
+| Scheme | The path is |
+|---|---|
+| `redis://`, `rediss://` | The database index, 0 to 15 |
+| `cassandra://`, `scylladb://` | The default keyspace. Omit it to connect with none |
+| `sqlite://`, `duckdb://`, `beancount://` | An absolute file path, so the URL carries three slashes |
+| `quack://` | The alias a remote DuckDB server attaches the database under. See [DuckDB](/databases/duckdb) |
+| `d1://` | The D1 database name or UUID, with the host as the Cloudflare account ID |
+| `libsql://` | Nothing. The host is the database URL, and the auth token goes in the connection form's password field |
 
 ```text
-redis://:password@host:6379/2       # database index 2
-rediss://:password@host:6380        # TLS, default index 0
-```
-
-### Cassandra / ScyllaDB
-
-The path component sets the default keyspace. Both `cassandra://` and `scylladb://` schemes use the same format.
-
-```text
+redis://:password@host:6379/2
 cassandra://user:pass@host:9042/my_keyspace
-scylladb://user:pass@host:9042/my_keyspace
-cassandra://host:9042                        # no auth, no default keyspace
-```
-
-### DuckDB
-
-With `duckdb://` the path after `://` is the file path, same as SQLite. `quack://` targets a remote DuckDB server instead: host, optional port, and the alias the remote attaches under. See [DuckDB](/databases/duckdb).
-
-```text
 duckdb:///Users/me/data/analytics.duckdb
-duckdb:///path/to/database.db
 quack://host:9494/alias
-```
-
-### ClickHouse
-
-ClickHouse uses HTTP on port 8123 by default. `ch://` is accepted as an alias.
-
-```text
-clickhouse://user:password@host:8123/mydb
-ch://default@localhost/analytics
-```
-
-### etcd
-
-The `etcds://` scheme automatically enables TLS. Default port is 2379.
-
-```text
-etcd://host:2379
-etcds://host:2379
-```
-
-### libSQL / Turso
-
-The URL host maps to the database URL. The auth token goes in the password field of the connection form.
-
-```text
+d1://account-id/database-name
 libsql://your-database.turso.io
 ```
 
-### Cloudflare D1
-
-The host maps to the Cloudflare Account ID. The path sets the database name or UUID.
-
-```text
-d1://account-id/database-name
-```
-
-### SSH Tunnel
-
-| Parameter | Description |
-|-----------|-------------|
-| `usePrivateKey` | `true` to use key-based SSH authentication instead of password |
-| `useSSHAgent` | `true` to use SSH agent for authentication |
-| `sshNoAuth` | `true` to authenticate with no password or key, for servers like Tailscale SSH. See [Authentication Methods](/connections/ssh-tunneling#authentication-methods) |
-| `agentSocket` | Custom SSH agent socket path |
-
-**Example:**
-
-```text
-postgresql+ssh://ubuntu@bastion/dbuser@10.0.0.5/mydb?usePrivateKey=true
-```
-
-## Opening URLs from browser or terminal
-
-Launch and connect from a browser or terminal:
-
-```bash
-open "postgresql://user:pass@localhost:5432/mydb"
-open "mysql://root@localhost/shop?table=products"
-```
-
-Uses a saved connection if it matches, otherwise creates a temporary session. To save permanently, click **Create Connection…** on the welcome window and pick **Import from URL…** in the chooser footer.
-
-<Frame caption="The Import from URL sheet accepts every scheme in this reference">
-  <img className="block dark:hidden" src="/images/import-from-url.png" alt="Import from URL sheet with a pasted connection URL" />
-  <img className="hidden dark:block" src="/images/import-from-url-dark.png" alt="Import from URL sheet with a pasted connection URL" />
-</Frame>
-
-`+ssh` schemes are not registered with macOS, so `open` and browser links cannot route them to TablePro. Use the **Import from URL…** sheet for SSH tunnel URLs.
-
 <Tip>
-To force TablePro when another client also handles the scheme, use `open -b com.TablePro "mysql://…"`. See [Terminal and DDEV](/external-api/terminal) for the `tablepro` command and a `ddev tablepro` host command.
+When another client also handles the scheme, `open -b com.TablePro "mysql://…"` forces TablePro. See [Terminal and DDEV](/external-api/terminal) for the `tablepro` command and the `ddev tablepro` host command.
 </Tip>
 
 ## Confirmation and trusted links
 
-Every URL opened from outside the app shows a confirmation alert with the database type, host, user, and database before TablePro connects. Connect only if you trust the source of the link.
+Every URL opened from outside the app raises an **Open External Database Connection?** alert naming the database type, host and port, user, and database. **Connect** does not answer the Return key. Escape is the only keyboard answer, and it cancels.
 
-For connections to this machine (`localhost`, `127.x.x.x`, `::1`) the alert also offers **Always Allow**. A trusted link is matched by database type, host, database, username, and the URL's `name` parameter, never the port. Only loopback hosts can be trusted; remote hosts always prompt.
+**Always Allow** appears only for a database on this machine (`localhost`, `127.x.x.x`, `::1`). A trusted link is matched on database type, host, database, username, and the URL's `name` parameter, never the port, so the same link on a different port still connects without asking again. Remote hosts always prompt.
 
-Review trusted links under **Settings > General > Trusted Links**, where you can forget them one at a time or all at once.
+Trusted links are listed under **Settings > General**, where **Forget** drops one and **Forget All** drops every one.

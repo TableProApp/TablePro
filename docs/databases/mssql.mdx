@@ -3,132 +3,29 @@ title: Microsoft SQL Server
 description: Connect to SQL Server and Azure SQL Database with the FreeTDS-based driver plugin
 ---
 
-Named instances are not supported. Give the host and the TCP port instead, `1433` by default. The wire protocol underneath is TDS 7.4, which every server from 2012 on speaks, so instances on Windows, Linux and Docker all work, and so does Azure SQL Database. FreeTDS is linked statically, so there is nothing to build or install besides the plugin itself.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-## Install Plugin
+Named instances are not supported. Give the host and the TCP port, `1433` by default, and let the **Authentication** dropdown decide the rest of the form: a SQL Server login, a Kerberos ticket from your domain, or a Microsoft Entra ID work account. The protocol underneath is TDS 7.4, which every server from 2012 on speaks, so Windows, Linux, Docker and Azure SQL Database are all reachable.
 
-The SQL Server driver is a downloadable plugin. When you select SQL Server in the connection form, TablePro prompts to install it. To install manually:
+<RegistryPlugin name="SQL Server" plugin="MSSQL Driver" />
 
-1. Open **Settings > Plugins > Browse**
-2. Find **MSSQL Driver** and click **Install**
-3. The plugin downloads and loads immediately, no restart needed
+## Quick setup
 
-See [Plugins](/features/plugins) for how plugin installs and updates work.
-
-## Connection settings
-
-Click **Create Connection…**, select **SQL Server**, fill in the fields, and click **Save & Connect**.
+Click **Create Connection…**, select **SQL Server**, fill in the fields, then click **Save & Connect**. For Azure SQL Database, use `yourserver.database.windows.net` and an SSL mode of **Required (skip verify)** or stricter.
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| **Host** | `localhost` | Named instances are not supported; use the host and TCP port |
+| **Host** | `localhost` | A hostname, or an IP for anything but Kerberos |
 | **Port** | `1433` | |
-| **Authentication** | `SQL Server Authentication` | Or **Windows Authentication (Kerberos)**, macOS only, or **Microsoft Entra ID**. See [Windows Authentication](#windows-authentication-kerberos) and [Microsoft Entra ID](#microsoft-entra-id) below |
-| **Username** | - | SQL Server login name. Hidden when Windows Authentication is selected |
-| **Database** | - | Optional. Sent during login when set, which is required for logins scoped to one database, such as Azure SQL contained users |
-| **Schema** | `dbo` | Active schema after connecting. Clear it to use the login's default schema, which the driver reads with `SELECT SCHEMA_NAME()` |
+| **Authentication** | SQL Server Authentication | Or Windows Authentication (Kerberos), or Microsoft Entra ID |
+| **Username** | - | The SQL Server login. Hidden under the other two methods |
+| **Database** | - | Optional, sent during login when set. Required for a login scoped to one database, such as an Azure SQL contained user |
+| **Schema** | `dbo` | Selected after connecting. Clear it to take the login's own default |
 
 <Frame caption="SQL Server connection form">
   <img className="block dark:hidden" src="/images/mssql-connection-form.png" alt="SQL Server connection form with host, port, credentials, database, and schema fields" />
   <img className="hidden dark:block" src="/images/mssql-connection-form-dark.png" alt="SQL Server connection form with host, port, credentials, database, and schema fields" />
 </Frame>
-
-For Azure SQL Database, set the host to `yourserver.database.windows.net` and pick SSL mode **Required** or stricter.
-
-## Windows Authentication (Kerberos)
-
-Available on macOS. Set **Authentication** to **Windows Authentication (Kerberos)** to sign in with your domain identity instead of a SQL Server login. On macOS, Windows Authentication means Kerberos; NTLM is not supported.
-
-There are two ways to sign in:
-
-- **Use your existing ticket (single sign-on).** Leave the Kerberos principal and password blank. TablePro uses the ticket already in your credential cache. Get one first with `kinit`:
-
-  ```bash
-  kinit user@REALM.COM
-  klist            # confirm a krbtgt/REALM.COM@REALM.COM ticket exists
-  ```
-
-- **Sign in with a principal and password.** Enter the Kerberos principal (`user@REALM.COM`) and your domain password. TablePro requests a ticket for that principal, then connects.
-
-Requirements:
-
-- **Connect by hostname, not IP address.** Kerberos targets the service principal name `MSSQLSvc/host.domain.com:1433`, which is registered against the host name.
-- **Uppercase realm.** The realm is usually the DNS domain in uppercase, for example `CONTOSO.COM`.
-- **Realm resolution.** Your Mac must be able to find the domain's KDC, either through DNS SRV records or an `/etc/krb5.conf` entry.
-- **A registered SPN.** The SQL Server service account must have an SPN such as `MSSQLSvc/host.domain.com:1433`. Ask your administrator if connections fail with an SSPI or service-principal error.
-
-### Servers in another realm
-
-If the SQL Server lives in a different Kerberos realm than your Mac's `default_realm`, map its DNS domain to that realm in `/etc/krb5.conf`:
-
-```ini
-[domain_realm]
-  .sql.example.com = RESOURCE.REALM.COM
-```
-
-TablePro reads that mapping and asks the KDC for a ticket in `RESOURCE.REALM.COM`, so a cross-realm trust works without changing `default_realm`. This is the same mapping the JDBC driver uses, so a server that already works in DataGrip works here.
-
-With no `[domain_realm]` entry for the host, TablePro falls back to `default_realm`, which is what a single-realm domain needs.
-
-TablePro does not run `kinit` or edit `/etc/krb5.conf` for you; those are set up once per machine.
-
-## Microsoft Entra ID
-
-Set **Authentication** to **Microsoft Entra ID** to sign in with your work account instead of a SQL
-Server login. This covers Azure SQL Database, Azure SQL Managed Instance, and SQL Server 2022 with
-Entra authentication enabled.
-
-Available on macOS and iOS. The connection form is on the Mac; iPhone and iPad pick up Entra
-connections through sync and prompt to sign in when you open one.
-
-Sign-in uses the device code flow, so it honors multifactor authentication and Conditional Access:
-
-1. Fill in **Application (Client) ID**, and **Directory (Tenant) ID** if your directory is single-tenant.
-2. Click **Test Connection**. TablePro asks whether to sign in, opens your browser, and copies a
-   one-time code to the clipboard.
-3. Paste the code in the browser and approve the sign-in, then test the connection again.
-
-TablePro stores the resulting tokens in your login keychain, marked device-only so they never travel
-through iCloud Keychain. The access token is refreshed automatically in the background; you only sign
-in again when the refresh token is revoked or expires.
-
-| Field | Notes |
-|-------|-------|
-| **Application (Client) ID** | The application registration TablePro signs in as. Required |
-| **Directory (Tenant) ID** | Your directory ID or domain. Leave blank for the multi-tenant `organizations` authority |
-
-### Registering the application
-
-TablePro signs in as an application registered in Microsoft Entra ID. Register one in the Azure
-portal under **App registrations**:
-
-- Platform **Mobile and desktop applications**
-- **Allow public client flows** set to **Yes**, which the device code flow requires
-- Delegated permission **Azure SQL Database → user_impersonation**
-
-Then create the matching database user and grant it rights:
-
-```sql
-CREATE USER [you@contoso.com] FROM EXTERNAL PROVIDER;
-ALTER ROLE db_datareader ADD MEMBER [you@contoso.com];
-```
-
-Using your own registration is also what tenants that restrict application consent require, and it
-keeps TablePro identifiable in your sign-in logs and Conditional Access policies.
-
-### Troubleshooting
-
-**"Set the Microsoft Entra ID application (client) ID"**: the connection has no client ID. Fill in the
-field.
-
-**Sign-in never completes**: the code expires after about 15 minutes. Test the connection again to
-start a new one.
-
-**`AADSTS7000218`**: the registration does not allow public client flows. Turn on **Allow public
-client flows**.
-
-**Login succeeds but the database rejects you**: the token is valid but no database user matches it.
-Run the `CREATE USER … FROM EXTERNAL PROVIDER` above.
 
 ## Connection URL
 
@@ -139,49 +36,115 @@ mssql://user:password@host:1433/database
 
 See [Connection URL Reference](/connections/urls) for all parameters.
 
+## Windows Authentication (Kerberos)
+
+On macOS, Windows Authentication means Kerberos. Set **Authentication** to **Windows Authentication (Kerberos)**, then either leave **Kerberos Principal** and **Password** blank to use the ticket in your credential cache, or enter `user@REALM.COM` and your domain password to have one requested at connect. Get a cached ticket with `kinit user@REALM.COM`; `klist` shows it.
+
+Four things have to hold:
+
+- Connect by hostname, never an IP address. Kerberos targets the service principal name `MSSQLSvc/host.domain.com:1433`, registered against the host name.
+- Write the realm in uppercase, usually the DNS domain: `CONTOSO.COM`.
+- This Mac has to reach the domain's KDC, through DNS SRV records or `/etc/krb5.conf`.
+- The SQL Server service account has to own that SPN. Your administrator registers it.
+
+For a server in a realm other than your `default_realm`, map its DNS domain and the ticket is requested there instead:
+
+```ini
+[domain_realm]
+  .sql.example.com = RESOURCE.REALM.COM
+```
+
+A host with no `[domain_realm]` entry falls back to `default_realm`. TablePro never runs `kinit` or edits `/etc/krb5.conf`.
+
+## Microsoft Entra ID
+
+Set **Authentication** to **Microsoft Entra ID** to sign in with a work account instead of a SQL Server login: Azure SQL Database, Azure SQL Managed Instance, and SQL Server 2022 with Entra authentication enabled.
+
+| Field | Notes |
+|-------|-------|
+| **Application (Client) ID** | The application registration TablePro signs in as. Required |
+| **Directory (Tenant) ID** | Your directory ID or domain. Blank uses the multi-tenant `organizations` authority |
+
+<Steps>
+  <Step title="Register an application">
+    In the Azure portal, under **App registrations**, add one with platform **Mobile and desktop applications**, **Allow public client flows** set to **Yes**, and the delegated permission **Azure SQL Database → user_impersonation**.
+  </Step>
+  <Step title="Create the database user">
+    ```sql
+    CREATE USER [you@contoso.com] FROM EXTERNAL PROVIDER;
+    ALTER ROLE db_datareader ADD MEMBER [you@contoso.com];
+    ```
+  </Step>
+  <Step title="Sign in">
+    Fill in the two fields and click **Test Connection**. A one-time code goes to the clipboard and your browser opens on the sign-in page. Paste it, approve, then test again.
+  </Step>
+</Steps>
+
+The device code flow honors multifactor authentication and Conditional Access. Tokens land in your login keychain marked device-only, so they never travel through iCloud Keychain, and the access token refreshes in the background. You sign in again only when the refresh token expires or is revoked.
+
+A sign-in that succeeds and is then refused by the database means no database user matches the token. Run `CREATE USER … FROM EXTERNAL PROVIDER` against the database you are opening.
+
 ## Databases and schemas
 
-The sidebar nests tables under their schema and hides the built-in role schemas (`db_owner`, `guest`, and the rest). Switch the active database with `Cmd+K`; switches happen in place, no reconnect. The toolbar shows the active database and schema side by side, and clicking the schema opens the schema list. You can also click a schema in the sidebar to make it active, or set a starting schema in the connection's **Schema** field. Opening a table always queries it in the schema it is listed under, so tables outside `dbo` work without switching first. `master`, `tempdb`, `model`, and `msdb` are marked as system databases.
+The sidebar nests tables under their schema, hides the built-in role schemas (`db_owner`, `guest`, and the rest), and marks `master`, `tempdb`, `model` and `msdb` as system databases. Press `Cmd+K` to change database: the switch happens in place, with no reconnect. Opening a table queries it in the schema it is listed under, so a table outside `dbo` needs no switch first.
 
-Select more than one database or schema to act on them together: Shift-click for a range, Cmd-click to add or remove one. The right-click menu then covers the whole selection. See [Work on Several Databases at Once](/features/table-operations#work-on-several-databases-at-once).
-
-**Drop Schema**: right-click a schema and choose **Drop Schema…**. T-SQL has no cascading drop, so SQL Server refuses to drop a schema that still owns objects; drop or move those first. The active schema and the built-in role schemas are left out.
-
-## Features
-
-- **Table structure**: columns, indexes, foreign keys, triggers, and generated CREATE TABLE DDL.
-- **IDENTITY columns**: INSERTs generated by the data grid omit IDENTITY columns, so the server assigns the value.
-- **Pagination**: browse queries use `OFFSET … FETCH`.
-- **Large text**: `TEXTSIZE` is raised at connect, so `nvarchar(max)` and `text` values are not truncated to the 2048-byte FreeTDS default.
-- **Query control**: running queries can be cancelled; the query timeout maps to `SET LOCK_TIMEOUT`.
-- **View templates**: use `CREATE OR ALTER VIEW` on SQL Server 2016 and later, plain `CREATE VIEW` (drop first when editing) on older versions.
+INSERTs from the data grid leave IDENTITY columns out, so the server assigns them, and `TEXTSIZE` is raised at connect, so `nvarchar(max)` and `text` values arrive whole rather than cut to FreeTDS's 2048-byte default.
 
 ## SSL/TLS
 
-TablePro maps the SSL mode to FreeTDS `DBSETENCRYPT`. New connections default to **Preferred**.
+New connections start on **Preferred**.
 
-| Mode | FreeTDS value | Behavior |
-|---|---|---|
-| **Disabled** | `off` | Plain TCP |
-| **Preferred** | `request` | Try TLS, fall back to plain if the server cannot |
-| **Required** | `require` | TLS required |
-| **Verify CA** | `require` | TLS required, and the certificate must chain to a trusted authority |
-| **Verify Identity** | `require` | TLS required, chain checked, and the certificate must name the host you dialled |
+| Mode | Behavior |
+|---|---|
+| **Disabled** | Plain TCP |
+| **Preferred** | TLS, falling back to plain when the server cannot |
+| **Required (skip verify)** | TLS, certificate unchecked |
+| **Verify CA** | TLS, certificate chained to a trusted authority |
+| **Verify Identity** | TLS, chain checked, and the certificate names the host you dialled |
 
-FreeTDS reads certificate settings from a config file rather than from the connection, so the two verifying modes make TablePro write a one-entry config for that connection and point FreeTDS at it. Nothing on your machine changes: your own `freetds.conf` is used for every other connection.
+Verification runs against the macOS system roots at `/etc/ssl/cert.pem`, which covers Azure SQL and anything else publicly trusted. See [SSL/TLS](/connections/ssl).
 
-Verification uses the macOS system roots at `/etc/ssl/cert.pem`, which covers Azure SQL and any server with a publicly trusted certificate. For a private authority, set the CA certificate on the SSL tab and that file is used instead. See [SSL/TLS](/connections/ssl) for concepts.
+SQL Server connections can also run through the [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy), which TablePro starts and stops for you.
 
-## Google Cloud SQL
+## Limitations
 
-SQL Server connections can run through the Cloud SQL Auth Proxy; TablePro starts and stops the proxy for you. See [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy).
+- Named instances are not supported. Give the host and the TCP port that instance listens on.
+- NTLM is not supported: Windows Authentication on macOS is Kerberos only.
+- Entra ID connections are created on the Mac only, through the device code flow only. iPhone and iPad take them over sync and prompt to sign in when you open one.
+- The SSL pane offers no certificate fields here. Verification runs against the system trust store; a private trust anchor goes in your own `freetds.conf`.
 
 ## Troubleshooting
 
-**Connection refused**: enable TCP/IP in SQL Server Configuration Manager, confirm the service is running, check firewall port 1433, and if using Docker confirm the container is up.
+### Failed to connect to host:1433: …
 
-**Login failed**: verify credentials, then check the server allows SQL Server Authentication: `SELECT SERVERPROPERTY('IsIntegratedSecurityOnly')` returns `1` when only Windows Authentication is allowed. Enable mixed mode in SSMS under Server Properties > Security, then restart the service. If the login only has access to one database (an Azure SQL contained user), set the **Database** field; TablePro sends it during login. Without it the server authenticates against `master` and rejects the login.
+The tail is FreeTDS's own message. Nothing listening means TCP/IP is off in SQL Server Configuration Manager, the service is down, or port 1433 is closed. A rejected login means the credentials, or a server that takes Windows Authentication only: `SELECT SERVERPROPERTY('IsIntegratedSecurityOnly')` returns `1` for that, and mixed mode goes on in SSMS under Server Properties > Security. A login scoped to one database, an Azure SQL contained user for instance, needs **Database** filled in; without it the server authenticates against `master` and refuses.
 
-**Windows Authentication fails**: run `klist` to confirm you have a ticket, and `kinit user@REALM.COM` if you do not. Connect by hostname, not IP address. An SSPI or "server not found in Kerberos database" error means the server's SPN is not registered, or it is registered in a realm your Mac does not map the host to; ask your administrator to register `MSSQLSvc/host.domain.com:1433`, and if the server is in another realm add a `[domain_realm]` entry as shown in [Servers in another realm](#servers-in-another-realm). A clock-skew error means this Mac's clock is too far from the domain controller; turn on **Set time automatically** in System Settings.
+### No Kerberos ticket was found.
 
-**Limitations**: Windows Authentication (Kerberos) is macOS only, Entra ID connections can only be created on macOS and sign in with the device code flow only, named instances unsupported (use host and port), Verify CA and Verify Identity behave like Required.
+There is no ticket in the credential cache. Run `kinit user@REALM.COM`, or fill in **Kerberos Principal** and **Password**, then reconnect.
+
+### Server not found in Kerberos database
+
+Reported as `The SQL Server Kerberos service principal name is not registered.` The server has no SPN, or has one in a realm this Mac does not map the host to. Ask your administrator to register `MSSQLSvc/host.domain.com:1433`, connect by hostname rather than IP, and add a `[domain_realm]` entry for a cross-realm server.
+
+### This Mac's clock is too far out of sync with the domain controller.
+
+Turn on **Set time automatically** in System Settings > General > Date & Time, then reconnect.
+
+### Set the Microsoft Entra ID application (client) ID for this connection.
+
+The connection carries no client ID. Fill in **Application (Client) ID**.
+
+### The Microsoft Entra ID sign-in timed out before it was approved.
+
+The one-time code expired first. Click **Test Connection** to start a new one.
+
+### AADSTS7000218
+
+The app registration does not allow public client flows, which the device code flow needs. Turn it on in the Azure portal.
+
+## Related
+
+- [SSL/TLS](/connections/ssl)
+- [SSH Tunneling](/connections/ssh-tunneling)
+- [Work on Several Databases at Once](/features/table-operations#databases-and-schemas)

@@ -3,24 +3,22 @@ title: Table Operations
 description: Drop, truncate, run maintenance, manage views, and switch databases from the sidebar
 ---
 
-Dropping a table cannot be undone, and the confirmation dialog is the only step between the menu item and the server. Check its **Cascade** box and the drop takes tables linked by foreign keys with it.
+Dropping a table cannot be undone, and **Cascade** in the confirmation dialog widens it to every table that depends on this one. The dialog runs nothing on its own, though: the drop is staged on the table's row and reaches the server when you save.
 
-## Create table or view
+## Create a table or view
 
-Click the plus button in the bottom-left of the sidebar and choose **New Table** or **New View**. New Table opens the visual structure editor (see [Table Structure](/features/table-structure)). New View opens a SQL editor tab with a CREATE VIEW template for your database type. The button is disabled while [safe mode](/features/safe-mode) blocks writes.
+**Database > New Table…** opens the visual structure editor (see [Table Structure](/features/table-structure)). **Database > New View…** opens a query tab holding a `CREATE VIEW` template for the engine. Both are also on the sidebar's right-click menu over empty space, and both are dimmed while [safe mode](/features/safe-mode) blocks writes.
 
 ## Drop and truncate
 
-Right-click a table and choose **Delete** to drop it, or **Truncate** to remove all rows while keeping the structure. Hold Cmd and click to select multiple tables; the same options apply to all of them.
-
-A confirmation dialog shows two checkboxes:
+Right-click a table and choose **Delete** to drop it, or **Truncate** to empty it and keep the structure. **Database > Truncate Table** and `Option+Delete` do the same. Cmd-click to select several tables first and one confirmation covers all of them, with the same options applied to each.
 
 | Option | Effect |
 |--------|--------|
-| Ignore foreign key checks | Skips foreign key constraint checks. Grayed out on engines without it (PostgreSQL suggests Cascade instead). |
-| Cascade | Drops or truncates tables linked by foreign keys. Only enabled on engines that support it, such as PostgreSQL. |
+| Ignore foreign key checks | Skips constraint checks. Dimmed where the engine has no equivalent, and PostgreSQL's dialog points at Cascade instead |
+| Cascade | On a drop, takes every table that depends on this one. On a truncate, takes every table linked by a foreign key. Dimmed where the engine has no CASCADE |
 
-Click **Drop** or **Truncate** to execute, or **Cancel**.
+Confirming with **Drop** or **Truncate** stages the operation. The row picks up a red minus badge for a pending drop, an orange exclamation badge for a pending truncate. **Preview SQL** (`Cmd+Shift+P`) shows the statements, **Save Changes** (`Cmd+S`) runs them alongside any pending cell edits, and choosing the same menu item again takes the table back out of the queue.
 
 <Frame caption="Drop table confirmation with options">
   <img className="block dark:hidden" src="/images/drop-table-dialog.png" alt="Drop table dialog" />
@@ -33,79 +31,49 @@ Dropping is irreversible. On MySQL and MariaDB, truncate also resets the auto-in
 
 ## Maintenance
 
-Right-click a table > **Maintenance** and pick an operation. A sheet shows the operation's options and a SQL preview before executing.
+Right-click a table, choose **Maintenance**, and pick an operation. A sheet shows the operation's options and the exact SQL before it runs.
 
 | Database | Operations |
 |----------|-----------|
 | PostgreSQL | VACUUM, ANALYZE, REINDEX, CLUSTER |
-| MySQL/MariaDB | OPTIMIZE TABLE, ANALYZE TABLE, CHECK TABLE, REPAIR TABLE |
+| MySQL / MariaDB | OPTIMIZE TABLE, ANALYZE TABLE, CHECK TABLE, REPAIR TABLE |
 | SQLite | VACUUM, ANALYZE, REINDEX, Integrity Check |
 
-PostgreSQL VACUUM has FULL (rewrites the table, blocks access), ANALYZE (updates statistics), and VERBOSE (prints progress) toggles. MySQL CHECK TABLE offers QUICK, FAST, MEDIUM, EXTENDED, and CHANGED modes.
-
-<Note>
-The Maintenance submenu is hidden in read-only safe mode and on databases with no maintenance operations.
-</Note>
+PostgreSQL VACUUM carries FULL (rewrites the table and blocks access), ANALYZE, and VERBOSE toggles. MySQL CHECK TABLE offers QUICK, FAST, MEDIUM (the default), EXTENDED, and CHANGED. No other engine reports maintenance operations, so the submenu is hidden there, and in read-only safe mode.
 
 ## Views
 
-Views appear in the sidebar with an eye icon in your accent color. Materialized views and foreign tables get their own icons. All three are read-only kinds: their context menus hide **Truncate** and **Import**, and the drop item is labeled **Drop View**, **Drop Materialized View**, or **Drop Foreign Table**.
+Views carry an eye icon in the sidebar; materialized views and foreign tables get their own. All three are read-only kinds, so their menus drop **Truncate** and **Import**, and the drop item reads **Drop View**, **Drop Materialized View**, or **Drop Foreign Table**. Dropping removes the definition only, and the data in the underlying tables stays.
 
-| Action | Tables | Views |
-|--------|--------|-------|
-| Show Structure | Yes | Yes |
-| Export | Yes | Yes |
-| Import | Yes | No |
-| Truncate | Yes | No |
-| Edit View Definition | No | Yes |
-| Delete / Drop View | Yes | Yes |
+Right-click empty space and choose **Create New View…** to write a new one; right-click an existing view and choose **Edit View Definition** to open the current definition in a query tab. Either way, execute the statement to apply it.
 
-- **Create**: right-click in the sidebar > **Create New View…** (or **Database > New View…**). A SQL editor opens with a CREATE VIEW template; edit the name and SELECT, then execute.
-- **Edit**: right-click a view > **Edit View Definition**. The current definition opens in a SQL editor tab; modify and execute to update.
-- **Drop**: right-click a view > **Drop View**. Only the definition is removed; underlying table data stays intact.
+## Databases and schemas
 
-## Database operations
-
-### Switch databases
-
-Click the database name in the toolbar or press `Cmd+K`. Type to filter, move with the arrow keys, then press Return or double-click to switch. `Cmd+R` refreshes the list. The switcher adapts to the engine's vocabulary: Schema on Oracle, Keyspace on Cassandra, Dataset on BigQuery, Namespace on SurrealDB. SQLite is file-based, so the switcher points you to the Welcome window to open a different file.
+`Cmd+K` switches database, covered in [Managing Connections](/connections#switch-connections-and-databases). The switcher takes the engine's own vocabulary: Schema on Oracle, Keyspace on Cassandra, Dataset on BigQuery, Namespace on SurrealDB. SQLite is file-based, so it points at the welcome window to open a different file.
 
 <Frame caption="Database switcher with search">
   <img className="block dark:hidden" src="/images/database-switcher.png" alt="Database switcher popover" />
   <img className="hidden dark:block" src="/images/database-switcher-dark.png" alt="Database switcher popover" />
 </Frame>
 
-### Create Database
+**New Database…** at the bottom of the switcher creates one. Its fields come from the driver: MySQL and MariaDB ask for a name, character set, and collation; other engines show their own. The button is absent where the engine cannot create databases.
 
-Click **New Database…** at the bottom of the switcher. The form fields come from the driver: MySQL/MariaDB ask for a name, character set, and collation; PostgreSQL, ClickHouse, MongoDB, and others show their own fields. The button only appears on engines that support creating databases.
-
-### Drop database
-
-Right-click a database in the switcher or in the sidebar tree and choose **Drop Database…**. The item is hidden for system databases and for the database you are currently connected to; switch to another one first. A confirmation dialog shows the database name in its title with a red **Drop Database** button.
+To drop one, right-click it in the switcher or the sidebar tree and choose **Drop Database “name”…**. The item is missing for system databases and for the database you are connected to, so switch away first.
 
 <Danger>
-Dropping a database permanently deletes all its tables and data. The server rejects the drop if your account lacks the required privilege.
+Dropping a database permanently deletes every table in it. The server rejects the drop if your account lacks the privilege.
 </Danger>
 
-### Work on several databases at once
+### Several at once
 
-Select more than one database in the sidebar tree or in the switcher: Shift-click for a range, Cmd-click to add or remove one. The right-click menu then acts on the whole selection and says how many it covers, for example **Drop 3 Databases…**.
+Shift-click for a range, Cmd-click to add or remove one, and the menu counts what it covers: **Drop 3 Databases…**, **Copy 3 Names**. **Refresh** reloads every selected database. **Export…** opens the export dialog with every table of the selected database already selected, one database at a time; it is absent on DuckDB and PGlite for any database other than the active one. **Use as Active Database** appears only when a single row is selected and it is not already active.
 
-| Action | What it does |
-|--------|--------------|
-| Refresh | Reloads the object list for every selected database. |
-| Copy Names | Copies the selected names to the clipboard, comma-separated. |
-| Export… | Opens the export dialog with every table of the selected database already ticked, reading from that database rather than the one you are browsing. It covers one database at a time, and is left out on DuckDB and PGlite for a database other than the active one, because those cannot open a second connection to it. |
-| Drop | Drops all of them after one confirmation that lists every name. |
+Databases the server will not drop are left out of the drop item. A drop that fails partway finishes the rest, then reports which ones failed and why.
 
-The menu follows the row you right-click: if it is part of the selection, the action covers the selection; if it is not, the action covers just that row. **Use as Active Database** stays single-target and is disabled while more than one row is selected.
+### Schemas
 
-Databases the server will not let you drop are left out of the Drop item: system databases and the one you are connected to. If a drop fails partway, TablePro finishes the rest and then reports which ones failed and why.
-
-### Drop schema
-
-On engines that group tables by schema, the same menu appears on a schema row. PostgreSQL, SQL Server and SurrealDB support it. PostgreSQL drops the schema with `CASCADE`, so objects that depend on it go too. SQL Server has no cascade, so it refuses to drop a schema that still holds objects; drop those first.
+On engines that group tables by schema, the same menu appears on a schema row: PostgreSQL, SQL Server, SurrealDB, and Dameng. PostgreSQL and Dameng drop the schema with `CASCADE`. SQL Server has no cascade, so it refuses to drop a schema that still holds objects; drop those first.
 
 <Danger>
-Dropping a schema permanently deletes everything in it. On PostgreSQL it also drops objects in other schemas that depend on it.
+Dropping a schema permanently deletes everything in it. On PostgreSQL and Dameng it also drops objects in other schemas that depend on it.
 </Danger>

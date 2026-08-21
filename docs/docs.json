@@ -123,6 +123,7 @@
             "icon": "plug",
             "pages": [
               "connections/index",
+              "connections/connection-form",
               "connections/urls",
               "connections/ssh-tunneling",
               "connections/ssh-profiles",
@@ -139,6 +140,7 @@
             "group": "Databases",
             "icon": "database",
             "pages": [
+              "databases/index",
               "features/plugins",
               "databases/dynamodb",
               "databases/redshift",
@@ -173,6 +175,8 @@
             "icon": "code",
             "pages": [
               "features/sql-editor",
+              "features/code-folding",
+              "features/sql-files",
               "features/autocomplete",
               "features/query-parameters",
               "features/vim-mode",
@@ -185,6 +189,7 @@
             "icon": "table",
             "pages": [
               "features/data-grid",
+              "features/query-results",
               "features/filtering",
               "features/change-tracking",
               "features/json-viewer",
@@ -245,9 +250,11 @@
             "group": "Customization",
             "pages": [
               "customization/settings",
+              "customization/general-settings",
               "customization/appearance",
               "customization/editor-settings",
-              "customization/data-settings"
+              "customization/data-settings",
+              "customization/notifications"
             ]
           },
           {
@@ -283,6 +290,7 @@
             "group": "Drive the app",
             "pages": [
               "external-api/url-scheme",
+              "external-api/connection-import",
               "external-api/terminal",
               "external-api/raycast",
               "external-api/ios-shortcuts"
@@ -318,6 +326,7 @@
               "development/setup",
               "development/architecture",
               "development/building",
+              "development/releasing",
               "development/code-style",
               "development/plugin-development",
               "development/plugin-registry",

@@ -3,117 +3,95 @@ title: Google BigQuery
 description: Connect to Google BigQuery with Service Account, ADC, or OAuth auth
 ---
 
-TablePro connects to BigQuery via its REST API. Browse datasets and tables, run GoogleSQL queries, edit rows in the data grid. The plugin auto-installs when you pick BigQuery, or install it from **Settings > Plugins > Browse > BigQuery Driver**.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+Use Application Default Credentials if `gcloud` is already on the machine. The other two methods are for machines where it is not: a service account key file, or a browser sign-in against an OAuth client you create. Everything travels over the REST API, so there is no host, port, or tunnel.
+
+<RegistryPlugin name="BigQuery" plugin="BigQuery Driver" />
 
 ## Quick setup
 
 Click **Create Connection…**, select **BigQuery**, pick an auth method, enter your Project ID, and click **Save & Connect**.
 
+## Connection settings
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| **Auth Method** | Yes | Service Account Key, Application Default Credentials, or Google Account (OAuth) |
+| **Project ID** | Yes | The ID (`my-project-123456`), not the name or number |
+| **Service Account Key** | Service account only | A `.json` key file path, or the raw JSON |
+| **OAuth Client ID**, **OAuth Client Secret** | OAuth only | From GCP Console > APIs & Services > Credentials |
+| **OAuth Refresh Token** | No | Set it and the browser flow is skipped |
+| **Location** | No | Processing location (`US`, `EU`, `us-central1`), sent with every job |
+| **Max Bytes Billed** | No | Advanced tab. A query over the cap fails instead of billing |
+
+There is no Database field and no URL scheme. Datasets stand in for databases: the sidebar lists them as expandable nodes, `Cmd+K` and **Database > Open Database…** move between them, and **Database > New Database…** runs `CREATE SCHEMA`. Switching does not move tabs you already have open; each stays on its own dataset. See [Tabs](/features/tabs#where-a-tab-points).
+
 ## Authentication
 
-**Service Account Key**: Point to a `.json` key file from Google Cloud Console (IAM > Service Accounts > Keys), or paste the raw JSON content directly into the field.
-
-**Application Default Credentials**: Uses cached credentials from gcloud CLI. Supports `authorized_user`, `service_account`, and `impersonated_service_account` credential types. Run this first:
+### Application default credentials
 
 ```bash
 gcloud auth application-default login --project=my-project
 ```
 
-**Google Account (OAuth 2.0)**: Sign in with your Google account via browser. Requires an OAuth Client ID from your GCP project:
+The driver reads `~/.config/gcloud/application_default_credentials.json`, accepting the `authorized_user`, `service_account`, and `impersonated_service_account` types. The form then needs only a Project ID.
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) > APIs & Services > Credentials
-2. Click "Create Credentials" > "OAuth client ID"
-3. Select "Desktop app" as application type
-4. Copy the Client ID and Client Secret into TablePro
-5. On first connect, your browser opens for Google authorization
-6. After approving, TablePro receives the token automatically
+### Service account key
+
+Point **Service Account Key** at a `.json` key file from Google Cloud Console (IAM > Service Accounts > Keys), or paste the JSON straight into the field.
+
+### Google account (OAuth 2.0)
+
+<Steps>
+  <Step title="Create a desktop OAuth client">
+    In [Google Cloud Console](https://console.cloud.google.com/), under APIs & Services > Credentials, click Create Credentials > OAuth client ID and pick Desktop app.
+  </Step>
+  <Step title="Copy it into TablePro">
+    Paste the Client ID and Client Secret into the connection form.
+  </Step>
+  <Step title="Authorize in the browser">
+    On connect your browser opens Google's consent screen, and the token arrives on an ephemeral loopback redirect. The step times out after two minutes.
+  </Step>
+</Steps>
 
 <Warning>
-Without a saved refresh token, the browser authorization repeats on every connect. Paste a refresh token into the **OAuth Refresh Token** field and TablePro mints access tokens from it instead of opening the browser. Application Default Credentials also persist.
+The refresh token from a browser sign-in is held in memory only, so the browser opens again on every connect. Paste a refresh token into **OAuth Refresh Token** to mint access tokens from it instead.
 </Warning>
 
-## Connection settings
+## Cost
 
-| Field | Required | Notes |
-|-------|----------|-------|
-| **Auth Method** | Yes | Service Account Key, ADC, or Google Account (OAuth) |
-| **Project ID** | Yes | e.g. `my-project-123456` |
-| **Service Account Key** | SA only | Path to `.json` key file, or raw JSON content |
-| **OAuth Client ID** | OAuth only | From GCP Console > APIs & Services > Credentials |
-| **OAuth Client Secret** | OAuth only | From GCP Console > APIs & Services > Credentials |
-| **OAuth Refresh Token** | No | Optional. When set, access tokens are minted from it and the browser flow is skipped |
-| **Location** | No | Processing location: `US`, `EU`, `us-central1`, etc. |
-| **Max Bytes Billed** | No | Cost cap per query in bytes (Advanced tab). Queries exceeding this limit will fail instead of billing. |
+Every query is billed on bytes scanned, so there are three places to control it.
 
-## Features
-
-**Dataset Browsing**: The sidebar lists every dataset as an expandable node. Click a dataset to load its tables; they load the first time you open it. Search filters across the datasets you have open.
-
-**Dataset Switching**: Press `Cmd+K`, click the dataset chip in the toolbar, or use **Database > Open Database…** to jump to another dataset. The switcher also creates new datasets (`Cmd+N` inside the popover) and drops datasets from the row context menu.
-
-**Table Structure**: Columns with full BigQuery types: `STRUCT<name STRING, age INT64>`, `ARRAY<STRING>`, nullable status, field descriptions. Clustering and partitioning info in the Indexes tab.
-
-**GoogleSQL Queries** ([docs](https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax)):
-
-```sql
--- UNNEST arrays
-SELECT id, tag
-FROM `my_dataset.items`, UNNEST(tags) AS tag
-
--- STRUCT access
-SELECT address.city FROM `my_dataset.customers`
-```
-
-<Note>
-Backtick-quote table names: `` `dataset.table` ``. Single-quote strings: `'value'`.
-</Note>
-
-**Query Cost**: After running a query in the SQL editor, the status bar shows bytes processed, bytes billed, and estimated cost (e.g., `Processed: 1.5 MB | Billed: 10 MB | ~$0.0001`). Use the **Dry Run** option (Explain dropdown > "Dry Run (Cost)") to check cost before executing.
+- Before running, pick **Dry Run (Cost)** from the Explain dropdown. It asks BigQuery what the query would scan without executing it.
+- After running, the status bar shows bytes processed, bytes billed, and an estimate at the on-demand rate of $6.25 per TB: `Processed: 1.5 MB | Billed: 10 MB | ~$0.0001`. A cache hit is marked `(cached)`.
+- As a hard ceiling, set **Max Bytes Billed**: BigQuery rejects a job that would exceed it.
 
 <Frame caption="Query cost in the status bar after execution">
   <img className="block dark:hidden" src="/images/bigquery-query-cost.png" alt="Status bar showing bytes processed, bytes billed, and estimated query cost" />
   <img className="hidden dark:block" src="/images/bigquery-query-cost-dark.png" alt="Status bar showing bytes processed, bytes billed, and estimated query cost" />
 </Frame>
 
-**Data Types**: INT64, FLOAT64, NUMERIC, BIGNUMERIC, BOOL, STRING, BYTES, DATE, TIME, DATETIME, TIMESTAMP, GEOGRAPHY, JSON, STRUCT, ARRAY, RANGE. Complex types (STRUCT/ARRAY) display as JSON.
+## Querying and editing
 
-**Data Editing**: Edit cells, insert rows, and delete rows in the data grid.
+Completion, quoting, and formatting follow GoogleSQL: backticks around table names, single quotes around strings. `STRUCT` and `ARRAY` columns display as JSON. Cells, inserts, and deletes go through the grid. The Structure tab is read-only, but DDL runs from the editor: `CREATE SCHEMA`, `ALTER TABLE … ADD COLUMN` and `DROP COLUMN`, `CREATE OR REPLACE VIEW`. The DDL tab reads definitions from `INFORMATION_SCHEMA.TABLES`; clustering and partitioning appear under Indexes.
 
-<Warning>
-Partitioned tables require a partition filter for UPDATE/DELETE. Every query costs money (billed per bytes scanned). Set **Max Bytes Billed** in Advanced settings to cap costs.
-</Warning>
-
-**DDL**: Run DDL from the SQL editor: `CREATE SCHEMA` for datasets, `ALTER TABLE … ADD COLUMN` and `DROP COLUMN`, `CREATE OR REPLACE VIEW`. The DDL tab reads each table's definition from `INFORMATION_SCHEMA.TABLES`. The Structure tab is read-only for BigQuery.
-
-**Export**: CSV, JSON, SQL, XLSX formats.
-
-## IAM permissions
-
-Minimum roles:
-
-- `roles/bigquery.user`: run queries
-- `roles/bigquery.dataViewer`: browse and read data
-- `roles/bigquery.dataEditor`: INSERT, UPDATE, DELETE
-
-## Troubleshooting
-
-**Auth failed**: Check key file path or run `gcloud auth application-default login`.
-
-**Permission denied**: Ensure `bigquery.user` role is granted on the project.
-
-**Project not found**: Use the Project ID (not name or number).
-
-**Query timeout**: BigQuery runs jobs async. The plugin polls up to 5 minutes (configurable).
-
-**Cost**: Use `LIMIT`, select specific columns, prefer partitioned tables. Set **Max Bytes Billed** to prevent expensive queries. Table browsing caps rows automatically.
-
-**No tables after connect**: Expand a dataset node in the sidebar to load its tables. Empty datasets stay empty; open another dataset that has tables.
+Minimum IAM roles: `roles/bigquery.user` to run queries, `roles/bigquery.dataViewer` to read, `roles/bigquery.dataEditor` to write.
 
 ## Limitations
 
-- No SSH tunneling (HTTPS only to BigQuery API)
-- No transactions
-- STRUCT/ARRAY columns excluded from UPDATE/DELETE WHERE clauses
-- Deep pagination (large OFFSET) scans from start. Use filters to narrow results
-- No streaming inserts
-- Browser OAuth re-authorizes on each connect unless a refresh token is saved in the connection
+- `STRUCT` and `ARRAY` columns are left out of a generated UPDATE or DELETE's `WHERE` clause. A row identified only by one of them cannot be edited from the grid.
+- A partitioned table needs a partition filter for UPDATE and DELETE, or the statement is rejected. Write it in the editor.
+- No transactions, no streaming inserts, no SSH tunnel.
+- Deep pagination rescans from the start of the table. Filter rather than paging far in.
+- A job is polled until the [query timeout](/customization/general-settings#query-timeout), then cancelled. The floor is 30 seconds, so **No limit** gives BigQuery 30 seconds rather than none.
+
+## Troubleshooting
+
+**Application default credentials not found at ~/.config/gcloud/application_default_credentials.json**: Run `gcloud auth application-default login`, or switch the connection to a service account key.
+
+**Permission denied**: Authenticated but unauthorized. Grant `roles/bigquery.user` on the project and a data role on the dataset.
+
+**Project not found**: Enter the Project ID, not the display name and not the numeric project number.
+
+**No tables after connect**: Tables load when you expand the dataset node. An empty dataset stays empty; open another.

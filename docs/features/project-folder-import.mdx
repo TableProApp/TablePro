@@ -3,22 +3,30 @@ title: Open Project Folder
 description: Create a connection from the database settings already in your project's config files
 ---
 
-Each set of credentials found in the folder you pick becomes one row, showing the file and key behind it. Nothing is saved or connected until you review the filled-in form and click **Save**. The scan goes four levels deep and ignores `node_modules`, `.git`, `vendor`, similar directories, and any file over 1 MB.
+Point TablePro at a checkout and it reads the database settings out of the config files already in it. Each set of credentials becomes one row, showing the file and key it came from.
 
-## Open a folder
+<Frame caption="The scan result listing each credential found and the file it came from">
+  <img className="block dark:hidden" src="/images/project-folder-scan.png" alt="Project folder scan sheet" />
+  <img className="hidden dark:block" src="/images/project-folder-scan-dark.png" alt="Project folder scan sheet" />
+</Frame>
 
-- **Open Project Folder…**, in the welcome window's **Add from Existing** menu
-- **Add from Existing > Open Project Folder…** on the welcome window
+<Steps>
+  <Step title="Open the folder">
+    On the welcome window, choose **Add from Existing > Open Project Folder…** and pick the folder. **Choose Another Folder…** in the sheet points the scan somewhere else without starting over.
+  </Step>
+  <Step title="Pick one row">
+    Each row shows the database type, host, port, user, and database, plus the file and key behind it. Select one and click **Continue**.
+  </Step>
+  <Step title="Review and save">
+    The connection form opens filled in. Nothing is saved and nothing connects until you click **Save**.
+  </Step>
+</Steps>
 
-Pick the folder in the panel that appears. TablePro scans it and lists what it found.
+One pass imports one row. Run it again for the next service, and again after you add a service to a compose file. Nothing is matched against the connections you already have, so importing one row twice gives you two connections.
 
-## Pick a connection
+## What a row can tell you
 
-Each row shows the database type, host, port, user, and database, plus the file and key it came from. Select one and click **Continue**. The connection form opens filled in, and nothing is saved or connected until you review it and click **Save**.
-
-Passwords are never shown. A row says **Password found** when the file has one, and the value goes straight to your Keychain when you save.
-
-Rows can carry extra notes:
+Passwords are never displayed. A row says **Password found** when the file has one, and the value goes straight to your Keychain when you save.
 
 | Note | Meaning |
 |------|---------|
@@ -26,9 +34,9 @@ Rows can carry extra notes:
 | Looks like a placeholder value | The value matches a known template, such as `!ChangeMe!` or `password_here`. |
 | Container service name, may be unreachable | The host is a name like `db` or `postgres`, which usually only resolves inside Docker. |
 | Host and port assumed | The file had credentials but no address, so `127.0.0.1` and the default port were used. |
-| No published port, may be unreachable | A Compose service with no `ports:` mapping, so it may not be reachable from your Mac. |
+| No published port, may be unreachable | A Compose service with no `ports:` mapping, so your Mac may not reach it. |
 
-A connection starts at the **Alert** [Safe Mode](/features/safe-mode) level instead of Silent when `prod`, `production`, or `live` shows up as a whole word in the file path, the host, or the database name.
+A connection starts at the **Alert** [Safe Mode](/features/safe-mode) level rather than Silent when `prod`, `production`, or `live` appears as a whole word in the file path, the host, or the database name.
 
 ## Files it reads
 
@@ -42,13 +50,17 @@ A connection starts at the **Alert** [Safe Mode](/features/safe-mode) level inst
 | `application.properties`, `application.yml` | `spring.datasource.url`, username, and password |
 | `appsettings.json` | The `ConnectionStrings` entries |
 
-Template files are skipped, so `.env.example`, `.env.sample`, `.env.template`, and `.env.dist` never appear. `.envrc` is a shell script, so TablePro never reads or runs it.
+Template files are skipped, so `.env.example`, `.env.sample`, `.env.template`, and `.env.dist` never appear. `.envrc` is a shell script, so TablePro neither reads nor runs it.
 
-The scan does not follow symlinks, skips `node_modules`, `.git`, `vendor`, `dist`, `build` and similar directories, goes four levels deep, and ignores files over 1 MB. It reads only the folder you picked, with one exception: WordPress allows `wp-config.php` to sit one level above the site, so that single file is checked in the parent folder too. When it comes from there, the row shows the path as `../wp-config.php`.
+## What the scan skips
+
+The walk goes four levels deep, ignores files over 1 MB, follows no symlinks, and stops after 20,000 entries. It skips `node_modules`, `.git`, `vendor`, `dist`, `build` and around twenty more directories of that kind, and never reads inside `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`, `~/Library/Keychains`, or `/etc`.
+
+The one file it reads outside the folder you picked is `wp-config.php` one level up, where many WordPress sites keep it. That row shows its path as `../wp-config.php`.
 
 ## When a value cannot be read
 
-Some settings point somewhere else instead of holding a value, like `${{Postgres.DATABASE_URL}}` on Railway or a Rails credential lookup. TablePro leaves those out rather than guessing, so a row you expected may be missing. Fill those connections in by hand, or paste the URL with [Import from URL](/connections/urls).
+Some settings point elsewhere instead of holding a value, like `${{Postgres.DATABASE_URL}}` on Railway or a Rails credential lookup. Those are left out rather than guessed at, so a row you expected can be missing. Fill those in by hand, or paste the URL with [Import from URL](/connections/urls).
 
 ## Related
 

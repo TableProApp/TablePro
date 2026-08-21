@@ -1,0 +1,61 @@
+---
+title: General Settings
+description: Language, startup behavior, sidebar layout, query timeout, the command line tool, updates, and reset
+---
+
+Most of this tab takes effect the moment you click. Language waits for a restart, and the query timeout reaches a connection only when that connection opens.
+
+<Frame caption="The General tab">
+  <img className="block dark:hidden" src="/images/settings-general.png" alt="General settings tab" />
+  <img className="hidden dark:block" src="/images/settings-general-dark.png" alt="General settings tab" />
+</Frame>
+
+## Language
+
+System (the default), English, Tiếng Việt, 简体中文, 繁體中文, 한국어, Türkçe. The tab tells you to restart once you pick a different one.
+
+## Startup
+
+**When TablePro starts** takes **Reopen Last Session** (the default) or **Show Welcome Screen**. What a reopened session brings back, and what it does when a server is down, is on [Tabs](/features/tabs#what-survives-a-restart).
+
+## Tabs and sidebar
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| **Enable preview tabs** | On | Single-click opens a temporary tab that the next click replaces; double-click or an edit makes it permanent |
+| **Show connections** | On | The [connections strip](/features/workspace-rail) on the window's leading edge |
+| **Show recent tables** | Off | A [Recent section](/features/favorites#recent-tables) at the top of the sidebar |
+| **Show object icons** | On | A type icon before each object name. Off gives a plain list of names |
+| **Show object comments** | On | Database object comments beside tables in the sidebar and in grid column headers |
+| **Row size** | Match System | Match System follows **Sidebar icon size** in **System Settings > Appearance**. Small, Medium, or Large overrides it to fit more objects on screen |
+| **Default layout for new connections** | List | List or Tree, on servers with a database tree. Switch the connection you are in from the **View** menu |
+
+Icons, comments, and row size are also under **View Options** in the sidebar's right-click menu, which every sidebar menu ends with.
+
+## Query timeout
+
+How many seconds a query runs before it is cancelled. The default is 60; the picker offers 10 to 600 seconds and **No limit**. The value is read when a connection opens, so a change reaches an open connection only after you reconnect.
+
+Where the engine can enforce it, the timeout becomes a server-side setting: `statement_timeout` on PostgreSQL, `max_execution_time` on MySQL and ClickHouse, `max_statement_time` on MariaDB. On SQLite it bounds how long a statement waits for a locked database instead. Drivers that talk HTTP (BigQuery, Cloudflare D1, LibSQL, Etcd, DynamoDB, Elasticsearch, and ClickHouse) bound the request at the timeout plus 30 seconds, and Oracle enforces it in the client: the connection is closed to unblock the call, and the next query reconnects and restores your current schema.
+
+**No limit** still caps an HTTP request at one hour, because the transport needs a ceiling.
+
+## Command line tool
+
+**Install** writes a `tablepro` command to `/usr/local/bin` that opens database URLs in the app. When it cannot write there, the section prints the command to run in Terminal yourself. See [Terminal and DDEV](/external-api/terminal).
+
+## Trusted links
+
+External links you chose to always allow, each with **Forget**, plus **Forget All**. Only a database on this machine can be trusted; a link to a remote host asks every time.
+
+## Software update
+
+**Automatically check for updates** is on and checks in the background. **Check for Updates…** checks now, here or as **TablePro > Check for Updates…** in the menu bar. Updates come through [Sparkle](https://sparkle-project.org/) and are signature-checked before they install.
+
+## Privacy
+
+**Share anonymous usage data** is on. It sends one heartbeat a day with no query text, hostname, or account in it. The full payload, field by field, is on [Privacy](/security/privacy#usage-heartbeat).
+
+## Reset
+
+**Reset All Settings to Defaults** is at the bottom of the tab. What it restores and what it leaves alone is under [Where settings live](/customization/settings#where-settings-live).

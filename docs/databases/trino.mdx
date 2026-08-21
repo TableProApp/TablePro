@@ -3,56 +3,84 @@ title: Trino
 description: Catalogs and schemas, type mapping, EXPLAIN variants, and the auth a Trino cluster accepts
 ---
 
-Trino publishes its client protocol over plain HTTP, and this driver is a REST client for it rather than a bridge to something else. A query is one `POST /v1/statement`; the rows arrive a page at a time until the cluster says it has finished.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-Presto uses the same protocol under a different header prefix. The current driver targets Trino.
+What a write does depends on the catalog's connector, not on TablePro. A statement built correctly here can still come back as `NOT_SUPPORTED` because the connector behind that catalog is read-only or implements only part of SQL.
 
-## Install the plugin
+<Frame caption="The Trino connection form with a catalog set">
+  <img className="block dark:hidden" src="/images/trino-connection-form.png" alt="Trino connection form" />
+  <img className="hidden dark:block" src="/images/trino-connection-form-dark.png" alt="Trino connection form" />
+</Frame>
 
-Trino is a registry driver. Pick Trino in the database type chooser and TablePro offers to download it, or install it up front from **Settings > Plugins > Browse > Trino Driver**. The driver loads without restarting the app.
+## Quick setup
+
+Click **Create Connection…**, select **Trino**, enter the coordinator host and port, set **Username**, and click **Save & Connect**. A cluster with no authentication needs nothing else, and **Catalog** and **Schema** are optional starting points.
+
+<RegistryPlugin name="Trino" plugin="Trino Driver" />
 
 ## Connection settings
 
 | Field | Description |
 | --- | --- |
-| Host | The Trino coordinator hostname. |
-| Port | The coordinator HTTP port. Default `8080`. Set `8443` when the coordinator serves HTTPS. |
-| Username | The user the query runs as. Sent as `X-Trino-User`. |
-| Catalog | The default catalog for unqualified table names. Optional; leave blank to browse all catalogs. |
-| Schema | The default schema. Optional. |
-| Auth Method | Authentication pane. `Username & Password` for LDAP or password-file auth, or `JWT Access Token` for a bearer token. |
-| Password | Your password when the auth method is Username & Password. Sent as HTTP Basic auth. |
-| Access Token | Authentication pane. Your JWT when the auth method is JWT Access Token. Sent as a bearer token. |
-| SSL | Off by default. The SSL pane sets the mode: Preferred and Required both encrypt without checking the certificate, Verify CA checks the certificate chain, and Verify Identity also checks the hostname. This driver has no plaintext fallback, so any mode other than Off forces TLS. Point CA Certificate at your CA file to trust a private authority. |
-| Time Zone | Advanced pane. Optional IANA time zone (for example `America/New_York`) for the session. Leave blank to use the server default. |
+| **Host** | Trino coordinator hostname |
+| **Port** | Default `8080`, or `8443` when the coordinator serves HTTPS |
+| **Username** | The user the query runs as |
+| **Catalog** | Default catalog for unqualified table names. Optional; empty browses every catalog |
+| **Schema** | Default schema. Optional |
+| **Auth Method** | Authentication pane. `Username & Password` or `JWT Access Token` |
+| **Password / Access Token** | The credential the chosen method needs: the account password, or the JWT in **Access Token** |
+| **Time Zone** | Advanced pane. Optional IANA zone (`America/New_York`) for the session |
 
-Trino requires TLS for any authentication. If you pick Password or JWT, set an SSL mode so the coordinator accepts the credentials.
+## Connection URL
+
+```text
+trino://user@host:8080/catalog
+```
+
+**Import from URL…** accepts the scheme; macOS does not route `trino://` links. See [Connection URL Reference](/connections/urls).
+
+## Authentication
+
+Trino refuses password and JWT credentials over plain HTTP, so both need an SSL mode set.
+
+| Method | What is sent |
+| --- | --- |
+| **Username & Password** | HTTP Basic auth, for LDAP or password-file authentication |
+| **JWT Access Token** | The token as a bearer credential |
+| Client certificate | The **Client Certificate** and **Client Key** from the SSL pane, for mutual TLS. Works with any SSL mode, and nothing is presented with SSL off |
 
 ## Catalogs, schemas, and tables
 
-A Trino connection is scoped to a catalog and schema, but every query can name objects in full as `catalog.schema.table`. TablePro shows catalogs from `SHOW CATALOGS`, schemas from `SHOW SCHEMAS`, and tables and columns from each catalog's `information_schema`. Materialized views appear alongside tables and views. Expand a catalog to see its schemas, then a schema to see its tables. Table row counts come from `SHOW STATS`, and table and column comments come from `information_schema` and the `system.metadata` tables.
+A connection opens on a catalog and schema, and every query can still name objects in full as `catalog.schema.table`:
+
+```sql
+SELECT * FROM hive.web.clicks JOIN postgres.public.users USING (user_id);
+```
+
+Expand a catalog in the sidebar for its schemas, then a schema for its tables, with materialized views alongside tables and views. Row counts come from `SHOW STATS`. A tab bound to a second catalog keeps the same session; the catalog rides on each request.
 
 Identifiers are quoted with double quotes. Results page with `OFFSET n ROWS FETCH NEXT m ROWS ONLY`, the order Trino's grammar requires.
 
 ## Types
 
-Trino's type system maps to TablePro's grid as follows:
-
-- Numbers keep full precision. `bigint` and `decimal` are read as exact text, not floating point.
+- `bigint` and `decimal` are read as exact text, not floating point.
 - `varbinary` is shown as hex.
-- `array`, `map`, and `row` are shown as JSON.
-- `json` opens in the JSON viewer.
+- `array`, `map`, and `row` are shown as JSON, and `json` opens in the JSON viewer.
 - `timestamp`, `time`, and their `with time zone` forms keep the value the server returned.
 
 ## Editing rows and schema
 
-Edit cells in the data grid and TablePro writes `INSERT`, `UPDATE`, and `DELETE` back. Trino's `information_schema` reports no primary keys, so the WHERE clause matches on every column of the row as it was read. A row that is not unique across all its columns matches more than one row. Values are written with their Trino type, so a `varchar` holding digits stays quoted and a number stays unquoted. Columns whose type cannot be compared with `=`, such as `array`, `map`, and `row`, are left out of the WHERE clause.
+Cell edits become `INSERT`, `UPDATE`, and `DELETE`. Values carry their Trino type, so a `varchar` holding digits stays quoted, and columns that cannot be compared with `=` (`array`, `map`, `row`) stay out of the `WHERE` clause.
 
-The Structure tab creates tables and adds, drops, renames, and retypes columns. Statements run in autocommit, matching how most Trino connectors handle DDL.
+<Danger>
+Editing one of two identical rows changes both, and deleting one deletes both. With no primary keys reported, a row edit matches on every column of the row as it was read, and there is no transaction to roll it back. Check for duplicates before editing a table with no unique column.
+</Danger>
 
-Whether a write succeeds depends on the connected catalog. Many connectors are read-only or support only part of SQL, so a valid statement can still return `NOT_SUPPORTED` from the connector. Changing a column's type in particular is only supported by a few connectors.
+The Structure tab creates tables and adds, drops, renames, and retypes columns, in autocommit. A type change is the operation fewest connectors accept.
 
-Trino connections export but do not import. See [Import and Export](/features/import-export).
+## Session and query control
+
+`SET SESSION` in the editor holds for the rest of the connection: the properties the coordinator reports back are sent with every later request, and `RESET SESSION` clears one. **Query > Cancel Query** (`Cmd+.`) tells the coordinator to kill the running query, which matters where a runaway query burns real compute.
 
 ## EXPLAIN variants
 
@@ -66,21 +94,35 @@ Click the Explain dropdown in the query editor to choose:
 | **Explain (Validate)** | `EXPLAIN (TYPE VALIDATE)`, parses and validates without running the query |
 | **Explain Analyze** | `EXPLAIN ANALYZE`, runs the query and reports actual timings |
 
-## Authentication
+## SSL/TLS
 
-- **Username & Password** sends HTTP Basic auth. Use it for LDAP or password-file authentication. Requires TLS.
-- **JWT Access Token** sends the token as a bearer credential. Requires TLS.
-- **Client certificate** works with any TLS mode (Preferred, Required, Verify CA, or Verify Identity). Set the Client Certificate and Client Key files in the SSL pane and TablePro presents them for mutual TLS. With SSL off the connection is plain HTTP and no certificate is sent.
+**Disabled** is the default and speaks plain HTTP. There is no plaintext fallback, so every other mode forces TLS.
 
-## Troubleshooting
-
-- **Cannot reach the coordinator.** Confirm the host and that the coordinator port is open. Trino serves HTTP on `8080` and HTTPS on `8443` by default.
-- **Authentication failed.** Password and JWT auth need TLS. Turn SSL on and confirm the credentials.
-- **A write fails with NOT_SUPPORTED.** The connected catalog's connector does not support that operation. Check the connector's documentation for what it allows.
+| Mode | Certificate check |
+| --- | --- |
+| **Preferred** | None |
+| **Required (skip verify)** | None |
+| **Verify CA** | Certificate chain. Point **CA Certificate** at your CA file for a private authority |
+| **Verify Identity** | Chain and hostname |
 
 ## Limitations
 
-- No primary keys, indexes, or foreign keys. Trino's `information_schema` does not report them, so the Structure tab's Indexes view is always empty and row edits key on every column.
-- Import is not available. Export works.
+- No primary keys, indexes, or foreign keys are reported. The Structure tab's Indexes view is always empty.
+- Import is not available. Export works; see [Import and Export](/features/import-export).
 - Kerberos and OAuth 2.0 authentication are not supported.
-- Write support depends on the catalog's connector, not on TablePro.
+- The **Query timeout** in [settings](/customization/general-settings#query-timeout) does not reach Trino. A long query runs until you cancel it or the cluster ends it.
+- Presto is not supported. It speaks the same protocol under an `X-Presto-` header prefix, and this driver always sends `X-Trino-`.
+
+## Troubleshooting
+
+### Cannot reach the coordinator
+
+Confirm the host and that the coordinator port is open. Trino serves HTTP on `8080` and HTTPS on `8443` by default.
+
+### Authentication failed
+
+Password and JWT auth need TLS. Set an SSL mode, then confirm the credentials.
+
+### NOT_SUPPORTED
+
+The catalog's connector does not implement that operation, whatever Trino's grammar allows. Check the connector's own documentation for what it supports.

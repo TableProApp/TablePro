@@ -3,13 +3,11 @@ title: Safe Mode
 description: Per-connection query execution controls, from no restrictions to full read-only lockdown
 ---
 
-Each connection carries its own Safe Mode level, from no restrictions to full write protection. The level decides what happens before a query runs.
-
-Set the Safe Mode level in the **Customization** pane of the connection form.
+Six levels, one per connection, set in the **Customization** pane of its edit form. The level decides what stands between a query and the server: nothing, a confirmation, Touch ID, or a refusal.
 
 ## Levels
 
-| Level | Write Queries | Read Queries | Authentication |
+| Level | Write queries | Read queries | Authentication |
 |-------|--------------|--------------|----------------|
 | **Silent** | Execute immediately | Execute immediately | None |
 | **Alert** | Confirmation dialog | Execute immediately | None |
@@ -18,73 +16,40 @@ Set the Safe Mode level in the **Customization** pane of the connection form.
 | **Safe Mode (Full)** | Confirmation + Touch ID | Confirmation + Touch ID | Touch ID / password |
 | **Read-Only** | Blocked entirely | Execute immediately | None |
 
-New connections default to **Silent**.
+New connections start at **Silent**, which is the right choice for a local database you own. Move a shared staging connection to **Alert** and anything with real customer data in it to **Safe Mode** or **Read-Only**.
 
-## How it works
+Four things the table cannot carry. The confirmation dialog previews the SQL it is about to run. Touch ID falls back to your macOS password on a Mac without it. **Silent** is not a free pass: `DROP`, `TRUNCATE`, and a `DELETE` with no `WHERE` still raise the built-in dangerous query warning even there. And **Read-Only** goes past queries to the interface itself, disabling inline cell editing, adding, deleting and duplicating rows, table truncate and drop, and import.
 
-### Silent
+## What the level gates
 
-No restrictions. Queries execute immediately. TablePro still shows its built-in dangerous query warning for DROP, TRUNCATE, and DELETE-without-WHERE statements.
+Safe Mode sits in front of query execution, saving cell edits, structure and table changes, sidebar operations, imports, and maintenance jobs, including the ones the [AI assistant](/features/ai-assistant) and the MCP tools ask for.
 
-### Alert
-
-A confirmation dialog appears before executing write queries (INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, etc.). The dialog shows a preview of the SQL to be executed. Read queries run without prompts.
-
-### Alert (Full)
-
-Same as Alert, but the confirmation dialog appears for ALL queries, including SELECT statements. Useful when you want to review every query before execution.
-
-### Safe Mode
-
-Like Alert, but after confirming the dialog, you must also authenticate with Touch ID. Falls back to your macOS password if Touch ID is unavailable.
-
-### Safe Mode (Full)
-
-Combines Alert (Full) and Safe Mode: every query requires both a confirmation dialog and Touch ID/password authentication.
-
-### Read-Only
-
-All write operations are blocked. The UI disables:
-
-- Inline cell editing
-- Adding, deleting, and duplicating rows
-- Table truncate and drop operations
-- Import functionality
-
-Read queries (SELECT) execute normally.
+It does not sit in front of reading metadata. Loading the sidebar, opening a table's structure, and exporting data are never confirmed, which is why a backup stays available on a Read-Only connection.
 
 ## Drivers without read-only support
 
-The Redis, MongoDB, and etcd drivers do not support read-only mode, so Safe Mode treats every query on these connections as a write. Alert and Safe Mode levels confirm every query; Read-Only blocks everything. Other non-SQL drivers (Cassandra, Elasticsearch, DynamoDB) classify reads and writes normally.
+The Redis, MongoDB, and etcd drivers cannot open a read-only session, so Safe Mode treats every query on those connections as a write: the Alert and Safe Mode levels confirm everything, and Read-Only blocks everything. Every other driver classifies reads and writes normally.
 
 ## Toolbar badge
 
-The current Safe Mode level appears as a badge in the toolbar (orange for Alert levels, red for Safe Mode and Read-Only). Click it to change levels.
+The level appears as a badge in the toolbar, orange for the Alert levels and red for Safe Mode and Read-Only. Click it to change level.
 
 <Frame caption="Safe Mode badge in the toolbar">
   <img className="block dark:hidden" src="/images/safe-mode-toolbar-badge.png" alt="Safe Mode level badge and picker in the toolbar" />
   <img className="hidden dark:block" src="/images/safe-mode-toolbar-badge-dark.png" alt="Safe Mode level badge and picker in the toolbar" />
 </Frame>
 
-Changing the level from the badge applies to the whole connection and stays set as you open other tables and tabs. It writes back to the saved connection, so the Customization pane shows the new level and the change reaches your other Macs when iCloud Sync is on. There is no session-only override.
+There is no session-only override. A change from the badge writes back to the saved connection, so it holds across tables and tabs, shows up in the Customization pane, and reaches your other Macs when iCloud Sync is on. Editing the level in the form works the same way round and reaches an open connection right away.
 
-Editing the level in the connection form works the same way round: the change reaches an open connection right away, so the badge and the form always agree.
+## Server read-only is not Safe Mode
 
-Safe Mode gates apply to query execution, saving cell edits, table operations, and sidebar changes.
-
-## Server read-only is not safe mode
-
-Safe Mode runs inside TablePro. It never changes anything on the database server, and it cannot make the server accept a write the server itself refuses.
-
-If a save fails with a read-only error while Safe Mode is set to anything other than Read-Only, the database server is the one refusing the write. Common causes:
+Safe Mode runs inside TablePro. It cannot make a server accept a write the server itself refuses, and the wording tells you which one refused. "Cannot execute write queries: TablePro's Safe Mode is set to read-only for this connection" is the app. Anything else is the server, and the usual causes are these:
 
 - You are connected to a read replica or a reader endpoint rather than the primary.
 - The server runs with `read_only` or `super_read_only` turned on.
-- The server or the session sets new transactions to read-only.
+- The server or the session opens new transactions read-only.
 
-TablePro tells the transactions it opens for a write that they are read-write, so a server that only defaults new transactions to read-only accepts the save. A server that is genuinely read-only still refuses, and TablePro says the server refused it.
-
-On MySQL and MariaDB you can check which one it is:
+TablePro opens its write transactions as read-write, so a server that only defaults new transactions to read-only accepts the save anyway. On MySQL and MariaDB this narrows down the rest:
 
 ```sql
 SHOW SESSION VARIABLES WHERE Variable_name IN
@@ -95,44 +60,32 @@ SHOW SESSION VARIABLES WHERE Variable_name IN
 
 ## Execution log
 
-Every database operation goes through one authorization step, including the ones the AI assistant and the MCP tools ask for. TablePro records each decision, allowed or refused, to a local log.
-
-A record holds the time, the connection, the kind of operation, whether it was a write, and the outcome. It holds a SHA-256 digest of the statement, never the statement itself: a query contains customer data, and an audit trail that stored it would be a second copy of the database.
-
-Each record carries the hash of the one before it. Recomputing the chain shows whether any record was edited, reordered or removed.
+TablePro records each authorization decision, allowed or refused, to a local log: the time, the connection, the kind of operation, whether it was a write, and the outcome. The statement is stored as a SHA-256 digest, so the log is not a second copy of your data. Each record carries the hash of the one before it, so recomputing the chain shows whether a record was edited, reordered or removed.
 
 <Warning>
-This is tamper evident, not tamper proof. Anyone who can write the file can also recompute every hash after the record they changed, and truncating the end of the log leaves a chain that still verifies. It turns a silent edit into a visible one; it does not prevent one. Somewhere the person being audited cannot write is the only thing that would.
+This is tamper evident, not tamper proof. Anyone who can write the file can recompute every hash after the record they changed, and truncating the end leaves a chain that still verifies. Only storing it somewhere the audited person cannot write would fix that.
 </Warning>
 
-The log is local, is not synced, and is not sent anywhere.
+The log is local. It is not synced and not sent anywhere.
 
 ## Managed by an organization
 
-An administrator can set a minimum Safe Mode level through a macOS configuration profile, delivered by an MDM such as Jamf or Kandji. A connection set below that level is raised to it. A stricter choice is left alone, so the policy is a floor and never a ceiling: someone who wants Read-Only on a production connection still gets it.
-
-The profile targets the `com.TablePro` preference domain with a flat key:
+An administrator can impose a minimum level through a macOS configuration profile, delivered by an MDM such as Jamf or Kandji. The profile targets the `com.TablePro` preference domain with one flat key:
 
 | Key | Type | Value |
 |---|---|---|
 | `com.TablePro.policy.minimumSafeModeLevel` | String | `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull`, or `readOnly` |
 
-A value TablePro does not recognize imposes no floor at all. It never falls back to Read-Only, which would lock people out of a typo, and never to Silent, which would quietly drop the policy.
+A connection set below the floor is raised to it, and a stricter choice is left alone: the policy is a floor, never a ceiling. A value TablePro does not recognize imposes no floor at all. While the policy is in force the matching control appears dimmed.
 
-TablePro reads this the way macOS intends: a configuration profile already outranks the app's own preferences, so a forced key wins, and the app asks `CFPreferencesAppValueIsForced` only to know that the matching control should be disabled rather than merely preset.
+This is a floor on TablePro's own behavior, not on the database. It stops the app issuing a write; it does not stop the same person connecting with `psql`. Pair it with server-side privileges for anything that has to hold.
 
-<Note>
-This is a floor on TablePro's own behavior, not on the database. It stops the app issuing a write; it does not stop the same person connecting with `psql`. Pair it with server-side privileges for anything that has to hold. See [Server Read-Only Is Not Safe Mode](#server-read-only-is-not-safe-mode).
-</Note>
+## External clients
 
-## External Clients
+A write from an external client (Raycast, Cursor, Claude Desktop, any MCP client) clears three locks in order:
 
-Safe Mode runs inside the app on every query you execute. External clients (Raycast, Cursor, Claude Desktop, and other MCP clients) hit a separate gate first.
+1. **External Clients** (per connection: **Blocked** / **Read Only** / **Read & Write**), in the connection form's **Advanced** pane. A Read Only connection rejects a write before the request reaches the database.
+2. **Token scope** (per integration: `readOnly` / `readWrite` / `fullAccess`), issued by the [pairing flow](/external-api/pairing). The effective permission is `MIN(token.scope, connection.externalAccess)`.
+3. **Safe Mode**, per query. Everything on this page then applies, Touch ID prompts and confirmation dialogs included.
 
-A write request from an external client clears three locks in this order:
-
-1. **External Clients** (per-connection: **Blocked** / **Read Only** / **Read & Write**). Set in the connection form's **Advanced** pane. A Read Only connection rejects any write before the request reaches the database.
-2. **Token scope** (per-integration, `readOnly` / `readWrite` / `fullAccess`). Issued by the [pairing flow](/external-api/pairing) and bounded by External Access: effective permission is `MIN(token.scope, connection.externalAccess)`.
-3. **Safe Mode** (per-query). The same rules on this page apply once the request has been routed to the connection. Touch ID prompts and confirmation dialogs still appear, even for queries originating from an external client.
-
-DROP and TRUNCATE always go through the `confirm_destructive_operation` tool, which needs a `fullAccess` token and the user's approval every time: through the client's own elicitation prompt when it supports one, otherwise through TablePro's confirmation dialog. No token scope skips it. See [External API security model](/external-api/index#security-model).
+`DROP` and `TRUNCATE` always go through the `confirm_destructive_operation` tool, which needs a `fullAccess` token and the user's approval every time: through the client's own elicitation prompt where it has one, otherwise through TablePro's dialog. No token scope skips it. See the [External API security model](/external-api/index#security-model).

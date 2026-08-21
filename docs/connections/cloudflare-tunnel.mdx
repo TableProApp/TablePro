@@ -3,95 +3,87 @@ title: Cloudflare Tunnel
 description: Reach a database behind Cloudflare Access by letting TablePro manage the cloudflared process
 ---
 
-Install cloudflared first with `brew install cloudflared`. The tunnel is that binary, running `cloudflared access tcp` against your [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/) hostname on a loopback port, with no terminal session of your own to keep alive.
+import HelperPort from "/snippets/helper-port.mdx";
 
-## How it works
+The Access application is yours to create, in the Cloudflare dashboard. This pane takes the hostname of one that already fronts the database, and runs `cloudflared` against it for the life of the connection.
 
-```mermaid
-flowchart LR
-    subgraph mac ["Your Mac"]
-        TablePro["TablePro<br>127.0.0.1:auto"]
-        CFD["cloudflared"]
-    end
+<Frame caption="The Cloudflare Tunnel pane in the connection form">
+  <img className="block dark:hidden" src="/images/cloudflare-tunnel-pane.png" alt="Cloudflare Tunnel pane" />
+  <img className="hidden dark:block" src="/images/cloudflare-tunnel-pane-dark.png" alt="Cloudflare Tunnel pane" />
+</Frame>
 
-    subgraph edge ["Cloudflare"]
-        Access["Cloudflare<br>Access"]
-    end
+## Before you start
 
-    subgraph db ["Database Server"]
-        Database["PostgreSQL<br>MySQL<br>db:5432"]
-    end
-
-    TablePro -->|"loopback"| CFD -->|"Access tunnel"| Access -->|"origin"| Database
-```
-
-TablePro picks a free loopback port, runs `cloudflared access tcp --hostname <your-host> --url 127.0.0.1:<port>`, waits until the local port accepts connections, then points the database driver at it. When you disconnect, quit the app, or the process exits, the tunnel is torn down.
-
-## Prerequisites
-
-Install cloudflared:
+Create a self-hosted application in the [Zero Trust dashboard](https://developers.cloudflare.com/cloudflare-one/applications/non-http/) routed to the database, with a policy that admits you. Its public hostname is the only Cloudflare value this pane needs.
 
 ```bash
 brew install cloudflared
 ```
 
-TablePro looks for cloudflared on your `PATH` and in the common Homebrew locations (`/opt/homebrew/bin`, `/usr/local/bin`). If it lives somewhere else, set the path in the pane.
+The pane looks on your `PATH` and in `/opt/homebrew/bin` and `/usr/local/bin`, and shows what it found. Installed elsewhere, set **Path** by hand: a GUI app never sees the `PATH` your shell profile exports.
 
 ## Setting up
 
-The Cloudflare Tunnel pane appears for the same databases that support [SSH tunneling](/connections/ssh-tunneling), so file-based and HTTP-API databases such as SQLite, BigQuery, DynamoDB, and Snowflake don't show it.
+<Steps>
+  <Step title="Enable the pane">
+    Select **Cloudflare Tunnel** and turn **Enable Cloudflare Tunnel** on. One method per connection: any other tunnel or proxy already enabled gets a button to disable it.
+  </Step>
+  <Step title="Enter the hostname and sign in">
+    **Hostname** is the Access application's public hostname, `db.example.com` in the example. With **Browser Sign-In** chosen, click **Sign In with Browser…** so the first connect does not stop to ask.
+  </Step>
+  <Step title="Test it">
+    On **General**, click **Test Connection**. **Host** and **Port** there are never dialed while the tunnel is on: the Access application decides where it lands.
+  </Step>
+</Steps>
 
-Open the connection form, switch to the **Cloudflare Tunnel** pane, toggle **Enable Cloudflare Tunnel** on, enter the Access **hostname**, choose how to authenticate, then go back to **General** and click **Test Connection**.
+## How it works
 
-A connection uses one connection method at a time. If an SSH tunnel, Cloud SQL Auth Proxy, or SOCKS proxy is already enabled, the pane shows a button to disable it.
+A free port is picked, `cloudflared` starts listening on it, and the driver gets it once it accepts. Run the same command yourself to see the client's own output:
+
+```bash
+cloudflared access tcp --hostname db.example.com --url 127.0.0.1:54321
+```
+
+Disconnecting or quitting stops the process. One orphaned by a crash is reaped at the next launch.
 
 ## Options
 
-### Access application
+| Option | What it does | Default |
+|--------|--------------|---------|
+| **Hostname** | The Access application hostname `cloudflared` connects to. | - |
+| **Expose to local network** | Binds `0.0.0.0` rather than `127.0.0.1`. | Off |
 
-| Field | Description |
-|-------|-------------|
-| **Hostname** | The Access application hostname, for example `db.example.com`. This is the `--hostname` cloudflared connects to. |
+<Warning>
+With **Expose to local network** on, anything that reaches the port is past Cloudflare Access on your session and faces only the database's own login.
+</Warning>
 
 ### Authentication
 
 <Tabs>
   <Tab title="Browser Sign-In">
-    cloudflared signs in through your browser and caches a token under `~/.cloudflared`. Click **Sign In with Browser…** once so the login happens up front; after that, connecting uses the cached token without opening a browser.
-
-    If you connect without a cached token, TablePro detects the sign-in prompt and asks you to sign in, rather than appearing to hang.
+    **Sign In with Browser…** runs `cloudflared access login` and caches the token under `~/.cloudflared`; later connects reuse it silently. A connect with no cached token asks you to sign in rather than appearing to hang.
   </Tab>
   <Tab title="Service Token">
-    For unattended connections, enter a Cloudflare Access service token (**Client ID** and **Client Secret**). TablePro stores them in the macOS Keychain and passes them to cloudflared as environment variables, never on the command line.
+    For unattended connections, enter a service token as **Client ID** and **Client Secret**. Both stay in the macOS Keychain and reach `cloudflared` as environment variables, never on the command line.
 
     <Warning>
-    The Access application policy must use a **Service Auth** rule. If the policy only allows an identity provider, Cloudflare still prompts for a browser sign-in even when a service token is set. This is configured in your Cloudflare Zero Trust dashboard, not in TablePro.
+    The policy must use a **Service Auth** rule. Against an identity-provider-only policy, Cloudflare prompts for a browser sign-in even with a token set.
     </Warning>
   </Tab>
 </Tabs>
 
-### Local listener
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| **Choose port automatically** | TablePro picks a free loopback port. Avoids collisions between connections. | On |
-| **Local port** | Set a fixed port instead. | - |
-| **Expose to local network** | Bind `0.0.0.0` instead of `127.0.0.1`, so other machines on your network can reach the listener. Leave off unless you need it. | Off |
-
-### cloudflared binary
-
-Leave the path blank to auto-detect. The pane shows the detected path, or a hint to install cloudflared if it isn't found. Use **Choose…** to point at a specific binary.
+<HelperPort />
 
 ## Troubleshooting
 
-### cloudflared not found
+### cloudflared was not found
 
-Install it with `brew install cloudflared`, or set the binary path in the pane. A GUI app doesn't see your shell's `PATH`, so a custom install location may need to be set explicitly.
+Install it with `brew install cloudflared`, or set **Path** to the binary.
 
-### A browser keeps opening on connect
+### A browser opens every time you connect
 
-The cached Access token expired (Access sessions are time-limited), or you're using a service token against a policy that isn't set to **Service Auth**. Sign in again, or fix the policy in your Cloudflare Zero Trust dashboard.
+The cached Access token expired, or a service token is running against a policy that is not **Service Auth**. Sign in again, or change the policy.
 
-### Tunnel didn't become ready
+### The tunnel did not become ready in time
 
-TablePro waits up to 30 seconds for the local port to accept connections. If it times out, the last lines of cloudflared's output are shown. Check the hostname and that the Access application is reachable.
+An unknown hostname, a policy that is not **Service Auth**, or a fixed port already taken.

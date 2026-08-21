@@ -3,13 +3,24 @@ title: Dameng DM8
 description: Dameng DM8 over its native wire protocol, with no DM client stack to install
 ---
 
-The plugin implements the DM8 wire protocol itself. Give it a host, a port and a login, the same as any server connection, and no part of the DM client stack has to be on your Mac.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-## Install Plugin
+Host, port, username, password. The plugin speaks the DM8 wire protocol itself, so no part of the DM client stack has to be on your Mac and no DM8 version is ruled out.
 
-1. Open **Settings > Plugins > Browse**
-2. Find **Dameng Driver** and click **Install**
-3. Create a Dameng connection from the connection chooser
+<Warning>
+A `CLOB` or `BLOB` that DM8 stored outside the row reads as an empty cell. Nothing marks it as truncated, so it looks exactly like an empty column. Cast `CLOB` values to `VARCHAR`, or wrap binary columns in `RAWTOHEX`, when you need the contents.
+</Warning>
+
+<Frame caption="The Dameng DM8 connection form">
+  <img className="block dark:hidden" src="/images/dameng-connection-form.png" alt="Dameng DM8 connection form" />
+  <img className="hidden dark:block" src="/images/dameng-connection-form-dark.png" alt="Dameng DM8 connection form" />
+</Frame>
+
+<RegistryPlugin name="Dameng DM8" plugin="Dameng Driver" />
+
+## Quick setup
+
+Click **Create Connection…**, choose **Dameng DM8**, fill in host, port, and credentials, and click **Save & Connect**.
 
 ## Connection settings
 
@@ -17,11 +28,11 @@ The plugin implements the DM8 wire protocol itself. Give it a host, a port and a
 |-------|---------|-------|
 | **Host** | `localhost` | DM8 server or tunnel endpoint |
 | **Port** | `5236` | Default DM8 listener port |
-| **Database** | - | Optional initial schema |
+| **Database** | - | Optional, and it picks a schema, not a database. Left empty, the driver uses your username uppercased |
 | **Username** | - | DM username, such as `SYSDBA` |
 | **Password** | - | Stored in the macOS Keychain |
 
-The driver supports SSH, SOCKS, and Cloudflare tunnels. Native DM8 TLS is not yet available, so the SSL pane is hidden. Use a trusted tunnel when the database is not on a private network.
+One DM8 instance holds one database, so there is nothing to switch between; use the schema picker instead, which switches without reconnecting. `SYS`, `SYSDBA`, `SYSAUDITOR`, `SYSSSO`, and `CTISYS` are marked system schemas. An open tab stays on the schema it started with. See [Tabs](/features/tabs#where-a-tab-points).
 
 ## Connection URL
 
@@ -29,32 +40,27 @@ The driver supports SSH, SOCKS, and Cloudflare tunnels. Native DM8 TLS is not ye
 dm://user:password@host:5236/schema
 ```
 
-## Features
+The path is a schema, not a database. See [Connection URL Reference](/connections/urls).
 
-- Browse schemas, tables, views, columns, indexes, and foreign keys
-- Complete DM8 statements, functions, data types, schemas, tables, views, and columns while typing
-- Run SQL with Unicode text, parameterized binary writes, transactions, and row limits
-- Switch schemas without reconnecting
-- Edit rows with escaped parameter values
-- Create and alter tables, indexes, primary keys, and foreign keys
-- Inspect table metadata, generated DDL, view definitions, and visual `EXPLAIN` plans
+## SSL/TLS
+
+None. Native DM8 TLS is not implemented, the SSL pane is hidden, and the connection is unencrypted. Reach a server outside a private network through an [SSH tunnel](/connections/ssh-tunneling), [SOCKS proxy](/connections/socks-proxy), or [Cloudflare tunnel](/connections/cloudflare-tunnel).
 
 ## Limitations
 
-- Username and password authentication only
-- No native TLS or trigger editor
-- Stopping a query closes its connection. DM8 has no out-of-band cancel request, so TablePro stops
-  reading the reply and reconnects on your next query, back on the schema you were using. A query
-  timeout behaves the same way. A read runs again on the new connection. A statement that writes is
-  reported instead of being run twice, because the stopped attempt may already have been applied,
-  and an open transaction does not survive.
-- The server keeps running a statement you stopped. TablePro stops waiting for it, but DM8 has no
-  way to be told to abandon the work, so a heavy query still finishes on the server. Stopping can
-  take a few seconds to take effect for the same reason.
-- A `CLOB` or `BLOB` value DM8 stored outside the row reads as empty. Small values, which DM8
-  keeps in the row, read normally. The column is listed either way and every other column in the
-  row is correct. Cast `CLOB` values to `VARCHAR`, or use `RAWTOHEX` for binary columns, when you
-  need the contents.
-- The Database field selects an initial schema, and leaving it empty is fine. A DM8 instance holds one database, so there is no database to switch; use the schema picker instead.
+- Stopping a query drops its connection. The driver reconnects on your next query, back on the schema you were using: a read reruns, an open transaction is gone, and a write is reported rather than retried. Check whether the write landed before running it again. A query timeout does the same.
+- The server finishes the statement you stopped. A heavy query keeps running there, and a stop can take a few seconds to show up.
+- A view definition longer than 8188 bytes is refused. The DDL tab reports the length instead of showing truncated text you could save back. Read the full definition on the server.
+- Username and password are the only authentication, and there is no trigger editor. Write trigger DDL in the SQL editor.
 
-If a server value fails to decode, include the DM8 version and column type in a [GitHub issue](https://github.com/TableProApp/TablePro/issues).
+## Troubleshooting
+
+**The Dameng connection is closed.**: The server, a tunnel, or the network dropped the connection. The driver rebuilds it on the next query; rerun the statement.
+
+**The Dameng connection was lost, so the open transaction was rolled back.**: Nothing in that transaction committed. Run its statements again.
+
+**Dameng did not switch to the requested schema.**: The schema does not exist or your user cannot reach it. List the schemas visible to your user with `SELECT OBJECT_NAME FROM ALL_OBJECTS WHERE OBJECT_TYPE = 'SCH'`.
+
+**Switch away from a schema before dropping it.**: A schema cannot drop itself out from under the session. Move to another one first.
+
+If a server value fails to decode, include the DM8 version and the column type in a [GitHub issue](https://github.com/TableProApp/TablePro/issues).

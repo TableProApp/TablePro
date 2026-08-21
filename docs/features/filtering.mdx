@@ -1,6 +1,6 @@
 ---
 title: Filtering
-description: Filter table data with 18 operators, raw SQL, and saved presets
+description: Build a WHERE clause from the filter bar, or write one by hand, and save it as a preset
 ---
 
 A filter is a WHERE clause, and it runs at the database. That is the difference between filtering and the find bar: matches come from every row in the table, not from the page you are looking at. Open the filter bar with `Cmd+Option+F`, type a condition into the row that appears, and press `Enter`.
@@ -10,124 +10,104 @@ A filter is a WHERE clause, and it runs at the database. That is the difference 
   <img className="hidden dark:block" src="/images/filter-panel-dark.png" alt="Filter panel above the data grid" />
 </Frame>
 
-Each row has a drag grip, a checkbox, a column picker, operator, value field, and **+**/**−** buttons. The **Match all** / **Match any** picker in the header combines rows with AND or OR. You can also right-click a column header in the data grid and choose **Filter with column** to pre-fill a filter row for that column.
+Each row has a drag grip, a checkbox, a column picker, an operator, a value field, and **+**/**−** buttons. Right-clicking a column header in the grid and choosing **Filter with column** pre-fills a row for that column.
 
 | Control | What it does |
 |---------|--------------|
-| Header **Apply** (or `Enter` in a value field, or `Cmd+Return`) | Runs all checked filter rows |
-| Row checkbox | Turns that filter off without deleting it; unchecked rows stay dimmed. Toggling does not re-run the query, press **Apply** when ready |
-| Row **Apply** | Filters by just that row, leaving all checkboxes as they are, so you can test one condition and return to the checked set with the header **Apply** |
-| **Clear** | Removes the applied filter without deleting the filter rows |
-| Row grip (left edge) | Drag it onto another row to move the filter into that row's position. The whole condition moves, so the column, operator, and value stay as they were. The grip appears once there are two or more rows |
-| Right-click > **Move Up** / **Move Down** | Reorders a row without dragging |
+| Header **Apply**, `Enter` in a value field, or `Cmd+Enter` | Runs every checked row |
+| Row checkbox | Turns that row off without deleting it. Press **Apply** to re-run |
+| Row **Apply** | Filters by that row alone, without touching the checkboxes, so the header **Apply** brings the checked set back |
+| **Clear** | Drops the applied filter and keeps the rows |
+| Row grip, or right-click > **Move Up** / **Move Down** | Reorders the list. Order never changes the result |
+| ⋯ > **Remove All Filters** | Deletes every saved row for this table |
 
-Row order is for organizing the list. Every row is joined by the same **Match all** or **Match any** setting, so moving a row never changes which rows the query returns.
-
-When you reopen a table, TablePro restores the filters you last applied to it, including the ones you left unchecked, after you quit and relaunch. Filters are saved per connection, database, schema, and table, so two tables on the same connection keep independent filters. If you cleared the filter with **Clear** or removed its rows with **−**, the table reopens unfiltered. Tables with active filters open in a new tab when you click another table.
-
-To delete every saved filter row for the current table, open the **⋯** menu and choose **Remove All Filters**.
-
-The filter bar queries the database. To narrow rows already loaded in the grid without re-querying, use the column value filter in the [Data Grid](/features/data-grid).
+Filters are saved per connection, database, schema, and table, and survive a relaunch, unchecked rows included. A table with an active filter opens in a new tab rather than replacing the current one.
 
 <Info>
-Redis shows a key-pattern search bar (for example `user:*`) with a key-type picker instead of the filter bar.
+Redis shows a key-pattern search bar (`user:*` and the like) with a key-type picker instead of the filter bar.
 </Info>
 
 ## Operators
 
-18 operators with SQL symbols shown inline: `=`, `!=`, `LIKE %..%`, `NOT LIKE %..%`, `LIKE ..%`, `LIKE %..`, `>`, `>=`, `<`, `<=`, IS NULL, IS NOT NULL, IS EMPTY, IS NOT EMPTY, `IN (..)`, `NOT IN (..)`, `BETWEEN`, `~` (regex).
+Eighteen of them, and the menu shows the SQL each one produces.
 
-BETWEEN shows two value fields. IN/NOT IN takes comma-separated values.
+| Operators | SQL |
+|---|---|
+| equals, not equals | `=`, `!=` |
+| contains, not contains | `LIKE %..%`, `NOT LIKE %..%` |
+| starts with, ends with | `LIKE ..%`, `LIKE %..` |
+| greater than, greater or equal, less than, less or equal | `>`, `>=`, `<`, `<=` |
+| is NULL, is not NULL | `IS NULL`, `IS NOT NULL` |
+| is empty, is not empty | On a text column, NULL or `''`. On any other column, the same as is NULL |
+| in list, not in list | `IN (..)`, `NOT IN (..)`, from comma-separated values |
+| between | `BETWEEN`, with two value fields |
+| matches regex | `~`, or the engine's own regex function. Where the engine has none, it falls back to contains |
 
 ## Case sensitivity
 
-Contains, not contains, starts with, and ends with ignore case. Equals, not equals, IN, NOT IN, and regex match case. Open the operator menu and use **Match Case** to change either one for that row. A small `Aa` icon on the operator button marks a row that is not using its usual setting.
-
-TablePro picks the fastest form each database offers: `ILIKE` on PostgreSQL, DuckDB, CockroachDB, and Snowflake, and `LOWER()` on both sides for Oracle, BigQuery, ClickHouse, and Redshift, whose `ILIKE` only folds ASCII. Trino has no `ILIKE`, so it uses `regexp_like` with the `i` flag.
+Contains, not contains, starts with, and ends with ignore case. Equals, not equals, IN, NOT IN, and regex respect it. Open the operator menu and use **Match Case** to flip either one for that row; an `Aa` badge marks a row that is not on its usual setting.
 
 <Info>
-On MySQL, MariaDB, SQL Server, SQLite, libSQL, and Cloudflare D1 the column's collation decides case sensitivity and TablePro cannot override it per query, so **Match Case** is dimmed. The default collation on these databases already ignores case. Cassandra and Redis have no case-insensitive matching at all, so the option is dimmed there too.
+On MySQL, MariaDB, SQL Server, SQLite, libSQL, and Cloudflare D1 the column's collation decides, and no query can override it, so **Match Case** is dimmed. Their default collations already ignore case. Cassandra and Redis have no case-insensitive matching at all, so it is dimmed there too.
 </Info>
 
-Filters saved before this option existed follow the same rules, so a saved "contains" filter now ignores case on PostgreSQL, DuckDB, Oracle, and BigQuery. Turn **Match Case** on to get the old behavior back.
+## Combining conditions
+
+**Match all** and **Match any** in the header join every row with AND or OR. There is no per-row choice and no grouping, so a mixed expression cannot be built out of rows. Put the parentheses in a raw SQL row instead, which enters the WHERE clause as a single parenthesized condition:
+
+```sql
+(status = 'open' AND priority > 3) OR escalated
+```
+
+⋯ > **Preview Query** shows the WHERE clause the rows produce, with a copy button.
+
+An applied filter reaches an export only through the grid. **File > Export > Export Results…** writes the rows the grid holds; the toolbar export reads the table itself and ignores the filter bar. See [Import & Export](/features/import-export).
 
 ## Nested fields
 
-On a document store such as MongoDB, a field holding an object or an array of objects is one column in the grid, showing its JSON. The column picker also lists the paths inside it, so you can filter on `customer.country` or `items.sku` directly.
+On a document store such as MongoDB, a field holding an object or an array of objects is one column showing its JSON. The column picker also lists the paths inside it, so `customer.country` and `items.sku` filter directly.
 
 <Frame caption="Column picker listing nested field paths under their parent">
   <img className="block dark:hidden" src="/images/filter-nested-fields.png" alt="Filter column picker with nested paths grouped under their top-level field" />
   <img className="hidden dark:block" src="/images/filter-nested-fields-dark.png" alt="Filter column picker with nested paths grouped under their top-level field" />
 </Frame>
 
-TablePro reads the paths from a sample of the collection, so the picker lists the fields the sample actually contained, grouped under their top-level parent. Only the first two levels go in the picker. The button beside it opens a searchable list of every path found, and typing a path there that no document in the sample had uses it anyway, which is how you reach a field that only some documents carry.
-
-A field whose name contains a literal dot is left out. MongoDB reads the dot in a query as a path separator, so a filter naming such a field would match a different field.
+The paths come from a sample of the collection and only the first two levels reach the picker. The button beside it opens a searchable list of every path found, and a path typed there that no sampled document carried is used anyway, which is how to reach a field only some documents have. See [MongoDB](/databases/mongodb) for the fields this leaves out.
 
 ### Fields inside an array
 
-A row on a field inside an array gets one more control, because MongoDB has two different answers here:
+A row on a field inside an array gets one more control:
+
+| Setting | What it matches |
+|---------|-----------------|
+| **any element** | The row is satisfied by any entry in the array. Two rows can be satisfied by two different entries |
+| **same element** | Every row set to **same element** for that array must be satisfied by one single entry |
+
+Filtering `items.price` greater than 500 and `items.name` equal to `Laptop` with **any element** returns an order holding an expensive item and, separately, an item called Laptop. With **same element** on both rows it returns only orders holding one item that is both. **any element** is the default.
 
 <Frame caption="Two rows on items set to same element, so one array entry must satisfy both">
   <img className="block dark:hidden" src="/images/filter-array-element-scope.png" alt="Filter rows on an array field showing the any element and same element control" />
   <img className="hidden dark:block" src="/images/filter-array-element-scope-dark.png" alt="Filter rows on an array field showing the any element and same element control" />
 </Frame>
 
-| Setting | What it matches |
-|---------|-----------------|
-| **any element** | Each row is satisfied on its own by any entry in the array. Two rows can be satisfied by two different entries |
-| **same element** | Every row set to **same element** for that array must be satisfied by one single entry |
-
-Filtering `items.price` greater than 500 and `items.name` equal to `Laptop` with **any element** returns an order that has an expensive item and, separately, an item called Laptop. With **same element** on both rows it returns only orders holding one item that is both. **any element** is the default, and it is what dot notation means in MongoDB.
-
-Rows sharing an array and set to **same element** are grouped together automatically, and the header's **Match all** / **Match any** setting applies inside the group too: with **Match any**, one array entry satisfying any of those rows is enough. Open **SQL Preview** in the **⋯** menu to see the query this produces.
-
-Sorting still works on the grid's own columns only, so a nested path can be filtered but not sorted.
+Rows sharing an array and set to **same element** group together, and **Match all** / **Match any** applies inside the group too.
 
 ## Raw SQL
 
-The default mode. On a database that does not speak SQL the row is labelled **Raw Filter** and takes that database's own filter syntax: on MongoDB, a filter document such as `{"customer.country": "US"}`.
-
-Type any WHERE condition directly:
+A new row starts in raw SQL, unless **Default Column** in the settings says otherwise, and picking a column from its picker switches it to column mode. Type any WHERE condition:
 
 ```sql
 created_at > NOW() - INTERVAL 7 DAY
 ```
 
-```sql
-price * quantity > 1000
-```
-
-As you type, autocomplete suggests the table's columns and SQL keywords at every position in the expression, including after AND and OR. Use the arrow keys to pick a suggestion and Tab or Return to insert it. Suggestions only appear once you start a word, not on an empty field or after a space. Press Escape to dismiss the suggestions; the filter bar stays open.
-
-To switch a row to column mode, select a column from the picker.
+Autocomplete offers the table's columns and SQL keywords at every position, after AND and OR included. Arrow keys pick a suggestion, `Tab` or `Return` inserts it, `Escape` dismisses the list without closing the filter bar. On a database that does not speak SQL the row is labeled **Raw Filter** and takes that database's own syntax: on MongoDB, a filter document such as `{"customer.country": "US"}`.
 
 <Warning>
-Raw SQL is injected directly into the WHERE clause. Ensure syntax matches your database type.
+The text goes into the WHERE clause as written. A condition whose syntax does not match the database fails the query.
 </Warning>
 
-## Presets
+## Presets and settings
 
-Save and load filter configurations via the **⋯** menu in the header.
+Both live in the ⋯ menu. **Save as Preset…** stores the current rows, clicking a preset name loads it, and **Delete Preset** removes one.
 
-| Action | How |
-|--------|-----|
-| Save | ⋯ > **Save as Preset…** |
-| Load | ⋯ > click preset name |
-| Delete | ⋯ > **Delete Preset** > click name |
-
-## SQL Preview
-
-⋯ > **Preview Query** shows the generated WHERE clause with a copy button.
-
-## Settings
-
-⋯ > **Filter Settings** to configure:
-
-| Setting | Options |
-|---------|---------|
-| Default Column | Raw SQL, Primary Key, Any Column |
-| Default Operator | Equal, Contains |
-| Panel State | Always Hide, Always Show, Restore Last Filter |
-
-**Panel State** controls what happens when you reopen a table. **Restore Last Filter** (the default) brings back the filter you last applied. **Always Hide** reopens tables unfiltered with the panel closed. **Always Show** keeps the filter bar visible even when no filter is set.
+**Filter Settings** sets what a new row starts as (**Default Column**: Raw SQL, Primary Key, or Any Column; **Default Operator**: Equal or Contains) and what happens when you reopen a table. **Restore Last Filter**, the default, brings back the filter you last applied; **Always Hide** reopens the table unfiltered with the bar closed; **Always Show** keeps the bar visible with no filter set.

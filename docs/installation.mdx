@@ -3,95 +3,64 @@ title: Installation
 description: Install TablePro via Homebrew or DMG on macOS 14.0+
 ---
 
+Homebrew is the short route: `brew install --cask tablepro` picks the build that matches your Mac. Everyone else takes the DMG, and that is the one route where you match the architecture yourself.
+
 ## System requirements
 
 - **macOS**: 14.0 (Sonoma) or later
-- **Processor**: Apple Silicon (M1+) or Intel x86_64
+- **Architecture**: Apple Silicon (M1 or later) or Intel x86_64
 
-TablePro uses native Apple frameworks only. No Java, .NET, or other runtimes needed. The download is about 20 MB.
+Native Apple frameworks only, so there is no Java or .NET runtime to install first. The download is about 20 MB.
 
-## Install via Homebrew
-
-The fastest option:
+## Homebrew
 
 ```bash
-brew install --cask tablepro
+brew install --cask tablepro    # install
+brew upgrade tablepro           # update
+brew uninstall tablepro         # remove the app
+brew uninstall --zap tablepro   # remove the app and its data
 ```
 
-To update:
+## The DMG
 
-```bash
-brew upgrade tablepro
-```
+<Steps>
+  <Step title="Download the asset for your Mac">
+    Release assets carry the version and the architecture: `TablePro-<version>-arm64.dmg` and `TablePro-<version>-x86_64.dmg`. Check which you need under **Apple menu > About This Mac**, where Chip means Apple Silicon and Processor means Intel. Both are on [GitHub Releases](https://github.com/TableProApp/TablePro/releases).
+  </Step>
+  <Step title="Drag it to Applications">
+    Open the DMG and drag **TablePro** onto the **Applications** shortcut.
 
-To uninstall:
+    <Frame caption="Drag TablePro to Applications">
+      <img
+        className="block dark:hidden"
+        src="/images/install-dmg.png"
+        alt="Drag to Applications"
+      />
+      <img
+        className="hidden dark:block"
+        src="/images/install-dmg-dark.png"
+        alt="Drag to Applications"
+      />
+    </Frame>
+  </Step>
+  <Step title="Eject, then launch">
+    Right-click the mounted disk and choose **Eject**. Open **TablePro** from the Applications folder.
+  </Step>
+</Steps>
 
-```bash
-brew uninstall tablepro
-```
+## Updates
 
-To also remove application data:
+Update checks run on their own. Force one with **TablePro > Check for Updates…**. Connections and settings survive an update.
 
-```bash
-brew uninstall --zap tablepro
-```
+## Removing it
 
-## Download from GitHub releases
-
-1. Go to [GitHub Releases](https://github.com/TableProApp/TablePro/releases)
-2. Download the DMG for your Mac. Asset names include the version and architecture, for example `TablePro-<version>-arm64.dmg`:
-   - **Apple Silicon (M1+)**: the `arm64` DMG
-   - **Intel**: the `x86_64` DMG
-
-Check your architecture: **Apple menu > About This Mac**, then look for Chip (Apple Silicon) or Processor (Intel).
-
-## Installation steps
-
-1. Open the DMG file (double-click)
-2. Drag **TablePro** to the **Applications** folder shortcut
-
-<Frame caption="Drag TablePro to Applications">
-  <img
-    className="block dark:hidden"
-    src="/images/install-dmg.png"
-    alt="Drag to Applications"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/install-dmg-dark.png"
-    alt="Drag to Applications"
-  />
-</Frame>
-
-3. Eject the DMG (right-click > Eject)
-4. Open **Finder > Applications** and launch **TablePro**
-
-## Updating TablePro
-
-TablePro checks for updates automatically via Sparkle. Check manually: **TablePro > Check for Updates…**.
-
-Connections and settings persist across updates.
-
-## Uninstallation
-
-1. Quit TablePro
-2. Drag **TablePro** from **Finder > Applications** to Trash
-
-To delete local data (connections, query history, downloaded driver plugins):
+Quit TablePro and drag it from the Applications folder to the Trash. To take the local data with it, which is connections, query history, and any driver plugins you installed:
 
 ```bash
 rm -rf ~/Library/Application\ Support/TablePro
 rm ~/Library/Preferences/com.TablePro.plist
 ```
 
-<Note>
-Connection passwords are stored in the macOS Keychain and are not removed by these commands. Delete them in Keychain Access by searching for `com.TablePro`. Data synced through iCloud stays in your iCloud account.
-</Note>
+Connection passwords are in the macOS Keychain and survive both commands. Delete them in Keychain Access by searching for `com.TablePro`. Data already synced through iCloud stays in your iCloud account.
 
-## Troubleshooting
-
-**Crashes on launch**: Verify correct architecture, macOS 14.0+, and check Console.app for logs.
-
-**Connection issues**: Confirm the database server is running and not blocked by a firewall.
-
-See [Development Setup](/development/setup) for building from source.
+Building from source is in [Development Setup](/development/setup). A launch that fails or a connection that will not open is in [Troubleshooting](/troubleshooting).

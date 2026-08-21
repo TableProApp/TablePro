@@ -3,97 +3,109 @@ title: Snowflake
 description: Connect to Snowflake with password, key-pair, SSO, or OAuth auth
 ---
 
-TablePro connects to Snowflake over its connector REST protocol (the same API used by the official drivers). Browse databases, schemas, and tables, run Snowflake SQL, and edit rows in the data grid. The plugin auto-installs when you pick Snowflake, or install it from **Settings > Plugins > Browse > Snowflake Driver**.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+The account identifier is the whole address: `myorg-myaccount`, or the legacy locator `xy12345.us-east-1`, whatever sits in front of `.snowflakecomputing.com`. The form has no host or port field at all.
+
+<Frame caption="The Snowflake connection form with an account identifier">
+  <img className="block dark:hidden" src="/images/snowflake-connection-form.png" alt="Snowflake connection form" />
+  <img className="hidden dark:block" src="/images/snowflake-connection-form-dark.png" alt="Snowflake connection form" />
+</Frame>
 
 ## Quick setup
 
-Click **Create Connection…**, select **Snowflake**, enter your **Account Identifier**, pick an auth method, and click **Save & Connect**.
+Click **Create Connection…**, select **Snowflake**, enter the **Account Identifier**, set **Auth Method**, and click **Save & Connect**. The form shows only the fields that method needs. Any account works: the driver speaks the same connector REST protocol as Snowflake's own drivers, so there is no edition or version to match.
 
-The account identifier is the part before `.snowflakecomputing.com`:
-
-- Org-account format: `myorg-myaccount`
-- Legacy locator format: `xy12345.us-east-1` (locator + region)
-
-## Authentication
-
-**Username & Password**: Standard Snowflake login with your username and password.
-
-**Key Pair (.p8)**: Point to an RSA private key file in PKCS#8 (`.p8`) format and, if the key is encrypted, supply its passphrase. Register the matching public key on your user first:
-
-```sql
-ALTER USER jane_doe SET RSA_PUBLIC_KEY='MIIBIjANBgkq…';
-```
-
-**Single Sign-On (Browser)**: Authenticate through your identity provider (Okta, Entra ID, etc.) in the browser. TablePro opens your IdP's login page and captures the response automatically (`authenticator=externalbrowser`). With `ALLOW_ID_TOKEN = TRUE` on the account, the sign-in token is cached in the Keychain so later connects skip the browser for about four hours.
-
-**OAuth Token**: Paste a valid OAuth access token issued for your Snowflake account.
-
-<Tip>
-Already use the Snowflake CLI? Set **CLI Connection Name** (Advanced) to a connection defined in `~/.snowflake/connections.toml` and TablePro fills in the account, user, auth method, warehouse, database, schema, and role for you.
-</Tip>
+<RegistryPlugin name="Snowflake" plugin="Snowflake Driver" />
 
 ## Connection settings
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| **Account Identifier** | Yes | e.g. `myorg-myaccount` or `xy12345.us-east-1` |
+| **Account Identifier** | Yes | `myorg-myaccount` or `xy12345.us-east-1` |
 | **Auth Method** | Yes | Password, Key Pair, SSO (Browser), or OAuth Token |
-| **Username** | Most | Required for password, key-pair, and SSO |
-| **Password** | Password only | Account password |
-| **MFA Passcode (TOTP)** | If MFA enforced | Current code from your authenticator app; refresh it before each connect |
-| **Private Key File** | Key Pair only | Path to an RSA `.p8` key (PKCS#8) |
-| **Private Key Passphrase** | Key Pair only | Only if the key is encrypted |
-| **OAuth Token** | OAuth only | A valid Snowflake OAuth access token |
-| **Warehouse** | No | Compute warehouse, e.g. `COMPUTE_WH` |
-| **Database** | No | Default database |
-| **Schema** | No | Default schema (defaults to `PUBLIC`) |
-| **Role** | No | Session role (Advanced), e.g. `SYSADMIN` |
-| **CLI Connection Name** | No | Name in `~/.snowflake/connections.toml` (Advanced) |
+| **Username** | Most | Password, key-pair, and SSO need it |
+| Credentials | Per method | The form reveals what the method needs: **Password** with **MFA Passcode (TOTP)**, **Private Key File** with **Private Key Passphrase**, or **OAuth Token** |
+| **Warehouse** | No | Compute warehouse such as `COMPUTE_WH` |
+| **Database** | No | Default database. Empty browses all of them |
+| **Schema** | No | Default schema, `PUBLIC` if empty |
+| **Role** | No | Session role, Advanced pane |
+| **CLI Connection Name** | No | Section in `~/.snowflake/connections.toml`, Advanced pane |
 
-## Features
+## Connection URL
 
-**Database & Schema Browsing**: The sidebar groups objects by database and schema. Switch the active database or schema with `USE DATABASE` / `USE SCHEMA`, or by selecting them in the UI.
+Snowflake registers no URL scheme. The CLI config stands in for one: name a section in **CLI Connection Name**, and every field left empty is read at connect from `~/.snowflake/connections.toml`, or a `[connections.<name>]` section of `config.toml`.
 
-**Warehouse & Role Switchers**: Toolbar pickers show the active warehouse and role and switch them with `USE WAREHOUSE` / `USE ROLE`, no reconnect needed. A suspended warehouse resumes automatically on the next query.
+## Authentication
 
-**Snowflake SQL** ([docs](https://docs.snowflake.com/en/sql-reference-commands)):
+### Password
+
+If the account enforces MFA, put a current code in **MFA Passcode (TOTP)**; it expires in under a minute, so refresh it immediately before connecting. Running `ALTER ACCOUNT SET ALLOW_CLIENT_MFA_CACHING = TRUE;` as ACCOUNTADMIN ends that chore: connect once with a fresh code, and Snowflake returns an MFA token that TablePro keeps in the Keychain.
+
+### Key pair
+
+Point **Private Key File** at an RSA private key in PKCS#8 (`.p8`) format, and add **Private Key Passphrase** for an encrypted key. Register the matching public key on the user first:
 
 ```sql
-SELECT * FROM my_db.public.orders LIMIT 100;
-
--- Semi-structured data
-SELECT value:id::int AS id, value:name::string AS name
-FROM raw, LATERAL FLATTEN(input => raw.payload);
-
--- Time travel
-SELECT * FROM events AT(OFFSET => -60*5);
+ALTER USER jane_doe SET RSA_PUBLIC_KEY='MIIBIjANBgkq…';
 ```
 
-**Data Types**: NUMBER, FLOAT, VARCHAR, BINARY, BOOLEAN, DATE, TIME, TIMESTAMP_NTZ/LTZ/TZ, VARIANT, OBJECT, ARRAY, GEOGRAPHY, GEOMETRY. Semi-structured values display as JSON text.
+Every connect signs a one-hour JWT with that key, so the Mac's clock has to be accurate.
 
-**Structure Editing**: Add, rename, and drop columns; widen VARCHAR lengths and adjust NUMBER precision (Snowflake does not allow shrinking or cross-type changes); toggle NOT NULL; edit column comments; change primary keys. Declared primary keys, foreign keys, and clustering keys show in the structure pane (Snowflake treats key constraints as informational).
+### Browser SSO
 
-**DDL**: View object DDL via `GET_DDL`. Create or replace views, truncate and drop tables.
+Sends you to your identity provider in the default browser and catches the reply on a loopback port, giving up after 2 minutes. With `ALLOW_ID_TOKEN = TRUE` on the account, Snowflake also returns a sign-in token; it goes to the Keychain, and later connects skip the browser until it is rejected.
 
-**Import**: CSV, TSV, and JSON files import into new or existing tables through parameterized inserts.
+### OAuth token
 
-**Export**: CSV, JSON, SQL, XLSX formats.
+Paste an access token issued for the account. Nothing refreshes it for you.
 
-## Troubleshooting
+## Browsing and sessions
 
-**Auth failed**: Verify the account identifier and credentials. For key-pair auth, confirm the public key is registered on the user and the passphrase is correct.
+The sidebar groups objects by database and schema. Object lists come from `SHOW` commands, which the metadata service answers with no warehouse running; column details come from `INFORMATION_SCHEMA`, which needs one.
 
-**MFA with TOTP is required (394508)**: Your account enforces MFA on password logins. Enter a current code from your authenticator in **MFA Passcode (TOTP)**. It expires quickly, so refresh it right before connecting. Key-pair or SSO auth avoids the prompt entirely.
+Toolbar pickers move the session to another **Warehouse** or **Role** with `USE WAREHOUSE` and `USE ROLE`, no reconnect. A tab bound to a second database stays on that session too: `USE DATABASE` runs ahead of its statements. One TablePro connection is one Snowflake session, held open while idle by a heartbeat.
 
-**TOTP Invalid (394507) while browsing after a successful connect**: TablePro opens extra sessions for browsing, and each new login revalidates the saved passcode, which expires within a minute. Enable MFA token caching on the account so one fresh code covers all later sessions: run `ALTER ACCOUNT SET ALLOW_CLIENT_MFA_CACHING = TRUE;` (needs ACCOUNTADMIN), then reconnect with a current code. TablePro caches the returned MFA token in the Keychain and skips the passcode from then on.
+## Editing
 
-**JWT token is invalid**: The account name in the JWT issuer must match your account locator. Make sure your machine clock is accurate (JWTs are time-sensitive).
+`GET_DDL` supplies the DDL view. Grid saves bind values server-side, VARIANT, OBJECT, and ARRAY cells through `PARSE_JSON`. The structure editor refuses a change Snowflake would reject before anything runs:
 
-**No databases listed**: Ensure the connecting role has `USAGE` on the databases and a warehouse is set so metadata queries can run.
+| Change | Result |
+|--------|--------|
+| Add, rename, or drop a column | Runs |
+| Widen a VARCHAR | Runs. Shrinking is refused |
+| Change NUMBER precision | Runs at the same scale |
+| Any other type change | Refused |
+| NOT NULL, comment, primary key | Runs |
+| Set a column default to a new value | Refused. Clearing one runs |
 
-**Browser SSO didn't return**: The login must complete within 2 minutes; the local callback listens on `127.0.0.1`. Disable popup blockers and retry.
+## SSL/TLS
+
+No SSL/TLS pane, and no plaintext option. Every request is HTTPS to the account endpoint on port 443.
 
 ## Limitations
 
-- No SSH tunneling (HTTPS only to the Snowflake endpoint)
-- Foreign keys display as informational; Snowflake never enforces them
+- No SSH tunnel. The form has no SSH pane, and the endpoint is reached over HTTPS only.
+- A grid edit keys on the declared primary key, or on every column when there is none, and a duplicate key value updates or deletes every row that matches it. Snowflake never enforces key constraints, so check a table for duplicates before editing it.
+
+## Troubleshooting
+
+### 394508, MFA is required
+
+The account enforces MFA on password logins. Enter a current code in **MFA Passcode (TOTP)**, or move to key-pair or browser SSO, which never prompt.
+
+### 394507, the passcode was rejected
+
+The code was wrong or already expired. A rejected code is remembered and never resent, so open the connection settings and type a fresh one.
+
+### JWT token is invalid
+
+Key-pair auth. The JWT issuer carries your account locator and a timestamp, so check the identifier and the Mac's clock, then confirm the public key is registered on the user.
+
+### No databases in the sidebar
+
+The connecting role needs `USAGE` on the databases. Set **Warehouse** too: column metadata runs on `INFORMATION_SCHEMA`, which needs one.
+
+### The browser never came back
+
+Sign-in has 2 minutes, and the reply arrives on a loopback port. Allow the popup and retry.

@@ -3,62 +3,35 @@ title: Oracle Database
 description: Connection settings, SSL modes, auth compatibility, and column type support for Oracle
 ---
 
-This driver speaks TNS, Oracle's own wire protocol, in pure Swift. Oracle Instant Client and the rest of Oracle's client stack stay off your Mac. Logins work against Oracle Database 11.1 and later, whether the instance runs on-premises, in Docker, or in Oracle Cloud.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+The driver speaks TNS in pure Swift, so Instant Client and the rest of Oracle's stack stay off your Mac. Logins work against Oracle Database 11.1 and later, on-premises, in Docker, or in Oracle Cloud.
 
 <Info>
-Oracle 10g and earlier are not supported: they use the older O3LOGON handshake that the pure-Swift driver does not implement.
+Oracle 10g and earlier cannot connect. Their O3LOGON handshake is not implemented, and there is no setting that works around it.
 </Info>
 
-Servers behind a RAC SCAN listener, shared server, or a load balancer are supported: TablePro follows the listener's redirect to the instance that serves the session. Servers that require Native Network Encryption (`SQLNET.ENCRYPTION_SERVER` or `SQLNET.CRYPTO_CHECKSUM_SERVER` set to REQUIRED) are also supported: TablePro offers AES encryption with a SHA crypto-checksum to every server and the server turns it on when required, the same as SQL Developer and DBeaver. There is no option to configure.
+A RAC SCAN listener, a shared server, or a load balancer in front of the database needs no configuration. Neither does a server that requires Native Network Encryption: AES with a SHA-2 checksum is offered on every connect, and the server turns it on when it wants it.
 
-## On iPhone and iPad
-
-TablePro Mobile connects to Oracle too. The driver is built into the app, so there is no plugin to install. Enter host, port, username, password, and either a service name or a SID, and pick an SSL mode. You can browse schemas, tables, columns, indexes, and foreign keys, run queries, and edit rows.
-
-Two things stay Mac-only: creating or altering tables and triggers, and certificate files. Certificates live on the device that created the connection and do not sync, so a connection set up on your Mac with a CA or client certificate reports that the file is missing when you open it on iPhone. Clear the certificate path and the verify modes fall back to the system trust store, which is all a publicly trusted server such as Oracle Autonomous Database needs.
-
-## Install Plugin
-
-The Oracle driver is a downloadable plugin on macOS. When you select Oracle in the connection form, TablePro prompts you to install it. You can also install it manually:
-
-1. Open **Settings > Plugins > Browse**
-2. Find **Oracle Driver** and click **Install**
-3. The plugin downloads and loads immediately, no restart needed
+<RegistryPlugin name="Oracle" plugin="Oracle Driver" />
 
 ## Connection settings
-
-Enter host, port, username, password, and service name, then click **Save & Connect**.
 
 | Field | Default | Notes |
 |-------|---------|-------|
 | **Host** | `localhost` | |
 | **Port** | `1521` | Listener port |
-| **Service Name** | - | **Required**. Check `tnsnames.ora` if unclear. To connect by SID instead, set **Connection Type** to SID and enter the SID. |
-| **Username** | - | Requires username/password auth (no OS auth) |
-| **Role** | `Normal` | Set to SYSDBA or SYSOPER for an administrative logon. The account needs the matching privilege, and Oracle treats the session as `SYS` rather than as the user you signed in with. |
+| **Connection Type** | Service Name | Switch to SID for an instance that has no service |
+| **Service Name** | - | **Required**. `lsnrctl services` on the server lists what the listener answers for |
+| **Username** | - | Username and password only. There is no OS auth |
+| **Role** | Normal | SYSDBA or SYSOPER for an administrative logon. The account needs the matching privilege, and the session runs as `SYS` rather than as the user you signed in with |
+
+There is no Database field. Each user is a schema, the sidebar lists them all, and `Cmd+K` or the **Schema** toolbar button switches the active one. A tab binds to a schema rather than a database, so nothing reconnects when you switch.
 
 <Frame caption="Oracle connection form">
   <img className="block dark:hidden" src="/images/oracle-connection-form.png" alt="Oracle connection form with Connection Type and Service Name fields" />
   <img className="hidden dark:block" src="/images/oracle-connection-form-dark.png" alt="Oracle connection form with Connection Type and Service Name fields" />
 </Frame>
-
-## Example configurations
-
-**Local (Oracle XE)**: host `localhost:1521`, user `system`, service `XEPDB1`
-
-**Docker**: `gvenzl/oracle-xe:21-slim` image, same config as local
-
-**Remote**: Standard host/port/credentials, service name from DBA
-
-**Oracle Cloud (ADB)**: Copy host, port, and service name (format `mydb_tp`) from the TLS connection string in the Oracle Cloud Console, then set SSL mode to **Required** (or **Verify CA** with the CA certificate). TablePro connects with one-way TLS and does not read Oracle wallet files.
-
-This needs the database to allow TLS without mutual TLS, which means setting **Mutual TLS (mTLS) authentication** to *Not Required* and giving the database an access control list or a private endpoint. Oracle rejects the connection otherwise. Use the TLS connection string, not the mTLS one: mTLS is served on port 1522 only, while TLS is on 1521 or 1522.
-
-If you have an older wallet that stopped working, this is the path to switch to. Oracle's DigiCert G1 roots were distrusted in April 2026, so ADB wallets generated on or before 28 January 2026 no longer connect. One-way TLS is unaffected.
-
-## SSL/TLS
-
-OracleNIO has no TLS fallback. **Preferred** connects in plain TCP (the SSL pane shows a warning). Use **Required** for TCPS, **Verify CA** with a CA certificate path for strict validation. See [SSL/TLS](/connections/ssl) for details.
 
 ## Connection URL
 
@@ -68,49 +41,38 @@ oracle://user:password@host:1521/service_name
 
 See [Connection URL Reference](/connections/urls) for all parameters.
 
-## Features
+## Authentication
 
-**Schema Selection**: Each user is a schema. The sidebar lists every schema and loads a schema's tables when you expand it. Switch the active schema with `Cmd+K` or the **Schema** toolbar button.
-
-**Table Info**: Structure (columns, types, nullability, primary keys), indexes, foreign keys, and CREATE TABLE DDL.
-
-**Query Editor**: SQL and PL/SQL (anonymous blocks). Pagination uses OFFSET/FETCH syntax:
-
-```sql
-SELECT *
-FROM hr.employees
-ORDER BY employee_id
-OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY;
-```
-
-**Schema Editing**: ALTER TABLE with double quotes for case-sensitive names. Supports ADD, RENAME COLUMN, MODIFY, DROP, CREATE INDEX.
-
-## Auth compatibility
-
-TablePro authenticates via `OracleNIO`, a pure-Swift implementation of the Oracle TNS wire protocol (no Oracle Instant Client needed). Username and password are the only credentials it accepts; OS auth and Oracle wallets are not supported. Create a user with:
+Username and password are the only credentials. Every verifier in `dba_users.password_versions` works, `10G` included; external, Kerberos, and LDAP-managed accounts do not connect at all. A `10G`-only account still connects, on DES-based hashing Oracle has deprecated; rotate it with `ALTER USER … IDENTIFIED BY` and check that `password_versions` then holds `11G` or `12C`.
 
 ```sql
 CREATE USER app_user IDENTIFIED BY "Password1!";
 GRANT CREATE SESSION, SELECT ANY TABLE TO app_user;
+SELECT username, password_versions FROM dba_users WHERE username = 'APP_USER';
 ```
 
-| `dba_users.password_versions` | Status |
-|---|---|
-| `12C` only (recommended) | ✓ Supported |
-| `11G 12C` | ✓ Supported |
-| `10G 11G 12C` | ✓ Supported |
-| `10G 11G` (legacy migration) | ✓ Supported |
-| `10G` only (deprecated) | ✓ Supported, but consider rotation |
-| External / Kerberos / LDAP-managed | ✗ Not supported. File an issue. |
+## Common setups
 
-10G hash is supported for compatibility with legacy environments. It uses DES-based hashing without modern salting and is deprecated by Oracle. Rotate affected accounts under modern auth so `password_versions` contains only `11G` or `12C`:
+| Where | Settings |
+|-------|----------|
+| Oracle XE, local | `localhost:1521`, user `system`, service `XEPDB1` |
+| Docker | `gvenzl/oracle-xe:21-slim`, same as local |
+| Remote | Host, port, and credentials as usual; service name from the DBA |
+| Oracle Cloud ADB | One-way TLS, no wallet. See [Oracle Cloud (ADB)](#oracle-cloud-adb) |
 
-```sql
-ALTER USER <USER> IDENTIFIED BY <new-secure-password>;
-SELECT username, password_versions FROM dba_users WHERE username = '<USER>';
-```
+A pluggable database has its own service name, and it is not the container's: `XEPDB1` is a PDB inside `XE`, and connecting to the container name gets you the CDB with none of the application schemas. `lsnrctl services` lists both.
 
-If the connection fails with "Unsupported Password Verifier", check `password_versions` first. "Server Version Not Supported" means the database is older than 11.1 (10g or earlier), which the driver cannot connect to.
+## Oracle Cloud (ADB)
+
+Copy host, port, and service name (of the form `mydb_tp`) from the **TLS** connection string in the Oracle Cloud Console, not the mTLS one, then set SSL mode to **Required**, or **Verify CA** with the CA certificate. Wallet files are never read, which also makes this the way out of a wallet that has stopped working.
+
+The database has to accept TLS without mutual TLS: set **Mutual TLS (mTLS) authentication** to *Not Required* and give the database an access control list or a private endpoint. Oracle rejects the connection otherwise.
+
+## Editing and queries
+
+Table info carries columns, types, nullability, primary keys, indexes, foreign keys, and CREATE TABLE DDL. The structure editor writes `ALTER TABLE` with double-quoted identifiers for case-sensitive names: ADD, RENAME COLUMN, MODIFY, DROP, and CREATE INDEX.
+
+The editor runs SQL and anonymous PL/SQL blocks, and grid paging is written as `OFFSET … ROWS FETCH NEXT … ROWS ONLY`. Import and export work as they do elsewhere, and a remote server reaches through an [SSH tunnel](/connections/ssh-tunneling).
 
 ## Column type support
 
@@ -130,22 +92,35 @@ If the connection fails with "Unsupported Password Verifier", check `password_ve
 | BOOLEAN | `true` / `false` |
 | BFILE | `<bfile>` placeholder (locator only) |
 
-Columns with types not yet supported render as `<unsupported: type>` rather than crashing or corrupting data. Report unsupported types via [GitHub Issues](https://github.com/TableProApp/TablePro/issues).
+Anything else renders as `<unsupported: type>`. Report those through [GitHub Issues](https://github.com/TableProApp/TablePro/issues).
+
+## SSL/TLS
+
+New connections default to **Disabled**, and there is no opportunistic upgrade: **Preferred** connects in plain TCP, which is why the SSL pane flags it in red. **Required** is TCPS; **Verify CA** adds a CA certificate path for strict validation. See [SSL/TLS](/connections/ssl).
+
+## On iPhone and iPad
+
+The Oracle driver is compiled into TablePro Mobile, with no plugin to install. Browsing, queries, and row editing work; creating or altering tables and triggers stays on the Mac. See [iPhone and iPad](/ios).
 
 ## Limitations
 
-- Username and password auth only. No OS auth, wallets, Kerberos, or LDAP.
-- BFILE columns show the locator only. Fetching content through `DBMS_LOB` is not supported.
-- PL/SQL runs as anonymous blocks only.
+- No OS auth, wallets, Kerberos, or LDAP. Create a database user with a password and connect as that.
+- BFILE columns show the locator, never the file. There is no path to the contents from the app.
+- PL/SQL runs as anonymous blocks. Create a procedure or package with a `CREATE OR REPLACE` statement in the editor.
+- No Users & Roles pane. Manage accounts with `CREATE USER` and `GRANT` in the editor.
 
 ## Troubleshooting
 
-**Connection refused**: check the listener is running with `lsnrctl status`, confirm port 1521 is open, and on Docker confirm the container is up (`docker start oracle-xe`).
+**Connection refused**: check the listener is up with `lsnrctl status`, that port 1521 is open, and, on Docker, that the container is running (`docker start oracle-xe`).
 
-**Invalid service name**: confirm the service exists with `SELECT value FROM v$parameter WHERE name = 'service_names';`, or list what the listener serves with `lsnrctl services`.
+**Invalid service name**: the listener does not answer for that name. List what it does answer for with `lsnrctl services`.
 
-**Connection dropped during handshake**: the server closed the connection mid-login. The error dialog shows the handshake phase it stopped at (for example `advancedNegotiation`, `dataTypeNegotiation`, or `authentication`). Check for a firewall, VPN, or proxy that resets traffic, and confirm the host and port reach the listener directly.
+**Unsupported Password Verifier**: the account's verifier is one the driver cannot use, usually a new one such as 23ai. Read `password_versions` for that user and file an issue with the verifier flag the dialog shows.
 
-**Native network encryption not completed**: the server requires native network encryption and the negotiation did not finish. The server likely requires an encryption or checksum algorithm the driver does not support; the error dialog shows the reason. File an issue with your Oracle version and that reason. For encryption in transit you can also use TLS by setting an SSL mode in the SSL settings.
+**Server Version Not Supported**: the server is 10g or earlier. Nothing on this side helps; the database has to be 11.1 or later.
 
-**Login handshake timed out**: the TCP connection is accepted but login never finishes, so the connect stops after 30 seconds instead of waiting for the server to reset. Check for a firewall, VPN, or proxy that stalls traffic after the TCP handshake, and confirm the host and port reach the listener directly.
+**Login Handshake Timed Out**: TCP connected but the login never finished, so the attempt stops after 30 seconds. Look for a firewall, VPN, or proxy that stalls traffic once the TCP handshake is done.
+
+**Connection Dropped During Handshake**: the server closed the connection mid-login, and the dialog names the phase it stopped at (`advancedNegotiation`, `dataTypeNegotiation`, `authentication`). Look for a firewall, VPN, or proxy that resets traffic, and confirm the host and port reach the listener itself.
+
+**Native Network Encryption Not Completed**: the server requires an encryption or checksum algorithm the driver does not offer. Ask the DBA which ones are set and file an issue with the reason the dialog shows. TLS is the alternative: set an SSL mode instead.

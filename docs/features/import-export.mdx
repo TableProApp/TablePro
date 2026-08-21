@@ -3,29 +3,36 @@ title: Import & Export
 description: Export to CSV, JSON, SQL, MQL, or XLSX. Import SQL, JSON, and CSV files with column mapping and transaction safety
 ---
 
-Where you start the export decides what you get. From the toolbar (`Cmd+Shift+E`) rows stream out of the database straight to disk, so table size does not matter and there is no row limit. From a results grid, **Export Results…** on the right-click menu writes only the rows already in memory. Import is `Cmd+Shift+I`.
+The toolbar's **Export** (`Cmd+Shift+E`) re-reads every table you tick with `SELECT * FROM`, so what is on screen has no bearing on the file: filters, sort, hidden columns, and the page you are on are all ignored, and table size does not matter. **Export Results…** on the grid's right-click menu writes what the tab has loaded instead. Import is `Cmd+Shift+I`.
 
-## Export Data
+## Export data
 
-1. Open a table, or run a query and use its results
-2. Click **Export** in the toolbar (`Cmd+Shift+E`), or right-click the results grid and choose **Export Results…**
-3. Choose a format, select tables in the tree view, configure options
-4. Click **Export**
+<Steps>
+  <Step title="Open the export dialog">
+    Open a table or run a query, then click **Export** in the toolbar (`Cmd+Shift+E`), or right-click the results grid and choose **Export Results…**.
+  </Step>
+  <Step title="Choose a format and scope">
+    Pick a format, tick tables in the tree, and set the options for that format.
+  </Step>
+  <Step title="Export">
+    Click **Export**. The destination file appears only on success: a failed or cancelled export removes its partial file.
+  </Step>
+</Steps>
 
-TablePro remembers the last format and options you exported with. Option changes stick only after a successful export; cancelling the dialog discards them. **Reset to Defaults** under the options restores the stock settings for the current format.
-
-<Info>
-**MongoDB**: SQL export is not available. Use MQL, which generates `db.collection.insertMany([…])` scripts for `mongosh`. **Redis**: SQL and MQL exports are not available.
-
-MQL writes top-level typed values as the constructors mongosh understands, so `_id` comes back as an `ObjectId`, a date as an `ISODate`, and binary as `BinData` with its real subtype. A typed value **nested inside a subdocument or array** is written as a string, because the parent is serialized to JSON before the exporter sees it. Re-importing such a script gives you a string where the original held an ObjectId, date, or binary. Export those collections as JSON, or use `mongodump`.
-</Info>
+The last format and its options come back next time, but only after an export succeeds; cancelling discards the changes. **Reset to Defaults** restores the stock settings for the current format.
 
 <Frame caption="Export dialog">
   <img className="block dark:hidden" src="/images/export-dialog.png" alt="Export dialog" />
   <img className="hidden dark:block" src="/images/export-dialog-dark.png" alt="Export dialog" />
 </Frame>
 
-### Export Formats
+### What ends up in the file
+
+A whole-table export streams from the database at constant memory, with no row-count limit, and can be cancelled from the progress dialog.
+
+**Export Results…** writes what the tab holds in memory, which is the output of the query that filled it. The filter bar and a sorted header are part of that query, and so is column visibility on a table tab: hiding a column re-queries without it, keeping only the primary key and anything being sorted on. Two things are not part of it. A column value filter narrows the loaded rows in the grid afterwards, so it never reaches the file. And a truncated result with more rows behind it is re-run and streamed in full rather than written as far as it got.
+
+### Formats
 
 <Tabs>
   <Tab title="CSV">
@@ -38,10 +45,12 @@ MQL writes top-level typed values as the constructors mongosh understands, so `_
     | Line breaks in values to spaces | No |
     | Line ending (LF, CRLF, CR) | LF |
     | Decimal separator (period, comma) | Period |
-    | Formula sanitization | Yes |
+    | Sanitize formula-like values | Yes |
+
+    Sanitizing prefixes a value starting with `=`, `+`, `-`, or `@` with a single quote, so a spreadsheet treats it as text.
   </Tab>
   <Tab title="JSON">
-    Exports as an array of objects.
+    An array of objects.
 
     | Option | Default |
     |--------|---------|
@@ -50,31 +59,30 @@ MQL writes top-level typed values as the constructors mongosh understands, so `_
     | Preserve all values as strings | No |
   </Tab>
   <Tab title="SQL">
-    Global options:
-
     | Option | Default |
     |--------|---------|
     | Compress with gzip (`.sql.gz`) | No |
-    | Batch size (rows per INSERT) | 500 |
+    | Batch size (rows per INSERT: 1, 100, 500, 1,000) | 500 |
 
-    Per-table checkboxes, set individually for multi-table exports:
+    Structure (CREATE TABLE), Drop (DROP TABLE IF EXISTS), and Data (INSERT statements) are per-table checkboxes, and a multi-table export can mix them.
 
-    | Column | Includes | Default |
-    |--------|----------|---------|
-    | Structure | CREATE TABLE | Yes |
-    | Drop | DROP TABLE IF EXISTS | Yes |
-    | Data | INSERT statements | Yes |
+    <Warning>
+    All three are on by default, so an SQL export carries `DROP TABLE IF EXISTS` unless you untick **Drop**. Run that file against the wrong database and it drops the tables first.
+    </Warning>
+
+    Not available on MongoDB or Redis.
   </Tab>
   <Tab title="MQL">
-    MongoDB only. Generates `insertMany()` scripts that run directly in `mongosh`. Batch size defaults to 500 documents per `insertMany`. Per-collection checkboxes cover drop, indexes, and data.
+    MongoDB only. Writes a `.js` file of `insertMany()` calls that runs in `mongosh`, 500 documents per call by default, with per-collection checkboxes for drop, indexes, and data.
 
-    Output is a `.js` file:
     ```javascript
     db.users.insertMany([
       {"_id": {"$oid": "507f1f77bcf86cd799439011"}, "name": "Alice", "age": 30},
       {"_id": {"$oid": "507f1f77bcf86cd799439012"}, "name": "Bob", "age": 25}
     ]);
     ```
+
+    Top-level values keep their type: `ObjectId`, `ISODate`, `BinData` with its real subtype. A typed value nested inside a subdocument or array is written as a string, so re-importing gives you a string where the original held an ObjectId, date, or binary. Export those collections as JSON, or use `mongodump`.
   </Tab>
   <Tab title="XLSX">
     | Option | Default |
@@ -82,39 +90,27 @@ MQL writes top-level typed values as the constructors mongosh understands, so `_
     | Include headers (bold first row) | Yes |
     | NULL as empty cells | Yes |
 
-    Each table exports as a separate worksheet. Numbers are stored as numeric cells. Tables exceeding 1,048,576 rows (Excel's limit) auto-split into multiple sheets.
+    Each table becomes its own worksheet and numbers are stored as numeric cells. A table over 1,048,576 rows, Excel's limit, splits across sheets.
   </Tab>
 </Tabs>
 
-### Streaming export
-
-Whole-table exports stream rows from the database straight to disk:
-
-- Constant memory regardless of table size, no row-count limit
-- Atomic write: the destination file appears only on success, partial files are removed on failure
-- Cancellable from the progress dialog; cancelling removes the partial file
-
-Result-grid exports use the in-memory result set. Use LIMIT in your query to control their size.
-
 ## Clipboard paste (CSV/TSV)
 
-Paste tabular data directly into the data grid. Press `Cmd+V` after selecting a row. Format is auto-detected: tabs parse as TSV, commas as CSV.
+Select a row in the data grid and press `Cmd+V` to paste tabular data straight in. Tabs parse as TSV, commas as CSV.
 
-## Import Data
+## Import data
 
-Import `.sql` and `.sql.gz` files (statements execute directly against your database: backups, migrations, seed data), `.json` / `.jsonl` files into a table, or `.csv` / `.tsv` files into a table with column mapping.
-
-### Import SQL
+**File > Import > Import Data…** (`Cmd+Shift+I`) takes `.sql` and `.sql.gz` files, whose statements execute directly against the database, and `.json`, `.jsonl`, `.ndjson`, `.csv`, and `.tsv` files, which load into a table you pick or one TablePro creates.
 
 <Steps>
-  <Step title="Open Import Dialog">
-    Click **File > Import > Import Data…** (`Cmd+Shift+I`) and pick a `.sql` file.
+  <Step title="Pick the file">
+    Choose **File > Import > Import Data…** and select the file. The sheet that opens depends on what you picked.
   </Step>
-  <Step title="Configure Options">
-    Set encoding, transaction wrapping, and foreign key check options. TablePro remembers the options from your last successful import; cancelling the dialog discards changes, and **Reset to Defaults** restores the stock settings.
+  <Step title="Set the options">
+    Encoding, transaction wrapping, and error handling for SQL; parsing and column mapping for CSV and JSON. TablePro remembers the options from your last successful import, and **Reset to Defaults** restores the stock ones.
   </Step>
-  <Step title="Preview and Import">
-    Review the SQL preview, statement count, and file size. Click **Import** to execute.
+  <Step title="Review and import">
+    Check the preview, statement count, and file size, then click **Import**.
   </Step>
 </Steps>
 
@@ -123,62 +119,61 @@ Import `.sql` and `.sql.gz` files (statements execute directly against your data
   <img className="hidden dark:block" src="/images/import-dialog-dark.png" alt="Import dialog" />
 </Frame>
 
-### Import options
+### Options
 
-| Option | Description | Default |
+| Option | What it does | Default |
 |--------|-------------|---------|
-| On error | How to handle failed statements (see below) | Stop and Rollback |
-| Encoding | File encoding: UTF-8, UTF-16, Latin1, or ASCII | UTF-8 |
-| Wrap in transaction | Execute all statements within a single transaction | Yes |
-| Disable foreign key checks | Temporarily disable FK constraints during import | Yes |
+| On error | Stop and Rollback, Stop and Commit, or Skip and Continue | Stop and Rollback |
+| Encoding | UTF-8, UTF-16, Latin1, or ASCII | UTF-8 |
+| Wrap in transaction | Runs every statement inside one transaction. Dimmed in Skip and Continue | Yes |
+| Disable foreign key checks | Suspends constraint checks for the import | Yes |
 
-For PostgreSQL the checkbox runs `SET session_replication_role = replica`, which requires superuser (or, on PostgreSQL 15+, a `GRANT SET` on the parameter). If the server rejects the statement, the import stops with that error; uncheck the option to proceed. TablePro's SQL exports emit foreign key constraints with `ALTER TABLE … ADD CONSTRAINT` after data load, so the dump imports in order without needing the privilege.
+| Mode | What happens on a failed statement |
+|------|-----------|
+| **Stop and Rollback** | Stops there. With the transaction on, everything rolls back |
+| **Stop and Commit** | Stops there, keeping what already succeeded |
+| **Skip and Continue** | Logs it and carries on, including a line the parser cannot read. No transaction |
 
-For MySQL the checkbox runs `SET FOREIGN_KEY_CHECKS = 0` and works on standard accounts. SQLite uses `PRAGMA foreign_keys = OFF`. Drivers without an equivalent (most NoSQL drivers) ignore the option.
+Skip and Continue collects up to 1,000 failures with their line numbers and messages, and the summary counts successes against failures behind a **Copy Details** button. A stop shows the line, the database's own message, and the failing statement, with the dialog still open behind it, ready for a changed setting and another run.
 
-### Error handling modes
+### Disabling foreign key checks
 
-| Mode | Behavior |
-|------|----------|
-| **Stop and Rollback** | Stops on first error. If transaction is enabled, rolls back all changes. Default. |
-| **Stop and Commit** | Stops on first error. Commits statements that succeeded before the error. |
-| **Skip and Continue** | Logs failed statements and continues. A line the parser cannot read is logged the same way. Transaction wrapping is disabled in this mode. |
+The checkbox runs a different statement per engine, and one of them needs a privilege.
 
-In **Skip and Continue** mode, failed statements are collected (up to 1,000) with line numbers and error messages. After import completes, a summary shows how many succeeded vs failed, with a scrollable error list and a **Copy Details** button.
+| Engine | Statement | Needs |
+|---|---|---|
+| PostgreSQL, Redshift, CockroachDB, PGlite | `SET session_replication_role = replica` | Superuser, or `GRANT SET` on the parameter from PostgreSQL 15 |
+| MySQL, MariaDB | `SET FOREIGN_KEY_CHECKS=0` | Nothing |
+| SQLite, libSQL, Cloudflare D1 | `PRAGMA foreign_keys = OFF` | Nothing |
+| Everything else | Nothing. The option is ignored | |
 
-When an import stops on an error, the same panel shows the line it stopped at, the database's own message, and the statement that failed. The dialog stays open behind it so you can change a setting and run the import again.
+A server that rejects the statement stops the import with that error, so clear the checkbox and run it again. A dump TablePro exported needs no privilege: it adds foreign keys with `ALTER TABLE … ADD CONSTRAINT` after the data.
 
-### Import JSON data
+### Import JSON
 
-Choose **File > Import > Import Data…** and pick a `.json`, `.jsonl`, or `.ndjson` file. The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON (one object per line, streamed for large files), and TablePro's own JSON export shape `{ "table": [ {…} ] }`, so an export round-trips back in.
+The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON streamed a line at a time, and TablePro's own export shape `{ "table": [ {…} ] }`, so an export round-trips. Then choose a destination:
 
-Choose a destination:
+- **Existing table**: map each JSON field to a column. Fields auto-match by name; switch one off to skip it. A column with no matching field keeps its default or NULL.
+- **New table**: name it and review the columns TablePro infers. Name, type, primary key, nullable flag, and default are all editable before the table is created.
 
-- **Existing table**: pick the table, then map each JSON field to a column. Fields are auto-matched by name; toggle any field off to skip it, or remap it. Columns with no matching field keep their default or NULL.
-- **New table**: name the table and review the columns TablePro infers from the data. Each column's name, type, primary key, nullable flag, and default are editable before the table is created.
+Rows insert through parameterized statements, so a JSON value is never concatenated into SQL. Nested objects and arrays are stored as JSON text.
 
-Rows insert through parameterized statements, so JSON values are never concatenated into SQL. Nested objects and arrays are stored as JSON text.
+### Import CSV
 
-### Import CSV data
+CSV and TSV open the same sheet as JSON, with parsing options in front of the mapping. The delimiter and encoding are detected from the file; change any option and the mapping re-reads it.
 
-Choose **File > Import > Import Data…** and pick a `.csv` or `.tsv` file. TablePro opens the same row import sheet used for JSON, with CSV-specific parsing options. The delimiter and encoding are auto-detected; the quote character defaults to a double quote. Change any parsing option and the field mapping re-reads the file. Destination options match JSON import: map into an existing table or create a new one.
-
-| Option | Description | Default |
+| Option | What it does | Default |
 |--------|-------------|---------|
 | Delimiter | Comma, semicolon, tab, or pipe | Auto-detect |
 | Quote character | Double or single quote | Double quote (`"`) |
 | Encoding | UTF-8, ISO Latin 1, or Windows-1252 | Auto-detect |
-| First row is a header | Use row 1 as column names; off imports every row as data | Yes |
-| Trim leading and trailing spaces | Trim each field before import | No |
-| Treat empty values as NULL | Insert NULL for empty fields instead of empty text | Yes |
-| NULL text | An extra value imported as NULL, for example `\N` | None |
+| First row is a header | Row 1 becomes the column names; off imports it as data | Yes |
+| Trim leading and trailing spaces | Trims each field before import | No |
+| Treat empty values as NULL | Inserts NULL instead of empty text | Yes |
+| NULL text | One more value to import as NULL, `\N` for instance | None |
 
-Quoted fields keep embedded commas and newlines (RFC 4180), and doubled quotes (`""`) decode to a single quote.
+Quoted fields keep embedded commas and newlines (RFC 4180), and a doubled quote (`""`) decodes to one.
 
-### Row import options
+### Row imports
 
-A row where none of the fields match a mapped column writes nothing, so it is reported rather than counted as imported.
-
-CSV and JSON imports insert rows in batches through parameterized statements. The on-error and transaction options work the same as SQL import. They add one option of their own: **Delete existing rows before import**, which clears the target table first. The delete runs inside the import transaction, so a failed import in the default Stop and Rollback mode restores the deleted rows.
-
-During import, a progress bar shows rows processed and overall completion.
+CSV and JSON insert in batches, and the on-error and transaction options behave as they do for SQL. They add **Delete existing rows before import**, which clears the target table inside the import transaction, so a failure in the default Stop and Rollback mode brings the rows back. A row where no field matches a mapped column writes nothing and is reported rather than counted.

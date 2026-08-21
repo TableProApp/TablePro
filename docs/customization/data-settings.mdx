@@ -3,9 +3,14 @@ title: Data Settings
 description: Data grid, pagination, query result cap, JSON viewer, and query history
 ---
 
-Open **Settings > Data** (`Cmd+,`). Most visits here are about one of two limits: browsing a table pages 1,000 rows at a time, and a query returning more than 10,000 stops there and offers **Fetch All**. The result cap does not touch your SQL, which reaches the server exactly as you typed it; only the rows read back are limited.
+Browsing a table pages 1,000 rows at a time, and a query that returns more than 10,000 rows stops there. Both numbers, and the rest of what the grid does before you touch anything, are on **Settings > Data**.
 
-Data grid fonts are per-theme. Edit them on the theme's Fonts tab under [Appearance](/customization/appearance).
+The tab is app-wide, so these values apply to every connection you open; filters, column widths, and the sort you clicked are remembered per table instead. Grid fonts are per-theme, on the theme's Fonts tab under [Appearance](/customization/appearance).
+
+<Frame caption="The Data tab in Settings">
+  <img className="block dark:hidden" src="/images/settings-data.png" alt="Data settings tab" />
+  <img className="hidden dark:block" src="/images/settings-data-dark.png" alt="Data settings tab" />
+</Frame>
 
 ## Data Grid
 
@@ -36,7 +41,7 @@ Tables with more estimated rows than the threshold show an approximate count ins
 | Truncate query results | On | |
 | Row cap | 10,000 | 100; 1,000; 5,000; 10,000; 50,000; 100,000; 500,000 |
 
-When on, `SELECT` queries without their own `LIMIT` run with the cap applied to the rows TablePro reads back. The SQL sent to the server is always the query you wrote. Capped results show a **Fetch All** button, and **Execute Without Limit** skips the cap for one run.
+The cap limits the rows read back, not the statement: your SQL reaches the server exactly as you typed it, and a query carrying its own `LIMIT` is untouched. What a capped result offers instead is in [Query Results](/features/query-results#the-row-cap).
 
 ## JSON Viewer
 
@@ -44,7 +49,7 @@ When on, `SELECT` queries without their own `LIMIT` run with the cap applied to 
 |---------|---------|---------|
 | Default view | Text | Text, Tree |
 
-The mode the JSON viewer opens in. Switching modes inside the viewer writes the choice back to this setting. See [JSON Viewer](/features/json-viewer).
+Switching modes inside the viewer writes the choice back to this setting. See [JSON Viewer](/features/json-viewer).
 
 ## Query History
 
@@ -52,7 +57,7 @@ The mode the JSON viewer opens in. Switching modes inside the viewer writes the 
 |---------|---------|-------------|
 | **Maximum entries** | 10,000 | 100 to 10,000, or Unlimited |
 | **Keep entries for** | 90 days | 7 days to 1 year, or Forever |
-| **Auto cleanup** | On | Applies the two limits above. Turn it off and nothing is pruned. |
+| **Auto cleanup** | On | Applies the two limits in this table. Turn it off and nothing is pruned. |
 | **Clear History…** | - | Wipe all history, for every connection, after confirmation |
 
 To clear only what you are looking at, use the trash button in the history drawer instead: it respects the drawer's connection scope and date range.

@@ -3,23 +3,26 @@ title: Development Setup
 description: Clone, configure signing, and build TablePro in Xcode
 ---
 
+The Xcode project is generated and the static libraries are downloaded. A fresh clone carries
+neither, so two scripts run before anything opens in Xcode. Xcode itself has to be 26.0 or newer:
+the app calls SwiftUI's `glassEffect(_:in:)` behind `if #available(macOS 26.0, *)`, and that symbol
+ships in the macOS 26 SDK. The deployment target stays at macOS 14.0, which is what the built app
+runs on, not what you build on.
+
 ## Prerequisites
 
 | Software | Version | Notes |
 |----------|---------|-------|
-| Xcode | 26.0+ | Ships the macOS 26 SDK the app builds against. Every CI job pins 26.4.1. |
-| Swift | 6 language mode | Comes with Xcode, set by `SWIFT_VERSION` in `Configs/Base.xcconfig`. The two local packages under `Packages/` declare it through `swift-tools-version: 6.0` instead. |
-| XcodeGen | 2.46.0 | Generates `TablePro.xcodeproj` from `project.yml`. `brew install xcodegen` |
+| Xcode | 26.0+ | Every CI job pins 26.4.1 through `.github/actions/setup-xcode` |
+| XcodeGen | 2.46.0 exactly | `brew install xcodegen`. Generated `pbxproj` output differs between XcodeGen versions, so `scripts/generate-project.sh` warns on any other version |
+| SwiftLint | any | `brew install swiftlint`. The release workflow runs `swiftlint lint --strict` |
+| SwiftFormat | any | `brew install swiftformat`. Not run in CI |
+| GitHub CLI | any | `brew install gh`. Optional: `scripts/download-libs.sh` falls back to `curl` |
 
-The app references macOS 26 SDK symbols (`NSGlassEffectView` in the quick switcher), so an older Xcode cannot compile it. The deployment target stays at macOS 14.0 Sonoma, which is what the built app runs on, not what you build on.
-
-Optional but recommended:
-
-| Tool | Install | Purpose |
-|------|---------|---------|
-| SwiftLint | `brew install swiftlint` | Linting |
-| SwiftFormat | `brew install swiftformat` | Code formatting |
-| GitHub CLI | `brew install gh` | Used by `download-libs.sh` |
+The Swift language mode comes from `SWIFT_VERSION = 6.0` in `Configs/Base.xcconfig`, and each
+package under `Packages/` sets its own through `swift-tools-version: 6.0`. Never pass
+`SWIFT_VERSION=` on an `xcodebuild` command line to test a language-mode change: the override
+reaches the package targets too and reports their errors as yours.
 
 ## Quick start
 
@@ -30,22 +33,46 @@ Optional but recommended:
     ```
   </Step>
 
-  <Step title="Download native libraries">
+  <Step title="Install the tools">
+    ```bash
+    brew install xcodegen swiftlint swiftformat
+    ```
+  </Step>
+
+  <Step title="Download the static libraries">
     ```bash
     scripts/download-libs.sh
     ```
 
-    This pulls two archives from the `libs-v1` GitHub Release into `Libs/`: the macOS `.a` files (libmariadb, libpq, libduckdb, libmongoc, and others) and the iOS xcframeworks. About 257 MB downloaded, 620 MB on disk once expanded. Expect a minute or two.
+    Two archives come off the `libs-v1` GitHub Release: the macOS `.a` files (libmariadb, libpq,
+    libduckdb, libmongoc, and the rest) and the iOS xcframeworks. 257 MB downloaded, 621 MB on
+    disk. Every run, including one that downloads nothing, verifies `Libs/` against the checksums
+    committed at `HEAD`.
 
-    <Warning>
-    Skipping this step causes linker errors. The static libraries are not checked into git.
-    </Warning>
+    None of it is in git, so a build that skips this step fails at link time on missing symbols.
   </Step>
 
-  <Step title="Install tools">
+  <Step title="Point signing at your own team">
     ```bash
-    brew install xcodegen swiftlint swiftformat
+    cp Configs/Secrets.xcconfig.example Configs/Secrets.xcconfig
     ```
+
+    Then edit the copy. The template ships the literal `YOUR_TEAM_ID`, which fails to sign exactly
+    the way leaving the file out does:
+
+    ```
+    TABLEPRO_DEVELOPMENT_TEAM = YOUR_TEAM_ID
+    TABLEPRO_APP_BUNDLE_IDENTIFIER = com.yourhandle.TablePro
+    ```
+
+    A free personal team works. Debug builds sign against `TablePro/TablePro.Debug.entitlements`,
+    which drops the iCloud container and CloudKit, so no paid Apple Developer Program membership is
+    needed and sync turns itself off at runtime. Plugin bundles and the MCP helper sign ad-hoc and
+    need no team at all.
+
+    `Configs/Secrets.xcconfig` is gitignored, so these settings cannot reach a commit and they
+    survive regenerating the project. Changing signing in the Xcode UI has no effect that lasts:
+    the project is generated, and the next `scripts/generate-project.sh` discards the edit.
   </Step>
 
   <Step title="Generate the Xcode project">
@@ -53,76 +80,51 @@ Optional but recommended:
     scripts/generate-project.sh
     ```
 
-    `TablePro.xcodeproj` and `TableProMobile/TableProMobile.xcodeproj` are generated from
-    `project.yml` and are not in git. Run this again after changing `project.yml` or
-    `Configs/`, and after adding, moving, or deleting a source file: XcodeGen collects
-    sources at generation time, so a new file is not in the project until you regenerate.
-  </Step>
-
-  <Step title="Open in Xcode">
-    ```bash
-    open TablePro.xcodeproj
-    ```
-  </Step>
-
-  <Step title="Configure signing">
-    ```bash
-    cp Configs/Secrets.xcconfig.example Configs/Secrets.xcconfig
-    ```
-
-    Set your own team and a unique bundle identifier:
-
-    ```
-    TABLEPRO_DEVELOPMENT_TEAM = YOUR_TEAM_ID
-    TABLEPRO_APP_BUNDLE_IDENTIFIER = com.yourhandle.TablePro
-    ```
-
-    A free personal team works. The Debug configuration signs with
-    `TablePro.Debug.entitlements`, which drops the iCloud capability, so no paid Apple
-    Developer Program membership is needed. Plugin bundles and the MCP server sign ad-hoc,
-    so they need no team at all.
-
-    `Configs/Secrets.xcconfig` is gitignored, so these settings cannot reach a commit, and
-    they survive regenerating the project. Do not change signing in the Xcode UI: the
-    project is generated, and the next `scripts/generate-project.sh` discards the edit.
+    This writes `TablePro.xcodeproj` and `TableProMobile/TableProMobile.xcodeproj` from their
+    `project.yml` specs. Pass `macos` or `ios` to generate just one of them. Run it again after
+    editing a `project.yml` or anything in `Configs/`, and after adding, moving, or deleting a
+    source file, because XcodeGen collects sources at generation time and a new file is not in
+    the project until you regenerate.
   </Step>
 
   <Step title="Build and run">
-    Select the **TablePro** scheme, set destination to **My Mac**, press `Cmd+R`.
+    ```bash
+    open TablePro.xcodeproj
+    ```
 
-    Or from the command line:
+    Select the **TablePro** scheme, set the destination to **My Mac**, press `Cmd+R`. Or stay on
+    the command line:
 
     ```bash
     xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
     ```
 
-    `Cmd+R` writes the app to DerivedData
-    (`~/Library/Developer/Xcode/DerivedData/TablePro-*/Build/Products/Debug`). The
-    `xcodebuild` command above writes to `build/Debug/TablePro.app` inside the repo instead.
+    The two write to different places. See [Building](/development/building).
   </Step>
 </Steps>
 
-Writing a driver plugin? See [Plugin Development](/development/plugin-development) to build one and [Testing a Custom Plugin](/development/testing-plugins) to run it in your local build.
-
-<Frame caption="Xcode project setup">
+<Frame>
   <img
     className="block dark:hidden"
     src="/images/xcode-setup.png"
-    alt="Xcode setup"
+    alt="Xcode navigator listing the TablePro group beside one group per plugin bundle, with the Open Quickly panel open over the editor"
   />
   <img
     className="hidden dark:block"
     src="/images/xcode-setup-dark.png"
-    alt="Xcode setup"
+    alt="Xcode navigator listing the TablePro group beside one group per plugin bundle, with the Open Quickly panel open over the editor"
   />
 </Frame>
+
+Writing a driver plugin? [Plugin Development](/development/plugin-development) covers building one
+and [Testing a Custom Plugin](/development/testing-plugins) covers running it in your local build.
 
 ## Project structure
 
 <Tree>
   <Tree.Folder name="TablePro" defaultOpen>
     <Tree.Folder name="Core">
-      <Tree.File name="Database/, Plugins/, Services/, Utilities/, SSH/, Autocomplete/" />
+      <Tree.File name="Database/, Plugins/, Services/, Utilities/, SSH/, Menu/, MCP/" />
     </Tree.Folder>
     <Tree.Folder name="Views">
       <Tree.File name="Connection/, Editor/, Main/, Results/, Settings/, Sidebar/" />
@@ -131,34 +133,40 @@ Writing a driver plugin? See [Plugin Development](/development/plugin-developmen
     <Tree.Folder name="ViewModels" />
     <Tree.Folder name="Extensions" />
     <Tree.Folder name="Theme" />
-    <Tree.Folder name="Resources" />
+    <Tree.Folder name="Resources">
+      <Tree.File name="Localizable.xcstrings, assets" />
+    </Tree.Folder>
   </Tree.Folder>
   <Tree.Folder name="Plugins">
-    <Tree.File name=".tableplugin bundles + TableProPluginKit framework" />
+    <Tree.File name=".tableplugin bundles + the TableProPluginKit framework" />
   </Tree.Folder>
   <Tree.Folder name="Packages">
-    <Tree.File name="TableProCore: shared SwiftPM modules used by the macOS and iOS apps" />
+    <Tree.File name="TableProCore and TableProOracle, SwiftPM modules shared with the iOS app" />
   </Tree.Folder>
   <Tree.Folder name="LocalPackages">
     <Tree.File name="Vendored CodeEditSourceEditor, CodeEditTextView, CodeEditLanguages" />
+  </Tree.Folder>
+  <Tree.Folder name="Configs">
+    <Tree.File name="Shared .xcconfig build settings, app version, signing template" />
   </Tree.Folder>
   <Tree.Folder name="Libs">
     <Tree.File name="Pre-built static libraries (downloaded, not in git)" />
   </Tree.Folder>
   <Tree.Folder name="TableProMobile">
-    <Tree.File name="iOS app" />
+    <Tree.File name="iOS app, widget extension, and its own project.yml" />
   </Tree.Folder>
   <Tree.Folder name="TableProTests" />
   <Tree.Folder name="TableProUITests" />
   <Tree.Folder name="docs">
-    <Tree.File name="Mintlify docs site" />
+    <Tree.File name="This Mintlify site" />
   </Tree.Folder>
   <Tree.Folder name="scripts">
-    <Tree.File name="build-release.sh, create-dmg.sh, download-libs.sh" />
+    <Tree.File name="Build, release, and library scripts" />
   </Tree.Folder>
 </Tree>
 
-`Packages/TableProCore/Sources/TableProPluginKit` is a symlink to `Plugins/TableProPluginKit`. Edit the files under `Plugins/` only.
+`Packages/TableProCore/Sources/TableProPluginKit` is a symlink to `Plugins/TableProPluginKit`. Edit
+the files under `Plugins/` only.
 
 ## Running tests
 
@@ -166,29 +174,54 @@ Writing a driver plugin? See [Plugin Development](/development/plugin-developmen
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
 ```
 
-Or in Xcode: `Cmd+U`. To run a single class or method, pass `-only-testing:TableProTests/TestClassName` or `-only-testing:TableProTests/TestClassName/testMethodName`.
+Or press `Cmd+U` in Xcode. To narrow the run, pass `-only-testing:TableProTests/TestClassName` or
+`-only-testing:TableProTests/TestClassName/testMethodName`. `-only-testing:TableProUITests` runs the
+UI automation on its own.
 
 ## Linting and formatting
-
-Before committing:
 
 ```bash
 swiftlint lint --strict
 swiftformat .
 ```
 
-CI rejects warnings, so plain `swiftlint lint` is not enough. Full tooling reference: [Code Style](/development/code-style).
+`--strict` turns warnings into errors, which is how the release workflow runs it, so a plain
+`swiftlint lint` can pass on a change that later blocks a tag. Full tooling reference:
+[Code Style](/development/code-style).
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---------|-----|
-| Linker errors about missing symbols | Run `scripts/download-libs.sh` |
-| SPM resolution fails | Clean build folder (`Cmd+Shift+K`), reopen Xcode |
-| Build fails after pulling | Delete derived data: `rm -rf ~/Library/Developer/Xcode/DerivedData` |
-| `TablePro.xcodeproj` does not exist | Run `scripts/generate-project.sh` |
-| Code signing errors | Change Team in Signing & Capabilities |
+### `xcodegen: command not found`
 
-<Note>
-Pass `-skipPackagePluginValidation` on every `xcodebuild` invocation so the build does not stop on package plugin validation. `scripts/build-release.sh`, `scripts/build-plugin.sh`, `scripts/check-pluginkit-abi.sh`, and CI all pass it.
-</Note>
+`scripts/generate-project.sh` needs XcodeGen on `PATH`. Run `brew install xcodegen`, then check
+`xcodegen --version` reports 2.46.0.
+
+### `TablePro.xcodeproj` does not exist
+
+It is generated, not committed. Run `scripts/generate-project.sh`.
+
+### `Undefined symbols for architecture arm64`
+
+`Libs/` is empty or stale. Run `scripts/download-libs.sh`, or `scripts/download-libs.sh --force` to
+overwrite what is already there.
+
+### `Libs does not match the checksums committed in git.`
+
+`download-libs.sh` compares the extracted libraries against the baseline at `HEAD` and refuses to
+continue when they differ. Re-run with `--force`. If you rebuilt a library on purpose, publish it
+so the baseline moves with it: see [Releasing](/development/releasing).
+
+### Signing errors after a fresh clone
+
+`Configs/Base.xcconfig` defaults `TABLEPRO_DEVELOPMENT_TEAM` to the maintainer's team, and it
+includes `Secrets.xcconfig` with `#include?`, so a build without that file still runs and still
+fails to sign. Create the file and set your own team.
+
+### A new source file does not compile
+
+XcodeGen globs sources when the project is generated. Run `scripts/generate-project.sh`.
+
+### Package resolution fails
+
+Clean the build folder with `Cmd+Shift+K` and reopen Xcode. If that does not clear it,
+`rm -rf ~/Library/Developer/Xcode/DerivedData`.

@@ -3,9 +3,12 @@ title: Pairing
 description: One-click flow that issues a scoped MCP token to an extension through a PKCE-style code exchange
 ---
 
-Pairing is how an extension gets a TablePro token without the user copying one by hand. The extension opens a `tablepro://integrations/pair` deep link, the user approves scopes and connections in TablePro, and the extension exchanges a one-time code for the token over localhost HTTP.
+Four steps: generate a verifier, open a deep link, catch the one-time code, trade it for a token over
+localhost. TablePro releases the token only to the caller that can produce the verifier, so an app
+that intercepts the redirect holds a code it cannot spend.
 
-The flow is PKCE-style: the extension generates a verifier, hashes it into a challenge, and TablePro releases the token only to the caller that presents the verifier. An app that intercepts the redirect cannot exchange the code.
+Nothing about this is Raycast-specific. Any client that can receive a callback, through its own URL
+scheme or a loopback HTTP listener, can pair.
 
 ## Sequence
 
@@ -35,96 +38,96 @@ sequenceDiagram
   <img className="hidden dark:block" src="/images/mcp-pairing-approval-sheet-dark.png" alt="TablePro sheet asking to approve a pairing request with scope, connection, and expiry pickers" />
 </Frame>
 
-## Extension steps
-
-### 1. Generate a verifier and challenge
+## The whole client, in one file
 
 ```ts
 import { randomBytes, createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 
-function base64url(buffer: Buffer): string {
-  return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
+const b64url = (b: Buffer) =>
+  b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
-const verifier = base64url(randomBytes(32));
-const challenge = base64url(createHash("sha256").update(verifier).digest());
-```
+// Step 1. Keep the verifier in memory until the exchange. Never log it.
+const verifier = b64url(randomBytes(32));
+const challenge = b64url(createHash("sha256").update(verifier).digest());
 
-Keep the verifier in memory until the exchange step. Do not log it.
-
-### 2. Open the pair deep link
-
-Open `tablepro://integrations/pair?client=…&challenge=…&redirect=…&scopes=…`. Parameters are documented in the [URL scheme reference](/external-api/url-scheme#start-pairing).
-
-### 3. Receive the code and exchange it
-
-TablePro opens your `redirect` URL with a one-time code. For `raycast://` redirects the code arrives as `?context={"code":"<uuid>"}` (Raycast's launch-context convention); for any other scheme it is a flat `?code=<uuid>` query parameter. An `error` parameter instead of a code means the user denied the request; stop and show the description.
-
-Read the MCP port from `~/Library/Application Support/TablePro/mcp-handshake.json`, then:
-
-```ts
-const port = await readHandshakePort();
-const res = await fetch(`http://127.0.0.1:${port}/v1/integrations/exchange`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ code, code_verifier: verifier }),
+// Step 2. Open the deep link. The parameters are on the URL scheme page.
+const params = new URLSearchParams({
+  client: "My Editor on macbook-pro",
+  challenge,
+  redirect: "http://127.0.0.1:7391/callback",
+  scopes: "readWrite",
 });
-const { token } = await res.json();
+await openUrl(`tablepro://integrations/pair?${params}`); // however your host opens a URL
+
+// Step 3. Your callback receives ?code=<uuid>, or ?error=denied when the user says no.
+export async function exchange(code: string): Promise<string> {
+  const handshakePath = `${homedir()}/Library/Application Support/TablePro/mcp-handshake.json`;
+  const { port } = JSON.parse(await readFile(handshakePath, "utf8"));
+
+  const res = await fetch(`http://127.0.0.1:${port}/v1/integrations/exchange`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, code_verifier: verifier }),
+  });
+  if (!res.ok) throw new Error(`pairing failed: ${res.status}`);
+
+  const { token } = await res.json();
+  return token; // Step 4. Straight into the Keychain, never a plain file.
+}
 ```
 
-The exchange endpoint requires no bearer auth. The single-use code plus the verifier is the auth. It is the one path other than `/mcp` the server serves, and like `/mcp` it accepts `POST` only.
+Three constraints decide whether TablePro accepts the request at all:
 
-A failed verification burns the code. That is deliberate: leaving a code alive after a mismatch would turn the five-minute window into an unlimited guessing game against the verifier.
+- The **verifier** is 43 to 128 characters from `A-Z a-z 0-9 - . _ ~`. 32 random bytes in base64url
+  is 43.
+- The **challenge** is its base64url SHA-256, so exactly 43 base64url characters.
+- The **redirect** is a loopback `http` or `https` URL (`127.0.0.1`, `localhost`, `::1`), or a
+  private-use scheme an installed app has registered. Anything else, or one carrying credentials, is
+  refused with *"The redirect address is not a local callback, so pairing was refused."*
 
-### 4. Store the token
+One delivery detail: a `raycast://` redirect gets the code wrapped as `?context={"code":"<uuid>"}`,
+Raycast's launch-context convention, and every other scheme gets a flat `?code=<uuid>`.
 
-Store the token in the macOS Keychain. In Raycast, write it to a password preference, which is Keychain-backed. Do not keep it in `LocalStorage` or plain files.
+The exchange endpoint takes no bearer token: the single-use code plus the verifier is the credential.
+It and `/mcp` are the only paths the server serves, and both accept `POST` only.
 
-## What TablePro does on approval
+## What the user approves
 
-The approval sheet shows the client name, a scope picker (starts at the requested scope; the user can pick any level), a connections multi-select (defaults to all unless `connection-ids` was provided), and an expiry picker (defaults to never). The query parameters are a request, not a grant.
+The sheet names the client and counts down the five minutes the request is good for, dimming
+**Approve** when it runs out. Three controls sit under that: **Permission Level** (starting at what
+the link asked for, movable in either direction), **Allowed Connections** (all, or a checked subset),
+and **Expiration** (never, 1, 7, 30 or 90 days). The link's parameters are a request, not a grant.
 
-On approve, TablePro:
-
-1. Mints the token and holds the plaintext in memory as a pending exchange keyed by a UUID code, valid for 5 minutes. Only the salted SHA-256 hash reaches storage.
-2. Opens the `redirect` URL with the code.
-
-Pairing again mints a second token rather than replacing the first. An extension that re-pairs should stop using its old token, and the user can revoke it in **Settings > Integrations > Authentication**.
-
-At most 50 exchange codes can be pending at once. Beyond that, new pair requests fail until older codes expire. If the code cannot be stored, or the redirect cannot be built, the token TablePro just minted is deleted rather than left dangling.
+Approving mints the token, holds the plaintext against a one-time code for 5 minutes, and opens the
+redirect. Pairing again mints a second token rather than replacing the first, so an extension that
+re-pairs should stop using its old one. Revoke either under
+**Settings > Integrations > Authentication**.
 
 ## Security properties
 
 | Property | How |
 |----------|-----|
-| Token is never in a URL | The token travels over localhost HTTP, not in a deep link. |
-| Redirect interception is harmless | The intercepted `code` cannot be exchanged without the verifier. |
-| Code is single-use | Successful exchange or 5-minute expiry deletes the pending exchange. |
-| Plaintext token is not persisted by TablePro | Only the salted SHA-256 hash is saved, in the login keychain. |
-| User sees and approves scopes | The sheet shows what was requested, what is granted, and which connections. |
-| User can revoke any time | **Settings > Integrations > Authentication > Revoke**. |
+| The token is never in a URL | It travels over localhost HTTP; the deep link carries only a code. |
+| Intercepting the redirect is useless | The code cannot be exchanged without the verifier. |
+| A code is single-use | Success, a failed verification, or 5 minutes deletes it. |
+| The plaintext token is not persisted | Only a salted SHA-256 hash is saved, in the login keychain. |
 
 ## Errors
 
+A failed verification burns the code, so retrying with a guessed verifier is not an option: start a
+new pair request.
+
 | Code | Meaning |
 |------|---------|
+| `400` | Malformed body, a missing `code` or `code_verifier`, a field over 1,024 bytes, or a verifier that is not 43 to 128 unreserved characters. |
 | `403 Challenge mismatch` | The verifier does not hash to the stored challenge. |
-| `404 Pairing code not found` | The code does not exist or was already exchanged. |
+| `404 Pairing code not found` | The code never existed, or was already exchanged. |
 | `410 Pairing code expired` | The pending exchange is older than 5 minutes. |
-| `429 Too Many Requests` | Five failed exchanges from this address inside 5 minutes. The address is locked out for 15 minutes and the response carries `Retry-After`. |
+| `429 Too Many Requests` | Five failed exchanges from this address within 5 minutes. Locked out for 15, with `Retry-After` on the response. |
 
-A failed exchange is recorded in the activity log under the `auth` category with outcome `denied`.
+Every failed exchange lands in the activity log under the `auth` category with outcome `denied`.
 
-If the user clicks **Deny**, TablePro opens the `redirect` URL with `error=denied` and `error_description=user_denied`, wrapped in the `context` JSON for `raycast://` redirects and appended as flat query parameters otherwise.
-
-## Implementing pairing in another extension
-
-The flow is not Raycast-specific. Any client that can receive a callback can use it:
-
-1. Generate a verifier and challenge.
-2. Open `tablepro://integrations/pair?…` with a callback URL the OS can route back to you.
-3. Read the MCP port from the handshake file.
-4. POST `{ code, code_verifier }` to `/v1/integrations/exchange`.
-5. Store the returned token in the Keychain.
-
-If the client cannot register a custom URL scheme, run a localhost HTTP server on a chosen port and pass `http://127.0.0.1:<port>/callback` as the `redirect`.
+Clicking **Deny** opens the redirect with `error=denied` and `error_description=user_denied`, wrapped
+in the `context` JSON for `raycast://` and appended as flat parameters otherwise.

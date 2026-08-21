@@ -3,112 +3,94 @@ title: SSH Tunneling
 description: Route database connections through an SSH tunnel to reach servers in private networks
 ---
 
-A wrong host or a blocked forward fails with the real reason instead of a database timeout, because the destination is checked from the SSH side before the driver is handed the local port. That port sits in the 60000-65000 range, which is why macOS may show a network permission prompt. Nothing calls the `ssh` binary: TablePro carries its own libssh2 client, which opens the tunnel, sends a keep-alive every 30 seconds, and reconnects on its own if the tunnel dies.
-
-The **SSH Tunnel** pane appears only for databases whose driver supports it. SQLite, PGlite, libSQL, Beancount, BigQuery, Cloudflare D1, DynamoDB, Elasticsearch, and Snowflake do not show it: they are reached over a local file, a loopback socket, or a vendor HTTP API.
+The database **Host** on the General pane is resolved from the SSH server, not from your Mac. A database on the SSH server itself is therefore `localhost`, not the server's public name, and a database elsewhere on the private network is whatever the SSH server calls it (an RDS endpoint, for instance).
 
 ```mermaid
 flowchart LR
     TablePro["TablePro<br>localhost:60000"] -->|"Encrypted tunnel"| SSH["SSH server"] -->|"Internal network"| DB["Database<br>db:3306"]
 ```
 
-## Setting up
+## Set up a tunnel
 
-1. Open the connection form and switch to the **SSH Tunnel** pane
-2. Toggle **Enable SSH Tunnel** on
-3. Fill in **SSH Host**, **SSH Port** (default 22), and **SSH User**
-4. Pick an authentication method
-5. Back on **General**, click **Test Connection**
+<Steps>
+  <Step title="Turn the tunnel on">
+    In the connection form, open the **SSH Tunnel** pane and switch on **Enable SSH Tunnel**. A connection uses one transport at a time; if a Cloudflare tunnel, Cloud SQL Auth Proxy, or SOCKS proxy is already on, the pane offers a button to switch it off.
+  </Step>
+  <Step title="Name the SSH server">
+    Fill in **SSH Host**, **SSH Port** (22 by default), and **SSH User**. With `~/.ssh/config` entries present, a **Config Host** picker appears above the host field instead.
+  </Step>
+  <Step title="Pick an authentication method">
+    Password, Private Key, SSH Agent, Keyboard Interactive, or None. [Authentication methods](#authentication-methods) has the fields for each.
+  </Step>
+  <Step title="Set the database Host from the server's point of view">
+    Back on **General**, `localhost` reaches a database on the SSH server itself. One on a unix socket needs [Socket Path](#forwarding-to-a-unix-socket) instead.
+  </Step>
+  <Step title="Click Test Connection">
+    A wrong host or a blocked forward names the real reason instead of timing out. [Troubleshooting](#troubleshooting) has the three the SSH side reports.
+  </Step>
+</Steps>
 
-<Note>
-The database **Host** and **Port** on the General pane are what the SSH server uses to reach the database, not what your Mac would use. Use `localhost` if the database runs on the SSH server itself, or the internal hostname (for example an RDS endpoint reached through a bastion) if it runs elsewhere. If the database listens on a Unix socket rather than a port, use [Socket Path](#forwarding-to-a-unix-socket) instead.
-</Note>
-
-A connection uses one connection method at a time. If a Cloudflare tunnel, Cloud SQL Auth Proxy, or SOCKS proxy is already enabled, the pane shows a button to disable it.
-
-To reuse one SSH config across several connections, save it as a profile with **Save Current as Profile…** or pick one from the **Profile** picker. A selected profile replaces the inline fields with a read-only **Profile Details** summary. Switch the picker back to **Inline Configuration** to edit the settings on this connection. See [SSH Profiles](/connections/ssh-profiles).
+To share one SSH config across connections, save it with **Save Current as Profile…** or pick an existing one from the **Profile** picker; see [SSH Profiles](/connections/ssh-profiles). To fill the whole pane from a string instead, paste a `scheme+ssh://` URL into the [Import from URL…](/connections/urls#ssh-tunnel-format) sheet.
 
 <Frame caption="Reusing a saved SSH profile">
   <img className="block dark:hidden" src="/images/ssh-tunnel-config.png" alt="SSH Tunnel pane with a saved profile selected" />
   <img className="hidden dark:block" src="/images/ssh-tunnel-config-dark.png" alt="SSH Tunnel pane with a saved profile selected" />
 </Frame>
 
+There is no **SSH Tunnel** pane on SQLite, PGlite, libSQL, Beancount, BigQuery, Cloudflare D1, DynamoDB, Elasticsearch, or Snowflake: each is reached over a local file, a loopback socket, or a vendor HTTP API.
+
 ## Authentication methods
 
-<Tabs>
-  <Tab title="Password">
-    Enter your SSH password in the **Password** field. Prefer keys for production servers.
-  </Tab>
-  <Tab title="Private Key">
-    | Field | Description |
-    |-------|-------------|
-    | **Key File** | Path to your private key. Click **Browse** to pick one. |
-    | **Passphrase** | Key passphrase, if the key is encrypted |
+| Method | What to fill in |
+|---|---|
+| **Password** | The SSH password. Prefer a key on anything production |
+| **Private Key** | **Key File**, with **Browse** to pick one, and **Passphrase** if the key is encrypted. Leaving **Key File** empty auto-detects from `~/.ssh/config` and the default key locations |
+| **SSH Agent** | **Agent Socket**: **SSH_AUTH_SOCK**, **1Password** (its socket at `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`), or **Custom Path** for Secretive or your own `ssh-agent`. Signing stays in the agent; the key is never read |
+| **Keyboard Interactive** | The SSH password, sent through SSH's challenge-response. Use it when the server rejects plain password auth, common with PAM |
+| **None** | Nothing, for a server that authenticates the connection itself such as a [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) host. A server that does want credentials fails the connect with a message naming the other methods |
 
-    Leave **Key File** empty to auto-detect the key from `~/.ssh/config` and default key locations.
+**Private Key** is the one to pick unless the server only ever issued you a password.
 
-    If the server also requires a keyboard-interactive step such as a 2FA code, TablePro prompts for it after the key is accepted.
-  </Tab>
-  <Tab title="SSH Agent">
-    Signing is delegated to an agent process; TablePro never reads the key. The **Agent Socket** picker offers:
+### Verification codes and two-factor authentication
 
-    - **SSH_AUTH_SOCK**: the system `SSH_AUTH_SOCK` environment variable
-    - **1Password**: 1Password's socket at `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`
-    - **Custom Path**: any other agent socket path (Secretive, custom `ssh-agent`)
+A keyboard-interactive challenge partway through authentication, from `google-authenticator` or `duo_unix` for example, is shown as the server worded it and your answer sent back. Every method except **None** supports this, a key or agent followed by a second factor included (`AuthenticationMethods publickey,keyboard-interactive`).
 
-    If the server also requires a keyboard-interactive step such as a 2FA code, TablePro prompts for it after the agent authenticates.
-  </Tab>
-  <Tab title="Keyboard Interactive">
-    Sends your password through SSH's keyboard-interactive challenge-response. Use this when the server rejects plain password auth, which is common with PAM-based setups.
-  </Tab>
-  <Tab title="None">
-    Sends no password or key. Use this when the server authenticates the connection itself, such as a [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) host or a bastion configured for passwordless access. If the server still requires credentials, the connection fails with a message telling you to pick another method.
-  </Tab>
-</Tabs>
-
-### Verification prompts and two-factor authentication
-
-If the SSH server issues a keyboard-interactive challenge during authentication, for example a verification code from `google-authenticator` or `duo_unix`, TablePro shows the server's prompt and takes your response. This works with every authentication method except **None**, including a private key or SSH agent followed by a second factor (`AuthenticationMethods publickey,keyboard-interactive`).
-
-Use the **Two-Factor Authentication** section to skip that prompt for TOTP codes:
-
-- **None** or **Prompt at Connect**: TablePro asks for the code when the server requests it.
-- **Auto Generate**: TablePro computes the code from your base32 **TOTP Secret** (the key from your authenticator enrollment). Algorithm (SHA1, SHA256, SHA512), digits (6 or 8), and period (30s or 60s) are configurable; defaults match most setups.
+The **Two-Factor Authentication** section can answer TOTP codes instead. **None** and **Prompt at Connect** both ask when the server does; **Auto Generate** computes the code from the base32 **TOTP Secret** off your authenticator enrollment, with **Algorithm** (SHA1, SHA256, SHA512), **Digits** (6 or 8), and **Period** (30s or 60s) already set to what most servers use.
 
 ## Host keys
 
-On first connection TablePro shows the server's key type and SHA-256 fingerprint (same format as `ssh-keygen -l`) and asks whether to trust it. Trusted keys are stored in `~/Library/Application Support/TablePro/known_hosts`.
+A first connection shows the server's key type and SHA-256 fingerprint, in `ssh-keygen -l` format, and waits for **Trust**. Trusted keys go to `~/Library/Application Support/TablePro/known_hosts`.
 
-If a trusted server's key changes, TablePro shows a warning with the old and new fingerprints. **Disconnect** is the default button; choose **Connect Anyway** only if you know the server was reinstalled. With jump hosts, every hop's key is verified.
+If a trusted server's key later changes, an **SSH Host Key Changed** alert lists the previous and current fingerprints. **Connect Anyway** does not answer the Return key. Escape picks **Disconnect**, which is what to take unless you know the server was reinstalled. With jump hosts, every hop's key is verified the same way.
 
 ## Using ~/.ssh/config
 
-If `~/.ssh/config` has Host entries, a **Config Host** picker appears above the SSH Host field. Pick an alias and TablePro resolves `HostName`, `User`, `Port`, `IdentityFile`, `IdentityAgent`, and `ProxyJump` from the config at connect time. Values you type in the form override the config. The file is re-read whenever it changes, including `Include`d files.
+Pick an alias from the **Config Host** picker and `HostName`, `User`, `Port`, `IdentityFile`, `IdentityAgent`, and `ProxyJump` are resolved from the config at connect time. Anything typed into the form overrides the file, which is re-read whenever it or an `Include`d file changes.
 
 <Frame caption="Picking a host from ~/.ssh/config">
   <img className="block dark:hidden" src="/images/ssh-config-hosts.png" alt="Config Host picker" />
   <img className="hidden dark:block" src="/images/ssh-config-hosts-dark.png" alt="Config Host picker" />
 </Frame>
 
-## Jump Hosts
+## Jump hosts
 
-When the database sits behind one or more bastions, expand the **Jump Hosts** section and add each intermediate host in order. TablePro chains the hops in-process: each hop is an SSH session tunneled through the previous one, no `ssh` subprocess involved.
+For a database behind more than one bastion, expand **Jump Hosts** and add each hop in order. Each hop is an SSH session tunneled through the previous one, with no `ssh` subprocess involved.
 
 | Field | Description |
 |-------|-------------|
 | **Host** | Hostname or IP of the jump host |
-| **Port** | SSH port (default 22) |
+| **Port** | SSH port, 22 by default |
 | **Username** | SSH username for this hop |
-| **Auth** | **Private Key** or **SSH Agent** |
-| **Key File** | Path to private key (Private Key auth only) |
+| **Auth** | **Private Key** or **SSH Agent**. Password auth is not offered for a hop |
+| **Key File** | Private key path, under Private Key auth |
 
-Password auth is not available for jump hosts. If the jump host list is empty and the SSH host matches a config entry with a `ProxyJump` directive, TablePro follows it.
+With the list left empty and an SSH host that matches a config entry carrying `ProxyJump`, that directive is followed instead.
 
 ## Forwarding to a unix socket
 
-Some servers only listen on a Unix socket, with no TCP port open at all. A PostgreSQL box configured for `local` connections in `pg_hba.conf` is the common case. Fill in **Socket Path** on the General pane and TablePro forwards to that socket instead of a host and port, the same thing `ssh -L 5434:/var/run/postgresql/.s.PGSQL.5432 server` does by hand. **Host** and **Port** are ignored while a socket path is set.
+Some servers listen on a unix socket with no TCP port open at all, a PostgreSQL box set up for `local` connections in `pg_hba.conf` being the usual case. Fill in **Socket Path** on the General pane and the forward targets that socket, the same thing `ssh -L 5434:/var/run/postgresql/.s.PGSQL.5432 server` does by hand. **Host** and **Port** are ignored while a socket path is set. Jump hosts still apply: the hops reach the SSH server, and the socket opens from there.
 
-Give the path to the socket **file**, not the directory holding it:
+Point at the socket file, not the directory holding it:
 
 | Database | Typical socket path |
 |----------|---------------------|
@@ -116,32 +98,42 @@ Give the path to the socket **file**, not the directory holding it:
 | MySQL / MariaDB | `/var/run/mysqld/mysqld.sock` |
 | Redis | `/var/run/redis/redis.sock` |
 
-This works through jump hosts: the hops get you to the SSH server, and the socket is opened from there.
+`peer` authentication works: the SSH server opens the socket as your SSH login user, so a `local all all peer` line authenticates you as the PostgreSQL role of that name.
 
-<Note>
-A database listening on a Unix socket cannot negotiate TLS, so TablePro turns SSL off for the connection. Nothing is exposed by this: the whole path still runs inside the encrypted SSH tunnel.
-</Note>
+A database on a socket cannot negotiate TLS, so SSL is switched off for the connection. The SSH tunnel still encrypts the whole path.
 
-`peer` authentication works, because the connection to the socket is made by the SSH server as your SSH login user. So a `local all all peer` line authenticates you as the PostgreSQL role matching your SSH username.
+## If the tunnel drops
 
-The SSH server has to allow socket forwarding. It is on by default, but if `sshd_config` sets `AllowStreamLocalForwarding no`, TablePro says so instead of failing with a dropped connection. Note this is a separate setting from `AllowTcpForwarding`.
+A keep-alive goes out every 30 seconds. When one fails the session drops to connecting and the tunnel is rebuilt, retrying at 2s, 4s, 8s and doubling to a 120-second ceiling, ten attempts at most. A query in flight dies with the tunnel and is not replayed. After ten failures the session ends with **SSH tunnel disconnected. Click to reconnect.**
 
-## Import from URL
-
-Paste a `scheme+ssh://` URL to create a connection with SSH pre-filled. The `+ssh` suffix works with any non-file-based scheme (`mysql+ssh`, `postgres+ssh`, `redis+ssh`, `mongodb+ssh`, …). TablePlus SSH URLs import directly. See the [Connection URL Reference](/connections/urls#ssh-tunnel-format) for the format and parameters.
+If tunnels keep dropping on an idle network, the keep-alive is not the missing piece: check the server's `ClientAliveInterval` and the idle timeouts on any firewall or load balancer in between.
 
 ## Troubleshooting
 
-**Tunnel connects but the database fails**: the database host is resolved from the SSH server, not your Mac. Verify it from the server: `ssh user@server "nc -z db-host 5432"`. Also check that the database credentials differ from the SSH ones where they should.
+### "The SSH server could not reach …"
 
-**"The SSH server could not reach \<host\>"**: the SSH connection is fine, but the SSH server could not open a connection to the database. Almost always the **Host** field. That address is resolved from the SSH server, not from your Mac, so if the database only listens on `127.0.0.1` (the default for MySQL and PostgreSQL), **Host** has to be `localhost`, not the server's public name or IP. Check what the database is bound to with `ss -lntp` on the server. If the host is right, check that `sshd_config` has `AllowTcpForwarding yes`.
+SSH is fine and the forward is not. Almost always the **Host** field: that address is resolved from the SSH server, so a database bound to `127.0.0.1` (the MySQL and PostgreSQL default) needs **Host** set to `localhost`. Check what it is bound to with `ss -lntp` on the server. If the host is right, check `sshd_config` for `AllowTcpForwarding yes`.
 
-**"The SSH server did not open a forwarding channel to \<host\>"**: the destination took the connection attempt and never answered, which usually means a firewall or security group is dropping packets rather than refusing them. Test it from the SSH server itself: `ssh user@server "nc -zv db-host 3306"`.
+### "The SSH server did not open a forwarding channel to …"
 
-**Tunnel drops on idle networks**: TablePro already sends a libssh2 keep-alive every 30 seconds plus OS-level TCP keep-alives. If tunnels still drop, check the server's `ClientAliveInterval` and idle timeouts on firewalls or load balancers in between.
+The destination took the connection and never answered, which usually means a firewall or security group dropping packets rather than refusing them. Test it from the SSH server: `ssh user@server "nc -zv db-host 3306"`.
 
-**Firewall prompt on connect**: TablePro listens on a local port between 60000 and 65000 for the tunnel. Allow it.
+### "The SSH server would not forward the socket …"
 
-**SSH fails right away against a server on your own network**: macOS 15 and later gate outbound connections to local network addresses behind a Local Network permission, and a denied app fails fast with "no route to host". Check TablePro under System Settings > Privacy & Security > Local Network. Servers reached over the internet, and anything on `127.0.0.1`, are not affected.
+The socket path does not exist on the server, or `sshd_config` sets `AllowStreamLocalForwarding no`. That is a separate setting from `AllowTcpForwarding`.
 
-**SSH itself fails**: test the same host, user, and key in Terminal with `ssh -v user@server`. If that fails, the problem is server-side, not TablePro.
+### The tunnel connects and the database refuses the login
+
+The database credentials are separate from the SSH ones. Check you did not carry one set into the other.
+
+### A firewall prompt on connect
+
+The local end of the tunnel listens on a port between 60000 and 65000. Allow it.
+
+### SSH fails instantly against a server on your own network
+
+macOS 15 and later put outbound connections to local network addresses behind a Local Network permission, and a denied app fails fast with "no route to host". Check TablePro under **System Settings > Privacy & Security > Local Network**. Servers over the internet, and anything on `127.0.0.1`, are unaffected.
+
+### SSH itself fails
+
+Try the same host, user, and key in Terminal with `ssh -v user@server`. If that fails too, the problem is server-side.

@@ -3,223 +3,104 @@ title: Settings
 description: Every settings tab, its controls, and their defaults
 ---
 
-Open with `Cmd+,`. Settings are grouped into ten tabs.
+The settings window is app-wide: a value on any of these ten tabs holds for every connection you open. `Cmd+,` opens it; what belongs to one connection is in that connection's form instead.
 
 <CardGroup cols={2}>
-  <Card title="General" icon="gear" href="/customization/settings#general">Language, startup, tabs, sidebar, query timeout, updates, reset.</Card>
+  <Card title="General" icon="gear" href="/customization/general-settings">Language, startup, tabs, sidebar, query timeout, updates, reset.</Card>
   <Card title="Appearance" icon="palette" href="/customization/appearance">Appearance mode, themes, per-theme fonts and colors.</Card>
   <Card title="Editor" icon="code" href="/customization/editor-settings">SQL editor, Vim mode, line numbers, query parameters.</Card>
   <Card title="Data" icon="table" href="/customization/data-settings">Data grid, pagination, result cap, JSON viewer, and query history.</Card>
   <Card title="Keyboard" icon="keyboard" href="/features/keyboard-shortcuts#customizing-shortcuts">Custom shortcuts.</Card>
-  <Card title="Notifications" icon="bell" href="/customization/settings#notifications">Which finished operations notify you when TablePro is in the background.</Card>
-  <Card title="AI" icon="sparkles" href="/customization/settings#ai">Providers, inline suggestions, context, slash commands.</Card>
-  <Card title="Integrations" icon="network-wired" href="/customization/settings#integrations">MCP server, tokens, clients, activity.</Card>
-  <Card title="Plugins" icon="puzzle-piece" href="/customization/settings#plugins">Manage drivers, exporters, and themes.</Card>
-  <Card title="Account" icon="user" href="/customization/settings#account">License, iCloud sync, linked folders.</Card>
+  <Card title="Notifications" icon="bell" href="/customization/notifications">Which finished operations notify you when TablePro is in the background.</Card>
+  <Card title="AI" icon="sparkles" href="/features/ai-assistant">Providers, inline suggestions, context, slash commands.</Card>
+  <Card title="Integrations" icon="network-wired" href="/features/mcp">MCP server, tokens, clients, activity.</Card>
+  <Card title="Plugins" icon="puzzle-piece" href="/features/plugins">Manage drivers, exporters, and themes.</Card>
+  <Card title="Account" icon="user" href="/features/licensing">License, iCloud sync, linked folders.</Card>
 </CardGroup>
 
-<Frame caption="The General tab">
-  <img className="block dark:hidden" src="/images/settings-general.png" alt="General settings tab" />
-  <img className="hidden dark:block" src="/images/settings-general-dark.png" alt="General settings tab" />
-</Frame>
-
-## General
-
-### Language
-
-System (default), English, Tiếng Việt, 简体中文, 繁體中文, 한국어, Türkçe. Changing the language requires restarting TablePro.
-
-### Startup behavior
-
-| Option | Description |
-|--------|-------------|
-| **Reopen Last Session** (default) | Restore the windows, tabs, and view state from your last session |
-| **Show Welcome Screen** | Show the welcome window with saved connections |
-
-Reopened tabs restore their SQL, cursor position, sort, filters, page, and column widths. The window you land on connects at launch; the others connect when you switch to them, so an unreachable database never blocks launch. A window that cannot reach its server shows the reason with a Try Again button and a way back to the connection list, and the other windows keep working. See [Tabs](/features/tabs).
-
-### Tabs
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Enable preview tabs** | On | Single-click opens a temporary tab that the next click replaces; double-click or interaction makes it permanent |
-
-### Sidebar
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Show connections** | On | Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it |
-| **Show recent tables** | Off | Adds a Recent section at the top of the sidebar with the last 10 tables opened per connection and database |
-| **Show object icons** | On | Shows a type icon before each object name in the sidebar. Turn it off for a plain list of names. Also on the **View** menu, and under **View Options** in the sidebar right-click menu |
-| **Show object comments** | On | Shows database object comments next to tables in the sidebar and in grid column headers |
-| **Row size** | Match System | How tall sidebar rows are. Match System follows **Sidebar icon size** in System Settings > Appearance, so the sidebar matches Finder and Mail. Pick Small, Medium or Large to override it and fit more objects on screen. Also under **View Options** in the sidebar right-click menu |
-| **Default layout for new connections** | List | List or Tree, for servers that support a database tree. Switch the current connection from the **View** menu |
-
-### Query execution
-
-**Query timeout** sets the maximum seconds a query runs before cancellation. Default 60; choices from 10 to 600 seconds, plus **No limit**. Applies to new connections, so a change requires a reconnect.
-
-Enforcement happens at the database level where supported:
-
-| Database | Enforcement |
-|----------|-------------|
-| PostgreSQL | `statement_timeout` |
-| MySQL | `max_execution_time` |
-| MariaDB | `max_statement_time` |
-| ClickHouse | `max_execution_time`, plus the HTTP bound below |
-| SQLite | `sqlite3_busy_timeout` |
-| BigQuery, Cloudflare D1, LibSQL, Etcd, DynamoDB, Elasticsearch | HTTP request timeout set to the query timeout plus a 30-second grace |
-| Oracle | Client-side: the connection is closed, and the next query reconnects and restores the current schema |
-
-**No limit** raises the HTTP transport ceiling to 1 hour.
-
-### Command line
-
-**Install** writes a `tablepro` command to `/usr/local/bin` that opens database URLs in TablePro. If TablePro cannot write there, it shows a command for you to run in Terminal. See [Terminal and DDEV](/external-api/terminal).
-
-### Trusted links
-
-Lists external links you chose to always allow, with **Forget** per entry and **Forget All**. Only databases on this machine can be trusted; remote links ask for confirmation every time.
-
-### Software update
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Automatically check for updates** | On | Periodic background check |
-| **Check for Updates…** | - | Check now |
-
-Powered by [Sparkle](https://sparkle-project.org/). Also available from the **TablePro** menu.
-
-### Privacy
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Share anonymous usage data** | On | Anonymous usage statistics, no personal data or queries |
-
-### Reset
-
-**Reset All Settings to Defaults** resets every settings tab after a confirmation. Saved connections and query history are not affected.
-
-## Notifications
-
-TablePro tells you when long-running work finishes while you are somewhere else. It only notifies when the result is not already in front of you: the app is in another Space or behind another window, the window is minimized, or the tab that ran the work is not the one on screen. Work you cancelled yourself never notifies.
-
-**Notify when long-running work finishes** is the master switch. **Only after** sets how long work has to run before it counts, from 5 seconds to 10 minutes; the default is 20 seconds. Set it below the query timeout in General, or a query that times out will finish before the notification is due.
-
-| Setting | Default | Description |
-| --- | --- | --- |
-| **Notify when long-running work finishes** | On | Master switch for every kind below |
-| **Only after** | 20 seconds | How long work must run to count, from 5 seconds to 10 minutes |
-| **Queries** | On | Editor queries, including Explain |
-| **Statement batches** | On | Execute All, as one notification for the batch |
-| **Row edits** | On | Saving edited rows |
-| **Structure changes** | On | Applying table structure changes |
-| **Imports** | On | File imports |
-| **Exports** | On | Exports, including streaming exports |
-| **Backups** | On | Database dumps |
-| **Fetch all rows** | On | Loading every row of a truncated result |
-| **AI and MCP queries** | On | Queries an AI assistant or MCP client runs |
-
-The notification says which connection and database, what happened, how much, and how long it took: "1,204 rows in 3m 12s", or "Failed after 2m 45s" with the reason. A failure offers Copy Error; an export or backup offers Show in Finder. Clicking it brings TablePro forward and selects the tab that ran the work. Notifications group by connection, and re-running the same tab replaces its previous notification instead of stacking a second one.
-
-Whatever the notification settings say, a tab whose work finished while you were looking elsewhere keeps a dot next to its name until you select it. That happens even if you never granted notification permission.
-
-macOS asks for notification permission the first time TablePro actually has something to tell you, not at launch. If you refuse, or turn TablePro's notifications off in System Settings, this section says so and links you there, and TablePro bounces its Dock icon instead. Notification sound and alert style are per-app System Settings options, so TablePro does not duplicate them.
-
-## AI
-
-**Enable AI Features** is the master switch; turning it off hides the other AI sections and disables chat, inline suggestions, and editor actions. **Active Provider** picks the default provider; the chat composer's model picker can override it per turn.
-
-**Add Provider…** lists GitHub Copilot, ChatGPT, Cursor, Claude, OpenAI, OpenRouter, Gemini, xAI, Ollama, llama.cpp, MLX, and OpenCode Zen. **Add Custom Provider…** below the divider takes any OpenAI-compatible endpoint. Click a provider row to open its detail sheet:
-
-- **Test Connection** verifies the key, sign-in, or endpoint.
-- **Model** lists curated models plus models fetched from the provider; pick **Other…** to type a custom model ID.
-- **Reasoning** sets the effort level on models that support it, or **Off**.
-
-API keys are stored in the macOS Keychain; removing a provider deletes its key.
-
-### Inline suggestions
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Enable inline suggestions while typing** | Off | Ghost-text SQL completions. Requires an active provider. Tab accepts, Escape dismisses |
-| **Debounce** | 500 ms | Pause after typing before requesting a suggestion, 100 to 3,000 ms in 50 ms steps |
-
-### Agent
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Limit tool calls per reply** | On | Turn off to let the agent keep calling tools until it finishes |
-| **Tool call limit** | 25 | Tool calls the AI may make in one reply before pausing, 5 to 200 in steps of 5 |
-
-Reaching the limit pauses the reply instead of failing it. Everything the AI found so far stays in the chat, and **Continue** picks up where it stopped with a fresh budget. GitHub Copilot manages its own tool loop, so this setting does not apply to it.
-
-### Context
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Include database schema** | On | Auto-attach the active connection's schema |
-| **Include current query** | On | Auto-attach the active editor tab's text |
-| **Include query results** | Off | Auto-attach the most recent query result snapshot |
-| **Max schema tables** | 20 | Cap on tables in the schema attachment, 1 to 100 |
-
-The Privacy section sets the default **Connection policy** (Ask Each Time) applied to new connections. For custom slash commands, chat modes, and per-connection AI rules, see [AI Assistant](/features/ai-assistant).
-
-## Integrations
-
-The **Integrations** tab runs the MCP server. **Enable MCP Server** (default off) starts it and shows a live status. See [MCP Server](/features/mcp) for a walkthrough and the [External API](/external-api) reference for the tool catalog. The server binds `127.0.0.1` only.
-
-<Frame caption="Integrations tab with the MCP server enabled">
-  <img className="block dark:hidden" src="/images/mcp-settings.png" alt="Integrations settings" />
-  <img className="hidden dark:block" src="/images/mcp-settings-dark.png" alt="Integrations settings" />
-</Frame>
-
-### Server Configuration
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Port** | 23508 | Loopback port the server listens on. If it is taken, TablePro binds a free one instead and records it in the handshake file. |
-| **Default row limit** | 500 | Rows returned when a tool call sets no limit, including `export_data` |
-| **Maximum row limit** | 10,000 | Hard cap on rows per tool call, including `export_data`. Clamped to 1 to 500,000. |
-| **Query timeout** | 30 seconds | Per-query limit for MCP-issued queries. Clamped to 1 to 300 seconds. |
-| **Log MCP queries in history** | On | Record MCP queries in [query history](/features/query-history) |
-
-### Authentication
-
-**Require authentication** defaults to on. If you switch it on with no tokens saved, TablePro generates a full-access token named "Default token" and shows it once. Copy it before closing the sheet. Generate, revoke, and delete tokens in the list below the toggle. See [Tokens](/external-api/tokens).
-
-Switching it off accepts a local caller with no token, but only as a read-only one: it can read schema and run `SELECT`, and can never write, drop, or administer.
-
-### Clients and activity
-
-**Connect a Client…** shows setup steps and config snippets for Claude Code, Claude Desktop, Cursor, and Zed. **View Activity…** opens the Integrations Activity window with the activity log and the clients that have called in the last five minutes. **Disconnect** there revokes that client's token.
-
-## Plugins
-
-Two sub-tabs, each a split view with the plugin list on the left and details on the right.
-
-- **Installed**: bundled plugins (MySQL, PostgreSQL, SQLite, ClickHouse, and Redis drivers; CSV, JSON, SQL, XLSX, and MQL exporters; SQL, JSON, and CSV importers; CSV Inspector) plus anything you installed. Toggle a plugin on or off in the detail pane. Bundled plugins can be disabled but not uninstalled. To install from a file, click **+** below the list or drag a `.tableplugin` or `.zip` onto it. TablePro verifies the code signature before loading.
-- **Browse**: install from the registry, with search and a category filter (Database Drivers, Export Formats, Import Formats, Themes, Other). Registry drivers: MongoDB, Oracle, DuckDB, SQL Server, Cassandra, Etcd, Cloudflare D1, DynamoDB, BigQuery, Snowflake, Elasticsearch, LibSQL, SurrealDB, Beancount, Teradata, and Trino.
-
-See [Plugins & Themes](/features/plugins) for installing, updating, and managing plugins.
-
-<Warning>
-Only install plugins from sources you trust. Code-signature checks do not guarantee plugin behavior.
-</Warning>
-
-## Account
-
-Activate, deactivate, or view your license here. TablePro checks the license signature locally, re-validates with the server every 7 days, and allows 30 days offline before validation fails. On a Team plan, paste an invite code in the activation field to join a team instead of entering a key. See [Team plan](/features/team) and [Licensing](/features/licensing).
-
-iCloud sync and linked folders live on the same tab. See [iCloud Sync](/features/icloud-sync).
-
-## Settings storage
-
-Settings live in `~/Library/Preferences/com.TablePro.plist`. Use **Reset All Settings to Defaults** on the General tab to reset them.
-
-Advanced flags not exposed in the UI:
+## Stock values
+
+What a fresh install ships with, so one glance down this column says what you changed. Each tab page explains what a setting does and which other values it takes.
+
+| Tab | Setting | Default |
+|-----|---------|---------|
+| General | Language | System |
+| General | When TablePro starts | Reopen Last Session |
+| General | Enable preview tabs | On |
+| General | Show connections | On |
+| General | Show recent tables | Off |
+| General | Show object icons | On |
+| General | Show object comments | On |
+| General | Row size | Match System |
+| General | Default layout for new connections | List |
+| General | Query timeout | 60 seconds |
+| General | Automatically check for updates | On |
+| General | Share anonymous usage data | On |
+| Appearance | Appearance | Auto |
+| Appearance | Light theme | Default Light |
+| Appearance | Dark theme | Default Dark |
+| Appearance | Editor font | System Mono, 13 pt |
+| Appearance | Data grid font | System Mono, 13 pt |
+| Editor | Show line numbers | On |
+| Editor | Highlight current line | On |
+| Editor | Highlight current statement | On |
+| Editor | Word wrap | Off |
+| Editor | Code folding | On |
+| Editor | Run button beside each statement | On |
+| Editor | Tab width | 4 spaces |
+| Editor | Auto-uppercase keywords | Off |
+| Editor | Query parameters | On |
+| Editor | Vim mode | Off |
+| Data | Row height | Normal |
+| Data | Date format | ISO 8601 |
+| Data | NULL display | `NULL` |
+| Data | Show alternate row backgrounds | On |
+| Data | Show row numbers | On |
+| Data | Auto-show inspector on row select | Off |
+| Data | Smart value detection | On |
+| Data | Default row sort | No sorting (engine order) |
+| Data | Default page size | 1,000 rows |
+| Data | Count rows if estimate less than | 100,000 |
+| Data | Truncate query results | On |
+| Data | Row cap | 10,000 |
+| Data | JSON viewer default view | Text |
+| Data | Maximum history entries | 10,000 |
+| Data | Keep history entries for | 90 days |
+| Data | Auto cleanup | On |
+| Notifications | Notify when long-running work finishes | On |
+| Notifications | Only after | 20 seconds |
+| Notifications | Every operation kind | On |
+| AI | Enable AI Features | On |
+| AI | Enable inline suggestions while typing | Off |
+| AI | Debounce | 500 ms |
+| AI | Limit tool calls per reply | On |
+| AI | Tool call limit | 25 |
+| AI | Include database schema | On |
+| AI | Include current query | On |
+| AI | Include query results | Off |
+| AI | Max schema tables | 20 |
+| AI | Connection policy | Ask Each Time |
+| Integrations | Enable MCP Server | Off |
+| Integrations | Port | 23508 |
+| Integrations | Default row limit | 500 |
+| Integrations | Maximum row limit | 10,000 |
+| Integrations | Query timeout | 30 seconds |
+| Integrations | Log MCP queries in history | On |
+| Integrations | Require authentication | On |
+| Account | iCloud Sync | Off |
+| Account | Passwords (keychain sync) | Off |
+
+Two tabs are not in the table. Stock keyboard chords are on [Keyboard Shortcuts](/features/keyboard-shortcuts), and the Plugins tab holds no values of its own.
+
+## Where settings live
+
+The file is `~/Library/Preferences/com.TablePro.plist`. **Reset All Settings to Defaults** on the General tab puts every tab back to its stock value after a confirmation, and that includes emptying the AI provider list. Saved connections, query history, and MCP tokens survive it.
+
+Two settings have no control in the window:
 
 | Setting | Command |
 |---------|---------|
 | Custom plugin registry | `defaults write com.TablePro com.TablePro.customRegistryURL <url>` |
 | Clear custom registry | `defaults delete com.TablePro com.TablePro.customRegistryURL` |
+
+See [Plugin Registry](/development/plugin-registry#custom-registry-url) for what a private registry has to serve.

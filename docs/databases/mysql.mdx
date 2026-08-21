@@ -3,16 +3,16 @@ title: MySQL
 description: Connect to MySQL 5.7 and later with the bundled MariaDB Connector/C driver
 ---
 
-MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no auth plugin to switch over. The same driver covers 5.7 and later, and MariaDB as well; MariaDB-specific notes are on [MariaDB](/databases/mariadb).
+MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no auth plugin to switch over. The same bundled driver covers 5.7 and later, and MariaDB as well; MariaDB-specific notes are on [MariaDB](/databases/mariadb).
 
 ## Quick setup
 
 <Steps>
   <Step title="Create Connection">
-    Click **Create Connection…** on the welcome window, pick **MySQL**, and fill in host, port, and credentials
+    Click **Create Connection…** on the welcome window and pick **MySQL**
   </Step>
   <Step title="Test and Save">
-    Click **Test Connection** to verify, then **Save & Connect**
+    Fill in host, port, and credentials, click **Test Connection**, then **Save & Connect**
   </Step>
 </Steps>
 
@@ -20,10 +20,13 @@ MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no au
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| **Host** | `localhost` | |
+| **Host** | `localhost` | TCP only, never a Unix socket |
 | **Port** | `3306` | |
 | **Username** | empty | An empty field connects as your macOS login name |
-| **Database** | empty | Optional. Leave empty to browse all databases |
+| **Password** | empty | Stored in the macOS Keychain |
+| **Database** | empty | Optional. Leave it empty to browse every database |
+
+The session character set is `utf8mb4`, so emoji and non-Latin text round-trip untouched. A connect attempt gives up after 10 seconds.
 
 ## Connection URL
 
@@ -40,25 +43,17 @@ Opening a URL connects directly. See [Connection URL Reference](/connections/url
 | Homebrew | `localhost:3306` |
 | Docker | `localhost` with the mapped port, password from `MYSQL_ROOT_PASSWORD` |
 | MAMP Pro | `localhost:8889`, user and password `root` |
-| AWS RDS / Aurora | Endpoint hostname, password or [AWS IAM](/connections/aws-iam) |
-| Google Cloud SQL | [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy) |
+| AWS RDS / Aurora | Endpoint hostname, password or [AWS IAM](/connections/aws-iam), which signs a fresh 15-minute token on each connect |
+| Google Cloud SQL | **Enable Cloud SQL Auth Proxy** and the instance name, in the [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy) pane |
 | Remote production | [SSH tunnel](/connections/ssh-tunneling) |
-
-## AWS IAM authentication
-
-RDS and Aurora connections can use your AWS identity instead of a static password: TablePro signs a fresh 15-minute token on every connect and reconnect. Setup and troubleshooting are on [AWS IAM Authentication](/connections/aws-iam).
-
-## Google Cloud SQL
-
-Turn on **Cloud SQL Auth Proxy** in the connection form and enter the instance connection name; TablePro starts and stops the proxy for you. See [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy).
 
 ## Users & Roles
 
-**Database > Users & Roles** manages users, roles, and privileges on MySQL servers. Changes are staged, undoable, and shown as SQL before they run. See [Users & Roles](/features/users-roles).
+**Database > Users & Roles** manages users, roles, and privileges. Changes are staged and shown as SQL before they run. See [Users & Roles](/features/users-roles).
 
 ## Query plans
 
-**EXPLAIN FORMAT=JSON**, **EXPLAIN FORMAT=TREE**, and **EXPLAIN ANALYZE** results render as a visual plan diagram or tree. Plain multi-column **EXPLAIN** output stays in the results grid. See [EXPLAIN Visualization](/features/explain-visualization).
+`EXPLAIN FORMAT=JSON`, `EXPLAIN FORMAT=TREE`, and `EXPLAIN ANALYZE` render as a plan diagram or tree; plain multi-column `EXPLAIN` stays in the results grid. See [EXPLAIN Visualization](/features/explain-visualization).
 
 <Frame caption="EXPLAIN rendered as a visual plan">
   <img className="block dark:hidden" src="/images/explain-diagram.png" alt="Visual EXPLAIN plan diagram" />
@@ -67,20 +62,23 @@ Turn on **Cloud SQL Auth Proxy** in the connection form and enter the instance c
 
 ## Browsing
 
-The sidebar lists all accessible databases with each table's structure (columns, indexes, foreign keys) and DDL. Switch databases with `Cmd+K`. JSON columns, window functions, and CTEs run and display like any other query.
+The sidebar lists every accessible database with each table's structure and DDL. Switch databases with `Cmd+K`. A tab keeps the database it was opened on; MySQL switches database in place, so that tab runs on the same connection rather than a second one.
 
-Table and column comments show in the UI: the sidebar dims a table's comment after its name, and the data grid header tooltip includes the column comment. Toggle this by right-clicking the sidebar and choosing **View Options > Comments**.
-
-Set session variables (timezone, encoding) on connect with [Startup Commands](/connections#startup-commands).
+Table and column comments show in the UI: dimmed after a table's name in the sidebar, and in the grid header tooltip. Right-click the sidebar and choose **View Options > Comments** to turn that off.
 
 ## SSL/TLS
 
-New connections default to **Preferred**: the driver tries TLS first and retries in plain text only after an SSL handshake error (auth and network errors are not retried). This works for Cloud SQL, Azure MySQL, and local Docker alike. Use **Verify CA** with the provider's certificate for strict validation. See [SSL/TLS](/connections/ssl).
+New connections default to **Preferred**: TLS first, dropping to plain text only after an SSL handshake error. Pick **Verify CA** with the provider's certificate for strict validation. See [SSL/TLS](/connections/ssl).
+
+## Limitations
+
+- No Unix socket connections. Give the connection a host and a port, and leave networking on in the server.
+- `LOAD DATA LOCAL INFILE` is refused by the driver. Load the file with **File > Import > Import Data…** instead.
 
 ## Troubleshooting
 
 **Connection refused**: check the server is running (`brew services start mysql`), the port is right, and `skip-networking` is not set.
 
-**Access denied**: verify credentials and privileges with `SHOW GRANTS FOR 'user'@'host';`.
+**Access denied for user '…'@'…' (using password: YES)**: the password is wrong, or the grant does not cover the host you are connecting from. Check both with `SHOW GRANTS FOR 'user'@'host';`.
 
-**Auth plugin errors**: `caching_sha2_password` is supported natively. If a plugin error persists, check the user's plugin with `SELECT user, plugin FROM mysql.user;`.
+**Auth plugin errors**: `caching_sha2_password` needs no configuration. For any other plugin error, read the account's plugin with `SELECT user, plugin FROM mysql.user;`.

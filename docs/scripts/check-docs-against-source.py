@@ -11,6 +11,7 @@ notice.
 Run from the repository root or from docs/.
 """
 
+import collections
 import re
 import sys
 from pathlib import Path
@@ -172,6 +173,18 @@ def check_shortcuts(root: Path, docs: Path) -> list[str]:
                 f"`{written}`, the app binds the chord {spelled}"
             )
     print(f"      {checked} of {len(documented)} documented rows joined to a binding")
+
+    spellings = collections.Counter()
+    for page in doc_pages(docs):
+        for line_no, line in enumerate(page.read_text().splitlines(), start=1):
+            for chord in re.findall(r"`((?:Cmd|Ctrl|Option|Shift)\+[A-Za-z0-9+]+)`", line):
+                for key, canonical in (("Return", "Enter"), ("Esc", "Escape"), ("Del", "Delete")):
+                    if chord.endswith("+" + key):
+                        spellings[(key, canonical)] += 1
+                        failures.append(
+                            f"{page.relative_to(docs)}:{line_no}: `{chord}` spells the key {key}; "
+                            f"the corpus spells it {canonical}"
+                        )
     return failures
 
 
@@ -279,6 +292,64 @@ def check_heading_case(root: Path, docs: Path) -> list[str]:
     return failures
 
 
+DOC_NAMES = {
+    "SQL Server": "Microsoft SQL Server",
+    "Oracle": "Oracle Database",
+    "Dameng": "Dameng DM8",
+    "Redshift": "Amazon Redshift",
+    "libSQL": "libSQL / Turso",
+}
+
+
+def registered_databases(root: Path) -> dict:
+    """Every database type the chooser offers, with its default port.
+
+    The registry builds these as ("TypeId", PluginMetadataSnapshot(... defaultPort: N ...)) tuples,
+    spread over PluginMetadataRegistry.swift and its +*Defaults.swift extensions. A new engine adds
+    one tuple, so counting them is how the docs learn the engine exists.
+    """
+    found = {}
+    for path in sorted((root / "TablePro/Core/Plugins").glob("PluginMetadataRegistry*.swift")):
+        source = path.read_text()
+        for match in re.finditer(r'\(\s*"([^"]+)",\s*PluginMetadataSnapshot\(', source):
+            tail = source[match.end():match.end() + 1500]
+            port = re.search(r"defaultPort:\s*([0-9_]+)", tail)
+            found[match.group(1)] = int(port.group(1).replace("_", "")) if port else None
+    return found
+
+
+def check_database_table(root: Path, docs: Path) -> list[str]:
+    registered = registered_databases(root)
+    if len(registered) < 20:
+        return ["could not read the database types out of PluginMetadataRegistry"]
+
+    page = docs / "databases/index.mdx"
+    rows = {}
+    for name, port in re.findall(r"^\| \[([^\]]+)\]\([^)]+\) \| ([^|]+?) \|", page.read_text(), re.M):
+        rows[name.strip()] = port.strip()
+
+    failures = []
+    expected = {DOC_NAMES.get(name, name) for name in registered}
+    for missing in sorted(expected - set(rows)):
+        failures.append(f"databases/index.mdx has no row for {missing}, which the chooser offers")
+    for extra in sorted(set(rows) - expected):
+        failures.append(f"databases/index.mdx lists {extra}, which is not a registered type")
+
+    for type_id, port in registered.items():
+        row = rows.get(DOC_NAMES.get(type_id, type_id))
+        if row is None or port in (None, 0):
+            continue
+        if str(port) not in row:
+            failures.append(
+                f"databases/index.mdx gives {type_id} port {row}, the registry says {port}"
+            )
+
+    counted = re.search(r"\b(\d+|Twenty-seven)\b engines", page.read_text())
+    if counted and counted.group(1) not in (str(len(registered)), "Twenty-seven"):
+        failures.append(f"databases/index.mdx says {counted.group(1)} engines, the registry has {len(registered)}")
+    return failures
+
+
 def main() -> int:
     root = repo_root()
     docs = root / "docs"
@@ -290,6 +361,7 @@ def main() -> int:
         ("changelog parity", check_changelog_parity),
         ("changelog anchors", check_changelog_anchors),
         ("heading case", check_heading_case),
+        ("database table", check_database_table),
     )
 
     total = 0

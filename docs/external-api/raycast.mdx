@@ -3,24 +3,37 @@ title: Raycast Extension
 description: Install and pair the TablePro Raycast extension, and use its commands and AI tools
 ---
 
-Searching connections, browsing schemas, and running SQL all happen inside the Raycast window, without switching to the app. Nine commands and twelve AI tools reach TablePro through the `tablepro://` URL scheme and the [MCP server](/external-api/mcp-tools), after one pairing step. Requires TablePro 0.37.0 or later.
+Searching connections, browsing schemas and running SQL happen inside the Raycast window, with no
+switch to the app. Nine commands and twelve AI tools reach TablePro over the `tablepro://` scheme and
+the [MCP server](/external-api/mcp-tools), after one pairing step. Needs TablePro 0.37.0 or later.
 
 ## Install
 
-Install it from the [Raycast Store](https://www.raycast.com/ngoquocdat/tablepro), or search **TablePro** in Raycast's Store command. The source is MIT-licensed in the [Raycast extensions monorepo](https://github.com/raycast/extensions/tree/main/extensions/tablepro).
+Install from the [Raycast Store](https://www.raycast.com/ngoquocdat/tablepro), or search **TablePro**
+in Raycast's Store command. The source is MIT-licensed in the
+[Raycast extensions monorepo](https://github.com/raycast/extensions/tree/main/extensions/tablepro).
+It talks only to TablePro on localhost; passwords stay in the macOS Keychain and the extension never
+reads them.
+
+One preference, **TablePro App**, points at the app bundle so the extension can find and launch it.
+It defaults to `/Applications/TablePro.app`, so change it only for a build that lives elsewhere.
 
 ## Pair
 
-Run **Pair with TablePro**. TablePro opens an approval sheet where you pick the scope (read-only by default), the connections the token can reach, and an optional expiry. On approve, a one-time code returns to Raycast over a deep-link callback, and the extension exchanges it for the token over localhost. Re-run the command any time to issue a fresh token; TablePro revokes the old one.
+Run **Pair with TablePro**. An approval sheet opens in TablePro where you pick the scope (read-only
+to start), the connections the token may reach, and an optional expiry. Approving sends a one-time
+code back to Raycast, which exchanges it for a token over localhost. [Pairing](/external-api/pairing)
+documents the protocol.
 
-The protocol behind this is documented in [Pairing](/external-api/pairing).
+Re-run the command whenever you want a fresh token. The previous one keeps working until you revoke
+it in **Settings > Integrations**.
 
 ## Commands
 
 | Command | Mode | Description |
 |---------|------|-------------|
 | Search Connections | view | Search saved connections, open one in TablePro, copy a deep link. |
-| Open Connection | no-view | Open a connection by name from the root search, e.g. `Open Connection prod`. |
+| Open Connection | no-view | Open a connection by name from the root search, such as `Open Connection prod`. |
 | TablePro Menu Bar | menu-bar | Recent connections and quick actions in the menu bar. Refreshes every 10 minutes. |
 | Search Schema | view | Browse databases and schemas across connections. |
 | Search Tables | view | Pick a connection, list its tables, copy DDL, open a table tab. |
@@ -36,7 +49,10 @@ The protocol behind this is documented in [Pairing](/external-api/pairing).
 
 ## AI tools
 
-The extension is an AI Extension: with Raycast AI, mention `@tablepro` in a chat and Raycast picks tools from this catalog. The tools call the TablePro MCP server; see [MCP Tools](/external-api/mcp-tools) for the underlying schemas.
+This is also an AI Extension: with Raycast AI, mention `@tablepro` in a chat and Raycast picks tools
+from this catalog. Each one calls the MCP server, so a call cannot exceed the
+[token's scope](/external-api/tokens). AI tool calls themselves go through Raycast's AI provider,
+under Raycast's [privacy policy](https://www.raycast.com/privacy).
 
 | Tool | Description |
 |------|-------------|
@@ -53,18 +69,11 @@ The extension is an AI Extension: with Raycast AI, mention `@tablepro` in a chat
 | `get-connection-status` | Live status of a connection. |
 | `list-recent-tabs` | Tabs currently open in TablePro. |
 
-Write access follows the [security model](/external-api/index#security-model): a tool call cannot exceed the token's scope or the connection's external access level.
-
-## Preferences
-
-| Preference | Type | Description |
-|------------|------|-------------|
-| TablePro App | App picker | Path to the TablePro app. Used to detect the install and open the app. Default `/Applications/TablePro.app`. |
-
 ## Troubleshooting
 
-If TablePro is running but the MCP server is not, the extension opens `tablepro://integrations/start-mcp` and retries. A `401` means the token was revoked: re-run **Pair with TablePro**. For `403` access errors and other MCP failures, see [MCP client troubleshooting](/external-api/mcp-clients#troubleshooting).
-
-## Privacy
-
-The extension talks only to TablePro on localhost and makes no third-party network requests. Connection passwords stay in the macOS Keychain; the extension never reads them. AI tool calls go through Raycast's AI provider under Raycast's [privacy policy](https://www.raycast.com/privacy).
+| Symptom | What to do |
+|---|---|
+| Paired, but the connection list is empty | TablePro omits every connection the token cannot reach. Either the allowlist you approved left it out, or its **External Clients** level is **Blocked**. Re-pair with the connection selected, or raise the level in the [connection form's Advanced tab](/connections/connection-form#advanced). |
+| Commands hang on a running TablePro | The MCP server is stopped. The extension opens `tablepro://integrations/start-mcp` and retries on its own; give it a moment. |
+| `401` | The token was revoked or has expired. Run **Pair with TablePro** again. |
+| `403` and other MCP errors | See [MCP client troubleshooting](/external-api/mcp-clients#when-it-does-not-work). |

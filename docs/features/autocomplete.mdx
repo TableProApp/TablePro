@@ -3,7 +3,9 @@ title: Autocomplete
 description: Schema-aware SQL autocomplete for keywords, tables, columns, and functions
 ---
 
-What the popup offers depends on the clause under the cursor. Tables come after FROM and JOIN, a table's columns after its alias and a dot, and inside WHERE you get the operators your database declares. MongoDB connections complete MQL instead, following the shape of the query rather than the clause.
+An alias and a dot give you that table's columns, and that holds for a subquery or a `WITH` table that exists only in the statement you are writing. Everything the popup offers is decided by where the cursor sits.
+
+It opens itself after FROM, JOIN, ON and the other clauses with a short answer, and stays shut where a full list would be noise, such as after a comma in a SELECT list. `Ctrl+Space` overrides both.
 
 <Frame caption="Context-aware autocomplete">
   <img
@@ -18,8 +20,6 @@ What the popup offers depends on the clause under the cursor. Tables come after 
   />
 </Frame>
 
-Suggestions appear as you type, from the first character, and after `.` or a space, with a 50ms debounce. There is no minimum prefix. With nothing typed yet, the popup stays hidden in clauses where listing everything is noise (for example after a comma in a SELECT list); it still opens automatically after FROM, JOIN, ON, and other clauses where browsing helps.
-
 | Key | Action |
 |-----|--------|
 | `Ctrl+Space` | Open the popup anywhere, even with an empty prefix |
@@ -27,19 +27,18 @@ Suggestions appear as you type, from the first character, and after `.` or a spa
 | `Return` / `Tab` | Accept the selected suggestion |
 | `Escape` | Dismiss and keep typing |
 
-## Completion types
+There is no setting for autocomplete and nothing to turn off. What the popup offers depends entirely on where the cursor sits.
 
-### SQL keywords
+## SQL keywords
 
 ```sql
 SEL|  -- SELECT
 FROM users WH|  -- WHERE
-SELECT * FROM users WHERE name LIKE '%test%' ORD|  -- ORDER BY
 ```
 
-### Table names
+## Table names
 
-Tables appear after FROM, JOIN, INSERT INTO, and similar keywords:
+Tables appear after FROM, JOIN, INSERT INTO and similar keywords, and lead the list ahead of keywords there. The clause is read at the cursor, so a second or third JOIN still offers tables.
 
 ```sql
 SELECT * FROM |  -- All tables
@@ -47,13 +46,9 @@ SELECT * FROM us|  -- Tables starting with "us": users, user_roles
 SELECT * FROM a JOIN b ON a.id = b.id JOIN |  -- All tables, even after an ON condition
 ```
 
-The clause is detected at the cursor, so a second or third JOIN suggests tables even when an ON condition comes before it. In a table position, tables lead the list ahead of keywords.
+## Column names
 
-### Column names
-
-Columns are suggested in SELECT, WHERE, ORDER BY, GROUP BY, and other column contexts.
-
-If a FROM clause exists anywhere in the statement (even after the cursor), columns come from those tables. If no FROM clause exists yet, columns from all cached tables appear as fallback; ambiguous names are qualified: `users.id`, `orders.id`.
+A FROM clause anywhere in the statement, even after the cursor, decides which tables columns come from. With no FROM clause yet every cached table contributes, and ambiguous names are qualified: `users.id`, `orders.id`.
 
 ```sql
 SELECT na|  -- Columns matching "na" from all cached tables
@@ -62,20 +57,9 @@ SELECT u.| FROM users u  -- Columns from users via alias
 SELECT * FROM users WHERE |  -- Columns from users
 ```
 
-### Alias resolution
+## Aliases, subqueries and CTEs
 
-Type an alias followed by `.` to see that table's columns:
-
-```sql
-SELECT
-    u.|  -- id, name, email, created_at (from users)
-FROM users u
-JOIN orders o ON u.id = o.|  -- id, user_id, total (from orders)
-```
-
-### Derived tables and CTEs
-
-An alias for a subquery (derived table) or a `WITH` table completes the columns that subquery's SELECT list produces, including `AS` renames:
+An alias followed by `.` gives that table's columns. A derived table or a `WITH` table gives the columns its own SELECT list produces:
 
 ```sql
 SELECT ahs.|  -- country, avg_score
@@ -92,25 +76,18 @@ WITH totals AS (
 SELECT t.| FROM totals t  -- region, total
 ```
 
-Explicit (`AS name`), bare (`country`), and qualified (`t.col`) columns resolve. A `SELECT *` subquery and unaliased expressions like `AVG(score)` have no name to suggest, so they are skipped.
+`AS name`, bare names and qualified `t.col` all resolve. A `SELECT *` subquery and an unaliased `AVG(score)` have no name to offer, so they are skipped.
 
-### Functions
+## Functions and operators
 
-SQL functions appear in SELECT, WHERE, and expression contexts:
+Functions appear in SELECT, WHERE and expression contexts, the connection's own dialect alongside the common SQL ones: `CONVERT_TIMEZONE` on Snowflake, `SAFE_CAST` on BigQuery.
 
 ```sql
-SELECT |  -- COUNT, SUM, AVG, MAX, MIN, etc.
 SELECT COUNT(|  -- Columns and *
-WHERE date_column > |  -- NOW(), CURRENT_DATE, etc.
+WHERE date_column > |  -- NOW(), CURRENT_DATE, …
 ```
 
-Functions from the connection's SQL dialect (e.g. `CONVERT_TIMEZONE` on Snowflake, `SAFE_CAST` on BigQuery) appear alongside the common SQL functions.
-
-### Operators
-
-Operators the connection's dialect declares appear in WHERE, ON, HAVING, and AND contexts, each with what it does and the types it works on.
-
-On PostgreSQL that covers the JSON operators, array and range containment, regex matching, full-text search, and the network operators:
+Operators the dialect declares appear in WHERE, ON, HAVING and AND, each with what it does and the types it takes. On PostgreSQL that covers JSON, array and range containment, regex, full-text search and the network operators:
 
 ```sql
 WHERE data -|            -- ->  (field as json), ->>  (field as text)
@@ -119,20 +96,39 @@ WHERE tags &|            -- &&  arrays overlap
 WHERE email ~|           -- ~   POSIX regex, ~* case insensitive
 ```
 
-The list distinguishes operators that only work on `jsonb` from the ones `json` accepts too, so `@>` is not offered as if it worked on a `json` column.
+An operator restricted to `jsonb` is held back on a `json` column rather than offered and rejected by the server.
 
-### Casts
+## Casts and enum values
 
-Typing `::` offers the dialect's type names, in the spelling you write rather than the internal catalog name:
+Typing `::` offers the dialect's type names in the spelling you write, not the internal catalog name. Comparing against a column whose type declares a fixed set of values, a PostgreSQL enum for instance, offers those values quoted:
 
 ```sql
 SELECT id::|             -- integer, bigint, text, timestamptz, jsonb, uuid, …
 SELECT payload::js|      -- json, jsonb, jsonpath
+WHERE status = |         -- 'pending', 'active', 'archived'
+WHERE mood <> 'ha|       -- 'happy'
 ```
 
-### MongoDB
+## Schema names
 
-MongoDB connections use MQL instead of SQL, and the popup follows the shape of the query rather than SQL clauses. What you get depends on exactly where the cursor is:
+On multi-schema engines, schemas complete in FROM and `public.users` resolves in FROM, JOIN, UPDATE, INSERT INTO and CREATE INDEX.
+
+Where the hierarchy is database, schema, table (Snowflake, BigQuery), every segment completes and a schema you have not opened in the sidebar is fetched on demand:
+
+```sql
+SELECT * FROM ANALYTICS_|                      -- databases
+SELECT * FROM ANALYTICS_PROD.|                 -- schemas
+SELECT * FROM ANALYTICS_PROD.DBT_MARTS.|       -- tables in that schema
+SELECT * FROM ANALYTICS_PROD.DBT_MARTS.ORDERS o WHERE o.|  -- columns
+```
+
+## Favorite keywords
+
+A favorite with a keyword, stored in the database or set by `@keyword` frontmatter in a linked file, appears as a top-priority match. Type the keyword, accept it, and the favorite's full SQL replaces it inline. A `;;` in that SQL says where the cursor lands afterwards. See [Favorites](/features/favorites#cursor-placement).
+
+## MongoDB
+
+MongoDB connections complete MQL, so the popup follows the shape of the query rather than SQL clauses:
 
 ```js
 db.|                                  // collections, plus getCollectionNames(), createCollection(), …
@@ -145,56 +141,16 @@ db.orders.aggregate([{ |              // $match, $group, $lookup, $unwind, $face
 db.orders.aggregate([{ $group: { |    // $sum, $avg, $first, $push, and the expression operators
 ```
 
-The operator sets are kept apart on purpose. Offering `$match` inside a filter document, or `$gte` where a pipeline stage belongs, is worse than offering nothing. `$set` and `$unset` mean different things as an update operator and as a pipeline stage, and the popup describes whichever one applies at the cursor.
+`$set` and `$unset` mean different things as an update operator and as a pipeline stage; the description shown is whichever applies at the cursor.
 
-Field names come from a sample of the collection's documents and include nested paths, so a document with `address: { city, zip }` suggests `address`, `address.city` and `address.zip`. Objects inside an array contribute paths too. Shallower fields sort first. Nothing in the query is executed to build the list.
+Field names come from a sample of the collection's documents, nested paths included, so `address: { city, zip }` offers `address`, `address.city` and `address.zip`. Objects inside an array contribute paths too, and shallower fields sort first. The sample is cached per collection and cleared when you switch database or refresh the connection.
 
-The sample is cached per collection and cleared when you switch database or refresh the connection.
+Comments suppress completion, and a brace or bracket inside a string literal does not open a document.
 
-Completion is suppressed inside comments, and braces or brackets inside a string literal do not count as opening a document.
+## My new table does not complete
 
-### Enum values
+Table and column names are cached at connect, so a migration or a `CREATE TABLE` run from a terminal stays invisible until the cache reloads. Press `Cmd+R` (**Database > Refresh**), or right-click the sidebar's Tables header and choose **Refresh**. Switching databases reloads it too.
 
-Comparing against a column whose type declares a fixed set of values suggests those values, quoted and ready to accept. On PostgreSQL that covers enum types:
+## Large files
 
-```sql
-WHERE status = |          -- 'pending', 'active', 'archived'
-WHERE status IN (|        -- same list
-WHERE mood <> 'ha|        -- 'happy'
-```
-
-The values come from the column cache the editor already holds, so nothing extra is queried while you type. A column with no declared value set suggests nothing.
-
-### Favorite keywords
-
-Favorites you've assigned a keyword to (DB-stored or linked-file `@keyword` frontmatter) appear in the popup as a top-priority match. Type the keyword, accept the suggestion, and the favorite's full SQL replaces the keyword inline. A `;;` in the favorite's SQL sets where the cursor lands after expansion. See [Favorites](/features/favorites#cursor-placement) for how to assign keywords and place the marker.
-
-### Schema names
-
-For databases with multiple schemas (PostgreSQL):
-
-```sql
-SELECT * FROM |  -- public, schema1, schema2
-SELECT * FROM public.|  -- Tables in public schema
-```
-
-Schema-qualified names like `public.users` resolve in FROM, JOIN, UPDATE, INSERT INTO, and CREATE INDEX.
-
-For databases organized as database, schema, table (Snowflake, BigQuery), every segment completes. Tables of schemas you haven't opened in the sidebar are fetched on demand:
-
-```sql
-SELECT * FROM ANALYTICS_|                      -- databases
-SELECT * FROM ANALYTICS_PROD.|                 -- schemas
-SELECT * FROM ANALYTICS_PROD.DBT_MARTS.|       -- tables in that schema
-SELECT * FROM ANALYTICS_PROD.DBT_MARTS.ORDERS o WHERE o.|  -- columns
-```
-
-## Schema cache
-
-On connection, TablePro fetches table names and loads columns in the background. The column cache holds up to 50 tables with LRU eviction. There is no time-based expiry: cached columns stay until you switch databases or refresh the connection. A failed schema load waits 30 seconds before retrying, to avoid hammering the server.
-
-After external schema changes (migrations, CLI work), press `Cmd+R` (**Database > Refresh**) to reload it. Right-clicking the sidebar's Tables header and choosing **Refresh** does the same.
-
-## Performance
-
-Works on files of any size, including multi-megabyte dumps. For files over 500 KB, only a ~10 KB window around the cursor is analyzed.
+Completion works on files of any size, multi-megabyte dumps included. Past 500 KB only a 10 KB window around the cursor is read, so suggestions follow the statements near you rather than the whole file.

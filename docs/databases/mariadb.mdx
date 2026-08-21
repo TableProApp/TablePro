@@ -3,7 +3,7 @@ title: MariaDB
 description: Connect to MariaDB 10.x and later through the bundled MySQL driver
 ---
 
-Setup lives on the [MySQL](/databases/mysql) page. Picking **MySQL** or **MariaDB** in the connection form loads the same plugin, built on MariaDB Connector/C 3.4.8, so the fields, [AWS IAM](/connections/aws-iam), SSL/TLS and the rest of the feature set behave identically. Cloud SQL Auth Proxy is the one exception: that pane is offered for MySQL, PostgreSQL, and SQL Server only.
+MySQL and MariaDB load the same bundled driver, so [MySQL](/databases/mysql) carries the setup. Port `3306`, an optional Database field, `Cmd+K` to change database in place, SSL/TLS starting on **Preferred**, [AWS IAM](/connections/aws-iam) and SSH tunnels. MariaDB 10.x and later are supported. The rest of this page is what differs.
 
 ## Connection URL
 
@@ -17,15 +17,22 @@ See [Connection URL Reference](/connections/urls).
 
 ## Differences from MySQL
 
-- The default authentication plugin is `mysql_native_password`; MySQL 8 defaults to `caching_sha2_password`. Both work.
-- MariaDB stores JSON columns as LONGTEXT. TablePro reads MariaDB's extended field attributes (`MARIADB_FIELD_ATTR_FORMAT_NAME`) to recognize those columns as JSON, so values open in the JSON editor instead of plain text.
+- The default authentication plugin is `mysql_native_password`, against `caching_sha2_password` on MySQL 8. Both connect.
+- MariaDB stores JSON in a LONGTEXT column. The driver reads MariaDB's extended field attributes and types those columns as JSON, so their values open in the JSON editor instead of as plain text.
+- Virtual and persistent columns are detected on every version, including the bare `VIRTUAL` and `PERSISTENT` spelling that 10.1 and older report, and are left out of generated INSERT and UPDATE statements.
+- A query timeout goes in as `SET SESSION max_statement_time`, counted in seconds. MySQL takes `max_execution_time` in milliseconds.
 
 <Frame caption="A JSON value open in the JSON editor">
   <img className="block dark:hidden" src="/images/json-editor-popover.png" alt="JSON cell editor popover" />
   <img className="hidden dark:block" src="/images/json-editor-popover-dark.png" alt="JSON cell editor popover" />
 </Frame>
 
-## See also
+## Limitations
 
-- [MySQL](/databases/mysql): setup, connection fields, SSL/TLS, troubleshooting
+- Cloud SQL Auth Proxy is not offered for MariaDB. That pane appears for MySQL, PostgreSQL and SQL Server only. Reach a server that is not directly routable through an [SSH tunnel](/connections/ssh-tunneling).
+- [Users & Roles](/features/users-roles) reads `mysql.user` and reports every row there as a user, never as a role. Create and grant MariaDB roles with SQL in the editor.
+
+## Related
+
+- [MySQL](/databases/mysql), for connection fields, common setups, SSL/TLS and troubleshooting
 - [SSH Tunneling](/connections/ssh-tunneling)

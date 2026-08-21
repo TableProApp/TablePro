@@ -3,35 +3,32 @@ title: etcd
 description: Connect to etcd v3 clusters with prefix-based key browsing and an etcdctl-style command editor
 ---
 
-The driver talks to the HTTP/JSON gRPC-gateway and never speaks raw gRPC. At connect it probes the `/v3/`, `/v3beta/` and `/v3alpha/` gateway prefixes in that order, so anything from 3.2 to a current release works with no configuration.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+etcd 3.2 and later need nothing configured beyond a host and the client port, 2379. The peer port on 2380 serves no HTTP/JSON gateway, so a connection aimed there never opens.
+
+<RegistryPlugin name="etcd" plugin="etcd Driver" />
 
 ## Quick setup
 
-Click **Create Connection…**, select **etcd**, enter host (default `localhost`) and port (default `2379`), and connect.
-
-etcd is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved etcd connection installs it without asking. You can also install **etcd Driver** from **Settings > Plugins > Browse**.
+Click **Create Connection…**, select **etcd**, enter host and port, then click **Save & Connect**. etcd has no databases, so there is no Database field and nothing to switch between.
 
 ## Connection settings
 
 | Field | Description |
 |-------|-------------|
-| **Host** | etcd server hostname or IP (default `localhost`) |
-| **Port** | Client port, default `2379` |
-| **Username / Password** | Only if etcd authentication is enabled |
-
-With a username set, TablePro exchanges the credentials for a gateway token via the gateway's `auth/authenticate` endpoint and retries once with a fresh token when a request returns 401.
+| **Host** | etcd server hostname or IP. `localhost` by default |
+| **Port** | Client port, `2379` by default |
+| **Username / Password** | Only when etcd authentication is enabled |
 
 ### Advanced fields
 
 | Field | Description |
 |-------|-------------|
-| **Key Prefix Root** | Scope browsing to a subtree (e.g. `/app`). Empty browses the whole keyspace |
+| **Key Prefix Root** | Scope browsing to a subtree, `/app`. Empty browses the whole keyspace |
 | **TLS Mode** | Disabled, Required (skip verify), Verify CA, or Verify Identity |
-| **CA Certificate** | Path to the CA certificate (`ca.pem`) for Verify CA and Verify Identity |
-| **Client Certificate** | Path to the client certificate for mutual TLS |
-| **Client Key** | Path to the client private key for mutual TLS |
-
-For self-signed certificates, pick **Required (skip verify)** or set the **CA Certificate** path.
+| **CA Certificate** | Path to `ca.pem`, for Verify CA and Verify Identity |
+| **Client Certificate** / **Client Key** | Paths to the client certificate and private key, for mutual TLS |
 
 ## Connection URL
 
@@ -40,15 +37,17 @@ etcd://127.0.0.1:2379
 etcds://127.0.0.1:2379
 ```
 
-Both schemes are accepted when importing a URL. The scheme alone does not switch TLS on; set **TLS Mode** in the Advanced fields.
+Both schemes import. Neither switches TLS on by itself; set **TLS Mode** in the Advanced fields.
 
 ## Browsing keys
 
-The sidebar groups keys by their first path segment under the Key Prefix Root; keys without a segment appear under **(root)**. The grid shows one row per key with the columns **Key**, **Value**, **Version**, **ModRevision**, **CreateRevision**, and **Lease**. Key is the primary key. Saving grid edits generates `put` and `del` commands.
+The sidebar groups keys by their first path segment under the **Key Prefix Root**, with segment-less keys under **(root)**. The grid gives one row per key: **Key**, **Value**, **Version**, **ModRevision**, **CreateRevision** and **Lease**. Key is the primary key and the three revision columns are read-only.
+
+Saving edits generates commands. Changing **Value** or **Lease** re-`put`s the key. Changing **Key** is a `put` at the new name and a `del` of the old one, so the old key is deleted rather than moved. A new row whose key does not start with `/` gets the **Key Prefix Root** prepended.
 
 ## Command editor
 
-The editor accepts etcdctl-style commands with autocomplete for commands and flags.
+The editor takes etcdctl-style commands, with autocomplete over both commands and flags.
 
 <Frame caption="etcdctl-style commands in the editor">
   <img className="block dark:hidden" src="/images/etcd-command-editor.png" alt="etcd command editor with a get --prefix result grid" />
@@ -57,55 +56,47 @@ The editor accepts etcdctl-style commands with autocomplete for commands and fla
 
 ```bash
 get /app/config --prefix --limit=50 --keys-only
-put /app/config/timeout 30
 put /app/session/abc hello --lease=694d77aa1e775e08
 del /app/cache --prefix
 watch /app/config --prefix --timeout=60
-```
-
-`get` supports `--prefix`, `--limit=N`, `--keys-only`, `--order` (ASCEND or DESCEND), and `--sort-by` (KEY, VERSION, CREATE, MOD, or VALUE). `watch` collects events for `--timeout` seconds (default 30), then returns them as a grid.
-
-Lease, cluster, and maintenance commands:
-
-```bash
 lease grant 300
-lease timetolive 694d77aa1e775e08 --keys
-lease revoke 694d77aa1e775e08
-lease list
-member list
-endpoint status
-endpoint health
 compaction 1000 --physical
 ```
 
-Lease IDs accept decimal or hex. Hex is detected by its letters, so prefix an all-digit hex ID with `0x` (`--lease=0x69407712`) or it is read as decimal and resolves to a different lease.
+The whole vocabulary is `get`, `put`, `del` (or `delete`), `watch`, `lease grant|revoke|timetolive|list|keep-alive`, `member list`, `endpoint status|health`, `compaction`, `auth enable|disable`, `user add|delete|list|grant-role|revoke-role`, and `role add|delete|list`. Anything else, an etcdctl command with no entry here included, comes back as `Unknown command: …` without reaching the server.
 
-Auth, user, and role management:
+| Command | Flags |
+|---------|-------|
+| `get` | `--prefix`, `--limit=N`, `--keys-only`, `--order=ASCEND` or `DESCEND`, `--sort-by=KEY`, `VERSION`, `CREATE`, `MOD` or `VALUE`. Leave the last two out and the server's own ordering applies |
+| `put` | `--lease=ID` |
+| `del` | `--prefix` |
+| `watch` | `--prefix`, `--timeout=SECONDS`, 30 by default. Events collect for that long, then arrive as a grid |
+| `lease timetolive` | `--keys` |
 
-```bash
-auth enable
-user add alice secretpw
-user grant-role alice readonly
-role add readonly
-user list
-role list
-```
+Lease IDs take decimal or hex, and hex is detected by its letters. Prefix an all-digit hex ID with `0x` (`--lease=0x69407712`) or it reads as decimal and resolves to another lease.
 
-## SSH Tunnel
+## SSL/TLS
 
-etcd connections support [SSH tunneling](/connections/ssh-tunneling) for reaching remote clusters through a bastion host.
-
-## Troubleshooting
-
-**Connection refused**: Verify etcd is running and the client port (default 2379) is reachable.
-
-**No supported etcd API found**: TablePro requires the HTTP/JSON gateway, which etcd 3.x serves on the client port by default. Point the connection at the client port, not the peer port (2380).
-
-**Authentication failed**: Check the username and password, and that the user has the required roles.
-
-**TLS errors**: Set **TLS Mode** and the certificate paths in the Advanced fields. For self-signed certificates use **Required (skip verify)** or provide the CA certificate.
+TLS here is set by **TLS Mode** in the Advanced fields, not by the connection's SSL mode, and it starts **Disabled**. **Required (skip verify)** encrypts without checking the certificate, **Verify CA** checks it against the **CA Certificate** you name, and **Verify Identity** adds the hostname check. **Client Certificate** and **Client Key** cover mutual TLS under either verifying mode. See [SSL/TLS](/connections/ssl) for the concepts.
 
 ## Limitations
 
-- No transactions. Each command is a separate gateway request.
+- No transactions. Each command, and each row you save, is its own gateway request.
+- The form takes one endpoint and does not fail over to another member. Point it at a member that is up; `member list` shows the rest.
+- A value that is not valid UTF-8 shows in the grid as `<b64:…>` wrapping its base64, and text you type is sent as UTF-8. Write binary values with `etcdctl`.
 - No schema editing and no import.
+
+## Troubleshooting
+
+### No supported etcd API found
+
+The HTTP/JSON gateway answered on none of the v3 paths. Point the connection at the client port, 2379 by default, and not the peer port on 2380.
+
+### Authentication failed
+
+The username and password were rejected, or the user holds no role covering the key. Check both, and that `auth enable` has been run.
+
+## Related
+
+- [SSH Tunneling](/connections/ssh-tunneling), for reaching a cluster through a bastion host
+- [Import & Export](/features/import-export)

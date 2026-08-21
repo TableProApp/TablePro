@@ -3,7 +3,7 @@ title: Editor Settings
 description: SQL editor, Vim mode, line numbers, indentation, and query parameter settings
 ---
 
-Open **Settings > Editor** (`Cmd+,`). This tab holds the SQL editor toggles. The data grid, pagination, query result cap, and JSON viewer are on the [Data](/customization/data-settings) tab.
+**Settings > Editor** covers typing and how SQL is displayed. Grid, pagination, result cap and JSON viewer settings are on the [Data](/customization/data-settings) tab instead.
 
 Editor fonts are per-theme. Edit them on the theme's Fonts tab under [Appearance](/customization/appearance).
 
@@ -18,8 +18,10 @@ Editor fonts are per-theme. Edit them on the theme's Fonts tab under [Appearance
 |---------|---------|-------|
 | Show line numbers | On | |
 | Highlight current line | On | |
+| Highlight current statement | On | A faint band behind the statement the cursor is in. See [Statement markers](/features/sql-editor#statement-markers) |
 | Word wrap | Off | Off means long lines scroll horizontally |
-| Code folding | On | Shows the fold ribbon in the gutter. See [Code Folding](/features/sql-editor#code-folding) |
+| Code folding | On | Shows the fold ribbon in the gutter. See [Code Folding](/features/code-folding) |
+| Run button beside each statement | On | Gutter run buttons, revealed when the pointer is over the gutter |
 | Tab width | 4 spaces | 2, 4, or 8 |
 | Auto-uppercase keywords | Off | Uppercases SQL keywords on word boundaries. Strings, comments, and quoted identifiers are untouched |
 | Query parameters (`:name` syntax) | On | Detects `:name` placeholders and shows the parameter panel. See [Query Parameters](/features/query-parameters) |
