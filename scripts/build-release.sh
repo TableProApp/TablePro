@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck source=lib/macos.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
+
 # Build script for creating architecture-specific releases
 # Usage: ./build-release.sh [arm64|x86_64|both]
 
@@ -14,171 +17,6 @@ TEAM_ID="D7HJ5TFYCU"
 NOTARIZE="${NOTARIZE:-false}"
 
 echo "🏗️  Building TablePro for: $ARCH"
-
-# Ensure libmariadb.a has correct architecture
-prepare_mariadb() {
-    local target_arch=$1
-    echo "📦 Preparing libmariadb.a for $target_arch..."
-
-    # If libmariadb.a already exists with the correct architecture, skip preparation.
-    # CI pre-copies the architecture-specific slice from Libs via scripts/ci/prepare-libs.sh.
-    # Homebrew is not involved: the whole library is vendored by download-libs.sh.
-    if [ -f "Libs/libmariadb.a" ] && lipo -info "Libs/libmariadb.a" 2>/dev/null | grep -q "$target_arch"; then
-        local size
-        size=$(ls -lh Libs/libmariadb.a 2>/dev/null | awk '{print $5}')
-        echo "✅ libmariadb.a already present for $target_arch ($size), skipping"
-        return 0
-    fi
-
-    # Change to Libs directory
-    cd Libs || {
-        echo "❌ FATAL: Cannot access Libs directory"
-        exit 1
-    }
-
-    # Check if universal library exists
-    if [ ! -f "libmariadb_universal.a" ]; then
-        echo "❌ ERROR: libmariadb_universal.a not found!"
-        echo "Run this first to create universal library:"
-        echo "  lipo -create libmariadb_arm64.a libmariadb_x86_64.a -output libmariadb_universal.a"
-        cd - > /dev/null
-        exit 1
-    fi
-
-    # Extract thin slice for target architecture
-    if ! lipo libmariadb_universal.a -thin "$target_arch" -output libmariadb.a; then
-        echo "❌ FATAL: Failed to extract $target_arch slice from universal library"
-        echo "Ensure the universal library contains $target_arch architecture"
-        cd - > /dev/null
-        exit 1
-    fi
-
-    # Verify the output file was created
-    if [ ! -f "libmariadb.a" ]; then
-        echo "❌ FATAL: libmariadb.a was not created successfully"
-        cd - > /dev/null
-        exit 1
-    fi
-
-    # Get and display size
-    local size
-    size=$(ls -lh libmariadb.a 2>/dev/null | awk '{print $5}')
-    if [ -z "$size" ]; then
-        size="unknown"
-    fi
-
-    echo "✅ libmariadb.a is now $target_arch-only ($size)"
-
-    cd - > /dev/null || exit 1
-}
-
-# Ensure libpq + OpenSSL static libraries have correct architecture
-prepare_libpq() {
-    local target_arch=$1
-    echo "📦 Preparing libpq + OpenSSL static libraries for $target_arch..."
-
-    local all_ok=1
-    for lib in libpq libpgcommon libpgport libssl libcrypto; do
-        # If already present with the correct architecture, skip
-        if [ -f "Libs/${lib}.a" ] && lipo -info "Libs/${lib}.a" 2>/dev/null | grep -q "$target_arch"; then
-            continue
-        fi
-
-        if [ ! -f "Libs/${lib}_universal.a" ]; then
-            echo "❌ ERROR: Libs/${lib}_universal.a not found!"
-            echo "Run this first: ./scripts/build-libpq.sh both"
-            all_ok=0
-            continue
-        fi
-
-        if ! lipo "Libs/${lib}_universal.a" -thin "$target_arch" -output "Libs/${lib}.a"; then
-            echo "❌ FATAL: Failed to extract $target_arch slice from ${lib}_universal.a"
-            exit 1
-        fi
-    done
-
-    if [ "$all_ok" -eq 0 ]; then
-        exit 1
-    fi
-
-    echo "✅ libpq + OpenSSL libraries ready for $target_arch"
-}
-
-prepare_libmongoc() {
-    local target_arch=$1
-    echo "📦 Preparing libmongoc + libbson static libraries for $target_arch..."
-
-    local all_ok=1
-    for lib in libmongoc libbson; do
-        # If already present with the correct architecture, skip
-        if [ -f "Libs/${lib}.a" ] && lipo -info "Libs/${lib}.a" 2>/dev/null | grep -q "$target_arch"; then
-            continue
-        fi
-
-        # Try arch-specific file first (libmongoc_arm64.a)
-        if [ -f "Libs/${lib}_${target_arch}.a" ]; then
-            cp "Libs/${lib}_${target_arch}.a" "Libs/${lib}.a"
-            continue
-        fi
-
-        # Fall back to universal
-        if [ ! -f "Libs/${lib}_universal.a" ]; then
-            echo "❌ ERROR: Libs/${lib}_${target_arch}.a and Libs/${lib}_universal.a not found!"
-            echo "Run this first: ./scripts/build-libmongoc.sh both"
-            all_ok=0
-            continue
-        fi
-
-        if ! lipo "Libs/${lib}_universal.a" -thin "$target_arch" -output "Libs/${lib}.a"; then
-            echo "❌ FATAL: Failed to extract $target_arch slice from ${lib}_universal.a"
-            exit 1
-        fi
-    done
-
-    if [ "$all_ok" -eq 0 ]; then
-        exit 1
-    fi
-
-    echo "✅ libmongoc + libbson libraries ready for $target_arch"
-}
-
-prepare_hiredis() {
-    local target_arch=$1
-    echo "📦 Preparing hiredis static libraries for $target_arch..."
-
-    local all_ok=1
-    for lib in libhiredis libhiredis_ssl; do
-        # If already present with the correct architecture, skip
-        if [ -f "Libs/${lib}.a" ] && lipo -info "Libs/${lib}.a" 2>/dev/null | grep -q "$target_arch"; then
-            continue
-        fi
-
-        # Try arch-specific file first
-        if [ -f "Libs/${lib}_${target_arch}.a" ]; then
-            cp "Libs/${lib}_${target_arch}.a" "Libs/${lib}.a"
-            continue
-        fi
-
-        # Fall back to universal
-        if [ ! -f "Libs/${lib}_universal.a" ]; then
-            echo "❌ ERROR: Libs/${lib}_${target_arch}.a and Libs/${lib}_universal.a not found!"
-            echo "Run this first: ./scripts/build-hiredis.sh both"
-            all_ok=0
-            continue
-        fi
-
-        if ! lipo "Libs/${lib}_universal.a" -thin "$target_arch" -output "Libs/${lib}.a"; then
-            echo "❌ FATAL: Failed to extract $target_arch slice from ${lib}_universal.a"
-            exit 1
-        fi
-    done
-
-    if [ "$all_ok" -eq 0 ]; then
-        exit 1
-    fi
-
-    echo "✅ hiredis libraries ready for $target_arch"
-}
 
 # Bundle non-system dynamic libraries into the app bundle
 # so the app runs without Homebrew on end-user machines.
@@ -312,10 +150,8 @@ build_for_arch() {
     echo "🔨 Building for $arch..."
 
     # Prepare architecture-specific libraries
-    prepare_mariadb "$arch"
-    prepare_libpq "$arch"
-    prepare_libmongoc "$arch"
-    prepare_hiredis "$arch"
+    echo "📦 Preparing static libraries for $arch..."
+    prepare_arch_libs "$arch" libmariadb libpq libpgcommon libpgport libssl libcrypto libmongoc libbson libhiredis libhiredis_ssl
 
     # Create OpenSSL shared dylibs for this architecture
     echo "📦 Creating OpenSSL shared dylibs for $arch..."

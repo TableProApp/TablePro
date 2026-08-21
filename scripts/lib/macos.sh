@@ -127,3 +127,53 @@ build_openssl() {
 
     echo "✅ OpenSSL $arch: $(du -h "$prefix/lib/libssl.a" | cut -f1) (libssl) $(du -h "$prefix/lib/libcrypto.a" | cut -f1) (libcrypto)"
 }
+
+# Puts the named libraries in Libs/<name>.a at the requested architecture, which is what
+# project.yml links.
+#
+# Three sources, in order: a slice that is already correct, a per-architecture file, or a thinned
+# universal. This existed in five places that disagreed. build-release.sh carried four
+# near-identical functions, 159 lines between them, one of which cd'd into Libs and one of which
+# only ever thinned the universal; scripts/ci/prepare-libs.sh did a bare `cp` of the per-arch file
+# with no fallback at all, so the two took different sources for the same library.
+# The architectures in a Mach-O archive, space separated, or empty if it is not there.
+current_arch() {
+    [ -f "$1" ] || return 0
+    lipo -info "$1" 2> /dev/null | sed 's/.*: //' | tr -s ' ' | sed 's/ $//'
+}
+
+prepare_arch_libs() {
+    local target_arch="$1"
+    shift
+    local lib unresolved=0
+
+    for lib in "$@"; do
+        # An exact match, not "contains". `lipo -info | grep -q arm64` also matches a universal,
+        # so the substring form left fat libraries in place and the release linked those instead
+        # of the slice it asked for.
+        if [ "$(current_arch "$LIBS_DIR/${lib}.a")" = "$target_arch" ]; then
+            continue
+        fi
+
+        if [ -f "$LIBS_DIR/${lib}_${target_arch}.a" ]; then
+            cp "$LIBS_DIR/${lib}_${target_arch}.a" "$LIBS_DIR/${lib}.a"
+            continue
+        fi
+
+        if [ ! -f "$LIBS_DIR/${lib}_universal.a" ]; then
+            echo "ERROR: neither $LIBS_DIR/${lib}_${target_arch}.a nor ${lib}_universal.a exists" >&2
+            unresolved=1
+            continue
+        fi
+
+        if ! lipo "$LIBS_DIR/${lib}_universal.a" -thin "$target_arch" -output "$LIBS_DIR/${lib}.a"; then
+            echo "ERROR: could not extract the $target_arch slice from ${lib}_universal.a" >&2
+            unresolved=1
+        fi
+    done
+
+    if [ "$unresolved" -ne 0 ]; then
+        echo "       run scripts/download-libs.sh, or rebuild the library it names" >&2
+        return 1
+    fi
+}
