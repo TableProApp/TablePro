@@ -41,12 +41,12 @@ Quack is DuckDB's client-server protocol. A DuckDB server exposes itself with `q
 
 Click **Save & Connect**. TablePro opens an in-memory DuckDB, registers the token as a secret, and attaches the remote server.
 
-<Warning>
+<Info>
 Remote (Quack) is experimental and matches the Quack beta:
 - You can run SQL against the remote, for example `SELECT * FROM alias.main.your_table`.
 - The sidebar cannot list remote tables yet; the Quack beta cannot enumerate a remote catalog.
 - On macOS the quack extension downloads from the DuckDB extension registry on first use, so the first remote connection needs network access.
-</Warning>
+</Info>
 
 ## Connection URL
 

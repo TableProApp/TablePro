@@ -14,11 +14,11 @@ Export data in five formats (CSV, JSON, SQL, MQL, XLSX), import SQL, JSON, and C
 
 TablePro remembers the last format and options you exported with. Option changes stick only after a successful export; cancelling the dialog discards them. **Reset to Defaults** under the options restores the stock settings for the current format.
 
-<Note>
+<Info>
 **MongoDB**: SQL export is not available. Use MQL, which generates `db.collection.insertMany([…])` scripts for `mongosh`. **Redis**: SQL and MQL exports are not available.
 
 MQL writes top-level typed values as the constructors mongosh understands, so `_id` comes back as an `ObjectId`, a date as an `ISODate`, and binary as `BinData` with its real subtype. A typed value **nested inside a subdocument or array** is written as a string, because the parent is serialized to JSON before the exporter sees it. Re-importing such a script gives you a string where the original held an ObjectId, date, or binary. Export those collections as JSON, or use `mongodump`.
-</Note>
+</Info>
 
 <Frame caption="Export dialog">
   <img className="block dark:hidden" src="/images/export-dialog.png" alt="Export dialog" />

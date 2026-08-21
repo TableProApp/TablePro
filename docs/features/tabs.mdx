@@ -132,9 +132,9 @@ To point an existing tab somewhere else, use the database picker in the query ed
 
 The window subtitle shows the database, and the schema on engines that have one, that the frontmost tab is bound to. Tabs for the same connection can be bound to different databases, so the subtitle is how you tell them apart.
 
-<Note>
+<Info>
 PostgreSQL, Redshift, and CockroachDB can only change database by reconnecting. A tab bound to a database other than the connection's active one runs its queries on a separate connection for that database, so it does not share temp tables, session variables, or an open transaction with the query editor on the main connection. See [PostgreSQL](/databases/postgresql#cross-database-tabs).
-</Note>
+</Info>
 
 ## Tab persistence
 

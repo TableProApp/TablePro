@@ -51,9 +51,9 @@ turso db tokens create <database-name>
 
 The default sqld HTTP endpoint is `http://localhost:8080`. If you started sqld without `--auth-jwt-key-file`, leave the token empty. With JWT authentication enabled, generate a token matching your configured key.
 
-<Warning>
+<Danger>
 Do not open a file that is being synced as a Turso embedded replica while the owning app is running. Concurrent access to a syncing replica can corrupt it.
-</Warning>
+</Danger>
 
 ## Schema and triggers
 

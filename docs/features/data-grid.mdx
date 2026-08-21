@@ -34,9 +34,9 @@ Click a header to cycle through ascending, descending, and off. `Shift`-click an
 
 To sort on open, set **Settings > Data > Default row sort** to **Primary key** or **First column** (default is **No sorting**). A click on any header still overrides it.
 
-<Note>
+<Warning>
 If the sort column can't be ordered on the server (a `BLOB`, `JSON`, or spatial column), the query fails. Pick another column or set the default back to No sorting.
-</Note>
+</Warning>
 
 ### Filter
 
@@ -50,9 +50,9 @@ The header gives you two filters:
   <img className="hidden dark:block" src="/images/value-filter-popover-dark.png" alt="Value filter popover" />
 </Frame>
 
-<Note>
+<Warning>
 Value filters run on the rows already loaded, so they cover the current page only.
-</Note>
+</Warning>
 
 ### Resize and hide
 

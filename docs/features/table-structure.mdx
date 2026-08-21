@@ -87,9 +87,9 @@ Lists the table's triggers with **Name**, **Timing** (BEFORE, AFTER, INSTEAD OF)
 
 **New Trigger**, **Edit**, and **Delete** in the tab's toolbar manage triggers. The editor opens the trigger's actual DDL so the whole definition round-trips; for PostgreSQL it includes the trigger function so you can edit the logic. Saving runs the right statements for the engine, wrapped in a transaction where the engine supports transactional DDL. Deleting asks for confirmation.
 
-<Note>
+<Info>
 Triggers are available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1; the tab is hidden elsewhere. Oracle does not return the trigger body, so editing starts from the trigger header.
-</Note>
+</Info>
 
 ## DDL tab
 
@@ -109,9 +109,9 @@ Choose **Database > New Table…**, or right-click the empty space in the sideba
 
 Click **Create Table** (`Cmd+Return` or `Cmd+S`) to execute. TablePro opens the new table and refreshes the sidebar.
 
-<Note>
+<Info>
 Visual table creation is supported for MySQL, MariaDB, PostgreSQL, PGlite, SQLite, SQL Server, ClickHouse, DuckDB, Oracle, Snowflake, libSQL, Cloudflare D1, Trino, and Teradata.
-</Note>
+</Info>
 
 ## Limitations
 

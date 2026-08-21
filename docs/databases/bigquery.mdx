@@ -64,9 +64,9 @@ FROM `my_dataset.items`, UNNEST(tags) AS tag
 SELECT address.city FROM `my_dataset.customers`
 ```
 
-<Tip>
+<Note>
 Backtick-quote table names: `` `dataset.table` ``. Single-quote strings: `'value'`.
-</Tip>
+</Note>
 
 **Query Cost**: After running a query in the SQL editor, the status bar shows bytes processed, bytes billed, and estimated cost (e.g., `Processed: 1.5 MB | Billed: 10 MB | ~$0.0001`). Use the **Dry Run** option (Explain dropdown > "Dry Run (Cost)") to check cost before executing.
 

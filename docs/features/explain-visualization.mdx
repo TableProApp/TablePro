@@ -96,10 +96,6 @@ Each node in the plan shows:
 
 Click a node to see all properties including join type, index name, filter conditions, and sort keys.
 
-<Note>
-`EXPLAIN ANALYZE` runs the query. When Safe Mode asks for confirmation before running a query, it now asks before an EXPLAIN too, whichever way you started it. Use the Stop button to cancel one that is taking too long.
-</Note>
-
-<Note>
-EXPLAIN does not execute the query. EXPLAIN ANALYZE executes it and shows actual timing; use it cautiously on production systems.
-</Note>
+<Warning>
+`EXPLAIN` does not run the query. `EXPLAIN ANALYZE` does, so on a production server it costs whatever the query costs. Safe Mode asks before an EXPLAIN too, whichever way you started it, and the Stop button cancels one that is taking too long.
+</Warning>

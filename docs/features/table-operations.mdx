@@ -27,9 +27,9 @@ Click **Drop** or **Truncate** to execute, or **Cancel**.
   <img className="hidden dark:block" src="/images/drop-table-dialog-dark.png" alt="Drop table dialog" />
 </Frame>
 
-<Warning>
+<Danger>
 Dropping is irreversible. On MySQL and MariaDB, truncate also resets the auto-increment counter. Back up important data first.
-</Warning>
+</Danger>
 
 ## Maintenance
 
@@ -83,9 +83,9 @@ Click **New Database…** at the bottom of the switcher. The form fields come fr
 
 Right-click a database in the switcher or in the sidebar tree and choose **Drop Database…**. The item is hidden for system databases and for the database you are currently connected to; switch to another one first. A confirmation dialog shows the database name in its title with a red **Drop Database** button.
 
-<Warning>
+<Danger>
 Dropping a database permanently deletes all its tables and data. The server rejects the drop if your account lacks the required privilege.
-</Warning>
+</Danger>
 
 ### Work on several databases at once
 
@@ -106,6 +106,6 @@ Databases the server will not let you drop are left out of the Drop item: system
 
 On engines that group tables by schema, the same menu appears on a schema row. PostgreSQL, SQL Server and SurrealDB support it. PostgreSQL drops the schema with `CASCADE`, so objects that depend on it go too. SQL Server has no cascade, so it refuses to drop a schema that still holds objects; drop those first.
 
-<Warning>
+<Danger>
 Dropping a schema permanently deletes everything in it. On PostgreSQL it also drops objects in other schemas that depend on it.
-</Warning>
+</Danger>

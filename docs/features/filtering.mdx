@@ -29,9 +29,9 @@ To delete every saved filter row for the current table, open the **⋯** menu an
 
 The filter panel queries the database. To narrow rows already loaded in the grid without re-querying, use the column value filter in the [Data Grid](/features/data-grid).
 
-<Note>
+<Info>
 Redis shows a key-pattern search bar (for example `user:*`) with a key-type picker instead of the filter panel.
-</Note>
+</Info>
 
 ## Operators
 
@@ -45,9 +45,9 @@ Contains, not contains, starts with, and ends with ignore case. Equals, not equa
 
 TablePro picks the fastest form each database offers: `ILIKE` on PostgreSQL, DuckDB, CockroachDB, and Snowflake, and `LOWER()` on both sides for Oracle, BigQuery, ClickHouse, and Redshift, whose `ILIKE` only folds ASCII. Trino has no `ILIKE`, so it uses `regexp_like` with the `i` flag.
 
-<Note>
+<Info>
 On MySQL, MariaDB, SQL Server, SQLite, libSQL, and Cloudflare D1 the column's collation decides case sensitivity and TablePro cannot override it per query, so **Match Case** is dimmed. The default collation on these databases already ignores case. Cassandra and Redis have no case-insensitive matching at all, so the option is dimmed there too.
-</Note>
+</Info>
 
 Filters saved before this option existed follow the same rules, so a saved "contains" filter now ignores case on PostgreSQL, DuckDB, Oracle, and BigQuery. Turn **Match Case** on to get the old behavior back.
 

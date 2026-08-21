@@ -55,9 +55,9 @@ You can also paste a multi-host URI directly:
 mongodb://user:pass@host1:27017,host2:27017,host3:27017/db?replicaSet=rs0
 ```
 
-<Note>
+<Warning>
 Over an SSH tunnel TablePro connects to the first host only and drops the rest of the list. Replica set discovery and failover are off for that session.
-</Note>
+</Warning>
 
 ## SSL/TLS
 
