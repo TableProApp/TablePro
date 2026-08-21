@@ -98,8 +98,11 @@ jobs:
       - name: Setup XcodeGen
         uses: ./.github/actions/setup-xcodegen
 
+      # The iOS project only. The macOS spec names Libs/dylibs/*.dylib by path and XcodeGen
+      # validates that at generation time, so generating it here failed before the static
+      # libraries were even downloaded, and nothing in this job builds it.
       - name: Generate Xcode project
-        run: scripts/generate-project.sh
+        run: scripts/generate-project.sh ios
 
       - name: Cache static libraries
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
