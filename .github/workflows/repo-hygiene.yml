@@ -14,7 +14,10 @@ on:
       - ".github/actions/**"
       - ".github/scripts/**"
       - ".github/plugin-registry.json"
+      - ".github/duplicate-contract-baseline.txt"
       - "Plugins/**/*.swift"
+      - "TablePro/**/*.swift"
+      - "Packages/**/*.swift"
   push:
     branches: [main]
     paths:
@@ -23,7 +26,10 @@ on:
       - ".github/actions/**"
       - ".github/scripts/**"
       - ".github/plugin-registry.json"
+      - ".github/duplicate-contract-baseline.txt"
       - "Plugins/**/*.swift"
+      - "TablePro/**/*.swift"
+      - "Packages/**/*.swift"
   workflow_dispatch:
 
 concurrency:
@@ -68,3 +74,10 @@ jobs:
 
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py
+
+      # A check that guarded a real invariant and ran nowhere. Pure grep over Swift sources, so it
+      # belongs on the free Linux runner. The MongoDB filter-shape check is the other one that was
+      # orphaned, but it compiles a C probe against Libs/libbson, so it lives in the macOS build
+      # job in macos-tests.yml where the toolchain and the libraries already are.
+      - name: Check the shared-contract drift gates
+        run: scripts/audit-refactor-health.sh --check

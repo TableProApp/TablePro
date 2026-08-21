@@ -25,6 +25,18 @@ SOURCE_APP="${3:-build/Release/${APP_NAME}.app}"
 DMG_NAME="${APP_NAME}-${VERSION}-${ARCH}.dmg"
 VOLUME_NAME="${APP_NAME} ${VERSION}"
 FINAL_DMG="build/Release/$DMG_NAME"
+
+# The hdiutil fallback below attaches a volume and writes a temp image. Without this, a failure
+# anywhere between the attach and the detach leaves both behind, and the next run then fails on a
+# volume name that is already mounted.
+TEMP_DMG=""
+MOUNT_DIR=""
+cleanup_dmg() {
+    [ -n "$MOUNT_DIR" ] && [ -d "$MOUNT_DIR" ] && hdiutil detach "$MOUNT_DIR" -quiet 2> /dev/null || true
+    [ -n "$TEMP_DMG" ] && rm -f "$TEMP_DMG" || true
+}
+trap cleanup_dmg EXIT
+
 SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Dat Ngo Quoc (D7HJ5TFYCU)}"
 NOTARIZE="${NOTARIZE:-false}"
 

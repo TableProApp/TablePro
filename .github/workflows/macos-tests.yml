@@ -186,6 +186,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh
 
+      # Compiles a C probe against Libs/libbson and parses every filter document the MongoDB
+      # query builder can emit. It guarded that invariant and ran nowhere; it needs clang and the
+      # vendored libraries, so this is the first job where it can run at all.
+      - name: Check the MongoDB filter shapes against the query builder
+        run: scripts/check-mongodb-filter-shapes.sh
+
       # Cargo and rustup need access outside Xcode's user-script sandbox. Build the
       # native bridge explicitly before compiling the driver target.
       - name: Build Dameng native bridge
