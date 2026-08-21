@@ -27,8 +27,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
 LIBSSH2_SHA256="d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7"
 
 ARCH="${1:-both}"
-BUILD_DIR="$(mktemp -d)"
-NCPU=$(sysctl -n hw.ncpu)
+make_build_dir
 
 echo "🔧 Building static libssh2 $LIBSSH2_VERSION + OpenSSL $OPENSSL_VERSION"
 echo "   Deployment target: macOS $DEPLOY_TARGET"
@@ -36,11 +35,6 @@ echo "   Architecture: $ARCH"
 echo "   Build dir: $BUILD_DIR"
 echo ""
 
-cleanup() {
-    echo "🧹 Cleaning up build directory..."
-    rm -rf "$BUILD_DIR"
-}
-trap cleanup EXIT
 
 download_sources() {
     echo "📥 Downloading source tarballs..."

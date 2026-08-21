@@ -32,8 +32,7 @@ ARCH="${1:-both}"
 # deleted when the driver moved into a plugin bundle, so this script was installing them where
 # nothing read them and leaving the real ones untouched.
 HEADER_DIR="$REPO_ROOT/Plugins/RedisDriverPlugin/CRedis/include/hiredis"
-BUILD_DIR="$(mktemp -d)"
-NCPU=$(sysctl -n hw.ncpu)
+make_build_dir
 
 echo "🔧 Building static hiredis $HIREDIS_VERSION + OpenSSL $OPENSSL_VERSION"
 echo "   Deployment target: macOS $DEPLOY_TARGET"
@@ -41,11 +40,6 @@ echo "   Architecture: $ARCH"
 echo "   Build dir: $BUILD_DIR"
 echo ""
 
-cleanup() {
-    echo "🧹 Cleaning up build directory..."
-    rm -rf "$BUILD_DIR"
-}
-trap cleanup EXIT
 
 download_sources() {
     echo "📥 Downloading source tarballs..."

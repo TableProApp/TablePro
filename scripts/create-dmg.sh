@@ -256,17 +256,8 @@ echo "✅ DMG signed"
 
 # Notarize the DMG (opt-in via NOTARIZE=true)
 if [ "$NOTARIZE" = "true" ]; then
-    echo "📮 Notarizing DMG..."
-    if xcrun notarytool submit "$FINAL_DMG" --keychain-profile "TablePro" --wait; then
-        xcrun stapler staple "$FINAL_DMG"
-        # Stapling can report success and still leave no usable ticket, which is why
-        # build-plugin.sh validates after stapling. The DMG had no such check.
-        xcrun stapler validate "$FINAL_DMG"
-        echo "✅ DMG notarized and stapled"
-    else
-        echo "❌ DMG notarization failed"
-        exit 1
-    fi
+    # "open", not "exec": a user opens a disk image, they do not launch it.
+    notarize_and_staple "$FINAL_DMG" open
 fi
 
 # Get final size

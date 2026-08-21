@@ -33,8 +33,7 @@ ARCH="${1:-both}"
 # TablePro/Core/Database/CLibPQ/include, which no longer exists, so every rebuild recreated a dead
 # directory and never updated the headers the plugin actually compiles against.
 HEADER_DIR="$REPO_ROOT/Plugins/PostgreSQLDriverPlugin/CLibPQ/include"
-BUILD_DIR="$(mktemp -d)"
-NCPU=$(sysctl -n hw.ncpu)
+make_build_dir
 
 echo "🔧 Building static libpq $PG_VERSION + OpenSSL $OPENSSL_VERSION"
 echo "   Deployment target: macOS $DEPLOY_TARGET"
@@ -42,11 +41,6 @@ echo "   Architecture: $ARCH"
 echo "   Build dir: $BUILD_DIR"
 echo ""
 
-cleanup() {
-    echo "🧹 Cleaning up build directory..."
-    rm -rf "$BUILD_DIR"
-}
-trap cleanup EXIT
 
 download_sources() {
     echo "📥 Downloading source tarballs..."

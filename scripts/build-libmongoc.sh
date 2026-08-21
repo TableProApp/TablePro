@@ -32,8 +32,7 @@ MONGOC_SHA256="a93259840f461b28e198311e32144f5f8dc9fbd74348029f2793774d781bb7da"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
 
 ARCH="${1:-both}"
-BUILD_DIR="$(mktemp -d)"
-NCPU=$(sysctl -n hw.ncpu)
+make_build_dir
 
 echo "🔧 Building static libmongoc $MONGOC_VERSION + OpenSSL $OPENSSL_VERSION"
 echo "   Deployment target: macOS $DEPLOY_TARGET"
@@ -41,11 +40,6 @@ echo "   Architecture: $ARCH"
 echo "   Build dir: $BUILD_DIR"
 echo ""
 
-cleanup() {
-    echo "🧹 Cleaning up build directory..."
-    rm -rf "$BUILD_DIR"
-}
-trap cleanup EXIT
 
 download_sources() {
     echo "📥 Downloading source tarballs..."

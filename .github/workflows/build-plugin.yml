@@ -162,14 +162,13 @@ jobs:
       - name: Build plugin binaries
         env:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          NOTARY_PROFILE: TablePro
           NOTARIZE: "true"
           TARGET: ${{ steps.plugin.outputs.target }}
           VERSION: ${{ steps.plugin.outputs.version }}
-        run: |
-          ./scripts/build-plugin.sh "$TARGET" arm64 "$VERSION"
-          ./scripts/build-plugin.sh "$TARGET" x86_64 "$VERSION"
+        # One invocation, not one per architecture. The script has always taken "both", and
+        # each invocation regenerates both Xcode projects and wipes build/DerivedData, so calling
+        # it twice threw away everything the first architecture had compiled.
+        run: ./scripts/build-plugin.sh "$TARGET" both "$VERSION"
 
       # Assert the result rather than trusting the flag. The previous notarization step was
       # gated on an environment variable nothing defined, so it never ran and nothing noticed

@@ -32,16 +32,13 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIBS_DIR="$PROJECT_DIR/Libs"
-BUILD_DIR="$(mktemp -d)"
-NCPU=$(sysctl -n hw.ncpu)
+make_build_dir
 
 if [ -z "$OPENSSL_ROOT" ] || [ ! -d "$OPENSSL_ROOT" ]; then
     echo "ERROR: OpenSSL 3 not found. Install with 'brew install openssl@3' or set OPENSSL_ROOT." >&2
     exit 1
 fi
 
-cleanup() { rm -rf "$BUILD_DIR"; }
-trap cleanup EXIT
 
 echo "Building MariaDB Connector/C $MARIADB_VERSION for macOS (OpenSSL: $OPENSSL_ROOT)"
 

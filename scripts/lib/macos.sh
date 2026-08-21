@@ -177,3 +177,17 @@ prepare_arch_libs() {
         return 1
     fi
 }
+
+# Every library build wants one private scratch directory that goes away on exit. Five scripts
+# each declared their own BUILD_DIR, an identical three-line cleanup() and the same trap; one of
+# them had leaked its directory on every run until #2352.
+#
+# The trap body is single-quoted so it reads BUILD_DIR when it fires, not when it is installed.
+# It replaces any EXIT trap already in place, so a script that needs to remove more than this
+# directory installs its own instead (build-freetds.sh does, for its tarball cache).
+make_build_dir() {
+    BUILD_DIR="$(mktemp -d)"
+    trap 'rm -rf "$BUILD_DIR"' EXIT
+}
+
+NCPU="$(sysctl -n hw.ncpu)"

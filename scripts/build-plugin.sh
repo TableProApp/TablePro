@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/notarize.sh"
+
 # Build script for creating standalone plugin bundles
 # Usage: ./scripts/build-plugin.sh <PluginTarget> [arm64|x86_64|both] [version]
 # Example: ./scripts/build-plugin.sh OracleDriverPlugin arm64 1.0.0
@@ -19,10 +21,6 @@ BUILD_DIR="build/Plugins"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 TEAM_ID="${TEAM_ID:-}"
 NOTARIZE="${NOTARIZE:-false}"
-APPLE_ID="${APPLE_ID:-}"
-# The workflow's "Configure notarization" step stores its credentials under this
-# name. A local build that keeps its own profile can override it.
-NOTARY_PROFILE="${NOTARY_PROFILE:-TablePro}"
 
 if [ -z "$TEAM_ID" ]; then
     echo "ERROR: TEAM_ID is not set. Pass via env or set in your shell profile." >&2
@@ -178,59 +176,15 @@ create_zip() {
 # published before this ran was unnotarized, because the workflow gated the step on an
 # environment variable nothing ever set.
 #
-# notarytool only accepts an archive, so the bundle is zipped to a throwaway path for the
-# submission. The ticket then has to be stapled into the bundle itself, or every user needs
-# a live round trip to Apple on first load and an offline Mac never gets one. Stapling
-# rewrites the bundle, so the distribution zip and its SHA-256 must both be produced after
-# it: the registry manifest pins that checksum and PluginInstaller rejects a mismatch.
-notarize_and_staple() {
-    local plugin_path=$1
-
+# Stapling rewrites the bundle, so the distribution zip and its SHA-256 must both be produced
+# after it: the registry manifest pins that checksum and PluginInstaller rejects a mismatch.
+notarize_plugin() {
     if [ "$NOTARIZE" != "true" ]; then
         echo "Skipping notarization (set NOTARIZE=true to enable)"
         return
     fi
-
-    if [ -z "$APPLE_ID" ]; then
-        echo "ERROR: APPLE_ID is not set but NOTARIZE=true." >&2
-        echo "       Pass APPLE_ID=<your-apple-id>, and store credentials with" >&2
-        echo "       xcrun notarytool store-credentials \"$NOTARY_PROFILE\"." >&2
-        exit 1
-    fi
-
-    local submission_zip
-    submission_zip="$(mktemp -d)/$(basename "$plugin_path" .tableplugin)-notarize.zip"
-    ditto -c -k --keepParent "$plugin_path" "$submission_zip"
-
-    echo "Submitting $(basename "$plugin_path") for notarization..."
-    if ! xcrun notarytool submit "$submission_zip" \
-        --apple-id "$APPLE_ID" \
-        --team-id "$TEAM_ID" \
-        --keychain-profile "$NOTARY_PROFILE" \
-        --wait; then
-        echo "FATAL: Notarization failed for $plugin_path" >&2
-        exit 1
-    fi
-
-    echo "Stapling the ticket into the bundle..."
-    if ! xcrun stapler staple "$plugin_path"; then
-        echo "FATAL: Stapling failed for $plugin_path" >&2
-        exit 1
-    fi
-
-    if ! xcrun stapler validate "$plugin_path"; then
-        echo "FATAL: The stapled ticket did not validate for $plugin_path" >&2
-        exit 1
-    fi
-
-    # spctl is what a user's Mac runs. A pass here is the only proof the bundle will load.
-    if ! spctl -a -vvv -t open --context context:primary-signature "$plugin_path" 2>&1 | grep -q "accepted"; then
-        echo "FATAL: Gatekeeper still rejects $plugin_path after notarization" >&2
-        spctl -a -vvv -t open --context context:primary-signature "$plugin_path" || true
-        exit 1
-    fi
-
-    echo "Notarized, stapled and accepted by Gatekeeper"
+    # "open", not "exec": a plugin bundle is opened by the app, not launched.
+    notarize_and_staple "$1" open
 }
 
 # TablePro.xcodeproj is generated and not in git, so a fresh checkout has none.
@@ -244,15 +198,15 @@ mkdir -p "$BUILD_DIR"
 case "$ARCH" in
     arm64|x86_64)
         plugin_path=$(build_plugin "$ARCH")
-        notarize_and_staple "$plugin_path"
+        notarize_plugin "$plugin_path"
         create_zip "$plugin_path" "$ARCH"
         ;;
     both)
         arm64_path=$(build_plugin "arm64")
         x86_path=$(build_plugin "x86_64")
 
-        notarize_and_staple "$arm64_path"
-        notarize_and_staple "$x86_path"
+        notarize_plugin "$arm64_path"
+        notarize_plugin "$x86_path"
 
         create_zip "$arm64_path" "arm64"
         create_zip "$x86_path" "x86_64"

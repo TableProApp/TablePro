@@ -3,6 +3,7 @@ set -euo pipefail
 
 # shellcheck source=lib/macos.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/notarize.sh"
 
 # Build script for creating architecture-specific releases
 # Usage: ./build-release.sh [arm64|x86_64|both]
@@ -492,38 +493,9 @@ fi
 if [ "$NOTARIZE" = "true" ]; then
     echo ""
     echo "📮 Notarizing..."
-
-    # Requires: xcrun notarytool store-credentials "TablePro" --apple-id ... --team-id ... --password ...
     for app in "$BUILD_DIR"/TablePro-*.app; do
         [ -d "$app" ] || continue
-        name=$(basename "$app")
-        zip_path="$BUILD_DIR/${name%.app}.zip"
-        echo "   Zipping $name..."
-        ditto -c -k --keepParent "$app" "$zip_path"
-
-        echo "   Submitting $name for notarization..."
-        # Assigned before the substitution, then overwritten on failure. Written the other way
-        # round, `submit_status=$?` reads the exit status of the assignment, which is always 0,
-        # so every failure took the success branch and the log fetch below was unreachable.
-        submit_status=0
-        submit_output=$(xcrun notarytool submit "$zip_path" --keychain-profile "TablePro" --wait 2>&1) || submit_status=$?
-        echo "$submit_output"
-
-        submission_id=$(echo "$submit_output" | grep "id:" | head -1 | awk '{print $2}')
-
-        if [ $submit_status -eq 0 ] && echo "$submit_output" | grep -q "status: Accepted"; then
-            echo "   Stapling $name..."
-            xcrun stapler staple "$app"
-            echo "   ✅ $name notarized and stapled"
-        else
-            echo "   ❌ Notarization failed for $name"
-            if [ -n "$submission_id" ]; then
-                echo "   📋 Fetching notarization log for $submission_id..."
-                xcrun notarytool log "$submission_id" --keychain-profile "TablePro" 2>&1 || true
-            fi
-            exit 1
-        fi
-        rm -f "$zip_path"
+        notarize_and_staple "$app" exec
     done
     echo "✅ Notarization complete"
 fi
