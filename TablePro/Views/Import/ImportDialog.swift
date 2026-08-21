@@ -143,19 +143,20 @@ struct ImportDialog: View {
 
     // MARK: - Plugin Helpers
 
+    /// This dialog runs a file of statements. A format that needs a target table is routed to
+    /// `RowImportSheet` instead, so offering one here only ever produced "No target table
+    /// configured for row import" once the user pressed Import.
     private var availableFormats: [any ImportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
         return PluginManager.shared.allImportPlugins()
             .filter { plugin in
-                let supported = type(of: plugin).supportedDatabaseTypeIds
-                let excluded = type(of: plugin).excludedDatabaseTypeIds
-                if !supported.isEmpty && !supported.contains(dbTypeId) {
-                    return false
-                }
-                if excluded.contains(dbTypeId) {
-                    return false
-                }
-                return true
+                let pluginType = type(of: plugin)
+                return ImportRouting.isStatementFormat(
+                    requiresTargetTable: pluginType.requiresTargetTable,
+                    supportedDatabaseTypeIds: pluginType.supportedDatabaseTypeIds,
+                    excludedDatabaseTypeIds: pluginType.excludedDatabaseTypeIds,
+                    databaseTypeId: dbTypeId
+                )
             }
             .sorted { type(of: $0).formatDisplayName < type(of: $1).formatDisplayName }
     }

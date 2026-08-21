@@ -142,7 +142,7 @@ For MySQL the checkbox runs `SET FOREIGN_KEY_CHECKS = 0` and works on standard a
 |------|----------|
 | **Stop and Rollback** | Stops on first error. If transaction is enabled, rolls back all changes. Default. |
 | **Stop and Commit** | Stops on first error. Commits statements that succeeded before the error. |
-| **Skip and Continue** | Logs failed statements and continues. Transaction wrapping is disabled in this mode. |
+| **Skip and Continue** | Logs failed statements and continues. A line the parser cannot read is logged the same way. Transaction wrapping is disabled in this mode. |
 
 In **Skip and Continue** mode, failed statements are collected (up to 1,000) with line numbers and error messages. After import completes, a summary shows how many succeeded vs failed, with a scrollable error list and a **Copy Details** button.
 
@@ -176,6 +176,8 @@ Choose **File** > **Import** > **From CSV** and pick a `.csv` or `.tsv` file. Ta
 Quoted fields keep embedded commas and newlines (RFC 4180), and doubled quotes (`""`) decode to a single quote.
 
 ### Row Import Options
+
+A row where none of the fields match a mapped column writes nothing, so it is reported rather than counted as imported.
 
 CSV and JSON imports insert rows in batches through parameterized statements. The on-error and transaction options work the same as SQL import. They add one option of their own: **Delete existing rows before import**, which clears the target table first. The delete runs inside the import transaction, so a failed import in the default Stop and Rollback mode restores the deleted rows.
 

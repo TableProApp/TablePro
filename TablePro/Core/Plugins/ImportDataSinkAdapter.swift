@@ -64,9 +64,16 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             bindValues.append(value)
         }
 
-        guard !columns.isEmpty else { return }
-        guard let statement = rowGenerator.insertStatement(columns: columns, values: bindValues) else {
+        guard !columns.isEmpty else {
+            guard values.isEmpty else {
+                throw PluginImportError.importFailed(Self.unmappedRowMessage)
+            }
             return
+        }
+        guard let statement = rowGenerator.insertStatement(columns: columns, values: bindValues) else {
+            throw PluginImportError.importFailed(
+                String(format: String(localized: "Could not build an INSERT for %@"), targetTable)
+            )
         }
 
         _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
@@ -78,6 +85,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         }
         guard let rowGenerator else {
             throw PluginImportError.importFailed("Could not resolve SQL dialect for row import")
+        }
+
+        if rows.contains(where: { !$0.isEmpty && mappedColumnsAndValues($0).0.isEmpty }) {
+            throw PluginImportError.importFailed(Self.unmappedRowMessage)
         }
 
         var index = 0
@@ -103,12 +114,24 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             while offset < groupValues.count {
                 let end = min(offset + chunkSize, groupValues.count)
                 let chunk = Array(groupValues[offset..<end])
-                if let statement = rowGenerator.insertStatement(columns: columns, rows: chunk) {
-                    _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+                guard let statement = rowGenerator.insertStatement(columns: columns, rows: chunk) else {
+                    throw PluginImportError.importFailed(
+                        String(localized: "Could not build an INSERT for the mapped columns")
+                    )
                 }
+                _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
                 offset = end
             }
         }
+    }
+
+    /// A row carrying values none of which reach a mapped column writes nothing. Reporting it as
+    /// inserted is how "Import completed" came to overstate what reached the database, so it is
+    /// refused instead: skip-and-continue records it against its line, and the stop modes halt,
+    /// because a mapping that matches no field of a row holding data is one the user needs to look
+    /// at. A row with no values at all carries nothing to lose and passes through untouched.
+    private static var unmappedRowMessage: String {
+        String(localized: "No values in this row matched the column mapping")
     }
 
     private func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {
