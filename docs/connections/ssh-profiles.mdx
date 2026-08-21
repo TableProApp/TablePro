@@ -3,38 +3,39 @@ title: SSH Profiles
 description: Save SSH tunnel configurations as reusable profiles shared across connections
 ---
 
-Define an SSH tunnel config once, then reuse it across multiple connections. A profile stores the server (host, port, username), the authentication method, optional two-factor (TOTP) settings, and jump hosts. For tunnel mechanics (auth methods, TOTP modes, jump hosts, `~/.ssh/config` resolution, troubleshooting), see [SSH Tunneling](/connections/ssh-tunneling).
+One bastion, many connections. A profile holds the server (host, port, username), the authentication method, the two-factor settings, and the jump hosts, so every connection through that bastion stops repeating them. How the tunnel itself behaves is on [SSH Tunneling](/connections/ssh-tunneling).
 
-## Creating a profile
+## Create a profile
 
-1. Open any connection's **SSH Tunnel** pane
-2. Click **Create New Profile…**
-3. Fill in the server and authentication fields
-4. Click **Create**
-
-Select the profile from the **Profile** picker in other connections. A **Profile Details** disclosure shows the selected profile's settings. Changes to a profile apply to all connections using it.
+<Steps>
+  <Step title="Open any connection's SSH Tunnel pane">
+    **Create New Profile…** sits beside the **Profile** picker.
+  </Step>
+  <Step title="Fill in the server and authentication fields">
+    The same fields an inline config has, plus a name.
+  </Step>
+  <Step title="Click Create">
+    The profile now appears in the **Profile** picker of every connection.
+  </Step>
+</Steps>
 
 <Frame caption="Creating an SSH profile">
   <img className="block dark:hidden" src="/images/ssh-profile-create.png" alt="Creating an SSH profile" />
   <img className="hidden dark:block" src="/images/ssh-profile-create-dark.png" alt="Creating an SSH profile" />
 </Frame>
 
-To convert an existing inline SSH config into a profile, click **Save Current as Profile…**.
+**Save Current as Profile…** converts a connection that already has an inline config. Picking a profile swaps the inline fields for a read-only **Profile Details** summary; **Inline Configuration** in the same picker brings them back for a tunnel that belongs to one connection alone.
 
-## Profiles vs inline config
+## Test a profile
 
-Each connection can use either a shared profile or an inline (one-off) SSH config. Inline configs are stored with the connection and don't affect other connections. Profiles are stored globally and shared.
+**Test Connection** in the profile editor runs the handshake, verifies the host key, and authenticates, without touching a database. Success turns the button into a green checkmark reading **Connected**; failure marks it with a red X and prints the error beside it. An interactive prompt, a verification code for instance, appears here exactly as it would on connect.
 
-Use a profile when multiple connections go through the same bastion host. Use inline for a one-off tunnel specific to a single connection.
+## Edit and delete
 
-## Editing and deleting
+**Edit Profile…** opens the selected profile, and **Delete Profile** is at the bottom of that editor. The password, key passphrase, and TOTP secret are read from the profile at connect time, so correcting one there reaches every connection using it.
 
-Select a profile and click **Edit Profile…** to modify it. **Delete Profile** is at the bottom of the editor.
-
-## Testing a profile
-
-Click **Test Connection** in the profile editor to verify SSH settings without connecting to a database. TablePro performs the SSH handshake, verifies the host key, and authenticates. On success the button shows a green checkmark and **Connected** appears next to it. On failure the button shows a red X and the error appears in orange, cut to two lines. If the server asks for a verification code or another interactive response, the same prompt you'd see on Connect appears during the test.
+Deleting a profile leaves the connections that used it pointing at nothing. Each shows **Selected SSH profile no longer exists.** on its SSH Tunnel pane, with a **Switch to Inline Configuration** button, until it is given a tunnel config again.
 
 ## iCloud Sync
 
-SSH profiles sync across Macs when iCloud Sync is enabled with the **SSH Profiles** toggle on in **Settings > Account**. Passwords, key passphrases, and TOTP secrets stay in the local Keychain by default. Turning on the **Passwords** toggle (nested under **Connections**) syncs newly saved credentials via iCloud Keychain; re-save an existing password to include it.
+Profiles sync across Macs with iCloud Sync on and the **SSH Profiles** toggle set in **Settings > Account**. Passwords, key passphrases, and TOTP secrets stay in the local Keychain unless the **Passwords** toggle, nested under **Connections**, is on too, and that covers newly saved credentials only: re-save an existing password to include it.

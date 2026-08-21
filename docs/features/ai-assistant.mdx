@@ -3,147 +3,129 @@ title: AI Assistant
 description: "Built-in AI for SQL: chat with tool calling, inline suggestions, explain, optimize, and fix-error across 14 providers"
 ---
 
-One provider is active at a time, and it answers every AI request in the app, from the chat panel to the ghost text in the editor. Switch provider and all of them switch with it. Provider keys stay in the macOS Keychain.
+One provider is active at a time and answers every AI request in the app, from the chat panel to the ghost text in the editor. Switch it and all of them switch with it. Keys are yours and live in the macOS Keychain, so every request bills to your own account with that provider.
 
 ## Configure a provider
 
-Open **Settings > AI** (`Cmd+,`). The **Enable AI Features** toggle at the top gates the whole tab; turning it off also hides the per-connection AI policy in the connection form.
+Open **Settings > AI** (`Cmd+,`). **Enable AI Features** at the top gates the whole tab; turning it off also hides the per-connection AI policy in the connection form.
 
 <Frame caption="AI settings">
   <img className="block dark:hidden" src="/images/ai-chat-settings-provider.png" alt="AI settings" />
   <img className="hidden dark:block" src="/images/ai-chat-settings-provider-dark.png" alt="AI settings" />
 </Frame>
 
-1. Click **Add Provider…** and pick a type: GitHub Copilot, ChatGPT, Cursor, Claude, Claude Agent, OpenAI, OpenRouter, Gemini, xAI, Ollama, llama.cpp, MLX, or OpenCode Zen. **Add Custom Provider…** at the bottom of the menu takes any OpenAI-compatible endpoint.
-2. Enter the API key, or sign in for Copilot, ChatGPT, Cursor, and xAI.
-3. Enter a model name, or pick one from the fetched list.
-4. Click **Test Connection**.
+<Steps>
+  <Step title="Add the provider">
+    Click **Add Provider…** and pick a type. **Add Custom Provider…** at the bottom takes any OpenAI-compatible endpoint.
+  </Step>
+  <Step title="Authenticate">
+    Paste an API key, or sign in for GitHub Copilot, ChatGPT, Cursor, and xAI.
+  </Step>
+  <Step title="Pick a model and test">
+    Type a model name or pick one from the fetched list, then click **Test Connection**.
+  </Step>
+</Steps>
 
-The **Active Provider** picker at the top selects which provider handles AI requests. For reasoning models (Claude, OpenAI, xAI, ChatGPT), the provider detail sheet adds a per-model reasoning effort picker. Reasoning replies render their thinking in a collapsible **Reasoning** block above the answer.
+The **Active Provider** picker decides which one handles requests. Where a model supports reasoning effort, its detail sheet adds a picker for it and replies render their thinking in a collapsible **Reasoning** block.
 
-Provider notes:
+With no preference, start with Claude or OpenAI on an API key: both take a key, tools, and images with no further setup. The others each come with something to know.
 
-- **GitHub Copilot**: signs in with GitHub's device flow. Tool calls go through Copilot's tool bridge and the same approval flow as other providers.
-- **ChatGPT**: sign in with your ChatGPT account to use the Codex quota from Plus, Pro, Business, and Enterprise plans, no API key. **Import from Codex CLI** reuses an existing Codex login. Unofficial interface; may change.
-- **Claude Agent**: runs the `claude` command line tool that Claude Code installs, so AI chat bills against your Claude subscription instead of an API key. Install Claude Code and run `claude /login` in Terminal first; there is no API key field. Pick Opus, Sonnet, or Haiku from the model list. It answers from your schema when the MCP server is on in **Settings > Integrations**, and falls back to plain chat when it is off. The provider sheet lists the tradeoffs, and they are worth reading before you commit to this path:
-    - TablePro runs `claude` in headless mode. Claude Code is built for you to use directly, not as a backend for other apps, so this path can break with any Claude Code release.
-    - Your subscription is governed by Anthropic's [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) and [Usage Policy](https://www.anthropic.com/legal/aup). Read them and decide whether this use fits. TablePro cannot grant rights under them.
-    - Replies count against your Claude subscription limits, shared with claude.ai and your own Claude Code sessions, so running out here stops your work there too.
-    - Prompts, schema, and query text reach Anthropic under your consumer plan and its privacy settings, not the API's commercial terms.
-    - `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are removed from the tool's environment, so replies always draw on the subscription.
-    - For a metered path on Anthropic's commercial terms, use the **Claude** provider with an API key.
-- **Cursor**: paste an API key from the Cursor dashboard, or leave it blank and click **Sign in with Cursor** (needs the Cursor CLI installed). Cursor runs as an agent, not a chat-completions endpoint. It cannot call TablePro's database tools, so Edit and Agent modes do not run queries through it.
-- **xAI**: paste an API key, or click **Sign in with xAI** to use a SuperGrok or X Premium+ subscription. Sign-in opens a Grok Build consent screen; this path is unofficial and may change. Preset models: Grok 4.5 and Grok 4.3.
-- **Ollama, llama.cpp, MLX**: local providers, no API key. Each preset fills in its default endpoint (`http://localhost:11434` for Ollama, `http://localhost:8080` for `llama-server` and `mlx_lm.server`); edit it if you moved the host or port. Start the server first, then **Test Connection** and pick a model from the fetched list. llama.cpp and MLX speak the OpenAI-compatible API; for tool calling, start `llama-server` with `--jinja`. For any other OpenAI-compatible server, use the custom endpoint.
+| Provider | Sign-in | Worth knowing |
+|---|---|---|
+| GitHub Copilot | GitHub device flow | Runs its own tool loop, so the tool call limit never applies |
+| ChatGPT | Your ChatGPT account, on the Codex quota from Plus, Pro, Business, and Enterprise plans. **Import from Codex CLI** reuses an existing login | Unofficial interface, may change |
+| Cursor | API key, or **Sign in with Cursor** with the Cursor CLI installed | Runs as an agent, not a chat-completions endpoint, so it cannot call TablePro's tools: Edit and Agent modes run no queries through it |
+| xAI | API key, or **Sign in with xAI** on a SuperGrok or X Premium+ subscription | Sign-in opens a Grok Build consent screen and is unofficial. Presets: Grok 4.5, Grok 4.3 |
+| Ollama, llama.cpp, MLX | None. Start the server first | Presets fill in `http://localhost:11434` for Ollama and `http://localhost:8080` for `llama-server` and `mlx_lm.server`. Start `llama-server` with `--jinja` for tool calling |
+| Claude Agent | Claude Code's `claude` command, no key | Bills against a Claude subscription, with tradeoffs |
+
+### Claude Agent
+
+Install Claude Code, run `claude /login` in Terminal, then pick Opus, Sonnet, or Haiku. Replies bill against your Claude subscription instead of an API key. The provider answers from your schema when the MCP server is on in **Settings > Integrations**, and falls back to plain chat when it is off.
+
+The `claude` tool runs headless here. Claude Code is built for you to use directly rather than as a backend for other apps, so this path can break with any Claude Code release. Your subscription is governed by Anthropic's [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) and [Usage Policy](https://www.anthropic.com/legal/aup), which TablePro cannot grant rights under. Replies also count against the limits you share with claude.ai and your own Claude Code sessions, so running out here stops your work there. For a metered path on commercial terms, add the **Claude** provider with an API key.
 
 ## Chat
 
-Open the inspector (`Cmd+Option+I` or the toolbar inspector button) and switch the segmented control at the top from **Details** to **AI Chat**. There is no dedicated chat shortcut or menu item.
+Open the inspector (`Cmd+Option+I`) and switch the segmented control at its top from **Details** to **AI Chat**. There is no dedicated chat shortcut or menu item.
 
 <Frame caption="AI chat panel">
   <img className="block dark:hidden" src="/images/ai-chat-panel.png" alt="AI chat panel" />
   <img className="hidden dark:block" src="/images/ai-chat-panel-dark.png" alt="AI chat panel" />
 </Frame>
 
-Type a question and press Return. Code blocks have **Copy** and **Insert** buttons; Insert fills the current query tab if it is empty, otherwise opens a new tab. Token counts show below each response. Failed responses show **Retry**, successful ones **Regenerate**, a reply paused at the tool call limit shows **Continue**, and **Stop** cancels a streaming reply.
+Type a question and press Return. Code blocks carry **Copy** and **Insert**, and Insert fills the current query tab when it is empty and opens a new one otherwise. A token count sits under each response, a failed one offers **Retry**, a finished one **Regenerate**, and **Stop Generating** cancels a reply mid-stream.
 
-Conversations auto-save and auto-title from your first message. The clock icon in the inspector header opens recent conversations; the pencil-and-square icon starts a new one. Editing a previously sent message puts its text and context attachments back in the composer and removes that turn and everything after it; send to re-run.
+Conversations save themselves and take their title from your first message. The clock icon in the inspector header opens recent ones; the pencil-and-square icon starts a new one. Editing a message you already sent puts its text and attachments back in the composer and drops that turn and everything after it.
 
-If the provider supports images (Claude, OpenAI, xAI), paste or drag images into the composer. They appear as thumbnail chips and are sent with your message.
+Paste or drag images into the composer on any provider that takes them, which is all of them except GitHub Copilot, Cursor, ChatGPT, and Claude Agent.
 
-### Chat modes (ask / edit / agent)
+### Chat modes
 
-The mode picker in the composer footer controls which tools the AI can call. The mode is an app-level setting: it persists across chats and restarts, and fresh installs start in **Ask**.
+The mode picker in the composer footer controls which tools the AI can call. It is an app-level setting that survives restarts, and a fresh install starts in **Ask**.
 
 | Mode | Tools available | When to use |
 |------|----------------|-------------|
 | **Ask** | Read-only schema lookups: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`. | Questions, exploration, drafting queries you run yourself. |
 | **Edit** | All Ask tools, plus `execute_query` for `SELECT`, `INSERT`, `UPDATE`, `DELETE`. Destructive DDL (`DROP`, `TRUNCATE`, `ALTER…DROP`) stays blocked. | Letting the AI run the queries it proposes. |
-| **Agent** | All tools, plus `confirm_destructive_operation` for destructive DDL. Runs tools in a loop, up to 25 tool calls per turn by default. | Multi-step migrations and schema changes. |
+| **Agent** | All tools, plus `confirm_destructive_operation` for destructive DDL. Runs tools in a loop. | Multi-step migrations and schema changes. |
 
-Mode and [safe mode](/features/safe-mode) are independent gates. Agent mode does not bypass safe mode.
-
-These tools never change what's open in the app. `list_tables`, `list_schemas`, `describe_table`, `get_table_ddl`, and `execute_query` take an optional `database` and query the database or schema they're pointed at, without moving the sidebar's selected database or touching an open tab.
+Mode and [Safe Mode](/features/safe-mode) are independent gates. Agent mode does not bypass Safe Mode.
 
 ### Tool calling
 
-In Edit and Agent modes, each tool call appears as a card in the reply. Read-only tools run immediately. Write tools show three buttons:
-
-- **Run**: approve this single call.
-- **Always for this connection**: approve and whitelist the tool for this connection. Whitelists are per-tool and per-connection, and sync with the connection via iCloud.
-- **Cancel**: reject the call. The model gets an error result and continues.
+In Edit and Agent modes each tool call appears as a card in the reply. Read-only tools run immediately. Write tools wait for **Run**, for **Always for this connection** (which whitelists that one tool on that one connection and syncs with it over iCloud), or for **Cancel**, which hands the model an error result and lets it carry on.
 
 <Frame caption="Per-card tool approval">
   <img className="block dark:hidden" src="/images/ai-chat-tool-approval.png" alt="Per-card tool approval" />
   <img className="hidden dark:block" src="/images/ai-chat-tool-approval-dark.png" alt="Per-card tool approval" />
 </Frame>
 
-If the connection's safe-mode level is **Silent**, write tools auto-approve. If it is **Read-Only**, they auto-deny. Destructive operations are the exception: `confirm_destructive_operation` always requires a per-call click. Silent mode does not auto-approve it, and **Always for this connection** is refused for it. The tool also requires the model to pass the verbatim phrase `I understand this is irreversible`.
+Safe Mode **Silent** auto-approves write tools and **Read-Only** auto-denies them. Destructive operations are the exception: `confirm_destructive_operation` always needs a click, Silent does not auto-approve it, **Always for this connection** is refused for it, and the model must pass the verbatim phrase `I understand this is irreversible`.
 
-Provider support for tool calling: every provider except Cursor. Claude Agent reaches the same tools through the MCP server, so it needs that server turned on. Ollama, llama.cpp, MLX, and custom endpoints depend on the model.
+Every provider except Cursor can call tools. Claude Agent reaches them through the MCP server, so that has to be on, and local models depend on the model.
 
-### Tool call limit
-
-A reply may make 25 tool calls before it pauses. The pause keeps every tool call and result already in the reply, and shows **Continue** to carry on with a fresh budget, plus **Adjust Limit** to open the setting. Change the number, or turn the limit off, under **Agent** in [Settings > AI](/customization/settings#agent). A higher limit costs more tokens per reply and can dilute the answer as the conversation grows.
-
-GitHub Copilot runs its own tool loop, so the limit and the pause do not apply to it.
+A reply pauses after 25 tool calls, keeps everything it has done, and offers **Continue** for a fresh budget or **Adjust Limit** to change the number, 5 to 200, under **Agent** in **Settings > AI**. Every call is another request with the schema attached, so a higher limit costs tokens.
 
 ### Attach context with `@`
 
-Type `@` in the composer to open a picker at the caret: **Schema**, a specific **Table**, **Current Query**, **Query Results**, or a **Saved Query** ([favorites](/features/favorites)). Up/Down navigates, Return or Tab inserts, Escape dismisses. The `@` button in the composer footer offers the same items minus saved queries.
-
-Attached items show as chips. Saved query chips resolve at send time, so the AI sees the query's current SQL.
+Type `@` in the composer to open a picker at the caret: **Schema**, a specific **Table**, **Current Query**, **Query Results**, or a **Saved Query** ([favorites](/features/favorites)). Return or Tab inserts, Escape dismisses. The `@` button in the footer offers the same list minus saved queries. A saved query chip resolves at send time, so the AI sees its current SQL.
 
 ### Slash commands
 
-Type `/` to run a command: **`/explain`**, **`/optimize`**, and **`/fix`** act on the active query; **`/help`** lists commands. Add your own under **Settings > AI > Custom Slash Commands**. Templates substitute `{{query}}`, `{{schema}}`, `{{database}}`, and `{{body}}` (text typed after the command) at send time.
+Type `/` for **`/explain`**, **`/optimize`**, and **`/fix`**, which act on the active query, or **`/help`** for the list. Add your own under **Settings > AI > Custom Slash Commands**: a template substitutes `{{query}}`, `{{schema}}`, `{{database}}`, and `{{body}}`, the text typed after the command, at send time.
 
 ### Model picker
 
-The cpu icon next to the mode picker lists every configured provider and its models. Your pick overrides the active provider for this chat panel and stays until you pick something else; it does not reset between turns.
+The cpu icon beside the mode picker lists every configured provider and its models. A pick there overrides the active provider for this chat panel until you change it, across turns.
+
+## Explain, optimize, and fix
+
+**Query > Explain with AI** (`Cmd+L`) and **Query > Optimize with AI** (`Cmd+Option+L`) act on the whole query tab; the editor's right-click menu has both and acts on the selection instead, appearing only when text is selected. When a query fails, **Fix with AI** on the inline error banner sends the query and the error. All three open a new conversation and send at once.
+
+The reply comes back as a walkthrough. Optimize and Fix diff your query against the rewritten one, switchable between **Unified** and **Split**; Explain anchors its steps to the query as it stands. Each numbered step carries a one-line reason and a tag (**Critical**, **Change**, or **Context**), expands to the lines it refers to, and offers **Jump to lines** and **Ask about this change**, which keeps a follow-up anchored to that step. **Apply to Editor** replaces the editor content after you confirm; nothing is applied on its own. A model that answers in prose instead renders as a normal message.
 
 ## Per-connection AI rules
 
-Pin plain-text context to a connection so the AI sees it on every turn: open the connection's edit form and pick **AI Rules** in the sidebar. Use it for facts the schema cannot show, like `Always filter orders by deleted_at IS NULL` or `Never select users.ssn`. The text is appended to the system prompt and syncs with the connection via iCloud.
+Pin plain-text context to a connection so the AI sees it every turn: open the connection's edit form and pick **AI Rules** in the sidebar. Use it for what the schema cannot show, like `Always filter orders by deleted_at IS NULL` or `Never select users.ssn`. The text joins the system prompt and syncs with the connection over iCloud.
 
 ## Inline suggestions
 
-Toggle **Enable inline suggestions while typing** in the AI tab (off by default). After you pause typing, the active provider suggests a completion rendered as ghost text at the cursor. Press `Tab` to accept, `Escape` to dismiss; typing anything else also dismisses it.
+Turn on **Enable inline suggestions while typing** in the AI tab; it is off by default. Pause typing and the active provider suggests a completion as ghost text at the cursor. `Tab` accepts, `Escape` dismisses, and typing anything else dismisses it too.
 
-The pause length is the **Debounce** setting next to the toggle: 500 ms by default, adjustable from 100 to 3000 ms. With Copilot active, suggestions come from Copilot's inline-completion model; any other provider serves them through chat completions.
+The pause is the **Debounce** setting beside the toggle: 500 ms by default, adjustable from 100 to 3,000 ms in 50 ms steps. With Copilot active the suggestions come from Copilot's inline-completion model; every other provider serves them through chat completions.
 
-## Editor actions
+## What leaves your Mac
 
-**Query > Explain with AI** (`Cmd+L`) and **Query > Optimize with AI** (`Cmd+Option+L`) act on the whole query tab. The editor's right-click menu has the same two items and acts on the selected text; they only appear when text is selected. Either way, a new conversation starts and the request is sent right away. Rebind the shortcuts under **Settings > Keyboard** in the **Editor & Query** category.
+Every message carries a system prompt built from **Settings > AI > Context**, so these settings decide what the provider sees on every turn, not only the first.
 
-## Fix with AI
+| Setting | Default | What it sends |
+|---------|---------|---------------|
+| Include database schema | On | Columns and foreign keys for up to **Max schema tables** tables |
+| Include current query | On | The editor's text, truncated at 2,000 characters |
+| Include query results | Off | The rows in the results grid |
+| Max schema tables | 20 | |
 
-When a query fails, the inline error banner above the results shows a **Fix with AI** button. It opens the chat panel, starts a new conversation, and sends the failed query and the error straight to the AI, which answers with a walkthrough.
+Ollama, llama.cpp, and MLX run on your own machine, so nothing reaches a third party. Every other provider is a network call to that vendor under the terms of your account with them.
 
-## SQL walkthroughs
-
-Explain, Optimize, and Fix answer with a walkthrough in the chat panel instead of plain text, so you can review the change before trusting it:
-
-- **Before/after diff.** Optimize and Fix show a diff between your query and the AI's version. Switch between **Unified** and **Split** with the toggle in the walkthrough header. Explain shows the query with the steps anchored to it.
-- **Numbered steps.** Each step has a one-line reason and an importance tag (**Critical**, **Change**, or **Context**). Expand a step to see the exact lines it refers to. **Jump to lines** scrolls to them and highlights them for a moment.
-- **Ask about a step.** Use **Ask about this change** on any step to send a follow-up question that stays anchored to that step.
-- **Apply to Editor.** When the AI rewrote your query, **Apply to Editor** replaces the editor content after you confirm. Nothing is applied automatically.
-
-The AI writes the steps and the rewritten query; TablePro computes the diff itself, so the diff always reflects the real change. If a model returns plain prose instead, the response renders as normal text.
-
-## Context
-
-Under **Settings > AI > Context**:
-
-| Setting | Default |
-|---------|---------|
-| Include database schema | On |
-| Include current query | On |
-| Include query results | Off |
-| Max schema tables | 20 |
-
-## Privacy
-
-Set a per-connection AI policy in the connection form's **Advanced** tab: **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. The app-wide default is **Ask Each Time**. **Never** also blocks external AI tool calls against the connection.
-
-External clients (Raycast, Claude Desktop, and other MCP clients) reach the same tools through the [External API](/external-api), capped by the connection's **External Clients** level and the token's scope; see [Tokens](/external-api/tokens).
+Per connection, the **Advanced** pane of the connection form sets an AI policy: **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. The app-wide default is **Ask Each Time**, and **Never** also blocks external AI tool calls against that connection. External clients such as Raycast and Claude Desktop reach the same tools through the [External API](/external-api), bounded by the connection's **External Clients** level and the token's scope.

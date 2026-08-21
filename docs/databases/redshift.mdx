@@ -3,20 +3,20 @@ title: Amazon Redshift
 description: Connect to Redshift clusters and Serverless over the PostgreSQL wire protocol, with DISTKEY and SORTKEY metadata display
 ---
 
-TablePro connects to Amazon Redshift using the same libpq driver as [PostgreSQL](/databases/postgresql), plus Redshift-specific metadata queries for distribution style, sort keys, and table size. The PostgreSQL page applies unless noted here.
+Redshift speaks the PostgreSQL wire protocol and uses the same bundled libpq driver, so the [PostgreSQL](/databases/postgresql) page covers the form and the URL. This page covers where a columnar warehouse differs: distribution style and sort keys in table info, external schemas, and a read-only structure tab.
 
 ## Connection settings
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| **Host** | - | Cluster endpoint, e.g. `my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com` |
-| **Port** | `5439` | |
-| **Database** | `dev` | **Required**; every cluster has a `dev` database |
+| **Host** | - | The cluster endpoint, `my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com` in shape, or the workgroup endpoint on Serverless |
+| **Port** | `5439` | Same for a provisioned cluster and for Serverless |
+| **Database** | `dev` | **Required**; every cluster is created with a `dev` database |
 
-Fill in the form and click **Save & Connect**.
+Fill in the form and click **Save & Connect**. New connections default to SSL mode **Preferred**, and there is no version gate: any cluster AWS still runs will connect.
 
 <Info>
-AWS IAM authentication is not available for Redshift connections (unlike MySQL and PostgreSQL). Use the cluster's database username and password.
+AWS IAM authentication is not available for Redshift connections, unlike MySQL and PostgreSQL. Use a database username and password. For a cluster that is not publicly reachable, put it behind an [SSH tunnel](/connections/ssh-tunneling) on a bastion in the VPC.
 </Info>
 
 ## Connection URL
@@ -27,45 +27,39 @@ redshift://user:password@my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com:5
 
 See [Connection URL Reference](/connections/urls).
 
-## Features
+## Schemas and metadata
 
-**Schemas**: like PostgreSQL, default schema `public`. Table metadata comes from `svv_table_info`: distribution style, sort keys, and table size.
+The default schema is `public`, and table metadata comes from `svv_table_info`: distribution style, sort keys, and table size. `dev` is listed like any other database; only `padb_harvest` is marked as a system database. A tab bound to a database other than the connection's active one opens a second connection for it, exactly as on [PostgreSQL](/databases/postgresql#cross-database-tabs).
 
-**External schemas**: schemas created with `CREATE EXTERNAL SCHEMA` are listed alongside regular ones and marked **External**. This covers Redshift Spectrum over S3, federated query to Aurora, RDS, and MySQL, cross-database references, and datashare consumers. Their tables appear under the schema with an external icon.
-
-External tables are read-only. Redshift does not support `UPDATE` or `DELETE` on them and they have no primary key, so the data grid disables cell editing, adding rows, and deleting rows. Reading works as usual: browse, filter, sort, and export. Row counts are not shown, because `svv_table_info` does not cover external tables.
-
-**Databases**: `dev`, the database created with every cluster, is listed like any other. Only `padb_harvest` is marked as a system database.
-
-**DDL**: table definitions include DISTKEY, SORTKEY, DISTSTYLE, and ENCODE directives. Foreign keys display as informational; Redshift does not enforce them.
+Table DDL includes DISTKEY, SORTKEY, DISTSTYLE, and ENCODE directives. Foreign keys are shown but not enforced by the server.
 
 <Frame caption="Distribution style and sort keys in table info">
   <img className="block dark:hidden" src="/images/redshift-table-info-sortkeys.png" alt="Redshift table info showing distribution style and sort keys" />
   <img className="hidden dark:block" src="/images/redshift-table-info-sortkeys-dark.png" alt="Redshift table info showing distribution style and sort keys" />
 </Frame>
 
-**Backup & Restore**: **Backup Dump** and **Restore Dump** run `pg_dump` and `pg_restore` for Redshift. See [Backup & Restore](/features/backup-restore).
+## External schemas
 
-**Import & Export**: export to CSV, JSON, SQL, or XLSX. Import from CSV, JSON, or SQL. See [Import & Export](/features/import-export).
+Schemas created with `CREATE EXTERNAL SCHEMA` are listed beside regular ones and marked **External**, with an external icon on their tables. Spectrum over S3, federated query, cross-database references, and datashare consumers all land here.
 
-## Structure editing
+Their tables are read-only: Redshift takes no `UPDATE` or `DELETE` on them and they carry no primary key, so cell editing, adding rows, and deleting rows are off. Browsing, filtering, sorting, and export work as usual.
 
-TablePro disables the structure-editing UI for Redshift: no column, index, or key changes from the structure tab. Run `ALTER TABLE` statements in the SQL editor instead.
+## Backup
+
+**Backup Dump** and **Restore Dump** run `pg_dump` and `pg_restore` against Redshift, the only engine besides PostgreSQL where they are offered. See [Backup & Restore](/features/backup-restore).
 
 ## Limitations
 
-Redshift is a columnar warehouse, not a general-purpose RDBMS.
-
-- No traditional indexes. Redshift uses DISTKEY and SORTKEY instead.
-- No enums, sequences, or triggers.
-- Foreign keys are informational. Redshift does not enforce them.
+- No structure editing. The structure tab is read-only for Redshift; run `ALTER TABLE` in the SQL editor.
+- No indexes, enums, sequences, or triggers. DISTKEY and SORTKEY do the work indexes would.
+- Foreign keys are informational only. Nothing stops a row that violates one; validate in the load job.
 - No Maintenance menu. Run `VACUUM` and `ANALYZE` from the SQL editor.
-- External tables cannot be edited, and have no row count. Column types show as the external catalog reports them, such as `varchar(65535)` or `array<varchar(20)>`.
+- External tables show no row count, and their column types come through as the external catalog reports them, such as `varchar(65535)` or `array<varchar(20)>`.
 
 ## Troubleshooting
 
-**Connection refused**: check the security group allows port 5439, the cluster is publicly accessible (or use an [SSH tunnel](/connections/ssh-tunneling)), and the cluster is not paused.
+**Connection refused**: check the security group allows port 5439, the cluster is publicly accessible or reachable through a tunnel, and it is not paused.
 
-**Auth failed**: verify the master username and password in the AWS Console.
+**FATAL: password authentication failed for user "…"**: the cluster rejected the credentials. Verify the master username and password in the AWS Console, and that the user exists in this database.
 
-**Slow queries**: check distribution with `SELECT * FROM svv_table_info WHERE "table" = 'your_table'`, run `ANALYZE` to update stats, and match SORTKEY to your WHERE/JOIN predicates.
+**Slow queries**: check distribution with `SELECT * FROM svv_table_info WHERE "table" = 'your_table'`, run `ANALYZE` to refresh stats, and match SORTKEY to the predicates you filter and join on.

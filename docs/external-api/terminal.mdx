@@ -3,44 +3,35 @@ title: Terminal and DDEV
 description: Opening databases and files from a shell script, and wiring up a ddev tablepro command
 ---
 
-Run `open -b com.TablePro "mysql://root@127.0.0.1:3306/shop"` from any shell and that database opens in a window. A saved connection is matched if there is one; if not, the session is temporary and nothing lands on disk. `.sql` files and database files take the same route, and DDEV projects get a `ddev tablepro` command of their own.
-
-## Open a database from the shell
-
-Pass a [connection URL](/connections/urls) to `open`:
-
-```bash
-open "mysql://root@127.0.0.1:3306/shop"
-open "postgresql://user:pass@127.0.0.1:5432/app?table=orders"
-```
-
-TablePro uses a saved connection if one matches, otherwise it opens a temporary session that is never written to disk.
-
-### Force TablePro over another client
-
-`open "mysql://…"` goes to whichever app owns the `mysql://` scheme. If TablePlus or another client is installed, it may win. Target TablePro by its bundle identifier:
+`open "mysql://…"` goes to whichever app claims the `mysql://` scheme, and with TablePlus or another
+client installed that may not be TablePro. Name TablePro instead, either by bundle identifier or
+through the `tablepro` command:
 
 ```bash
 open -b com.TablePro "mysql://root@127.0.0.1:3306/shop"
+tablepro "postgresql://user:pass@127.0.0.1:5432/app?table=orders"
 ```
 
-### Install the tablepro command
+Any [connection URL](/connections/urls) works, including its query parameters. TablePro uses a saved
+connection when one matches on type, host, port, database and user; otherwise the session is
+temporary and never written to disk. Running `tablepro` with no argument opens the app and nothing else.
 
-Open **Settings > General > Command Line** and click **Install**. This writes a small `tablepro` script to `/usr/local/bin` that always opens TablePro:
+## Install the tablepro command
 
-```bash
-tablepro "mysql://root@127.0.0.1:3306/shop"
-tablepro
-```
+Open **Settings > General**, find **Command Line**, and click **Install**. It writes a small script at
+`/usr/local/bin/tablepro` whose whole body is `exec open -b com.TablePro "$@"`.
 
 <Frame caption="The Command Line section in Settings > General">
   <img className="block dark:hidden" src="/images/command-line-install.png" alt="Command Line install section in TablePro settings" />
   <img className="hidden dark:block" src="/images/command-line-install-dark.png" alt="Command Line install section in TablePro settings" />
 </Frame>
 
-`/usr/local/bin` is owned by root on a stock macOS install, and may not exist at all. When TablePro cannot write there itself, macOS asks for your administrator password, and TablePro then creates the folder and the command. Cancel the password prompt and nothing is written.
+That directory is root-owned on a stock macOS install, so expect an administrator password prompt.
+Cancel it and nothing is written. If the write fails anyway, Settings prints the exact `sudo` command
+to paste into Terminal; run it, switch back, and the status updates itself.
 
-If that fails too, Settings falls back to showing the exact `sudo` command to run in Terminal. Run it and switch back to TablePro, and Settings picks up the change on its own.
+**Uninstall** removes the script again. When something else already occupies that path, **Install**
+is dimmed and Settings says *"A different file already exists at …"*: remove that file first.
 
 ## Open a file
 
@@ -51,27 +42,35 @@ tablepro schema.sql
 tablepro app.db
 ```
 
-- `.sql`, `.psql`, and `.pgsql` files open in a query tab on the current connection. If a window already has the file open, that window comes to front. With no connection open, the file waits and opens once you connect.
-- Database files open a connection to the file itself, nothing is saved: `.db`, `.db3`, `.s3db`, `.sl3`, `.sqlite`, `.sqlite3`, and `.sqlitedb` open with SQLite; `.duckdb` and `.ddb` open with the DuckDB plugin. A window already connected to the same file comes to front instead of opening twice.
+- `.sql`, `.psql` and `.pgsql` open in a query tab on the current connection. A window already
+  holding that file comes to front. With no connection open, the file waits until you connect.
+- Database files open a connection to the file itself and save nothing: `.db`, `.db3`, `.s3db`,
+  `.sl3`, `.sqlite`, `.sqlite3` and `.sqlitedb` open with SQLite, `.duckdb` and `.ddb` with the
+  DuckDB plugin. A window already connected to that file comes to front instead of a second one
+  opening.
 
 ## DDEV
 
-[DDEV](https://ddev.com) ships a `tablepro` command. From any project:
+[DDEV](https://ddev.com) ships a `tablepro` command of its own. From any project:
 
 ```bash
 cd my-project
 ddev tablepro
 ```
 
-If `ddev tablepro` is not found, update DDEV.
-
-This is the right way to open a DDEV database, because DDEV gives the project a new host port on every `ddev start`. A saved connection goes stale; the command reads the current port each time. It works with both MySQL/MariaDB and PostgreSQL projects. DDEV's database, user, and password are all `db`.
+If `ddev tablepro` is not found, update DDEV. It covers MySQL, MariaDB and PostgreSQL projects, and
+DDEV's database, user and password are all `db`. Prefer it over a saved connection: `ddev start`
+hands the project a new host port each time, and the command reads the current one.
 
 ## Trusting a link
 
-The first time a link connects, TablePro asks you to confirm it. This stops a web page from silently opening a connection.
+The first time a link connects, TablePro asks: **Open External Database Connection?**, showing the
+host, user and database. This is what stops a web page from opening a connection behind your back.
 
-For a database on your own machine (`localhost`, `127.0.0.1`, or `::1`), the alert also offers **Always Allow**. Choose it and TablePro stops asking for that database, so `ddev tablepro` connects straight away. Trust is keyed on the database type, host, database name, user, and the `name` parameter, but not the port, because DDEV changes the port on every start.
+For a database on your own machine (`localhost`, `127.0.0.1`, `::1`, or any `127.x.x.x` address) the
+alert adds **Always Allow**. Choose it and that database stops asking, which is what makes
+`ddev tablepro` a one-step command. Trust is keyed on database type, host, database name, user and
+the URL's `name` parameter, deliberately not the port, since DDEV changes the port on every start.
 
 <Frame caption="The confirmation alert for an external database link">
   <img className="block dark:hidden" src="/images/link-trust-alert.png" alt="Alert asking to confirm an external database link, with Always Allow for local databases" />
@@ -79,7 +78,10 @@ For a database on your own machine (`localhost`, `127.0.0.1`, or `::1`), the ale
 </Frame>
 
 <Note>
-Only databases on your own machine can be trusted. A link to a remote host always asks, every time.
+A link to a remote host asks every time. Only a database on this machine can be trusted.
 </Note>
 
-Review and remove trusted links in **Settings > General > Trusted Links**. A link that carries a filter condition (`?query=` or `?condition=`) or a pre-connect script still asks for confirmation, even when the connection is trusted.
+**Settings > General > Trusted Links** lists what you have trusted, with **Forget** per entry and
+**Forget All**. Two things still prompt even on a trusted connection: a link carrying a filter
+(`?query=`, `?condition=` or `?raw=`) confirms the filter, and a connection with a pre-connect script
+shows the script.

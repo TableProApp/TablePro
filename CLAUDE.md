@@ -36,7 +36,7 @@ TablePro is a native macOS database client (SwiftUI + AppKit), a fast, lightweig
 scripts/download-libs.sh          # static libraries, not in git
 scripts/generate-project.sh       # generates both .xcodeproj bundles from project.yml (or pass macos|ios)
 
-# Build (development), -skipPackagePluginValidation required for SwiftLint plugin in CodeEditSourceEditor
+# Build (development). Every script and CI job passes -skipPackagePluginValidation; keep passing it
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
 
 # Clean build

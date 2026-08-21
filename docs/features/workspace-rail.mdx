@@ -3,72 +3,66 @@ title: Connections strip
 description: Switch between every connection and database you have open from a narrow strip on the leading edge of the window
 ---
 
-A click in the column beside the object browser puts you back where you left off in that connection or database, on the tab you last used there. No tab closes, and each one keeps querying the database it was opened against.
-
-Each entry is a connection plus the database you are browsing in it. Open two connections and you get two entries. Switch one of them to a second database and you get three.
+Click an icon in the strip down the leading edge and you land back where you left off, on the tab you last used there. Each icon is one connection plus the database you are browsing in it, so two connections make two icons and moving one to a second database makes three. Clicking an entry returns you to it on the tab you last used there, and closes nothing.
 
 <Frame caption="The connections strip beside the object browser, with two connections open">
   <img className="block dark:hidden" src="/images/workspace-rail.png" alt="Connections strip" />
   <img className="hidden dark:block" src="/images/workspace-rail-dark.png" alt="Connections strip" />
 </Frame>
 
-The strip appears once you have a second entry open, since a list of one has nothing to switch to. It is on by default; turn it off from **View > Hide Connections**, with `Cmd+Option+0`, or in **Settings > General > Sidebar**.
+The strip is on by default and appears once a second entry exists. Hide it with **View > Hide Connections**, `Cmd+Option+0`, or **Settings > General > Sidebar > Show connections**.
 
-## What each entry shows
+## What an entry shows
 
-One icon per entry, top to bottom. The icon is the database engine's symbol, tinted with the connection's color, so you can tell staging from production at a glance without hovering.
+The icon is the database engine's symbol, tinted with the connection's color, so staging and production are distinguishable without hovering. Under it is the database that entry browses, shortened in the middle when long. Hovering gives the full connection name, host, and database; VoiceOver reads that plus the connection's state. The entry you are in is highlighted, in each window separately.
 
-The icon changes shape, not just color, when a connection is not healthy: a warning triangle when it failed, and a disconnected symbol when it has no live session. Color alone would be invisible to anyone who cannot distinguish red from grey.
+On servers that group objects by schema, an entry stands for a schema. On a single-file or single-database engine, such as SQLite, DuckDB, or BigQuery, a connection has one entry, under the connection's name.
 
-Under each icon is the database that entry browses. Long names are shortened in the middle, so both ends stay recognizable. Hover an icon for the full connection name, host, and database. VoiceOver reads the same information plus the connection's state.
+## Icon states
 
-The entry you are looking at is highlighted. Every window highlights its own, so the strip always tells you where you are.
+Shape carries the state, not just color.
 
-On servers that group objects by schema rather than by database, an entry stands for a schema. On a single-file or single-database engine, like SQLite, DuckDB, or BigQuery, a connection has one entry, labelled with the connection's name.
+| Icon | State | What to do |
+|------|-------|------------|
+| Engine symbol | Connected, or connecting | Nothing |
+| Filled warning triangle | The last connect failed | Click the entry: the pane carries the driver's own error, **Try Again**, and **Copy Details** |
+| Bolt in a circle | The session ended, tabs kept | Click the entry, then **Reconnect** on the pane, or **Database > Reconnect** |
 
 ## When an entry appears
 
-Switching database adds an entry only when the one you are leaving has work in it. An entry has work when it has a table open, a query you have typed, a file you opened, or edits you have not saved.
+Switching database adds an entry only when the one you are leaving has work in it: a table open, a query you typed, a file you opened, or edits you have not saved.
 
-| You are on | You switch to `logs` | Result |
-|---|---|---|
-| `app`, with a table open | | `app` stays, `logs` is added |
-| `app`, with only an empty query tab | | `app` becomes `logs` |
-| `app`, and `logs` is already listed | | the existing `logs` entry activates |
+| You are on `app` and switch to `logs` | Result |
+|---|---|
+| A table is open in `app` | `app` stays, `logs` is added |
+| Only an empty query tab is open | `app` becomes `logs` |
+| `logs` is already listed | The existing `logs` entry activates |
 
-An entry goes away when its last tab closes and you are no longer browsing it. Nothing is closed for you, and the strip never removes an entry you still have work in. The set is per session, so relaunching starts from the databases your restored tabs use.
+An entry goes away when its last tab closes and you are no longer browsing it; one you still have work in is never removed. The set is per session, so relaunching starts from the databases your restored tabs use.
 
 ## Switching
 
-Click an entry to go to it. Moving between two connections switches the window to that connection, returning you to the tab you last used there rather than an arbitrary one. Moving between two databases of one connection stays in the same window, moves what the sidebar lists, and returns you to the tab you last used in that database. An entry with nothing open just moves the sidebar, since there is no work to return to.
+Between two connections, the window switches connection and returns you to the tab you last used there; between two databases of one connection, the sidebar moves and the tabs stay. An entry with nothing open moves the sidebar only, and clicking the entry you are in does nothing. No tab is ever closed or retargeted by a switch: each one keeps querying the database it was opened against.
 
-One window hosts every connection you have open. Each connection keeps its own set of tabs, and the tab strip below the toolbar lists only the tabs of the connection you are in. Switching reads as the window changing content, because that is what it is.
+The strip takes the keyboard too. Click into it, then arrow keys move the highlight, typing jumps to a name, and `Return` opens the entry you land on.
 
-Open tabs are never closed or retargeted by a switch. A tab keeps the database it was opened against and keeps querying it, whichever entry you are in.
+## Windows
 
-Clicking the entry you are already in does nothing.
+One window hosts every connection you have open, and the tab strip below the toolbar lists only the current connection's tabs. Opening a table or query on a connection already open adds a tab there rather than opening a second window.
 
-The strip takes the keyboard too. Click into it and the arrow keys move the highlight, typing jumps to a name, and Return opens the entry you land on.
+To put two connections side by side, right-click an entry and choose **Open in New Window**. It moves with its tabs, its session, and anything unsaved. The item is absent when the window has no other connection left to show.
 
-## Moving to its own window
+A first window opens at 1200x800 and goes no smaller than 720x480; later windows reuse the last size and position. Whether a new one joins a tab group follows **Prefer tabs when opening documents** in System Settings > Desktop & Dock. Inside a group, **Window > Move Tab to New Window** and **Window > Merge All Windows** apply; both dim outside one. Those are macOS window tabs, which hold whole windows, not the editor tab strip, which holds one connection's editors.
 
-Right-click a connection and choose **Open in New Window** to move it out of the shared window, carrying its tabs, its session and anything you have not saved. The item appears only when the window has another connection left to show, since moving the last one would close the window and open an identical one.
+## Closing and disconnecting
 
-## Closing
+Right-click an entry and choose **Close “\<name\>”** to close the connection: every tab across every database it has open, its session, and all of its entries. Unsaved work is confirmed first, and the window closes too if that was its last connection. Middle-clicking does the same without the menu, and **File > Close Connection** does it for the connection on screen. Nothing is lost for good: reopen the connection, from the connection list or **Database > Switch Connection…**, and its tabs come back as they were.
 
-Right-click a connection and choose **Close "\<name\>"** to close it: every tab across every database it has open, its session, and every entry it has in the strip. Unsaved work is confirmed first, the same as closing a window. If the window has no other connection open, the window closes too.
-
-Middle-click an entry to close its connection without opening the menu. **File > Close Connection** does the same for the connection on screen.
-
-## Disconnecting
-
-Right-click an entry and choose **Disconnect** to end its session while keeping it open. The item only appears while the connection is live. Unlike Close, no window closes and nothing is removed from the strip: the connection shows a Reconnect screen in place of its tabs, with the tabs saved before the session ends. See [disconnecting](/features/tabs#disconnecting).
+**Disconnect**, on the same menu while the connection is live, ends the session and keeps everything else. No window closes, no entry disappears, and the tabs are saved first; the connection shows a Reconnect pane in their place until **Database > Reconnect**, or the pane's own button, brings both back. **Database > Disconnect** does the same for the connection on screen, asking first when a query is running or changes are unsaved. Nothing reconnects on its own, and a connection you disconnected is not reopened at the next launch.
 
 ## Reordering
 
-Drag entries to arrange them. The order is shared by every window and remembered across launches.
-
-Once you have arranged the strip, an entry keeps its position when you close it, and returns to the same slot when you reopen it. Until then, entries are listed in the order their connections opened, and the databases of one connection are grouped together by name.
+Drag entries to arrange them. The order is shared by every window, kept across launches, and an entry returns to its slot when you reopen it. Until you drag anything, entries follow the order their connections opened, one connection's databases grouped by name.
 
 ## Keys
 
@@ -78,9 +72,9 @@ Once you have arranged the strip, an entry keeps its position when you close it,
 | Show previous connection | `Ctrl+Cmd+Up` |
 | Show next connection | `Ctrl+Cmd+Down` |
 
-Show Previous and Show Next Connection move through the strip in the order it displays, not the order things were opened. Change any of these in **Settings > Keyboard**. If you had already assigned `Ctrl+Cmd+Up` or `Ctrl+Cmd+Down` to something else, your assignment wins and the command stays unbound until you free the chord again.
+Previous and next move through the strip in display order, not the order things opened. Rebind them in **Settings > Keyboard**; if either chord is already yours for something else, your assignment wins and the command stays unbound until you free it.
 
 ## Related
 
-- [Tabs and Windows](/features/tabs) for how tabs and windows relate to connections
-- [Open Quickly](/features/open-quickly) for searching within the current connection
+- [Query Tabs](/features/tabs) for what a tab is bound to and what survives a restart
+- [Open Quickly](/features/open-quickly) for searching inside one connection or across all of them

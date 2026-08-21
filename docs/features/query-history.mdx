@@ -3,9 +3,9 @@ title: Query History
 description: Every executed query is saved to a local SQLite database with full-text search
 ---
 
-Every query you run is saved automatically, whether it succeeded or failed. History persists across sessions and is searchable.
+By default the drawer shows only the SQL you wrote yourself. The SELECTs behind table browsing, the UPDATEs behind grid edits, the DDL behind a structure change and everything an MCP client ran are all recorded too, waiting behind the **Source** menu.
 
-Open the drawer with `Cmd+Y` or **View > Show Query History**. There is also a **History** toolbar button, which you add through **View > Customize Toolbar**.
+Open the drawer with `Cmd+Y` or **View > Show Query History**. There is also a **History** toolbar button, added through **View > Customize Toolbar…**.
 
 <Frame caption="Query history drawer: entry list on the left, details on the right">
   <img className="block dark:hidden" src="/images/query-history.png" alt="Query history drawer" />
@@ -14,19 +14,13 @@ Open the drawer with `Cmd+Y` or **View > Show Query History**. There is also a *
 
 ## The drawer
 
-The drawer opens under the editor and you can drag its divider to resize it. It remembers its height, its filters, and whether it was open, per connection.
+The drawer opens under the editor and its divider resizes it. Height, filters and whether it was open are remembered per connection.
 
-Entries are grouped by day, newest first, under **Today**, **Yesterday**, or the date. Each row shows whether the query succeeded, the query text, the database, the time it ran, and how long it took. A query that ran in under a millisecond shows `<1 ms`; a step whose duration was never measured shows `–` rather than `0 ms`.
+Entries group by day, newest first, under **Today**, **Yesterday**, or the date. A row carries the outcome, the query text, the database, the time it ran and how long it took. Under a millisecond reads `<1 ms`; a step whose duration was never measured reads `–` rather than `0 ms`.
 
-The right pane shows the selected query with syntax highlighting for the database it actually ran against, plus its connection, database and schema, timestamp, duration, row count, source, and the error message for failed queries.
+Select a row and the right pane shows the full query, highlighted for the database it ran against, with its connection, database and schema, timestamp, duration, row count, source, and the error when it failed. The keyboard stays in the list, so arrow keys keep moving.
 
-Recent queries also appear in [Open Quickly](/features/open-quickly). For a summary of what this history adds up to, rather than a list of it, see [Query Insights](/features/query-insights).
-
-## Scope
-
-History is scoped to the connection you are looking at. Switch the first popup to **All Connections** to search across every connection you have; rows then show which connection each query came from, so you can tell two databases named `app` apart.
-
-Loading a query that belongs to another connection opens it in a new tab in that connection's own window, rather than running it against the connection in front of you. **Run in New Tab** is dimmed for those entries, because only the connection that recorded a query can run it. Load it there and run it from that window.
+Recent queries also appear in [Open Quickly](/features/open-quickly). For the summary rather than the list, see [Query Insights](/features/query-insights).
 
 ## Filtering
 
@@ -38,15 +32,11 @@ Loading a query that belongs to another connection opens it in a new tab in that
 | Outcome | Any, succeeded, or failed |
 | Search | Full-text search across query text, matching as you type |
 
-Search matches partial words, so typing `cust` finds `customers`. Several words all have to match, but they do not have to be next to each other: `select customers` finds `SELECT id, name FROM customers`.
+Search matches partial words, so `cust` finds `customers`. Several words must all match but need not be adjacent: `select customers` finds `SELECT id, name FROM customers`.
 
-## Pausing
-
-The pause button stops recording new queries on this Mac. Nothing is recorded from any source while it is paused, including row edits, structure changes, imports and AI clients, and the drawer says so until you resume. Pausing is local to the Mac you press it on, and it survives relaunch.
+**All Connections** searches everything you have, and rows then name their connection, so two databases both called `app` stay apart. **Reset Filters** puts the drawer back to its defaults.
 
 ### Sources
-
-TablePro runs SQL on your behalf in several places, and the **Source** menu decides which of those you see. It defaults to **My Queries**, which is the SQL you wrote yourself.
 
 | Source | What it covers |
 |--------|----------------|
@@ -58,32 +48,38 @@ TablePro runs SQL on your behalf in several places, and the **Source** menu deci
 | Imports | Import runs |
 | AI and MCP | Queries run by an AI assistant or an MCP client |
 
-Turn on **Table Browsing** to see exactly what the app sent while you clicked around a table. Turn on **Structure Changes** to review what altered a schema and when.
+**My Queries**, the default, is Editor and Explain. Add **Table Browsing** to see what the app sent while you clicked around a table, **Structure Changes** to review what altered a schema and when.
 
 ## Working with entries
 
 | Action | How |
 |--------|-----|
-| Load into the editor | Select an entry and click **Load in Editor**, or press `Return` |
-| Run it again | **Run in New Tab**, or right-click > **Run in New Tab**. It opens a new tab and runs the query there |
+| Load into the editor | `Return`, double-click the row, or click **Load in Editor** |
+| Run it again | **Run in New Tab**, or right-click > **Run in New Tab** |
 | Copy the query | `Cmd+C`, the **Copy** button, or right-click > **Copy Query** |
 | Save as favorite | Right-click > **Save as Favorite…** (see [Favorites](/features/favorites)) |
-| Delete one entry | `Delete` key or right-click > **Delete** |
+| Delete one entry | `Delete`, or right-click > **Delete** |
 | Load older entries | **Load More** at the bottom of the list |
 
-Click a row to select it and the details appear beside it; the keyboard stays in the list, so arrow keys keep moving through entries. Loading a query into the editor is a separate, deliberate step: press `Return` with the list focused, double-click the row, or click **Load in Editor**.
+**Run in New Tab** goes to the server, so an entry that writes asks for confirmation whatever the connection's [safe mode](/features/safe-mode) is set to. Reads run straight away, and an entry using [query parameters](/features/query-parameters) raises the parameter panel instead.
 
-**Run in New Tab** sends the query to the server, so an entry that writes (INSERT, UPDATE, DELETE, or a schema change) asks for confirmation first, whatever the connection's [safe mode](/features/safe-mode) is set to. Reads run straight away. An entry that uses [query parameters](/features/query-parameters) opens the parameter panel instead of running, because parameter values are never recorded.
+An entry belonging to another connection loads into a new tab in that connection's own window rather than running against the connection in front of you. **Run in New Tab** is dimmed for those entries: load it there and run it from that window.
+
+## Pausing
+
+The pause button stops recording on this Mac, from every source: row edits, structure changes, imports and AI clients included. The drawer says so until you resume. Pausing is local to the Mac you press it on and survives relaunch.
 
 ## Clearing history
 
-The trash button clears exactly what the drawer is showing, including whatever the filters are hiding. Scoped to one connection it leaves every other connection alone; with a date range selected it only clears that range; and with the default **My Queries** source it leaves table browsing, row edits, imports and AI queries in place. It asks first, and the confirmation says which of those two it is about to do. There is no undo.
+The trash button deletes exactly the entries the drawer is listing. Anything the source, date, outcome or search filters are hiding stays, which at the default **My Queries** source spares table browsing, row edits, imports and AI queries. The confirmation names what it is about to delete. There is no undo.
 
 **Settings > Data > Query History > Clear History…** clears everything, for every connection.
 
 ## Storage and retention
 
-History lives in `~/Library/Application Support/TablePro/query_history.db`, a local SQLite database with a full-text index.
+History lives in `~/Library/Application Support/TablePro/query_history.db`, a local SQLite database with a full-text index. It never leaves the Mac that recorded it: query history is not one of the categories [iCloud sync](/features/icloud-sync) carries, so two Macs keep two separate histories.
+
+There is no export command. The file is an ordinary SQLite database, so open it as a SQLite connection and query it like anything else.
 
 Configure retention in **Settings > Data > Query History**:
 
@@ -91,14 +87,12 @@ Configure retention in **Settings > Data > Query History**:
 |---------|---------|---------|
 | Maximum entries | 10,000 | 100 to 10,000, or Unlimited |
 | Keep entries for | 90 days | 7 days to 1 year, or Forever |
-| Auto cleanup | On | Applies the two limits above. Turn it off and nothing is pruned. |
+| Auto cleanup | On | Enforces the entry count and the age limit. Turn it off and nothing is pruned. |
 
 Deleting a connection deletes its query history with it.
 
-Query parameter values are never written to disk. The user and role editor never records a statement that carries a password, such as `CREATE USER … IDENTIFIED BY`. A query you write yourself is recorded as you wrote it, so use the pause button before running one that contains a secret.
+Parameter values are never recorded here, and the user and role editor never records a statement carrying a password, such as `CREATE USER … IDENTIFIED BY`. A query you wrote yourself is recorded as you wrote it, so pause before running one that contains a secret.
 
 ## Search from external clients
 
-History is searchable from MCP clients. The `search_query_history` tool returns matching entries with timestamp, connection, query text, source, and outcome. The Raycast extension wraps this in a **Search Query History** command.
-
-See [`search_query_history`](/external-api/mcp-tools) and [Raycast commands](/external-api/raycast#commands).
+The [`search_query_history`](/external-api/mcp-tools) MCP tool returns matching entries with timestamp, connection, query text, source and outcome. The Raycast extension wraps it in a **Search Query History** command; see [Raycast commands](/external-api/raycast#commands).

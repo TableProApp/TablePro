@@ -1,28 +1,34 @@
 ---
 title: Handoff
-description: Resume the active connection or table on another Mac signed into the same iCloud account
+description: Resume the active connection or table on another device signed into the same iCloud account
 ---
 
-TablePro publishes an `NSUserActivity` for the key window so Apple Continuity can hand off the current context to another Mac.
+Continuity carries which connection you have open, never the connection's settings, so the receiving device needs that connection saved already. [iCloud Sync](/features/icloud-sync) is what puts it there.
+
+<Frame caption="The TablePro Handoff icon in the Dock on a second Mac">
+  <img className="block dark:hidden" src="/images/handoff-banner.png" alt="Handoff icon in the Dock" />
+  <img className="hidden dark:block" src="/images/handoff-banner-dark.png" alt="Handoff icon in the Dock" />
+</Frame>
 
 ## Requirements
 
-- Both Macs signed into the same iCloud account
-- Both Macs on the same Wi-Fi network with Bluetooth on
-- Handoff enabled in **System Settings > General > AirDrop & Handoff**
-- TablePro running on both devices
+- Both devices signed into the same iCloud account
+- Both on the same Wi-Fi network, with Bluetooth on
+- Handoff turned on in **System Settings > General > AirDrop & Handoff**
+- TablePro running on both, and the connection saved on both
 
-## What gets handed off
+## What carries over
 
-The activity tracks the focused window and switches between two types based on what is selected:
+The connection in front of you, and the table too when the frontmost tab is a table tab. Query text, scroll position, and unsaved edits stay put. [TablePro for iPhone and iPad](/ios) takes part on both sides.
 
-- **`com.TablePro.viewConnection`**: connection ID. Receiving Mac opens that connection.
-- **`com.TablePro.viewTable`**: connection ID and table name. Receiving Mac opens the connection and selects the table.
+## Picking it up
 
-Switching between a query tab and a table tab updates the activity automatically. The activity title shows the table name when viewing a table, otherwise the connection name.
+The TablePro Handoff icon appears in the receiving Mac's Dock and app switcher (`Cmd+Tab`), and at the bottom of the app switcher on iPhone and iPad. Open it to get the same connection, and the table if there was one.
 
-Query text, scroll position, and unsaved edits are not included.
+## When nothing arrives
 
-## Use it
+Handoff is a system service, so the app cannot report why it stayed quiet. Check both devices: same iCloud account, awake and unlocked, Bluetooth and Wi-Fi on, Handoff enabled.
 
-On the receiving Mac, the TablePro Handoff icon appears in the Dock and in the Cmd-Tab app switcher. Click it to open the same connection (and table, if any).
+### No saved connection with ID "…".
+
+The icon arrived, so Handoff worked; the connection itself is not on this device. Turn on [iCloud Sync](/features/icloud-sync) on both, or export the connection and import it here.

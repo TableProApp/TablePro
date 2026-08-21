@@ -3,52 +3,54 @@ title: Favorites
 description: Mark tables as favorites and save frequently used queries with optional keyword shortcuts
 ---
 
-The Favorites tab in the sidebar has two sections: **Tables** for pinned tables and **Queries** for saved SQL. The sidebar can also show a **Recent** section with the last tables you opened (off by default).
+The query you retype every Monday is worth saving once. Give it the keyword `dau`, and from then on typing `dau` in the editor expands the whole statement, with the cursor already where you need to fill something in.
+
+The Favorites tab in the sidebar holds two sections, **Tables** for pinned tables and **Queries** for saved SQL, plus a **Team Library** on a Team license and any folders of `.sql` files you have linked.
 
 ## Table favorites
 
-Every table row in the sidebar has a star button at the end. Click it to add or remove the table from favorites. A filled yellow star marks a favorite. Favorites move to the top of their section and appear in the **Tables** group of the Favorites tab.
+Hover a table row in the sidebar and a star appears at the end of it. Click the star to pin the table; a filled yellow star marks one that is already pinned, so it stays visible without hovering. Favorites move to the top of their section and appear under **Tables** in the Favorites tab.
 
-Double-click a table in the Favorites tab to open it. Right-click it to open the table, open the database's ER diagram, or remove it.
+Double-click a favorite there to open the table. Its right-click menu has **Open Table**, **Show ER Diagram**, and **Remove from Favorites**.
 
-Favorites are scoped to the connection, database, and schema, and sync through iCloud. A favorite is hidden when its table doesn't exist in the database you're viewing.
+Favorites are scoped to the connection, database, and schema, and sync through [iCloud](/features/icloud-sync). One whose table does not exist in the database you are viewing is hidden rather than shown broken.
 
 ## Recent tables
 
-Turn on **Settings > General > Sidebar > Show recent tables** to add a **Recent** section at the top of the sidebar. It appears in every sidebar layout. Each table you open is recorded, up to 10 per connection and database, most recent first. Arrowing through preview tabs does not count. Click a row to reopen the table, or right-click to remove one entry or clear the list. Recents persist between launches.
+Turn on **Settings > General > Sidebar > Show recent tables** for a **Recent** section at the top of the sidebar. It records the last 10 tables you opened per connection and database, most recent first; arrowing through preview tabs does not count. Click a row to reopen the table, or right-click to remove one entry or clear the list. Recents stay device-local and survive relaunches.
 
-## SQL favorites
+## Saving a query
 
-### Creating a favorite
+| From | How |
+|------|-----|
+| The editor toolbar | Click the star above the editor, or press `Cmd+D` |
+| Selected SQL | Right-click > **Save as Favorite** |
+| [Query history](/features/query-history) | Right-click an entry > **Save as Favorite** |
+| The sidebar | **+** in the Favorites tab, then **New Favorite…** |
 
-- **From the editor toolbar**: Click the star button above the editor, or press `Cmd+D`
-- **From the editor**: Right-click selected SQL > **Save as Favorite**
-- **From query history**: Right-click an entry > **Save as Favorite**
-- **From the sidebar**: Click **+** in the Favorites tab, then **New Favorite**
-
-Enter a name, the SQL text, and optionally a keyword and scope.
-
-The **+** menu also has **New Query** (opens an empty SQL query tab, same as `Cmd+T`), **New Folder**, and **Add Linked SQL Folder…**
+Give it a name, the SQL, and optionally a keyword and a scope. The **+** menu also carries **New Query**, **New Folder**, and **Add Linked SQL Folder…**
 
 <Frame caption="Creating a new SQL favorite">
   <img className="block dark:hidden" src="/images/sql-favorite-create.png" alt="Creating a new SQL favorite" />
   <img className="hidden dark:block" src="/images/sql-favorite-create-dark.png" alt="Creating a new SQL favorite" />
 </Frame>
 
-### Keyword expansion
+A new favorite belongs to the connection you created it in. Select **Global** in the dialog to make it available in all connections, which is what you want for anything that does not name objects only one database has. Deleting a connection deletes the favorites scoped to it.
 
-Assign a unique keyword to a favorite (e.g., `selall`). Start typing the keyword in the SQL editor and it shows up in the autocomplete popup as a starred suggestion with the favorite's name. Press Tab or Enter to insert the full SQL.
+## Keywords
 
-Keywords must be unique across all favorites in the same scope. Typing a keyword in [Open Quickly](/features/open-quickly) (`Cmd+Shift+O`) also finds the saved query.
+A keyword is a shorthand you type in the editor. Type its first letters, case does not matter, and it appears in the completion popup as a starred entry with the favorite's name; `Tab` or `Return` inserts the full SQL. Keywords must be unique inside their scope.
 
 <Frame caption="Keyword expansion in the editor autocomplete">
   <img className="block dark:hidden" src="/images/sql-favorite-keyword.png" alt="Keyword expansion in autocomplete" />
   <img className="hidden dark:block" src="/images/sql-favorite-keyword-dark.png" alt="Keyword expansion in autocomplete" />
 </Frame>
 
+Typing a keyword in [Open Quickly](/features/open-quickly) finds the same query without touching the sidebar.
+
 ### Cursor placement
 
-Put `;;` in a favorite's SQL to set where the cursor lands after expansion. The marker is removed on insert and the cursor is placed at its position:
+Put `;;` in the SQL to say where the cursor lands after expansion. The marker is removed on insert:
 
 ```sql
 SELECT COUNT(*)
@@ -56,47 +58,39 @@ FROM orders
 WHERE orders.;;
 ```
 
-Accepting the keyword inserts the query without the `;;` and leaves the cursor right after `orders.`, ready for a column name. Only the first `;;` counts as a marker. Without one, the cursor lands at the end of the inserted SQL.
+Accepting that keyword leaves the cursor right after `orders.`, ready for a column name. Only the first `;;` counts; without one the cursor lands at the end.
 
-### Scope
+## Working with saved queries
 
-Each favorite is either **global** (visible in all connections) or **connection-scoped** (visible only in the connection where it was created). Set the scope when creating or editing a favorite. Deleting a connection deletes its scoped favorites.
+Double-click a favorite, or select it and press `Return`, to insert it into the editor. That is the default; **Run in New Tab** on the right-click menu runs it instead, and the same menu has **Copy Query**, **Edit…**, **Move to** for filing it in a folder, and **Delete**. Arrow keys move between rows, typing jumps to a name, and `Delete` removes the selection.
 
-### Managing favorites
-
-Double-click a favorite in the Favorites tab, or select it and press Return, to insert it into the editor. Arrow keys move between rows and typing jumps to a name. `Delete` removes the selected favorite. The right-click menu has **Insert in Editor**, **Run in New Tab**, **Copy Query**, **Edit…**, **Move to** (a folder), and **Delete**.
-
-Organize favorites into folders: create them from the **+** menu, right-click a folder to rename or delete it, and use **Move to** on a favorite to file it. Renaming happens in place, on the row.
-
-Drag a saved query or a linked `.sql` file out of the sidebar to drop its SQL into the editor or another app.
+Create folders from the **+** menu, rename or delete them by right-clicking, and rename in place on the row. Dragging a saved query or a linked file out of the sidebar drops its SQL into the editor or another app.
 
 ## Team Library
 
-On a Team license, the Favorites tab shows a **Team Library** section with queries shared by your team. Double-click one, or select it and press Return, to run it in a new tab. To share yours, click **+ > Publish Saved Queries to Team…** See [Team Plan](/features/team).
+On a Team license the Favorites tab gains a **Team Library** section holding queries your team shared. Double-click one, or select it and press `Return`, to run it in a new tab. To share yours, click **+ > Publish Saved Queries to Team…** See [Team Plan](/features/team).
 
 ## Linked SQL folders
 
-Link a folder of `.sql` files on disk and they show up in the Favorites sidebar live. Useful for a Git repo of shared queries: clone the repo, link the folder, the team's queries appear next to your DB-stored favorites.
+Link a folder of `.sql` files on disk and they appear in the Favorites sidebar next to your saved queries. The point is a Git repo of shared queries: clone it, link it, and the team's queries stay one click away and current with `git pull`.
 
-This is a different feature from [Linked Folders](/features/connection-sharing#linked-folders), which watches a folder of shared `.tablepro` connection files.
+<Note>
+This is not [Linked Folders](/features/connection-sharing#linked-folders), which watches a folder of shared `.tablepro` connection files.
+</Note>
 
-### Adding a folder
-
-In the Favorites sidebar, click **+** and choose **Add Linked SQL Folder…** Pick any folder. Subfolders nest in the sidebar in the same shape as on disk. You can link as many folders as you want; all linked folders are global and show in every connection's Favorites tab.
+Click **+** in the Favorites sidebar and choose **Add Linked SQL Folder…** Pick any folder; `.sql`, `.psql`, and `.pgsql` files are indexed, subfolders nest the way they do on disk, and hidden files are skipped. Folders are global, so every connection's Favorites tab shows them, and a large repo is fine: only the first 4 KB of each file is read to build the sidebar.
 
 ### Editing files
 
-Click a linked file to open it as a regular editor tab. `Cmd+S` writes back to disk in the file's original encoding. UTF-8, UTF-16, ISO Latin-1 and a few others are auto-detected on load and preserved on save.
+Click a linked file to open it as an ordinary editor tab. `Cmd+S` writes back in the file's original encoding, detected on load from UTF-8, UTF-16, ISO Latin-1, and a few others.
 
-If the file was modified outside TablePro since you opened it, a yellow banner appears above the editor with a one-click **Reload from Disk**. If you save anyway, TablePro shows a side-by-side diff sheet with **Keep My Changes**, **Reload from Disk**, and **Cancel**.
+A file changed on disk after you opened it, by a `git pull` or a merge, shows a yellow banner above the editor with **Reload from Disk**. Save anyway and a side-by-side diff sheet offers **Keep My Changes**, **Reload from Disk**, and **Cancel**. Files added and removed outside TablePro reach the sidebar a second or two later on their own.
 
-External edits propagate to the sidebar within about a second via FSEvents: new files appear, deleted files disappear, and `git pull` triggers the same refresh.
-
-Non-UTF-8 files show a yellow warning triangle in the sidebar. Saving works in their native encoding; a character that doesn't fit (e.g., an emoji into ISO Latin-1) fails the save with an error instead of silently losing data.
+A non-UTF-8 file carries a yellow warning triangle in the sidebar. Saving keeps its encoding, and a character that does not fit, an emoji into ISO Latin-1, fails the save with an error rather than losing the character quietly.
 
 ### Frontmatter
 
-Top-of-file SQL comments set the display name, autocomplete keyword, and tooltip:
+Leading SQL comments set the display name, the keyword, and the tooltip:
 
 ```sql
 -- @name: Active Users (24h)
@@ -109,22 +103,16 @@ WHERE last_seen > NOW() - INTERVAL 24 HOUR;
 
 | Key | Effect |
 |-----|--------|
-| `@name` | Display name in the sidebar. Falls back to the filename without `.sql`. |
-| `@keyword` | Autocomplete trigger. Type the keyword in the editor and the file content expands as a query. |
-| `@description` | Optional. Shown in tooltips. |
+| `@name` | Display name in the sidebar. Falls back to the filename without its extension. |
+| `@keyword` | Autocomplete trigger, exactly as for a saved favorite. |
+| `@description` | Shown in tooltips. Optional. |
 
-The parser stops at the first non-frontmatter line, so put these at the very top. A UTF-8 BOM is handled. Files without frontmatter still appear, with the filename as the display name and no keyword. The `;;` [cursor marker](#cursor-placement) works in linked files too.
+The parser stops at the first line that is not frontmatter, so these go at the very top; a UTF-8 BOM is handled. A file without frontmatter still appears, under its filename and with no keyword. The `;;` [cursor marker](#cursor-placement) works in linked files too.
 
-To edit frontmatter without opening the file, right-click a linked row and choose **Edit Metadata…** The dialog rewrites only the leading comment block and preserves the rest of the file plus its original encoding.
+To change frontmatter without opening the file, right-click the row and choose **Edit Metadata…** The dialog rewrites the leading comment block only and keeps the rest of the file and its encoding.
 
-### Managing linked files and folders
+### Managing linked files
 
-Drag any row from the Favorites sidebar (linked or DB-stored) onto the SQL editor to insert its content at the cursor.
+Press `Delete` on a linked file, or right-click > **Move File to Trash**: it goes to the macOS Trash and stays recoverable. Right-click a folder's root row for **Disable**, **Reload**, **Copy Path**, **Show in Finder**, **Add Another SQL Folder…**, and **Remove from Sidebar**. Removing unlinks the folder; the files stay where they are.
 
-Press Delete on a linked file or right-click > **Move File to Trash**; the file goes to the macOS Trash and stays recoverable. Right-click a linked folder root for **Disable**, **Reload**, **Copy Path**, **Show in Finder**, **Add Another SQL Folder…**, or **Remove from Sidebar**. Removing only unlinks the folder; files on disk stay where they are.
-
-## Storage
-
-Favorites live in a SQLite database (`sql_favorites.db`) in `~/Library/Application Support/TablePro/`. Search covers name, keyword, and query text.
-
-Linked folder paths live in UserDefaults under `com.TablePro.linkedSQLFolders`, and parsed metadata (name, keyword, mtime, size, encoding) is cached in `linked_sql_index.db` in the same directory so the sidebar renders without re-reading every file. File content always lives on disk. Linked folder paths are not part of iCloud Sync; each Mac links its own copy of a shared repo.
+Linked folder paths are the one part of Favorites that does not sync, so each Mac links its own copy of a shared repo.

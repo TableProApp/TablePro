@@ -3,9 +3,9 @@ title: Server Dashboard
 description: Monitor active sessions, server metrics, and slow queries in real time
 ---
 
-Open this when the question is about the server rather than about a table. It shows who is connected, whatever metrics the engine reports, and any query still running after a second, refreshing every 5 seconds until you change the interval or turn it off.
+What this screen shows is what your account is allowed to see. A MySQL user without the `PROCESS` privilege gets only its own connections in the session list. A PostgreSQL role that is neither a superuser nor a member of `pg_monitor` gets everyone's backends with the Query column blank. An empty or half-blank dashboard is nearly always a privilege, not a fault.
 
-Open it from the menu bar **Database > Server Dashboard**. A Dashboard toolbar button is also available: right-click the toolbar, choose **Customize Toolbar**, and drag it in.
+Open it from **Database > Server Dashboard**. A Dashboard toolbar button is available too: right-click the toolbar, choose **Customize Toolbar**, and drag it in.
 
 <Frame caption="Server Dashboard showing active sessions, metrics, and slow queries">
   <img
@@ -20,63 +20,41 @@ Open it from the menu bar **Database > Server Dashboard**. A Dashboard toolbar b
   />
 </Frame>
 
-The panels are stacked top to bottom. Drag the dividers between Active Sessions, Server Metrics, and Slow Queries to resize each section; positions are remembered across launches.
+The panels stack top to bottom. Drag the dividers between Active Sessions, Server Metrics, and Slow Queries to resize them; the positions are remembered across launches.
 
 ## Active Sessions
 
-A sortable table of all connections to the server, showing:
+Every connection to the server except this one, sortable, one row each.
 
-- **PID**: process or session ID
-- **User**: connected user
-- **Database**: target database
-- **State**: current status (active, idle, sleeping)
-- **Duration**: how long the current operation has been running
-- **Query**: the SQL statement being executed (truncated, hover for full text)
+| Column | Holds |
+|---|---|
+| PID | Process or session ID |
+| User, Database | Who is connected, and to what |
+| State | active, idle or sleeping, in the engine's own wording |
+| Duration | How long the current operation has been running |
+| Query | The statement, truncated at 1,000 characters. Hover for the full text |
 
-### Kill and cancel
-
-Each session row has action buttons:
-
-- **Cancel Query** (stop icon): cancels the running query without terminating the connection (`pg_cancel_backend` on PostgreSQL, `KILL QUERY` on MySQL)
-- **Terminate Session** (x icon): kills the entire connection
-
-Both actions show a confirmation alert before executing. If the server rejects the action, an Action Failed alert shows the error.
-
-## Server Metrics
-
-A horizontal strip of metric cards. What is shown depends on the database:
-
-| Database | Metrics shown |
-|----------|--------------|
-| PostgreSQL / Redshift / CockroachDB | Connections, cache hit ratio, database size, uptime, active queries |
-| MySQL / MariaDB | Connected threads, running threads, uptime, total queries, slow queries, max connections, bytes received, bytes sent |
-| MSSQL | User sessions, uptime, database size |
-| ClickHouse | Active queries, active merges, part mutations, disk usage |
-| DuckDB | Database size, block size, total blocks, memory limit, threads |
-| SQLite | Database size, page count, page size, journal mode, cache size |
+Two buttons sit on each row. **Cancel Query** stops the running statement and leaves the connection up: `pg_cancel_backend` on PostgreSQL, `KILL QUERY` on MySQL. **Terminate Session** ends the connection itself with `pg_terminate_backend` or `KILL`, and the server rolls back any transaction that session had open. Both confirm first, and a refusal from the server comes back as an **Action Failed** alert.
 
 ## Slow Queries
 
-A list of queries running longer than 1 second, sorted by duration. Each entry shows the elapsed time, SQL text, user, and database.
+Queries still running after 1 second, longest first, with elapsed time, SQL, user, and database.
 
-ClickHouse is different: the list comes from `system.query_log`, so it shows the 20 most recent finished queries that took over a second, newest first, with no database.
+ClickHouse is the exception: its list comes from `system.query_log`, so it holds the 20 most recent *finished* queries that took over a second, newest first, and no database.
 
-## Auto-refresh
+## Refreshing
 
-- **Interval menu**: 1s, 2s, 5s (default), 10s, 30s, or Off
-- **Pause/Resume**: stops refreshing without changing the interval (disabled when the interval is Off)
-- **Refresh Now**: runs one refresh
-- **Last refresh time**: shown on the right
+The interval menu offers 1s, 2s, 5s (the default), 10s, 30s, and Off. **Pause** stops the cycle without changing the interval and is dimmed while the interval is Off. **Refresh Now** runs a single pass. The time of the last refresh sits on the right.
 
-## Database support
+## What each engine reports
 
-| Database | Sessions | Metrics | Slow Queries | Kill | Cancel |
-|----------|:--------:|:-------:|:------------:|:----:|:------:|
-| PostgreSQL / Redshift / CockroachDB | Yes | Yes | Yes | Yes | Yes |
-| MySQL / MariaDB | Yes | Yes | Yes | Yes | Yes |
-| MSSQL | Yes | Yes | Yes | Yes | - |
-| ClickHouse | Yes | Yes | Yes | Yes | - |
-| DuckDB | - | Yes | - | - | - |
-| SQLite | - | Yes | - | - | - |
+| Database | Sessions | Metrics | Slow queries | Cancel | Terminate |
+|----------|:--------:|---------|:------------:|:------:|:---------:|
+| PostgreSQL / Redshift / CockroachDB | Yes | Connections, cache hit ratio, database size, uptime, active queries | Yes | Yes | Yes |
+| MySQL / MariaDB | Yes | Connected threads, running threads, uptime, total queries, slow queries, max connections, bytes received, bytes sent | Yes | Yes | Yes |
+| SQL Server | Yes | User sessions, uptime, database size | Yes | - | Yes |
+| ClickHouse | Yes | Active queries, active merges, part mutations, disk usage | Yes | - | Yes |
+| DuckDB | - | Database size, block size, total blocks, memory limit, threads | - | - | - |
+| SQLite | - | Database size, page count, page size, journal mode, cache size | - | - | - |
 
-For databases without a dashboard provider (Redis, MongoDB, and others), the menu item and toolbar button are disabled.
+Every other engine has no dashboard provider, so the menu item and the toolbar button are dimmed.

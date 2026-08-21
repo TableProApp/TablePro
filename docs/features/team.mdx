@@ -3,11 +3,11 @@ title: Team Plan
 description: Share one license across your team, manage seats on the web, and join with an invite code
 ---
 
-Each activated Mac takes a seat. Seats are handed out and taken back from your account at [tablepro.app/account](https://tablepro.app/account), and the app's only part is redeeming the invite code that arrives by email.
+Buy seats, hand them out from your account at [tablepro.app/account](https://tablepro.app/account), and each person redeems the invite code that arrives by email. One seat covers one Mac, and the app's only part is the redeeming.
 
 ## Seats
 
-A Team license has a fixed number of seats. Each activated Mac takes one seat. Members have a role:
+A Team license has a fixed number of seats, and each activated Mac takes one. Members carry a role, set and shown on the web only:
 
 | Role | Meaning |
 |------|---------|
@@ -15,30 +15,27 @@ A Team license has a fixed number of seats. Each activated Mac takes one seat. M
 | Admin | Invited with the Admin role. |
 | Member | A regular seat. |
 
-Roles are set and shown on the web. The app does not display them.
-
 ## Manage your team on the web
 
-Sign in to your account at [tablepro.app/account](https://tablepro.app/account) with the email on your license. You get a one-time sign-in link by email, so there is no separate password to remember.
+Sign in at [tablepro.app/account](https://tablepro.app/account) with the email on your license, using the one-time link sent to that address. The team panel shows seats used against seats total, and holds the controls to invite a member by email with a role, cancel an invite nobody has accepted, and remove a member.
 
-From the team panel you can:
-
-- See seats used and seats total.
-- Invite a member by email and pick their role (Admin or Member).
-- Cancel an invite that has not been accepted yet.
-- Remove a member. Removing a member frees their seat.
-
-An invited member gets an email with an invite code.
+Removing a member frees the seat on the server at once. Their copy keeps running on its signed license until its next check, at most 7 days later, and Pro features pause then. See [Licensing](/features/licensing) for the validation schedule and what each tier includes.
 
 ## Join a team
 
-You join from the invite email. You do not need a license key of your own.
+You join from the invite email, with no license key of your own.
 
-1. Install TablePro. Open **Settings > Account** with `Cmd+,`, or click **Activate License** on the welcome window.
-2. Paste the **invite code** from your email into the same field where a license key goes.
-3. Click **Activate**.
-
-TablePro detects that the code is an invite rather than a license key, takes a seat on the team, and activates. From then on your copy validates and renews like any other license. See [Licensing](/features/licensing) for activation, validation, and offline behavior.
+<Steps>
+  <Step title="Open the activation field">
+    Install TablePro, then open **Settings > Account** with `Cmd+,`, or click **Activate License** on the welcome window.
+  </Step>
+  <Step title="Paste the invite code">
+    It goes in the same field as a license key, and TablePro tells the two apart.
+  </Step>
+  <Step title="Activate">
+    Click **Activate**. TablePro takes a seat on the team, and from then on your copy validates and renews like any other license.
+  </Step>
+</Steps>
 
 <Frame caption="Activating with a team invite code">
   <img className="block dark:hidden" src="/images/team-invite-activation.png" alt="License activation sheet accepting a team invite code" />
@@ -46,17 +43,17 @@ TablePro detects that the code is an invite rather than a license key, takes a s
 </Frame>
 
 <Warning>
-An invite code is single use. It seats the first Mac that redeems it. To add a second Mac, ask your team owner for another invite. To move your seat to a new Mac, deactivate the old one under **Settings > Account** and redeem a fresh invite.
+An invite code is single use and seats the first Mac that redeems it. To add a second Mac, ask your team owner for another invite. To move your seat, deactivate the old Mac under **Settings > Account** and redeem a fresh invite.
 </Warning>
 
 ## Share connections with your team
 
-Two ways, depending on whether your team already shares a folder.
+Two routes, and the choice is whether your team already shares a folder. If it does, publish connection definitions into it with [Team Catalog](/features/connection-sharing#team-catalog). If it does not, use Team Library, which keeps the shared set in your account instead.
 
-**Team Library** keeps the shared set in your account, so nothing on disk needs to be shared. In the app, right-click a connection and choose **Share > Publish to Team Library…**, or publish your saved queries from the Favorites sidebar. Passwords are never sent: only the connection definition and the query text. Teammates on the team see shared queries in their Favorites sidebar, and their app pulls the library when its license revalidates. You review and remove shared items from your account at [tablepro.app/account](https://tablepro.app/account).
+### Team Library
 
-If your team already shares a Git repo, Dropbox folder, or network drive, publish connection definitions there instead with [Team Catalog](/features/connection-sharing#team-catalog).
+Right-click a connection and choose **Share > Publish to Team Library…**, or publish saved queries from the Favorites sidebar with **Publish Saved Queries to Team…**. Only the connection definition and the query text are sent, never passwords.
 
-## What a seat includes
+Teammates get the connections in their list the way a Linked Folder delivers them, and shared queries in their Favorites sidebar labeled with whoever published each one. Their app pulls the library every 7 days. A pulled connection arrives without its startup SQL, because it lands with no confirmation step and nothing that would run by itself travels with it.
 
-Every seat carries the Team tier. That is everything in Starter (iCloud Sync, encrypted connection export, Linked Folders) plus the two Team-only features, Team Catalog and Team Library. See [Licensing](/features/licensing) for the full tier table.
+You review and remove what you published from your account at [tablepro.app/account](https://tablepro.app/account).

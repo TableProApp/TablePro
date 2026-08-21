@@ -1,0 +1,110 @@
+---
+title: Connection form
+description: The nine panes of the connection editor, the fields on each, and which drivers get which
+---
+
+A driver only ever gets the panes it can use, so this form's sidebar is four items long for SQLite and nine for PostgreSQL. A warning triangle on one of them means a required field on that pane is empty.
+
+<Frame caption="Connection form with sidebar navigation">
+  <img className="block dark:hidden" src="/images/connection-form-fields.png" alt="Connection form" />
+  <img className="hidden dark:block" src="/images/connection-form-fields-dark.png" alt="Connection form" />
+</Frame>
+
+| Pane | Contents |
+|------|----------|
+| **General** | Name, host, port, database, credentials, Test Connection |
+| **SSH Tunnel** | Reach a database behind a bastion host. See [SSH Tunneling](/connections/ssh-tunneling) |
+| **Cloudflare Tunnel** | Connect through `cloudflared`. See [Cloudflare Tunnel](/connections/cloudflare-tunnel) |
+| **Cloud SQL Auth Proxy** | Google Cloud SQL, for MySQL, PostgreSQL, and SQL Server only. See [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy) |
+| **SOCKS Proxy** | Route through a SOCKS5 proxy. See [SOCKS Proxy](/connections/socks-proxy) |
+| **SSL/TLS** | Encryption mode and certificates. See [SSL/TLS](/connections/ssl) |
+| **Customization** | Color, tags, group, Safe Mode |
+| **Advanced** | Startup commands, pre-connect script, external access, plugin fields |
+| **AI Rules** | Per-connection guidance the AI assistant sees on every chat turn. See [AI Assistant](/features/ai-assistant) |
+
+Only one of SSH Tunnel, Cloudflare Tunnel, Cloud SQL Auth Proxy, and SOCKS Proxy can be on at a time. Turning on a second offers a button to switch off the first.
+
+## General
+
+| Field | Description |
+|-------|-------------|
+| **Name** | Display name in the connection list |
+| **Host** | Empty falls back to the driver's own default, usually `localhost` |
+| **Port** | Pre-filled from the database type |
+| **Database** | Optional on drivers that browse every database from one session. PostgreSQL and Redshift do not connect without one |
+| **Username** | Not pre-filled. Empty means the driver's own default |
+| **Password** | Stored in the macOS Keychain |
+| **Prompt for password** | Stores nothing, asks on every connect. Reads **Prompt for API token** on API-only drivers |
+| **Use Password File** | PostgreSQL, Redshift, and CockroachDB. Reads `~/.pgpass`, and reports underneath whether the file exists, has `chmod 0600`, and holds a matching line |
+| **Socket Path** | Optional, and only with an SSH tunnel on. Forwards to a unix socket instead of Host and Port, which are then ignored. See [Forwarding to a unix socket](/connections/ssh-tunneling#forwarding-to-a-unix-socket) |
+
+SQLite, DuckDB, and Beancount replace the host section with a file path picker.
+
+## Advanced
+
+| Field | Description |
+|-------|-------------|
+| **Startup Commands** | SQL to run after every connect. See [Startup commands](#startup-commands) |
+| **Pre-Connect Script** | Shell script run before connecting. A non-zero exit aborts the connect |
+| **AI Policy** | Per-connection override for the in-app AI agents |
+| **External Clients** | **Blocked**, **Read Only** (the default), or **Read & Write** for MCP clients such as Raycast, Cursor, and Claude Desktop. A token's own scope cannot raise it. See [External API](/external-api) |
+| **Local only** | Keeps this connection off iCloud Sync. See [iCloud Sync](/features/icloud-sync) |
+| Plugin fields | Driver-specific options, such as MongoDB's `replicaSet` |
+
+A pre-connect script never runs unprompted. A **Pre-Connect Script** alert shows the script itself and waits for **Run Script**, every time. At launch it is not prompted for at all: a restored window whose connection carries a script waits with a **Connect** button.
+
+## Startup commands
+
+Statements split on semicolons and newlines and run in order on the connection that just opened, after every connect including an automatic reconnect. They all run on one connection, so write one dialect.
+
+<CodeGroup>
+```sql MySQL
+SET time_zone = '+00:00';
+SET NAMES utf8mb4;
+```
+
+```sql PostgreSQL
+SET search_path TO myschema, public;
+```
+</CodeGroup>
+
+A statement that fails is logged and skipped, and the connection still opens.
+
+## Connection health
+
+Every active connection is pinged every 30 seconds, skipping the ping while one of your own queries is running. A failed ping starts a reconnect at 2s, then 4s, 8s, doubling to a 120-second ceiling, and keeps going until the connection comes back or you close it. An authentication failure stops the retries and leaves the session in error. A reconnect rebuilds the tunnel, restores the selected database and schema, and re-runs the startup commands; the session reads as connecting throughout.
+
+SQLite, DuckDB, Beancount, Snowflake, and Teradata are not monitored.
+
+## Which drivers get which panes
+
+| Database | Default port | SSH tunnel | SSL/TLS | Cloudflare Tunnel | Cloud SQL Proxy | SOCKS Proxy |
+|----------|-------------|-----------|---------|-------------------|-----------------|-------------|
+| [MySQL](/databases/mysql) | 3306 | Yes | Yes | Yes | Yes | Yes |
+| [MariaDB](/databases/mariadb) | 3306 | Yes | Yes | Yes | No | Yes |
+| [PostgreSQL](/databases/postgresql) | 5432 | Yes | Yes | Yes | Yes | Yes |
+| [Amazon Redshift](/databases/redshift) | 5439 | Yes | Yes | Yes | No | Yes |
+| [CockroachDB](/databases/cockroachdb) | 26257 | Yes | Yes | Yes | No | Yes |
+| [PGlite](/databases/pglite) | 5432 | No | No | No | No | No |
+| [Microsoft SQL Server](/databases/mssql) | 1433 | Yes | Yes | Yes | Yes | Yes |
+| [Oracle](/databases/oracle) | 1521 | Yes | Yes | Yes | No | Yes |
+| [Dameng DM8](/databases/dameng) | 5236 | Yes | No | Yes | No | Yes |
+| [ClickHouse](/databases/clickhouse) | 8123 | Yes | Yes | Yes | No | Yes |
+| [Teradata](/databases/teradata) | 1025 | Yes | Yes | Yes | No | Yes |
+| [Trino](/databases/trino) | 8080 | Yes | Yes | Yes | No | Yes |
+| [MongoDB](/databases/mongodb) | 27017 | Yes | Yes | Yes | No | Yes |
+| [Redis](/databases/redis) | 6379 | Yes | Yes | Yes | No | Yes |
+| [Cassandra / ScyllaDB](/databases/cassandra) | 9042 | Yes | Yes | Yes | No | Yes |
+| [etcd](/databases/etcd) | 2379 | Yes | Yes | Yes | No | Yes |
+| [SurrealDB](/databases/surrealdb) | 8000 | Yes | Yes | Yes | No | Yes |
+| [Elasticsearch](/databases/elasticsearch) | 9200 | No | Yes | No | No | No |
+| [Snowflake](/databases/snowflake) | 443 | No | No | No | No | No |
+| [SQLite](/databases/sqlite) | File | No | No | No | No | No |
+| [DuckDB](/databases/duckdb) | File | No | No | No | No | No |
+| [Beancount](/databases/beancount) | File | No | No | No | No | No |
+| [DynamoDB](/databases/dynamodb) | AWS API | No | No | No | No | No |
+| [BigQuery](/databases/bigquery) | Cloud API | No | No | No | No | No |
+| [Cloudflare D1](/databases/cloudflare-d1) | Cloud API | No | No | No | No | No |
+| [libSQL / Turso](/databases/libsql) | URL | No | No | No | No | No |
+
+A driver with no SSL/TLS pane is either a local file or an HTTPS API that manages its own encryption. [SSL/TLS](/connections/ssl) has the per-driver defaults.

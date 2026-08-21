@@ -3,7 +3,7 @@ title: Open Quickly
 description: Search objects and queries in one connection or across every open connection
 ---
 
-Press `Cmd+Shift+O` (or **File > Open Quickly**) in a connection window to open a floating search panel. Type a few characters and press `Return` to jump to any table, view, system table, database, schema, saved query, or recent query. Matching is fuzzy: `usr` finds `users` and `user_settings`, and matched characters are shown in bold.
+Press `Cmd+Shift+O` in a connection window, type a few characters, and press `Return`. Matching is fuzzy, so `usr` finds `users` and `user_settings`, and the characters that matched are bold. **File > Open Quickly…** opens the same panel.
 
 <Frame caption="Open Quickly with fuzzy-matched results">
   <img className="block dark:hidden" src="/images/quick-switcher.png" alt="Open Quickly panel" />
@@ -16,56 +16,57 @@ Press `Cmd+Shift+O` (or **File > Open Quickly**) in a connection window to open 
 |--------|----------|
 | Open Quickly | `Cmd+Shift+O` |
 | Move selection | `Up` / `Down`, or `Ctrl+J`/`Ctrl+N` and `Ctrl+K`/`Ctrl+P` |
-| Open selected item | `Return` (double-click also works) |
-| Open in a new tab | `Cmd+Return` or `Option+Return` |
+| Open selected item | `Return`, or double-click |
+| Open in a new tab | `Cmd+Enter` or `Option+Enter` |
 | Switch scope | `Cmd+1` to `Cmd+5` |
 | Clear the search text | `Escape` |
-| Dismiss | `Escape` on an empty field, `Cmd+Shift+O` again, or click outside |
+| Dismiss | `Escape` on an empty field, `Cmd+Shift+O` again, or a click outside |
 
-The footer along the bottom of the panel lists these as you go. Its `Escape` hint reads **Clear** while you have something typed and **Close** once the field is empty, so you can see which of the two the next press will do.
-
-The opening shortcut is rebindable in **Settings > Keyboard**; see [Keyboard Shortcuts](/features/keyboard-shortcuts).
+The footer lists these as you go, and its `Escape` hint reads **Clear** while you have text and **Close** once the field is empty. Rebind the opening shortcut in **Settings > Keyboard**.
 
 ## Scopes
 
-Five scopes limit what the search covers: **All** (`Cmd+1`), **Tables** (`Cmd+2`, includes views and system tables), **Databases** (`Cmd+3`, includes schemas), **Queries** (`Cmd+4`, saved queries and recent queries), and **Connections** (`Cmd+5`). A segmented control under the search field sets the scope. It stays on screen the whole time, so you can change scope after typing without deleting what you typed. With an empty search in a scope other than All, everything in that scope is listed under section headers. The database list follows the sidebar's database filter.
+The segmented control under the search field sets the scope. It stays on screen, so switching scope after typing keeps what you typed.
 
-Saved queries come from your [favorites](/features/favorites) and also match on their keyword. In the **All** scope, recent queries are the last 50 entries from [query history](/features/query-history) for the current connection.
+| Scope | Key | Covers |
+|-------|-----|--------|
+| **All** | `Cmd+1` | Tables, views, databases, schemas, and saved queries in this connection, plus its last 50 queries |
+| **Tables** | `Cmd+2` | Tables, views, and system tables |
+| **Databases** | `Cmd+3` | Databases and schemas |
+| **Queries** | `Cmd+4` | Saved queries and recent queries, from every connected window |
+| **Connections** | `Cmd+5` | Tables, views, and system tables in every connected window |
 
-## Search across connections
+Leave the search empty in any scope other than All and everything in it is listed under section headers. Saved queries come from your [favorites](/features/favorites) and match on their keyword as well as their name, so a keyword you use in the editor reaches the query from here too.
 
-### Objects
+Opening a table or view opens a table tab, a database or schema switches the connection to it, and a query loads into the SQL editor without running it.
 
-The **Connections** scope searches tables, views, and system tables in every connected window. With an empty search the list is grouped under each connection's name. Once you type, results are ranked across all connections in one list, and every row shows the connection, database, and schema it belongs to. Search matches both the object name and that path, so typing a connection name limits the results to that connection.
+## Across connections
 
-TablePro loads this catalog only when you open the Connections scope. It searches the database or schema each connection is currently browsing. Opening a result in another connection brings that connection's window forward and opens the table there.
+The **Connections** and **Queries** scopes reach into every connected window, and that catalog is read the first time you open one of them, not before.
 
-### Queries
+An empty search groups results under each connection's name. Once you type, everything is ranked in one list and each row names the connection, database, and schema it belongs to; the path is matched too, so typing a connection's name narrows the list to it. Opening a result brings that connection's window forward.
 
-The **Queries** scope searches saved queries and up to 200 recent query-history entries drawn from every connected window. Each connection contributes its own most recent entries, so a connection you ran hundreds of queries on today cannot push another one off the list. Each row shows its connection and database. Recent queries also show their execution time. Global saved queries open in the connection where you opened the panel. The connection the panel was opened from stays listed even while it is reconnecting.
+**Queries** holds your saved queries plus up to 200 recent ones, drawn evenly across connections rather than by raw recency, with execution times on the recent rows. Global saved queries open in the connection you opened the panel from, which stays listed even while it is reconnecting.
 
 <Frame caption="Query history results from two open connections">
   <img src="/images/quick-switcher-cross-connection-queries.png" alt="Open Quickly showing query history from Chinook and Analytics connections" />
 </Frame>
 
-Opening a query brings its connection forward and loads the SQL without running it. The tab you opened the panel from is used whenever it is on the right connection and database, so a query never replaces an editor you were not looking at. Query-history entries keep their recorded database context. If no open tab uses that database, TablePro opens a new tab instead of loading the SQL into a tab bound to another database. `Cmd+Return` and `Option+Return` always open a new tab.
-
-## Ranking
-
-With an empty search, the panel shows a **Recent** section: the last 10 items you opened through the panel on this connection. With a query, each result's fuzzy match score is weighted by:
-
-- **Object kind**: tables rank above views, databases, schemas, and saved queries; query history ranks last.
-- **Frecency**: each item's last 10 opens through the panel, weighted by how recent they are, tracked per connection. Opening another connection's result counts towards that connection.
-- **Open tab boost**: tables already open in a tab rank higher.
-- **Where the match landed**: a match on the name ranks highest, then a saved query's keyword, then the connection and database path shown beside it.
-
-The list shows at most 200 results.
+A query loads into the tab you opened the panel from when that tab is on the right connection and database. If no open tab uses the database the query was recorded against, it gets a new tab. `Cmd+Enter` and `Option+Enter` always open a new tab.
 
 ## Open badge
 
-Tables already open in a tab show an **Open** badge, and the selected row's hint reads **Switch to Tab**. Committing switches to the existing tab instead of opening a duplicate. `Cmd+Return` and `Option+Return` force a new tab.
+A table already open in a tab shows an **Open** badge, and the hint on the selected row reads **Switch to Tab**. Committing goes to that tab instead of opening a duplicate; `Cmd+Enter` and `Option+Enter` force a new one.
 
-What opening does depends on the item: tables and views open a table tab, databases and schemas switch the active database or schema, and queries load into the SQL editor.
+## Ranking
+
+An empty search shows **Recent**: the last 10 items you opened through the panel on this connection. Once you type, a match on the name beats a match on the connection and database path beside it, tables rank above other kinds, and anything you open often through the panel or already have open in a tab moves up. The list stops at 200 results.
+
+## When a table is not listed
+
+- The list covers the database the connection is browsing. To reach a table somewhere else, switch database first, then search again.
+- The **Databases** scope offers only databases the sidebar's database filter shows. Clear the filter with **View > Show All Databases**.
+- The **Connections** scope covers connected windows only, and only the database each one is browsing.
 
 ## Right-click actions
 
@@ -73,8 +74,6 @@ What opening does depends on the item: tables and views open a table tab, databa
 |--------|------------|
 | Open | All items |
 | Open in New Tab | Tables, views, system tables, saved queries, recent queries |
-| Open Structure | Tables, views, system tables |
+| Open Structure | Tables, views, and system tables in the current connection |
 | Copy Name | All items |
 | Copy Query | Saved and recent queries |
-
-Open Structure is available only for objects in the current connection.

@@ -3,53 +3,78 @@ title: Teradata
 description: Browsing databases and objects on Teradata Vantage, with TLS and transaction mode
 ---
 
-The driver speaks the Teradata wire protocol from native Swift. Setup is a connection form, not a client install. Sessions use the TD2 logon mechanism with the session data encrypted, and land on gateway port `1025`, or on `443` with TLS on. That TLS port is fixed.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-## Install the plugin
+Port `1025` carries a plain session. Any SSL mode moves the session to `443`, where it runs over the gateway's WebSocket endpoint, and that port cannot be changed. A native Swift driver handles both, with no client library to install.
 
-Teradata is a registry driver. Pick Teradata in the database type chooser and TablePro offers to download it, or install it up front from **Settings > Plugins > Browse > Teradata Driver**. The driver loads without restarting the app.
+<Frame caption="The Teradata connection form">
+  <img className="block dark:hidden" src="/images/teradata-connection-form.png" alt="Teradata connection form" />
+  <img className="hidden dark:block" src="/images/teradata-connection-form-dark.png" alt="Teradata connection form" />
+</Frame>
+
+## Quick setup
+
+Click **Create Connection…**, select **Teradata**, enter the host, username, and password, and click **Save & Connect**. Any Vantage system that accepts a TD2 logon works; no version is checked.
+
+<RegistryPlugin name="Teradata" plugin="Teradata Driver" />
 
 ## Connection settings
 
 | Field | Description |
 | --- | --- |
-| Host | The Teradata database hostname. |
-| Port | The plain gateway port. Default `1025`. TLS connects on `443` instead, and `Preferred` falls back to this port. |
-| Database | The default database to use after logon. Optional; leave blank to use your account's default. |
-| Username | Your Teradata username. |
-| Password | Your Teradata password. |
-| Logon Mechanism | Advanced pane. Type `TD2` or `TDNEGO` in uppercase. Default `TD2`. |
-| Transaction Mode | Advanced pane. Type `DEFAULT`, `ANSI`, or `TERA` in uppercase. Default `DEFAULT`. |
-| SSL Mode | Off by default. `Preferred`, `Required`, `Verify CA`, or `Verify Identity` turn on TLS. |
+| **Host** | Teradata database hostname |
+| **Port** | Plain gateway port, default `1025` |
+| **Database** | Default database after logon. Optional; empty uses your account's default |
+| **Username / Password** | Teradata credentials |
+| **Logon Mechanism** | Advanced pane. `TD2` or `TDNEGO`, uppercase. Default `TD2` |
+| **Transaction Mode** | Advanced pane. `DEFAULT`, `ANSI`, or `TERA`, uppercase |
+| **SSL Mode** | **SSL/TLS** pane. **Disabled** by default |
+
+Leave **Transaction Mode** on `DEFAULT`, which takes whatever the system is configured for, unless a script needs `ANSI` or `TERA` case sensitivity and commit rules on the session. A system reachable only through a bastion works over an [SSH tunnel](/connections/ssh-tunneling).
+
+## Connection URL
+
+```text
+teradata://user:password@host:1025/database
+```
+
+**Import from URL…** accepts the scheme; macOS does not route `teradata://` links. See [Connection URL Reference](/connections/urls).
 
 ## Databases and objects
 
-In Teradata a database and a user are both namespaces. TablePro lists them from the data dictionary (`DBC.DatabasesV`) as top-level databases, and their tables, views, and columns come from `DBC.TablesV` and `DBC.ColumnsV`. Macros and stored procedures are not listed.
+A database and a user are both namespaces in Teradata, and both appear as top-level databases in the sidebar with their tables and views inside. A tab bound to a second database keeps the same session: `DATABASE "name"` runs ahead of its statements instead of a reconnect.
 
-Identifiers are quoted with double quotes. Teradata has no `LIMIT`, so TablePro pages results with `TOP` on the first page and `QUALIFY ROW_NUMBER()` for later pages.
+Identifiers are quoted with double quotes. Teradata has no `LIMIT`, so a table's first page comes back with `TOP` and later pages with `QUALIFY ROW_NUMBER()`.
 
-## TLS
+## SSL/TLS
 
-Teradata carries encrypted sessions over HTTPS on port `443`, separate from the plain gateway port `1025`. TablePro connects with TLS and tunnels the session over the gateway's WebSocket endpoint. The TLS port is fixed at `443` and cannot be changed. Set the SSL Mode to turn it on:
+| Mode | What happens |
+| --- | --- |
+| **Disabled** | Plain session on the gateway port |
+| **Preferred** | TLS on `443`, falling back to a plain session on `1025` when the HTTPS port is unreachable |
+| **Required (skip verify)** | TLS, certificate not checked |
+| **Verify CA** | Certificate chain checked. Point **CA Certificate** at your CA file for a private authority |
+| **Verify Identity** | Chain and hostname checked |
 
-- `Preferred` tries TLS and falls back to a plain connection on `1025` if the HTTPS port is unreachable.
-- `Required` uses TLS but does not check the server certificate.
-- `Verify CA` checks the certificate chain, and `Verify Identity` also checks the hostname. Point CA Certificate at your CA file to trust a private authority.
-
-To test TLS, use `Required` so a failed handshake surfaces instead of falling back.
-
-## Transaction mode
-
-`ANSI` and `TERA` differ in case sensitivity and commit behavior. `ANSI` compares strings case-sensitively and keeps a transaction open until you commit; `TERA` compares case-insensitively and commits each request unless you wrap it in `BEGIN TRANSACTION`. `DEFAULT` uses whatever the database is configured for.
-
-## Troubleshooting
-
-- **Cannot reach the server.** Confirm the host and that port `1025` is open from your network.
-- **Logon fails.** Check the username, password, and that the account is not locked. Typing an unsupported mechanism fails before connecting with `unsupported: logon mechanism LDAP; only TD2 and TDNEGO are supported`. A mechanism typed in lowercase is ignored and `TD2` is used instead.
+Test TLS on **Required (skip verify)** rather than **Preferred**, or a failed handshake looks like a successful connect.
 
 ## Limitations
 
-- Foreign keys are never listed. The Structure tab shows a Foreign Keys view for Teradata and it is always empty.
-- LDAP, Kerberos, and JWT logon are not supported. Use `TD2` or `TDNEGO`.
+- Foreign keys are never listed. The Structure tab's Foreign Keys view stays empty for Teradata; read the constraints from its DDL view instead.
+- Macros and stored procedures are not in the sidebar. Query them from the editor.
+- LDAP, Kerberos, and JWT logon fail before the connect is attempted. Use `TD2` or `TDNEGO`.
 - The TLS port is fixed at `443`.
-- Macros and stored procedures are not listed.
+
+## Troubleshooting
+
+### unsupported: logon mechanism …; only TD2 and TDNEGO are supported
+
+**Logon Mechanism** holds something the driver does not implement. Set it to `TD2` or `TDNEGO`. A value the driver does not recognize, a mechanism typed in lowercase included, is read as `TD2` instead.
+
+### Cannot reach the server
+
+The connect gives up after 20 seconds. Confirm the host, and that port `1025` is open from your network, or `443` if an SSL mode is set.
+
+### Logon fails
+
+Check the username and password, and that the account is not locked.

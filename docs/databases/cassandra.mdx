@@ -3,13 +3,15 @@ title: Cassandra / ScyllaDB
 description: Connect to Cassandra and ScyllaDB clusters, browse keyspaces, and run CQL queries
 ---
 
-Anything older than Cassandra 3.0 will not connect. The driver reads its schema from `system_schema`, which 2.x does not have. ScyllaDB is a separate entry in the database type list but the same driver, over the same CQL native protocol.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+Cassandra 3.0 is the floor here, and 2.x will not connect. The driver reads its schema from `system_schema`, which 2.x does not have. ScyllaDB is a separate entry in the database type list but the same driver, over the same CQL native protocol.
 
 ## Quick setup
 
-Click **Create Connection…**, select **Cassandra** or **ScyllaDB** (both entries use the same driver), enter host, port, and credentials, and connect.
+Click **Create Connection…**, select **Cassandra** or **ScyllaDB**, enter host, port, and credentials, and connect.
 
-Cassandra is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved Cassandra connection installs it without asking. You can also install **Cassandra Driver** from **Settings > Plugins > Browse**.
+<RegistryPlugin name="Cassandra" plugin="Cassandra Driver" />
 
 ## Connection settings
 
@@ -17,10 +19,12 @@ Cassandra is a registry plugin. Picking it in the **Choose a Database** sheet pr
 |-------|---------|-------|
 | **Host** | `localhost` | CQL contact point |
 | **Port** | `9042` | CQL native port |
-| **Username** | - | Only if authentication is enabled |
+| **Username** | - | Only if the cluster has an authenticator configured |
 | **Password** | - | |
 
-The form has no Keyspace field. Pick a keyspace in the sidebar after connecting, or put one in the URL path (`cassandra://user:pass@host:9042/keyspace`) and import that URL.
+There is no Keyspace field. Pick one in the sidebar after connecting, or put it in the URL path and import that URL. Later switches happen in place, with no reconnect, and the system keyspaces are filtered out of the list. Tabs already open are bound to their own keyspace and do not follow. See [Tabs](/features/tabs#where-a-tab-points).
+
+There is no consistency level field either. The driver never sets one, so every statement runs at the DataStax C driver's default of `LOCAL_ONE`.
 
 ## Connection URLs
 
@@ -29,81 +33,59 @@ cassandra://user:password@host:9042/keyspace
 scylladb://user:password@host:9042/keyspace
 ```
 
-`cql://` and `scylla://` work too. See [Connection URL Reference](/connections/urls#cassandra-/-scylladb).
+`cql://` and `scylla://` work too. See [Connection URL Reference](/connections/urls).
 
-## Example configurations
+## Amazon Keyspaces
 
-**Local**: host `localhost:9042`, no auth
+Keyspaces authenticates with SigV4, not a password, so set **Authentication** to an AWS IAM mode and leave Username and Password empty.
 
-**Docker**: `cassandra:latest`, user/pass `cassandra:cassandra`
+<Steps>
+  <Step title="Point at the regional endpoint">
+    Host `cassandra.{region}.amazonaws.com`, port `9142`.
+  </Step>
+  <Step title="Pick an IAM mode and enter the region">
+    Access Key, Profile, or SSO. Profiles resolve from `~/.aws/config` and `~/.aws/credentials`, including `credential_process` and assumed roles.
+  </Step>
+  <Step title="Turn TLS on">
+    Keyspaces refuses a plaintext connection. See [AWS IAM Authentication](/connections/aws-iam).
+  </Step>
+</Steps>
 
-**Remote**: use [SSH tunneling](/connections/ssh-tunneling) for production clusters
-
-## Amazon Keyspaces (IAM)
-
-Set **Authentication** to an AWS IAM mode (Access Key, Profile, or SSO) to connect to Amazon Keyspaces with SigV4 signing instead of a password. Enter the AWS region and enable TLS, which Keyspaces requires (use the `cassandra.{region}.amazonaws.com` endpoint on port 9142). Profiles resolve from `~/.aws/config` and `~/.aws/credentials`, including `credential_process`, SSO, and assumed roles.
-
-## SSL/TLS
-
-The Cassandra driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). Use **Verify CA** with a CA certificate path for private PKI. For mutual TLS, set the client certificate and key paths; if the key is encrypted, enter its passphrase in the **Key Passphrase** field (stored in the Keychain). See [SSL/TLS](/connections/ssl) for details.
-
-## Features
-
-**Keyspace browsing**: The sidebar lists keyspaces, and each keyspace lists its tables. Click a table to view its data.
-
-**Table structure**: The structure view shows each column's name, CQL type, and a primary key flag (set for both partition key and clustering columns), plus the table's secondary indexes. Structure editing supports adding and dropping columns; make other schema changes in the CQL editor.
-
-**Data grid**: Paginated, with type-aware formatting: uuid/timeuuid formatted, timestamps configurable, map/set/list/tuple as formatted collections, blob as hex.
+## Browsing and editing
 
 <Frame caption="Keyspace tables in the sidebar with the data grid">
   <img className="block dark:hidden" src="/images/cassandra-keyspace-browser.png" alt="Cassandra keyspace and tables in the sidebar with table data in the grid" />
   <img className="hidden dark:block" src="/images/cassandra-keyspace-browser-dark.png" alt="Cassandra keyspace and tables in the sidebar with table data in the grid" />
 </Frame>
 
-### CQL editor
+The structure view gives each column's name, CQL type, a primary key flag set for partition key and clustering columns alike, and the table's secondary indexes. Structure editing adds and drops columns; every other schema change goes in the CQL editor. In the grid, map, set, list, and tuple render as collections and blob as hex.
 
-```sql
-SELECT * FROM users WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+Row counts stop at 100,001. Cassandra has no cheap count, so the driver runs `SELECT COUNT(*) … LIMIT 100001` and a larger table reports that ceiling.
 
-INSERT INTO users (user_id, name, email, created_at)
-VALUES (uuid(), 'Alice', 'alice@example.com', toTimestamp(now()));
+## SSL/TLS
 
-UPDATE users USING TTL 86400
-SET email = 'new@example.com'
-WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+The default is **Disabled**, and there is no opportunistic TLS here, so **Preferred** behaves exactly like **Required**.
 
-CREATE TABLE IF NOT EXISTS events (
-    event_id timeuuid,
-    user_id uuid,
-    event_type text,
-    payload text,
-    PRIMARY KEY ((user_id), event_id)
-) WITH CLUSTERING ORDER BY (event_id DESC);
+| Mode | Verifies |
+|------|----------|
+| **Preferred**, **Required** | Nothing. Encryption only |
+| **Verify CA** | The chain, against the PEM file you supply |
+| **Verify Identity** | The chain and the hostname |
 
-CREATE INDEX ON users (email);
-```
-
-## CQL notes
-
-- No JOINs or subqueries: denormalize, or run sequential statements.
-- Every SELECT needs the full partition key in WHERE, or `ALLOW FILTERING` (a cluster scan, slow in production).
-- Lightweight transactions: conditional writes with `IF`, e.g. `INSERT INTO users (…) IF NOT EXISTS;`.
-- TTL and writetime: `USING TTL 3600`; `SELECT TTL(value), WRITETIME(value) FROM cache WHERE key = 'k1';`.
-
-## Troubleshooting
-
-**Connection refused**: Check Cassandra is running (`nodetool status`), verify port 9042 in `cassandra.yaml`, check `rpc_address` and `listen_address`.
-
-**Auth failed**: Verify credentials, check `authenticator: PasswordAuthenticator` in `cassandra.yaml`. Default superuser: `cassandra:cassandra`.
-
-**Timeout**: The driver uses a fixed 10 second connect timeout and 30 second request timeout. Neither is configurable, and the app-wide query timeout setting does not apply to Cassandra. Check host, port, firewall rules, and cloud IP allowlists.
-
-**Read timeout**: Include the full partition key in WHERE, add a `LIMIT`, check cluster health with `nodetool`.
+Both verifying modes need a **CA Certificate** path, and refuse to connect without one rather than falling back to the system roots. For mutual TLS set the client certificate and key paths, with the key's passphrase in **Key Passphrase**. See [SSL/TLS](/connections/ssl).
 
 ## Limitations
 
-- Materialized views, UDTs, UDFs, and UDAs do not appear in the sidebar. Query `system_schema` tables in the CQL editor instead.
-- Table options (compaction, compression, gc_grace_seconds) and clustering order are not shown in the structure view.
-- DataStax Astra DB is not supported: the driver cannot load a Secure Connect Bundle.
-- Counter columns cannot be set with a plain `UPDATE`. The grid will edit one, but the statement it generates is rejected. Use `UPDATE … SET c = c + 1` in the CQL editor instead.
-- Multi-DC settings are not configurable.
+- Counter columns cannot be set with a plain `UPDATE`. The grid will edit one and the server rejects the statement it generates. Use `UPDATE … SET c = c + 1` in the CQL editor.
+- Materialized views, UDTs, UDFs, and UDAs do not appear in the sidebar. Query `system_schema` in the CQL editor to see them.
+- The DDL tab reconstructs `CREATE TABLE` from the column list, so table options (compaction, compression, `gc_grace_seconds`), clustering order, and the split between partition and clustering key are all missing from it. Read the real definition with `DESCRIBE TABLE` in `cqlsh`.
+- DataStax Astra DB does not connect. The Secure Connect Bundle it requires cannot be loaded, and there is no way around it.
+- Connect and request timeouts are fixed at 10 and 30 seconds. Neither the app-wide query timeout nor a multi-DC policy reaches this driver.
+
+## Troubleshooting
+
+**Connection refused**: Check Cassandra is running with `nodetool status`, that port 9042 matches `cassandra.yaml`, and that `rpc_address` and `listen_address` are reachable from your Mac.
+
+**Authentication fails**: Verify the credentials and check `authenticator: PasswordAuthenticator` in `cassandra.yaml`. The default superuser is `cassandra` / `cassandra`.
+
+**Read timeout**: Put the full partition key in the `WHERE` clause, add a `LIMIT`, and check cluster health with `nodetool`.

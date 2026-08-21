@@ -1,0 +1,7 @@
+| Option | What it does | Default |
+| --- | --- | --- |
+| **Choose port automatically** | Takes a free loopback port, and tries up to five times if one is claimed first | On |
+| **Local port** | Pins a fixed port instead. There is no retry, so a port already in use fails the connect | - |
+
+TablePro polls that port and gives {binary} 30 seconds to answer on it. Past that the connect fails
+and the error carries the last lines {binary} printed, which is where the real reason usually is.

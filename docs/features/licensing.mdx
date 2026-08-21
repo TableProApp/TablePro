@@ -3,7 +3,7 @@ title: Licensing
 description: Activate and deactivate a license key, what each tier includes, and how offline validation works
 ---
 
-TablePro works without a license and has no trial countdown. A license adds the features below. Purchase, renewal, and billing are managed on [tablepro.app](https://tablepro.app/#pricing), not in the app.
+You never have to buy TablePro to keep using it, and nothing counts down. A license adds the features in the table, and purchase, renewal, and billing all happen on [tablepro.app](https://tablepro.app/#pricing) rather than in the app.
 
 ## Tiers
 
@@ -20,38 +20,39 @@ There are two tiers, Starter and Team. Team includes everything in Starter.
 | [Team Catalog](/features/connection-sharing) | Team |
 | [Team Library](/features/team) | Team |
 
-Without a license, these screens show an overlay with **Activate License…** and a purchase link. On a Starter license, Team features show an **Upgrade Plan** link instead. Everything else in the app works.
+Without a license, those screens show an overlay with **Activate License…** and a purchase link. On a Starter license, the two Team features show an **Upgrade Plan** link instead. Everything else in the app works.
 
 ## Activate
 
-1. Open **Settings > Account** (`Cmd+,`).
-2. Paste your license key (`XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`) and click **Activate**.
+Open **Settings > Account** (`Cmd+,`), paste your license key (`XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`), and click **Activate**.
 
-The welcome window has an **Activate License** link that opens an activation dialog, and shows a green **Pro** badge once a license is active. The badge reads Pro on both tiers, Starter and Team. The activation field also accepts a team invite code; TablePro detects which one you entered. See [Team Plan](/features/team).
+The welcome window has an **Activate License** link to the same dialog, and shows a green **Pro** badge once a license is active. The field also takes a team invite code, which TablePro tells apart from a key on its own. See [Team Plan](/features/team).
 
 <Frame caption="License section in Settings > Account">
   <img className="block dark:hidden" src="/images/license-settings.png" alt="License settings showing email, masked key, status, tier, and activations" />
   <img className="hidden dark:block" src="/images/license-settings-dark.png" alt="License settings showing email, masked key, status, tier, and activations" />
 </Frame>
 
-Once active, the Account tab shows your email, a masked license key, status, expiry date (or Lifetime), tier, and billing cycle.
+Once active, the Account tab shows your email, a masked license key, status, expiry date or Lifetime, tier, and billing cycle.
 
 ## Activations
 
-A license is bound to each Mac it is activated on, using a hashed hardware ID. The **Activations** section lists every activated Mac with its app and macOS version, marks this Mac, and shows the count against your plan's limit (for example "Activations (2 of 3)"). The limit comes from your plan on tablepro.app.
+A license binds to each Mac it is activated on through a hashed hardware ID. The **Activations** section lists every activated Mac with its app and macOS version, marks this one, and counts them against the limit your plan sets on tablepro.app.
 
-To move the license to another Mac, click **Deactivate…** in **Settings > Account** first. This frees the activation slot. If the license server can't be reached, the license is still removed from this Mac, but the slot may stay occupied until it expires on the server.
+Activating one Mac too many fails with "This license has reached its activation limit. Deactivate another Mac first." Freeing a slot means clicking **Deactivate…** in **Settings > Account** on the Mac you are giving up, before you wipe or sell it: the list in the app is read-only, so no Mac can release another. If the machine is already gone, ask for the slot back through [GitHub issues](https://github.com/TableProApp/TablePro/issues).
+
+Deactivating with the license server unreachable still removes the license from that Mac, but the slot may stay occupied until it expires on the server.
 
 ## Validation and offline use
 
-Activation stores a signed license on your Mac. The license key goes in the macOS Keychain.
+Activation stores a signed license on your Mac, and the license key goes to the macOS Keychain.
 
-- On every launch, TablePro re-verifies the license signature offline. No network needed. Your tier, status, and expiry all come from the signed license, so editing the copy on disk changes nothing.
-- Every 7 days, the app re-validates with the license server in the background.
-- If the server is unreachable, the license keeps working for 30 days after the last successful validation. After that, the status changes to Validation Failed and Pro features pause until a validation succeeds.
-- If the server replies that the license is suspended, expired, or no longer activated on this Mac, Pro features pause at that check. The offline grace period only covers a server TablePro could not reach. Reopening the app runs on the signed license again until the next check, which is never more than a week after the last successful validation.
+- Every launch re-verifies the signature offline, with no network. Tier, status, and expiry all come from the signed license, so editing the copy on disk changes nothing.
+- Every 7 days the app re-validates with the license server in the background.
+- If the server is unreachable, the license keeps working for 30 days after the last successful validation. After that the status becomes Validation Failed and Pro features pause until a validation succeeds.
+- If the server answers that the license is suspended, expired, or no longer activated on this Mac, Pro features pause at that check. The 30-day grace period only covers a server TablePro could not reach.
 
-**Check Status** in **Settings > Account** re-validates on demand, and gated screens offer **Retry Validation**. When a license expires within 7 days, the Account tab shows a renewal warning with a link to tablepro.app.
+**Check Status** in **Settings > Account** re-validates on demand, and a gated screen offers **Retry Validation**. When a license expires within 7 days, the Account tab shows a renewal warning linking to tablepro.app.
 
 ## What syncs
 

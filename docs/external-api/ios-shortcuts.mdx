@@ -3,61 +3,66 @@ title: iOS Shortcuts
 description: Add rows to a table or open a connection from the Shortcuts app on iPhone and iPad
 ---
 
-The two insert actions never open the app. They reach a saved connection in the background, write the rows, and return the count. App Intents put all three actions in the Shortcuts app, the Share Sheet, and Siri.
+You point an action at a table, hand it a JSON object, and the row lands in the database with the app
+still closed. App Intents put three actions in Shortcuts, the Share Sheet and Siri, and two of
+them run entirely in the background.
 
-This is iOS only. On macOS, use the [URL scheme](/external-api/url-scheme) and [MCP](/external-api/mcp-tools).
+This is iOS only. On macOS, use the [URL scheme](/external-api/url-scheme) and
+[MCP](/external-api/mcp-tools).
 
-## Availability
+| Action | Does | Needs |
+| --- | --- | --- |
+| **Add Row to Table** | Inserts one row from a JSON object or a CSV row. | iOS app build 17 |
+| **Add Rows to Table** | Inserts many rows from a JSON array, CSV text, or a file. | iOS app build 17 |
+| **Open Connection** | Launches the app on a saved connection. | Any recent build |
 
-The iOS app updates separately from the Mac app, so a Mac release note about these actions does not mean your iPhone or iPad already has them.
+Your build is under **Settings > About** in the iOS app, and the two insert actions do not appear in
+Shortcuts on anything older. The iOS app ships on its own schedule; see
+[iPhone and iPad](/ios).
 
-| Action | Needs |
-| --- | --- |
-| **Open Connection** | Any recent build. |
-| **Add Row to Table** | iOS app build 17 or later. |
-| **Add Rows to Table** | iOS app build 17 or later. |
+To browse everything the app offers, open Shortcuts, tap the action list, and go to
+**Apps > TablePro**.
 
-Check your build under **Settings > About** in the iOS app. If you are on an older build, update through TestFlight; the two insert actions will not appear in Shortcuts until you do.
+## Build one
 
-To see every action the app offers, open Shortcuts, tap the action list, and go to **Apps > TablePro**. Searching the app name works too, but the app list is the complete view.
+<Steps>
+  <Step title="Add the action">
+    In a new shortcut, add **Add Row to Table**.
+  </Step>
+  <Step title="Point it at a table">
+    Pick a **Connection**, then a **Table** read live from it. **Database or Schema** is optional and
+    lists schemas on PostgreSQL and the like, databases elsewhere; empty means the connection's own.
+  </Step>
+  <Step title="Supply the row">
+    Feed **Row (JSON or CSV)** from a Shortcuts **Dictionary** action keyed by column name, which
+    builds the row without typing JSON. **Add Rows to Table** has **Rows (JSON or CSV)** and a
+    **File** field instead.
+  </Step>
+  <Step title="Run it">
+    It returns the number of rows inserted, ready for a later step, and speaks *"Added one row to
+    bookmarks."*
+  </Step>
+</Steps>
 
-## Actions
+Inserts work on MySQL, MariaDB, PostgreSQL, Redshift, SQL Server, SQLite, DuckDB and Oracle. Any
+other type, Redis for example, fails with *"Redis connections do not support adding rows from
+Shortcuts."*
 
-| Action | Use it for |
-| --- | --- |
-| **Add Row to Table** | Insert a single row. |
-| **Add Rows to Table** | Insert many rows from a JSON array, CSV text, or a file. |
-| **Open Connection** | Open a saved connection in the TablePro app. |
-
-Open Connection launches the app on the chosen connection. The two insert actions run in the background and share the same pickers:
-
-- **Connection**: the picker lists every saved connection. Inserts work on MySQL, MariaDB, PostgreSQL, Redshift, SQL Server, SQLite, DuckDB, and Oracle. Pick any other type, Redis for example, and the action fails with an unsupported database type error.
-- **Database or Schema**: optional. Leave it empty to use the connection's configured database. On schema databases like PostgreSQL it lists schemas; on others it lists databases.
-- **Table**: the table to insert into. The list is read from the chosen connection.
-
-## Siri
-
-The actions register these phrases, with the connection name spoken in place of the brackets:
-
-- "Open [connection] in TablePro" or "Connect to [connection] in TablePro"
-- "Add a row in TablePro"
-- "Add rows in TablePro"
+Siri takes "Open [connection] in TablePro", "Connect to [connection] in TablePro", "Add a row in
+TablePro" and "Add rows in TablePro", with a connection name in place of the brackets.
 
 ## Data formats
 
-The row data is matched to the table's columns by name. A column you don't include is left out of the insert, so the database applies its default (an auto-increment primary key, for example). A key that matches no column in the table fails the whole action with an error naming the unknown keys; nothing is inserted.
-
-An empty or `null` value for a primary key column is dropped from the insert, so auto-increment still applies even when the key appears in the data.
+Keys match columns by name. A column you leave out stays out of the `INSERT` and takes its default,
+and an empty or `null` primary key is dropped for the same reason, so auto-increment still fires.
 
 ### JSON
 
-A single object is one row:
+An object is one row; an array of objects is many, for **Add Rows to Table**.
 
 ```json
 { "title": "TablePro docs", "url": "https://docs.tablepro.app", "tags": "reference" }
 ```
-
-An array of objects is many rows (Add Rows to Table):
 
 ```json
 [
@@ -66,15 +71,13 @@ An array of objects is many rows (Add Rows to Table):
 ]
 ```
 
-`null` inserts a SQL `NULL`. Numbers and booleans are inserted as text.
-
-Wrap very large or high-precision numbers in quotes so they stay exact. A bare JSON number past 64-bit integer range (a long unsigned ID, for example) is read as a floating-point value and loses digits; `"18446744073709551615"` as a string keeps every digit.
-
-A Shortcuts **Dictionary** action passes straight into the Data field, so you can build the row visually with key/value pairs instead of typing JSON.
+`null` inserts a SQL `NULL`, and numbers and booleans are inserted as text. Quote anything that has
+to stay exact: a bare JSON number past 64-bit integer range is read as floating point and loses
+digits, while `"18446744073709551615"` keeps every one.
 
 ### CSV
 
-The first row is the header and names the columns:
+The first row is the header and names the columns. Quoting follows the usual rules.
 
 ```text
 title,url
@@ -82,16 +85,23 @@ First,https://example.com/1
 Second,https://example.com/2
 ```
 
-Quoted fields with commas and embedded quotes follow the usual CSV rules. Pass CSV as text in the Data field, or as a file in the File field.
+## Limits
 
-## Result
+Up to 10,000 rows per run. **Add Rows to Table** runs the batch in one transaction wherever the
+engine supports it, so a row that fails rolls back the whole batch instead of leaving half of it in.
 
-Each action returns the number of rows inserted, so you can show it or use it in a later step, and speaks a short confirmation ("Added 2 rows to bookmarks.").
+## When it refuses
 
-## Notes
+Nothing is inserted in any of these cases.
 
-- The action fails while the device is locked, since it reads the connection password from the Keychain.
-- A read-only connection refuses the insert with an error. A connection set to Confirm Writes asks you to confirm before the rows are added.
-- Add Rows to Table runs the batch in one transaction on databases that support it, so a row that fails rolls the whole batch back instead of leaving a partial insert.
-- Data that maps to no columns (an empty object, for example) returns an error rather than reporting that it added nothing.
-- Up to 10,000 rows per run.
+| Message | Cause |
+| --- | --- |
+| *"…is read-only, so rows cannot be added."* | The connection's safe mode blocks writes. A connection set to Confirm Writes asks first instead. |
+| *"…has no column named …"* | A key in the data matches no column. |
+| *"The data has no values to insert into …"* | Nothing in the data maps to a column. |
+| *"No data was provided to add."* | Both the text field and the file were empty. |
+| *"Too many rows. Add up to 10000 rows at a time."* | Over the cap. |
+| *"Add Row to Table expects one row. Use Add Rows to Table for multiple rows."* | An array reached the single-row action. |
+
+The action also fails while the device is locked, because it reads the connection's password from the
+Keychain.

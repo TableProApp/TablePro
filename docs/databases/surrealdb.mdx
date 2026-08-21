@@ -3,29 +3,38 @@ title: SurrealDB
 description: Connect to SurrealDB with namespace and database browsing, SurrealQL, and inline record editing
 ---
 
-TablePro connects to SurrealDB 2.x and 3.x over the HTTP RPC protocol. Browse namespaces and databases in the sidebar, run SurrealQL in the editor, and edit records inline in the data grid.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-The driver talks CBOR, so record links, datetimes, durations, decimals, and UUIDs keep their types instead of arriving as plain strings.
+Whichever level your user was defined at, Root, Namespace, Database, or Record Access, **Auth Level** has to name it. SurrealDB cannot infer it from the credentials, and the rest of the form follows from that one field.
 
 ## Quick setup
 
-Click **Create Connection…**, select **SurrealDB**, enter the host and port (default `8000`), pick an auth level, and connect.
+Click **Create Connection…**, select **SurrealDB**, enter the host and port, pick the auth level that matches your user, and connect. The driver needs SurrealDB 2.0 or later and talks CBOR over the HTTP RPC endpoint, so record links, datetimes, durations, decimals, and UUIDs keep their types.
 
-SurrealDB is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved SurrealDB connection installs it without asking. You can also install **SurrealDB Driver** from **Settings > Plugins > Browse**.
+<RegistryPlugin name="SurrealDB" plugin="SurrealDB Driver" />
 
-TablePro registers the `surrealdb://` URL scheme, so `surrealdb://user:pass@host:8000` links pre-fill the connection form (see [Connection URL Reference](/connections/urls)). For a remote server, connect through an [SSH tunnel](/connections/ssh-tunneling).
+## Connection settings
 
-## Namespaces and databases
+| Field | Description |
+|-------|-------------|
+| **Host** | Server host, such as `localhost` |
+| **Port** | HTTP port, default `8000` |
+| **Namespace** | The namespace to open |
+| **Auth Level** | Which level your credentials belong to |
+| **Username / Password** | Every level except Token |
+| **Database** | Shown for Database and Record Access. At the other levels, pick one from the sidebar after connecting |
+| **Token** | A JWT, shown for Token |
+| **Access Method** | The name from `DEFINE ACCESS`, shown for Record Access |
 
-SurrealDB nests tables under a namespace and a database. TablePro maps that straight onto the sidebar: namespaces sit at the top level, databases sit inside them, and tables sit inside a database. Switch either level without reconnecting.
+## Connection URL
 
-Set the namespace in the **Namespace** field when you create the connection. Leave **Database** empty to pick one from the sidebar after connecting.
+```text
+surrealdb://user:pass@host:8000
+```
 
-Right-click a namespace for **Drop Namespace…** (`REMOVE NAMESPACE`) or a database for **Drop Database…** (`REMOVE DATABASE`). Select several first with Shift-click or Cmd-click and the menu covers all of them, with one confirmation listing every name. See [Work on Several Databases at Once](/features/table-operations#work-on-several-databases-at-once).
+The scheme is registered with macOS, so a link like that opens the connection form pre-filled. See [Connection URL Reference](/connections/urls). For a remote server, connect through an [SSH tunnel](/connections/ssh-tunneling).
 
 ## Authentication
-
-SurrealDB cannot infer which level your credentials belong to, so pick the one that matches the user you are signing in as.
 
 | Auth Level | Use it for | Needs |
 |-------|-------------|-------------|
@@ -35,57 +44,73 @@ SurrealDB cannot infer which level your credentials belong to, so pick the one t
 | **Record Access** | A record user, defined with `DEFINE ACCESS … TYPE RECORD` | Namespace, database, access method, and the signin fields |
 | **Token** | A JWT you already hold, including SurrealDB Cloud | The token |
 
-Only a root user can list every namespace. With namespace or database credentials, TablePro browses the scope your user is limited to.
+Only a root user lists every namespace; other levels browse the scope the user is limited to.
 
-## Connection settings
+## Namespaces and databases
 
-### Required fields
+Namespaces sit at the top of the sidebar, databases inside them, tables inside a database. Neither switch reconnects. The namespace and database ride on each request, and a tab bound to a second database keeps the same connection.
 
-| Field | Description |
-|-------|-------------|
-| **Host** | Server host, e.g. `localhost` |
-| **Port** | HTTP port, default `8000` |
-| **Auth Level** | Root, Namespace, Database, Record Access, or Token |
+Right-click a namespace for **Drop Namespace…** (`REMOVE NAMESPACE`) or a database for **Drop Database…** (`REMOVE DATABASE`). Select several with Shift-click or Cmd-click and one confirmation covers all of them. See [Work on Several Databases at Once](/features/table-operations#databases-and-schemas).
 
-### Optional fields
-
-| Field | Description |
-|-------|-------------|
-| **Namespace** | The namespace to open. Required for every level except Root and Token |
-| **Database** | The database to open. Required for Database and Record Access; otherwise pick one from the sidebar |
-| **SSL Mode** | In the **SSL/TLS** pane. Any mode other than Disabled connects over HTTPS. **Preferred** and **Required (skip verify)** accept a self-signed certificate |
-| **Skip TLS Verification** | Advanced section. Trusts any certificate, even with **Verify CA** or **Verify Identity** set |
-| **Token** | A JWT, shown when Auth Level is Token |
-| **Access Method** | The name from `DEFINE ACCESS`, shown when Auth Level is Record Access |
-
-## Editing records
+## Records in the grid
 
 <Frame caption="SurrealDB records in the data grid">
   <img className="block dark:hidden" src="/images/surrealdb-record-grid.png" alt="SurrealDB table records with record links and typed values in the data grid" />
   <img className="hidden dark:block" src="/images/surrealdb-record-grid-dark.png" alt="SurrealDB table records with record links and typed values in the data grid" />
 </Frame>
 
-The grid writes one field at a time. Changing a cell runs an `UPDATE` that sets only the fields you touched, so computed `FUTURE` fields and fields another writer changed are left alone.
+Changing a cell runs an `UPDATE` that sets only the fields you touched, leaving computed `FUTURE` fields and another writer's changes alone. Values go out as typed parameters, so an `int` stays an `int` and a filter value is never parsed as SurrealQL.
 
-- `id` is the primary key and is read-only. Clear it on a new row to let SurrealDB generate one.
+- `id` is the primary key and read-only. Leave it empty on a new row for a generated one, or type `table:id` to choose it.
 - A record link shows as `table:id`. Objects and arrays show as compact JSON and are edited as JSON.
 - On a `RELATION` table, `in` and `out` sit next to `id`.
+- A `SCHEMALESS` table has no declared fields, so its columns come from the rows fetched: a field only some records carry still gets a column, and the rest show an empty cell.
 
-Values are sent as typed parameters, so an `int` column stays an `int` and a filter value is never treated as SurrealQL.
+## SurrealQL
 
-## Schemaless tables
+The editor runs whole SurrealQL scripts, with completions for the common statements:
 
-A `SCHEMALESS` table has no declared fields. TablePro reads the columns from the rows it fetched, so a field only some records carry still gets a column, and records missing it show an empty cell.
+```sql
+SELECT * FROM person LIMIT 100;
+RELATE person:alice->wrote->article:one SET time = time::now();
+```
 
-## Query plans
+The Explain button offers **Explain** and **Explain Full**, which rerun the current query with `EXPLAIN` and `EXPLAIN FULL` to show how it resolves, including whether an index is used.
 
-The Explain button in the editor offers **Explain** and **Explain Full**, which run the current query with SurrealDB's `EXPLAIN` and `EXPLAIN FULL` to show how it resolves, for example whether an index is used.
+## SSL/TLS
+
+**Disabled** is the default and connects over HTTP; every other mode connects over HTTPS. **Preferred** and **Required (skip verify)** accept any certificate, **Verify CA** and **Verify Identity** check it against the system trust store.
+
+<Warning>
+**Skip TLS Verification**, a toggle in the Advanced pane, trusts any certificate even when the mode is **Verify CA** or **Verify Identity**. Leave it off outside a development server with a self-signed certificate.
+</Warning>
 
 ## Limitations
 
-- Transactions are not available. Each request is independent over HTTP, so `BEGIN` in one request cannot affect another. Run `BEGIN TRANSACTION; … COMMIT TRANSACTION;` as a single query in the editor instead.
 - The structure editor is read-only. Create and change fields and indexes with `DEFINE FIELD` and `DEFINE INDEX` in the editor.
-- Live queries (`LIVE SELECT`) are not supported.
+- Editing `in` or `out` on a `RELATION` table does nothing: those fields are dropped from the generated `UPDATE`. Rewire a relation with `RELATE` or an explicit `UPDATE`.
+- Multi-request transactions are not available over HTTP. Send `BEGIN TRANSACTION; … COMMIT TRANSACTION;` as one editor query instead.
+- Live queries (`LIVE SELECT`) are not supported. Rerun the query to see new records.
+- A CA certificate file set in the **SSL/TLS** pane is ignored; verification goes through the system trust store, so install a private CA there.
+- Import is not available. Export works, see [Import and Export](/features/import-export).
 - Range values display but cannot be edited.
-- The editor treats SurrealQL as plain text, without syntax coloring.
+- The editor treats SurrealQL as plain text, with no syntax coloring.
 - SurrealDB 1.x is not supported.
+
+## Troubleshooting
+
+### … is required for the selected authentication level
+
+The level needs a scope the form has not been given. Namespace, Database, and Record Access all need **Namespace**; the last two also need **Database**; Record Access also needs **Access Method**.
+
+### SurrealDB … is not supported. TablePro requires SurrealDB 2.0 or later.
+
+The version comes from the server's own `/version` reply. Upgrade the server, or point the connection at a 2.x or 3.x instance.
+
+### SurrealDB over HTTP does not support multi-request transactions.
+
+A transaction cannot span requests over HTTP RPC. Put the whole transaction in one editor query.
+
+### The credentials do not match the auth level
+
+A root user signed in at Database level fails, and so does the reverse. Match the level to how the user was defined.

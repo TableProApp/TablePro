@@ -3,7 +3,7 @@ title: PostgreSQL
 description: Connect to PostgreSQL 12 and later with the libpq driver, including PostGIS display, AWS IAM auth, and pg_dump backups
 ---
 
-TablePro supports PostgreSQL 12 and later via the libpq C connector. The same driver powers [Amazon Redshift](/databases/redshift), [CockroachDB](/databases/cockroachdb), and [PGlite](/databases/pglite) connections.
+Unlike MySQL, PostgreSQL will not connect without a **Database**, and it changes database only by reconnecting. Everything else on the form is ordinary. The libpq driver ships inside the app and also serves [Amazon Redshift](/databases/redshift), [CockroachDB](/databases/cockroachdb), and [PGlite](/databases/pglite).
 
 ## Connection settings
 
@@ -12,9 +12,11 @@ TablePro supports PostgreSQL 12 and later via the libpq C connector. The same dr
 | **Host** | `localhost` | |
 | **Port** | `5432` | |
 | **Username** | - | Not pre-filled; most servers use `postgres` |
-| **Database** | - | **Required** (unlike MySQL) |
+| **Database** | - | **Required** |
 
 Fill in the form and click **Save & Connect**. For remote servers use [SSH tunneling](/connections/ssh-tunneling); Google Cloud SQL instances can connect through the [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy).
+
+Support starts at 12. An older server still connects, with whatever its catalogs carry: generated columns need 12, declarative partitioning and identity columns need 10.
 
 <Frame caption="PostgreSQL connection form">
   <img className="block dark:hidden" src="/images/postgresql-connection-form.png" alt="PostgreSQL connection form" />
@@ -29,54 +31,59 @@ postgresql://user:password@host:5432/database
 
 `postgres://` also works. Opening a URL connects directly. See [Connection URL Reference](/connections/urls).
 
-## AWS IAM authentication
+## Authentication
 
-Connect to RDS or Aurora with your AWS identity instead of a static password: set **Authentication** to an AWS IAM option and set **Username** to a database role granted `rds_iam`. See [AWS IAM Authentication](/connections/aws-iam) for setup, credential sources, and troubleshooting.
+### AWS IAM
 
-## Features
+Set **Authentication** to an AWS IAM option and set **Username** to a database role granted `rds_iam`. See [AWS IAM Authentication](/connections/aws-iam).
 
-**Schemas**: The sidebar shows all accessible schemas and tables. The toolbar shows the active database and schema side by side; click either to switch it, or press Cmd+K for the database list. In Flat sidebar layout the active schema is also at the foot of the object list, and Database > Schema does the same job from the menu bar. Table info shows columns, indexes, constraints, and DDL. Right-click a schema for **Drop Schema…**, which runs `DROP SCHEMA … CASCADE`, so objects in other schemas that depend on it are dropped too. Select several databases or schemas with Shift-click or Cmd-click and the menu covers all of them. See [Work on Several Databases at Once](/features/table-operations#work-on-several-databases-at-once).
+### Password file
 
-**Databases**: Every database on the server is listed, including `postgres`. It is an ordinary database that `initdb` creates for users and applications, not a system database. `template0` and `template1` are not listed.
+Turn on **Use Password File** to read the password from `~/.pgpass` instead of typing one. Entries are `hostname:port:database:username:password`, `*` matches any field, first match wins. The form reports what it found, including `~/.pgpass has incorrect permissions (needs chmod 0600)`, the one that silently blocks a connect.
 
-**Partitioned tables**: A partitioned table is listed once, under its own icon. Its partitions are not listed beside it; expand the table in the sidebar to see them, and expand a partition again if it is subpartitioned. Opening a partition works like opening any other table. Tables that use the older `INHERITS` inheritance are listed normally, since a child there is a table in its own right. Requires PostgreSQL 10 or later, which is where declarative partitioning was added.
+## Databases and schemas
 
-**Types**: `jsonb` renders as formatted JSON. `uuid`, `inet`, `timestamp with time zone`, `interval`, and `bytea` display natively.
+Every database on the server is listed, `postgres` included; `template0` and `template1` are not. The sidebar shows every schema you have access to, and the toolbar carries the active database and schema side by side: click either to switch, or press `Cmd+K` for the database list.
 
-**Arrays**: An array column whose elements are a simple type (`text[]`, `integer[]`, `uuid[]`, `timestamptz[]`, and enum arrays such as `mood[]`) opens a list editor, one row per element. Reorder rows with the arrows, add and remove elements, and set any single element to NULL. An empty array and a NULL column are separate values and the editor keeps them apart. Elements of an enum array pick from the labels the type declares, in declaration order; a value the type no longer lists stays selectable and is flagged. Switch to **Edit as Text** for the raw `{…}` literal. Arrays of `jsonb`, `bytea`, or composite types, and multi-dimensional values, keep the plain text editor, since their quoting cannot round-trip through a per-element list.
+Right-click a schema to drop it. The statement is `DROP SCHEMA … CASCADE`, so views and functions in *other* schemas that depend on it go too; the confirmation says so before it runs.
 
-**EXPLAIN**: `EXPLAIN` and `EXPLAIN ANALYZE` run with `FORMAT JSON` and render as a plan diagram or tree. See [EXPLAIN Visualization](/features/explain-visualization).
+A partitioned table is listed once, under its own icon. Expand it for its partitions, and expand a partition again if it is subpartitioned; opening one works like opening any other table. Tables using the older `INHERITS` inheritance are listed normally, each child in its own right.
 
-**PostGIS**: `geometry` and `geography` columns render as EWKT with the SRID preserved (`SRID=4326;POINT(-73 40.7237)`) instead of the raw EWKB hex libpq returns. TablePro detects spatial columns from a one-time `pg_type` lookup at connect time and converts fetched values with `ST_AsEWKT(…)`. Your query is never re-run, so parameterized and multi-statement queries render EWKT too. If conversion fails, the raw hex is kept without an error.
+## Column types
 
-**Users & Roles**: Manage database users, roles, and privileges under **Database > Users & Roles**: see where each privilege comes from, then grant or revoke it. See [Users & Roles](/features/users-roles).
+`jsonb` renders as formatted JSON, and `uuid`, `inet`, `timestamp with time zone`, `interval` and `bytea` display natively. PostGIS `geometry` and `geography` render as EWKT with the SRID kept, `SRID=4326;POINT(-73 40.7237)`, rather than raw EWKB hex; a value that fails to convert stays hex.
 
-**Backup & Restore**: **Backup Dump** and **Restore Dump** run `pg_dump` and `pg_restore`. Among TablePro's databases this is available for PostgreSQL and Redshift only. See [Backup & Restore](/features/backup-restore).
+An array column opens one of two editors, decided by its element type:
+
+| Element type | Editor |
+|---|---|
+| `text[]`, `integer[]`, `numeric[]`, `uuid[]`, `boolean[]`, `timestamptz[]`, enum arrays such as `mood[]` | A list, one row per element |
+| `jsonb[]`, `bytea[]`, composite arrays, and any multi-dimensional array | The plain text editor over the `{…}` literal |
+
+In the list editor, reorder rows with the arrows, add and remove elements, and set a single element to NULL; an empty array and a NULL column stay distinct. Enum elements pick from the labels the type declares, and a label the type no longer lists stays selectable and is flagged. **Edit as Text** switches to the raw literal at any time.
 
 ## Cross-database tabs
 
-A tab stays on the database and schema it was opened with for its whole life, even if the sidebar or another tab switches to a different one. See [Tabs](/features/tabs#database-binding). PostgreSQL, like Redshift and CockroachDB, changes database only by reconnecting: there is no in-place `USE` statement. So a tab bound to a database other than the connection's active one runs on a separate connection for that database instead.
+PostgreSQL has no in-place `USE`, so a tab bound to a database other than the connection's active one runs on a second connection opened for that database. It shares no temp tables, session variables, or open transaction with the query editor on the main connection: keep a multi-statement transaction or a `CREATE TEMP TABLE` on tabs bound to one database. Binding itself is on [Tabs](/features/tabs#where-a-tab-points).
 
-That separate connection means the tab does not share temp tables, session variables, or an open transaction with the query editor on the main connection. Keep session-scoped work, such as a multi-statement transaction or a `CREATE TEMP TABLE`, on tabs bound to the same database if they need to see each other's state.
+## Tools
 
-[PGlite](/databases/pglite) cannot open a second connection at all, so a PGlite tab bound to a database the connection is not on reports an error naming that database instead of running the query against the wrong one.
-
-## Advanced
-
-**~/.pgpass**: format `hostname:port:database:username:password`, wildcards (`*`) allowed. libpq silently ignores the file unless its permissions are `0600`.
-
-**Startup Commands** (Advanced tab): SQL that runs on every connect, e.g. `SET timezone = 'UTC'; SET search_path TO myschema, public;`.
-
-**Pre-Connect Script** (Advanced tab): a shell script that runs before connecting, e.g. to refresh credentials from a secrets manager. 10-second timeout.
+`EXPLAIN` and `EXPLAIN ANALYZE` run with `FORMAT JSON` and render as a plan diagram or tree. See [EXPLAIN Visualization](/features/explain-visualization). **Database > Users & Roles** shows where each privilege comes from before you grant or revoke it. **Backup Dump** and **Restore Dump** shell out to your local `pg_dump` and `pg_restore`; see [Backup & Restore](/features/backup-restore).
 
 ## SSL/TLS
 
-New connections default to **Preferred** (libpq `sslmode=prefer`), which tries TLS first and falls back to plain. Pick **Verify CA** to validate the server certificate. See [SSL/TLS](/connections/ssl).
+New connections default to **Preferred** (libpq `sslmode=prefer`): TLS first, plain text if the server refuses it. Pick **Verify CA** to validate the server certificate. See [SSL/TLS](/connections/ssl).
+
+## Limitations
+
+- Columns cannot be reordered. The structure editor adds, renames, retypes, and drops; changing the order of existing columns means recreating the table.
+- A cross-database tab cannot share session state with the main connection. Statements that depend on a temp table or an open transaction have to run on one database.
+- Backup and restore need `pg_dump` and `pg_restore` on your Mac. Neither is bundled; install them with Homebrew.
 
 ## Troubleshooting
 
-**Connection refused**: check the server is running, `listen_addresses` in `postgresql.conf` allows remote connections, and the firewall allows port 5432.
+**Connection refused**: check the server is running, that `listen_addresses` in `postgresql.conf` covers remote connections, and that the firewall allows port 5432.
 
-**Auth failed**: check `pg_hba.conf` for the auth method (`scram-sha-256` or `md5` for passwords, `trust` for local dev).
+**FATAL: password authentication failed for user "…"**: the role and password are checked against `pg_hba.conf`. Confirm the method on the matching line (`scram-sha-256` or `md5` for passwords, `trust` for local dev), and that the line matches the host you are connecting from.
 
-**Postgres-compatible engines**: connect wire-compatible engines using the PostgreSQL type. TablePro probes which system catalogs the server provides, so engines that omit catalogs like `pg_matviews` still load their tables; object kinds the server does not expose just won't appear.
+**A Postgres-compatible engine loads no tables**: wire-compatible engines connect under the PostgreSQL type, and the catalogs they omit are probed for rather than assumed. An engine without `pg_matviews` still lists its tables; object kinds it does not expose will not appear at all.

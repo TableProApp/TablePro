@@ -1,0 +1,4 @@
+Your SQL reaches the server exactly as you wrote it. The cap applies to the rows read back, so a
+query carrying its own `LIMIT`, `FETCH FIRST` or `TOP` is never touched, and `EXPLAIN`, `SHOW`,
+writes and DDL are never capped. Both numbers are in **Settings > Data**
+([Data settings](/customization/data-settings)).

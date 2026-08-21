@@ -3,7 +3,9 @@ title: Vim Mode
 description: Vim motions, text objects, registers, marks, and search inside the SQL editor
 ---
 
-Turn on vim mode in **Settings > Editor > Vim mode**. A badge next to the editor shows the current mode.
+Vim mode is scoped to the SQL editor. The data grid, the find field and every other control in the window keep their own keys, and a `Cmd` or `Option` chord passes through in any mode, so `Cmd+Enter` still runs the query.
+
+Turn it on in **Settings > Editor > Vim mode**, which is also the only way to turn it off: there is no `:set`. A badge next to the editor shows the current mode.
 
 <Frame caption="Mode badge in the SQL editor">
   <img
@@ -58,7 +60,7 @@ Turn on vim mode in **Settings > Editor > Vim mode**. A badge next to the editor
 | `G` | Last line |
 | `5G` | Line 5 |
 | `H` `M` `L` | Top, middle, bottom of view |
-| `gj` `gk` | Same as `j` `k` (logical lines, not wrapped display lines) |
+| `gj` `gk` | The same lines as `j` `k`. Wrapped display lines have no motion of their own |
 | `%` | Matching `()`, `[]`, `{}` |
 
 ### Find a character
@@ -191,19 +193,19 @@ The pattern is a literal, case-sensitive substring, not a regex. Searches wrap a
 | `@@` | Play back the last macro |
 | `3@a` | Play three times |
 
-Recursion is capped at 50 to keep self-calling macros safe.
+A macro that calls itself stops after 50 rounds.
 
 ## Control keys
 
-`Ctrl+R` in normal mode is the only control combination vim mode intercepts. It redoes.
+`Ctrl+R` in normal mode is the only control combination vim mode intercepts, and it redoes. Every other one reaches the editor and gets the editor's own binding, so these vim meanings are not available:
 
-Every other control combination passes straight through to the editor, which applies its own binding:
+| Keys | What you do not get |
+|------|---------------------|
+| `Ctrl+D` `Ctrl+U` `Ctrl+F` `Ctrl+B` `Ctrl+E` `Ctrl+Y` | Scrolling. `Ctrl+D` deletes the character after the cursor and `Ctrl+E` goes to the end of the paragraph instead |
+| `Ctrl+A` `Ctrl+X` | Increment and decrement the number under the cursor. `Ctrl+A` goes to the start of the paragraph instead |
+| `Ctrl+W` `Ctrl+U` `Ctrl+T` `Ctrl+D` | Insert-mode delete word, delete to line start, indent, outdent. `Ctrl+H` still backspaces, through the editor's binding rather than vim's |
 
-- No scrolling from the keyboard. `Ctrl+D`, `Ctrl+U`, `Ctrl+F`, `Ctrl+B`, `Ctrl+E`, and `Ctrl+Y` do not move the viewport. `Ctrl+D` deletes the character after the cursor and `Ctrl+E` jumps to the end of the paragraph.
-- No increment or decrement. `Ctrl+A` and `Ctrl+X` leave the number under the cursor alone; `Ctrl+A` jumps to the start of the paragraph.
-- No insert-mode editing keys. `Ctrl+W`, `Ctrl+U`, `Ctrl+T`, and `Ctrl+D` do not delete a word, delete to line start, indent, or outdent. `Ctrl+H` still backspaces, through the editor's binding rather than vim's.
-
-`zt`, `zz`, and `zb` are swallowed without moving the viewport.
+`zt`, `zz` and `zb` are read and discarded, so there is no way to move the viewport from the keyboard at all.
 
 ## Visual mode
 
@@ -234,4 +236,4 @@ Indent and outdent work in normal mode only (`>>`, `<<`, `>{m}`, `<{m}`).
 | `:w` | Run the current query |
 | `:q` | Close the tab |
 
-`/` and `?` are search. Other `:` commands, including `:wq` and `:x`, are parsed and ignored.
+`/` and `?` are search. Every other `:` command is parsed and ignored, `:wq`, `:x` and `:set` among them. `:10` does not jump to line 10 either; use `10G` or `10gg`.

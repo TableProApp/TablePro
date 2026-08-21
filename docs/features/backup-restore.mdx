@@ -3,60 +3,64 @@ title: Backup & Restore
 description: Dump and restore PostgreSQL or Redshift databases with pg_dump and pg_restore, with progress, cancel, and SSH tunnel reuse
 ---
 
-Dump a PostgreSQL or Redshift database to a `.dump` file with `pg_dump`, and restore one back with `pg_restore`. Both live in the **File** menu on any connected PostgreSQL or Redshift session.
-
-<Info>
-PostgreSQL and Redshift only. Restore is disabled on read-only [Safe Mode](/features/safe-mode). Backup stays available on read-only connections because it does not write to the database.
-</Info>
-
-## Requirements
-
-TablePro shells out to your local `pg_dump` and `pg_restore`. Install them with Homebrew:
+`pg_dump` and `pg_restore` have to be on your Mac first. TablePro shells out to them and ships no copy of its own:
 
 ```bash
 brew install libpq
 brew link --force libpq
 ```
 
-TablePro finds `pg_dump` and `pg_restore` on `PATH` and the standard Homebrew and Postgres.app locations.
+The lookup takes the first match from `/usr/bin/which`, then `/opt/homebrew/bin`, `/usr/local/bin`, and Postgres.app's latest version. That path decides which client version does the work.
+
+<Info>
+PostgreSQL and Redshift only. For any other engine, use a SQL export from [Import & Export](/features/import-export). Restore is disabled on a read-only [Safe Mode](/features/safe-mode) connection; backup is not, because it writes nothing to the database.
+</Info>
+
+<Frame caption="The Backup Dump sheet with its format and scope options">
+  <img className="block dark:hidden" src="/images/backup-dump-dialog.png" alt="Backup Dump sheet" />
+  <img className="hidden dark:block" src="/images/backup-dump-dialog-dark.png" alt="Backup Dump sheet" />
+</Frame>
 
 ## Backup dump
 
-1. Choose **File > Backup Dump…**.
-2. Pick the database to dump.
-3. Choose where to save the `.dump` file.
-4. Watch progress. Click **Cancel** to stop and remove the partial file.
-
-The default filename is `<database>-<yyyy-MM-dd-HHmmss>.dump`. Dumps use the custom archive format (`pg_dump -Fc`) so they round-trip through `pg_restore`.
-
-When the dump finishes, the result sheet shows the file size and a **Show in Finder** button.
+<Steps>
+  <Step title="Start the dump">
+    Choose **File > Backup Dump…** on a connected session and pick the database.
+  </Step>
+  <Step title="Choose where to save it">
+    The default filename is `<database>-<yyyy-MM-dd-HHmmss>.dump`. Dumps use the custom archive format (`pg_dump -Fc`), which is what `pg_restore` reads back.
+  </Step>
+  <Step title="Watch the byte counter">
+    **Cancel** confirms, sends `SIGTERM`, and removes the partial file. On success the result sheet gives the size and **Show in Finder**.
+  </Step>
+</Steps>
 
 ## Restore dump
 
-1. Choose **File > Restore Dump…**.
-2. Pick the `.dump` file.
-3. Pick the target database.
-4. Watch progress. Click **Cancel** to stop. The target database is not rolled back; review and clean up as needed.
+<Steps>
+  <Step title="Pick the dump file">
+    Choose **File > Restore Dump…** and select a file `pg_dump` wrote in custom archive format.
+  </Step>
+  <Step title="Pick the target database">
+    `pg_restore` runs with `--no-owner --no-acl`, so the connection user ends up owning the restored objects.
+  </Step>
+  <Step title="Wait it out">
+    Restore shows no percentage. **Cancel** confirms and sends `SIGTERM`, and the target database is left as it stands: drop it and restore into a fresh one, or clean up the partial objects yourself.
+  </Step>
+</Steps>
 
-Restore progress is indeterminate: the live byte counter runs only during backups, so long restores show activity without a percentage.
-
-`pg_restore` runs with `--no-owner --no-acl`, so the connection user owns the restored objects. TablePro does not pass `--clean`; restoring on top of an existing schema with conflicting objects produces stderr errors that show in the result sheet.
+No `--clean` is passed, so restoring on top of a schema that already holds conflicting objects produces errors instead of replacing them.
 
 ## SSH tunnels and SSL
 
-Both flows reuse the connection's active SSH tunnel. No second port forward is opened. SSL connections pass their mode to the tools via `PGSSLMODE`, including `verify-ca` and `verify-full`.
-
-## Cancelling
-
-Cancel asks for confirmation, then sends `SIGTERM`.
-
-- **Backup**: TablePro removes the partial `.dump` file.
-- **Restore**: the target database may be left in a partial state. Drop it and restore again into a fresh database, or clean up the partial objects manually.
+Both flows reuse the connection's active SSH tunnel, with no second port forward. SSL connections pass their mode to the tools through `PGSSLMODE`, `verify-ca` and `verify-full` included.
 
 ## Failures
 
-A non-zero exit shows the last 64 KB of `pg_dump` or `pg_restore` stderr in a scrollable monospaced view. Common causes:
+A non-zero exit shows the last 64 KB of `pg_dump` or `pg_restore` stderr in a scrollable monospaced view. Three causes account for most of them.
 
-- **Binary not found**: install `libpq` and link it so `pg_dump` and `pg_restore` are on your `PATH`.
-- **Authentication failed**: TablePro passes the connection password via `PGPASSWORD` and runs the tools with `--no-password` to avoid a TTY prompt. If the role lacks `LOGIN` or the database is wrong, the failure surfaces here.
-- **Restore conflict**: the target database has objects that conflict with the dump. Restore into a fresh database or drop the conflicting objects first.
+| What you see | What to do |
+|---|---|
+| *"pg_dump was not found on this system. Install it with `brew install libpq` and link it."* | Install and link `libpq` so the binaries are on `PATH` |
+| An authentication failure | The password goes through `PGPASSWORD` and the tools run with `--no-password`, so this is the role or the database rather than a missing prompt. Check that the role has `LOGIN` |
+| Objects that conflict with the dump | Restore into a fresh database, or drop the conflicting objects first |

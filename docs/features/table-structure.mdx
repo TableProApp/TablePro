@@ -3,6 +3,8 @@ title: Table Structure
 description: Browse and edit columns, indexes, foreign keys, triggers, and DDL with a visual structure editor
 ---
 
+import StagedUntilSave from "/snippets/staged-until-save.mdx";
+
 This is a DDL editor with a grid in front of it. Rename a column, add an index, change a key, and what you get is a pending `ALTER TABLE` you can read before it runs; the table on the server is untouched until you apply it.
 
 <Frame caption="Table structure view">
@@ -10,34 +12,26 @@ This is a DDL editor with a grid in front of it. Rename a column, add an index, 
   <img className="hidden dark:block" src="/images/table-structure-dark.png" alt="Table Structure" />
 </Frame>
 
-Open a table, then pick **Structure** in the Data / Structure / JSON control at the bottom of the tab. Or right-click a table in the sidebar and choose **Show Structure**.
+Open a table and switch the result view to **Structure**, or right-click it in the sidebar and choose **Show Structure**.
 
-Tabs: **Columns**, **Indexes**, **Foreign Keys**, **Triggers**, **DDL**, and **Parts** (ClickHouse only). The Columns, Indexes, Foreign Keys, and Triggers labels show item counts. Tabs the database cannot support are hidden, such as Foreign Keys on ClickHouse or Triggers on Redshift. A filter field above the grid narrows rows by name; click a column header to sort.
+The tabs are **Columns**, **Indexes**, **Foreign Keys**, **Triggers**, **DDL**, and **Parts** (ClickHouse only); the first four carry item counts. A tab the engine has no concept of is hidden: ClickHouse has no Foreign Keys, Redshift no Triggers. Every grid has a filter field, and clicking a header sorts.
 
 ## Columns tab
 
-Columns are edited inline in the grid:
+Columns are edited in place. **Nullable**, **Primary Key**, and **Auto Inc** are YES/NO dropdowns; **Primary Key** set to YES forces **Nullable** to NO and holds it there until the key comes back off. **Type** opens a picker of the engine's types by category: search to filter, or type a parametric value such as `VARCHAR(255)` and press Return to use it as written.
 
-- **Nullable**, **Primary Key**, and **Auto Inc** are YES/NO dropdowns.
-- Setting **Primary Key** to YES sets **Nullable** to NO. A primary key column cannot hold NULL, so Nullable stays NO until you turn the primary key off.
-- **Type** opens a picker with the database's types grouped by category. Search to filter, or type a parametric value such as `VARCHAR(255)` or `DECIMAL(10,2)` and press Return to use it as written.
-- **Charset** and **Collation** columns appear for MySQL and MariaDB.
-- **On Update** appears for MySQL and MariaDB, next to **Default**. Set it to YES on a `TIMESTAMP` or `DATETIME` column to add `ON UPDATE CURRENT_TIMESTAMP`, so the column re-stamps itself on every write. TablePro matches the fractional-second precision to the column's own type, so a `TIMESTAMP(6)` column gets `ON UPDATE CURRENT_TIMESTAMP(6)`.
+Which remaining columns appear is the driver's choice. **Comment** is there on most engines and writes the column comment. MySQL and MariaDB add **Charset**, **Collation**, and **On Update**; **On Update** set to YES on a `TIMESTAMP` or `DATETIME` column adds `ON UPDATE CURRENT_TIMESTAMP` at that column's own precision, so `TIMESTAMP(6)` gets `ON UPDATE CURRENT_TIMESTAMP(6)`.
 
 <Frame caption="Type picker popover">
   <img className="block dark:hidden" src="/images/structure-type-picker.png" alt="Type picker popover" />
   <img className="hidden dark:block" src="/images/structure-type-picker-dark.png" alt="Type picker popover" />
 </Frame>
 
-Add a column with the **+** button at the right of the status bar or `Cmd+Shift+N`. Select rows and click **-** or press `Delete` to mark them for removal.
+Add a column with **+** at the right of the status bar or `Cmd+Shift+N`. Select rows and click **-** or press `Delete` to mark them for removal.
 
-### Primary keys
+Flag **Primary Key** on one column, or several for a composite key in one `PRIMARY KEY (col1, col2)` clause. On an existing table that becomes a drop of the old constraint followed by an add.
 
-Toggle the **Primary Key** flag on one or more columns; multiple flagged columns produce a composite key in a single `PRIMARY KEY (col1, col2)` clause. Changing the key on an existing table runs a drop-and-add sequence on MySQL, MariaDB, PostgreSQL, PGlite, SQL Server, DuckDB, and Snowflake. Other engines, SQLite, ClickHouse, Cassandra, ScyllaDB, and Oracle among them, cannot alter a primary key in place: the dropdown stays editable but the change generates no SQL.
-
-### Reordering columns
-
-Drag a column row to a new position (MySQL and MariaDB only). The reorder executes immediately as `ALTER TABLE … MODIFY COLUMN … AFTER` and is recorded in query history. Dragging is disabled while unsaved structure changes exist.
+Drag a column row to reorder it (MySQL and MariaDB only). That one runs immediately as `ALTER TABLE … MODIFY COLUMN … AFTER` and goes to query history rather than the queue. Dragging is off while unsaved changes exist.
 
 ## Indexes tab
 
@@ -57,75 +51,63 @@ Drag a column row to a new position (MySQL and MariaDB only). The reorder execut
 | **Ref Schema** | Referenced schema, for cross-schema references |
 | **On Delete / On Update** | Dropdowns: NO ACTION, RESTRICT, CASCADE, SET NULL, SET DEFAULT |
 
-Right-click a foreign key and choose **Open [table]** to jump to the referenced table.
+Right-click a foreign key and choose **Open [table]** to jump to the referenced table. Right-click any row in these three grids for **Copy Name**, **Copy Definition**, **Copy As** (CSV, JSON, SQL), **Duplicate** (`Cmd+D`), and **Delete**. A row already marked for deletion offers **Undo Delete**.
 
 ## Saving changes
 
-Structure edits queue locally; nothing runs until you save. See [Change Tracking](/features/change-tracking) for how the queue, undo (`Cmd+Z`), and redo (`Cmd+Shift+Z`) work. Saving runs on the tab's own connection, database, and schema, the ones it was opened on. It never moves the sidebar's selected database or the toolbar.
+<StagedUntilSave what="Column, index and key changes" />; see [Change Tracking](/features/change-tracking) for the queue, undo (`Cmd+Z`) and redo (`Cmd+Shift+Z`). A save runs on the tab's own connection, database, and schema, the ones it was opened on, and never moves the sidebar or the toolbar.
 
-- **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queued changes. Changes that can lose data (dropping a column, changing a type, adding NOT NULL, changing the primary key) first show a confirmation that lists each risky change.
-- **Preview SQL** (`Cmd+Shift+P`) shows the generated DDL statements without executing them.
+- **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queue. Changes that can lose data, dropping a column, changing a type, adding NOT NULL, changing the primary key, first show a confirmation listing each one.
+- **Preview SQL** (`Cmd+Shift+P`) shows the generated statements without executing them.
 
-Queued changes stay queued while you look at something else. Switching to another tab, or switching the same tab between Data and Structure, leaves them alone, and so does coming back. Each tab also keeps its own place in the editor: the sub-tab you were on, the filter you typed and the sort you set, so opening one table in two tabs gives you two independent editors rather than one shared between them.
-
-They are only discarded when you discard them: closing the tab, closing the window or quitting asks first, and **Refresh** asks before replacing them with what is on the server. Answering **Save** on that prompt applies the queued changes wherever the tab happens to be, including from the Data view, from the read-only DDL, Parts and Triggers tabs, and from a background tab caught by **Close All Tabs** or **Close Other Tabs**. If the save cannot run, because Safe Mode is read-only, because you cancelled the data-loss confirmation, or because the server rejected the statement, the tab stays open with the changes still queued.
-
-The same holds for a table you are still defining in a Create Table tab. The name, the options and every column you have added survive switching away and back.
+The queue outlives everything short of an explicit discard: closing the tab, closing the window, quitting, and **Refresh** all ask first. A save that never reaches the server leaves the tab open with its queue intact.
 
 <Frame caption="Generated DDL preview">
   <img className="block dark:hidden" src="/images/schema-change-preview.png" alt="Schema change preview with ALTER TABLE statements" />
   <img className="hidden dark:block" src="/images/schema-change-preview-dark.png" alt="Schema change preview with ALTER TABLE statements" />
 </Frame>
 
-### Row context menu
+### When one statement fails
 
-Right-click rows in the Columns, Indexes, or Foreign Keys tabs for **Copy Name**, **Copy Definition**, **Copy As** (CSV, JSON, SQL), **Duplicate** (`Cmd+D`), and **Delete**. Rows already marked for deletion offer **Undo Delete** instead. Multi-select to act on several rows at once.
+A save is often several statements, run in order. Engines with transactional DDL roll the whole set back; MySQL, MariaDB, and Oracle commit each one as it runs, so everything before the failure has landed while the queue still holds all of it. An **Error Applying Changes** sheet reports what the server said: refresh before saving again, or the second save replays work the server already did.
 
 ## Triggers tab
 
-Lists the table's triggers with **Name**, **Timing** (BEFORE, AFTER, INSTEAD OF), **Event** (INSERT, UPDATE, DELETE), and **Enabled** where the database reports it. Select a trigger to see its full `CREATE TRIGGER` statement, fetched from the engine's catalog, in a syntax-highlighted viewer with **Copy** and **Open in Editor**.
-
-**New Trigger**, **Edit**, and **Delete** in the tab's toolbar manage triggers. The editor opens the trigger's actual DDL so the whole definition round-trips; for PostgreSQL it includes the trigger function so you can edit the logic. Saving runs the right statements for the engine, wrapped in a transaction where the engine supports transactional DDL. Deleting asks for confirmation.
+Lists **Name**, **Timing** (BEFORE, AFTER, INSTEAD OF), **Event** (INSERT, UPDATE, DELETE), and **Enabled** where the engine reports it. Select one to read its `CREATE TRIGGER` statement from the catalog, with **Copy** and **Open in Editor**. **New Trigger**, **Edit**, and **Delete** sit in the action bar; the editor opens the trigger's real DDL, including the trigger function on PostgreSQL.
 
 <Info>
-Triggers are available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1; the tab is hidden elsewhere. Oracle does not return the trigger body, so editing starts from the trigger header.
+Triggers are available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1; the tab is hidden elsewhere. Oracle does not return the trigger body, so the viewer and the editor start from the trigger header alone.
 </Info>
 
 ## DDL tab
 
-Read-only `CREATE TABLE` statement with syntax highlighting and font size controls. Toolbar buttons: **Copy**, **Export** as a `.sql` file, and **Open in Editor** to send the DDL to a new query tab.
+Read-only `CREATE TABLE` with syntax highlighting and font size controls. **Copy**, **Export** as a `.sql` file, and **Open in Editor** send it onward. On PostgreSQL the `CREATE SEQUENCE` and `CREATE TYPE … AS ENUM` statements the table depends on are prepended, so the script runs on an empty database.
 
 ## Parts tab (ClickHouse)
 
-Lists the table's partitions and parts from `system.parts`. Toolbar actions: **Optimize** (merge parts), **Drop Partition**, and **Detach Partition** for the selected partition.
+Lists partitions and parts from `system.parts`. **Optimize** merges parts; **Drop Partition** and **Detach Partition** act on the selected partition. Detached data stays on disk and is unreadable until it is re-attached.
 
 ## Creating a new table
 
-Choose **Database > New Table…**, or right-click the empty space in the sidebar and choose **New Table…**. The editor opens as a tab with:
-
-- **Table Name** field, plus Engine, Charset, and Collation pickers for MySQL and MariaDB
-- **Columns**, **Indexes**, and **Foreign Keys** tabs using the same grid editing as the structure view
-- **SQL Preview** tab with the live-generated `CREATE TABLE` DDL
-
-Click **Create Table** (`Cmd+Return` or `Cmd+S`) to execute. TablePro opens the new table and refreshes the sidebar.
+Choose **Database > New Table…**, or right-click empty space in the sidebar and choose **New Table…**. The tab holds a **Table Name** field (with Engine, Charset, and Collation pickers on MySQL and MariaDB), the same three editing grids, and a **SQL Preview** tab carrying the live `CREATE TABLE`. **Create Table** (`Cmd+Enter` or `Cmd+S`) executes it and opens the new table.
 
 <Info>
-Visual table creation is supported for MySQL, MariaDB, PostgreSQL, PGlite, SQLite, SQL Server, ClickHouse, DuckDB, Oracle, Snowflake, libSQL, Cloudflare D1, Trino, and Teradata.
+Visual table creation is supported for MySQL, MariaDB, PostgreSQL, PGlite, SQLite, SQL Server, ClickHouse, DuckDB, Oracle, Snowflake, libSQL, Cloudflare D1, Trino, Teradata, and Dameng.
 </Info>
-
-## Limitations
-
-TablePro disables operations the database cannot perform:
-
-- **SQLite**: columns can be renamed but not otherwise modified.
-- **Cassandra / ScyllaDB**: add and drop column only; no index editing.
-- **Redshift, CockroachDB, Cloudflare D1, Beancount**: structure is read-only.
-- **Redis, etcd, DynamoDB**: no table schema to edit.
 
 ## MongoDB collections
 
-MongoDB structure is read-only. TablePro infers the schema from the first 50 documents of the collection: it unions the top-level field names across the sample and picks each field's most common BSON type. `_id` is listed first and marked as the primary key. The DDL tab shows indexes as `createIndex()` commands you can run in `mongosh`, plus the collection's validator and capped-collection options when present. Edit documents in the data grid instead.
+MongoDB structure is read-only, and inferred from the collection's first 200 documents: top-level field names are unioned across the sample, and each field takes its most common BSON type. `_id` comes first, marked as the primary key. The DDL tab shows indexes as `createIndex()` commands for `mongosh`, plus the validator and capped-collection options where present.
+
+## Limitations
+
+- **Changing a primary key on an existing table** works on MySQL, MariaDB, PostgreSQL, PGlite, SQL Server, DuckDB, Snowflake, and Dameng. Elsewhere the dropdown accepts the edit and the save produces nothing for it: rebuild the table by hand.
+- **Check constraints and generated columns** have no field in the grid. Both show in the DDL tab; change them by running DDL yourself.
+- **SQLite**: a column can be added, dropped, and renamed. No other column change generates SQL.
+- **Cassandra / ScyllaDB**: add and drop column only, no index editing, no visual table creation.
+- **Redshift, CockroachDB, BigQuery, Elasticsearch, SurrealDB, Beancount**: structure is read-only.
+- **Redis, etcd, DynamoDB**: no table schema to edit.
 
 ## Refreshing
 
-Use **Database > Refresh** (`Cmd+R`) or the toolbar refresh button to reload structure from the database. Changes made through TablePro refresh automatically. Refresh always reads from the tab's own database and schema, not the sidebar's current selection.
+**Database > Refresh** (`Cmd+R`) or the toolbar refresh button reloads structure from the server; changes made through TablePro refresh on their own. A refresh reads the tab's own database and schema, not the sidebar's current selection.

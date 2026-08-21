@@ -3,28 +3,35 @@ title: URL Scheme
 description: Every tablepro:// deep link action with parameters and examples
 ---
 
-The `tablepro://` URL scheme drives the TablePro GUI from outside the app. Use it from the shell with `open`, from another app with `NSWorkspace.shared.open(url:)`, or from a Raycast extension with `open()` from `@raycast/api`.
+macOS hands the URL to TablePro, which parses it, confirms anything that could do damage, and opens
+something on screen. Nothing comes back over the scheme: to read rows, use
+[MCP](/external-api/mcp-tools).
 
-The scheme covers two kinds of actions:
+Call it from a shell with `open`, from another app with `NSWorkspace.shared.open(url:)`, or from a
+Raycast extension with `open()` from `@raycast/api`.
 
-- **Navigate**: open a connection, table, or query tab.
-- **Pair**: bootstrap an MCP token for an extension.
-
-Data exchange is not part of the URL scheme. For that, use [MCP](/external-api/mcp-tools).
+| Path after `tablepro://` | Opens |
+|---|---|
+| [`connect/<uuid>`](#open-a-connection) | The saved connection, or fronts its window |
+| [`connect/<uuid>/table/…`](#open-a-table) | A table tab, optionally after switching database or schema |
+| [`connect/<uuid>/query?sql=…`](#run-a-query) | A query tab with the SQL prefilled, after a confirmation |
+| [`import?…`](#import-a-connection) | A review sheet that saves a new connection |
+| [`integrations/pair?…`](#start-pairing) | The pairing approval sheet |
+| [`integrations/start-mcp`](#lazy-start-the-mcp-server) | Nothing. Starts the MCP server and returns |
 
 ## Connection IDs are UUIDs
 
-Connection paths use the connection's UUID, not its display name.
+Connection paths take the connection's UUID, not its display name.
 
 ```text
 tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1
 ```
 
-There is no UI action that copies a connect link. To find a connection's UUID, call the MCP [`list_connections`](/external-api/mcp-tools) tool or read the [`tablepro://connections`](/external-api/mcp-resources) resource; both return the UUID for each saved connection. The welcome window's **Copy TablePro Link** context menu item copies a `tablepro://import?…` link for sharing the connection, not a `connect` link.
-
-<Info>
-Pre-0.38 builds accepted `tablepro://connect/<name>/…` paths. Name-based paths were removed in 0.38.0. Bookmarks built against older versions must be regenerated with UUID-keyed paths.
-</Info>
+No UI action copies a connect link. To find a UUID, call the MCP
+[`list_connections`](/external-api/mcp-tools) tool or read the
+[`tablepro://connections`](/external-api/mcp-resources) resource. The welcome window's
+**Copy TablePro Link** context menu item copies a `tablepro://import?…` link for sharing a connection
+definition, which is a different thing.
 
 ## Open a connection
 
@@ -32,9 +39,11 @@ Pre-0.38 builds accepted `tablepro://connect/<name>/…` paths. Name-based paths
 tablepro://connect/<connection-uuid>
 ```
 
-Opens the saved connection. If the connection is already open in a window, that window comes to front. If the UUID does not match a saved connection, an error sheet appears.
+Opens the saved connection, or brings its window to front when it is already open. A UUID that
+matches no saved connection shows an error sheet.
 
-If the connection has a pre-connect script, TablePro shows the script text in a confirmation dialog before connecting. Cancelling the dialog cancels the whole deep link. This applies to every `connect/…` link: connection, table, and query.
+A connection with a pre-connect script shows the script text in a confirmation dialog first, and
+cancelling that dialog cancels the whole link. This applies to every `connect/…` form.
 
 ```bash
 open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1"
@@ -48,20 +57,23 @@ tablepro://connect/<connection-uuid>/database/<db>/table/<table-name>
 tablepro://connect/<connection-uuid>/database/<db>/schema/<schema>/table/<table-name>
 ```
 
-The first form opens the table in the connection's current database and schema. The second selects a database first. The third (Postgres-style) selects both, database before schema.
+The first form uses the connection's current database and schema. The second switches database first.
+The third switches both, database before schema, which is the Postgres shape.
 
-On a connection that has schemas but no databases to switch between, such as Oracle, a lone `database` segment names the schema. A segment naming a dimension the connection does not have is ignored rather than applied to the other one.
+On an engine with schemas and no database to switch between, such as Oracle, a lone `database`
+segment names the schema. A segment naming a dimension the engine does not have is dropped rather
+than applied to the other one.
 
-Table and schema names with spaces or special characters must be percent-encoded.
+Percent-encode table and schema names that contain spaces or reserved characters.
 
 ```bash
-# Open a table in the current database
+# The current database
 open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/table/users"
 
-# Open a table in a specific database
+# A named database
 open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/database/analytics/table/events"
 
-# Postgres: select database and schema
+# Database and schema
 open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/database/app/schema/reporting/table/daily_events"
 ```
 
@@ -71,17 +83,18 @@ open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/database/app/schem
 tablepro://connect/<connection-uuid>/query?sql=<percent-encoded-sql>
 ```
 
-Opens a query tab with the SQL pre-filled. TablePro always shows a confirmation dialog first, previewing the first 300 characters of the SQL. A tab that already holds exactly this SQL comes to front instead of a second tab opening. The query does not auto-execute; the user runs it from the editor. The SQL has a 51,200-character cap.
+A dialog titled **Open Query from Link** appears first, previewing the first 300 characters of the
+SQL; **Open Query** opens the tab. Nothing executes, the user runs it from the editor. A tab already
+holding exactly this SQL comes to front instead of a second one opening.
 
-To run SQL from a script and read rows back, use the MCP [`execute_query`](/external-api/mcp-tools) tool instead. The URL scheme is for handing SQL into the GUI, not for headless execution.
+`sql` is required and caps at 51,200 UTF-16 units. Longer than that and the link is dropped.
 
 ```bash
 open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/query?sql=SELECT%20*%20FROM%20users%20LIMIT%2010"
 ```
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `sql` | yes | Percent-encoded SQL. Max 51,200 characters. |
+To run SQL from a script and read rows back, use the MCP
+[`execute_query`](/external-api/mcp-tools) tool. This link hands SQL to the GUI and stops there.
 
 ## Start pairing
 
@@ -89,19 +102,19 @@ open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1/query?sql=SELECT%2
 tablepro://integrations/pair?client=<name>&challenge=<base64url>&redirect=<url>&scopes=<scope>&connection-ids=<csv>
 ```
 
-Starts a pairing flow. TablePro presents an approval sheet, the user picks scopes and connections, and TablePro returns a one-time code via the `redirect` URL.
+Opens the approval sheet. The user picks scope, connections and expiry, and TablePro returns a
+one-time code to `redirect`.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `client` | yes | Display name shown in the approval sheet, e.g. `Raycast on macbook-pro`. |
-| `challenge` | yes | Base64url-encoded SHA-256 hash of the verifier (PKCE). |
-| `redirect` | yes | URL to receive the `code` query parameter on success. |
-| `scopes` | no | Requested scope, a single value: `readWrite` or `fullAccess`. Matching is case-insensitive and accepts `read_write`, `read-write`, `full_access`, `full-access`, and `full`. Any other value, or omitting the parameter, requests `readOnly`. |
+| `client` | yes | Display name shown in the approval sheet, such as `Raycast on macbook-pro`. |
+| `challenge` | yes | Base64url SHA-256 of the verifier: exactly 43 characters (PKCE). |
+| `redirect` | yes | Where the code is delivered. A loopback `http(s)` URL or a private-use scheme registered by an installed app; anything else is refused. |
+| `scopes` | no | One value: `readWrite` or `fullAccess`. Matching is case-insensitive and takes `read_write`, `read-write`, `full_access`, `full-access` and `full`. Any other value, or none, requests `readOnly`. |
 | `connection-ids` | no | Comma-separated UUIDs to preselect in the allowlist. Defaults to all. |
 
-The user can change scopes and connections in the approval sheet. The query parameters are a request, not a grant.
-
-Example invocation from a Raycast extension:
+These parameters are a request, not a grant: the sheet lets the user raise or lower every one of
+them.
 
 ```ts
 import { open } from "@raycast/api";
@@ -115,7 +128,7 @@ const params = new URLSearchParams({
 await open(`tablepro://integrations/pair?${params}`);
 ```
 
-See [Pairing](/external-api/pairing) for the full sequence and the exchange step.
+[Pairing](/external-api/pairing) has the exchange step and the error codes.
 
 ## Lazy-start the MCP server
 
@@ -123,11 +136,15 @@ See [Pairing](/external-api/pairing) for the full sequence and the exchange step
 tablepro://integrations/start-mcp
 ```
 
-Starts the MCP server if it is not already running, then returns. Used by the bundled `tablepro-mcp` CLI to bootstrap on cold launch.
+Starts the MCP server if it is not running, then returns. MCP does not have to be enabled in Settings
+first. The bundled `tablepro-mcp` CLI uses this to bootstrap on a cold launch.
 
-The user does not need to enable MCP in Settings beforehand. The server binds to the configured port (default `23508`); if that port is taken, it falls back to a free port in the `51000-52000` range. Either way it writes a handshake file at `~/Library/Application Support/TablePro/mcp-handshake.json` with the actual port.
+The server takes the configured port (`23508` by default) and falls back to a kernel-assigned free
+port when that one is busy. Either way it writes the port it actually bound to a handshake file at
+`~/Library/Application Support/TablePro/mcp-handshake.json`.
 
-A launch whose only reason is this URL leaves TablePro in the background, with no Dock icon and no app switcher entry, until it has a window to show. The bundled `tablepro-mcp` CLI sets `TABLEPRO_BACKGROUND_LAUNCH=1` on the `open` it runs so the app knows before it finishes launching; another caller reaches the same state a moment later, after the icon has briefly appeared.
+A launch whose only reason is this URL stays in the background: no Dock icon, no app switcher entry,
+until it has a window to show.
 
 ```bash
 open "tablepro://integrations/start-mcp"
@@ -136,72 +153,22 @@ open "tablepro://integrations/start-mcp"
 ## Import a connection
 
 ```text
-tablepro://import?name=<n>&host=<h>&port=<p>&type=<t>&username=<u>&database=<db>
+tablepro://import?name=<n>&host=<h>&type=<t>&…
 ```
 
-Adds a saved connection from query parameters. TablePro shows a review sheet with the parsed details before saving anything; the name is editable, everything else is read-only. **Add Connection** saves it, or **Add as Copy** when a connection with the same name, host, and type already exists. Passwords are never accepted in the URL; the user adds one in the connection editor before connecting.
-
-Required parameters: `name`, `host`, `type`.
-
-`type` accepts any registered database type name (case-insensitive). Examples: `MySQL`, `PostgreSQL`, `MongoDB`, `Redis`, `ClickHouse`, `Oracle`, `DuckDB`, `Cassandra`.
+Shows a review sheet with the parsed connection, then saves it on **Add Connection**. `name`, `host`
+and `type` are required; the rest of the connection form maps to query parameters listed in
+[Connection Import](/external-api/connection-import). Passwords are never accepted in a link.
 
 ```bash
 open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin&database=mydb"
 ```
 
-Enum-valued parameters below must match the listed values exactly (they are raw values, not display names). Percent-encode values with spaces: `sslMode=Verify%20CA`.
-
-### Core parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `port` | Server port. Defaults to the database type's standard port. |
-| `username` | Database username. |
-| `database` | Default database name. |
-| `color` | Sidebar color: `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Purple`, `Pink`, or `Gray`. |
-| `tagName` | Tag to assign. Repeat the parameter to assign more than one tag. |
-| `groupName` | Group to place the connection in. |
-| `safeModeLevel` | Safe Mode level: `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull`, or `readOnly`. |
-| `aiPolicy` | AI access policy: `alwaysAllow`, `askEachTime`, or `never`. Any other value falls back to the app default. |
-| `redisDatabase` | Redis database index to select on connect. |
-| `startupCommands` | Statements to run after connecting. |
-| `localOnly` | Set to `1` to exclude the connection from sync. |
-
-### SSH parameters
-
-Set `ssh=1` to enable SSH tunneling.
-
-| Parameter | Description |
-|-----------|-------------|
-| `sshHost` | SSH server hostname. |
-| `sshPort` | SSH port. Default `22`. |
-| `sshUsername` | SSH username. |
-| `sshAuthMethod` | `Password`, `Private Key`, `SSH Agent`, `Keyboard Interactive`, or `None`. Unrecognized values fall back to `Password`. |
-| `sshPrivateKeyPath` | Path to private key file. |
-| `sshAgentSocketPath` | Custom SSH agent socket path. |
-| `sshJumpHosts` | JSON array of jump hosts. |
-| `sshTotpMode` | TOTP mode for two-factor SSH auth: `none`, `auto_generate`, or `prompt_at_connect`. |
-| `sshTotpAlgorithm` | TOTP hash algorithm: `SHA1`, `SHA256`, or `SHA512`. Default `SHA1`. |
-| `sshTotpDigits` | TOTP code length. Default `6`. |
-| `sshTotpPeriod` | TOTP period in seconds. Default `30`. |
-
-### SSL parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `sslMode` | `Disabled`, `Preferred`, `Required`, `Verify CA`, or `Verify Identity`. Unrecognized values fall back to `Disabled`. |
-| `sslCaCertPath` | CA certificate file path. |
-| `sslClientCertPath` | Client certificate file path. |
-| `sslClientKeyPath` | Client key file path. |
-
-### Plugin-specific fields
-
-Use the `af_` prefix to pass driver-specific fields. For example, `af_replicaSet=myrs` passes `replicaSet` to the MongoDB plugin.
-
-`af_preConnectScript` is stripped on import. Imported connections cannot carry a pre-connect shell script; the user has to add one by hand in the connection editor.
-
 ## Errors
 
-Malformed URLs are dropped without any UI: an invalid UUID, unknown path, missing required parameter, or over-limit SQL is logged to the system log (subsystem `com.TablePro`) and nothing opens. Check Console.app when a link does nothing.
+A URL that fails to parse is dropped with no UI at all: an invalid UUID, an unknown path, a missing
+required parameter, over-limit SQL. The reason goes to the system log under subsystem `com.TablePro`,
+so check Console.app when a link does nothing.
 
-Failures after parsing show an error sheet. Example: a valid UUID with no matching connection shows `No saved connection with ID "9F1F0C3E-2E3D-4B14-9C3A-1D2F4AD1F6F1".` under the title **Connection Failed**.
+A URL that parses and then fails shows an error sheet. A valid UUID with no matching connection gives
+`No saved connection with ID "…".` under the title **Connection Failed**.

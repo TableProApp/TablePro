@@ -3,7 +3,7 @@ title: Privacy
 description: "Every outbound request the app can make, what each one carries, and where its off switch is"
 ---
 
-Three requests leave a stock install without you asking: one anonymous heartbeat a day, an update check, and a fetch of the plugin catalog. None of the three carries a query, a row, a hostname, or a password. Every other channel below is one you switch on yourself.
+Three requests leave a stock install without you asking: one anonymous heartbeat a day, an update check, and a fetch of the plugin catalog. None of the three carries a query, a row, a hostname, or a password. Every other channel in this table is one you switch on yourself.
 
 | Channel | Goes to | On by default | Off switch |
 | --- | --- | --- | --- |
@@ -36,17 +36,17 @@ The JSON body holds these fields and no others:
 
 No query text. No hostnames, ports, database names, or usernames. No email address, no file paths, no connection names.
 
-The body is signed with HMAC-SHA256 using a secret compiled into the build (`ANALYTICS_HMAC_SECRET`) and sent as an `X-Signature` header. It is an integrity check over the body, not encryption, and it carries nothing about you. A build without the secret configured sends the payload with no signature at all.
+An `X-Signature` header carries an HMAC-SHA256 of the body. It proves the payload arrived unaltered; it is not encryption, and it carries nothing about you.
 
-`machine_id` is a hash of a hardware identifier, never of anything you typed, so two heartbeats from the same Mac count as one Mac. Where that identifier cannot be read, a random one is generated and stored instead, and it does not survive a reset.
+`machine_id` hashes a hardware identifier, never anything you typed, so two heartbeats from one Mac count as one Mac. Where that identifier cannot be read, a random one is stored instead and does not survive a reset.
 
 **Share anonymous usage data** in **Settings > General** is on by default. With it off, the send returns before the payload is built, and nothing queues for later.
 
 ## AI providers
 
-Nothing reaches a model until you add a provider. A fresh install has none, and with none configured every AI path returns before it builds a request. **Enable AI Features** in **Settings > AI** is on out of the box, but it gates an empty tab.
+Nothing reaches a model until you add a provider, and a fresh install has none: with none configured, every AI path returns before it builds a request. **Enable AI Features** in **Settings > AI** is on out of the box, but it gates an empty tab.
 
-One provider is marked active, and it answers inline suggestions and the editor actions. The chat panel has its own model picker, so a chat turn can go to any provider you have configured, not only the active one. Requests go to that provider's endpoint, `api.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com`, `api.x.ai`, `openrouter.ai`, `api.cursor.com` and `opencode.ai` all ship as presets, and a custom provider goes wherever you point it. Ollama, llama.cpp, and MLX default to `http://localhost:11434` and `http://localhost:8080`, so their traffic stays on the machine, but the endpoint field is editable and points wherever you set it.
+One provider is marked active and answers inline suggestions and the editor actions; the chat panel's own model picker can send a turn to any other provider you configured. Requests go to that provider's endpoint. The presets are `api.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com`, `api.x.ai`, `openrouter.ai`, `api.cursor.com` and `opencode.ai`, plus `http://localhost:11434` for Ollama and `http://localhost:8080` for llama.cpp and MLX, which keeps their traffic on the machine. Every endpoint field is editable, and a custom provider goes wherever you point it.
 
 A chat turn carries:
 
@@ -65,7 +65,7 @@ Per connection, the **AI Policy** picker in the connection form's Advanced pane 
 **Ask Each Time** gates the chat panel only. Inline suggestions check the policy for **Never** and nothing else, so with **Enable inline suggestions while typing** on, the text before your cursor, the whole query, and the schema go to the provider after every typing pause with no prompt. That toggle is off by default.
 </Warning>
 
-Provider API keys live in the keychain under the `com.TablePro` service, never in `connections.json` and never in a CloudKit record. The provider list itself (type, name, endpoint, model) rides along with the Settings category of iCloud sync when sync is on.
+Provider API keys live in the keychain, never in `connections.json` and never in a CloudKit record. The provider list itself (type, name, endpoint, model) rides along with the Settings category of iCloud sync when sync is on.
 
 Signing in to ChatGPT opens a second local listener on port 1455 for the OAuth redirect. It runs only during that sign-in and closes after it.
 
@@ -102,9 +102,9 @@ Every call is written to the local activity log with the token behind it, statem
 
 ## Update checks
 
-Sparkle fetches `https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml`, one day apart by default. The request is a plain `GET` with no query parameters: the app sets no system profiling key, so no profile is attached. The user agent names the app and its version, and GitHub sees your IP address as it would for any web request.
+Sparkle fetches `https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml`, one day apart by default. It is a plain `GET` with no query parameters: system profiling is off, so nothing about your Mac rides along. The user agent names the app and its version, and GitHub sees your IP address as it would for any web request.
 
-Updates download from the GitHub release named in the feed. Each build carries an EdDSA signature that Sparkle checks against the public key in the app's `Info.plist` before installing anything.
+Updates download from the GitHub release named in the feed, and Sparkle checks each build's EdDSA signature against the public key inside the app before it installs anything.
 
 **Automatically check for updates** in **Settings > General** is on by default. With it off, **Check for Updates…** in the same section is the only thing that reaches the feed.
 
@@ -128,9 +128,7 @@ Team Library is a Team-tier feature and it publishes only when you ask. **Share 
 
 ## Crash reports
 
-There are none. The app links no crash reporting SDK: its only remote packages are Sparkle, swift-certificates, and Yams. Nothing uploads a crash log, a stack trace, or a diagnostic file.
-
-Logging goes through OSLog, which stays in the system log store on your Mac.
+There are none. The app links no crash reporting SDK, its only remote packages being Sparkle, swift-certificates, and Yams, so nothing uploads a crash log, a stack trace, or a diagnostic file. Logging goes through OSLog and stays in the system log store on your Mac.
 
 ## Your database connections
 
@@ -140,26 +138,24 @@ Two helpers download on first use, and each is verified before it runs: the Clou
 
 ## What stays local
 
-The execution log added in 0.67.0 records every authorization decision the app makes, from the UI, an MCP client, the AI assistant, the import pipeline, or background maintenance. Each record holds a sequence number, a timestamp, the connection ID, the operation kind, which of those five callers asked, allowed or denied, whether it counted as a write, a SHA-256 digest of the statement, and the previous record's hash.
+The execution log records every authorization decision the app makes, from the UI, an MCP client, the AI assistant, the import pipeline, or background maintenance. Each record holds a sequence number, a timestamp, the connection ID, the operation kind, which of those five callers asked, allowed or denied, whether it counted as a write, a SHA-256 digest of the statement, and the previous record's hash. The statement text is never stored, and neither is a caller-supplied label such as an MCP client name or an AI session ID, only the channel it came through.
 
-The statement text is never stored, and a caller-supplied label such as an MCP client name or an AI session ID is not stored either, only the channel. The hash chain is tamper evident, not tamper proof: anyone who can write the file can also recompute every hash after the record they changed.
-
-It is a JSON file in Application Support. No sync record type covers it, and no code path uploads it. It does not leave the Mac.
+The hash chain is tamper evident, not tamper proof: anyone who can write the file can recompute every hash after the record they changed. It is a JSON file in Application Support, no sync record type covers it, and no code path uploads it.
 
 ### Where it lives on disk
 
-Everything below is under `~/Library/Application Support/TablePro/` unless the path says otherwise.
+Every path here is under `~/Library/Application Support/TablePro/` unless it says otherwise.
 
 | Path | What it holds |
 | --- | --- |
 | `connections.json` | Connection definitions: host, port, username, database, SSH and SSL settings. No passwords. |
-| `connections.json.hmac` | The integrity tag for the file above. |
+| `connections.json.hmac` | The integrity tag for `connections.json`. |
 | `known_hosts` | SSH host keys you accepted. |
 | `query_history.db` | The statements you ran, as text, with a full-text index. Parameter values are never recorded. |
 | `sql_favorites.db` | Saved queries and their folders. |
 | `ai_chats/` | One JSON file per AI conversation, including the context attached to each turn. |
 | `AIChatImages/` | Images pasted into chat. |
-| `ExecutionAudit.json` | The execution log described above. |
+| `ExecutionAudit.json` | The execution log described in this section. |
 | `mcp-audit.db` | The MCP activity log, 90 days, statements as digests. Mode `0600` inside a `0700` directory. |
 | `mcp-handshake.json` | The bound port and the bridge token, mode `0600`. |
 | `TabState/`, `RecentlyClosedTabs/` | Open and recently closed tabs, including their query text. |
@@ -173,7 +169,7 @@ Everything below is under `~/Library/Application Support/TablePro/` unless the p
 
 ## Passwords and secrets
 
-Secrets live in the keychain under the `com.TablePro` service, in the `D7HJ5TFYCU.com.TablePro.shared` access group, and the app asks for the data protection keychain: connection passwords, SSH passwords, key passphrases, SSL client key passphrases, TOTP secrets, plugin secure fields, AI provider keys, and the license key. MCP tokens are stored as a salted SHA-256 hash; the plaintext is shown once at creation and never written down.
+Secrets live in the macOS keychain, under the `com.TablePro` service and in the data protection keychain: connection passwords, SSH passwords, key passphrases, SSL client key passphrases, TOTP secrets, plugin secure fields, AI provider keys, and the license key. MCP tokens are the exception, stored as a salted SHA-256 hash; the plaintext is shown once at creation and never written down.
 
 A connection can name a [password source](/features/connection-sharing#password-sources) instead of using the keychain: a file, an environment variable, a shell command, 1Password, HashiCorp Vault, or AWS Secrets Manager. Those resolve at connect time, on your machine, and are never synced, since a path or a command belongs to one Mac.
 
