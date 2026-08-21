@@ -3,7 +3,11 @@ title: Beancount
 description: Backend requirements, the table layout, source locations, includes, and BQL support
 ---
 
-Install `rledger` or Python Beancount before you connect. The plugin parses nothing itself: it shells out to one of those two and projects the answer into 17 read-only SQL tables. **Beancount Driver** is a registry plugin, so picking **Beancount** in the connection form prompts to install it too.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+Install `rledger` or Python Beancount before you connect. The plugin parses nothing itself: it shells out to one of those two and projects the answer into 17 read-only SQL tables.
+
+<RegistryPlugin name="Beancount" plugin="Beancount Driver" />
 
 ## Backend requirements
 

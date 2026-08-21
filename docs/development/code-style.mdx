@@ -3,68 +3,74 @@ title: Code Style
 description: Swift conventions, tooling, naming, and file organization rules
 ---
 
-`.swiftlint.yml` and `.swiftformat` are the source of truth. When in doubt, check those files.
+Lint covers `TablePro/` and nothing else. `Plugins/`, `Packages/`, `LocalPackages/` and the test
+bundles get no automated style check at all, locally or in CI. On a change outside the app target,
+the conventions here are all there is.
 
-## Core rules
+`.swiftlint.yml` and `.swiftformat` settle the mechanical half. `CLAUDE.md` carries the rest, the
+rules no linter can check: no comments, early returns over nested conditionals, explicit access
+control, `String(localized:)` for user-facing strings, OSLog instead of `print()`.
 
-- **No comments.** Code must be self-explanatory through naming and structure. Do not add comments that describe what code does, reference tickets, or explain callers.
-- **Early returns.** Use `guard` and early `return` instead of nested `if/else` blocks. Flatten control flow.
-
-## Tools
+## Running the tools
 
 ```bash
-# Pre-commit gate (CI rejects warnings, so --strict is required)
-swiftlint lint --strict
-
-# Auto-fix lint issues
-swiftlint --fix
-
-# Format all code
-swiftformat .
-
-# Check formatting without applying
-swiftformat --lint .
+swiftlint lint --strict     # the pre-commit gate, and what the release workflow runs
+swiftlint --fix             # apply the autocorrectable rules
+swiftformat .               # format in place
+swiftformat --lint .        # report without writing
 ```
 
-There is no SwiftLint build phase in the Xcode project. Lint runs manually and in CI.
+`--strict` promotes every warning to an error. Several rules are configured as warnings on purpose,
+so a plain `swiftlint lint` exits 0 on code the release workflow rejects. There is no SwiftLint
+build phase in the generated project, so nothing lints during a normal Xcode build.
+
+The scope comes from `included: [TablePro]` in `.swiftlint.yml`, and that key beats any path on the
+command line: `swiftlint lint Plugins/` lints `TablePro/` and reports nothing about your plugin. It
+exits 0, which reads like a pass.
+
+SwiftFormat is not run in CI at all. It rewrites files, so run it before you stage, not after.
 
 ## Formatting
 
-| Rule | Value |
-|------|-------|
-| Indentation | 4 spaces (never tabs) |
-| Line length | 120 chars (SwiftLint warns at 180, errors at 300) |
-| Braces | K&R (opening brace on same line) |
-| Line endings | LF |
-| Semicolons | None |
+| Rule | Value | Set by |
+|---|---|---|
+| Indentation | 4 spaces, never tabs; `case` not indented inside `switch` | `--indent 4`, `--indentcase false` |
+| Wrap target | 120 characters | `--maxwidth 120` |
+| Hard line limit | Warns at 180, errors at 300 | `line_length` in `.swiftlint.yml` |
+| Braces | K&R, `else` and `guard else` on the closing brace line | `--allman false`, `--elseposition same-line`, `--guardelse same-line` |
+| Wrapped arguments | One per line, opening paren last, closing paren balanced | `--wraparguments before-first`, `--closingparen balanced` |
+| Line endings | LF | `--linebreaks lf` |
+| Semicolons | Removed | `--semicolons never` |
+| `self.` | Removed where the compiler does not need it | `--self remove` |
 
-Trailing commas are omitted by convention. Both tools have their trailing-comma rules disabled, so nothing enforces it.
+`line_length` ignores URLs, function declarations, comments and interpolated strings, so a long
+signature or a long log line is not what trips it.
+
+Trailing commas are omitted throughout the tree, and nothing enforces that: SwiftFormat has
+`trailingCommas` disabled and SwiftLint has `trailing_comma` in `disabled_rules`. Match what the
+file around you does.
 
 ## Naming
 
 | Element | Convention | Example |
-|---------|------------|---------|
-| Classes, Structs, Enums, Protocols | UpperCamelCase | `DatabaseConnection` |
+|---|---|---|
+| Types and protocols | UpperCamelCase | `DatabaseConnection` |
 | Enum cases | lowerCamelCase | `.postgresql` |
-| Functions, Variables, Constants | lowerCamelCase | `executeQuery()`, `maxRetryAttempts` |
-| Booleans | is/has/can prefix | `isConnected`, `hasValidCredentials` |
-| Factory methods | make prefix | `makeConnection()` |
-| Acronyms | Treat as words | `JsonEncoder` not `JSONEncoder` (except SDK types) |
+| Functions, variables, constants | lowerCamelCase | `executeQuery()`, `maxRetryAttempts` |
+| Booleans | `is`, `has`, `can` or `should` prefix | `isConnected`, `hasValidCredentials` |
+| Factory methods | `make` prefix | `makeConnection()` |
+| Acronyms | All caps, as in Apple's own APIs | `SQLStatementGenerator`, `JSONExportPlugin`, `MCPAuditLogger` |
 
-## Access control
-
-Always explicit. Prefer the most restrictive level that works.
-
-```swift
-// Specify on the extension, not individual members
-public extension NSEvent {
-    var semanticKeyCode: KeyCode? { … }
-}
-```
+Nothing enforces the acronym row: SwiftFormat's `acronyms` rule is disabled, so no tool rewrites
+`Url` to `URL`. One corner of the tree disagrees with it. The MCP wire types under
+`TablePro/Core/MCP/Wire/` spell it `HttpRequestParser` while the files beside them spell `MCP` in
+full. New types take the all-caps form.
 
 ## Imports
 
-One alphabetical block, no blank lines between imports, one blank line after the last import. SwiftFormat enforces this (`--importgrouping alpha`, `blankLinesBetweenImports`, `blankLineAfterImports`).
+One alphabetical block, no blank lines inside it, one blank line after it. SwiftFormat enforces
+this through `--importgrouping alpha`, `blankLinesBetweenImports` and `blankLineAfterImports`, and
+SwiftLint's `sorted_imports` catches an out-of-order import that never went through SwiftFormat.
 
 ```swift
 import AppKit
@@ -76,52 +82,53 @@ import TableProPluginKit
 final class QueryRunner { … }
 ```
 
-## Safety
+Lowercase module names sort by their own spelling, which is why `os` lands between `Foundation` and
+`TableProPluginKit`.
 
-No force unwrapping (`!`) or force casting (`as!`). Use `guard let`, `if let`, `as?`.
+## Rules that bite
 
-```swift
-// Good
-guard let connection = activeConnection else { return }
+`.swiftlint.yml` opts into 55 rules beyond the defaults. These are the ones that stop a clean-looking
+change most often:
 
-// Bad
-let connection = activeConnection!
-```
+| Rule | Flags | Severity |
+|---|---|---|
+| `implicit_return` | `return` in a single-expression function, closure or getter | warning |
+| `explicit_init` | `Connection.init()` where `Connection()` compiles | warning |
+| `force_unwrapping` | `!` on an optional | warning |
+| `force_cast` | `as!` | warning |
+| `empty_count` | `items.count == 0` instead of `items.isEmpty` | error |
+| `number_separator` | `1000000` instead of `1_000_000` | warning |
+| `yoda_condition` | `if 5 == limit` | warning |
+| `sorted_imports` | An import out of alphabetical order | warning |
+| `extension_access_modifier` | Access control repeated on members instead of set on the extension | warning |
 
-## Logging
+Every warning in that table fails under `--strict`, which is how the gate runs it.
 
-OSLog only. Never `print()`.
+`force_try` sits in `disabled_rules`, so nothing flags `try!`. The rule against forcing still
+applies; the linter is not what holds it up.
 
-```swift
-import os
+## Custom rules
 
-private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
-```
+Two project rules are configured at error severity, so they fire without `--strict`. Violate either
+and a UI test writes into your own store instead of a throwaway one:
 
-## Localization
+| Rule | Fires on | Exempt |
+|---|---|---|
+| `storage_environment_directory` | `applicationSupportDirectory` | `AppStorageEnvironment.swift` |
+| `storage_environment_defaults` | `UserDefaults.standard` | `AppStorageEnvironment.swift`, `GeneralSettings.swift`, `WorkspaceRailViewController.swift` |
 
-- `String(localized:)` for user-facing strings in computed properties, AppKit code, alerts, error descriptions
-- SwiftUI view literals (`Text("Save")`, `Button("Cancel")`) auto-localize
-- Do not localize technical terms: font names, database types, SQL keywords, encoding names
-- Never use `String(localized:)` with string interpolation. Use `String(format: String(localized: "Preview %@"), name)` instead.
+Resolve the directory through `AppStorageEnvironment.shared` and preferences through
+`AppStorageEnvironment.shared.defaults`. Only a preference macOS itself owns reads the standard
+domain.
 
-## SwiftUI patterns
+## Size limits
 
-- `@State` for local view state
-- `@Observable` for viewmodels (Swift 5.9+)
-- Property wrapper order: Environment, State, Binding, regular properties
-- Extract large views into subviews
+`.swiftlint.yml` sets thresholds for `file_length`, `type_body_length`, `function_body_length` and
+`cyclomatic_complexity`. Read the current numbers there rather than from memory.
 
-## Limits
-
-| Metric | Warning | Error |
-|--------|---------|-------|
-| File length | 1200 lines | 1800 lines |
-| Type body | 1100 lines | 1500 lines |
-| Function body | 160 lines | 250 lines |
-| Cyclomatic complexity | 40 | 60 |
-
-When approaching these limits, extract into extension files:
+When a type approaches one, split it into `TypeName+Category.swift` files under an `Extensions/`
+folder beside it, grouped by domain and not by line count. `MainContentCoordinator` is the worked
+example:
 
 <Tree>
   <Tree.File name="MainContentCoordinator.swift" />
@@ -129,7 +136,27 @@ When approaching these limits, extract into extension files:
     <Tree.File name="MainContentCoordinator+RowOperations.swift" />
     <Tree.File name="MainContentCoordinator+Pagination.swift" />
     <Tree.File name="MainContentCoordinator+Filtering.swift" />
+    <Tree.File name="MainContentCoordinator+Alerts.swift" />
   </Tree.Folder>
 </Tree>
 
-Group by domain logic, not arbitrary line counts.
+A new file is invisible to Xcode until `scripts/generate-project.sh` runs again.
+
+## Localization
+
+`CLAUDE.md` holds the localization rule in full. The trap worth repeating is interpolation:
+
+```swift
+String(localized: "Preview \(name)")
+```
+
+That builds a different key on every call, so it never matches an entry in the strings catalog. The
+string ships untranslated and no tool reports it. Take a format argument instead, which is one key
+and one catalog entry:
+
+```swift
+String(format: String(localized: "Preview %@"), name)
+```
+
+Technical terms stay unlocalized: font names, database types, SQL keywords, encoding names.
+Exporting and merging a translation is on [Development Overview](/development/overview).

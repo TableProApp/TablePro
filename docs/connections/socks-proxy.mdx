@@ -3,7 +3,7 @@ title: SOCKS Proxy
 description: Route a database connection through a SOCKS5 proxy, with remote DNS (socks5h) so the proxy resolves the database hostname
 ---
 
-When the only way out of a corporate network is a SOCKS5 endpoint, the database's **Host** and **Port** on the General pane stay exactly as they are: the proxy resolves that name and dials it from its own side. A hostname that exists only inside the private network works, and no DNS query for the database leaves your Mac.
+Leave the database's **Host** and **Port** on the General pane exactly as they are. The proxy resolves that name and dials it from its own side. A hostname that exists only inside the private network works, and no DNS query for the database leaves your Mac.
 
 <Frame caption="The SOCKS Proxy pane in the connection form">
   <img className="block dark:hidden" src="/images/socks-proxy-pane.png" alt="SOCKS Proxy pane" />

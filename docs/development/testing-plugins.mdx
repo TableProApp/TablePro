@@ -3,18 +3,22 @@ title: Testing a Custom Plugin
 description: Load a locally built driver plugin in a debug build of TablePro
 ---
 
-A plugin in the user plugins directory has to carry the same Apple team as the running app. Your own debug build therefore takes what your Xcode just signed, and a release build of TablePro rejects the same bundle. See [Plugin Development](/development/plugin-development) for writing the driver, and the [Plugin Registry](/development/plugin-registry) for publishing it once it works.
+A plugin's signature is checked only outside the app's own `PlugIns` directory. That one rule explains all three ways to run a plugin you built locally, and which of them a release build of TablePro would also accept. The dev script is the normal route; the other two are for when the signature check itself is in your way. See [Plugin Development](/development/plugin-development) for writing the driver and [Plugin Registry](/development/plugin-registry) for publishing it.
 
-## How plugin loading works
+## Where plugins load from
 
-TablePro loads plugins from two locations and treats them differently:
+`PluginManager` reads two directories on launch and treats them differently.
 
-- **Inside the app bundle** (`PlugIns/`): built-in plugins. No signature check runs.
-- **User plugins directory** (`~/Library/Application Support/TablePro/Plugins`): user-installed plugins. Each bundle must be signed by the same Apple team as the running app, or the app rejects it with "Plugin code signature verification failed" (shown under a "Plugin Installation Failed" alert when installing).
+| Location | Source | Checked before loading |
+|----------|--------|------------------------|
+| `PlugIns/` inside the app bundle | Built-in | `Info.plist` versions only |
+| `~/Library/Application Support/TablePro/Plugins` | User-installed | `Info.plist` versions, then the code signature |
 
-The required team comes from the app's own signature. A plugin built by the same Xcode as your local app build carries your team, so your local build accepts it. A release build of TablePro rejects it, because your team is not TablePro's; release users get plugins through the registry, where CI signs every binary.
+The version keys go first either way: a plugin whose `TableProPluginKitVersion` falls outside the app's compatible range, or whose `TableProMinAppVersion` is newer than the running app, is rejected before anything looks at its signature.
 
-Do not reuse a built-in plugin's bundle ID. Installing such a plugin fails with a conflict error, and during discovery the copy with the higher version wins; on a version tie the built-in wins and the user copy is deleted.
+The signature check has two passes. A bundle signed by the same Apple team as the running app loads with no further question, which is why your own debug build accepts what your own Xcode signed. A bundle carrying any other Developer ID loads only if the user has trusted that team by name, and that consent is collected during an install through a registry, nowhere else ([Plugins & Themes](/features/plugins#plugins-from-other-developers)). Hand-copy such a bundle into the user plugins directory and it fails to load, because nothing on that path asks.
+
+Do not reuse a built-in plugin's bundle ID. Installing over one fails outright, and at discovery the higher version wins, with the built-in taking a tie and the losing user copy deleted from disk.
 
 ## Install with the dev script
 
@@ -22,20 +26,48 @@ Do not reuse a built-in plugin's bundle ID. Installing such a plugin fails with 
 scripts/install-plugin-dev.sh MyDriverPlugin
 ```
 
-The script finds `MyDriverPlugin.tableplugin` in DerivedData, copies it into the user plugins directory, and writes the registry metadata sidecar. Relaunch TablePro to load it.
+It finds the newest `MyDriverPlugin.tableplugin` under DerivedData, copies it into the user plugins directory, and writes the registry metadata sidecar. Relaunch TablePro to load it. Build from Xcode first: the script reads DerivedData, and a command-line `xcodebuild` writes to `build/Debug` instead, where the script never looks.
 
 <Warning>
-Do not modify the copied bundle, for example by patching its `Info.plist`. Any edit invalidates the code signature and dyld refuses to load the executable. If the plugin's `TableProMinAppVersion` is newer than your built app, bump the app's `MARKETING_VERSION` and rebuild the app instead.
+Never edit the copied bundle, `Info.plist` included. Any change invalidates the code signature and dyld then refuses to load the executable. If the plugin's `TableProMinAppVersion` is ahead of your built app, raise the app's `MARKETING_VERSION` in `Configs/Version.xcconfig` and rebuild the app.
 </Warning>
 
-## Alternative: bundle it into the app
+## Bundle it into the app instead
 
-Add your `.tableplugin` to the **Copy Plug-Ins** build phase of the **TablePro** target (Build Phases tab), then run with `Cmd+R`. The plugin lands in the app's `PlugIns/` directory and loads as a built-in plugin, so no signature check runs; the phase also re-signs it with your debug identity as it copies (`CodeSignOnCopy`).
+A plugin embedded in `PlugIns/` skips the signature check entirely, which is the shortest path when the team check is the thing in your way. Add the target to the app's dependency list in `project.yml`:
 
-Remove it from the phase after testing so it does not ride into a release build.
+```yaml
+targets:
+  TablePro:
+    dependencies:
+      - target: MyDriverPlugin
+        embed: true
+        copy:
+          destination: plugins
+```
 
-## Alternative: skip the signature check
+Then run `scripts/generate-project.sh` and build. XcodeGen puts the bundle in an **Embed Dependencies** copy phase with `CodeSignOnCopy`, so it is re-signed with your debug identity on the way in.
 
-A debug build skips the app's signature check when the `TABLEPRO_ALLOW_UNSIGNED_PLUGINS` environment variable is set to `1`. Set it under **Product > Scheme > Edit Scheme > Run > Arguments**. Use this when the team check fails, for example with a bundle built on another machine. The bundle must still be validly signed for dyld to load it. Release builds always verify.
+<Warning>
+`TablePro.xcodeproj` is generated and gitignored, so adding the plugin through the Xcode UI survives exactly until the next `scripts/generate-project.sh`. Edit `project.yml`. Take the entry back out before you open a pull request, or the plugin rides into a release build.
+</Warning>
 
-When the plugin works, publish it through the [Plugin Registry](/development/plugin-registry) so users receive a signed binary.
+## Skip the signature check
+
+A Debug build skips signature verification altogether when `TABLEPRO_ALLOW_UNSIGNED_PLUGINS` is set to `1`. Set it under **Product > Scheme > Edit Scheme > Run > Arguments**, in the environment variables list.
+
+This is the route for a bundle built on another machine, or for testing your own Developer ID signing before there is any registry entry to install from, since it also bypasses the developer-trust prompt. The bundle still has to be validly signed for dyld to load it at all. The escape hatch is compiled out of Release builds, so it cannot mask a signing problem that would reach a user.
+
+## When it does not load
+
+The reason lands in a **Plugin Installation Failed** alert when installing, and in the plugin's row under **Settings > Plugins > Installed** otherwise.
+
+| Message | What it means | What to do |
+|---------|---------------|------------|
+| **Plugin code signature verification failed: …** | Unsigned, ad-hoc signed, modified after signing, or signed by a certificate that is neither your app's team nor a Developer ID | Rebuild rather than patch. Any edit to a signed bundle breaks the seal |
+| **This plugin is signed by …, a developer you have not trusted yet.** | A valid Developer ID that this Mac has not consented to | Install it through a registry so the trust prompt runs, or set `TABLEPRO_ALLOW_UNSIGNED_PLUGINS=1` in a Debug build |
+| **Plugin was built for PluginKit version …; this release of TablePro needs version …** | The bundle predates a breaking ABI bump | Rebuild the plugin against the current TableProPluginKit |
+| **Plugin requires app version … or later, but current version is …** | `TableProMinAppVersion` is ahead of the app | Raise `MARKETING_VERSION` in `Configs/Version.xcconfig` and rebuild |
+| **A built-in plugin "…" already provides this bundle ID** | The bundle ID collides with a bundled plugin | Give your plugin its own bundle ID |
+
+Once it loads and works, publish it through the [Plugin Registry](/development/plugin-registry) so users get a signed binary.

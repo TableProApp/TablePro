@@ -3,6 +3,8 @@ title: Dameng DM8
 description: Dameng DM8 over its native wire protocol, with no DM client stack to install
 ---
 
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
 Host, port, username, password. The plugin speaks the DM8 wire protocol itself, so no part of the DM client stack has to be on your Mac and no DM8 version is ruled out.
 
 <Warning>
@@ -14,9 +16,11 @@ A `CLOB` or `BLOB` that DM8 stored outside the row reads as an empty cell. Nothi
   <img className="hidden dark:block" src="/images/dameng-connection-form-dark.png" alt="Dameng DM8 connection form" />
 </Frame>
 
+<RegistryPlugin name="Dameng DM8" plugin="Dameng Driver" />
+
 ## Quick setup
 
-Install **Dameng Driver** from **Settings > Plugins > Browse**, then click **Create Connection…**, choose **Dameng DM8**, fill in host, port, and credentials, and click **Save & Connect**.
+Click **Create Connection…**, choose **Dameng DM8**, fill in host, port, and credentials, and click **Save & Connect**.
 
 ## Connection settings
 

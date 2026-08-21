@@ -3,9 +3,49 @@ title: MCP Protocol
 description: "Wire contract for TablePro MCP server: protocol versions, required metadata, headers, result envelope, cache hints, and error codes"
 ---
 
-TablePro's MCP server speaks [Model Context Protocol](https://modelcontextprotocol.io) revision **2026-07-28**, and still answers two older revisions for clients that have not moved yet. This page is the wire contract. For the tools themselves see [MCP Tools](/external-api/mcp-tools).
+`2026-07-28` is the revision to write against, and two older ones still answer for clients that have not moved. This page is the wire contract; for the tools themselves see [MCP Tools](/external-api/mcp-tools).
 
-Most people never read this page. The bundled `tablepro-mcp` stdio bridge speaks it for you, and every client in [MCP Clients](/external-api/mcp-clients) goes through the bridge. Read on if you are writing a client that talks to the HTTP endpoint directly.
+Most people never read it. The bundled `tablepro-mcp` stdio bridge speaks this for you, and every client in [MCP Clients](/external-api/mcp-clients) goes through the bridge. Read on if you are writing a client against the HTTP endpoint directly.
+
+## One round trip
+
+Everything below is a detail of this request.
+
+```bash
+curl -sS http://127.0.0.1:23508/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer tp_your_token_here' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: tools/call' \
+  -H 'Mcp-Name: list_connections' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "list_connections",
+      "arguments": {},
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {}
+      }
+    }
+  }'
+```
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [{ "type": "text", "text": "{\"connections\":[…]}" }],
+    "structuredContent": { "connections": [] },
+    "isError": false,
+    "resultType": "complete",
+    "_meta": { "io.modelcontextprotocol/serverInfo": { "name": "tablepro", "version": "0.67.0" } }
+  }
+}
+```
 
 ## Endpoint
 
@@ -15,13 +55,13 @@ One path, one method:
 POST http://127.0.0.1:<port>/mcp
 ```
 
-The server binds `127.0.0.1` and speaks plain HTTP. The specification permits that for a server on the same machine, and there is no remote mode. `GET` and `DELETE` on `/mcp` answer `405 Method Not Allowed` with `Allow: POST, OPTIONS`. `OPTIONS` answers `204` for CORS preflight. Any other path answers `404`.
+The server binds `127.0.0.1` and speaks plain HTTP, which the specification permits for a server on the same machine, and there is no remote mode. `GET` and `DELETE` on `/mcp` answer `405 Method Not Allowed` with `Allow: POST, OPTIONS`. `OPTIONS` answers `204` for CORS preflight. Any other path answers `404`.
 
 The `Host` header must name a loopback host (`localhost`, `127.0.0.1`, `::1`) and, if it carries a port, the port the server bound. Anything else answers `403 forbidden_host`.
 
 `Origin`, when present, must be `https://claude.ai` or `https://app.cursor.com`. Any other origin answers `403 forbidden_origin`. A request with no `Origin` is fine, which is the normal case for a local client.
 
-The port comes from the handshake file at `~/Library/Application Support/TablePro/mcp-handshake.json`. Do not hardcode it.
+Read the port from the handshake file at `~/Library/Application Support/TablePro/mcp-handshake.json`. Do not hardcode it.
 
 ## Protocol versions
 
@@ -33,28 +73,11 @@ The port comes from the handshake file at `~/Library/Application Support/TablePr
 
 `2025-03-26` is no longer accepted. It requires JSON-RPC batching, which TablePro never implemented.
 
-The list lives in `TablePro/Core/MCP/Meta/MCPProtocolVersion.swift` and is served by `server/discover`. Read it from there rather than copying it into your client.
-
-An unsupported version comes back as error `-32022` with the supported list in `data.supported`.
+`server/discover` serves the live list in `supportedVersions`. Read it from there rather than copying it into your client. An unsupported version comes back as error `-32022` with the supported list in `data.supported`.
 
 ## Every request carries its version
 
-There is no handshake in the modern era. No `initialize`, no `Mcp-Session-Id`, no `ping`, no `GET` stream, no SSE resumability. Each POST stands on its own, so it has to say who is calling and what it speaks. Two `_meta` fields are required on every request:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/list",
-  "params": {
-    "_meta": {
-      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-      "io.modelcontextprotocol/clientCapabilities": {},
-      "io.modelcontextprotocol/clientInfo": { "name": "my-client", "version": "1.0.0" }
-    }
-  }
-}
-```
+There is no handshake in the modern era: no `initialize`, no `Mcp-Session-Id`, no `ping`, no `GET` stream, no SSE resumability. Each POST stands on its own, so it has to say who is calling and what it speaks. Two `_meta` fields are required on every request:
 
 - `io.modelcontextprotocol/protocolVersion` (**required**): a supported version string. Missing or empty is `-32602`; unsupported is `-32022`.
 - `io.modelcontextprotocol/clientCapabilities` (**required**): a JSON object. `{}` is valid and means you support nothing extra. A non-object is `-32602`.
@@ -78,7 +101,7 @@ The modern era mirrors part of the body into headers so a proxy can route and au
 | `Mcp-Param-<field>` | optional | the matching value in the body |
 | `Authorization` | when authentication is on | `Bearer <token>` |
 
-`Mcp-Param-<field>` is opt-in. Send it and it is validated; omit it and nothing happens. The name after the prefix is matched case-insensitively against the arguments object for `tools/call`, and against `params` for everything else, descending into nested objects. Values compare as text against strings, numerically against numbers, and as `true`/`false` against booleans. An array or object value never matches.
+`Mcp-Param-<field>` is opt-in: send it and it is validated, omit it and nothing happens. The name after the prefix is matched case-insensitively against the arguments object for `tools/call` and against `params` for everything else, descending into nested objects. Values compare as text against strings, numerically against numbers, and as `true`/`false` against booleans. An array or object value never matches.
 
 ### Non-ASCII header values
 
@@ -88,9 +111,7 @@ HTTP headers are ASCII. A table name with an accent, or a value with a leading s
 Mcp-Name: =?base64?Y2Fmw6k=?=
 ```
 
-The payload between `=?base64?` and `?=` is standard base64 of the UTF-8 bytes. TablePro decodes the wrapper before comparing to the body. Wrap only when you have to: a value that is already printable ASCII with no leading or trailing space should be sent as is. The rule is implemented in `MCPBase64Sentinel.encodeIfNeeded`.
-
-A malformed wrapper, or a header carrying a control character, is `-32020`.
+The payload between `=?base64?` and `?=` is standard base64 of the UTF-8 bytes, and TablePro decodes the wrapper before comparing to the body. Wrap only when you have to: a value that is already printable ASCII with no leading or trailing space goes as is. A malformed wrapper, or a header carrying a control character, is `-32020`.
 
 ## Methods
 
@@ -136,7 +157,7 @@ Replaces `initialize` for stateless clients. It takes no parameters beyond `_met
     "io.modelcontextprotocol/serverInfo": {
       "name": "tablepro",
       "title": "TablePro",
-      "version": "0.68.0",
+      "version": "0.67.0",
       "websiteUrl": "https://tablepro.app"
     }
   }
@@ -169,13 +190,9 @@ Six methods return `ttlMs` and `cacheScope` so a client can cache without guessi
 | `resources/templates/list` | 3600000 | `public` |
 | `tools/list` | 300000 | `private` |
 | `resources/list` | 30000 | `private` |
-| `resources/read` | varies, see below | `private` |
+| `resources/read` | 5000 to 300000 by URI | `private` |
 
-`resources/read` sets the TTL from the URI: 5s for history, 15s for the connections list, 60s for schema, table and database listings, 300s for a DDL read.
-
-`public` means the answer does not depend on the token. `private` means it does: `tools/list` is filtered by the token's scopes, and a resource read is filtered by its connection allowlist. A `ttlMs` of `0` means do not cache.
-
-No other method carries a cache hint, and a result that carries one from a method that may not is stripped before it goes out.
+`public` means the answer does not depend on the token. `private` means it does: `tools/list` is filtered by the token's scopes, and a resource read by its connection allowlist. A `ttlMs` of `0` means do not cache. No other method carries a cache hint, and a hint that reaches a result from a method that may not carry one is stripped before it goes out.
 
 ## Pagination
 
@@ -185,14 +202,12 @@ A cursor is opaque and bound to the method that issued it. Handing a `tools/list
 
 ## Progress
 
-Send `_meta.progressToken` on a request and the server streams `notifications/progress` back **on that request's own response stream**. The response switches to `text/event-stream`, the progress notifications arrive as SSE frames, and the final JSON-RPC response is the last frame. There is no separate `GET` stream to open, and no notification ever arrives out of band.
+Send `_meta.progressToken` on a request and the server streams `notifications/progress` back **on that request's own response stream**. The response switches to `text/event-stream`, progress notifications arrive as SSE frames with no event name, and the final JSON-RPC response is the last frame. There is no separate `GET` stream to open, and no notification ever arrives out of band.
 
 ```
-event: message
 data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"t1","progress":0.3,"total":1.0,"message":"Executing"}}
 
-event: message
-data: {"jsonrpc":"2.0","id":1,"result":{...}}
+data: {"jsonrpc":"2.0","id":1,"result":{}}
 ```
 
 `progress` must advance; an update that does not move forward is dropped. `execute_query` reports at 0.0, 0.3 and 1.0.
@@ -209,15 +224,13 @@ The notification is answered with `202` whether or not anything matched. The can
 
 Cancellation is per principal: a token can only cancel its own requests. Revoking a token cancels everything it has in flight.
 
-The server also cancels for you. Every handler has a 330-second deadline (`subscriptions/listen` is exempt), and the server polls for a dropped connection once a second, so a client that walks away does not leave a query running.
+The server also cancels for you. Every handler has a 330-second deadline, and the server polls for a dropped connection once a second, so a client that walks away does not leave a query running. [`subscriptions/listen`](/external-api/mcp-subscriptions#closing) is the one method that deadline does not reach.
 
 ## Approvals and input required
 
 A statement that writes needs the user's consent. Where that consent is collected depends on what your client declared in `clientCapabilities`.
 
-**Without `elicitation`**: TablePro shows its own confirmation dialog on the user's Mac and the call blocks until they answer.
-
-**With `elicitation`**: the call returns `resultType: "input_required"` instead:
+Without `elicitation`, TablePro shows its own confirmation dialog on the user's Mac and the call blocks until they answer. With it, the call returns `resultType: "input_required"` instead:
 
 ```json
 {
@@ -302,9 +315,9 @@ A tool that fails because the database said no returns a **successful** JSON-RPC
 
 The text starts with a machine-readable code: `invalid_argument`, `not_connected`, `not_found`, `denied`, `timeout`, `unsupported`, `query_failed`, `user_cancelled`, or `internal_failure`. Error text is redacted before it leaves the process, so a driver message that echoed a password does not reach the client.
 
-Protocol errors are reserved for the envelope: a malformed request, a missing scope, an expired token. If your client only handles JSON-RPC errors it will read every failed query as a success.
+Protocol errors are reserved for the envelope: a malformed request, a missing scope, an expired token. A client that only handles JSON-RPC errors reads every failed query as a success.
 
-## Limits
+## Transport limits
 
 | Limit | Value |
 |-------|-------|
@@ -313,14 +326,8 @@ Protocol errors are reserved for the envelope: a malformed request, a missing sc
 | Concurrent connections | 64 |
 | Idle connection timeout | 30 seconds |
 | Handler deadline | 330 seconds |
-| Requests | 240 per 60 seconds per caller |
-| Concurrent requests | 8 per caller |
-| Failed auth attempts | 5 per 60 seconds, then a 5-minute lockout |
-| Pairing exchange attempts | 5 per 5 minutes, then a 15-minute lockout |
 
-The request limits are keyed by token id, or by client address for an unauthenticated caller. Going over either returns `-33010` with a `Retry-After` header. `subscriptions/listen` is exempt, since it holds its slot for as long as the client is listening.
-
-Auth lockouts are keyed by both client address and token id, so one misbehaving client cannot lock out another on the same loopback address.
+Per-caller request rates, auth lockouts and pairing lockouts are counted separately and are listed under [rate limits](/external-api/tokens#rate-limits).
 
 ## Legacy era
 
@@ -329,8 +336,6 @@ A request with no `io.modelcontextprotocol/protocolVersion` in `_meta` is treate
 1. `POST /mcp` with `initialize` and a `protocolVersion` of `2025-11-25` or `2025-06-18`. Any other value is `-32022`.
 2. The response carries `protocolVersion`, `capabilities`, `serverInfo` and `instructions`.
 3. Every later request carries `Mcp-Session-Id`. A session belongs to the token that created it; presenting it under another token is `-33001`.
-4. A session lives until the server stops. The store holds at most 16 at a time and evicts the least recently used past that. A session the server does not recognize is `-33001`, and the client has to `initialize` again.
+4. A session lives until the server stops. The store holds at most 16 and evicts the least recently used past that. A session the server does not recognize is `-33001`, and the client has to `initialize` again.
 
-Legacy clients see `resources.subscribe: false` and cannot call `server/discover` or `subscriptions/listen`. Their results carry no `resultType`, no cache hints, and no `serverInfo` in `_meta`.
-
-Legacy is there so an old client keeps working, not as a target to build against. Anything new should speak `2026-07-28`.
+Legacy clients see `resources.subscribe: false` and cannot call `server/discover` or `subscriptions/listen`. Their results carry no `resultType`, no cache hints, and no `serverInfo` in `_meta`. Legacy is there so an old client keeps working, not as a target to build against.

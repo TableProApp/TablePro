@@ -3,6 +3,8 @@ title: Switching to TablePro
 description: Move your connections from TablePlus, Sequel Ace, DBeaver, DataGrip, Beekeeper Studio or Navicat, what comes across, what does not, and how to get your shortcuts back
 ---
 
+import DriverCounts from "/snippets/driver-counts.mdx";
+
 Most of a migration is one dialog. **File > Import from Other App…** reads the connections your current client already has, including groups and folders, and the source app does not need to be running.
 
 This page covers the rest: what does not come across, and what to do about it.
@@ -14,10 +16,13 @@ This page covers the rest: what does not come across, and what to do about it.
     **File > Import from Other App…**
   </Step>
   <Step title="Pick your current client">
-    Navicat is the one exception: export first with **File > Export Connections** in Navicat, with **Export Password** turned on, then point TablePro at the `.ncx` file.
+    TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio are read in place. Navicat is the exception: export first with **File > Export Connections** in Navicat, with **Export Password** turned on, then point TablePro at the `.ncx` file.
   </Step>
   <Step title="Review and import">
-    Uncheck anything you don't want, resolve duplicates, click **Import**.
+    Deselect anything you do not want, resolve duplicates, click **Import**.
+  </Step>
+  <Step title="Open one before you delete the old app">
+    Connect to a connection that had a password. That is the only check that proves the credential came across, and deleting the source app is the one step you cannot undo.
   </Step>
 </Steps>
 
@@ -31,37 +36,25 @@ This page covers the rest: what does not come across, and what to do about it.
   <img className="hidden dark:block" src="/images/connection-import-preview-dark.png" alt="Import preview listing the connections found" />
 </Frame>
 
-| Coming from | Databases | Passwords |
-|-------------|-----------|-----------|
-| TablePlus | MySQL, PostgreSQL, MongoDB, SQLite, Redis, and more | From Keychain |
-| Sequel Ace | MySQL | From Keychain |
-| DBeaver | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from config file |
-| DataGrip | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | From Keychain or `c.kdbx` |
-| Beekeeper Studio | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from its `app.db` store |
-| Navicat | MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, MongoDB | Decrypted from `.ncx` file |
-
-SSH tunnel and SSL settings come across with the connection. See [Connection Sharing](/features/connection-sharing) for the full detail on each source.
+SSH tunnel and SSL settings come across with the connection. Which engines each source carries, and the quirks of each one, are in [Connection Sharing](/features/connection-sharing).
 
 ## About passwords
 
-This is the part of any migration that goes wrong, so it is worth knowing which case you are in before you start.
-
-**Passwords in a file.** DBeaver, Beekeeper Studio and Navicat keep credentials in their own encrypted store. TablePro decrypts it and the import runs start to finish with nothing to click.
-
-**Passwords in the macOS Keychain.** TablePlus, Sequel Ace and DataGrip store each password as a separate Keychain item, and macOS asks permission per item. On a large connection list that is a lot of prompts. Choose **Always Allow** rather than **Allow** and the run finishes without asking again.
+| Where your old client keeps them | What the import does |
+|---|---|
+| Its own encrypted store: DBeaver, Beekeeper Studio, Navicat | Decrypts it and runs start to finish with nothing to click |
+| The macOS Keychain: TablePlus, Sequel Ace, DataGrip | macOS asks permission once per item. Choose **Always Allow** rather than **Allow** and the run stops asking |
 
 A DataGrip project protected by a master password cannot be read at all. Import those connections and set their passwords in TablePro.
 
 ## What does not come across
-
-Be aware of these before you delete the old app.
 
 | Not imported | What to do |
 |--------------|------------|
 | Saved queries and snippets | Re-save the ones you actually use as [Favorites](/features/favorites) with `Cmd+D`. To keep a whole folder of `.sql` files in sync instead, including one tracked in git, [Linked Folders](/features/connection-sharing) does that and needs a Starter license |
 | Query history | Starts fresh. TablePro records history per connection from the first query you run, searchable with `Cmd+Y` |
 | Column widths, sort order and per-table filters | Rebuilt as you browse. TablePro saves these per table on its own |
-| Keyboard shortcuts | See below |
+| Keyboard shortcuts | See the next section |
 
 ## Getting your shortcuts back
 
@@ -74,7 +67,7 @@ Where yours differ, rebind them in **Settings > Keyboard** (`Cmd+,`). Record the
   <img className="hidden dark:block" src="/images/settings-keyboard-dark.png" alt="Keyboard settings with the shortcut recorder" />
 </Frame>
 
-These are the ones worth setting up on your first day, because they are the jobs you do constantly:
+Set these up on your first day:
 
 | Job | TablePro |
 |-----|----------|
@@ -88,7 +81,7 @@ These are the ones worth setting up on your first day, because they are the jobs
 | Explain the query | `Cmd+Option+E` |
 | Save the query as a favorite | `Cmd+D` |
 
-A few cannot be reassigned, so it is better to learn them than to fight them: editor built-ins such as `Cmd+/` for comment, `Cmd+[` and `Cmd+]` for indent, tab selection `Cmd+1` through `Cmd+9`, text size `Cmd+=` and `Cmd+-`, and `Cmd+F` for find. The recorder tells you when you hit one.
+A few cannot be reassigned, so learn them rather than fight them: editor built-ins such as `Cmd+/` for comment, `Cmd+[` and `Cmd+]` for indent, tab selection `Cmd+1` through `Cmd+9`, text size `Cmd+=` and `Cmd+-`, and `Cmd+F` for find. The recorder tells you when you hit one.
 
 If you use Vim bindings, turn on [Vim Mode](/features/vim-mode) in **Settings > Editor** and most of this section stops mattering.
 
@@ -109,7 +102,7 @@ Two other routes exist.
 
 ## If your database is not supported yet
 
-TablePro ships 5 drivers inside the app and installs 17 more from the plugin registry on demand, so a database missing from the connection form may still be one click away in **Settings > Plugins > Browse**.
+<DriverCounts /> A database missing from the connection form may still be one click away in **Settings > Plugins > Browse**.
 
 <Frame caption="Settings > Plugins > Browse">
   <img className="block dark:hidden" src="/images/settings-plugins-browse.png" alt="Plugin registry browser" />

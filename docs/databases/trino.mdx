@@ -5,7 +5,7 @@ description: Catalogs and schemas, type mapping, EXPLAIN variants, and the auth 
 
 import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-What a write does depends on the catalog's connector, not on TablePro: a statement built correctly here can still come back as `NOT_SUPPORTED` because the connector behind that catalog is read-only or implements only part of SQL.
+What a write does depends on the catalog's connector, not on TablePro. A statement built correctly here can still come back as `NOT_SUPPORTED` because the connector behind that catalog is read-only or implements only part of SQL.
 
 <Frame caption="The Trino connection form with a catalog set">
   <img className="block dark:hidden" src="/images/trino-connection-form.png" alt="Trino connection form" />
@@ -110,7 +110,7 @@ Click the Explain dropdown in the query editor to choose:
 - No primary keys, indexes, or foreign keys are reported. The Structure tab's Indexes view is always empty.
 - Import is not available. Export works; see [Import and Export](/features/import-export).
 - Kerberos and OAuth 2.0 authentication are not supported.
-- The **Query timeout** in [settings](/customization/settings#general) does not reach Trino. A long query runs until you cancel it or the cluster ends it.
+- The **Query timeout** in [settings](/customization/general-settings#query-timeout) does not reach Trino. A long query runs until you cancel it or the cluster ends it.
 - Presto is not supported. It speaks the same protocol under an `X-Presto-` header prefix, and this driver always sends `X-Trino-`.
 
 ## Troubleshooting

@@ -3,7 +3,9 @@ title: Introduction
 description: Native macOS database client for MySQL, PostgreSQL, SQLite, MongoDB, Redis, and 22 more
 ---
 
-Native macOS client for 27 databases. Built with SwiftUI and AppKit, no Electron. The download is about 20 MB.
+import DriverCounts from "/snippets/driver-counts.mdx";
+
+Using all 27 engines, the SQL editor, the data grid, import, export, and the AI assistant costs nothing, and there is no trial countdown. Paid tiers cover iCloud sync, encrypted connection export, environment variables in connection fields, Linked Folders, Query Insights, result charts, and team sharing ([Licensing](/features/licensing)). Mac is the full app, [iPhone and iPad](/ios) run a smaller one, and there is no Windows or Linux build.
 
 <Frame caption="TablePro - Native macOS Database Client">
   <img className="block dark:hidden" src="/images/app.png" alt="TablePro main interface" />
@@ -22,22 +24,9 @@ Native macOS client for 27 databases. Built with SwiftUI and AppKit, no Electron
   </Card>
 </CardGroup>
 
-## Features
-
-**[SQL Editor](/features/sql-editor)**: Syntax highlighting, schema-aware autocomplete, Vim mode, multi-statement execution.
-**[Data Grid](/features/data-grid)**: Inline editing, sorting, filtering, change tracking with undo/redo.
-**[AI Assistant](/features/ai-assistant)**: Chat, inline suggestions, and Explain/Optimize across 14 providers, including GitHub Copilot, Claude, OpenAI, Gemini, xAI, and local llama.cpp, MLX, and Ollama.
-**[MCP Server](/features/mcp)**: Expose your connections to Claude Desktop, Cursor, Raycast, and other MCP clients. The [External API](/external-api) adds a `tablepro://` URL scheme and one-click pairing.
-**[Users & Roles](/features/users-roles)**: Manage database users, roles, and privileges on MySQL and PostgreSQL. Changes are staged, undoable, and shown as SQL before they run.
-**[Secure Connections](/connections/ssh-tunneling)**: SSH tunnels authenticate with a password, a private key, an SSH agent, keyboard-interactive, or no credentials at all. Passwords stay in the Keychain, or [resolve at connect time](/features/connection-sharing#password-sources) from a file, an environment variable, a command, 1Password, HashiCorp Vault, or AWS Secrets Manager.
-**[Safe Mode](/features/safe-mode)**: 6 per-connection protection levels, from no prompt at all to confirmation dialogs, Touch ID, and read-only.
-**[Import & Export](/features/import-export)**: CSV, JSON, SQL, XLSX, MQL. Streaming export for large datasets.
-**[CSV Inspector](/features/csv-inspector)**: Open `.csv` and `.tsv` files directly. Edit cells, insert and delete rows and columns, save in the original dialect.
-**[Plugin System](/features/plugins)**: 5 bundled drivers covering 9 databases, plus 17 more drivers installable from the plugin registry.
-**[iCloud Sync](/features/icloud-sync)**: Connections, groups, tags, settings, SSH profiles, saved queries and folders, favorite tables, and custom AI slash commands sync across Macs.
-**[Themes](/customization/appearance)**: Light, dark, and custom editor themes. Per-connection color labels.
-
 ## Supported databases
+
+<DriverCounts />
 
 | Database | Default Port | Distribution |
 |----------|--------------|--------------|
@@ -69,14 +58,9 @@ Native macOS client for 27 databases. Built with SwiftUI and AppKit, no Electron
 | [SurrealDB](/databases/surrealdb) | 8000 | Plugin |
 | [Trino](/databases/trino) | 8080 | Plugin |
 
-## System requirements
-
-- **macOS**: 14.0 (Sonoma) or later
-- **Architecture**: Apple Silicon (arm64) or Intel (x86_64). Downloads are per-architecture, and Homebrew picks the right one.
-
 ## Open source
 
-TablePro is free, open-source software licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](https://www.gnu.org/licenses/agpl-3.0.html). The full source code is on GitHub.
+The source, plugins included, is under the [GNU Affero General Public License v3.0](https://www.gnu.org/licenses/agpl-3.0.html). A TablePro license key is a separate thing: it activates the paid features, not the app.
 
 <Card title="GitHub Repository" icon="github" href="https://github.com/TableProApp/TablePro">
   View source code, report issues, and contribute to TablePro.

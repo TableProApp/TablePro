@@ -3,9 +3,9 @@ title: MCP Prompts
 description: The eight prompts TablePro renders from a live schema, and how completion/complete fills their arguments
 ---
 
-A prompt is a task the user picks from their client's prompt menu. TablePro fills it in from the live database before handing it over, so the model gets the real columns, the real indexes and the real row counts instead of a template asking it to guess.
+import MCPGates from "/snippets/mcp-gates.mdx";
 
-Prompts and completions used to be advertised and return nothing. They are real now.
+Picking `explain_table` from your client's prompt menu makes TablePro read the table first. So the model gets its real columns, indexes and DDL rather than a template asking it to guess. Rendering happens on the server, inside `prompts/get`.
 
 ## Listing and getting
 
@@ -24,7 +24,7 @@ Prompts and completions used to be advertised and return nothing. They are real 
 
 The result is a `description` and one user message. Argument values must be scalars: a number or a boolean is read as its text, an array or object is rejected. An argument the prompt does not declare is rejected with `-32602`, as is a missing required one.
 
-Rendering reads the database, so `prompts/get` needs `resources:read` and the same connection access every tool call does. The read is recorded in the activity log.
+<MCPGates what="render" /> The read is recorded in the activity log.
 
 ## Shared arguments
 
@@ -39,71 +39,56 @@ Most prompts take these:
 
 ## The catalog
 
-### `explain_schema`
+Required arguments come first; optional ones follow in parentheses.
 
-Tour the tables of a live database and how they relate.
+| Prompt | Arguments | What it renders and asks for |
+|--------|-----------|------------------------------|
+| `explain_schema` | `connection` (`database`, `schema`, `audience`) | An inventory of up to 200 tables with row counts, then full structure for the 8 largest. Asks for a guided tour of the schema. |
+| `explain_table` | `connection`, `table` (`database`, `schema`, `audience`) | One table's columns, keys, indexes and DDL, explained to someone who has never used it, ending in three queries worth running. |
+| `data_quality_audit` | `connection`, `table` (`database`, `schema`) | One table's structure, turned into a checklist of runnable data quality queries ordered cheapest first. |
+| `question_to_sql` | `connection`, `question` (`tables`, `database`, `schema`) | An inventory of up to 150 tables plus full structure for up to 6, and rules that forbid inventing columns and require a `LIMIT`. |
+| `review_query` | `connection`, `query` (`explain_plan`, `database`, `schema`) | Your query, your plan if you pass one, and the structure of up to 6 tables it names. Reviews correctness, then cost, then risk. |
+| `propose_indexes` | `connection`, `query` (`explain_plan`, `database`, `schema`) | The same tables with the indexes they already have. Asks for ranked `CREATE INDEX` statements and any index the query makes redundant. |
+| `write_migration` | `connection`, `change` (`table`, `database`, `schema`) | Current structure with DDL when a table is named, plus the connection's Safe Mode level. Asks for the migration, the rollback and a verifying query. |
+| `summarize_query_history` | `connection` (`period`, `limit`) | The recorded history for that connection, summarized by intent, with every write, every failure and the slowest statements called out. |
 
-**Arguments**: `connection`, `database`, `schema`, `audience` (`newcomer` (default), `analyst`, `engineer`).
+`audience` is `newcomer` (default), `analyst` or `engineer`. `period` is `today`, `this_week` (default), `this_month` or `all`, and `limit` runs 1 to 500, default 50. `tables` on `question_to_sql` is comma-separated; the largest few are used when it is omitted, and only the first 6 either way.
 
-Renders an inventory of up to 200 tables with row counts, then full structure for the 8 largest, and asks for the tour in a fixed order: what the database is for, the core entities and their join keys, which tables are lookups or logs, what looks wrong (missing primary keys, foreign keys the names imply but the schema does not declare), and where to start reading.
+Statement text is truncated at 8,000 characters where `review_query` and `propose_indexes` echo your `query` and `explain_plan`, and at 600 characters per row in the `summarize_query_history` table.
 
-### `explain_table`
+## What comes back
 
-One table's columns, keys, indexes and DDL, explained to someone who has never used it.
+One user message, as Markdown. `explain_table` renders this shape:
 
-**Arguments**: `connection`, `table` (required), `database`, `schema`, `audience`.
+````markdown
+Explain the table `orders` on a live PostgreSQL database.
 
-Asks what one row represents, what each non-obvious column holds and what a NULL means there, how the table connects to the rest of the schema through its foreign keys, which access patterns the indexes serve and which obvious filter has none, and three queries someone would actually run.
+## Connection
+- Connection: Production (PostgreSQL)
+- Scope: app.public
+- Server version: 16.4
+- Safe mode: silent
 
-### `data_quality_audit`
+## Structure
+### orders
+Approximate rows: 1,204,331
 
-Turn one table's structure into a runnable checklist of data quality queries.
+| Column | Type | Nullable | Key | Default | Comment |
+| --- | --- | --- | --- | --- | --- |
+| id | uuid | no | PK |  |  |
 
-**Arguments**: `connection`, `table` (required), `database`, `schema`.
+Indexes:
+…
 
-Covers nullability, uniqueness, referential integrity (including columns named like a foreign key that declare no constraint), domain checks, format checks, and duplicates on the business key. Every check has to come with a runnable query for this engine and a description of a clean result, ordered cheapest first.
+DDL:
+```sql
+CREATE TABLE orders (…)
+```
 
-### `question_to_sql`
-
-Write a query that answers a question, using the real columns of the named tables.
-
-**Arguments**: `connection`, `question` (required), `tables` (comma-separated; the largest few when omitted), `database`, `schema`.
-
-Renders up to 150 tables as an inventory and full structure for up to 6. The instructions forbid inventing columns, require an explicit `JOIN ... ON` with the join key named, require a `LIMIT` unless the answer is an aggregate, and ask for the engine's own identifier quoting.
-
-### `review_query`
-
-Check a query for correctness, cost and risk against the live schema before running it.
-
-**Arguments**: `connection`, `query` (required), `explain_plan`, `database`, `schema`.
-
-TablePro matches identifiers in the query against the table inventory and renders the structure of up to 6 tables it recognizes. Without `explain_plan` the prompt asks the model to name the `EXPLAIN` command to run and what to look for in it. The review is ordered: correctness, cost against the row counts shown, risk (locks, transaction safety, cancellability), and a rewrite only if one is needed.
-
-### `propose_indexes`
-
-Suggest indexes for a slow query from its plan and the indexes the tables already have.
-
-**Arguments**: `connection`, `query` (required), `explain_plan`, `database`, `schema`.
-
-Every candidate has to come with the exact `CREATE INDEX` for this engine, the predicate it serves quoted from the query, why the existing indexes do not already serve it, and what it costs. The model is asked to rank the candidates and to name any index the query makes redundant.
-
-### `write_migration`
-
-Turn a described schema change into migration statements plus the rollback, for this engine.
-
-**Arguments**: `connection`, `change` (required), `table`, `database`, `schema`.
-
-Renders the current structure with DDL when a table is named, and says so plainly when none is. Asks for the forward migration, the rollback to exactly the structure shown, what breaks while it runs, a batched backfill if one is needed, and a query that proves the change landed. It also passes the connection's Safe Mode level through so the model can flag statements a restricted mode would reject.
-
-### `summarize_query_history`
-
-Summarize what was run against a connection over a period.
-
-**Arguments**: `connection`, `period` (`today`, `this_week` (default), `this_month`, `all`), `limit` (1-500, default 50).
-
-Reads the recorded history for that connection and asks for a summary grouped by intent, every write called out, failures with whatever looks like the fix, the slowest statements, and loose ends such as a migration applied to one table but not its sibling.
-
-Query text is limited to 8,000 characters per statement in the rendered prompt.
+Cover, in this order:
+1. What one row of this table represents, in one sentence.
+…
+````
 
 ## Completions
 
@@ -151,10 +136,6 @@ For a `ref/resource` completion TablePro fills the context from the URI itself, 
 
 ### Matching and limits
 
-Values whose name starts with what you typed come first, then values that merely contain it, each group sorted naturally. Matching ignores case. Fixed value lists such as `audience` keep their declared order instead.
+Values whose name starts with what you typed come first, then values that merely contain it, each group sorted naturally, case ignored. Fixed value lists such as `audience` keep their declared order instead. Completing `connection` with a value that matches no name falls back to matching UUIDs, so pasting an id into a field that normally takes a name still works.
 
-At most 100 values come back. `total` is the number of matches before that cap and `hasMore` says whether it applied.
-
-Schema reads are cached for 15 seconds per token and per scope, so typing a table name does not hit the database on every keystroke.
-
-Completing `connection` with a value that matches no name falls back to matching UUIDs, so pasting an id into a field that normally takes a name still works.
+At most 100 values come back; `total` counts the matches before that cap and `hasMore` says whether it applied. Schema reads are cached for 15 seconds per token and per scope, so typing a table name does not hit the database on every keystroke.

@@ -60,7 +60,7 @@ Click the Explain dropdown in the query editor to choose:
 
 ## Running queries
 
-Each request carries a query id and asks for progress in the HTTP headers, so a long query reports rows read as it goes. Cancelling sends `KILL QUERY` for that id, stopping the query on the server rather than only dropping the connection. The [query timeout](/customization/settings#query-execution) bounds each request at the timeout plus 30 seconds.
+Each request carries a query id and asks for progress in the HTTP headers, so a long query reports rows read as it goes. Cancelling sends `KILL QUERY` for that id, stopping the query on the server rather than only dropping the connection. The [query timeout](/customization/general-settings#query-timeout) bounds each request at the timeout plus 30 seconds.
 
 Grid edits go out as INSERT, `ALTER TABLE … UPDATE`, and `ALTER TABLE … DELETE`.
 

@@ -5,7 +5,7 @@ description: Connect to SQL Server and Azure SQL Database with the FreeTDS-based
 
 import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-Named instances are not supported, so give the host and the TCP port, `1433` by default, and let the **Authentication** dropdown decide the rest of the form: a SQL Server login, a Kerberos ticket from your domain, or a Microsoft Entra ID work account. The protocol underneath is TDS 7.4, which every server from 2012 on speaks, so Windows, Linux, Docker and Azure SQL Database are all reachable.
+Named instances are not supported. Give the host and the TCP port, `1433` by default, and let the **Authentication** dropdown decide the rest of the form: a SQL Server login, a Kerberos ticket from your domain, or a Microsoft Entra ID work account. The protocol underneath is TDS 7.4, which every server from 2012 on speaks, so Windows, Linux, Docker and Azure SQL Database are all reachable.
 
 <RegistryPlugin name="SQL Server" plugin="MSSQL Driver" />
 

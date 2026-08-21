@@ -3,190 +3,81 @@ title: Architecture
 description: How the app, plugin system, and core services fit together
 ---
 
-TablePro is built with:
+import DriverCounts from "/snippets/driver-counts.mdx";
 
-- **SwiftUI** for the UI layer
-- **AppKit** for low-level macOS integration (windows, menus, native tabs)
-- **Swift Concurrency** (async/await, actors) for all async work
-- **Native C libraries** for database connectivity, linked as static `.a` files
+Every database driver is a bundle the app loads at runtime. That decision shapes the rest: nothing switches on database type, no driver list is compiled in, and `DatabaseType` is a string-based struct rather than an enum, so a type from a plugin the app has never heard of still round-trips through Codable.
 
-## Design patterns
+The UI is SwiftUI with AppKit underneath it for windows, menus, and the data grid. Async work is Swift concurrency throughout. Database connectivity is native C libraries, linked as static `.a` files out of `Libs/`.
 
-### MVVM
-
-- **Models**: structs (value types, Codable)
-- **ViewModels**: `@Observable` classes
-- **Views**: SwiftUI, with AppKit bridging where needed
-
-### Protocol-oriented drivers
-
-All database connectivity goes through one protocol:
-
-```swift
-protocol DatabaseDriver: AnyObject {
-    func connect() async throws
-    func disconnect()
-    func execute(query: String) async throws -> QueryResult
-    func fetchTables() async throws -> [TableInfo]
-    // …
-}
-```
-
-No switch statements on database type. No hardcoded driver list. Plugins register themselves, and the factory resolves them by `DatabaseType.pluginTypeId`. `DatabaseType` is a string-based struct, not an enum, so unknown types from future plugins stay valid.
-
-### Actor isolation
-
-Thread-safe shared state uses Swift actors:
-
-```swift
-actor SSHTunnelManager {
-    private var tunnels: [UUID: SSHTunnel] = [:]
-    func createTunnel(connectionId: UUID, …) async throws -> Int { … }
-}
-```
-
-## Dependencies
-
-| Package | Source | Purpose |
-|---------|--------|---------|
-| CodeEditSourceEditor | Vendored in `LocalPackages/` (with CodeEditTextView, CodeEditLanguages) | Tree-sitter code editor |
-| TableProCore | Local package in `Packages/` | Shared SwiftPM modules the macOS and iOS apps both use |
-| Sparkle | SPM, 2.9.5+ | Auto-update with EdDSA signing |
-| OracleNIO | SPM, TablePro fork pinned by revision | Oracle wire protocol for OracleDriverPlugin |
-| rust-dameng | Cargo, TablePro fork pinned by revision | DM8 wire protocol for DamengDriverPlugin |
-| swift-certificates | SPM, 1.19.0+ | X.509 types, linked by the app target |
-| Yams | SPM, 5.1.0+ | YAML parsing for project folder import |
+[`CLAUDE.md`](https://github.com/TableProApp/TablePro/blob/main/CLAUDE.md) in the repository root is the authority on the rules a change has to satisfy: the invariants that have caused real bugs, the ABI policy, and what has to happen before a commit lands. This page is the map of where things live, not the rulebook.
 
 ## Plugin system
 
-All database drivers are `.tableplugin` bundles loaded at runtime. This keeps the app binary small and makes adding new databases a matter of dropping in a bundle.
+`PluginManager` (`Core/Plugins/`) discovers bundles, version-checks them, and loads them. Four pieces carry the whole system:
 
 | Component | Location | Role |
 |-----------|----------|------|
-| TableProPluginKit | `Plugins/TableProPluginKit/` | Shared framework with `DriverPlugin` and `PluginDatabaseDriver` protocols |
-| PluginManager | `Core/Plugins/PluginManager.swift` | Discovers, loads, version-checks plugin bundles |
-| PluginDriverAdapter | `Core/Plugins/PluginDriverAdapter.swift` | Bridges `PluginDatabaseDriver` to core `DatabaseDriver` |
-| DatabaseDriverFactory | `Core/Database/DatabaseDriver.swift` | Resolves `DatabaseType` to loaded plugin |
+| TableProPluginKit | `Plugins/TableProPluginKit/` | Shared framework: the `TableProPlugin`, `DriverPlugin`, and `PluginDatabaseDriver` protocols plus the transfer types |
+| PluginManager | `Core/Plugins/PluginManager.swift` | Discovers, validates, and loads plugin bundles |
+| PluginDriverAdapter | `Core/Plugins/PluginDriverAdapter.swift` | Bridges `PluginDatabaseDriver` to the app's internal `DatabaseDriver` |
+| DatabaseDriverFactory | `Core/Database/DatabaseDriver.swift` | Resolves a `DatabaseType` to a loaded plugin |
 
-`Packages/TableProCore/Sources/TableProPluginKit` is a symlink to the same files, so edit only `Plugins/TableProPluginKit/`.
+`Packages/TableProCore/Sources/TableProPluginKit` is a symlink to the same files, so edit only the copy under `Plugins/TableProPluginKit/`.
 
-### Driver plugins
+<DriverCounts />
 
-Five driver plugins ship inside the app bundle, covering nine database types:
+A driver is one of four roles a bundle can take. `ExportFormatPlugin`, `ImportFormatPlugin`, and `DocumentInspectorPlugin` are the others, which is how the CSV, JSON, SQL, XLSX, and MQL formats and the CSV inspector ship.
 
-| Plugin | Database types | Connectivity |
-|--------|---------------|--------------|
-| MySQLDriverPlugin | MySQL, MariaDB | CMariaDB (libmariadb) |
-| PostgreSQLDriverPlugin | PostgreSQL, Redshift, CockroachDB, PGlite | CLibPQ (libpq) |
-| SQLiteDriverPlugin | SQLite | System sqlite3 |
-| ClickHouseDriverPlugin | ClickHouse | HTTP (URLSession) |
-| RedisDriverPlugin | Redis | CRedis |
+### Opt-in protocols
 
-The app bundle also carries non-driver plugins: CSVInspectorPlugin, export plugins (CSV, JSON, SQL, XLSX, MQL), and import plugins (CSV, JSON, SQL).
+A driver adopts these on top of `PluginDatabaseDriver` to reach extra surfaces. The app finds them with a runtime cast, so skipping one costs nothing and no ABI bump is involved.
 
-The remaining 17 driver plugins are downloaded on demand from the [plugin registry](/development/plugin-registry):
-
-| Plugin | Database types | Connectivity |
-|--------|---------------|--------------|
-| MongoDBDriverPlugin | MongoDB | CLibMongoc |
-| OracleDriverPlugin | Oracle | OracleNIO (SPM fork) |
-| DamengDriverPlugin | Dameng DM8 | Rust native wire bridge |
-| DuckDBDriverPlugin | DuckDB | CDuckDB |
-| MSSQLDriverPlugin | SQL Server | CFreeTDS |
-| CassandraDriverPlugin | Cassandra, ScyllaDB | CCassandra |
-| EtcdDriverPlugin | Etcd | HTTP (gRPC-gateway JSON) |
-| CloudflareD1DriverPlugin | Cloudflare D1 | HTTP (URLSession) |
-| DynamoDBDriverPlugin | DynamoDB | HTTP with hand-rolled SigV4 request signing |
-| BigQueryDriverPlugin | BigQuery | REST (URLSession) |
-| SnowflakeDriverPlugin | Snowflake | REST (URLSession) |
-| LibSQLDriverPlugin | LibSQL, Turso | Hrana over HTTP, plus a local SQLite backend |
-| ElasticsearchDriverPlugin | Elasticsearch | REST (URLSession) |
-| SurrealDBDriverPlugin | SurrealDB | HTTP RPC with CBOR encoding |
-| BeancountDriverPlugin | Beancount | Ledger file parsing, optional Python projection |
-| TeradataDriverPlugin | Teradata | Native Swift TD2 client (TableProTeradataCore) |
-| TrinoDriverPlugin | Trino | Trino client REST protocol over HTTP |
+| Protocol | What adopting it gets you |
+|----------|---------------------------|
+| `PluginDiagnosticProvider` | A driver-written explanation in front of a raw connection error |
+| `PluginProcedureFunctionSupport` | Stored procedures and functions in the structure tab |
+| `PluginDefaultSortProvider` | Per-table control of default sorting: `.useAppDefault`, `.suppress`, or `.forceColumns([String])` |
+| `PluginPrincipalManagement` | Users, roles, and grants in the Users & Roles tab |
+| `PluginBrowseFilterProvider` | Control of the sidebar object filter: glob syntax, case sensitivity, type scopes |
+| `SettablePlugin` | A settings pane of your own under **Settings > Plugins** |
 
 ### PluginKit ABI
 
-TableProPluginKit builds with Swift Library Evolution (`BUILD_LIBRARY_FOR_DISTRIBUTION = YES`), so its public ABI is resilient. Plugins built against an older PluginKit keep loading under a newer app: the runtime fills unimplemented protocol requirements from their defaults.
+TableProPluginKit builds with `BUILD_LIBRARY_FOR_DISTRIBUTION = YES`, so its public ABI is resilient: the Swift runtime fills any requirement an already-built plugin never implemented from the protocol's default, and that plugin keeps loading under a newer app. Adding a requirement with a default is free. Removing one, or adding a parameter to an existing public initializer, breaks every shipped binary.
 
-Additive changes (a new requirement with a default implementation, a new field added through a new initializer overload) need no version bump. Breaking changes bump `currentPluginKitVersion` in `PluginManager.swift`, and the loader then rejects mismatched plugins cleanly. Run `scripts/check-pluginkit-abi.sh` before merging any change under `Plugins/TableProPluginKit/`. See [Plugin Development](/development/plugin-development) for the full rules.
+Run `scripts/check-pluginkit-abi.sh` before merging anything under `Plugins/TableProPluginKit/`. [Plugin Development](/development/plugin-development#abi-compatibility) has the additive-versus-breaking rules and what a breaking change obliges you to do.
 
-### Opt-in plugin protocols
+## Key services
 
-Plugins can adopt protocols beyond `PluginDatabaseDriver` to expose extra capabilities. These are runtime-cast (`as?`), so plugins that do not conform keep working without an ABI bump.
+`DatabaseManager` (`Core/Database/DatabaseManager.swift`) is the connection pool and the interface every view and coordinator goes through for connect, disconnect, reconnect, and session tracking. `ConnectionHealthMonitor` pings each live connection every 30 seconds and reconnects with exponential backoff.
 
-| Protocol | Purpose |
-|----------|---------|
-| `PluginDiagnosticProvider` | Provide a user-facing diagnostic for driver errors |
-| `PluginProcedureFunctionSupport` | Expose stored procedures and functions in the structure tab |
-| `PluginDefaultSortProvider` | Override default-sort behavior per table: `.useAppDefault`, `.suppress`, or `.forceColumns([String])` |
-| `PluginPrincipalManagement` | Serve users, roles, and grants to the Users & Roles tab |
-| `PluginBrowseFilterProvider` | Describe how the sidebar's object filter behaves for this driver (glob, case sensitivity, type scopes) |
+`MainContentCoordinator` is the central coordinator, one per connection session rather than per window, built by `SessionStateFactory` and split across extension files in `Views/Main/Extensions/` (`+Alerts`, `+Filtering`, `+Pagination`, and the rest). New coordinator behavior goes in a new extension file rather than the main one.
 
-## Key components
+Autocomplete is three pieces. `CompletionEngine` ranks the suggestions and knows nothing about the editor framework; `QueryCompletionAdapter` bridges it to CodeEdit. `SQLContextAnalyzer` reads what the cursor sits in: a table reference, a column reference, a keyword. `SQLSchemaProvider` is an actor that caches schema and hands concurrent callers the same in-flight `Task` rather than firing a second `fetchTables()`.
 
-### DatabaseManager
+## Change tracking
 
-Connection pool and lifecycle management. Primary interface between UI and drivers. Handles connect, disconnect, reconnect, and session tracking.
+<Steps>
+  <Step title="Edit">
+    `DataChangeManager` records the cell edit as a pending change. Nothing has reached the server.
+  </Step>
+  <Step title="Save">
+    `SQLStatementGenerator` turns the pending set into INSERT, UPDATE, and DELETE statements.
+  </Step>
+  <Step title="Undo">
+    Grid edits register on the window's `UndoManager`, which `TabWindowController.windowWillReturnUndoManager` resolves to the selected `ConnectionWorkspace.undoManager`. One window hosts several connections, so the undo stack is per connection, not per window. Structure edits use a private `UndoManager` inside `StructureChangeManager`.
+  </Step>
+</Steps>
 
-### ConnectionHealthMonitor
+`AnyChangeManager` wraps whichever concrete manager is active behind the `ChangeManaging` protocol, so callers do not care which one they have.
 
-Pings active connections every 30 seconds. Auto-reconnects with exponential backoff on failure.
+## MCP server
 
-### Change tracking
+`Core/MCP/` holds a Model Context Protocol server bound to loopback, speaking plain HTTP through `NWListener`. Nothing in it is reachable off the machine: no TLS, no remote mode. `MCPProtocolDispatcher` is an actor that resolves the protocol era from the request, checks scopes, runs each handler in its own task under a 330-second deadline, and normalizes the result envelope. `MCPServerManager` owns the lifecycle on the main actor: port binding, the bridge credential, the handshake file.
 
-1. A cell edit is recorded by `DataChangeManager` as a pending change
-2. Save runs `SQLStatementGenerator`, which turns pending changes into INSERT, UPDATE, and DELETE statements
-3. Undo/redo goes through the window's `UndoManager`, registered by `DataChangeManager`
-4. `AnyChangeManager` wraps the concrete manager behind the `ChangeManaging` protocol
+The wire contract, the tool catalog, and the version policy are documented for consumers: [MCP Protocol](/external-api/mcp-protocol), [MCP Tools](/external-api/mcp-tools), [Versioning](/external-api/versioning).
 
-### MainContentCoordinator
-
-The central coordinator for the main window. It is split across extension files in `Views/Main/Extensions/` (`MainContentCoordinator+Alerts`, `+Filtering`, `+Pagination`, and so on). New coordinator functionality goes in a new extension file, not the main file.
-
-### Autocomplete engine
-
-```mermaid
-flowchart LR
-    CE["CompletionEngine"] --> SCA["SQLContextAnalyzer"]
-    CE --> SSP["SQLSchemaProvider"]
-    SSP --> Tables
-    SSP --> Columns
-    SCA --> Keywords["SQL Keywords"]
-```
-
-- **CompletionEngine**: entry point, produces ranked suggestions
-- **SQLContextAnalyzer**: parses cursor position context (table ref, column ref, keyword)
-- **SQLSchemaProvider**: actor that caches and serves schema data
-
-### MCP server
-
-The MCP server lives under `Core/MCP/`, and it speaks Model Context Protocol revision `2026-07-28` plus two legacy revisions.
-
-| Layer | Directory | Role |
-|-------|-----------|------|
-| Wire | `Wire/` | Codable JSON-RPC 2.0, HTTP, and SSE types |
-| Transport | `Transport/` | `NWListener` HTTP server bound to `127.0.0.1`, plus the client transport the `tablepro-mcp` bridge uses |
-| Meta | `Meta/` | Protocol versions, per-request `_meta`, client and server capabilities |
-| Protocol | `Protocol/` | Dispatcher, method handlers, and the 46 tools |
-| Prompts, Completions, Subscriptions | `Prompts/`, `Completions/`, `Subscriptions/` | Prompt catalog rendered from the live schema, argument completion, and `subscriptions/listen` |
-| Legacy | `Legacy/` | `initialize`, `Mcp-Session-Id`, and the era adapter for older clients |
-| Auth and audit | `Auth/`, `RateLimit/`, `MCPAuditLogger.swift` | Bearer tokens, scopes, connection allowlists, lockouts, hash-chained audit log |
-
-`MCPProtocolDispatcher` is an actor. It resolves the era from the request (`_meta` declares the modern one, `Mcp-Session-Id` the legacy one), checks scopes, runs each handler in its own task under a 330-second deadline, and normalizes the result envelope: `resultType`, `serverInfo`, and the cache hints the six cacheable methods carry.
-
-The modern era is stateless, so it has no session store. Legacy sessions still live in `MCPLegacySessionStore`, capped at 16 with least-recently-used eviction, and are dropped when the server stops.
-
-`MCPServerManager` owns the lifecycle on the main actor: it binds a port (falling back to a kernel-assigned one), mints and rotates the bridge credential, writes the handshake file, and tears everything down through `MCPServerComposition`.
-
-Nothing in the server is reachable off the machine. It binds loopback and speaks plain HTTP, which the specification permits for a local server; there is no TLS and no remote mode.
-
-See [MCP Protocol](/external-api/mcp-protocol), the [tool catalog](/external-api/mcp-tools), and [Versioning](/external-api/versioning).
-
-## Data flow
-
-### Connection
+## Connecting
 
 ```mermaid
 flowchart TD
@@ -195,29 +86,35 @@ flowchart TD
     DM --> Factory["DatabaseDriverFactory"]
     Factory --> PM["PluginManager"]
     PM --> Adapter["PluginDriverAdapter"]
-    Adapter --> Connected["Connection Ready"]
+    Adapter --> Connected["Connection ready"]
     SSH --> Connected
 ```
 
-### Query execution
+A cancelled connect is the hard case here, because `Task.cancel()` cannot interrupt a driver blocked in a C call. `CLAUDE.md` sets out what a driver owes the app on that path, written down after the same bug shipped four times.
 
-```mermaid
-flowchart TD
-    User["Cmd+Enter"] --> Editor["SQL Editor"]
-    Editor --> DM["DatabaseManager.executeQuery"]
-    DM --> Driver["DatabaseDriver.execute"]
-    Driver --> Result["QueryResult"]
-    Result --> Grid["DataGridView"]
-```
+## State and storage
 
-## State management
-
-| Pattern | What | Where |
-|---------|------|-------|
+| Pattern | What it holds | Where |
+|---------|---------------|-------|
 | `@Observable` | UI state, sessions, active tab | ViewModels |
-| UserDefaults via `AppSettingsStorage` | User preferences | `Core/Storage`; a few view-local toggles use `@AppStorage` |
-| Keychain | Connection passwords | ConnectionStorage |
-| SQLite FTS5 | Query history (full-text search) | QueryHistoryStorage |
-| JSON files | Tab state persistence | `TabPersistenceCoordinator`, `TabDiskActor` |
+| Keychain | Connection passwords | `ConnectionStorage` |
+| UserDefaults | Preferences, filter defaults, favorites, recents | `Core/Storage`, via `AppSettingsStorage` |
+| SQLite FTS5 | Query history, full-text searchable | `QueryHistoryStorage` |
+| JSON files | Tab state, per-table filters | `TabPersistenceCoordinator`, `TabDiskActor` |
+
+`CLAUDE.md` carries the full storage table, including which stores sync through iCloud and which stay device-local.
+
+## Dependencies
+
+| Package | Source | Purpose |
+|---------|--------|---------|
+| CodeEditSourceEditor | Vendored in `LocalPackages/`, with CodeEditTextView and CodeEditLanguages | Tree-sitter code editor |
+| TableProCore | Local package in `Packages/` | SwiftPM modules the macOS and iOS apps share |
+| TableProOracle | Local package in `Packages/`, wraps a pinned TablePro fork of OracleNIO | Oracle wire protocol for OracleDriverPlugin |
+| Sparkle | SPM, 2.9.5+ | Auto-update with EdDSA signing |
+| swift-certificates | SPM, 1.19.0+ | X.509 types, linked by the app target |
+| Yams | SPM, 5.1.0+ | YAML parsing for project folder import |
+
+`Plugins/DamengDriverPlugin` links a Rust wire-protocol bridge built from `Native/DamengBridge`, not an SPM package.
 
 For the repository layout, see [Project Structure](/development/setup#project-structure).

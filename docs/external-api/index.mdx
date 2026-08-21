@@ -3,74 +3,51 @@ title: External API
 description: URL scheme, MCP server, pairing flow, terminal, and iOS Shortcuts for driving TablePro from other apps
 ---
 
-The TablePro External API is the public contract that lets other apps drive TablePro. Raycast, Cursor, Claude Desktop, shell scripts, and DDEV all use the same surface. This page is the entry point. Pick the subpage that matches what you want to do.
-
-## Layers
-
-The URL scheme drives the GUI, MCP exchanges data, and pairing bootstraps trust. The three are independent, and most clients use a mix.
+Deep links drive the GUI. MCP moves data. That one split decides which page you need, and pairing is
+the step in front of MCP that gets a client its token.
 
 <CardGroup cols={3}>
   <Card title="URL scheme" icon="link" href="/external-api/url-scheme">
     `tablepro://` deep links open connections, tables, and queries in the GUI.
   </Card>
   <Card title="MCP server" icon="plug" href="/external-api/mcp-tools">
-    46 JSON-RPC tools, resources and prompts for AI clients, over stdio or local HTTP.
+    JSON-RPC tools, resources and prompts for AI clients, over stdio or local HTTP.
   </Card>
   <Card title="Pairing" icon="handshake" href="/external-api/pairing">
-    One-click flow to issue a scoped token to an extension.
+    One-click flow that issues a scoped token to an extension.
   </Card>
 </CardGroup>
 
-Two more surfaces build on these. TablePro also opens plain database URLs (`mysql://…`) handed to it by macOS, which is how the [Terminal and DDEV](/external-api/terminal) integration works. On iPhone and iPad, TablePro exposes App Intents for [iOS Shortcuts](/external-api/ios-shortcuts).
-
-## When to use which
-
-| Goal | Use |
-|------|-----|
-| Open a connection from a script or other app | URL scheme |
-| Open a database from the shell or a DDEV project | [Terminal and DDEV](/external-api/terminal) |
-| Run a query and read rows back | MCP `execute_query` |
-| Browse schema for an AI model | MCP `list_tables`, `describe_table` |
-| Issue a token to a Raycast or Cursor extension | Pairing |
-| Read a table's rows with filters and paging | MCP `browse_table` |
-| Get a task written against the live schema | MCP prompts, such as `explain_table` or `review_query` |
-| Navigate to a tab the user already has open | MCP `list_recent_tabs` + `focus_query_tab` |
-| Insert rows from iPhone or iPad | [iOS Shortcuts](/external-api/ios-shortcuts) |
-
-## Security model
-
-Every request clears the same gates: the connection's external access level (`blocked`, `readOnly` by default, or `readWrite`), the token's scope and connection allowlist, and the connection's AI policy plus Safe Mode. The effective permission is the lower of the token's scope and the connection's access. See [Tokens](/external-api/tokens) for the full model.
-
-The MCP server binds `127.0.0.1` only. An unauthenticated local caller is read-only and cannot be granted more.
-
-Every request is recorded in the activity log, with the token behind it. Statements are stored as a digest, not as text. Open **Settings > Integrations** and click **View Activity** to inspect.
+Two surfaces build on those. macOS hands TablePro plain database URLs (`mysql://…`) and `.sql` files,
+which is what the [Terminal and DDEV](/external-api/terminal) integration rides on. On iPhone and
+iPad, App Intents put three actions in [Shortcuts](/external-api/ios-shortcuts).
 
 ## Quick start
 
-- Install the [Raycast extension](/external-api/raycast) and run `Pair with TablePro`.
-- Or wire stdio MCP into your [MCP client](/external-api/mcp-clients) without an extension.
-- Or open a deep link from your shell:
+Opening something in the GUI needs no setup at all:
 
 ```bash
 open "tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1"
 ```
 
+Reading data back needs a token. Install the [Raycast extension](/external-api/raycast) and run
+**Pair with TablePro**, or wire stdio MCP into your own [MCP client](/external-api/mcp-clients) and
+skip the extension.
+
+## Security model
+
+The MCP server binds `127.0.0.1`, and on stock settings every request carries a token. A call is
+allowed only where the token's scope, the token's connection allowlist, and the connection's own
+**External Clients** level all permit it; the effective permission is the lowest of them.
+[Tokens](/external-api/tokens) has the full model. On top of that, an AI policy of **Never** refuses
+the connection outright, and [Safe Mode](/features/safe-mode) still holds destructive statements
+behind a confirmation.
+
+Each request lands in the activity log with the token behind it, and a statement is stored as a
+SHA-256 digest rather than as text. Open **Settings > Integrations** and click **View Activity** to
+read it.
+
 ## Versioning
 
-The External API follows TablePro's semver. Paths and tools are additive within a major version. See [Versioning](/external-api/versioning) for the deprecation policy.
-
-## Subpages
-
-- [URL Scheme](/external-api/url-scheme): every `tablepro://` action and parameter.
-- [Terminal and DDEV](/external-api/terminal): open databases and files from the shell, `ddev tablepro`, trusted links.
-- [iOS Shortcuts](/external-api/ios-shortcuts): App Intents for adding rows and opening connections.
-- [MCP Protocol](/external-api/mcp-protocol): protocol versions, required metadata, headers, and error codes.
-- [MCP Tools](/external-api/mcp-tools): the 46 tools with their arguments and result shapes.
-- [MCP Resources](/external-api/mcp-resources): resources you can read, and their URI templates.
-- [MCP Prompts](/external-api/mcp-prompts): the prompt catalog and `completion/complete`.
-- [MCP Subscriptions](/external-api/mcp-subscriptions): `subscriptions/listen` and the notification filter.
-- [Pairing](/external-api/pairing): sequence diagram and PKCE flow.
-- [Tokens](/external-api/tokens): scope model, allowlists, revocation.
-- [Raycast](/external-api/raycast): extension install and command list.
-- [MCP Clients](/external-api/mcp-clients): stdio MCP setup for Claude Desktop, Claude Code, Cursor, Cline, Continue, Zed, Windsurf, Goose, and custom clients.
-- [Versioning](/external-api/versioning): stability policy.
+Paths, tools and result fields are additive within a major version, and the app is still on 0.x. See
+[Versioning](/external-api/versioning) for what that means for a client you have to keep working.

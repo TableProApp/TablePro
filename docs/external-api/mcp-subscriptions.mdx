@@ -3,9 +3,7 @@ title: MCP Subscriptions
 description: subscriptions/listen, the notification filter TablePro honors, and what it deliberately does not send
 ---
 
-`subscriptions/listen` replaces `resources/subscribe` and the old `GET` stream. One long-lived POST carries every notification the client asked for, and the request stays open until the client hangs up.
-
-This is a modern-era method. Legacy clients get `-32601`.
+Hold one POST open and TablePro streams every notification you asked for down it until you hang up. `subscriptions/listen` replaces `resources/subscribe` and the old `GET` stream, and it is modern-era only: a legacy client gets `-32601`.
 
 ## Opening a subscription
 
@@ -46,9 +44,7 @@ Before anything else, the server answers with what it will actually send:
 }
 ```
 
-Read it. It is not an echo. Anything TablePro will not deliver is missing from it, so a client that compares the two knows immediately what it is not going to hear about, rather than waiting forever for an event that is never coming.
-
-The response switches to `text/event-stream` at this point, and stays open. A keepalive comment goes out every 15 seconds so an intermediary does not time the connection out.
+Compare it against what you asked for. Anything missing will never arrive.
 
 ## What TablePro honors
 
@@ -56,20 +52,24 @@ The response switches to `text/event-stream` at this point, and stays open. A ke
 |--------------|:--------:|-------|
 | `resourcesListChanged` | yes | Fires when the set of connected connections this token can see changes. |
 | `resourceSubscriptions` | yes | Only `tablepro://connections/{id}/schema` URIs. |
-| `toolsListChanged` | no | Dropped from the acknowledgment. |
-| `promptsListChanged` | no | Dropped from the acknowledgment. |
-
-`toolsListChanged` and `promptsListChanged` are dropped because both lists are fixed. `server/discover` reports `tools.listChanged: false` and `prompts.listChanged: false` for the same reason. Ask for them and they will not appear in the acknowledgment.
+| `toolsListChanged` | no | Both lists are fixed, and `server/discover` reports `listChanged: false` for each. |
+| `promptsListChanged` | no | Same. |
 
 Every URI in `resourceSubscriptions` is checked twice. It has to parse as a connection schema URI, and its connection has to be inside the token's allowlist. Anything else is dropped silently, so the acknowledgment is the only place you find out. A token without `resources:read` gets an empty filter back, whatever it asked for.
 
-The URI you get back is canonical, so a URI that differs only in case or percent-encoding comes back normalized.
+The URI you get back is canonical, so one that differs only in case or percent-encoding comes back normalized.
+
+## Reading the stream
+
+The response switches to `text/event-stream` at the acknowledgment and stays open. Frames carry no event name, so each one is `data: ` plus a JSON line, terminated by a blank line. A line starting with `:` is the keepalive TablePro sends every 15 seconds to stop an intermediary timing the connection out; skip it.
+
+Tell the two kinds of frame apart by the envelope. A frame with an `id` equal to your request id is the final JSON-RPC response and the stream is over. A frame with a `method` and no `id` is a notification.
 
 ## The notifications
 
 ### `notifications/resources/list_changed`
 
-Sent when the set of connections visible to this token changes: one connects, one disconnects, one is blocked for external clients, or its AI policy changes to `never`.
+Sent when the set of connections visible to this token changes: one connects, one disconnects, one is blocked for external clients, or its AI policy changes to **Never**.
 
 TablePro compares the visible set against the last one it sent you, so a change that does not move your set produces no notification. A connection you cannot see connecting is not your event.
 
@@ -96,13 +96,13 @@ Sent when a subscribed connection's schema changes, carrying the URI:
 }
 ```
 
-It fires on a completed schema load, not on the start of one. A refresh in flight, or a connection whose schema has never loaded, produces nothing. Re-read `tablepro://connections/{id}/schema` when it arrives.
+It fires on a completed schema load, not on the start of one, so a refresh in flight and a schema that has never loaded both produce nothing. Re-read `tablepro://connections/{id}/schema` when it arrives.
 
 ## Closing
 
 The subscription ends when the client closes the connection, cancels the request with `notifications/cancelled`, or the server stops. The final JSON-RPC response is an empty result carrying the subscription id in `_meta`.
 
-There is no deadline on `subscriptions/listen`. It is the one method exempt from the 330-second handler timeout. The server checks every open subscription for a dropped connection every 15 seconds and closes the ones that went away, so a client that dies without closing does not leak.
+There is no deadline on `subscriptions/listen`. It is the one method exempt from the 330-second handler timeout and from the per-caller concurrency limit. The server checks every open subscription for a dropped connection every 15 seconds and closes the ones that went away, so a client that dies without closing does not leak.
 
 ## Progress is not a subscription
 

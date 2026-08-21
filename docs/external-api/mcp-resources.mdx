@@ -3,36 +3,38 @@ title: MCP Resources
 description: Read-only resources for connections, schema, tables, and query history, with their URI templates
 ---
 
-Resources are read-only views of TablePro state. A client reads them to find its way around before calling a tool. Every read is gated the same way a tool call is: the token's `resources:read` scope, its connection allowlist, and the connection's own external access and AI policy.
+import MCPGates from "/snippets/mcp-gates.mdx";
 
-URIs use the `tablepro://` scheme inside the MCP transport. They are not the same thing as the shell-level [URL scheme deep links](/external-api/url-scheme), which happen to share the prefix.
+Eight URIs, all read-only, all JSON. A client reads them to find its way around before it calls a tool. <MCPGates what="read" /> Reads count against the caller's [request rate](/external-api/tokens#rate-limits) like anything else.
 
 ## Discovery
 
 `resources/list` returns `tablepro://connections`, plus four entries for each connection that is currently connected and visible to this token: its schema, its tables, its databases, and its history. The list is sorted by connection name.
 
-`resources/templates/list` returns the URI templates, so a client can build a URI for a connection that is not open yet.
+`resources/templates/list` returns the seven templated URIs, so a client can build one for a connection that is not open yet. Both methods page at 50 entries with `nextCursor`.
 
-Both paginate at 50 entries with `nextCursor`. `resources/list` carries a 30-second private cache hint; the template list carries an hour, public.
+## The URIs
 
-## Templates
+| URI | Name | Payload |
+|-----|------|---------|
+| `tablepro://connections` | `connections` | Every saved connection this token may use, with live session state |
+| `tablepro://connections/{connection_id}/schema` | `connection_schema` | Tables and their columns for the browsed database |
+| `tablepro://connections/{connection_id}/databases` | `connection_databases` | `{ "databases": ["app", "analytics"] }` |
+| `tablepro://connections/{connection_id}/schemas{?database}` | `connection_schemas` | `{ "schemas": ["public", "reporting"], "database": "app" }` |
+| `tablepro://connections/{connection_id}/tables{?database,schema,row_counts}` | `connection_tables` | Table and view names without columns, as the `list_tables` tool returns them |
+| `tablepro://connections/{connection_id}/tables/{table}{?database,schema}` | `table_description` | Columns, indexes, foreign keys and an approximate row count, as `describe_table` returns them |
+| `tablepro://connections/{connection_id}/tables/{table}/ddl{?database,schema}` | `table_ddl` | The `CREATE` statement as the engine reports it, as `get_table_ddl` returns it |
+| `tablepro://connections/{connection_id}/history{?limit,search,date_filter}` | `connection_history` | Queries recently run against this connection, newest first |
 
-| Template | Name |
-|----------|------|
-| `tablepro://connections` | `connections` |
-| `tablepro://connections/{connection_id}/schema` | `connection_schema` |
-| `tablepro://connections/{connection_id}/databases` | `connection_databases` |
-| `tablepro://connections/{connection_id}/schemas{?database}` | `connection_schemas` |
-| `tablepro://connections/{connection_id}/tables{?database,schema,row_counts}` | `connection_tables` |
-| `tablepro://connections/{connection_id}/tables/{table}{?database,schema}` | `table_description` |
-| `tablepro://connections/{connection_id}/tables/{table}/ddl{?database,schema}` | `table_ddl` |
-| `tablepro://connections/{connection_id}/history{?limit,search,date_filter}` | `connection_history` |
+`{connection_id}` must be a UUID; a name is `-32602`. On the `tables` URI, `row_counts=true` asks for approximate counts and `1` and `yes` also work. `completion/complete` fills every variable in these templates against the live schema, including `table`, `database` and `schema`. See [Completions](/external-api/mcp-prompts#completions).
 
-`{connection_id}` must be a UUID; a name is `-32602`. `completion/complete` fills every variable in these templates against the live schema, including `table`, `database` and `schema`. See [Completions](/external-api/mcp-prompts#completions).
+<Note>
+These URIs live inside the MCP transport and are not the shell-level [URL scheme deep links](/external-api/url-scheme), which happen to share the `tablepro://` prefix.
+</Note>
 
 ## Reading
 
-`resources/read` needs `params.uri` and, in the modern era, an `Mcp-Name` header carrying the same URI.
+`resources/read` needs `params.uri` and, in the modern era, an `Mcp-Name` header carrying the same URI. Every URI except `tablepro://connections` reads a live session, and TablePro opens the connection first if it is not open yet. A connection that will not open is `-32602`.
 
 ```json
 {
@@ -46,13 +48,9 @@ Both paginate at 50 entries with `nextCursor`. `resources/list` carries a 30-sec
 }
 ```
 
-The payload is a JSON string inside `text`. The shapes below are what you get after parsing it.
-
-Cache hints vary by URI: 5 seconds for history, 15 for the connections list, 60 for schema, table and database reads, 300 for a DDL read. All are `private`, because what you can see depends on your token.
+The payload is a JSON string inside `text`. The shapes on the rest of this page are what you get after parsing it. Each read carries a `private` cache hint whose TTL depends on the URI; the numbers are in [Cache hints](/external-api/mcp-protocol#cache-hints).
 
 ## `tablepro://connections`
-
-Every saved connection this token may use, with live session state.
 
 ```json
 {
@@ -73,11 +71,9 @@ Every saved connection this token may use, with live session state.
 }
 ```
 
-`database` is the session's browsed database when connected, the saved default otherwise. `type` uses display casing (`MySQL`, `PostgreSQL`, `SQLite`). Connections with `external_access: blocked` or `ai_policy: never` are omitted, as are connections outside the token's allowlist. Same payload as the `list_connections` tool.
+`database` is the session's browsed database when connected, the saved default otherwise. `type` uses display casing (`MySQL`, `PostgreSQL`, `SQLite`). Connections with `external_access: blocked` or `ai_policy: never` are omitted, as are connections outside the token's allowlist.
 
 ## `tablepro://connections/{id}/schema`
-
-Tables and their columns for the database the connection is browsing.
 
 ```json
 {
@@ -100,31 +96,7 @@ Capped at 100 tables. Beyond that the payload also carries `truncated: true` and
 
 This is the only subscribable resource. See [Subscriptions](/external-api/mcp-subscriptions).
 
-## `tablepro://connections/{id}/tables{?database,schema,row_counts}`
-
-Table and view names without columns. Pass `database` and `schema` to look outside the browsed one, and `row_counts=true` for approximate counts. `row_counts` also accepts `1` and `yes`.
-
-Same payload as the `list_tables` tool.
-
-## `tablepro://connections/{id}/tables/{table}{?database,schema}`
-
-Columns, indexes, foreign keys and an approximate row count for one table. Same payload as `describe_table`.
-
-## `tablepro://connections/{id}/tables/{table}/ddl{?database,schema}`
-
-The `CREATE` statement, as the engine reports it. Same payload as `get_table_ddl`.
-
-## `tablepro://connections/{id}/databases`
-
-`{ "databases": ["app", "analytics"] }`.
-
-## `tablepro://connections/{id}/schemas{?database}`
-
-`{ "schemas": ["public", "reporting"], "database": "app" }`.
-
 ## `tablepro://connections/{id}/history{?limit,search,date_filter}`
-
-Queries recently run against this connection, newest first.
 
 | Parameter | Meaning |
 |-----------|---------|
@@ -158,8 +130,8 @@ Queries recently run against this connection, newest first.
 
 | Code | Meaning |
 |------|---------|
-| `-32602` | Missing `uri`, wrong scheme, unknown URI, connection id that is not a UUID, empty table name, or a connection that is not open |
+| `-32602` | Missing `uri`, wrong scheme, unknown URI, connection id that is not a UUID, empty table name, or a connection that would not open |
 | `-32020` | The `Mcp-Name` header does not match `params.uri` |
 | `-33007` | The token's allowlist rejects the connection, or its external access is `blocked` |
 
-Resource-not-found is `-32602`, not a code of its own. The full table is in [MCP Protocol](/external-api/mcp-protocol#errors).
+Resource-not-found is `-32602` rather than a code of its own; [MCP Protocol](/external-api/mcp-protocol#errors) lists the rest.

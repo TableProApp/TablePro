@@ -3,7 +3,11 @@ title: Cloudflare D1
 description: Connect to Cloudflare D1 databases over the Cloudflare REST API
 ---
 
-A D1 connection is three strings: the database name, your Cloudflare account ID, and an API token. Every query leaves as an HTTPS request to the Cloudflare API, and the dialect on the other end is SQLite. The driver is a downloadable plugin, offered the moment you pick **Cloudflare D1** in the connection form. See [Plugins](/features/plugins).
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+A D1 connection is three strings: the database name, your Cloudflare account ID, and an API token. Every query leaves as an HTTPS request to the Cloudflare API, and the dialect on the other end is SQLite.
+
+<RegistryPlugin name="Cloudflare D1" plugin="Cloudflare D1 Driver" />
 
 ## Connection settings
 

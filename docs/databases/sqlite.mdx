@@ -57,7 +57,7 @@ One connection is one file, with no database to switch between, and the object l
 
 ### database is locked
 
-Another process holds a write lock. Quit the app that owns the file, or look for `-wal` and `-shm` files a crashed process left behind. The wait runs until the [query timeout](/customization/settings#general); **Query > Cancel Query** ends it sooner.
+Another process holds a write lock. Quit the app that owns the file, or look for `-wal` and `-shm` files a crashed process left behind. The wait runs until the [query timeout](/customization/general-settings#query-timeout); **Query > Cancel Query** ends it sooner.
 
 ### unable to open database file
 

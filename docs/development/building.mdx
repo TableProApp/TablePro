@@ -1,132 +1,94 @@
 ---
 title: Building
-description: Development builds, release builds, static libraries, DMG packaging, and CI/CD
+description: Debug builds, the plugin compile check, clean builds, and what CI runs on a pull request
 ---
 
-## Development builds
+Xcode and `xcodebuild` write the built app to different directories. `Cmd+R` leaves it in
+DerivedData; the command line leaves it in `build/Debug/` inside the repo. Both need the
+**TablePro** scheme and the **My Mac** destination.
 
 <Note>
-`TablePro.xcodeproj` is generated from `project.yml` by `scripts/generate-project.sh` and is not
-in git. Run it after cloning, after editing `project.yml` or `Configs/`, and after adding, moving,
-or deleting a source file. See [Development Setup](/development/setup).
+`TablePro.xcodeproj` is generated from `project.yml` by `scripts/generate-project.sh` and is not in
+git. Run it after cloning, after editing `project.yml` or anything in `Configs/`, and after adding,
+moving, or deleting a source file. See [Development Setup](/development/setup).
 </Note>
 
-### Xcode
+## Debug builds
 
-- `Cmd+R` to build and run
-- `Cmd+B` to build only
-- Scheme: **TablePro**, Destination: **My Mac**
-
-### Command line
+In Xcode, `Cmd+B` builds and `Cmd+R` builds and runs. From the command line:
 
 ```bash
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
 ```
 
-Build and run:
+Build and launch in one line:
 
 ```bash
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation && open build/Debug/TablePro.app
 ```
 
-<Note>
-`-skipPackagePluginValidation` is required on every `xcodebuild` invocation. `scripts/build-release.sh`, `scripts/build-plugin.sh`, and `scripts/check-pluginkit-abi.sh` all pass it.
-</Note>
+`-skipPackagePluginValidation` belongs on every `xcodebuild` invocation.
+`scripts/build-release.sh`, `scripts/build-plugin.sh`, `scripts/check-pluginkit-abi.sh` and every
+CI job that shells out to `xcodebuild` pass it.
 
-Debug builds use automatic signing with an Apple Development identity. Set `TABLEPRO_DEVELOPMENT_TEAM` in `Configs/Secrets.xcconfig` to your own Apple Developer account (a free account works), see [Development Setup](/development/setup). Signing matters even locally: plugin signature verification derives the required team from the running app's signature.
+Debug builds sign with an Apple Development identity resolved from `TABLEPRO_DEVELOPMENT_TEAM`, so
+signing matters even locally: a plugin in the user plugins directory has to carry the same team as
+the running app, and the app derives the required team from its own signature. Set the variable in
+`Configs/Secrets.xcconfig` as [Development Setup](/development/setup) describes.
 
-## Release builds
+## Compiling every plugin
 
-```bash
-scripts/build-release.sh arm64      # Apple Silicon
-scripts/build-release.sh x86_64     # Intel
-scripts/build-release.sh both       # Both architectures
-```
-
-Output: `build/Release/TablePro-arm64.app` and `build/Release/TablePro-x86_64.app`.
-
-The script extracts the right slice from the universal static libraries, strips the main binary, helpers, PluginKit framework, and plugin binaries, then signs each binary individually and the app bundle last with hardened runtime and entitlements. Environment variables control signing:
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `SIGN_IDENTITY` | Maintainer's Developer ID | Codesign identity for every binary |
-| `NOTARIZE` | `false` | Set `true` to notarize and staple after building |
-| `APPLE_ID` | Maintainer's Apple ID | Account for notarization |
-
-Notarization uses a `notarytool` keychain profile named `TablePro`. Create it once with `xcrun notarytool store-credentials "TablePro" --apple-id … --team-id … --password …`. Do not sign or notarize by hand; the script already does it per binary, which is what Apple's guidance requires.
-
-## Static libraries
-
-Static `.a` files (libmariadb, libpq, libsybdb, and others) are hosted on the `libs-v1` GitHub Release, not in git.
+An app build compiles only the plugin bundles the app embeds, which leaves every registry-only
+driver uncompiled. The `AllPlugins` aggregate target covers all of them in one pass:
 
 ```bash
-scripts/download-libs.sh          # Download (skips if already present)
-scripts/download-libs.sh --force  # Re-download and overwrite
-scripts/generate-project.sh       # Regenerate both .xcodeproj bundles from project.yml
-scripts/generate-project.sh ios   # Just the iOS one (macos and both are the other options)
+xcodebuild build -project TablePro.xcodeproj -scheme AllPlugins -destination 'platform=macOS' -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO
 ```
 
-### Publishing libraries (maintainers)
+Run it after changing anything under `Plugins/TableProPluginKit/`, which every plugin links. To
+build one signed, packaged bundle instead, use `scripts/build-plugin.sh <PluginTarget>`; the target
+names are the keys under `targets:` in `project.yml`, such as `OracleDriver` or
+`SurrealDBDriverPlugin`.
 
-After rebuilding a library, publish it with `scripts/publish-libs.sh`, naming every lib you rebuilt:
+## Clean builds
 
-```bash
-scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a libmongoc_universal.a libmongoc.a
-git add Libs/checksums.sha256 && git commit -m "build: update static library checksums"
-```
+| Reach for | When |
+|---|---|
+| `Cmd+Shift+K` in Xcode | The usual case |
+| `xcodebuild -project TablePro.xcodeproj -scheme TablePro clean` | Same, from a terminal |
+| `rm -rf ~/Library/Developer/Xcode/DerivedData` | Package resolution is stuck or a stale module keeps reappearing |
 
-The script verifies all libraries you did not name against the checksums committed at HEAD, regenerates `Libs/checksums.sha256`, and uploads the archive with `--clobber`.
+The last one deletes the caches for every project on the machine, and the next build starts from
+nothing.
 
-<Warning>
-Never run `shasum -a 256 Libs/*.a > Libs/checksums.sha256` by hand. Regenerating from a stale `Libs/` directory silently reverts other libraries; this shipped a broken libmongoc and rolled back DuckDB once.
-</Warning>
+## What a pull request has to pass
 
-iOS xcframeworks (`Libs/ios/*.xcframework`) upload to the same release:
+`.github/workflows/macos-tests.yml` starts on every pull request, on Xcode 26.4.1. Its first job
+decides whether the macOS suites run at all and skips them when nothing relevant changed, so the
+workflow still reports a result on a docs-only change.
 
-```bash
-tar czf /tmp/tablepro-libs-ios-v1.tar.gz -C Libs/ios .
-gh release upload libs-v1 /tmp/tablepro-libs-ios-v1.tar.gz --clobber --repo TableProApp/TablePro
-```
+| Job | What it does |
+|---|---|
+| Detect relevant changes | Decides whether the macOS suites run |
+| Package Tests | `swift test` for TableProCore and CodeEditTextView |
+| Build for testing | Builds `AllPlugins`, `dlopen`s each built bundle, then builds the app and both test bundles |
+| Unit tests | `TableProTests` against the prebuilt products |
+| UI tests | `TableProUITests`, split across three shards |
+| macOS Tests Gate | Fails unless every other job reported success or skipped |
 
-## Creating a DMG
+A plugin that builds and signs can still fail to load, which is why the load step is separate:
+"Bundle failed to load executable" has shipped twice.
 
-`scripts/create-dmg.sh` takes the version, the architecture (default `universal`), and the source app (default `build/Release/TablePro.app`):
+`.github/workflows/repo-hygiene.yml` runs beside it on Ubuntu in under a minute. It runs
+`actionlint` over every workflow, which shells out to `shellcheck` for each inline `run:` block;
+`shellcheck` at warning severity over every script; the plugin manifest check; and the
+shared-contract drift gates in `scripts/audit-refactor-health.sh`.
 
-```bash
-scripts/build-release.sh arm64
-scripts/create-dmg.sh 0.57.0 arm64 build/Release/TablePro-arm64.app
-```
+Lint runs in the release workflow rather than this one. Run `swiftlint lint --strict` yourself
+before pushing; see [Code Style](/development/code-style).
 
-Output: `build/Release/TablePro-0.57.0-arm64.dmg`.
+## Related
 
-## Clean build
-
-| Method | Command |
-|--------|---------|
-| Xcode | `Cmd+Shift+K` |
-| CLI | `xcodebuild -project TablePro.xcodeproj -scheme TablePro clean` |
-| Nuclear | `rm -rf ~/Library/Developer/Xcode/DerivedData` |
-
-## CI/CD
-
-### App releases
-
-`.github/workflows/build.yml`, triggered by `v*` tags (e.g. `v0.57.0`).
-
-Jobs: SwiftLint, macOS Tests, Build ARM64, Build x86_64, Registry Readiness. The release job needs all five, so failing tests block the release. It produces DMGs, ZIPs, and Sparkle signatures, with release notes extracted from `CHANGELOG.md`.
-
-### Plugin releases
-
-`.github/workflows/build-plugin.yml`, triggered by `plugin-*-v*` tags (e.g. `plugin-oracle-v1.0.0`) or by `workflow_dispatch`. The dispatch input takes comma-separated `tag:pluginKitVersion` pairs, e.g. `plugin-mongodb-v1.0.25:13`. Omit `:pluginKitVersion` and the workflow reads `currentPluginKitVersion` from `PluginManager.swift`.
-
-After a PluginKit ABI bump, re-release every registry plugin in one parallel matrix run:
-
-```bash
-scripts/release-all-plugins.sh <pluginKitVersion>
-```
-
-See [Plugin Registry](/development/plugin-registry) for how published binaries reach users.
-
-<Warning>
-Pushing more than 3 tags in one push creates no push events at all, so zero workflows fire. Push plugin tags one at a time, or use `workflow_dispatch`.
-</Warning>
+Release builds, notarization, DMG packaging and the tag that publishes them are on
+[Releasing](/development/releasing). Publishing a driver plugin is on
+[Plugin Registry](/development/plugin-registry).

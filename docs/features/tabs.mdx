@@ -103,7 +103,7 @@ PostgreSQL, Redshift, and CockroachDB change database only by reconnecting, so a
 | Per-table filters, column widths | |
 | Tab order and which tab was frontmost | |
 
-The tab set is written when you switch tabs, a second after you stop typing, and every 30 seconds otherwise, so a crash costs at most the last half minute. On relaunch only the frontmost tab runs its query; the others load the first time you switch to them, and one that fails shows the error inline. A connection that cannot be reached shows the driver's error with **Try Again**, **Manage Connections…**, and **Copy Details**, and stays in the next session's list. Whether the last session reopens at all is [Startup Behavior](/customization/settings#general).
+The tab set is written when you switch tabs, a second after you stop typing, and every 30 seconds otherwise, so a crash costs at most the last half minute. On relaunch only the frontmost tab runs its query; the others load the first time you switch to them, and one that fails shows the error inline. A connection that cannot be reached shows the driver's error with **Try Again**, **Manage Connections…**, and **Copy Details**, and stays in the next session's list. Whether the last session reopens at all is [Startup Behavior](/customization/general-settings#startup).
 
 ## Row limits
 

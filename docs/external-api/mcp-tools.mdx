@@ -3,520 +3,195 @@ title: MCP Tools
 description: The 46 tools TablePro's MCP server exposes, with arguments, defaults, result shapes, and scope requirements
 ---
 
-TablePro exposes 46 tools over MCP. They cover connections, schema, data, server administration, and the app's own windows and tabs. Every tool declares a JSON Schema for its input and its output, so a client can validate both sides without reading this page.
-
-For the wire format, headers and error codes see [MCP Protocol](/external-api/mcp-protocol). For prompts see [MCP Prompts](/external-api/mcp-prompts).
+If a dedicated tool covers the job, it beats hand-written SQL. It quotes identifiers for the engine in front of it, applies the user's row limits, and runs on connections where raw execution is refused. All 46 publish a JSON Schema for input and output, so a client can validate both sides without reading this page. For the wire format, headers and error codes see [MCP Protocol](/external-api/mcp-protocol).
 
 ## How to read this page
 
-Each entry lists arguments and the result. Unless stated otherwise:
+In the tables below, required arguments come first and optional ones follow in parentheses. Unless a row says otherwise:
 
-- `connection_id` is a connection UUID from `list_connections` and is required.
-- `database` and `schema` are optional. Omitted, they use the database and schema the connection is currently browsing. Passing them targets somewhere else **without moving the app's selection**.
+- `connection_id` is a connection UUID from `list_connections`.
+- `database` and `schema` default to whatever the connection is currently browsing. Passing them targets somewhere else **without moving the app's selection**.
 - An unknown argument is rejected with `-32602`. There is no silent ignoring.
 - The result comes back twice: as JSON text in `content[0]`, and as a typed object in `structuredContent`. Read `structuredContent`.
+- Timestamps are ISO 8601, error text is redacted, and "a result set" means `columns[]`, `rows[][]`, `row_count`, `rows_affected`, `execution_time_ms`, `is_truncated`, plus `status_message`, `database` and `schema` when they apply.
 
-Row limits default to the server's **Default row limit** setting (500) and are capped by **Maximum row limit** (10,000). Timeouts default to **Query timeout** (30 seconds) and are capped at 300. Both are in **Settings > Integrations**.
+Row limits default to the server's **Default row limit** setting (500) and are capped by **Maximum row limit** (10,000). Timeouts default to **Query timeout** (30 seconds) and are capped at 300. Both live in **Settings > Integrations**.
+
+## Tool index
+
+| Group | Tools |
+|-------|-------|
+| [Connections](#connections) | `list_connections` `connect` `disconnect` `get_connection_status` `switch_database` `switch_schema` |
+| [Schema discovery](#schema-discovery) | `list_databases` `list_schemas` `list_tables` `describe_table` `get_table_ddl` `search_schema` `list_indexes` `list_foreign_keys` `list_triggers` `get_view_definition` `list_routines` `list_partitions` `get_table_statistics` `get_database_statistics` |
+| [Reading data](#reading-data) | `browse_table` `count_rows` `execute_query` `explain_query` `export_data` `quote_identifiers` |
+| [Writing data](#writing-data) | `insert_rows` `confirm_destructive_operation` `transaction_control` |
+| [Databases and objects](#databases-and-objects) | `describe_create_database_options` `create_database` `drop_database_object` `list_maintenance_operations` `run_maintenance` |
+| [Server administration](#server-administration) | `get_server_dashboard` `stop_server_session` `list_principals` `list_grants` `list_session_contexts` |
+| [The user's workspace](#the-users-workspace) | `list_favorite_tables` `list_recent_tables` `list_recent_tabs` `focus_query_tab` `open_connection_window` `open_table_tab` `search_query_history` |
 
 ## Scopes and gates
 
-Each entry lists the scope it needs. A call has to clear four gates:
+Fourteen tools need `tools:write`: `connect`, `disconnect`, `switch_database`, `switch_schema`, `insert_rows`, `confirm_destructive_operation`, `transaction_control`, `create_database`, `drop_database_object`, `run_maintenance`, `stop_server_session`, `focus_query_tab`, `open_connection_window`, `open_table_tab`. The other 32 need `tools:read`, `execute_query` among them until the statement writes.
 
-1. **Token scope.** `tools:read` for a read, `tools:write` for anything that changes state, `admin` for `confirm_destructive_operation`. An unauthenticated loopback caller has `tools:read` and `resources:read` and can never be granted more.
-2. **Connection allowlist.** A token limited to named connections gets `-33007` for anything else.
-3. **Connection policy.** `externalAccess: blocked` hides the connection: `list_connections` omits it and any tool that names it is refused. AI policy `never` does the same. AI policy `askEachTime` shows an approval dialog on the first call per session that touches the connection, and the answer is remembered for the rest of the session.
-4. **Safe Mode.** A write goes through the connection's Safe Mode, which may ask the user to confirm it or to authenticate. See [Approvals](/external-api/mcp-protocol#approvals-and-input-required).
+Past the scope, a call clears three more gates:
 
-`externalAccess: readOnly` rejects write SQL sent through `execute_query`, and rejects `confirm_destructive_operation` outright, even with a `readWrite` token.
+1. **Connection allowlist.** A token limited to named connections gets `-33007` for anything else.
+2. **Connection policy.** **External Clients** set to **Blocked** hides the connection: `list_connections` omits it and any tool that names it is refused. An AI policy of **Never** does the same. **Ask Each Time** shows an approval dialog on the first call that touches the connection, and the answer is remembered for that token until it is revoked.
+3. **Safe Mode.** A write goes through the connection's Safe Mode, which may ask the user to confirm it or to authenticate. See [Approvals](/external-api/mcp-protocol#approvals-and-input-required).
+
+`confirm_destructive_operation` needs `admin` as well, so it takes a Full Access token, and **Read Only** refuses it outright whatever the token carries. No token skips the user's approval.
 
 Statements that read or write files, or that run server-side code, are refused on every tool. So is more than one statement in a single call.
 
 ## Connections
 
-### `list_connections`
+| Tool | Arguments | Returns |
+|------|-----------|---------|
+| `list_connections` | none | `connections[]` with `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `ai_policy`, `external_access`, `safe_mode` |
+| `connect` | `connection_id` | `status` (`connected`), `connection_id`, `current_database`, plus `current_schema` and `server_version` when known. Returns once the driver is up |
+| `disconnect` | `connection_id` | `status` (`disconnected`), `connection_id` |
+| `get_connection_status` | `connection_id` | `status` (`connected`, `connecting`, `disconnected`, `error`), `connection_id`, `current_database`, plus `current_schema`, `server_version`, `connected_at`, `last_active_at` and `error` when they apply |
+| `switch_database` | `connection_id`, `database` | `status` (`switched`), `connection_id`, `current_database` |
+| `switch_schema` | `connection_id`, `schema` | `status` (`switched`), `connection_id`, `current_schema` |
 
-Every saved connection this client may use, with live status. Connections blocked for external clients, or with AI policy `never`, are omitted, as are connections outside the token's allowlist.
+`list_connections` omits connections blocked for external clients, connections whose AI policy is **Never**, and connections outside the token's allowlist. Its `database` is the session's browsed database when connected, the saved default otherwise.
 
-**Arguments**: none.
-
-**Returns** `connections[]` with `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `ai_policy`, `external_access`, `safe_mode`. `database` is the session's browsed database when connected, the saved default otherwise.
-
-**Scope**: `tools:read`.
-
-### `connect`
-
-Open a session for a saved connection. Returns only once the driver is connected.
-
-**Arguments**: `connection_id`.
-
-**Returns** `status` (`"connected"`), `connection_id`, `current_database`, and `current_schema` and `server_version` when known.
-
-**Scope**: `tools:write`.
-
-### `disconnect`
-
-Close the open session.
-
-**Arguments**: `connection_id`.
-
-**Returns** `status` (`"disconnected"`), `connection_id`.
-
-**Scope**: `tools:write`.
-
-### `get_connection_status`
-
-**Arguments**: `connection_id`.
-
-**Returns** `status` (`connected`, `connecting`, `disconnected`, `error`), `connection_id`, `current_database`, plus `current_schema`, `server_version`, `connected_at`, `last_active_at` and `error` when they apply. Timestamps are ISO 8601. `error` text is redacted.
-
-**Scope**: `tools:read`.
-
-### `switch_database`
-
-Move the connection's browse cursor to another database. This changes what the user sees in TablePro. To run one statement elsewhere, pass `database` to that tool instead.
-
-**Arguments**: `connection_id`, `database`.
-
-**Returns** `status` (`"switched"`), `connection_id`, `current_database`.
-
-**Scope**: `tools:write`.
-
-### `switch_schema`
-
-Same, for the schema.
-
-**Arguments**: `connection_id`, `schema`.
-
-**Returns** `status`, `connection_id`, `current_schema`.
-
-**Scope**: `tools:write`.
+The two `switch_` tools move what the user sees in TablePro. To run one statement elsewhere, pass `database` or `schema` to that tool instead.
 
 ## Schema discovery
 
-### `list_databases`
+| Tool | Arguments | Returns |
+|------|-----------|---------|
+| `list_databases` | `connection_id` | `databases[]`, sorted |
+| `list_schemas` | `connection_id` (`database`) | `schemas[]`, `database` |
+| `list_tables` | `connection_id` (`database`, `schema`, `include_row_counts`) | `tables[]` (`name`, `type`, `schema`, `comment`, `row_count`), `database`, `schema`, `row_counts_included`, `row_counts_are_approximate` |
+| `describe_table` | `connection_id`, `table` (`database`, `schema`) | `table`, `database`, `schema`, `columns[]`, `indexes[]`, `foreign_keys[]`, `ddl`, `approximate_row_count` |
+| `get_table_ddl` | `connection_id`, `table` (`database`, `schema`) | `table`, `schema`, `ddl` |
+| `search_schema` | `connection_id`, `term` (`limit`, `database`, `schema`) | `term`, `matches[]` (`kind` is `table` or `column`, plus `name`, `table`, `schema`, `object_type`, `data_type`), `is_truncated`. Table matches first |
+| `list_indexes` | `connection_id` (`table`, `database`, `schema`) | `database`, `schema`, `tables[]` of `{ table, indexes[] }`. Tables with no index are left out |
+| `list_foreign_keys` | `connection_id` (`table`, `database`, `schema`) | `database`, `schema`, `tables[]` of `{ table, foreign_keys[] }` |
+| `list_triggers` | `connection_id`, `table` (`database`, `schema`) | `table`, `triggers[]` (`name`, `timing`, `event`, `statement`, `is_enabled`), sorted by name |
+| `get_view_definition` | `connection_id`, `view` (`database`, `schema`) | `view`, `schema`, `definition` |
+| `list_routines` | `connection_id` (`kind`, `database`, `schema`) | `routines[]` (`name`, `kind`, `schema`, `qualified_name`, `signature`) |
+| `list_partitions` | `connection_id`, `table` (`database`, `schema`) | `table`, `partitions[]`, shaped like `list_tables` entries |
+| `get_table_statistics` | `connection_id`, `table` (`database`, `schema`) | `table` plus whatever the engine records: `data_size_bytes`, `index_size_bytes`, `total_size_bytes`, `average_row_length`, `row_count`, `comment`, `engine`, `collation`, `created_at`, `updated_at` |
+| `get_database_statistics` | `connection_id` (`database`) | `databases[]` (`name`, `table_count`, `size_bytes`, `is_system_database`), sorted by name |
 
-**Arguments**: `connection_id`.
+`describe_table` is the one call to make before writing SQL against an unfamiliar table. A column always carries `name`, `data_type`, `is_nullable` and `is_primary_key`, and picks up `is_generated`, `default_value`, `extra`, `comment` and `allowed_values` where the engine reports them; indexes and foreign keys work the same way.
 
-**Returns** `databases[]`, sorted.
+`include_row_counts` defaults to `false`. Counts come from engine statistics rather than `COUNT(*)`, and are fetched one table at a time, so `list_tables` skips them when the schema holds more than 200 objects.
 
-**Scope**: `tools:read`.
-
-### `list_schemas`
-
-**Arguments**: `connection_id`, `database`.
-
-**Returns** `schemas[]` and `database`.
-
-**Scope**: `tools:read`.
-
-### `list_tables`
-
-Tables and views, sorted by schema then name.
-
-**Arguments**: `connection_id`, `database`, `schema`, `include_row_counts` (default `false`).
-
-**Returns** `tables[]` (`name`, `type`, `schema`, `comment`, `row_count`), `database`, `schema`, `row_counts_included`, `row_counts_are_approximate`.
-
-Row counts are fetched one table at a time, so they are skipped when the schema holds more than 200 objects. They come from engine statistics, not `COUNT(*)`.
-
-**Scope**: `tools:read`.
-
-### `describe_table`
-
-The one call to make before writing SQL against an unfamiliar table. Columns, indexes, foreign keys, DDL and an approximate row count, all read against the same database and schema.
-
-**Arguments**: `connection_id`, `table`, `database`, `schema`.
-
-**Returns** `table`, `database`, `schema`, `columns[]`, `indexes[]`, `foreign_keys[]`, `ddl`, `approximate_row_count`.
-
-A column carries `name`, `data_type`, `is_nullable`, `is_primary_key`, and where the engine reports them `is_generated`, `default_value`, `extra`, `comment`, `allowed_values`. An index carries `name`, `columns`, `is_unique`, `is_primary`, `type`, `where_clause`. A foreign key carries `name`, `column`, `referenced_table`, `referenced_column`, `referenced_schema`, `on_delete`, `on_update`.
-
-**Scope**: `tools:read`.
-
-### `get_table_ddl`
-
-**Arguments**: `connection_id`, `table`, `database`, `schema`.
-
-**Returns** `table`, `schema`, `ddl`.
-
-**Scope**: `tools:read`.
-
-### `search_schema`
-
-Find tables and columns whose name contains a substring, so a column can be located without describing every table.
-
-**Arguments**: `connection_id`, `term`, `limit` (1-500, default 50), `database`, `schema`.
-
-**Returns** `term`, `matches[]` (`kind` is `table` or `column`, plus `name`, `table`, `schema`, `object_type`, `data_type`), `is_truncated`. Table matches come first.
-
-**Scope**: `tools:read`.
-
-### `list_indexes`
-
-One table, or the whole schema when `table` is omitted.
-
-**Arguments**: `connection_id`, `table`, `database`, `schema`.
-
-**Returns** `database`, `schema`, `tables[]` where each entry is `{ table, indexes[] }`. Tables with no index are left out.
-
-**Scope**: `tools:read`.
-
-### `list_foreign_keys`
-
-**Arguments**: `connection_id`, `table`, `database`, `schema`.
-
-**Returns** `database`, `schema`, `tables[]` where each entry is `{ table, foreign_keys[] }`.
-
-**Scope**: `tools:read`.
-
-### `list_triggers`
-
-**Arguments**: `connection_id`, `table` (required), `database`, `schema`.
-
-**Returns** `table`, `triggers[]` (`name`, `timing`, `event`, `statement`, `is_enabled`), sorted by name.
-
-**Scope**: `tools:read`.
-
-### `get_view_definition`
-
-**Arguments**: `connection_id`, `view` (required), `database`, `schema`.
-
-**Returns** `view`, `schema`, `definition`.
-
-**Scope**: `tools:read`.
-
-### `list_routines`
-
-Stored procedures and user-defined functions.
-
-**Arguments**: `connection_id`, `kind` (`procedure` or `function`, omit for both), `database`, `schema`.
-
-**Returns** `routines[]` (`name`, `kind`, `schema`, `qualified_name`, `signature`).
-
-**Scope**: `tools:read`.
-
-### `list_partitions`
-
-Direct partitions of a partitioned table. Empty on engines without partitioning.
-
-**Arguments**: `connection_id`, `table` (required), `database`, `schema`.
-
-**Returns** `table`, `partitions[]` in the same shape as `list_tables` entries.
-
-**Scope**: `tools:read`.
-
-### `get_table_statistics`
-
-**Arguments**: `connection_id`, `table` (required), `database`, `schema`.
-
-**Returns** `table` plus whatever the engine records: `data_size_bytes`, `index_size_bytes`, `total_size_bytes`, `average_row_length`, `row_count`, `comment`, `engine`, `collation`, `created_at`, `updated_at`.
-
-**Scope**: `tools:read`.
-
-### `get_database_statistics`
-
-**Arguments**: `connection_id`, `database` (omit for every database).
-
-**Returns** `databases[]` (`name`, `table_count`, `size_bytes`, `is_system_database`), sorted by name.
-
-**Scope**: `tools:read`.
+`search_schema` locates a column without describing every table; its `limit` runs 1 to 500, default 50. `list_routines` takes `kind` as `procedure` or `function`, omitted for both.
 
 ## Reading data
 
+| Tool | Arguments | Returns |
+|------|-----------|---------|
+| `browse_table` | `connection_id`, `table` (`columns`, `filters`, `logic`, `sort`, `limit`, `offset`, `timeout_seconds`, `database`, `schema`) | A result set |
+| `count_rows` | `connection_id`, `table` (`exact`, `filters`, `logic`, `database`, `schema`) | `table`, `row_count`, `is_approximate`, `filter_count` |
+| `execute_query` | `connection_id`, `query` (`max_rows`, `timeout_seconds`, `database`, `schema`) | A result set |
+| `explain_query` | `connection_id`, `query` (`analyze`, `variant`, `timeout_seconds`, `database`, `schema`) | `statement` as actually sent, `execution_time_ms`, `columns[]`, `rows[][]`, and where available `plan_text`, `plan` and `available_variants[]` |
+| `export_data` | `connection_id`, `format` (`query` **or** `tables`, `sql_table`, `output_path`, `max_rows`, `database`, `schema`) | `format`, `rows_exported`, `is_truncated`, `path` when a file was written, and `exports[]` (`label`, `row_count`, `is_truncated`, `data`) |
+| `quote_identifiers` | `connection_id` and at least one of `identifiers`, `literals` (`database`, `schema`) | `identifiers[]` as `{ input, quoted }` and `literals[]` as `{ input, escaped }`, in the order supplied |
+
 ### `browse_table`
 
-Read rows with filters, sorting and paging, built by TablePro's own query builder for this engine. Prefer it over hand-writing `SELECT`: it quotes identifiers, escapes values, and pages the way the app does.
+A filter is `{ column, operator, value, second_value, case_sensitive }`. `column` and `operator` are required, `second_value` is the upper bound for `BETWEEN`, and `case_sensitive` defaults to whatever the operator normally does. `logic` is `and` (default) or `or`. The operator list is TablePro's own filter vocabulary, published in the tool's input schema as an `enum`; read it from `tools/list` rather than hardcoding it. Raw SQL filters are not available over MCP.
 
-**Arguments**: `connection_id`, `table` (required), `columns[]` (omit for all), `filters[]`, `logic` (`and` or `or`, default `and`), `sort[]`, `limit` (default the server's row limit), `offset` (default 0), `timeout_seconds`, `database`, `schema`.
-
-A filter is `{ column, operator, value, second_value, case_sensitive }`. `column` and `operator` are required, `second_value` is the upper bound for `BETWEEN`, and `case_sensitive` defaults to whatever the operator normally does. The operator list is TablePro's own filter vocabulary, published in the tool's input schema as an `enum`; read it from `tools/list` rather than hardcoding it. Raw SQL filters are not available over MCP.
-
-A sort entry is `{ column, direction }` with `direction` one of `ascending` (default) or `descending`. Entries apply in the order given.
-
-**Returns** a result set: `columns[]`, `rows[][]`, `row_count`, `rows_affected`, `execution_time_ms`, `is_truncated`, and `status_message`, `database`, `schema` when they apply.
-
-**Scope**: `tools:read`.
+A sort entry is `{ column, direction }`, `direction` being `ascending` (default) or `descending`, and entries apply in the order given. `offset` defaults to 0.
 
 ### `count_rows`
 
-**Arguments**: `connection_id`, `table` (required), `exact` (default `false`), `filters[]`, `logic`, `database`, `schema`.
-
 Without filters this returns the engine's fast estimate unless `exact` is set. With filters it always counts for real, because an estimate cannot answer a filtered question.
-
-**Returns** `table`, `row_count`, `is_approximate`, `filter_count`.
-
-**Scope**: `tools:read`.
 
 ### `execute_query`
 
-Run one statement.
-
-**Arguments**: `connection_id`, `query` (required, 100 KB max), `max_rows`, `timeout_seconds`, `database`, `schema`.
-
-Reads need `tools:read`. Anything that writes needs `tools:write` and goes through the connection's Safe Mode. `DROP` and `TRUNCATE` are refused here; use `confirm_destructive_operation`. Statements that reach the filesystem or run server-side code are refused. One statement per call.
-
-**Returns** the result set shape shown under `browse_table`.
-
-Emits progress at 0.0 (resolving), 0.3 (executing) and 1.0 (done) when the request carries a `progressToken`.
-
-**Scope**: `tools:read`, plus `tools:write` for a write statement.
+One statement, 100 KB at most. `DROP` and `TRUNCATE` are refused here; use `confirm_destructive_operation`. When the request carries a `progressToken`, the tool emits progress at 0.0 (resolving), 0.3 (executing) and 1.0 (done).
 
 ### `explain_query`
 
-Ask the engine for the plan, and get both the raw text and, where TablePro can parse it, a node tree with costs and row estimates.
-
-**Arguments**: `connection_id`, `query` (required, no `EXPLAIN` prefix), `analyze` (default `false`), `variant`, `timeout_seconds`, `database`, `schema`.
-
-**Returns** `statement` (what was actually sent, with its prefix), `execution_time_ms`, `columns[]`, `rows[][]`, and where available `plan_text`, `plan` (`root`, `planning_time_ms`, `execution_time_ms`) and `available_variants[]` (`id`, `label`, `sql_prefix`).
-
-Call it with no `variant` to see what this engine offers. `analyze: true` runs the statement for real, so an analyzed write needs `tools:write` and Safe Mode approval.
-
-**Scope**: `tools:read`.
+Pass the query with no `EXPLAIN` prefix, and with no `variant` to see what this engine offers in `available_variants[]`. `analyze: true` runs the statement for real, so an analyzed write needs `tools:write` and Safe Mode approval.
 
 ### `export_data`
 
-Export a query result or whole tables as CSV, JSON, or SQL `INSERT` statements.
-
-**Arguments**: `connection_id`, `format` (`csv`, `json`, `sql`), `query` **or** `tables[]` (exactly one), `sql_table`, `output_path`, `max_rows`, `database`, `schema`.
-
-With `output_path` the file is written inside the user's Downloads folder and never overwrites: a name that is taken gets `-1`, `-2` and so on. The path must stay inside Downloads, must end in the format's extension, and must not name a hidden file. Without `output_path` the text comes back inline in each export entry.
-
-SQL output uses the connection's own quoting and literal rules, so exporting a query needs `sql_table` to name the target table.
-
-**Returns** `format`, `rows_exported`, `is_truncated`, `path` when a file was written, and `exports[]` (`label`, `row_count`, `is_truncated`, `data`).
-
-**Scope**: `tools:read`.
-
-### `quote_identifiers`
-
-Quote identifiers and escape string literals using the connection's own driver rules. Use it before putting any name or value into hand-written SQL.
-
-**Arguments**: `connection_id`, `identifiers[]`, `literals[]` (at least one of the two), `database`, `schema`.
-
-**Returns** `identifiers[]` as `{ input, quoted }` and `literals[]` as `{ input, escaped }`, in the order supplied.
-
-**Scope**: `tools:read`.
+Formats are `csv`, `json` and `sql`; pass exactly one of `query` or `tables[]`. Without `output_path` the text comes back inline in each export entry. With it, the file lands in the user's Downloads folder and never overwrites, so a name that is taken gets `-1`, `-2` and so on; the path must stay inside Downloads, end in the format's extension, and not name a hidden file. SQL output uses the connection's own quoting and literal rules, so exporting a query needs `sql_table` to name the target table.
 
 ## Writing data
 
-### `insert_rows`
+| Tool | Arguments | Returns |
+|------|-----------|---------|
+| `insert_rows` | `connection_id`, `table`, `columns`, `rows` (`database`, `schema`) | `table`, `rows_submitted`, `rows_affected` |
+| `confirm_destructive_operation` | `connection_id`, `query` (`timeout_seconds`, `database`, `schema`) | A result set |
+| `transaction_control` | `connection_id`, `action` (`database`, `schema`) | `status`, the action that completed, and `connection_id` |
 
-Insert rows using bound parameters, so values are never spliced into SQL text.
+`insert_rows` binds parameters, so values are never spliced into SQL text. Each row is an array with one value per column, and a call carries at most 1,000 rows.
 
-**Arguments**: `connection_id`, `table`, `columns[]`, `rows[][]` (all required), `database`, `schema`.
+`confirm_destructive_operation` runs one `DROP`, `TRUNCATE` or `ALTER … DROP`. Anything that is not destructive is rejected; use `execute_query` for those. The user approves it first, through your elicitation prompt if your client supports elicitation, otherwise through TablePro's own dialog on their Mac.
 
-Each row is an array with one value per column. At most 1,000 rows per call.
-
-**Returns** `table`, `rows_submitted`, `rows_affected`.
-
-**Scope**: `tools:write`.
-
-### `confirm_destructive_operation`
-
-Run one destructive statement: `DROP`, `TRUNCATE`, `ALTER … DROP`. The user approves it before it runs, through your elicitation prompt if your client supports elicitation, otherwise through TablePro's own dialog on the user's Mac.
-
-**Arguments**: `connection_id`, `query` (required), `timeout_seconds`, `database`, `schema`.
-
-A statement that is not destructive is rejected. Use `execute_query` for those.
-
-**Returns** the result set shape.
-
-**Scope**: `tools:write` **and** `admin`, on a connection whose external access is `readWrite`. No token permission skips the approval.
-
-### `transaction_control`
-
-Begin, commit, or roll back a transaction on the connection's shared session.
-
-**Arguments**: `connection_id`, `action` (`begin`, `commit`, `rollback`), `database`, `schema`.
-
-The transaction stays open across calls until it is committed or rolled back, and it runs on the same session as the user's own tabs. Leave nothing open.
-
-**Returns** `status` (the action that completed), `connection_id`.
-
-**Scope**: `tools:write`.
+`transaction_control` takes `action` as `begin`, `commit` or `rollback`. The transaction stays open across calls until it is committed or rolled back, and it runs on the same session as the user's own tabs. Leave nothing open.
 
 ## Databases and objects
 
-### `describe_create_database_options`
+| Tool | Arguments | Returns |
+|------|-----------|---------|
+| `describe_create_database_options` | `connection_id` | `is_supported`, `fields[]` (`key`, `label`, `default_value`, `options[]`) |
+| `create_database` | `connection_id`, `name` (`options`) | `status` (`created`), `database` |
+| `drop_database_object` | `connection_id`, `kind`, `name` | `status` (`dropped`) and `database` or `schema` |
+| `list_maintenance_operations` | `connection_id` | `operations[]` and `is_supported` |
+| `run_maintenance` | `connection_id`, `operation` (`table`, `options`, `database`, `schema`) | `operation`, `statements[]`, `results[]`, one result set per statement |
 
-What `create_database` accepts on this engine.
+`create_database` takes `options` as a flat object of string values drawn from `describe_create_database_options`, and asks the user before it runs. `drop_database_object` takes `kind` as `database` or `schema`, deletes everything inside, cannot be undone, and is approved first.
 
-**Arguments**: `connection_id`.
+`run_maintenance` takes an `operation` name from `list_maintenance_operations` (`VACUUM`, `ANALYZE`, `OPTIMIZE` and whatever else the engine supports) and omits `table` for the whole database. TablePro generates the statements and runs them in order, asking for approval before each one.
 
-**Returns** `is_supported`, `fields[]` (`key`, `label`, `default_value`, `options[]`).
-
-**Scope**: `tools:read`.
-
-### `create_database`
-
-**Arguments**: `connection_id`, `name`, `options` (a flat object of string values from `describe_create_database_options`).
-
-**Returns** `status` (`"created"`), `database`.
-
-**Scope**: `tools:write`, plus the user's approval.
-
-### `drop_database_object`
-
-Drop a whole database or a whole schema. This deletes everything inside it and cannot be undone, so the user approves it first.
-
-**Arguments**: `connection_id`, `kind` (`database` or `schema`), `name`.
-
-**Returns** `status` (`"dropped"`) and `database` or `schema`.
-
-**Scope**: `tools:write`.
-
-### `list_maintenance_operations`
-
-**Arguments**: `connection_id`.
-
-**Returns** `operations[]` (`VACUUM`, `ANALYZE`, `OPTIMIZE` and the like, whatever this engine supports) and `is_supported`.
-
-**Scope**: `tools:read`.
-
-### `run_maintenance`
-
-**Arguments**: `connection_id`, `operation` (a name from `list_maintenance_operations`), `table` (omit for the whole database), `options` (string values), `database`, `schema`.
-
-TablePro generates the statements and runs them in order, asking for approval before each one.
-
-**Returns** `operation`, `statements[]`, `results[]` (one result set per statement).
-
-**Scope**: `tools:write`.
+<Info>
+`describe_create_database_options`, `list_maintenance_operations` and `list_session_contexts` answer `is_supported: false` on an engine that has no such concept rather than failing, and `list_partitions` answers with an empty list. Everything else that an engine cannot do comes back as an `unsupported` tool error.
+</Info>
 
 ## Server administration
 
-### `get_server_dashboard`
+| Tool | Arguments | Returns |
+|------|-----------|---------|
+| `get_server_dashboard` | `connection_id` (`panels`) | The requested panels: `sessions`, `metrics`, `slow_queries` |
+| `stop_server_session` | `connection_id`, `process_id` (`mode`) | The result set the engine produced |
+| `list_principals` | `connection_id` | `principals[]` (`name`, `host`, `is_role`, `can_login`, `member_of[]`, `connection_limit`, `comment`, and `attributes[]` of `{ key, label, is_enabled }`), sorted by name |
+| `list_grants` | `connection_id`, `principal` (`host`) | `principal`, `grants[]` (`privilege`, `scope`, `is_grantable`). `scope` is a dotted path, `*` for a server-wide grant |
+| `list_session_contexts` | `connection_id` | `is_supported`, `contexts[]` (`id`, `label`, `value`, `options[]`) |
 
-The live panels TablePro shows: active sessions, server metrics, and slow queries. Available on PostgreSQL, MySQL, SQL Server, ClickHouse, DuckDB, and SQLite.
+`get_server_dashboard` reads the live panels TablePro shows, and runs on PostgreSQL, MySQL, SQL Server, ClickHouse, DuckDB and SQLite. Name the panels in `panels[]` or omit it for all three. A session carries `id` (the process id `stop_server_session` takes), `user`, `database`, `state`, `duration_seconds`, `query`, `can_kill` and `can_cancel`; a metric carries `id`, `label`, `value`, `unit`; a slow query carries `duration`, `query`, `user`, `database`.
 
-**Arguments**: `connection_id`, `panels[]` (`sessions`, `metrics`, `slow_queries`; omit for all).
+`stop_server_session` takes `mode` as `cancel` (default) to stop the running query or `kill` to end the session. The user always approves this one, whatever Safe Mode says.
 
-**Returns** the requested panels. A session carries `id` (the process id `stop_server_session` takes), `user`, `database`, `state`, `duration_seconds`, `query`, `can_kill`, `can_cancel`. A metric carries `id`, `label`, `value`, `unit`. A slow query carries `duration`, `query`, `user`, `database`.
-
-**Scope**: `tools:read`.
-
-### `stop_server_session`
-
-Cancel the running query on a server session, or kill the session outright.
-
-**Arguments**: `connection_id`, `process_id` (from `get_server_dashboard`), `mode` (`cancel` or `kill`, default `cancel`).
-
-The user always approves this one, whatever Safe Mode says.
-
-**Returns** the result set the engine produced.
-
-**Scope**: `tools:write`.
-
-### `list_principals`
-
-Users and roles defined on the server.
-
-**Arguments**: `connection_id`.
-
-**Returns** `principals[]` (`name`, `host`, `is_role`, `can_login`, `member_of[]`, `connection_limit`, `comment`, `attributes[]` of `{ key, label, is_enabled }`), sorted by name.
-
-**Scope**: `tools:read`.
-
-### `list_grants`
-
-**Arguments**: `connection_id`, `principal` (required), `host`.
-
-**Returns** `principal`, `grants[]` (`privilege`, `scope`, `is_grantable`). `scope` is a dotted path, `*` for a server-wide grant.
-
-**Scope**: `tools:read`.
-
-### `list_session_contexts`
-
-Session-level contexts the engine exposes, such as a Snowflake warehouse or role, with the value the session currently holds.
-
-**Arguments**: `connection_id`.
-
-**Returns** `is_supported`, `contexts[]` (`id`, `label`, `value`, `options[]`).
-
-**Scope**: `tools:read`.
+`list_session_contexts` reports session-level contexts the engine exposes, such as a Snowflake warehouse or role, with the value the session currently holds.
 
 ## The user's workspace
 
-These read and drive the TablePro app itself. They never bypass the connection allowlist or an `externalAccess: blocked` connection.
+These read and drive the TablePro app itself, and none of them bypasses the connection allowlist or a blocked connection.
 
-### `list_favorite_tables`
+| Tool | Arguments | Returns |
+|------|-----------|---------|
+| `list_favorite_tables` | `connection_id` | `favorites[]` (`name`, `database`, `schema`), sorted |
+| `list_recent_tables` | `connection_id` | `recent_tables[]` (`name`, `database`, `schema`, `is_view`, `opened_at` as Unix epoch seconds), newest first |
+| `list_recent_tabs` | (`connection_id`, `limit`) | `tabs[]` (`connection_id`, `connection_name`, `tab_id`, `tab_type`, `display_title`, `is_active`, plus `table_name`, `database_name`, `schema_name` and `window_id` when known) |
+| `focus_query_tab` | `tab_id` | `status` (`focused`), `tab_id`, `connection_id`, `window_id` |
+| `open_connection_window` | `connection_id` | `status` (`opened`), `connection_id`, `tab_id`, `window_id`, `is_connected` |
+| `open_table_tab` | `connection_id`, `table_name` (`database_name`, `schema_name`) | `status` (`opened`), `connection_id`, `table_name`, `tab_id`, `window_id` |
+| `search_query_history` | `query` (`connection_id`, `limit`, `since`, `until`) | `entries[]` carrying `id`, `query`, the connection and database it ran on, `source`, `statement_type`, `executed_at`, `execution_time_ms`, `row_count`, `was_successful` and `error_message`, newest first |
 
-Tables the user starred. A good hint at what matters in this database.
+Starred tables are a good hint at what matters in a database. `list_recent_tabs` covers every readable connection when `connection_id` is omitted, its `limit` runs 1 to 500, default 20, and `tab_type` is one of `query`, `table`, `createTable`, `erDiagram`, `serverDashboard`, `insights`, `usersRoles`.
 
-**Arguments**: `connection_id`.
+`open_connection_window` and `open_table_tab` connect first if they have to, and return once the window has a tab or fail after 8 seconds.
 
-**Returns** `favorites[]` (`name`, `database`, `schema`), sorted.
-
-**Scope**: `tools:read`.
-
-### `list_recent_tables`
-
-**Arguments**: `connection_id`.
-
-**Returns** `recent_tables[]` (`name`, `database`, `schema`, `is_view`, `opened_at` as Unix epoch seconds), newest first.
-
-**Scope**: `tools:read`.
-
-### `list_recent_tabs`
-
-Tabs open in TablePro for connections this client may reach.
-
-**Arguments**: `connection_id` (omit for every readable connection), `limit` (1-500, default 20).
-
-**Returns** `tabs[]` (`connection_id`, `connection_name`, `tab_id`, `tab_type`, `display_title`, `is_active`, plus `table_name`, `database_name`, `schema_name`, `window_id` when known). `tab_type` is one of `query`, `table`, `createTable`, `erDiagram`, `serverDashboard`, `insights`, `usersRoles`.
-
-**Scope**: `tools:read`.
-
-### `focus_query_tab`
-
-Bring an open tab to the front.
-
-**Arguments**: `tab_id` (from `list_recent_tabs`).
-
-**Returns** `status` (`"focused"`), `tab_id`, `connection_id`, `window_id`.
-
-**Scope**: `tools:write`.
-
-### `open_connection_window`
-
-Open or focus a window for a saved connection, connecting it if needed. Returns once the window has a tab, or fails after 8 seconds.
-
-**Arguments**: `connection_id`.
-
-**Returns** `status` (`"opened"`), `connection_id`, `tab_id`, `window_id`, `is_connected`.
-
-**Scope**: `tools:write`.
-
-### `open_table_tab`
-
-Open a table in TablePro and bring it forward. Connects the connection if it is not open yet.
-
-**Arguments**: `connection_id`, `table_name` (required), `database_name`, `schema_name`.
-
-**Returns** `status` (`"opened"`), `connection_id`, `table_name`, `tab_id`, `window_id`.
-
-**Scope**: `tools:write`.
-
-### `search_query_history`
-
-Search the query history TablePro keeps on this Mac. Results cover only connections this client may reach, with or without `connection_id`.
-
-**Arguments**: `query` (required; pass `""` to match everything and filter by date alone), `connection_id`, `limit` (1-500, default 50), `since` and `until` as Unix epoch seconds.
-
-**Returns** `entries[]` (`id`, `query`, `connection_id`, `database_name`, `schema_name`, `database_type`, `source`, `statement_type`, `executed_at`, `execution_time_ms`, `row_count`, `was_successful`, `error_message`), newest first. `error_message` is redacted.
-
-**Scope**: `tools:read`.
+`search_query_history` searches the history TablePro keeps on this Mac. Pass `""` to match everything and filter by date alone; `since` and `until` are Unix epoch seconds, and `limit` runs 1 to 500, default 50. Results cover only connections this client may reach, with or without `connection_id`.
 
 ## Annotations
 
 Every tool ships MCP annotations so a client can decide what to auto-run:
 
-- `readOnlyHint: true` on everything that only reads.
-- `destructiveHint: true` on `confirm_destructive_operation`, `drop_database_object`, and `stop_server_session`.
+- `readOnlyHint: true` on the 29 tools that only read. `execute_query` is not one of them.
+- `destructiveHint: true` on `confirm_destructive_operation`, `drop_database_object` and `stop_server_session`.
 - `idempotentHint: true` where repeating the call is safe.
-- `openWorldHint: true` where the call reaches a live server rather than TablePro's own state.
-
-`execute_query` is deliberately not marked read-only: whether it writes depends on the statement.
+- `openWorldHint: true` on the 14 that can reach the database server: every write except `switch_database`, `switch_schema` and `focus_query_tab`, plus `execute_query`, `explain_query` and `export_data`.
 
 ## Errors
 

@@ -3,13 +3,17 @@ title: Oracle Database
 description: Connection settings, SSL modes, auth compatibility, and column type support for Oracle
 ---
 
-Install **Oracle Driver** from **Settings > Plugins > Browse**, or pick Oracle in the connection form and let it prompt you. That is the entire client install: the driver speaks TNS in pure Swift, so Instant Client and the rest of Oracle's stack stay off your Mac. Logins work against Oracle Database 11.1 and later, on-premises, in Docker, or in Oracle Cloud.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+The driver speaks TNS in pure Swift, so Instant Client and the rest of Oracle's stack stay off your Mac. Logins work against Oracle Database 11.1 and later, on-premises, in Docker, or in Oracle Cloud.
 
 <Info>
 Oracle 10g and earlier cannot connect. Their O3LOGON handshake is not implemented, and there is no setting that works around it.
 </Info>
 
 A RAC SCAN listener, a shared server, or a load balancer in front of the database needs no configuration. Neither does a server that requires Native Network Encryption: AES with a SHA-2 checksum is offered on every connect, and the server turns it on when it wants it.
+
+<RegistryPlugin name="Oracle" plugin="Oracle Driver" />
 
 ## Connection settings
 

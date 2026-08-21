@@ -5,7 +5,7 @@ description: Connect to Google Cloud SQL by letting TablePro manage the Cloud SQ
 
 import HelperPort from "/snippets/helper-port.mdx";
 
-The proxy runs as a child process of the app, started on connect and killed on disconnect. What it needs from you is the instance connection name, `project:region:instance`, on the instance's overview page in the Google Cloud console.
+One field carries the whole setup: the instance connection name, `project:region:instance`, which is on the instance's overview page in the Google Cloud console. The proxy itself runs as a child process, started on connect and killed on disconnect.
 
 <Frame caption="The Cloud SQL Auth Proxy pane in the connection form">
   <img className="block dark:hidden" src="/images/cloud-sql-proxy-pane.png" alt="Cloud SQL Auth Proxy pane" />

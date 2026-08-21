@@ -3,7 +3,11 @@ title: Google BigQuery
 description: Connect to Google BigQuery with Service Account, ADC, or OAuth auth
 ---
 
-Use Application Default Credentials if `gcloud` is already on the machine. The other two methods are for machines where it is not: a service account key file, or a browser sign-in against an OAuth client you create. Everything travels over the REST API, so there is no host, port, or tunnel. The plugin installs when you pick BigQuery, or from **Settings > Plugins > Browse > BigQuery Driver**.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+Use Application Default Credentials if `gcloud` is already on the machine. The other two methods are for machines where it is not: a service account key file, or a browser sign-in against an OAuth client you create. Everything travels over the REST API, so there is no host, port, or tunnel.
+
+<RegistryPlugin name="BigQuery" plugin="BigQuery Driver" />
 
 ## Quick setup
 
@@ -80,7 +84,7 @@ Minimum IAM roles: `roles/bigquery.user` to run queries, `roles/bigquery.dataVie
 - A partitioned table needs a partition filter for UPDATE and DELETE, or the statement is rejected. Write it in the editor.
 - No transactions, no streaming inserts, no SSH tunnel.
 - Deep pagination rescans from the start of the table. Filter rather than paging far in.
-- A job is polled until the [query timeout](/customization/settings#query-execution), then cancelled. The floor is 30 seconds, so **No limit** gives BigQuery 30 seconds rather than none.
+- A job is polled until the [query timeout](/customization/general-settings#query-timeout), then cancelled. The floor is 30 seconds, so **No limit** gives BigQuery 30 seconds rather than none.
 
 ## Troubleshooting
 
