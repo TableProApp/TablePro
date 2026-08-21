@@ -166,8 +166,7 @@ public final class EmphasisManager {
             }
 
             // Update text layer if it exists
-            if let textLayer = emphasis.textLayer {
-                var bounds = shapePath.bounds
+            if let textLayer = emphasis.textLayer, var bounds = shapePath.drawableBounds {
                 bounds.origin.y += 1 // Move down by 1 pixel
                 textLayer.frame = bounds
             }
@@ -209,7 +208,7 @@ public final class EmphasisManager {
                 path.move(to: NSPoint(x: rect.minX, y: rect.maxY - lineBottomPadding))
                 path.line(to: NSPoint(x: rect.maxX, y: rect.maxY - lineBottomPadding))
             }
-            return path
+            return path.isEmpty ? nil : path
         }
     }
 
@@ -261,12 +260,15 @@ public final class EmphasisManager {
     private func createTextLayer(for emphasis: Emphasis) -> CATextLayer? {
         guard let textView = textView,
               let layoutManager = textView.layoutManager,
+              let textStorage = textView.textStorage,
+              emphasis.range.length > 0,
+              emphasis.range.upperBound <= textStorage.length,
               let shapePath = layoutManager.roundedPathForRange(emphasis.range),
-              let originalString = textView.textStorage?.attributedSubstring(from: emphasis.range) else {
+              var bounds = shapePath.drawableBounds else {
             return nil
         }
 
-        var bounds = shapePath.bounds
+        let originalString = textStorage.attributedSubstring(from: emphasis.range)
         bounds.origin.y += 1 // Move down by 1 pixel
 
         // Create text layer
