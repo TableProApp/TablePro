@@ -9,6 +9,11 @@ Dump a PostgreSQL or Redshift database to a `.dump` file with `pg_dump`, and res
 PostgreSQL and Redshift only. Restore is disabled on read-only [Safe Mode](/features/safe-mode). Backup stays available on read-only connections because it does not write to the database.
 </Info>
 
+<Frame caption="The Backup Dump sheet with its format and scope options">
+  <img className="block dark:hidden" src="/images/backup-dump-dialog.png" alt="Backup Dump sheet" />
+  <img className="hidden dark:block" src="/images/backup-dump-dialog-dark.png" alt="Backup Dump sheet" />
+</Frame>
+
 ## Requirements
 
 TablePro shells out to your local `pg_dump` and `pg_restore`. Install them with Homebrew:

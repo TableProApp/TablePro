@@ -5,6 +5,11 @@ description: Browsing databases and objects on Teradata Vantage, with TLS and tr
 
 The driver speaks the Teradata wire protocol from native Swift. Setup is a connection form, not a client install. Sessions use the TD2 logon mechanism with the session data encrypted, and land on gateway port `1025`, or on `443` with TLS on. That TLS port is fixed.
 
+<Frame caption="The Teradata connection form">
+  <img className="block dark:hidden" src="/images/teradata-connection-form.png" alt="Teradata connection form" />
+  <img className="hidden dark:block" src="/images/teradata-connection-form-dark.png" alt="Teradata connection form" />
+</Frame>
+
 ## Install the plugin
 
 Teradata is a registry driver. Pick Teradata in the database type chooser and TablePro offers to download it, or install it up front from **Settings > Plugins > Browse > Teradata Driver**. The driver loads without restarting the app.

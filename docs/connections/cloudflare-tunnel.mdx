@@ -5,6 +5,11 @@ description: Reach a database behind Cloudflare Access by letting TablePro manag
 
 Install cloudflared first with `brew install cloudflared`. The tunnel is that binary, running `cloudflared access tcp` against your [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/) hostname on a loopback port, with no terminal session of your own to keep alive.
 
+<Frame caption="The Cloudflare Tunnel pane in the connection form">
+  <img className="block dark:hidden" src="/images/cloudflare-tunnel-pane.png" alt="Cloudflare Tunnel pane" />
+  <img className="hidden dark:block" src="/images/cloudflare-tunnel-pane-dark.png" alt="Cloudflare Tunnel pane" />
+</Frame>
+
 ## How it works
 
 ```mermaid

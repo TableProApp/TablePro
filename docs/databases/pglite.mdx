@@ -5,6 +5,11 @@ description: Connect to a PGlite database over its socket server using the Postg
 
 [PGlite](https://pglite.dev) is PostgreSQL 17 compiled to WebAssembly, and it runs inside a JavaScript process rather than listening on a socket of its own. A network client reaches it only through `@electric-sql/pglite-socket`, which you start yourself before opening the connection form. Once that is up, the connection behaves like [PostgreSQL](/databases/postgresql), down to the same libpq driver, schema introspection, DDL, and EXPLAIN.
 
+<Frame caption="The PGlite connection form pointed at a running socket server">
+  <img className="block dark:hidden" src="/images/pglite-connection-form.png" alt="PGlite connection form" />
+  <img className="hidden dark:block" src="/images/pglite-connection-form-dark.png" alt="PGlite connection form" />
+</Frame>
+
 ## Start the socket server
 
 PGlite has no server of its own, so start one first. It listens on `127.0.0.1:5432` by default:

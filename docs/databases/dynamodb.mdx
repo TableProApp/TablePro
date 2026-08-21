@@ -5,6 +5,11 @@ description: Connect to Amazon DynamoDB with PartiQL queries, GSI/LSI browsing, 
 
 Sign in with IAM keys, a named AWS profile, or an SSO session. Every request after that is a separate HTTPS call signed with SigV4, so nothing is held open and there is no SSH tunnel to configure.
 
+<Frame caption="The DynamoDB connection form with an auth method picked">
+  <img className="block dark:hidden" src="/images/dynamodb-connection-form.png" alt="DynamoDB connection form" />
+  <img className="hidden dark:block" src="/images/dynamodb-connection-form-dark.png" alt="DynamoDB connection form" />
+</Frame>
+
 ## Quick setup
 
 Click **Create Connection…**, select **DynamoDB**, choose an auth method, enter your credentials and region, then click **Save & Connect**. The plugin auto-installs when you pick DynamoDB, or install it from **Settings > Plugins > Browse > DynamoDB Driver**.
