@@ -108,7 +108,7 @@ Import `.sql` and `.sql.gz` files (statements execute directly against your data
 
 <Steps>
   <Step title="Open Import Dialog">
-    Click **File** > **Import** > **From SQL** (`Cmd+Shift+I`).
+    Click **File > Import > Import Data…** (`Cmd+Shift+I`) and pick a `.sql` file.
   </Step>
   <Step title="Configure Options">
     Set encoding, transaction wrapping, and foreign key check options. TablePro remembers the options from your last successful import; cancelling the dialog discards changes, and **Reset to Defaults** restores the stock settings.
@@ -150,7 +150,7 @@ When an import stops on an error, the same panel shows the line it stopped at, t
 
 ### Import JSON Data
 
-Choose **File** > **Import** > **From JSON** and pick a `.json`, `.jsonl`, or `.ndjson` file. The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON (one object per line, streamed for large files), and TablePro's own JSON export shape `{ "table": [ {…} ] }`, so an export round-trips back in.
+Choose **File > Import > Import Data…** and pick a `.json`, `.jsonl`, or `.ndjson` file. The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON (one object per line, streamed for large files), and TablePro's own JSON export shape `{ "table": [ {…} ] }`, so an export round-trips back in.
 
 Choose a destination:
 
@@ -161,7 +161,7 @@ Rows insert through parameterized statements, so JSON values are never concatena
 
 ### Import CSV Data
 
-Choose **File** > **Import** > **From CSV** and pick a `.csv` or `.tsv` file. TablePro opens the same row import sheet used for JSON, with CSV-specific parsing options. The delimiter and encoding are auto-detected; the quote character defaults to a double quote. Change any parsing option and the field mapping re-reads the file. Destination options match JSON import: map into an existing table or create a new one.
+Choose **File > Import > Import Data…** and pick a `.csv` or `.tsv` file. TablePro opens the same row import sheet used for JSON, with CSV-specific parsing options. The delimiter and encoding are auto-detected; the quote character defaults to a double quote. Change any parsing option and the field mapping re-reads the file. Destination options match JSON import: map into an existing table or create a new one.
 
 | Option | Description | Default |
 |--------|-------------|---------|

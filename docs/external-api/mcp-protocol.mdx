@@ -1,6 +1,6 @@
 ---
 title: MCP Protocol
-description: Wire contract for TablePro's MCP server: protocol versions, required metadata, headers, result envelope, cache hints, and error codes
+description: "Wire contract for TablePro MCP server: protocol versions, required metadata, headers, result envelope, cache hints, and error codes"
 ---
 
 TablePro's MCP server speaks [Model Context Protocol](https://modelcontextprotocol.io) revision **2026-07-28**, and still answers two older revisions for clients that have not moved yet. This page is the wire contract. For the tools themselves see [MCP Tools](/external-api/mcp-tools).
@@ -329,7 +329,7 @@ A request with no `io.modelcontextprotocol/protocolVersion` in `_meta` is treate
 1. `POST /mcp` with `initialize` and a `protocolVersion` of `2025-11-25` or `2025-06-18`. Any other value is `-32022`.
 2. The response carries `protocolVersion`, `capabilities`, `serverInfo` and `instructions`.
 3. Every later request carries `Mcp-Session-Id`. A session belongs to the token that created it; presenting it under another token is `-33001`.
-4. A session lives until the server stops. The store holds at most 16 at a time and evicts the least recently used past that. A session the server does not recognise is `-33001`, and the client has to `initialize` again.
+4. A session lives until the server stops. The store holds at most 16 at a time and evicts the least recently used past that. A session the server does not recognize is `-33001`, and the client has to `initialize` again.
 
 Legacy clients see `resources.subscribe: false` and cannot call `server/discover` or `subscriptions/listen`. Their results carry no `resultType`, no cache hints, and no `serverInfo` in `_meta`.
 
