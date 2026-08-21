@@ -1,0 +1,100 @@
+---
+title: FAQ
+description: Short answers on licensing, privacy, offline use, database coverage, syncing, and moving from another client
+---
+
+Each answer is the short version, with a link to the page that goes deeper. Anything not covered is worth an issue on [GitHub](https://github.com/TableProApp/TablePro/issues), where driver requests and support questions are tracked in the open.
+
+## Cost and licensing
+
+<AccordionGroup>
+
+<Accordion title="Is TablePro free?">
+Yes. It runs without a license and has no trial countdown, so every driver, the SQL editor, import and export, and the AI assistant work unlicensed. A license adds the features in the tier table and nothing else changes. See [Licensing](/features/licensing).
+</Accordion>
+
+<Accordion title="What does a license add?">
+Two tiers. Starter covers iCloud Sync, encrypted connection export, environment variables in connection fields, Linked Folders, Query Insights, and result charts. Team adds the Team Catalog and the Team Library on top of Starter. Until you activate, those screens show an overlay with **Activate License…** and a purchase link. See [Licensing](/features/licensing).
+</Accordion>
+
+<Accordion title="Can I use it at work?">
+Yes. The app is free to run and nothing counts seats. To share connections and saved queries with teammates, the Team tier hands out seats from your account on tablepro.app, and each teammate activates with an invite code instead of a key. See [Team Plan](/features/team).
+</Accordion>
+
+<Accordion title="What license is the source code under?">
+The GNU Affero General Public License v3.0. The full source, plugins included, is on [GitHub](https://github.com/TableProApp/TablePro). That is a separate thing from a TablePro license key, which activates the paid features rather than the app itself.
+</Accordion>
+
+</AccordionGroup>
+
+## Privacy and security
+
+<AccordionGroup>
+
+<Accordion title="Is my data sent anywhere?">
+Your queries, results, and schemas stay on your Mac. The one thing TablePro sends on its own is an anonymous heartbeat every 24 hours: a hashed machine ID, platform, app and OS version, architecture, language, which database types are open, how many connections are open, and whether a license is present. Turn it off with **Share anonymous usage data** in **Settings > General**. AI is the exception, since the context you allow reaches the provider you configured. See [Settings](/customization/settings) and [AI Assistant](/features/ai-assistant).
+</Accordion>
+
+<Accordion title="Is my password safe?">
+Passwords go into the macOS Keychain, not the connections file, and an ordinary export leaves them out. Publishing to the Team Library sends the connection definition and query text only, and MCP clients query through your saved connections without seeing a password. Two exceptions: **Copy Connection String** puts the password on the clipboard in plain text, and an encrypted export (Starter) carries credentials behind a passphrase. See [Connection Sharing](/features/connection-sharing).
+</Accordion>
+
+</AccordionGroup>
+
+## Databases and drivers
+
+<AccordionGroup>
+
+<Accordion title="Which databases are supported?">
+27, from MySQL, PostgreSQL, and SQLite through MongoDB, Redis, ClickHouse, BigQuery, and DuckDB. The table on the [home page](/) lists each one, and [Managing Connections](/databases/overview) adds the transport each supports and whether it can go through an SSH tunnel, SSL, Cloudflare Tunnel, Cloud SQL Proxy, or a SOCKS proxy.
+</Accordion>
+
+<Accordion title="Why is my database not in the list?">
+Its driver is probably not installed yet. The database type chooser badges registry drivers **Not Installed**; pick one anyway and the download runs before the connection opens, with no restart. **Settings > Plugins > Browse** holds the full catalog. If the database is genuinely missing, open a request on [GitHub](https://github.com/TableProApp/TablePro/issues). See [Plugins & Themes](/features/plugins).
+</Accordion>
+
+<Accordion title="Why does a driver need downloading?">
+Five drivers ship inside the app and cover 9 databases. Another 17 drivers come from the registry and install on the first connection that needs them, which keeps the app download at about 20 MB. Each one must match the SHA-256 checksum in the registry manifest and carry a valid code signature before it loads.
+</Accordion>
+
+<Accordion title="Why does a plugin need updating after I update the app?">
+An app update can raise the plugin interface version, and a plugin built against the old one is rejected at load instead of crashing. TablePro repairs it on its own: at launch it fetches the registry and reinstalls a compatible build, retrying when the registry is unreachable. Until then the plugin sits in a banner in **Settings > Plugins > Installed** with the reason and an action.
+</Accordion>
+
+</AccordionGroup>
+
+## Platforms and sync
+
+<AccordionGroup>
+
+<Accordion title="Does it work offline?">
+Connecting, browsing, and querying need nothing but the database. The license is re-verified offline on every launch from the signed copy on disk, and when the license server cannot be reached it keeps working for 30 days after the last successful validation. What does need the network: installing or updating a plugin, and any AI provider that is not local. See [Licensing](/features/licensing).
+</Accordion>
+
+<Accordion title="Does it sync between Macs?">
+Through iCloud, with a Starter or Team license. Sync is off by default and each category has its own toggle: connections, groups and tags, SSH profiles, saved queries, table favorites, and settings. Passwords are a separate opt-in that rides iCloud Keychain, and a connection can be marked **Local only** to stay off iCloud. See [iCloud Sync](/features/icloud-sync).
+</Accordion>
+
+<Accordion title="Is there an iPhone app?">
+Yes, for iPhone and iPad on iOS 18 or later. It reads the same CloudKit data as the Mac app but carries connections, groups, and tags only, and it updates on its own schedule rather than with a Mac release. See [iCloud Sync](/features/icloud-sync) and [iOS Shortcuts](/external-api/ios-shortcuts).
+</Accordion>
+
+<Accordion title="Is there a Windows or Linux version?">
+No. macOS 14 or later, plus iPhone and iPad on iOS 18 or later. A Linux port is a prototype with nothing to install yet, and there is no Windows build at all. Progress is tracked on [GitHub](https://github.com/TableProApp/TablePro).
+</Accordion>
+
+</AccordionGroup>
+
+## Moving from another client
+
+<AccordionGroup>
+
+<Accordion title="How do I move from TablePlus?">
+**File > Import from Other App…** reads the connections TablePlus already has, groups included, and TablePlus does not need to be running. TablePlus keeps each password as its own Keychain item, so macOS asks per item; choose **Always Allow** and the run finishes without asking again. Saved queries, query history, and column widths do not come across. The same dialog handles Sequel Ace, DBeaver, DataGrip, Beekeeper Studio, and Navicat. See [Switching to TablePro](/switching).
+</Accordion>
+
+<Accordion title="What if my client is not in the importer?">
+Two other routes. **Add from Existing > Import from URL** takes a `postgres://` or `mysql://` URL and fills in the form. [Open Project Folder](/features/project-folder-import) reads database settings out of a repository's `.env`, `docker-compose.yml`, or framework config, so a project becomes a connection without typing a host.
+</Accordion>
+
+</AccordionGroup>
