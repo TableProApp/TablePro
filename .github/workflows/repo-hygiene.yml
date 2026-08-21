@@ -69,6 +69,14 @@ jobs:
           echo "checking ${#SCRIPTS[@]} scripts"
           shellcheck --severity=warning "${SCRIPTS[@]}"
 
+      # shellcheck cannot tell a shell function from a command on PATH, so a script that calls a
+      # scripts/lib function without sourcing the library reads as correct everywhere and dies at
+      # run time with exit 127. That is how v0.67.1's DMG job failed: create-dmg.sh called
+      # notarize_and_staple and never sourced lib/notarize.sh, and a release was the first thing
+      # to run it.
+      - name: Check every script sources the libraries it calls into
+        run: python3 scripts/ci/check-lib-sourcing.py
+
       - name: Check the plugin manifest against the plugin classes
         run: python3 scripts/ci/check-plugin-manifest.py
 

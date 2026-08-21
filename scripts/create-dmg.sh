@@ -4,6 +4,9 @@
 
 set -e
 
+# shellcheck source=lib/notarize.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/notarize.sh"
+
 # Configuration
 APP_NAME="TablePro"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
