@@ -110,22 +110,6 @@ targets:
       - path: TablePro/Resources/ThirdPartyLicenses
         type: folder
         buildPhase: resources
-      # Copied into the bundle rather than reached through an absolute rpath into the source
-      # tree. TablePro.debug.dylib and the MySQL, PostgreSQL and Redis plugins all link
-      # @rpath/libssl.3.dylib and @rpath/libcrypto.3.dylib, and both dylibs already carry an
-      # @rpath install name, so @executable_path/../Frameworks resolves them once they are here.
-      #
-      # Without this the app only launched from a checkout that had Libs/dylibs on disk, which is
-      # what made the sharded test jobs abort with SIGABRT before XCTest could connect (#2334).
-      # A release build was already self-contained, because build-release.sh copies them in.
-      - path: Libs/dylibs/libssl.3.dylib
-        buildPhase:
-          copyFiles:
-            destination: frameworks
-      - path: Libs/dylibs/libcrypto.3.dylib
-        buildPhase:
-          copyFiles:
-            destination: frameworks
     configFiles:
       Debug: Configs/Version.xcconfig
       Release: Configs/Version.xcconfig
@@ -134,6 +118,31 @@ targets:
         embed: true
         codeSign: true
         removeHeaders: true
+      # Embedded rather than reached through an absolute rpath into the source tree.
+      # TablePro.debug.dylib and the MySQL, PostgreSQL and Redis plugins all link
+      # @rpath/libssl.3.dylib and @rpath/libcrypto.3.dylib, and both dylibs already carry an
+      # @rpath install name, so @executable_path/../Frameworks resolves them once they are here.
+      # Without this the app only launched from a checkout that had Libs/dylibs on disk, which is
+      # what made the sharded test jobs abort with SIGABRT before XCTest could connect (#2334).
+      # A release build was already self-contained: build-release.sh copies them in.
+      #
+      # codeSign matters as much as embed. create-openssl-dylibs.sh leaves them ad-hoc signed, and
+      # codesign refuses a bundle whose nested code carries a different identity from the app:
+      # "code object is not signed at all, in subcomponent libcrypto.3.dylib". A plain copy-files
+      # phase does not re-sign, so this built only until download-libs.sh next regenerated the
+      # dylibs. CI never saw it, because every CI build passes CODE_SIGNING_ALLOWED=NO.
+      #
+      # link: false keeps this to embedding and signing. A framework dependency links by default,
+      # which would put both into Link Binary With Libraries and change what the app links against;
+      # the app reaches them through @rpath from TablePro.debug.dylib and the plugins, as before.
+      - framework: Libs/dylibs/libssl.3.dylib
+        embed: true
+        codeSign: true
+        link: false
+      - framework: Libs/dylibs/libcrypto.3.dylib
+        embed: true
+        codeSign: true
+        link: false
       - target: mcp-server
         embed: true
         codeSign: true
