@@ -162,7 +162,11 @@ Derived/
 Libs/*.a
 Libs/.downloaded
 Libs/dylibs/
-Libs/ios/
+Libs/ios/*
+# The integrity baseline for the iOS xcframeworks is tracked, the way Libs/checksums.sha256 is.
+# The directory pattern above has to end in /* rather than /, because git cannot re-include a
+# file whose parent directory is itself excluded.
+!Libs/ios/checksums.sha256
 
 # Rust driver build outputs. The vendored crates are workspace members, so the bridge
 # lockfile is the only one cargo writes. lib/ holds the staticlib slices build-dameng.sh

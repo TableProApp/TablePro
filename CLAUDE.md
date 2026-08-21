@@ -81,11 +81,13 @@ git add Libs/checksums.sha256 && git commit -m "build: update static library che
 
 Never run `shasum -a 256 Libs/*.a > Libs/checksums.sha256` by hand: regenerating from a stale `Libs/` reverts other libraries silently (this shipped a broken libmongoc and rolled back DuckDB once). `publish-libs.sh` exists to make that impossible.
 
+The same applies to the iOS xcframeworks. `download-libs.sh` verifies `Libs/ios` against `Libs/ios/checksums.sha256` on every run, so the archive and its baseline have to move together; `publish-ios-libs.sh` does both and refuses a publish that changes nothing. It takes `--dry-run`.
+
 ```bash
 
 # iOS xcframeworks (Libs/ios/*.xcframework)
-tar czf /tmp/tablepro-libs-ios-v1.tar.gz -C Libs/ios .
-gh release upload libs-v1 /tmp/tablepro-libs-ios-v1.tar.gz --clobber --repo TableProApp/TablePro
+scripts/publish-ios-libs.sh
+git add Libs/ios/checksums.sha256 && git commit -m "build: update iOS xcframework checksums"
 ```
 
 ## Architecture
