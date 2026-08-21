@@ -90,7 +90,9 @@ A link comes from outside, so TablePro drops the settings that decide where a co
 
 Startup SQL and the remaining driver options do carry across, and the confirmation sheet lists them in full before you add the connection. Read the startup SQL: it runs on every connect, with your credentials.
 
-## Encrypted Export <sup>Starter</sup>
+## Encrypted Export
+
+<Info>Needs a [Starter license](/features/licensing).</Info>
 
 Include passwords in the export, protected by a passphrase.
 
@@ -106,7 +108,9 @@ Credentials are encrypted with AES-256-GCM; the key derives from your passphrase
   <img className="hidden dark:block" src="/images/connection-export-encrypted-dark.png" alt="Encrypted export" />
 </Frame>
 
-## Linked Folders <sup>Starter</sup>
+## Linked Folders
+
+<Info>Needs a [Starter license](/features/licensing).</Info>
 
 Watch a shared directory for `.tablepro` files. Connections appear read-only in the sidebar. Each person enters their own password. Works with Git repos, Dropbox, network drives.
 
@@ -117,11 +121,15 @@ Press `Cmd+,`, then go to **Settings > Account > Linked Folders > Add Folder…*
   <img className="hidden dark:block" src="/images/linked-folders-settings-dark.png" alt="Linked Folders" />
 </Frame>
 
-## Team Catalog <sup>Team</sup>
+## Team Catalog
 
-Right-click a connection > **Share** > **Publish to Team Catalog…** writes each selected connection as its own `.tablepro` file into a shared folder. The first time, TablePro asks for the folder: a Git repo, Dropbox folder, or network drive your team shares. Republishing overwrites the file. Passwords, passphrases, and TOTP secrets are never written. Teammates add the same folder as a [Linked Folder](#linked-folders) and get the connections read-only. Part of the [Team plan](/features/team).
+<Info>Needs a [Team license](/features/licensing).</Info>
 
-## Environment Variables <sup>Starter</sup>
+Right-click a connection > **Share** > **Publish to Team Catalog…** writes each selected connection as its own `.tablepro` file into a shared folder. The first time, TablePro asks for the folder: a Git repo, Dropbox folder, or network drive your team shares. Republishing overwrites the file. Passwords, passphrases, and TOTP secrets are never written. Teammates add the same folder as a [Linked Folder](#linked-folders) and get the connections read-only.
+
+## Environment Variables
+
+<Info>Needs a [Starter license](/features/licensing).</Info>
 
 Use `$VAR` and `${VAR}` in `.tablepro` files. Resolved from TablePro's process environment at connect time, so set variables with `launchctl setenv NAME value` or launch TablePro from a terminal.
 
