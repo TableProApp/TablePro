@@ -3,7 +3,7 @@ title: AWS IAM Authentication
 description: Connect to Amazon RDS and Aurora with IAM database authentication instead of a static password
 ---
 
-Connect to Amazon RDS and Aurora using your AWS identity instead of a database password. On every connect, TablePro signs a short-lived authentication token with your AWS credentials and uses it as the password. Available for MySQL, MariaDB, and PostgreSQL connections.
+There is no password to save here. TablePro signs a short-lived token with your AWS credentials on every connect and gives the database that instead. The token expires after 15 minutes and is never stored. MySQL, MariaDB, and PostgreSQL on RDS and Aurora all authenticate this way.
 
 ## Setting up
 

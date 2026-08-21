@@ -3,7 +3,7 @@ title: Amazon DynamoDB
 description: Connect to Amazon DynamoDB with PartiQL queries, GSI/LSI browsing, and DynamoDB Local support
 ---
 
-TablePro connects to Amazon DynamoDB over the AWS HTTP API. Sign in with IAM credentials, an AWS profile, or SSO. Browse tables, run PartiQL queries, inspect GSI and LSI indexes, and edit items in the data grid.
+Sign in with IAM keys, a named AWS profile, or an SSO session. Every request after that is a separate HTTPS call signed with SigV4, so nothing is held open and there is no SSH tunnel to configure.
 
 ## Quick setup
 

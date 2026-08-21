@@ -3,7 +3,7 @@ title: Plugin Development
 description: Write a database driver plugin, implement the PluginKit protocols, and package it as a .tableplugin bundle
 ---
 
-A TablePro database driver is a `.tableplugin` bundle built against **TableProPluginKit** (`Plugins/TableProPluginKit/`). You implement two protocols: `DriverPlugin` describes the database (name, port, capabilities, SQL dialect) and creates driver instances; `PluginDatabaseDriver` is the connection itself (connect, query, fetch schema). The app bridges your driver to its internal `DatabaseDriver` protocol through `PluginDriverAdapter` and resolves it by database type ID, so a working plugin gets the full UI: connection form, sidebar, data grid, editor, import and export.
+`DriverPlugin` describes the database (name, port, capabilities, SQL dialect) and creates driver instances. `PluginDatabaseDriver` is the connection itself: connect, query, fetch schema. Implement both in a `.tableplugin` bundle linked against **TableProPluginKit** (`Plugins/TableProPluginKit/`). `PluginDriverAdapter` then bridges your driver to the app's internal `DatabaseDriver` protocol and resolves it by database type ID, so a working plugin gets the full UI: connection form, sidebar, data grid, editor, import and export.
 
 The best starting point is an existing plugin. `Plugins/SurrealDBDriverPlugin/` is a compact reference with no C bridge: it talks HTTP, implements the schema-aware query-building hooks, and ships a custom editor language.
 

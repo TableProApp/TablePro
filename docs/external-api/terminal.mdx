@@ -3,7 +3,7 @@ title: Terminal and DDEV
 description: Open a database or a file in TablePro from the shell, and add a ddev tablepro command to your DDEV projects
 ---
 
-TablePro opens any database URL or file passed to it by the operating system. That makes it scriptable from the shell, and it is how the DDEV integration below works.
+Run `open -b com.TablePro "mysql://root@127.0.0.1:3306/shop"` from any shell and that database opens in a window. A saved connection is matched if there is one; if not, the session is temporary and nothing lands on disk. `.sql` files and database files take the same route, and DDEV projects get a `ddev tablepro` command of their own.
 
 ## Open a database from the shell
 

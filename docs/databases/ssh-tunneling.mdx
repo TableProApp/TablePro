@@ -3,7 +3,7 @@ title: SSH Tunneling
 description: Route database connections through an SSH tunnel to reach servers in private networks
 ---
 
-TablePro tunnels database connections through SSH using a built-in libssh2 client. No `ssh` binary or external setup is required. The tunnel opens a local forwarding port in the 60000-65000 range (this is why macOS may show a network permission prompt), sends a keep-alive every 30 seconds, and reconnects automatically if the tunnel dies. Before handing that port to the database driver, TablePro checks that the SSH server can actually reach the destination, so a wrong host or a blocked forward fails with the real reason instead of a database timeout.
+A wrong host or a blocked forward fails with the real reason instead of a database timeout, because the destination is checked from the SSH side before the driver is handed the local port. That port sits in the 60000-65000 range, which is why macOS may show a network permission prompt. Nothing calls the `ssh` binary: TablePro carries its own libssh2 client, which opens the tunnel, sends a keep-alive every 30 seconds, and reconnects on its own if the tunnel dies.
 
 The **SSH Tunnel** pane appears only for databases whose driver supports it. SQLite, PGlite, libSQL, Beancount, BigQuery, Cloudflare D1, DynamoDB, Elasticsearch, and Snowflake do not show it: they are reached over a local file, a loopback socket, or a vendor HTTP API.
 

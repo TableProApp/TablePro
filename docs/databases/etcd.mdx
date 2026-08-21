@@ -3,7 +3,7 @@ title: etcd
 description: Connect to etcd v3 clusters with prefix-based key browsing and an etcdctl-style command editor
 ---
 
-TablePro connects to etcd v3 over the HTTP/JSON gRPC-gateway (it never speaks raw gRPC). On connect it probes the `/v3/`, `/v3beta/`, and `/v3alpha/` gateway prefixes in order, so etcd 3.2 through current releases work without configuration. Browse keys grouped by prefix, edit values in the grid, and run etcdctl-style commands in the editor.
+The driver talks to the HTTP/JSON gRPC-gateway and never speaks raw gRPC. At connect it probes the `/v3/`, `/v3beta/` and `/v3alpha/` gateway prefixes in that order, so anything from 3.2 to a current release works with no configuration.
 
 ## Quick setup
 

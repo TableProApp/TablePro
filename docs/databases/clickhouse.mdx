@@ -3,7 +3,7 @@ title: ClickHouse
 description: Connect to ClickHouse over its HTTP interface with TablePro
 ---
 
-TablePro connects to ClickHouse over its HTTP interface (port 8123 by default), not the native TCP protocol. The driver ships inside the app; there is nothing to install.
+Every query travels over HTTP to port 8123. The native TCP protocol on 9000 is not used, so the server's HTTP interface has to be on. The driver ships inside the app; there is nothing to install.
 
 ## Quick setup
 

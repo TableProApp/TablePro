@@ -3,7 +3,7 @@ title: Trino
 description: Connect to a Trino cluster with TablePro's native Swift driver.
 ---
 
-TablePro connects to Trino with a driver written in native Swift. It speaks the Trino client REST protocol directly over HTTP, so there is no JDBC jar or CLI to install. Queries run over `POST /v1/statement` and TablePro pages through the results until the cluster is done.
+Trino publishes its client protocol over plain HTTP, and this driver is a REST client for it rather than a bridge to something else. A query is one `POST /v1/statement`; the rows arrive a page at a time until the cluster says it has finished.
 
 Presto uses the same protocol under a different header prefix. The current driver targets Trino.
 

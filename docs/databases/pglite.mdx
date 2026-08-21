@@ -3,7 +3,7 @@ title: PGlite
 description: Connect to a PGlite database over its socket server using the PostgreSQL wire protocol
 ---
 
-TablePro connects to [PGlite](https://pglite.dev), a build of PostgreSQL 17 compiled to WebAssembly. PGlite runs in-process in JavaScript, so it speaks the network wire protocol only through its socket server, `@electric-sql/pglite-socket`. Once that server is running, TablePro connects to it with the same libpq driver as [PostgreSQL](/databases/postgresql), and schema introspection, DDL, and EXPLAIN all behave like PostgreSQL.
+[PGlite](https://pglite.dev) is PostgreSQL 17 compiled to WebAssembly, and it runs inside a JavaScript process rather than listening on a socket of its own. A network client reaches it only through `@electric-sql/pglite-socket`, which you start yourself before opening the connection form. Once that is up, the connection behaves like [PostgreSQL](/databases/postgresql), down to the same libpq driver, schema introspection, DDL, and EXPLAIN.
 
 ## Start the socket server
 

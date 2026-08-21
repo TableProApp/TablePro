@@ -40,6 +40,7 @@ check "greyed out" 'greyed out|grayed out'
 check "welcome screen" '[a-z] welcome screen'
 check "H4 heading" '^#### '
 check "New Connection button" '\*\*New Connection\*\*'
+check "filter panel" 'filter panel'
 
 if [ "$fail" -ne 0 ]; then
     echo

@@ -3,7 +3,7 @@ title: Testing a Custom Plugin
 description: Load a locally built driver plugin in a debug build of TablePro
 ---
 
-When you write your own driver plugin (see [Plugin Development](/development/plugin-development)), you can run it in a local build of TablePro before publishing it to the [Plugin Registry](/development/plugin-registry).
+A plugin in the user plugins directory has to carry the same Apple team as the running app. Your own debug build therefore takes what your Xcode just signed, and a release build of TablePro rejects the same bundle. See [Plugin Development](/development/plugin-development) for writing the driver, and the [Plugin Registry](/development/plugin-registry) for publishing it once it works.
 
 ## How plugin loading works
 

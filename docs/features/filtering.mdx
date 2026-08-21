@@ -3,7 +3,7 @@ title: Filtering
 description: Filter table data with 18 operators, raw SQL, and saved presets
 ---
 
-Press `Cmd+Option+F` while viewing a table to open the filter bar. Type a raw SQL WHERE clause and press `Enter` to filter. Raw SQL is the default mode.
+A filter is a WHERE clause, and it runs at the database. That is the difference between filtering and the find bar: matches come from every row in the table, not from the page you are looking at. Open the filter bar with `Cmd+Option+F`, type a condition into the row that appears, and press `Enter`.
 
 <Frame caption="Filter panel with column and raw SQL conditions">
   <img className="block dark:hidden" src="/images/filter-panel.png" alt="Filter panel above the data grid" />
@@ -27,10 +27,10 @@ When you reopen a table, TablePro restores the filters you last applied to it, i
 
 To delete every saved filter row for the current table, open the **⋯** menu and choose **Remove All Filters**.
 
-The filter panel queries the database. To narrow rows already loaded in the grid without re-querying, use the column value filter in the [Data Grid](/features/data-grid).
+The filter bar queries the database. To narrow rows already loaded in the grid without re-querying, use the column value filter in the [Data Grid](/features/data-grid).
 
 <Info>
-Redis shows a key-pattern search bar (for example `user:*`) with a key-type picker instead of the filter panel.
+Redis shows a key-pattern search bar (for example `user:*`) with a key-type picker instead of the filter bar.
 </Info>
 
 ## Operators
@@ -130,4 +130,4 @@ Save and load filter configurations via the **⋯** menu in the header.
 | Default Operator | Equal, Contains |
 | Panel State | Always Hide, Always Show, Restore Last Filter |
 
-**Panel State** controls what happens when you reopen a table. **Restore Last Filter** (the default) brings back the filter you last applied. **Always Hide** reopens tables unfiltered with the panel closed. **Always Show** keeps the filter panel visible even when no filter is set.
+**Panel State** controls what happens when you reopen a table. **Restore Last Filter** (the default) brings back the filter you last applied. **Always Hide** reopens tables unfiltered with the panel closed. **Always Show** keeps the filter bar visible even when no filter is set.

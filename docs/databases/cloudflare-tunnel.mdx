@@ -3,7 +3,7 @@ title: Cloudflare Tunnel
 description: Reach a database behind Cloudflare Access by letting TablePro manage the cloudflared process
 ---
 
-Cloudflare Tunnel routes your database connection through `cloudflared access tcp` so you can reach a database published behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/). Instead of running cloudflared by hand in a terminal before every session, TablePro starts it when you connect and stops it when you disconnect, the same way it manages [SSH tunnels](/databases/ssh-tunneling).
+Install cloudflared first with `brew install cloudflared`. The tunnel is that binary, running `cloudflared access tcp` against your [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/) hostname on a loopback port, with no terminal session of your own to keep alive.
 
 ## How it works
 

@@ -3,7 +3,7 @@ title: Cloud SQL Auth Proxy
 description: Connect to Google Cloud SQL by letting TablePro manage the Cloud SQL Auth Proxy
 ---
 
-The [Cloud SQL Auth Proxy](https://cloud.google.com/sql/docs/mysql/sql-proxy) connects to a Google Cloud SQL instance over an encrypted, IAM-authorized channel without exposing the database to the public internet or managing client certificates. Instead of running `cloud-sql-proxy` by hand in a terminal before every session, TablePro starts it when you connect and stops it when you disconnect, the same way it manages [SSH tunnels](/databases/ssh-tunneling) and [Cloudflare tunnels](/databases/cloudflare-tunnel).
+The [Cloud SQL Auth Proxy](https://cloud.google.com/sql/docs/mysql/sql-proxy) carries an encrypted, IAM-authorized channel to your instance, so the database can stay off the public internet with no client certificates to hand out. Running it is part of the connection here, so the process comes up when you connect, goes away when you disconnect, and never needs a terminal window of its own, the same as an [SSH tunnel](/databases/ssh-tunneling) or a [Cloudflare tunnel](/databases/cloudflare-tunnel).
 
 This works for Cloud SQL instances running MySQL, PostgreSQL, or SQL Server.
 

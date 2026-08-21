@@ -3,7 +3,7 @@ title: Teradata
 description: Connect to Teradata Vantage with TablePro's native Swift driver.
 ---
 
-TablePro connects to Teradata Vantage with a driver written in native Swift. It speaks the Teradata wire protocol directly, so there is no ODBC driver or JDBC jar to install. Sessions use the TD2 logon mechanism with encrypted data.
+The driver speaks the Teradata wire protocol from native Swift. Setup is a connection form, not a client install. Sessions use the TD2 logon mechanism with the session data encrypted, and land on gateway port `1025`, or on `443` with TLS on. That TLS port is fixed.
 
 ## Install the plugin
 

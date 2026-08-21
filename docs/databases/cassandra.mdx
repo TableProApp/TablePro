@@ -3,7 +3,7 @@ title: Cassandra / ScyllaDB
 description: Connect to Cassandra and ScyllaDB clusters, browse keyspaces, and run CQL queries
 ---
 
-TablePro supports Apache Cassandra 3.0+ and ScyllaDB via the CQL native protocol. The driver requires the `system_schema` keyspace, introduced in Cassandra 3.0. Browse keyspaces and tables, inspect table structure, and run CQL in the editor.
+Anything older than Cassandra 3.0 will not connect. The driver reads its schema from `system_schema`, which 2.x does not have. ScyllaDB is a separate entry in the database type list but the same driver, over the same CQL native protocol.
 
 ## Quick setup
 

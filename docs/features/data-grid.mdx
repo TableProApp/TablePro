@@ -3,7 +3,7 @@ title: Data Grid
 description: Sort, filter, edit, and copy query results in a spreadsheet-style grid
 ---
 
-Query results and table data open in a spreadsheet-style grid. Sort and filter columns, edit cells inline, and copy in several formats.
+A cell you change is not saved yet. Changes queue in the tab: the toolbar counts them, `Cmd+Shift+P` shows the statements they will produce, and nothing reaches the database until you press `Cmd+S`. The same grid holds a table's rows and a query's output, and both accept changes when the rows come from one table.
 
 <Frame caption="Data grid with query results">
   <img className="block dark:hidden" src="/images/data-grid.png" alt="Data grid" />
@@ -177,7 +177,7 @@ Matching is case and accent insensitive, and it runs over the text you see, so a
 | `No matches` | Every row is loaded and none match |
 | `Not on this page` | None of the loaded rows match, and more rows exist |
 
-When nothing matches on the page and more rows exist, **Search All Rows** turns the term into a filter that runs on the server, so the answer covers the whole table. That button replaces the filters on the tab, so it only appears when you have none applied. With filters already set, add your search to the filter panel instead.
+When nothing matches on the page and more rows exist, **Search All Rows** turns the term into a filter that runs on the server, so the answer covers the whole table. That button replaces the filters on the tab, so it only appears when you have none applied. With filters already set, add your search to the filter bar instead.
 
 ## Pagination and limits
 

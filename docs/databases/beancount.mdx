@@ -3,7 +3,7 @@ title: Beancount
 description: Open Beancount ledgers with TablePro
 ---
 
-TablePro opens `.beancount` ledgers as read-only, file-based connections. If the Beancount plugin is not installed yet, TablePro prompts you to download it before opening the ledger. The driver projects transactions, postings, accounts, prices, computed balances, balance assertions, the remaining directives, metadata, and source files into SQL tables for browsing and exports.
+Point TablePro at a `.beancount` file and you get a read-only SQL database over it. The driver projects the ledger into 17 tables: transactions, postings, accounts, prices, computed balances, balance assertions, the other directives, metadata, and the source files themselves. The plugin is not bundled with the app, so the first time you open a `.beancount` file you get a prompt to download it.
 
 The plugin uses either `rledger` (the rustledger project) or Python Beancount to parse ledgers. TablePro does not bundle either one, so install one yourself before opening a ledger. When both are available, TablePro uses `rledger`; Python Beancount is the fallback for browsing projected SQL tables.
 

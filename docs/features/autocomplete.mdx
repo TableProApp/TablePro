@@ -3,7 +3,7 @@ title: Autocomplete
 description: Schema-aware SQL autocomplete for keywords, tables, columns, and functions
 ---
 
-Autocomplete suggests keywords, tables, columns, and functions based on where your cursor is and what tables are in scope.
+What the popup offers depends on the clause under the cursor. Tables come after FROM and JOIN, a table's columns after its alias and a dot, and inside WHERE you get the operators your database declares. MongoDB connections complete MQL instead, following the shape of the query rather than the clause.
 
 <Frame caption="Context-aware autocomplete">
   <img

@@ -3,7 +3,7 @@ title: Query Parameters
 description: Use :name placeholders in SQL queries, fill values in a panel, execute with prepared statements
 ---
 
-Instead of editing your SQL every time you want to test a different value, use `:name` placeholders. TablePro detects them, shows a panel for entering values, and executes using prepared statements.
+A `:word` in your SQL becomes a field you fill in before the query runs, unless it sits inside a string, a comment, or a PostgreSQL cast. Press `Cmd+Enter` once to raise the fields and `Cmd+Enter` again to run. Where the driver has a parameter API, what you typed is bound, never pasted into the text.
 
 <Frame caption="Query parameter panel">
   <img

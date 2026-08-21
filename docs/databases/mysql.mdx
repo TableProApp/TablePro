@@ -3,7 +3,7 @@ title: MySQL
 description: Connect to MySQL 5.7 and later with the bundled MariaDB Connector/C driver
 ---
 
-TablePro connects to MySQL 5.7 and later through its bundled driver, built on MariaDB Connector/C. MySQL 8's `caching_sha2_password` auth works out of the box. MariaDB uses the same driver; MariaDB-specific notes are on [MariaDB](/databases/mariadb).
+MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no auth plugin to switch over. The same driver covers 5.7 and later, and MariaDB as well; MariaDB-specific notes are on [MariaDB](/databases/mariadb).
 
 ## Quick setup
 

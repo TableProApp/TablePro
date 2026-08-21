@@ -3,7 +3,7 @@ title: Microsoft SQL Server
 description: Connect to SQL Server and Azure SQL Database with the FreeTDS-based driver plugin
 ---
 
-TablePro connects over TDS 7.4 via FreeTDS, which SQL Server 2012 and later speak. This covers instances on Windows, Linux, and Docker, plus Azure SQL Database. FreeTDS is statically linked into the plugin, so there is nothing to build or install besides the plugin itself.
+Named instances are not supported. Give the host and the TCP port instead, `1433` by default. The wire protocol underneath is TDS 7.4, which every server from 2012 on speaks, so instances on Windows, Linux and Docker all work, and so does Azure SQL Database. FreeTDS is linked statically, so there is nothing to build or install besides the plugin itself.
 
 ## Install Plugin
 
