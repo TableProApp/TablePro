@@ -51,3 +51,9 @@ jobs:
 
       - name: Check writing style
         run: bash docs/scripts/check-writing-style.sh
+
+      # The Mintlify CLI needs a working native toolchain, so it is the step most likely
+      # to break on an environment change. This one is plain Python, and it also answers
+      # what the CLI does not: a page in no navigation group, which nothing links to.
+      - name: Check links and navigation coverage
+        run: python3 docs/scripts/check-links.py
