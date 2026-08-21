@@ -76,8 +76,20 @@ pass() {
 build_symbol_index() {
     local sdk_root frameworks fw iface
     {
-        grep -rhoE '\b[A-Z][A-Za-z0-9_]{3,}\b' --include='*.swift' \
-            TablePro Plugins Packages LocalPackages TableProTests TableProUITests 2> /dev/null
+        # Comments are stripped first. Without that the index is built from prose as well as
+        # code, so a page could name a symbol that exists only inside somebody's `//` note and
+        # the check would call it resolved. String literals are deliberately kept: a name used
+        # only in a literal is still a name this tree uses.
+        #
+        # Per file, not over one concatenated stream: a non-greedy /* */ match across a joined
+        # stream would swallow everything between one file's opening marker and a later file's
+        # closing one.
+        find TablePro Plugins Packages LocalPackages TableProTests TableProUITests \
+            -name '*.swift' -type f 2> /dev/null |
+            while IFS= read -r swift_file; do
+                perl -0777 -pe 's{/\*.*?\*/}{}gs' "$swift_file" 2> /dev/null |
+                    perl -pe 's{//.*$}{}' 2> /dev/null
+            done | grep -hoE '\b[A-Z][A-Za-z0-9_]{3,}\b'
         # C bridge headers: libpq, libmariadb and friends are named in the docs too.
         grep -rhoE '\b[A-Za-z][A-Za-z0-9_]{3,}\b' --include='*.h' Plugins 2> /dev/null
         # Xcode target and scheme names live in project.yml, not in any source file.

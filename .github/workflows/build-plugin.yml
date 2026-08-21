@@ -153,10 +153,6 @@ jobs:
         # plugin classes they describe with nothing to notice.
         run: python3 scripts/ci/plugin-info.py "$MATRIX_TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Build Cassandra dependencies
-        if: ${{ contains(matrix.tag, 'plugin-cassandra-') }}
-        run: ./scripts/build-cassandra.sh both
-
       - name: Build Dameng native bridge
         if: ${{ contains(matrix.tag, 'plugin-dameng-') }}
         run: ./scripts/build-dameng.sh both
