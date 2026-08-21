@@ -62,7 +62,7 @@ SELECT u.| FROM users u  -- Columns from users via alias
 SELECT * FROM users WHERE |  -- Columns from users
 ```
 
-#### Alias Resolution
+### Alias Resolution
 
 Type an alias followed by `.` to see that table's columns:
 
@@ -73,7 +73,7 @@ FROM users u
 JOIN orders o ON u.id = o.|  -- id, user_id, total (from orders)
 ```
 
-#### Derived Tables and CTEs
+### Derived Tables and CTEs
 
 An alias for a subquery (derived table) or a `WITH` table completes the columns that subquery's SELECT list produces, including `AS` renames:
 

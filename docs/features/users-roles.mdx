@@ -72,7 +72,7 @@ If a change would remove access for the account your connection is using, TableP
 
 Select it and press Delete, or use **-**, or the context menu. The drop is staged and struck through, and Cmd+Z undoes it. Nothing runs until you apply.
 
-On PostgreSQL, a role that owns objects cannot simply be dropped. TablePro detects this and asks whether to reassign the owned objects to another role or drop them, generating `REASSIGN OWNED` or `DROP OWNED` alongside the `DROP ROLE`.
+On PostgreSQL, a role that owns objects cannot be dropped outright. TablePro detects this and asks whether to reassign the owned objects to another role or drop them, generating `REASSIGN OWNED` or `DROP OWNED` alongside the `DROP ROLE`.
 
 <Note>
 `REASSIGN OWNED` and `DROP OWNED` only affect the database you are connected to, plus shared objects. A role that owns objects in several databases needs the same step run in each. This is PostgreSQL behavior, not a TablePro limitation.

@@ -1,6 +1,6 @@
 ---
 title: MCP Subscriptions
-description: subscriptions/listen, the notification filter TablePro honours, and what it deliberately does not send
+description: subscriptions/listen, the notification filter TablePro honors, and what it deliberately does not send
 ---
 
 `subscriptions/listen` replaces `resources/subscribe` and the old `GET` stream. One long-lived POST carries every notification the client asked for, and the request stays open until the client hangs up.
@@ -50,9 +50,9 @@ Read it. It is not an echo. Anything TablePro will not deliver is missing from i
 
 The response switches to `text/event-stream` at this point, and stays open. A keepalive comment goes out every 15 seconds so an intermediary does not time the connection out.
 
-## What TablePro honours
+## What TablePro honors
 
-| Filter field | Honoured | Notes |
+| Filter field | Honored | Notes |
 |--------------|:--------:|-------|
 | `resourcesListChanged` | yes | Fires when the set of connected connections this token can see changes. |
 | `resourceSubscriptions` | yes | Only `tablepro://connections/{id}/schema` URIs. |

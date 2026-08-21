@@ -77,7 +77,7 @@ Check a query for correctness, cost and risk against the live schema before runn
 
 **Arguments**: `connection`, `query` (required), `explain_plan`, `database`, `schema`.
 
-TablePro matches identifiers in the query against the table inventory and renders the structure of up to 6 tables it recognises. Without `explain_plan` the prompt asks the model to name the `EXPLAIN` command to run and what to look for in it. The review is ordered: correctness, cost against the row counts shown, risk (locks, transaction safety, cancellability), and a rewrite only if one is needed.
+TablePro matches identifiers in the query against the table inventory and renders the structure of up to 6 tables it recognizes. Without `explain_plan` the prompt asks the model to name the `EXPLAIN` command to run and what to look for in it. The review is ordered: correctness, cost against the row counts shown, risk (locks, transaction safety, cancellability), and a rewrite only if one is needed.
 
 ### `propose_indexes`
 
@@ -125,7 +125,7 @@ Query text is limited to 8,000 characters per statement in the rendered prompt.
 { "completion": { "values": ["orders", "order_items"], "total": 2, "hasMore": false } }
 ```
 
-`ref` is either `{ "type": "ref/prompt", "name": ... }` or `{ "type": "ref/resource", "uri": ... }`. An unknown prompt or an unrecognised template is `-32602`.
+`ref` is either `{ "type": "ref/prompt", "name": ... }` or `{ "type": "ref/resource", "uri": ... }`. An unknown prompt or an unrecognized template is `-32602`.
 
 ### What resolves
 

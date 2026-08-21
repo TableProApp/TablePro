@@ -29,7 +29,7 @@ TablePro serves two eras at once, and they are not equal.
 
 **The legacy era is `2025-11-25` and `2025-06-18`.** They keep working through `initialize` and `Mcp-Session-Id` so an existing client does not break on an app update. Legacy clients see `resources.subscribe: false`, get no `resultType` and no cache hints, and cannot reach the two modern methods. Nothing new will be added there.
 
-`2025-03-26` is no longer accepted. It requires JSON-RPC batching, which TablePro never implemented, so a client that asked for it was already relying on behaviour that did not exist.
+`2025-03-26` is no longer accepted. It requires JSON-RPC batching, which TablePro never implemented, so a client that asked for it was already relying on behavior that did not exist.
 
 A legacy version stays supported for as long as the specification lists it as current or recent, and it goes away when it stops being either. Its removal is a `Removed` entry in the CHANGELOG, not a silent change.
 
@@ -77,4 +77,4 @@ These can change at any time without notice:
 
 ## Reporting issues
 
-If something contradicts these rules, file an issue at [github.com/TableProApp/TablePro](https://github.com/TableProApp/TablePro/issues). Include the TablePro version, the call, expected and actual behaviour, and the matching activity log row if there is one.
+If something contradicts these rules, file an issue at [github.com/TableProApp/TablePro](https://github.com/TableProApp/TablePro/issues). Include the TablePro version, the call, expected and actual behavior, and the matching activity log row if there is one.

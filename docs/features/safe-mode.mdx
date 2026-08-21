@@ -117,12 +117,12 @@ The profile targets the `com.TablePro` preference domain with a flat key:
 |---|---|---|
 | `com.TablePro.policy.minimumSafeModeLevel` | String | `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull`, or `readOnly` |
 
-A value TablePro does not recognise imposes no floor at all. It never falls back to Read-Only, which would lock people out of a typo, and never to Silent, which would quietly drop the policy.
+A value TablePro does not recognize imposes no floor at all. It never falls back to Read-Only, which would lock people out of a typo, and never to Silent, which would quietly drop the policy.
 
-TablePro reads this the way macOS intends: a configuration profile already outranks the app's own preferences, so a forced key simply wins, and the app asks `CFPreferencesAppValueIsForced` only to know that the matching control should be disabled rather than merely preset.
+TablePro reads this the way macOS intends: a configuration profile already outranks the app's own preferences, so a forced key wins, and the app asks `CFPreferencesAppValueIsForced` only to know that the matching control should be disabled rather than merely preset.
 
 <Note>
-This is a floor on TablePro's own behaviour, not on the database. It stops the app issuing a write; it does not stop the same person connecting with `psql`. Pair it with server-side privileges for anything that has to hold. See [Server Read-Only Is Not Safe Mode](#server-read-only-is-not-safe-mode).
+This is a floor on TablePro's own behavior, not on the database. It stops the app issuing a write; it does not stop the same person connecting with `psql`. Pair it with server-side privileges for anything that has to hold. See [Server Read-Only Is Not Safe Mode](#server-read-only-is-not-safe-mode).
 </Note>
 
 ## External Clients

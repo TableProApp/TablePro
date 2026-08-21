@@ -28,7 +28,7 @@ MongoDB is a registry plugin. Picking it in the **Choose a Database** sheet prom
 | **Database** | - | The database to open on connect. Leave empty to browse them all |
 | **Auth Mechanism** | Default | SCRAM-SHA-1, SCRAM-SHA-256, X.509, or AWS IAM. In the Authentication section |
 
-Naming a **Database** opens straight into it and skips listing every database on the server, which is worth doing on a cluster with many of them. Leave it empty and TablePro opens the first non-system database it finds. **Cmd+K** switches to another either way. A database in a connection URL path (`mongodb://host:27017/mydb`) fills the same field.
+Naming a **Database** opens straight into it and skips listing every database on the server, which is worth doing on a cluster with many of them. Leave it empty and TablePro opens the first non-system database it finds. `Cmd+K` switches to another either way. A database in a connection URL path (`mongodb://host:27017/mydb`) fills the same field.
 
 **Database** is not the same as **Auth Database**: one says what you browse, the other says where your user account lives. They are linked in one direction. With **Auth Database** empty, a named **Database** is also what TablePro authenticates against, matching how a `/database` path works in a MongoDB connection string. So if your user lives in `admin` and you name a **Database**, set **Auth Database** to `admin` as well, or authentication fails. SRV connections are exempt and always authenticate against `admin` unless you say otherwise.
 
@@ -130,7 +130,7 @@ db.users.countDocuments({"role": "admin"})
 
 **Collection references**: Write `db.users`, `db["users"]`, or `db.getCollection("users")`. The bracket and `getCollection` forms take the name exactly as written, so use them for names that contain dots or spaces, start with a digit, or match a database method such as `stats` or `version`. Single quotes and backticks work in place of double quotes. `db.getSiblingDB(…)` is not supported: a query always runs against the database the connection is using.
 
-**Chained methods**: `.sort()`, `.limit()` and `.skip()` chain onto `find` and onto `aggregate`. On an aggregation they become `$sort`, `$skip` and `$limit` stages appended to the pipeline, in that order, which is what the cursor methods mean. Chaining onto a call that returns no cursor, such as `insertOne`, is an error, and so is a method the parser does not recognise. Nothing is dropped silently.
+**Chained methods**: `.sort()`, `.limit()` and `.skip()` chain onto `find` and onto `aggregate`. On an aggregation they become `$sort`, `$skip` and `$limit` stages appended to the pipeline, in that order, which is what the cursor methods mean. Chaining onto a call that returns no cursor, such as `insertOne`, is an error, and so is a method the parser does not recognize. Nothing is dropped silently.
 
 **Write options**: `updateOne`, `updateMany`, `replaceOne` and `findOneAndUpdate` take a third options document. `upsert`, `arrayFilters` and `hint` are passed to the server. The option used to be dropped without a word, so an upsert quietly did nothing.
 

@@ -7,7 +7,7 @@ Export connections to a `.tablepro` file and share with your team. Passwords are
 
 ## Export
 
-Right-click a connection > **Share** > **Export to File…**. Select multiple first to export together. **File** > **Export Connections…** exports all.
+Right-click a connection > **Share > Export to File…**. Select multiple first to export together. **File > Export Connections…** exports all.
 
 Exported: name, host, port, database, username, type, SSH/SSL config, color, tags, group, Safe Mode level, Startup Commands, Pre-Connect Script, AI Policy, the Local only flag, the Redis database index, and any driver field the plugin does not mark secret (region, project ID, and so on). Not exported: passwords, key passphrases, TOTP secrets, or any driver field marked secret.
 
@@ -20,8 +20,8 @@ The Share menu also has three copy items. **Copy Connection String** writes a fu
 
 ## Import
 
-- **File** > **Import Connections…**
-- **File** > **Import from URL…** (paste a database URL, see [Connection URLs](/databases/connection-urls))
+- **File > Import Connections…**
+- **File > Import from URL…** (paste a database URL, see [Connection URLs](/databases/connection-urls))
 - Right-click empty area > **Import Connections…**
 - Double-click a `.tablepro` file
 - Drag onto TablePro
@@ -47,7 +47,7 @@ TablePro for iPhone reads and writes the same `.tablepro` file. Import: tap the 
 
 ## Import from Other Apps
 
-1. **File** > **Import from Other App…**
+1. **File > Import from Other App…**
 2. Pick the source app. Navicat asks for the `.ncx` file you exported from Navicat.
 3. Review the list, uncheck what you don't want, resolve duplicates, click **Import**.
 
@@ -65,11 +65,11 @@ TablePro for iPhone reads and writes the same `.tablepro` file. Import: tap the 
 | Beekeeper Studio | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from its `app.db` store |
 | Navicat | MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, MongoDB | Decrypted from `.ncx` file |
 
-Groups and folders carry over. The source app doesn't need to be running. DBeaver is read from its data folder, so every edition works. DataGrip imports from its recent projects with SSH tunnel and SSL settings; master-password-protected connections can't be read. Beekeeper Studio imports include encrypted passwords and SSH bastion hosts. Navicat needs an export first: **File** > **Export Connections** in Navicat, with **Export Password** on to bring passwords across.
+Groups and folders carry over. The source app doesn't need to be running. DBeaver is read from its data folder, so every edition works. DataGrip imports from its recent projects with SSH tunnel and SSL settings; master-password-protected connections can't be read. Beekeeper Studio imports include encrypted passwords and SSH bastion hosts. Navicat needs an export first: **File > Export Connections** in Navicat, with **Export Password** on to bring passwords across.
 
 ## Share via Link
 
-Right-click a connection > **Share** > **Copy TablePro Link**. Produces a `tablepro://import?…` URL with the name, host, port, type, username, database, and any SSH or SSL settings. No passwords, key passphrases, or TOTP secrets. The recipient opens the link, reviews the prefilled form, adds their own password, and saves.
+Right-click a connection > **Share > Copy TablePro Link**. Produces a `tablepro://import?…` URL with the name, host, port, type, username, database, and any SSH or SSL settings. No passwords, key passphrases, or TOTP secrets. The recipient opens the link, reviews the prefilled form, adds their own password, and saves.
 
 ```text
 tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&username=admin
@@ -96,7 +96,7 @@ Startup SQL and the remaining driver options do carry across, and the confirmati
 
 Include passwords in the export, protected by a passphrase.
 
-1. Right-click > **Share** > **Export to File…**
+1. Right-click > **Share > Export to File…**
 2. Turn on **Include Credentials**
 3. Enter a passphrase (8+ characters), confirm
 4. **Export…**
@@ -125,7 +125,7 @@ Press `Cmd+,`, then go to **Settings > Account > Linked Folders > Add Folder…*
 
 <Info>Needs a [Team license](/features/licensing).</Info>
 
-Right-click a connection > **Share** > **Publish to Team Catalog…** writes each selected connection as its own `.tablepro` file into a shared folder. The first time, TablePro asks for the folder: a Git repo, Dropbox folder, or network drive your team shares. Republishing overwrites the file. Passwords, passphrases, and TOTP secrets are never written. Teammates add the same folder as a [Linked Folder](#linked-folders) and get the connections read-only.
+Right-click a connection > **Share > Publish to Team Catalog…** writes each selected connection as its own `.tablepro` file into a shared folder. The first time, TablePro asks for the folder: a Git repo, Dropbox folder, or network drive your team shares. Republishing overwrites the file. Passwords, passphrases, and TOTP secrets are never written. Teammates add the same folder as a [Linked Folder](#linked-folders) and get the connections read-only.
 
 ## Environment Variables
 

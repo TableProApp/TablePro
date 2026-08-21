@@ -20,7 +20,7 @@ Connection paths use the connection's UUID, not its display name.
 tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1
 ```
 
-There is no UI action that copies a connect link. To find a connection's UUID, call the MCP [`list_connections`](/external-api/mcp-tools) tool or read the [`tablepro://connections`](/external-api/mcp-resources) resource; both return the UUID for each saved connection. The welcome screen's **Copy TablePro Link** context menu item copies a `tablepro://import?…` link for sharing the connection, not a `connect` link.
+There is no UI action that copies a connect link. To find a connection's UUID, call the MCP [`list_connections`](/external-api/mcp-tools) tool or read the [`tablepro://connections`](/external-api/mcp-resources) resource; both return the UUID for each saved connection. The welcome window's **Copy TablePro Link** context menu item copies a `tablepro://import?…` link for sharing the connection, not a `connect` link.
 
 <Warning>
 Pre-0.38 builds accepted `tablepro://connect/<name>/…` paths. Name-based paths were removed in 0.38.0. Bookmarks built against older versions must be regenerated with UUID-keyed paths.

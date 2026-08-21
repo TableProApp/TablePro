@@ -82,7 +82,7 @@ If the connection's safe-mode level is **Silent**, write tools auto-approve. If 
 
 Provider support for tool calling: every provider except Cursor. Claude Agent reaches the same tools through the MCP server, so it needs that server turned on. Ollama, llama.cpp, MLX, and custom endpoints depend on the model.
 
-#### Tool Call Limit
+### Tool Call Limit
 
 A reply may make 25 tool calls before it pauses. The pause keeps every tool call and result already in the reply, and shows **Continue** to carry on with a fresh budget, plus **Adjust Limit** to open the setting. Change the number, or turn the limit off, under **Agent** in [Settings > AI](/customization/settings#agent). A higher limit costs more tokens per reply and can dilute the answer as the conversation grows.
 
