@@ -103,6 +103,8 @@ Right-click an editable cell and open **Set Value** for common values without ty
 
 Foreign key cells show an arrow on the right edge. Click it to open the referenced table filtered to the matching row. If the current tab holds a query or unsaved edits, the reference opens in its own tab instead of replacing it, and clicking the same reference again returns to that tab. `Cmd`-click always opens a new tab. Right-click for **Preview Referenced Row**, which shows the row in a popover.
 
+Step back through the references you followed with the Back and Forward buttons at the leading edge of the toolbar, or **View > Back** (`Ctrl+Cmd+[`) and **View > Forward** (`Ctrl+Cmd+]`). Back puts the table you came from back as you left it, with the same filters, sort, page and selected row. Opening a table from the object browser over the current tab is recorded the same way. Each tab keeps its own history, so a reference you opened in its own tab has nothing to go back to, and Back never closes a tab. Back is unavailable while a tab holds unsaved edits, since going back would discard them.
+
 <Frame caption="Foreign key lookup">
   <img className="block dark:hidden" src="/images/fk-lookup-popover.png" alt="Foreign key lookup" />
   <img className="hidden dark:block" src="/images/fk-lookup-popover-dark.png" alt="Foreign key lookup" />

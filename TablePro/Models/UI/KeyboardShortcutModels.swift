@@ -114,6 +114,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case importData
 
     // Navigation
+    case navigateBack
+    case navigateForward
     case newTab
     case closeTab
     case closeOtherTabs
@@ -154,7 +156,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .importData:
             return .dataGrid
-        case .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
+        case .navigateBack, .navigateForward,
+             .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
              .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
              .toggleInspector, .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
@@ -198,6 +201,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .executeAllStatements: return String(localized: "Execute All Statements")
         case .executeQueryWithoutLimit: return String(localized: "Execute Query Without Limit")
         case .cancelQuery: return String(localized: "Cancel Query")
+        case .navigateBack: return String(localized: "Back")
+        case .navigateForward: return String(localized: "Forward")
         case .newTab: return String(localized: "New Tab")
         case .openDatabase: return String(localized: "Open Database")
         case .openFile: return String(localized: "Open File")
@@ -544,6 +549,14 @@ struct KeyboardSettings: Codable, Equatable {
         .refresh: .character("r", command: true),
 
         // Navigation
+        /// Not the Safari chord. Command+[ and Command+] are Previous/Next Page and are claimed
+        /// again by the editor's own indent and outdent, Option+Command+[ and ] are the result
+        /// tabs, Shift+Command+[ and ] are the editor tabs, Control+Command+Left and Right are
+        /// Previous/Next Statement, and Option+Command+Left is Toggle Fold. Two menu items cannot
+        /// share a key equivalent: AppKit blanks the loser's. This completes the bracket family
+        /// the app already reads as "step through something".
+        .navigateBack: .character("[", command: true, control: true),
+        .navigateForward: .character("]", command: true, control: true),
         .newTab: .character("t", command: true),
         .closeTab: .character("w", command: true),
         .reopenClosedTab: .character("t", command: true, shift: true),

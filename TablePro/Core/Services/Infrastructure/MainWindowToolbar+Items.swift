@@ -59,6 +59,29 @@ extension MainWindowToolbar {
         )
     }
 
+    /// No text label on either button: the HIG asks for the standard chevrons and says not to
+    /// label a Back control. `chevron.backward` and `chevron.forward` mirror in a right-to-left
+    /// layout, which `chevron.left` and `chevron.right` do not.
+    func subitemNavigateBack() -> NSToolbarItem {
+        menuOnlyItem(
+            id: Self.navigateBack,
+            label: String(localized: "Back"),
+            symbol: "chevron.backward",
+            action: #selector(performNavigateBack(_:)),
+            shortcut: .navigateBack
+        )
+    }
+
+    func subitemNavigateForward() -> NSToolbarItem {
+        menuOnlyItem(
+            id: Self.navigateForward,
+            label: String(localized: "Forward"),
+            symbol: "chevron.forward",
+            action: #selector(performNavigateForward(_:)),
+            shortcut: .navigateForward
+        )
+    }
+
     func subitemSaveChanges() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.saveChanges,

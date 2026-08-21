@@ -41,6 +41,10 @@ struct MenuValidationContext: Equatable {
     var canCloseTabsForOtherDatabases = false
     var canCloseAllTabs = false
     var canPinResultTab = false
+    /// The selected tab's browse history. Separate flags rather than one, because Back and Forward
+    /// run out independently and an item that is disabled has to say which one it is.
+    var canNavigateBack = false
+    var canNavigateForward = false
     var canSaveAsFavorite = false
     var canSwitchSidebarLayout = false
     var canToggleWorkspaceRail = false
@@ -203,6 +207,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canUseTableResultCommands
         case #selector(pinResult(_:)):
             return context.canPinResultTab
+        case #selector(navigateBack(_:)):
+            return context.isConnected && context.canNavigateBack
+        case #selector(navigateForward(_:)):
+            return context.isConnected && context.canNavigateForward
         case #selector(useFlatSidebarLayout(_:)), #selector(useTreeSidebarLayout(_:)):
             return context.canSwitchSidebarLayout
         case #selector(toggleWorkspaceRail(_:)),
@@ -240,6 +248,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             canCloseTabsForOtherDatabases: actions.canCloseTabsForOtherDatabases,
             canCloseAllTabs: actions.canCloseAllTabs,
             canPinResultTab: actions.canPinResultTab,
+            canNavigateBack: actions.canNavigateBack,
+            canNavigateForward: actions.canNavigateForward,
             canSaveAsFavorite: actions.canSaveAsFavorite,
             canSwitchSidebarLayout: actions.canSwitchSidebarLayout,
             canToggleWorkspaceRail: actions.canToggleWorkspaceRail,

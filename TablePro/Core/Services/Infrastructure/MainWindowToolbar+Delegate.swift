@@ -19,6 +19,17 @@ extension MainWindowToolbar {
         switch itemIdentifier {
         case Self.sidebarToggle:
             return makeSidebarToggleItem(claimsSlot: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag))
+        case Self.backForwardGroup:
+            /// `isNavigational` is what puts back and forward on the leading edge of the content
+            /// title area, where Finder and Safari keep them, instead of in the slot the identifier
+            /// list nominally gives them. `connectionGroup` below relies on the same flag.
+            let group = makeNativeGroup(
+                id: itemIdentifier,
+                label: String(localized: "Navigation"),
+                subitems: [subitemNavigateBack(), subitemNavigateForward()]
+            )
+            group.isNavigational = true
+            return group
         case Self.connectionGroup:
             let group = makeGroup(
                 id: itemIdentifier,
