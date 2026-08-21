@@ -340,6 +340,8 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoDBDecimal128.swift
       - Plugins/MongoDBDriverPlugin/MongoDBAuthSourceResolver.swift
       - Plugins/MongoDBDriverPlugin/MongoDBCreateDatabasePlan.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBFilterClause.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBFilterValue.swift
       - Plugins/MongoDBDriverPlugin/MongoDBFindLimitPolicy.swift
       - Plugins/MongoDBDriverPlugin/MongoDBJsonNumber.swift
       - Plugins/MongoDBDriverPlugin/MongoDBNameValidator.swift

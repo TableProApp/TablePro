@@ -348,12 +348,12 @@ struct MongoDBQueryBuilderTests {
         #expect(doc.contains("\"$lte\": 65"))
     }
 
-    @Test("Filter document with BETWEEN invalid format returns empty")
+    @Test("Filter document with BETWEEN invalid format matches nothing")
     func filterDocumentBetweenInvalid() {
         let doc = builder.buildFilterDocument(
             from: [PluginQueryFilter(column: "age", op: "BETWEEN", value: "18")]
         )
-        #expect(doc == "{}")
+        #expect(doc == MongoDBQueryBuilder.impossibleFilter)
     }
 
     @Test("Filter document with empty filters returns empty object")
@@ -362,12 +362,20 @@ struct MongoDBQueryBuilderTests {
         #expect(doc == "{}")
     }
 
-    @Test("Filter document with unknown operator returns empty object")
+    @Test("Filter document with unknown operator matches nothing")
     func filterDocumentUnknownOp() {
         let doc = builder.buildFilterDocument(
             from: [PluginQueryFilter(column: "x", op: "UNKNOWN_OP", value: "y")]
         )
-        #expect(doc == "{}")
+        #expect(doc == MongoDBQueryBuilder.impossibleFilter)
+    }
+
+    @Test("A filter whose conditions all drop never widens to the whole collection")
+    func filterDocumentNeverFailsOpen() {
+        let doc = builder.buildFilterDocument(
+            from: [PluginQueryFilter(column: "x", op: "UNKNOWN_OP", value: "y")]
+        )
+        #expect(doc != "{}")
     }
 
     @Test("Filter document with float value")

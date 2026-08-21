@@ -124,6 +124,11 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
     var rawSQL: String?
     var isCaseSensitive: Bool
 
+    /// The array ancestor of `columnName` whose element this condition binds to, for a document
+    /// store where several conditions can be required to match the *same* array element. Empty
+    /// leaves the condition independent, so any element may satisfy it.
+    var elementScope: String?
+
     /// Special column name for raw SQL mode
     static let rawSQLColumn = "__RAW__"
 
@@ -135,7 +140,8 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
         secondValue: String? = nil,
         isEnabled: Bool = true,
         rawSQL: String? = nil,
-        isCaseSensitive: Bool? = nil
+        isCaseSensitive: Bool? = nil,
+        elementScope: String? = nil
     ) {
         self.id = id
         self.columnName = columnName
@@ -145,10 +151,12 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
         self.isEnabled = isEnabled
         self.rawSQL = rawSQL
         self.isCaseSensitive = isCaseSensitive ?? filterOperator.defaultIsCaseSensitive
+        self.elementScope = elementScope
     }
 
     enum CodingKeys: String, CodingKey {
         case id, columnName, filterOperator, value, secondValue, isEnabled, rawSQL, isCaseSensitive
+        case elementScope
     }
 
     init(from decoder: Decoder) throws {
@@ -163,6 +171,7 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
         self.rawSQL = try container.decodeIfPresent(String.self, forKey: .rawSQL)
         self.isCaseSensitive = try container.decodeIfPresent(Bool.self, forKey: .isCaseSensitive)
             ?? decodedOperator.defaultIsCaseSensitive
+        self.elementScope = try container.decodeIfPresent(String.self, forKey: .elementScope)
     }
 
     /// Whether this filter is valid (has enough info to apply)
@@ -213,9 +222,18 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
 }
 
 extension TableFilter {
+    /// The joined `value` stays as it was for drivers that still read a `BETWEEN` as one
+    /// comma-separated string; `secondValue` carries the upper bound intact for those that don't,
+    /// so a bound holding a comma is no longer mistaken for the separator.
     var asPluginQueryFilter: PluginQueryFilter {
         if isRawSQL {
-            return PluginQueryFilter(column: columnName, op: filterOperator.rawValue, value: rawSQL ?? "")
+            return PluginQueryFilter(
+                column: columnName,
+                op: filterOperator.rawValue,
+                value: rawSQL ?? "",
+                secondValue: nil,
+                elementScope: nil
+            )
         }
         let resolvedValue: String
         if filterOperator == .between, let second = secondValue {
@@ -227,7 +245,9 @@ extension TableFilter {
             column: columnName,
             op: filterOperator.rawValue,
             value: resolvedValue,
-            isCaseSensitive: isCaseSensitive
+            isCaseSensitive: isCaseSensitive,
+            secondValue: filterOperator == .between ? secondValue : nil,
+            elementScope: elementScope
         )
     }
 }

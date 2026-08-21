@@ -14,6 +14,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var currentDb: String
     private let columnKindLock = NSLock()
     private var columnKindsByCollection: [String: [String: BsonValueKind]] = [:]
+    private var fieldPathKindsByCollection: [String: [String: BsonValueKind]] = [:]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBPluginDriver")
 
@@ -270,6 +271,10 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             filter: "{}", sort: nil, projection: nil, skip: 0, limit: max(1, limit)
         ).docs
 
+        rememberFieldPathKinds(
+            BsonDocumentFlattener.fieldPathKinds(from: docs, representation: uuidRepresentation),
+            collection: table
+        )
         return BsonDocumentFlattener.fieldPaths(from: docs, representation: uuidRepresentation)
     }
 
@@ -448,7 +453,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        let filterJson = MongoDBQueryBuilder().buildFilterDocument(from: filters, logicMode: logicMode)
+        let filterJson = MongoDBQueryBuilder(columnKinds: filterKinds(for: table))
+            .buildFilterDocument(from: filters, logicMode: logicMode)
         let count = try await conn.countDocuments(
             database: currentDb, collection: table, filter: filterJson, background: background
         )
@@ -755,7 +761,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         offset: Int,
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
-        let builder = MongoDBQueryBuilder()
+        let builder = MongoDBQueryBuilder(columnKinds: filterKinds(for: table))
         return builder.buildFilteredQuery(
             collection: table, queryFilters: queryFilters, logicMode: logicMode,
             sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
@@ -1130,6 +1136,22 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func columnKinds(for collection: String) -> [String: BsonValueKind] {
         let key = columnKindKey(collection)
         return columnKindLock.withLock { columnKindsByCollection[key] ?? [:] }
+    }
+
+    private func rememberFieldPathKinds(_ kinds: [String: BsonValueKind], collection: String) {
+        guard !collection.isEmpty, !kinds.isEmpty else { return }
+        let key = columnKindKey(collection)
+        columnKindLock.withLock { fieldPathKindsByCollection[key] = kinds }
+    }
+
+    /// Kinds a filter can be typed against: the flat columns the grid shows, plus every nested
+    /// path the picker offers. Without the nested half, a filter on a nested Date or ObjectId is
+    /// compared as a string and MongoDB's type bracketing returns nothing.
+    private func filterKinds(for collection: String) -> [String: BsonValueKind] {
+        let key = columnKindKey(collection)
+        return columnKindLock.withLock {
+            (fieldPathKindsByCollection[key] ?? [:]).merging(columnKindsByCollection[key] ?? [:]) { _, top in top }
+        }
     }
 
     /// Two databases can hold a collection of the same name with different field types.
