@@ -1,18 +1,12 @@
 name: Docs
 
+# No paths filter. As a required status check, a filtered workflow never starts on a PR
+# that misses the filter, so the check sits pending and blocks the merge forever. It runs
+# in about a minute, which is cheaper than the exception handling.
 on:
   pull_request:
-    paths:
-      - 'docs/**'
-      - '.github/workflows/docs.yml'
-      - 'TablePro/Core/Menu/**'
-      - 'TablePro/Core/Plugins/PluginManager.swift'
-      - 'TablePro/Models/UI/KeyboardShortcutModels.swift'
   push:
     branches: [main]
-    paths:
-      - 'docs/**'
-      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 concurrency:
