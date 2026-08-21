@@ -1,68 +1,42 @@
 ---
 title: Managing Connections
-description: Create, organize, and switch database connections, with health monitoring and startup commands
+description: Create, organize, and switch database connections
 ---
 
-TablePro connects to 27 databases through its plugin system. This page covers creating and organizing connections. Driver-specific fields and quirks live on each database's own page.
-
-## Supported databases
-
-| Database | Default port | SSH tunnel | SSL/TLS | Cloudflare Tunnel | Cloud SQL Proxy | SOCKS Proxy |
-|----------|-------------|-----------|---------|-------------------|-----------------|-------------|
-| [MySQL](/databases/mysql) | 3306 | Yes | Yes | Yes | Yes | Yes |
-| [MariaDB](/databases/mariadb) | 3306 | Yes | Yes | Yes | No | Yes |
-| [PostgreSQL](/databases/postgresql) | 5432 | Yes | Yes | Yes | Yes | Yes |
-| [Amazon Redshift](/databases/redshift) | 5439 | Yes | Yes | Yes | No | Yes |
-| [CockroachDB](/databases/cockroachdb) | 26257 | Yes | Yes | Yes | No | Yes |
-| [PGlite](/databases/pglite) | 5432 | No | No | No | No | No |
-| [Microsoft SQL Server](/databases/mssql) | 1433 | Yes | Yes | Yes | Yes | Yes |
-| [Oracle](/databases/oracle) | 1521 | Yes | Yes | Yes | No | Yes |
-| [Dameng DM8](/databases/dameng) | 5236 | Yes | No | Yes | No | Yes |
-| [ClickHouse](/databases/clickhouse) | 8123 | Yes | Yes | Yes | No | Yes |
-| [Teradata](/databases/teradata) | 1025 | Yes | Yes | Yes | No | Yes |
-| [Trino](/databases/trino) | 8080 | Yes | Yes | Yes | No | Yes |
-| [MongoDB](/databases/mongodb) | 27017 | Yes | Yes | Yes | No | Yes |
-| [Redis](/databases/redis) | 6379 | Yes | Yes | Yes | No | Yes |
-| [Cassandra / ScyllaDB](/databases/cassandra) | 9042 | Yes | Yes | Yes | No | Yes |
-| [etcd](/databases/etcd) | 2379 | Yes | Yes | Yes | No | Yes |
-| [SurrealDB](/databases/surrealdb) | 8000 | Yes | Yes | Yes | No | Yes |
-| [Elasticsearch](/databases/elasticsearch) | 9200 | No | Yes | No | No | No |
-| [Snowflake](/databases/snowflake) | 443 | No | No | No | No | No |
-| [SQLite](/databases/sqlite) | File | No | No | No | No | No |
-| [DuckDB](/databases/duckdb) | File | No | No | No | No | No |
-| [Beancount](/databases/beancount) | File | No | No | No | No | No |
-| [DynamoDB](/databases/dynamodb) | AWS API | No | No | No | No | No |
-| [BigQuery](/databases/bigquery) | Cloud API | No | No | No | No | No |
-| [Cloudflare D1](/databases/cloudflare-d1) | Cloud API | No | No | No | No | No |
-| [libSQL / Turso](/databases/libsql) | URL | No | No | No | No | No |
-
-Transport details: [SSH Tunneling](/connections/ssh-tunneling), [SSL/TLS](/connections/ssl), [Cloudflare Tunnel](/connections/cloudflare-tunnel), [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy), [SOCKS Proxy](/connections/socks-proxy).
-
-## Creating a connection
-
-The Welcome window appears on launch. The left panel has **Create Connection…** and an **Add from Existing** menu holding Import from URL, Import from Other App, Open Project Folder, and Import Connections. Saved connections are on the right, with a search field in the header (`Cmd+F` focuses it). With nothing saved yet, that list offers **Try Sample Database**.
+Press `Cmd+N` anywhere in the app to open the connection form. **Create Connection…** on the welcome window does the same, and the **Add from Existing** menu under it takes one from a URL, [another client](/features/connection-sharing), a [project folder](/features/project-folder-import), or an exported file. Saved connections fill the right side of that window under a search field, focused by `Cmd+F`, and offer **Try Sample Database** until you save something of your own.
 
 <Frame caption="Welcome window">
   <img className="block dark:hidden" src="/images/welcome-screen.png" alt="Welcome window with actions panel and connection list" />
   <img className="hidden dark:block" src="/images/welcome-screen-dark.png" alt="Welcome window with actions panel and connection list" />
 </Frame>
 
-1. Click **Create Connection…** (or press `Cmd+N` anywhere)
-2. Pick a database type from the chooser sheet
-3. Fill in connection details
-4. Click **Test Connection**. A green **Connected** pill confirms success
-5. Click **Save & Connect**
+## Create a connection
 
-The chooser groups drivers by category: Relational, Document, Key-Value, Analytical, Wide-Column, Cloud Native, Coordination & Config, and Other. Drivers that aren't installed show a **Not Installed** badge; selecting one prompts to install the plugin first. See [Plugins](/features/plugins).
+<Steps>
+  <Step title="Pick a database type">
+    The chooser sheet groups drivers as Relational, Document, Key-Value, Analytical, Wide-Column, Cloud Native, Coordination & Config, and Other. Picking a driver badged **Not Installed** offers the download before the form opens. See [Plugins](/features/plugins).
+  </Step>
+  <Step title="Fill in the connection details">
+    Host, port, and credentials live on **General**. Everything else has a pane of its own; see [Connection form](/connections/connection-form).
+  </Step>
+  <Step title="Click Test Connection">
+    On success the button becomes a green checkmark and reads **Connected**. On failure a **Connection Test Failed** sheet carries the driver's own message, and for errors the driver recognizes a diagnostic sheet appears instead, with suggested fixes and **Copy Diagnostic Info**.
+  </Step>
+  <Step title="Click Save & Connect">
+    The connection is saved and the window opens on it. **Save** alone keeps it without connecting.
+  </Step>
+</Steps>
 
 <Frame caption="Database type chooser">
   <img className="block dark:hidden" src="/images/database-type-chooser.png" alt="Database type chooser" />
   <img className="hidden dark:block" src="/images/database-type-chooser-dark.png" alt="Database type chooser" />
 </Frame>
 
+Every driver's default port, and which of SSH tunnel, SSL/TLS, Cloudflare Tunnel, Cloud SQL Proxy, and SOCKS Proxy it accepts, is in the [connection form reference](/connections/connection-form#which-drivers-get-which-panes).
+
 ### Import from URL
 
-Paste a connection string and let TablePro fill in the form. In the chooser sheet footer, click **Import from URL…**, paste the URL, review the parsed preview, and click **Import**. The form opens pre-filled so you can review and save. See [Connection URL Reference](/connections/urls) for schemes and formats.
+Paste a connection string instead of typing the fields. Click **Import from URL…** in the chooser sheet footer, paste, check the parsed preview, and click **Import**. The form opens filled in, ready to save. Schemes, query parameters, and the `+ssh` form are in the [Connection URL Reference](/connections/urls).
 
 <Frame caption="Import from URL sheet with parsed preview">
   <img className="block dark:hidden" src="/images/import-from-url.png" alt="Import from URL" />
@@ -73,74 +47,17 @@ Paste a connection string and let TablePro fill in the form. In the chooser shee
 Special characters in passwords (`@`, `#`, `%`) need percent-encoding. `p@ssword` becomes `p%40ssword`.
 </Note>
 
-### Open a URL directly
-
-Opening a database URL from a browser or terminal skips the form:
+### Open a URL without saving anything
 
 ```bash
 open "postgresql://user:pass@host:5432/dbname"
 ```
 
-TablePro registers these URL schemes with macOS: `postgresql`, `postgres`, `mysql`, `mariadb`, `sqlite`, `mongodb`, `mongodb+srv`, `redis`, `rediss`, `redshift`, `cockroachdb`, `cockroach`, `mssql`, `sqlserver`, `oracle`, `dm`, `clickhouse`, `ch`, `cassandra`, `cql`, `scylladb`, `scylla`, `duckdb`, `etcd`, `etcds`, `d1`, `libsql`, and `surrealdb`.
+A confirmation alert names the target first. Matching a saved connection on type, host, port, database, and username reuses it; otherwise the session is temporary and never joins your connection list, and the URL's password stays in memory rather than reaching the Keychain. [Confirmation and trusted links](/connections/urls#confirmation-and-trusted-links) covers **Always Allow** and how to revoke it.
 
-What happens on open:
+## Organize connections
 
-- A confirmation alert shows the connection target before anything connects. For loopback hosts you can pick **Always Allow**, which trusts that exact combination of type, host, database, username, and the URL's `name` parameter for future opens
-- If a saved connection matches the host, port, database, and username, TablePro reuses it. Otherwise it creates a temporary session that is not added to your connection list
-- The URL password stays in memory for the session. It is never written to the Keychain
-- If the connection has a pre-connect script, TablePro shows the script and asks before running it
-- URLs can target a table or apply a filter via query parameters; filters also require confirmation. See [Connection URL Reference](/connections/urls)
-
-## Connection form
-
-The form is a sidebar with up to nine panes. Tunnel and SSL panes appear only for drivers that support them (see the matrix above). A warning triangle on a sidebar item marks missing required fields.
-
-| Pane | Contents |
-|------|----------|
-| **General** | Name, host, port, database, credentials, Test Connection |
-| **SSH Tunnel** | Reach databases behind a bastion host. See [SSH Tunneling](/connections/ssh-tunneling) |
-| **Cloudflare Tunnel** | Connect through `cloudflared`. See [Cloudflare Tunnel](/connections/cloudflare-tunnel) |
-| **Cloud SQL Auth Proxy** | Google Cloud SQL proxy for MySQL, PostgreSQL, SQL Server. See [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy) |
-| **SOCKS Proxy** | Route the connection through a SOCKS5 proxy. See [SOCKS Proxy](/connections/socks-proxy) |
-| **SSL/TLS** | Encryption mode and certificates. See [SSL/TLS](/connections/ssl) |
-| **Customization** | Color, tags, group, Safe Mode |
-| **Advanced** | Startup commands, pre-connect script, external access, plugin-specific fields |
-| **AI Rules** | Per-connection guidance the AI assistant sees on every chat turn. See [AI Assistant](/features/ai-assistant) |
-
-<Frame caption="Connection form with sidebar navigation">
-  <img className="block dark:hidden" src="/images/connection-form-fields.png" alt="Connection form" />
-  <img className="hidden dark:block" src="/images/connection-form-fields-dark.png" alt="Connection form" />
-</Frame>
-
-### General
-
-| Field | Description |
-|-------|-------------|
-| **Name** | Display name in the connection list |
-| **Host** | Server address. Defaults to `localhost` |
-| **Port** | Pre-filled per database type |
-| **Database** | Default database. Optional for service-level access |
-| **Username** | Optional and not pre-filled. Empty means the driver's own default |
-| **Password** | Stored in the macOS Keychain |
-| **Prompt for password** | Skip saving. TablePro asks on every connect |
-| **Use Password File** | PostgreSQL, Redshift, and CockroachDB. Reads credentials from `~/.pgpass` |
-
-File-based drivers (SQLite, DuckDB, Beancount) replace the host section with a file path picker.
-
-### Advanced
-
-| Field | Description |
-|-------|-------------|
-| **Startup Commands** | SQL that runs after every connect. See [Startup Commands](#startup-commands) |
-| **Pre-Connect Script** | Shell script run before connecting. A non-zero exit aborts. TablePro shows the script and asks before running it, and never runs it when the app reopens a session at launch: that window waits with a **Connect** button |
-| **AI Policy** | Per-connection override for in-app AI agents |
-| **External Clients** | Access level for MCP clients: **Blocked**, **Read Only** (default), or **Read & Write**. See [External API](/external-api) |
-| **Local only** | Excludes this connection from iCloud Sync. See [iCloud Sync](/features/icloud-sync) |
-| **Plugin fields** | Driver-specific options like MongoDB `replicaSet` |
-
-## Organizing connections
-
-The **Customization** pane sets a color, tags, and a group per connection. The color tints the toolbar when connected, so production and development are easy to tell apart.
+The **Customization** pane holds a color, tags, and a group. The color tints the toolbar while the connection is open.
 
 <Frame caption="Customization pane">
   <img className="block dark:hidden" src="/images/connection-customization.png" alt="Customization pane" />
@@ -151,73 +68,29 @@ The **Customization** pane sets a color, tags, and a group per connection. The c
 Red for production, green for development. Set Safe Mode to **Read-Only** on production to block accidental writes. See [Safe Mode](/features/safe-mode).
 </Tip>
 
-### Groups
+| | How it works |
+|---|---|
+| **Groups** | Folders in the connection list, nested up to three levels. Right-click empty space for **New Group…**, or a group for **Rename**, **New Subgroup**, **Change Color**, **Move Group to…**, and **Delete Group**. Deleting a group deletes its subgroups too and leaves the connections inside ungrouped rather than deleted |
+| **Tags** | Several per connection, each with a name and color. Once any connection is tagged, a row of pills appears above the list; click to filter, and with two or more selected a **Match Any** / **Match All** menu switches between OR and AND. **Clear** resets it |
+| **Favorites** | Hover a row and click the star, or right-click and choose **Add to Favorites**. Favorites gather in a section at the top, sorted alphabetically, while the connection keeps its place in its group |
 
-Groups are folders in the connection list, nested up to 3 levels. Right-click empty space or a group to create, move, or delete one. Deleting a group removes its subgroups; the connections inside are ungrouped, not deleted.
+A connection's group, tags, and favorite star sync through iCloud unless it is marked local only. See [iCloud Sync](/features/icloud-sync).
 
-### Tags
+## Switch connections and databases
 
-A connection can carry multiple tags, each with a name and color. When any connection has tags, a filter bar appears above the welcome list with one pill per tag. Click pills to filter; with two or more selected, a **Match Any** / **Match All** menu switches between OR and AND matching, and **Clear** resets the filter.
-
-### Favorites
-
-Hover a connection row and click the star, or right-click and choose **Add to Favorites**. Favorites gather in a section at the top of the list, sorted alphabetically, while the connection stays in its group below. Favorites sync through iCloud unless the connection is marked local only.
-
-## Switching connections and databases
-
-- **Switch Connection** (`Ctrl+Cmd+C`): a toolbar popover lists active sessions and saved connections. Type to filter, arrow keys to move, Return to switch
-- **Open Database** (`Cmd+K`): switch databases on the same server without reconnecting
+**Switch Connection** (`Ctrl+Cmd+C`) opens a toolbar popover listing active sessions and saved connections: type to filter, arrow keys to move, Return to switch. **Open Database** (`Cmd+K`) moves to another database on the same server.
 
 <Frame caption="Database switcher in toolbar">
   <img className="block dark:hidden" src="/images/database-switcher-toolbar.png" alt="Database switcher in toolbar" />
   <img className="hidden dark:block" src="/images/database-switcher-toolbar-dark.png" alt="Database switcher in toolbar" />
 </Frame>
 
-Leave the **Database** field empty when creating a connection to browse every database your user can access (MySQL, MariaDB, MongoDB, SQL Server, ClickHouse). PostgreSQL and Redshift need an initial database; connect to `postgres` (Redshift: `dev`) and switch with `Cmd+K`.
+Leaving **Database** empty on MySQL, MariaDB, MongoDB, SQL Server, and ClickHouse browses every database the user can reach. PostgreSQL and Redshift need one to connect at all: use `postgres` (Redshift: `dev`) and switch with `Cmd+K`. To hide the rest, choose **View > Filter Databases** and check the ones you want; the choice is saved per connection.
 
-When the sidebar is in tree layout, each database or schema groups its tables, views, materialized views, foreign tables, procedures, and functions into collapsible folders. View > Filter Databases limits the tree to checked databases, and the same command is in the sidebar right-click menu. The choice is saved per connection.
+## Edit, delete, and where it all lives
 
-## Dock menu
+Right-click a connection to edit or delete it, or swipe left on the row for the same two buttons. Swiping never deletes on its own. Edits apply on the next connect, and deleting removes the saved settings, nothing on the server.
 
-Right-click the TablePro Dock icon and pick a saved connection under **Open Connection**.
+Connections are stored in `~/Library/Application Support/TablePro/connections.json` with their passwords in the macOS Keychain, so copying that file to another Mac restores the connections without the passwords.
 
-## While a connection is being established
-
-The window fills with the connection's name, its endpoint, and the step currently running: opening the tunnel, running the pre-connect script, negotiating encryption, authenticating, preparing the session. The sidebar and inspector stay out of the way until there is a session to put in them, and come back at the width you left them.
-
-PostgreSQL, CockroachDB, Redshift, ClickHouse, and Redis report steps from inside their own handshake. Other drivers report the steps around the driver, because their client libraries connect in a single call with nothing observable in between. If a step stalls, the window says so. **Cancel**, or Escape, stops waiting immediately.
-
-A connection that fails stays in its window and shows the database's own error, with **Try Again**, **Manage Connections…**, and **Copy Details**. Nothing is reported as an alert, so reopening several connections at launch cannot bury you in dialogs.
-
-## Connection health monitoring
-
-TablePro pings every active connection every 30 seconds and skips the ping while one of your queries is running. File-based drivers (SQLite, DuckDB, Beancount), Snowflake, and Teradata are not monitored.
-
-When a ping fails, TablePro reconnects with exponential backoff: 2s, 4s, 8s, doubling up to a 120-second cap, and keeps retrying until the connection recovers or you close it. Authentication failures stop the retries, since an expired credential never recovers on its own. Reconnecting rebuilds the SSH tunnel if there is one, restores the selected database and schema, and re-runs startup commands. The session shows as connecting while this happens.
-
-## Startup Commands
-
-SQL statements that run after every connect, including auto-reconnects. Configure them in the **Advanced** pane; statements are split on semicolons and newlines and run in order.
-
-All statements run on the same connection, so use one dialect. MySQL:
-
-```sql
-SET time_zone = '+00:00';
-SET NAMES utf8mb4;
-```
-
-PostgreSQL:
-
-```sql
-SET search_path TO myschema, public;
-```
-
-A failed statement is logged and skipped; the connection still opens.
-
-## Editing, deleting, and storage
-
-Right-click a connection to edit or delete it. Changes apply on the next connect; deleting removes the saved settings only.
-
-Swiping left on a connection row reveals the same Edit and Delete buttons. The gesture needs two fingers on a trackpad, or one finger on a Magic Mouse, so the right-click menu stays the way to reach these with a plain mouse or the keyboard. Swiping alone never deletes anything: you still click Delete and confirm.
-
-Connections are stored in `~/Library/Application Support/TablePro/connections.json`. Passwords live in the macOS Keychain, so a copied file restores connections but not passwords.
+Right-clicking the Dock icon lists saved connections under **Open Connection**.

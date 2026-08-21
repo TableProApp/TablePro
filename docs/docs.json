@@ -123,6 +123,7 @@
             "icon": "plug",
             "pages": [
               "connections/index",
+              "connections/connection-form",
               "connections/urls",
               "connections/ssh-tunneling",
               "connections/ssh-profiles",

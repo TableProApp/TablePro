@@ -3,16 +3,16 @@ title: Redis
 description: Browse keys by namespace, manage TTLs, and run Redis commands directly from the editor
 ---
 
-TablePro connects to standalone Redis servers, Sentinel-managed primaries and Redis Cluster, all through hiredis. Keys are grouped by colon-separated namespaces in the sidebar. Values display with type-aware formatting in the data grid (strings, hashes, lists, sets, sorted sets, streams).
+The sidebar splits keys into folders at every `:`, and each key gets a grid row with its type, TTL, length, and value. The editor takes Redis commands, one per statement, and passes them through as written. Redis needs no plugin: its hiredis-based driver is part of the app, and it reaches standalone servers, Sentinel-managed primaries, and Redis Cluster.
 
 ## Quick setup
 
 <Steps>
   <Step title="Create Connection">
-    Click **Create Connection…**, select **Redis**, enter host/port/password/database, and click **Save & Connect**
+    Click **Create Connection…**, select **Redis**, and enter host, port, password, and database index
   </Step>
   <Step title="Test Connection">
-    Click **Test Connection** to verify
+    Click **Test Connection**, then **Save & Connect**
   </Step>
 </Steps>
 
@@ -26,148 +26,133 @@ TablePro connects to standalone Redis servers, Sentinel-managed primaries and Re
 | **Username** | - | Redis 6 ACL user, sent as `AUTH username password`. Leave empty for `requirepass` auth |
 | **Password** | - | Leave empty for local dev |
 | **Database Index** | `0` | 0-15 stepper, in the Advanced section |
-| **Key Separator** | `:` | Groups keys by prefix in sidebar (Advanced) |
+| **Key Separator** | `:` | What the sidebar splits key names on (Advanced) |
 
-<Tip>
-Open URLs like `redis://:password@host:6379/0` or `rediss://` (TLS) from your browser. See [Connection URL Reference](/connections/urls#redis).
-</Tip>
+No minimum server version. ACL users need Redis 6, a Sentinel ACL user needs 6.2, and Cluster mode reads routing tips from Redis 7 where they exist.
+
+The sidebar then lists one entry per database, `db0` upward, counted from the server's own `CONFIG GET databases` (16 if it does not answer). Click one to browse it in place, which is also how the database index changes after connecting.
+
+## Connection URL
+
+```text
+redis://:password@host:6379/0
+rediss://:password@host:6380/0
+```
+
+`rediss://` connects with TLS. See [Connection URL Reference](/connections/urls).
 
 ## Connection modes
 
 ### Standalone
 
-The default. Connects to the one server named by Host and Port.
+The default. One server, named by Host and Port.
 
 ### Sentinel
 
-For a deployment fronted by [Redis Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/). TablePro asks the quorum which node is currently the primary, then opens the data connection to it.
+For a deployment fronted by [Redis Sentinel](https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/). The quorum says which node is primary and the data connection opens there; a failover is read from the quorum on the next health check and the connection moves itself. A demoted primary keeps answering `role:master` and keeps accepting writes for several seconds, and those writes are lost, so the quorum is the only signal worth trusting.
 
 | Field | Notes |
 |-------|-------|
-| **Sentinel Nodes** | One or more `host:port` entries. Port defaults to `26379`. |
-| **Primary Group Name** | The name after `sentinel monitor` in `sentinel.conf`, usually `mymaster`. |
-| **Sentinel Username** | Under Authentication. Only needed when Sentinel has its own ACL user (Redis 6.2+). |
-| **Sentinel Password** | Under Authentication. Only needed when Sentinel has its own password. Stored in the Keychain. |
+| **Sentinel Nodes** | One or more `host:port` entries. Port defaults to `26379` |
+| **Primary Group Name** | The name after `sentinel monitor` in `sentinel.conf`, usually `mymaster` |
+| **Sentinel Username** | Under Authentication. Only when Sentinel has its own ACL user |
+| **Sentinel Password** | Under Authentication. Only when Sentinel has its own password. Kept in the Keychain |
 
-Host and Port are ignored in Sentinel mode. The Username and Password under Authentication are the data-plane credentials, used for the primary itself; Sentinel authenticates separately because it is a different plane.
-
-Once connected, TablePro asks one Sentinel for the other Sentinels in the quorum and remembers them, so a later lookup still works when the node you listed is down. It re-checks the primary's address on every health check and reconnects when the quorum reports a new one. It does not infer failover from the data connection: a demoted primary keeps reporting `role:master` and keeps accepting writes for several seconds, and those writes are lost, so the quorum's answer is the only signal worth trusting.
-
-If no Sentinel can be reached, or none of them monitors the group you named, the error says which addresses were tried and which groups they do monitor.
+Host and Port are ignored here. Username and Password under Authentication belong to the primary; Sentinel is a separate plane with its own. The rest of the quorum is discovered at connect and remembered, so a lookup still works once the node you listed goes down. If none can be reached, or none monitors the group you named, the error lists the addresses tried and the groups they do monitor.
 
 ### Cluster
 
-For a sharded [Redis Cluster](https://redis.io/docs/latest/operate/oss_and_stack/management/scaling/). TablePro reads the shard map with `CLUSTER SHARDS` (or `CLUSTER SLOTS` on Redis 6), opens a connection to every primary, and sends each command to the shard that owns its key.
+For a sharded [Redis Cluster](https://redis.io/docs/latest/operate/oss_and_stack/management/scaling/). The shard map is read with `CLUSTER SHARDS`, or `CLUSTER SLOTS` on Redis 6; a connection opens to every primary and each command goes to the shard that owns its key.
 
 | Field | Notes |
 |-------|-------|
-| **Cluster Seed Nodes** | One or more `host:port` entries. Any reachable member is enough; TablePro discovers the rest. Port defaults to `6379`. |
+| **Cluster Seed Nodes** | One or more `host:port` entries. Any reachable member is enough, the rest are discovered. Port defaults to `6379` |
 
-What changes in Cluster mode:
+`DBSIZE` is summed across shards, browsing merges their keys into one tree, and `MGET`, `MSET`, `DEL`, `EXISTS`, `TOUCH` and `UNLINK` are split per shard and recombined. A `MOVED` re-points the slot and retries, an `ASK` retries against the importing node, and one command follows at most five redirects. What Cluster mode cannot do is under [Limitations](#limitations).
 
-- **One database.** Redis Cluster serves database 0 only, so the Database Index field is hidden and the sidebar shows a single `db0`.
-- **Key counts are cluster-wide.** `DBSIZE` is summed across every shard, and browsing walks each shard in turn and merges the keys into one tree.
-- **Redirects are followed.** A `MOVED` re-points the slot and retries; an `ASK` retries against the importing node. TablePro follows at most five redirects for one command.
-- **Multi-key commands are split by slot.** `MGET`, `MSET`, `DEL`, `EXISTS`, `TOUCH` and `UNLINK` are sent per shard and recombined, so they work across shards.
-- **Cross-slot commands are refused before they are sent.** `RENAME`, `SMOVE` and the `*STORE` commands need every key in one hash slot. Give the keys a shared hash tag, like `{user}:1` and `{user}:2`.
-- **No transactions.** `MULTI` carries no key, so the client cannot know which shard to open it on, and Redis rejects a queued command that hashes elsewhere. Saving grid edits runs the statements one at a time instead.
-
-If the mode does not match the server, TablePro says so at connect rather than failing later: pointing Standalone at a cluster member, or any data mode at a Sentinel port, names the field to change.
+The wrong mode is caught at connect: Standalone against a cluster member, or any data mode against a Sentinel port, names the field to change.
 
 ## Amazon ElastiCache (IAM)
 
-Set **Authentication** to an AWS IAM mode (Access Key, Profile, or SSO) to connect to an IAM-enabled ElastiCache cache. TablePro generates a short-lived IAM auth token and uses it as the Redis password; the username is your IAM-enabled Redis user. Enter the AWS region and the cache name (replication group ID), and enable TLS, which ElastiCache IAM requires. Profiles resolve from `~/.aws/config` and `~/.aws/credentials`, including `credential_process`, SSO, and assumed roles.
+Set **Authentication** to an AWS IAM mode (Access Key, Profile, or SSO). A short-lived IAM token becomes the Redis password and the username is your IAM-enabled Redis user. Enter the AWS region and the cache name (replication group ID), and turn TLS on, which ElastiCache IAM requires. Profiles resolve from `~/.aws/config` and `~/.aws/credentials`, `credential_process`, SSO, and assumed roles included.
 
-## SSL/TLS
+## Browsing keys
 
-Configure in the **SSL/TLS** pane of the connection form. Managed services like Upstash and Redis Cloud require TLS. Use `rediss://` for URL imports.
-
-| Mode | hiredis behavior | Use for |
-|---|---|---|
-| **Disabled** | Plain TCP | Local dev |
-| **Preferred** | TLS, do not verify peer | Same as Required on Redis (there is no fallback) |
-| **Required (skip verify)** | TLS, do not verify peer | Self-signed certs, Upstash, untrusted CAs |
-| **Verify CA** | TLS, verify peer with your CA cert | Private PKI; supply CA path |
-| **Verify Identity** | Same as Verify CA | No separate hostname check on Redis |
-
-For untrusted-CA endpoints (Upstash, internal load balancers), pick **Required (skip verify)**. For private CA setups, pick **Verify CA** and provide the CA certificate path. SNI is sent for every TLS mode; Verify Identity adds nothing over Verify CA on Redis.
-
-## Features
-
-**Namespace Browsing**: The sidebar groups keys by separator (default `:`). `user:1` and `user:2` appear under a `user` folder, and nesting goes as deep as the key does (`app:cache:session:1`). Change the separator in Advanced settings.
+`user:1` and `user:2` sit under a `user` folder, nested as deep as the key goes (`app:cache:session:1`). Change the separator in Advanced settings.
 
 <Frame caption="Keys grouped by namespace with type-aware values">
   <img className="block dark:hidden" src="/images/redis-key-browser.png" alt="Redis keys grouped by namespace in the sidebar with values in the data grid" />
   <img className="hidden dark:block" src="/images/redis-key-browser-dark.png" alt="Redis keys grouped by namespace in the sidebar with values in the data grid" />
 </Frame>
 
-**Key-Value Viewing**: The grid has **Key**, **Type**, **TTL**, **Length**, and **Value** columns. A string key shows its complete value, however long it is. The other types show the first 100 elements as JSON: hashes as an object, lists and sets as an array, sorted sets as `[member, score]` pairs, streams as `[id, fields]` for the newest 5 entries. The Length column is what Redis reports for the key, so you can tell how much a preview leaves out: bytes for a string (`STRLEN`), element count for everything else (`LLEN`, `HLEN`, `SCARD`, `ZCARD`, `XLEN`). Only a string Value cell can be edited in the grid; change the other types in the CLI. A value that is not valid UTF-8, such as a gzip or MessagePack payload, shows as binary and opens in the hex editor rather than as text.
+The grid columns are **Key**, **Type**, **TTL**, **Length**, and **Value**. Value is a preview for everything but a string; Length is what Redis reports, so the two together say how much is missing.
 
-**TTL Management**: The TTL column shows seconds to expiry. `-1` means no expiration, `-2` means the key does not exist. Edit the cell to run `EXPIRE`, or set it to `-1` to run `PERSIST`.
+| Type | Value column | Length column |
+|---|---|---|
+| String | The entire value, however long | `STRLEN`, in bytes |
+| Hash | First 100 fields, as a JSON object | `HLEN` |
+| List | First 100 elements, as a JSON array | `LLEN` |
+| Set | First 100 members, as a JSON array | `SCARD` |
+| Sorted set | First 100 `[member, score]` pairs | `ZCARD` |
+| Stream | Newest 5 entries, as `[id, fields]` | `XLEN` |
 
-**Key Filtering**: Toggle the filter bar to search keys by pattern. Patterns use Redis glob syntax (`*` matches any sequence, `?` matches one character, `[ae]` matches a character set) and are case-sensitive, the same as `redis-cli`.
+A value that is not valid UTF-8, such as a gzip or MessagePack payload, opens in the hex editor instead of as text.
 
-- The type scope narrows results to String, Hash, List, Set, Sorted Set, or Stream.
-- Matching runs server-side with `SCAN MATCH` and `SCAN TYPE`, and stops after 10,000 matching keys.
-- Filtering by key value or TTL is not supported, since Redis has no server-side primitive for it.
+### Editing
 
-**Redis CLI**: Each statement is one Redis command. To run several in one go, separate them with `;`. TablePro passes each command through as-is, including commands it does not recognize; only the result formatting is type-aware. Arguments are quoted the same way `redis-cli` quotes them, so `"` and `'` both work and `\xHH` writes a raw byte. Unbalanced quotes are rejected instead of being guessed at. Redis has no comment syntax, and TablePro does not strip comments, so a `--` or `#` line inside a statement is sent to the server and fails.
+Editing a **Key** cell runs `RENAME`. Editing a **TTL** cell runs `EXPIRE`, or `PERSIST` when you set it to `-1`; in that column `-1` means no expiry and `-2` means the key is gone. Editing a **Value** cell runs `SET`, and only on a string, since a preview of a hash or list is not the whole structure.
 
-The blocks below list one command per line for reference.
+Change the other types with a command: `HSET myhash field1 "value1"` rewrites one field and leaves the rest alone. Adding a row does follow the type you pick, generating `HSET`, `RPUSH`, `SADD`, `ZADD`, or `SET`.
 
-Key operations:
+### Filtering
+
+Toggle the filter bar to search keys by pattern. Patterns are Redis glob (`*` any sequence, `?` one character, `[ae]` a character set) and case-sensitive, as in `redis-cli`. The type scope narrows to String, Hash, List, Set, Sorted Set, or Stream. Matching runs server-side with `SCAN MATCH` and `SCAN TYPE`.
+
+## Redis CLI
+
+Each statement is one command; separate several with `;`. Commands the driver does not recognize go through too, and only the result formatting is type-aware. Arguments are quoted the way `redis-cli` quotes them, so `"` and `'` both work and `\xHH` writes a raw byte; unbalanced quotes are rejected rather than guessed at. Redis has no comment syntax and none is stripped, so a `--` or `#` line is sent to the server and fails.
 
 ```redis
-GET mykey
 SET mykey "hello" EX 60
-DEL mykey key2 key3
-KEYS user:*
-```
-
-Hash, list, set, and sorted set operations:
-
-```redis
-HGETALL myhash
-HSET myhash field1 "value1"
-LRANGE mylist 0 -1
-LPUSH mylist "item1" "item2"
-SMEMBERS myset
-SADD myset "member1" "member2"
-ZRANGE myzset 0 -1 WITHSCORES
-ZADD myzset 1 "one" 2 "two"
-```
-
-Scanning and server info:
-
-```redis
+HGETALL myhash; LRANGE mylist 0 -1
 SCAN 0 MATCH user:* COUNT 100
-PING
-INFO
-DBSIZE
 ```
 
-## Troubleshooting
+## SSL/TLS
 
-**Connection refused**: Check Redis is running (`brew services start redis`), verify correct port in `redis.conf`, check `bind` directive.
+Set this in the **SSL/TLS** pane. Upstash, Redis Cloud and the like require TLS; `rediss://` turns it on when importing a URL.
 
-**Auth failed**: Verify password matches `requirepass` in `redis.conf`. For Redis 6.0+ ACL: `ACL SETUSER myuser on >password ~* +@all`
+| Mode | hiredis behavior | Use for |
+|---|---|---|
+| **Disabled** | Plain TCP | Local dev |
+| **Preferred** | TLS, do not verify peer | Same as Required here; there is no fallback |
+| **Required (skip verify)** | TLS, do not verify peer | Self-signed certs, Upstash, untrusted CAs |
+| **Verify CA** | TLS, verify peer with your CA cert | Private PKI; supply the CA path |
+| **Verify Identity** | Same as Verify CA | Redis does no separate hostname check |
 
-With the Username field empty, TablePro sends `AUTH password`, which Redis and Valkey always check against the `default` user. An ACL user's password fails that check with `WRONGPASS invalid username-password pair or user is disabled.` Fill in Username to authenticate as that user.
-
-Note that `>password` sets a password and `#hash` sets a SHA-256 hash. A 64-character hex string is valid for both, so `ACL SETUSER myuser on #<64-hex>` is accepted where `>` was meant, and every later login fails with `WRONGPASS`. `ACL LIST` shows stored passwords as hashes, so a value copied from there is a hash, not a password.
-
-**Timeout**: Verify host/port, check network and firewall, whitelist IP for cloud-hosted Redis.
-
-**Sentinel or Cluster over SSH**: a tunnel forwards one local port to one remote address, and the addresses Sentinel returns are the server's own. Over a tunnel TablePro connects straight to the first host in the list as a standalone node, so failover and shard routing are not available.
-
-**Slow key list**: `KEYS` blocks the server on a large keyspace. Browse by namespace instead, and use `SCAN` when you need a pattern match in the CLI. Check memory pressure with `INFO memory`.
+New connections default to **Disabled**. SNI is sent in every TLS mode.
 
 ## Limitations
 
-- Cluster mode has no transactions. `MULTI` carries no key, so a client cannot know which shard to open it on, and Redis rejects a queued command that hashes elsewhere. Grid saves run their statements one at a time instead.
-- Cluster mode serves database 0 only, so the Database Index field is hidden and the sidebar shows a single `db0`.
-- A command whose keys span hash slots, such as `RENAME`, `SMOVE` or the `*STORE` commands, is refused in Cluster mode. Give the keys a shared hash tag, like `{user}:1` and `{user}:2`.
-- Keys must be valid UTF-8 to appear in the grid or the sidebar tree. Values have no such limit.
-- Pub/Sub has no grid support. `PUBLISH` runs in the CLI, but there is no subscriber view.
-- The grid previews the first 100 elements of a hash, list, set, or sorted set, and a stream's newest 5 entries. The Length column shows the real size. Use `HGETALL`, `LRANGE`, or `XRANGE` in the CLI for the rest.
-- The sidebar key tree loads at most 50,000 keys, and key filtering scans at most 10,000 matching keys.
+- No transactions in Cluster mode. Grid saves run their statements one at a time. Group keys under one hash tag if they must move together.
+- Cluster mode serves database 0 only. The Database Index field is hidden and the sidebar shows a single `db0`.
+- A command whose keys span hash slots, such as `RENAME`, `SMOVE`, or the `*STORE` commands, is refused in Cluster mode before it is sent. Give the keys a shared hash tag, like `{user}:1` and `{user}:2`.
+- A key that is not valid UTF-8 never appears in the grid or the tree. Reach it from the CLI; values have no such limit.
+- Pub/Sub has no grid support. `PUBLISH` runs in the CLI, and there is no subscriber view.
+- The sidebar tree loads at most 50,000 keys and a filter scans at most 10,000 matches. Narrow the pattern, or `SCAN` from the CLI.
+- Values and TTLs cannot be filtered on. Redis has no server-side primitive for either; filter by key pattern and type only.
+- No import. Export works as it does elsewhere.
+
+## Troubleshooting
+
+**Connection refused**: check Redis is running (`brew services start redis`), the port matches `redis.conf`, and the `bind` directive covers the address you are using.
+
+**WRONGPASS invalid username-password pair or user is disabled.**: with Username empty, `AUTH password` is checked against the `default` user, and an ACL user's password fails that. Fill in Username to authenticate as that user.
+
+One ACL trap produces the same error: `>password` sets a password, `#hash` sets a SHA-256 hash, and a 64-character hex string is valid for both, so `ACL SETUSER myuser on #<64-hex>` is accepted where `>` was meant. `ACL LIST` prints passwords as hashes, so a value copied from there is a hash, not a password.
+
+**Timeout**: verify host and port, check the network and firewall, and allow your IP on a cloud-hosted Redis.
+
+**Sentinel or Cluster over SSH**: a tunnel forwards one local port to one remote address, and the addresses Sentinel and Cluster hand back are the server's own. Over a tunnel only the first host in the list is used, as a standalone node, so failover and shard routing are unavailable.
+
+**Slow key list**: `KEYS` blocks the server on a large keyspace. Browse by namespace instead, and use `SCAN` in the CLI when you need a pattern. Check memory pressure with `INFO memory`.

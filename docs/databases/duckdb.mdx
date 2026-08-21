@@ -3,23 +3,23 @@ title: DuckDB
 description: Open local DuckDB files or connect to a remote DuckDB server over Quack
 ---
 
-DuckDB 1.5.2 ships inside the driver plugin, an embedded analytical engine built for OLAP workloads. Pick DuckDB in the connection form and you are prompted to install the plugin.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-## Connecting to a local DuckDB file
+Pick a `.duckdb` file to open a database, or a `.parquet`, `.csv`, `.tsv`, `.json` or `.ndjson` file to read it where it sits. DuckDB 1.5.2 is compiled into the driver, so nothing runs as a server unless you point the connection at one.
+
+<RegistryPlugin name="DuckDB" plugin="DuckDB Driver" />
+
+## Quick setup
 
 <Steps>
-  <Step title="Create a new connection">
+  <Step title="Create the connection">
     Click **Create Connection…** or press `Cmd+N`, then choose **DuckDB**.
   </Step>
-  <Step title="Keep Connection Type set to Local File">
-    Click **Browse…** to select an existing `.duckdb` file, or enter a path to create a new database.
-
-    Enter `:memory:` instead of a path for an in-memory database. It holds nothing on disk, so everything in it is gone when you disconnect.
-
-    Browse also accepts a `.parquet`, `.csv`, `.tsv`, `.json` or `.ndjson` file. DuckDB opens it read-only: you get an in-memory database holding two views over the file, one named `file` and one named after the file, and the file on disk is never written to. Creating a database at a path that does not exist only works for `.duckdb` and `.ddb`, so a mistyped data-file path is reported instead of turning into an empty database.
+  <Step title="Choose a file">
+    Leave **Connection Type** on **Local File** and click **Browse…**. Type `:memory:` in the field instead for a database that lasts as long as the session.
   </Step>
   <Step title="Connect">
-    Click **Save & Connect** to open the database.
+    Click **Save & Connect**.
   </Step>
 </Steps>
 
@@ -28,88 +28,82 @@ DuckDB 1.5.2 ships inside the driver plugin, an embedded analytical engine built
   <img className="hidden dark:block" src="/images/duckdb-connection-form-dark.png" alt="DuckDB connection form with Local File and Remote (Quack) connection types" />
 </Frame>
 
-## Connecting to a remote DuckDB server (Quack)
+## What the file field accepts
 
-Quack is DuckDB's client-server protocol. A DuckDB server exposes itself with `quack_serve`, and TablePro attaches to it as a remote database. Set **Connection Type** to **Remote (Quack, experimental)** and fill in:
+| Path | What you get |
+|-------|-------------|
+| `.duckdb`, `.ddb` | The database in that file. A path that does not exist yet is created |
+| `.parquet`, `.csv`, `.tsv`, `.json`, `.ndjson` | An in-memory database holding two read-only views over the file, one named `file` and one named after the file. A path that does not exist is reported instead of created |
+| `:memory:` | An empty database, discarded on disconnect |
+
+In Local File mode the path is the whole connection, and it is required; the form shows no host, port or Database field. Double-click a `.duckdb` or `.ddb` file in Finder to open it in TablePro; the data formats are not registered with Finder.
+
+## Remote (Quack)
+
+Quack is DuckDB's client-server protocol, served by `quack_serve`. Set **Connection Type** to **Remote (Quack, experimental)**:
 
 | Field | Value |
 |-------|-------|
-| **Host** | Server address (required) |
+| **Host** | Server address. Required |
 | **Port** | `9494` by default |
 | **Token** | The token the server was started with |
-| **Database Alias** | Name TablePro attaches the remote under. Pre-filled with `remotedb` |
+| **Database Alias** | The name the remote is attached under. Pre-filled with `remotedb` |
 
-Click **Save & Connect**. TablePro opens an in-memory DuckDB, registers the token as a secret, and attaches the remote server.
+**Save & Connect** attaches the remote to an in-memory DuckDB. Reach it through the alias: `SELECT * FROM remotedb.main.orders`.
 
 <Info>
-Remote (Quack) is experimental and matches the Quack beta:
-- You can run SQL against the remote, for example `SELECT * FROM alias.main.your_table`.
-- The sidebar cannot list remote tables yet; the Quack beta cannot enumerate a remote catalog.
-- On macOS the quack extension downloads from the DuckDB extension registry on first use, so the first remote connection needs network access.
+The `quack` extension is not linked into the macOS build. DuckDB downloads it from `extensions.duckdb.org` on the first remote connect and caches it under `~/.duckdb`, so that one connect needs to reach that host.
 </Info>
 
 ## Connection URL
 
 ```text
-# Local file
 duckdb:///path/to/database.duckdb
-
-# Remote (Quack)
 quack://host:9494/alias
 ```
 
 See [Connection URL Reference](/connections/urls) for all parameters.
 
-## Opening DuckDB files from Finder
-
-Double-click a `.duckdb` or `.ddb` file in Finder to open it directly in TablePro.
-
 ## Databases and schemas
 
-A DuckDB connection opens one database, named after the file (`analytics.duckdb` becomes `analytics`). Each database holds one or more schemas, and the default is `main`.
-
-The sidebar shows both levels. Switch it to Tree layout from View > Sidebar Layout to get database > schema > object folders; in the default Flat layout it lists the current schema's objects and the active schema sits at the foot of that list. The toolbar shows the active database and schema side by side; click either to switch it, or press `Cmd+K` for the database list.
-
-`ATTACH` a second file and it appears as a sibling database after a sidebar refresh:
+A connection opens one database named after the file: `analytics.duckdb` becomes `analytics`, schema `main`. `ATTACH` a second file and it joins the sidebar as a sibling database after a refresh:
 
 ```sql
 ATTACH 'warehouse.duckdb' AS warehouse;
 ```
 
-Attachments last for the session. DuckDB does not persist them, so they are gone after a reconnect.
+Press `Cmd+K` to move between them, in place, with no reconnect. DuckDB does not persist attachments, so a reconnect starts again from the one file. `system` and `temp` are hidden, and with them `information_schema` and `pg_catalog`.
 
-DuckDB's built-in `system` and `temp` catalogs are hidden, and with them `information_schema` and `pg_catalog`, which live inside `system`.
-
-## Querying files directly
-
-DuckDB can query CSV, Parquet, and JSON files with SQL:
+Any connection can also read a file straight from SQL:
 
 ```sql
 SELECT * FROM 'data.csv';
 SELECT * FROM read_parquet('analytics.parquet');
-SELECT * FROM read_json('config.json');
 ```
-
-## DuckDB on iOS
-
-The iOS app supports DuckDB too. In the connection form, pick DuckDB and either turn on **In-Memory Database** or open a `.duckdb`/`.ddb` file through the Files app. Opened files keep working across launches through a security-scoped bookmark, so edits write back to the original file.
-
-The iOS build statically links the `core_functions`, `json`, `parquet`, `icu`, `autocomplete`, `httpfs`, and `quack` extensions, so remote Quack connections work on iOS without a download. Runtime extension autoloading stays off, so other on-demand extensions are not available on iOS. Large in-memory databases are bounded by the app's memory budget.
-
-## Troubleshooting
-
-**Connect fails on a local file**: DuckDB allows one writer per file. Quit anything else holding it, a `duckdb` CLI session, a Python process, or another TablePro window, then reconnect. The error names the process that holds the lock.
-
-**Querying a Parquet, CSV or JSON file fails on a restricted network**: the macOS build links no DuckDB extensions, so `read_parquet` and friends come from `parquet`, which DuckDB downloads from `extensions.duckdb.org` the first time you use it. Browsing tables, columns and keys needs no download. Run one query from a network that can reach the registry and DuckDB caches the extension in `~/.duckdb` for later.
-
-**Remote connection fails while attaching**: On macOS the `quack` extension downloads from the DuckDB extension registry the first time you connect. If that download is blocked, the attach step fails. Connect once from a network that can reach the registry.
-
-**Host is required for a remote DuckDB connection**: The **Host** field is empty. Fill it in before saving.
-
-**Port must be a number between 1 and 65535**: The **Port** field holds something else. The Quack default is `9494`.
 
 ## Limitations
 
-- A local DuckDB file allows only one writer at a time.
-- Remote (Quack) mode cannot list tables in the sidebar. Reference them by name in SQL.
-- TablePro cannot switch databases on a DuckDB connection. Each connection targets one file or one attached remote.
+- A DuckDB file takes one writer at a time. A connect against a file another process holds fails, naming that process. Quit the `duckdb` CLI, the Python process or the other TablePro window first.
+- A data file opened through **Browse…** is read-only, and the file on disk is left byte for byte identical. To change its contents, open a `.duckdb` database and run `CREATE TABLE t AS SELECT * FROM 'data.parquet'`.
+- Remote (Quack) lists no tables in the sidebar. Write them out by name through the alias.
+- No SSL/TLS pane and no SSH tunnel. The engine is in-process; see [SSL/TLS](/connections/ssl).
+- No creating or dropping a database. `ATTACH` is the way to reach a second file.
+
+## Troubleshooting
+
+### No file at …
+
+A data-file path that is not there. Only `.duckdb` and `.ddb` are created on demand. Re-pick the file with **Browse…**.
+
+### DuckDB opened the file but reported no catalog to browse
+
+The file opened and exposed nothing to list. Check that it is a DuckDB database and not a file with a borrowed extension.
+
+### Port must be a number between 1 and 65535
+
+**Port** holds something else. The Quack default is `9494`.
+
+## Related
+
+- [TablePro for iPhone and iPad](/ios), where DuckDB opens a file picked through the Files app
+- [Import & Export](/features/import-export)

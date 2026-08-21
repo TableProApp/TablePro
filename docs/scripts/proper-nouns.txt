@@ -12,6 +12,7 @@ Beancount
 Cloud
 Connector
 Drive
+Entra
 Finder
 Homebrew
 Insights
@@ -20,6 +21,8 @@ Kerberos
 Keyspaces
 Library
 Local
+Mac's
+Microsoft
 Proxy
 Quack
 Shortcuts
