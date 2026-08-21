@@ -20,7 +20,7 @@ brew link --force libpq
 
 TablePro finds `pg_dump` and `pg_restore` on `PATH` and the standard Homebrew and Postgres.app locations.
 
-## Backup Dump
+## Backup dump
 
 1. Choose **File > Backup Dump…**.
 2. Pick the database to dump.
@@ -31,7 +31,7 @@ The default filename is `<database>-<yyyy-MM-dd-HHmmss>.dump`. Dumps use the cus
 
 When the dump finishes, the result sheet shows the file size and a **Show in Finder** button.
 
-## Restore Dump
+## Restore dump
 
 1. Choose **File > Restore Dump…**.
 2. Pick the `.dump` file.
@@ -42,7 +42,7 @@ Restore progress is indeterminate: the live byte counter runs only during backup
 
 `pg_restore` runs with `--no-owner --no-acl`, so the connection user owns the restored objects. TablePro does not pass `--clean`; restoring on top of an existing schema with conflicting objects produces stderr errors that show in the result sheet.
 
-## SSH Tunnels and SSL
+## SSH tunnels and SSL
 
 Both flows reuse the connection's active SSH tunnel. No second port forward is opened. SSL connections pass their mode to the tools via `PGSSLMODE`, including `verify-ca` and `verify-full`.
 

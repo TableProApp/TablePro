@@ -27,9 +27,9 @@ Suggestions appear as you type, from the first character, and after `.` or a spa
 | `Return` / `Tab` | Accept the selected suggestion |
 | `Escape` | Dismiss and keep typing |
 
-## Completion Types
+## Completion types
 
-### SQL Keywords
+### SQL keywords
 
 ```sql
 SEL|  -- SELECT
@@ -37,7 +37,7 @@ FROM users WH|  -- WHERE
 SELECT * FROM users WHERE name LIKE '%test%' ORD|  -- ORDER BY
 ```
 
-### Table Names
+### Table names
 
 Tables appear after FROM, JOIN, INSERT INTO, and similar keywords:
 
@@ -49,7 +49,7 @@ SELECT * FROM a JOIN b ON a.id = b.id JOIN |  -- All tables, even after an ON co
 
 The clause is detected at the cursor, so a second or third JOIN suggests tables even when an ON condition comes before it. In a table position, tables lead the list ahead of keywords.
 
-### Column Names
+### Column names
 
 Columns are suggested in SELECT, WHERE, ORDER BY, GROUP BY, and other column contexts.
 
@@ -62,7 +62,7 @@ SELECT u.| FROM users u  -- Columns from users via alias
 SELECT * FROM users WHERE |  -- Columns from users
 ```
 
-### Alias Resolution
+### Alias resolution
 
 Type an alias followed by `.` to see that table's columns:
 
@@ -73,7 +73,7 @@ FROM users u
 JOIN orders o ON u.id = o.|  -- id, user_id, total (from orders)
 ```
 
-### Derived Tables and CTEs
+### Derived tables and CTEs
 
 An alias for a subquery (derived table) or a `WITH` table completes the columns that subquery's SELECT list produces, including `AS` renames:
 
@@ -153,7 +153,7 @@ The sample is cached per collection and cleared when you switch database or refr
 
 Completion is suppressed inside comments, and braces or brackets inside a string literal do not count as opening a document.
 
-### Enum Values
+### Enum values
 
 Comparing against a column whose type declares a fixed set of values suggests those values, quoted and ready to accept. On PostgreSQL that covers enum types:
 
@@ -165,11 +165,11 @@ WHERE mood <> 'ha|        -- 'happy'
 
 The values come from the column cache the editor already holds, so nothing extra is queried while you type. A column with no declared value set suggests nothing.
 
-### Favorite Keywords
+### Favorite keywords
 
 Favorites you've assigned a keyword to (DB-stored or linked-file `@keyword` frontmatter) appear in the popup as a top-priority match. Type the keyword, accept the suggestion, and the favorite's full SQL replaces the keyword inline. A `;;` in the favorite's SQL sets where the cursor lands after expansion. See [Favorites](/features/favorites#cursor-placement) for how to assign keywords and place the marker.
 
-### Schema Names
+### Schema names
 
 For databases with multiple schemas (PostgreSQL):
 
@@ -189,7 +189,7 @@ SELECT * FROM ANALYTICS_PROD.DBT_MARTS.|       -- tables in that schema
 SELECT * FROM ANALYTICS_PROD.DBT_MARTS.ORDERS o WHERE o.|  -- columns
 ```
 
-## Schema Cache
+## Schema cache
 
 On connection, TablePro fetches table names and loads columns in the background. The column cache holds up to 50 tables with LRU eviction. There is no time-based expiry: cached columns stay until you switch databases or refresh the connection. A failed schema load waits 30 seconds before retrying, to avoid hammering the server.
 

@@ -7,8 +7,8 @@
 # changelog.mdx is excluded throughout. It is 116 releases of shipped history and
 # what 0.41.0's notes called a button cannot be rewritten now.
 #
-# Heading case is deliberately absent: 273 headings are still Title Case, and a
-# rule that fails on merge day teaches everyone to ignore the job.
+# Heading case is checked by check-docs-against-source.py, which needs the app's own
+# UI strings to tell a Title Case slip from a control's real name.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."

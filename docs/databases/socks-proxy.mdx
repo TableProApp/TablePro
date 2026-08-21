@@ -56,7 +56,7 @@ An SSH dynamic port forward is a SOCKS5 proxy. Run `ssh -D 1080 user@bastion` in
 
 TablePro waits 15 seconds for the path through the proxy to come up. A timeout means the proxy did not answer, the credentials were rejected, or the proxy could not reach the database. Check the proxy host and port, verify the username and password, and confirm the database host and port are reachable from the proxy's network.
 
-### Local Network permission prompt
+### Local network permission prompt
 
 On macOS 15 and later, connecting to a proxy on your local network (a `192.168.x.x` address, for example) triggers the one-time Local Network permission alert. Allow it, or the proxy is unreachable. Loopback proxies like `ssh -D` on `127.0.0.1` don't trigger the prompt.
 

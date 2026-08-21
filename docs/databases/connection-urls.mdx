@@ -5,7 +5,7 @@ description: Every supported database URL scheme, format, and query parameter fo
 
 TablePro parses standard database connection URLs for importing connections, opening them directly from a browser or terminal, and configuring SSH tunnels.
 
-## URL Schemes
+## URL schemes
 
 | Scheme | Database |
 |--------|----------|
@@ -55,7 +55,7 @@ mysql+ssh://
 mariadb+ssh://
 ```
 
-## Standard Format
+## Standard format
 
 If the URL you want is already in a project's `.env` file, [Open Project Folder](/features/project-folder-import) reads it for you instead.
 
@@ -77,7 +77,7 @@ sqlite:///Users/alice/data/local.db
 Passwords containing special characters (`@`, `#`, `%`, `:`) must be percent-encoded. For example, `p@ss#word` becomes `p%40ss%23word`.
 </Tip>
 
-## SSH Tunnel Format
+## SSH tunnel format
 
 SSH tunnel URLs encode both SSH and database credentials in a single string:
 
@@ -95,7 +95,7 @@ mariadb+ssh://admin@ssh.host/maria_user@db.internal/store?usePrivateKey=true
 
 If `db_host` is omitted, it defaults to `127.0.0.1`.
 
-## Query Parameters
+## Query parameters
 
 ### Connection
 
@@ -265,7 +265,7 @@ d1://account-id/database-name
 postgresql+ssh://ubuntu@bastion/dbuser@10.0.0.5/mydb?usePrivateKey=true
 ```
 
-## Opening URLs from Browser or Terminal
+## Opening URLs from browser or terminal
 
 Launch and connect from a browser or terminal:
 
@@ -287,7 +287,7 @@ Uses a saved connection if it matches, otherwise creates a temporary session. To
 To force TablePro when another client also handles the scheme, use `open -b com.TablePro "mysql://…"`. See [Terminal and DDEV](/external-api/terminal) for the `tablepro` command and a `ddev tablepro` host command.
 </Tip>
 
-## Confirmation and Trusted Links
+## Confirmation and trusted links
 
 Every URL opened from outside the app shows a confirmation alert with the database type, host, user, and database before TablePro connects. Connect only if you trust the source of the link.
 

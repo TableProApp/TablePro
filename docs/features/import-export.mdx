@@ -86,7 +86,7 @@ MQL writes top-level typed values as the constructors mongosh understands, so `_
   </Tab>
 </Tabs>
 
-### Streaming Export
+### Streaming export
 
 Whole-table exports stream rows from the database straight to disk:
 
@@ -96,7 +96,7 @@ Whole-table exports stream rows from the database straight to disk:
 
 Result-grid exports use the in-memory result set. Use LIMIT in your query to control their size.
 
-## Clipboard Paste (CSV/TSV)
+## Clipboard paste (CSV/TSV)
 
 Paste tabular data directly into the data grid. Press `Cmd+V` after selecting a row. Format is auto-detected: tabs parse as TSV, commas as CSV.
 
@@ -123,7 +123,7 @@ Import `.sql` and `.sql.gz` files (statements execute directly against your data
   <img className="hidden dark:block" src="/images/import-dialog-dark.png" alt="Import dialog" />
 </Frame>
 
-### Import Options
+### Import options
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -136,7 +136,7 @@ For PostgreSQL the checkbox runs `SET session_replication_role = replica`, which
 
 For MySQL the checkbox runs `SET FOREIGN_KEY_CHECKS = 0` and works on standard accounts. SQLite uses `PRAGMA foreign_keys = OFF`. Drivers without an equivalent (most NoSQL drivers) ignore the option.
 
-### Error Handling Modes
+### Error handling modes
 
 | Mode | Behavior |
 |------|----------|
@@ -148,7 +148,7 @@ In **Skip and Continue** mode, failed statements are collected (up to 1,000) wit
 
 When an import stops on an error, the same panel shows the line it stopped at, the database's own message, and the statement that failed. The dialog stays open behind it so you can change a setting and run the import again.
 
-### Import JSON Data
+### Import JSON data
 
 Choose **File > Import > Import Data…** and pick a `.json`, `.jsonl`, or `.ndjson` file. The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON (one object per line, streamed for large files), and TablePro's own JSON export shape `{ "table": [ {…} ] }`, so an export round-trips back in.
 
@@ -159,7 +159,7 @@ Choose a destination:
 
 Rows insert through parameterized statements, so JSON values are never concatenated into SQL. Nested objects and arrays are stored as JSON text.
 
-### Import CSV Data
+### Import CSV data
 
 Choose **File > Import > Import Data…** and pick a `.csv` or `.tsv` file. TablePro opens the same row import sheet used for JSON, with CSV-specific parsing options. The delimiter and encoding are auto-detected; the quote character defaults to a double quote. Change any parsing option and the field mapping re-reads the file. Destination options match JSON import: map into an existing table or create a new one.
 
@@ -175,7 +175,7 @@ Choose **File > Import > Import Data…** and pick a `.csv` or `.tsv` file. Tabl
 
 Quoted fields keep embedded commas and newlines (RFC 4180), and doubled quotes (`""`) decode to a single quote.
 
-### Row Import Options
+### Row import options
 
 A row where none of the fields match a mapped column writes nothing, so it is reported rather than counted as imported.
 

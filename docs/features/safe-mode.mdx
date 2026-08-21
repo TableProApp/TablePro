@@ -20,7 +20,7 @@ Set the Safe Mode level in the **Customization** pane of the connection form.
 
 New connections default to **Silent**.
 
-## How It Works
+## How it works
 
 ### Silent
 
@@ -53,11 +53,11 @@ All write operations are blocked. The UI disables:
 
 Read queries (SELECT) execute normally.
 
-## Drivers Without Read-Only Support
+## Drivers without read-only support
 
 The Redis, MongoDB, and etcd drivers do not support read-only mode, so Safe Mode treats every query on these connections as a write. Alert and Safe Mode levels confirm every query; Read-Only blocks everything. Other non-SQL drivers (Cassandra, Elasticsearch, DynamoDB) classify reads and writes normally.
 
-## Toolbar Badge
+## Toolbar badge
 
 The current Safe Mode level appears as a badge in the toolbar (orange for Alert levels, red for Safe Mode and Read-Only). Click it to change levels.
 
@@ -72,7 +72,7 @@ Editing the level in the connection form works the same way round: the change re
 
 Safe Mode gates apply to query execution, saving cell edits, table operations, and sidebar changes.
 
-## Server Read-Only Is Not Safe Mode
+## Server read-only is not safe mode
 
 Safe Mode runs inside TablePro. It never changes anything on the database server, and it cannot make the server accept a write the server itself refuses.
 
@@ -93,7 +93,7 @@ SHOW SESSION VARIABLES WHERE Variable_name IN
 
 `innodb_read_only` set to `ON` means you are on a replica. Connect to the primary to write.
 
-## Execution Log
+## Execution log
 
 Every database operation goes through one authorization step, including the ones the AI assistant and the MCP tools ask for. TablePro records each decision, allowed or refused, to a local log.
 
@@ -107,7 +107,7 @@ This is tamper evident, not tamper proof. Anyone who can write the file can also
 
 The log is local, is not synced, and is not sent anywhere.
 
-## Managed by an Organization
+## Managed by an organization
 
 An administrator can set a minimum Safe Mode level through a macOS configuration profile, delivered by an MDM such as Jamf or Kandji. A connection set below that level is raised to it. A stricter choice is left alone, so the policy is a floor and never a ceiling: someone who wants Read-Only on a production connection still gets it.
 

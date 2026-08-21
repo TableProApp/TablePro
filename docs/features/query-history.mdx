@@ -12,7 +12,7 @@ Open the drawer with `Cmd+Y` or **View > Show Query History**. There is also a *
   <img className="hidden dark:block" src="/images/query-history-dark.png" alt="Query history drawer" />
 </Frame>
 
-## The Drawer
+## The drawer
 
 The drawer opens under the editor and you can drag its divider to resize it. It remembers its height, its filters, and whether it was open, per connection.
 
@@ -60,7 +60,7 @@ TablePro runs SQL on your behalf in several places, and the **Source** menu deci
 
 Turn on **Table Browsing** to see exactly what the app sent while you clicked around a table. Turn on **Structure Changes** to review what altered a schema and when.
 
-## Working With Entries
+## Working with entries
 
 | Action | How |
 |--------|-----|
@@ -75,13 +75,13 @@ Click a row to select it and the details appear beside it; the keyboard stays in
 
 **Run in New Tab** sends the query to the server, so an entry that writes (INSERT, UPDATE, DELETE, or a schema change) asks for confirmation first, whatever the connection's [safe mode](/features/safe-mode) is set to. Reads run straight away. An entry that uses [query parameters](/features/query-parameters) opens the parameter panel instead of running, because parameter values are never recorded.
 
-## Clearing History
+## Clearing history
 
 The trash button clears exactly what the drawer is showing, including whatever the filters are hiding. Scoped to one connection it leaves every other connection alone; with a date range selected it only clears that range; and with the default **My Queries** source it leaves table browsing, row edits, imports and AI queries in place. It asks first, and the confirmation says which of those two it is about to do. There is no undo.
 
 **Settings > Data > Query History > Clear History…** clears everything, for every connection.
 
-## Storage and Retention
+## Storage and retention
 
 History lives in `~/Library/Application Support/TablePro/query_history.db`, a local SQLite database with a full-text index.
 
@@ -97,7 +97,7 @@ Deleting a connection deletes its query history with it.
 
 Query parameter values are never written to disk. The user and role editor never records a statement that carries a password, such as `CREATE USER … IDENTIFIED BY`. A query you write yourself is recorded as you wrote it, so use the pause button before running one that contains a secret.
 
-## Search From External Clients
+## Search from external clients
 
 History is searchable from MCP clients. The `search_query_history` tool returns matching entries with timestamp, connection, query text, source, and outcome. The Raycast extension wraps this in a **Search Query History** command.
 

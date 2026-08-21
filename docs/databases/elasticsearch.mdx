@@ -5,13 +5,13 @@ description: Connect to Elasticsearch with a Query DSL console, index browsing, 
 
 TablePro connects to Elasticsearch 7.x and 8.x over the REST API. Browse indices as tables, run Query DSL requests in a Kibana-style console, page through documents in the data grid, and edit documents inline. Authentication is HTTP Basic, an API key, or none, over plain HTTP or TLS.
 
-## Quick Setup
+## Quick setup
 
 Click **Create Connection…**, select **Elasticsearch**, enter host and port (default 9200), pick an auth method, and connect.
 
 Elasticsearch is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved Elasticsearch connection installs it without asking. You can also install **Elasticsearch Driver** from **Settings > Plugins > Browse**.
 
-## Authentication Methods
+## Authentication methods
 
 **Username & Password**: HTTP Basic auth. Enter the username and password in the standard connection fields.
 
@@ -19,9 +19,9 @@ Elasticsearch is a registry plugin. Picking it in the **Choose a Database** shee
 
 **None**: No authentication, for clusters with security disabled.
 
-## Connection Settings
+## Connection settings
 
-### Required Fields
+### Required fields
 
 | Field | Description |
 |-------|-------------|
@@ -29,7 +29,7 @@ Elasticsearch is a registry plugin. Picking it in the **Choose a Database** shee
 | **Port** | REST port, default `9200` |
 | **Auth Method** | Username & Password, API Key, or None |
 
-### Optional Fields
+### Optional fields
 
 | Field | Description |
 |-------|-------------|
@@ -79,7 +79,7 @@ Search responses render as a grid; `_cat` and other array responses tabularize; 
 
 **Pagination**: The grid pages with `from`/`size` for the first 10,000 documents, then switches to `search_after` with a point-in-time (PIT) for deeper browsing. The 10,000 threshold is fixed in the driver, matching Elasticsearch's default `max_result_window`; the index's own setting is not read, so an index with a lowered window errors before the switch.
 
-## Example Configurations
+## Example configurations
 
 **Local cluster**: Host `localhost`, port `9200`, Auth Method None (security disabled) or Username & Password.
 

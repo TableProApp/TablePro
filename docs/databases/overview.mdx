@@ -5,7 +5,7 @@ description: Create, organize, and switch database connections, with health moni
 
 TablePro connects to 26 databases through its plugin system. This page covers creating and organizing connections. Driver-specific fields and quirks live on each database's own page.
 
-## Supported Databases
+## Supported databases
 
 | Database | Default port | SSH tunnel | SSL/TLS | Cloudflare Tunnel | Cloud SQL Proxy | SOCKS Proxy |
 |----------|-------------|-----------|---------|-------------------|-----------------|-------------|
@@ -38,7 +38,7 @@ TablePro connects to 26 databases through its plugin system. This page covers cr
 
 Transport details: [SSH Tunneling](/databases/ssh-tunneling), [SSL/TLS](/features/ssl), [Cloudflare Tunnel](/databases/cloudflare-tunnel), [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy), [SOCKS Proxy](/databases/socks-proxy).
 
-## Creating a Connection
+## Creating a connection
 
 The Welcome window appears on launch. The left panel has **Create Connection…** and an **Add from Existing** menu holding Import from URL, Import from Other App, Open Project Folder, and Import Connections. Saved connections are on the right, with a search field in the header (`Cmd+F` focuses it). With nothing saved yet, that list offers **Try Sample Database**.
 
@@ -73,7 +73,7 @@ Paste a connection string and let TablePro fill in the form. In the chooser shee
 Special characters in passwords (`@`, `#`, `%`) need percent-encoding. `p@ssword` becomes `p%40ssword`.
 </Tip>
 
-### Open a URL Directly
+### Open a URL directly
 
 Opening a database URL from a browser or terminal skips the form:
 
@@ -91,7 +91,7 @@ What happens on open:
 - If the connection has a pre-connect script, TablePro shows the script and asks before running it
 - URLs can target a table or apply a filter via query parameters; filters also require confirmation. See [Connection URL Reference](/databases/connection-urls)
 
-## Connection Form
+## Connection form
 
 The form is a sidebar with up to nine panes. Tunnel and SSL panes appear only for drivers that support them (see the matrix above). A warning triangle on a sidebar item marks missing required fields.
 
@@ -138,7 +138,7 @@ File-based drivers (SQLite, DuckDB, Beancount) replace the host section with a f
 | **Local only** | Excludes this connection from iCloud Sync. See [iCloud Sync](/features/icloud-sync) |
 | **Plugin fields** | Driver-specific options like MongoDB `replicaSet` |
 
-## Organizing Connections
+## Organizing connections
 
 The **Customization** pane sets a color, tags, and a group per connection. The color tints the toolbar when connected, so production and development are easy to tell apart.
 
@@ -163,7 +163,7 @@ A connection can carry multiple tags, each with a name and color. When any conne
 
 Hover a connection row and click the star, or right-click and choose **Add to Favorites**. Favorites gather in a section at the top of the list, sorted alphabetically, while the connection stays in its group below. Favorites sync through iCloud unless the connection is marked local only.
 
-## Switching Connections and Databases
+## Switching connections and databases
 
 - **Switch Connection** (`Ctrl+Cmd+C`): a toolbar popover lists active sessions and saved connections. Type to filter, arrow keys to move, Return to switch
 - **Open Database** (`Cmd+K`): switch databases on the same server without reconnecting
@@ -177,11 +177,11 @@ Leave the **Database** field empty when creating a connection to browse every da
 
 When the sidebar is in tree layout, each database or schema groups its tables, views, materialized views, foreign tables, procedures, and functions into collapsible folders. View > Filter Databases limits the tree to checked databases, and the same command is in the sidebar right-click menu. The choice is saved per connection.
 
-## Dock Menu
+## Dock menu
 
 Right-click the TablePro Dock icon and pick a saved connection under **Open Connection**.
 
-## While a Connection Is Being Established
+## While a connection is being established
 
 The window fills with the connection's name, its endpoint, and the step currently running: opening the tunnel, running the pre-connect script, negotiating encryption, authenticating, preparing the session. The sidebar and inspector stay out of the way until there is a session to put in them, and come back at the width you left them.
 
@@ -189,7 +189,7 @@ PostgreSQL, CockroachDB, Redshift, ClickHouse, and Redis report steps from insid
 
 A connection that fails stays in its window and shows the database's own error, with **Try Again**, **Manage Connections…**, and **Copy Details**. Nothing is reported as an alert, so reopening several connections at launch cannot bury you in dialogs.
 
-## Connection Health Monitoring
+## Connection health monitoring
 
 TablePro pings every active connection every 30 seconds and skips the ping while one of your queries is running. File-based drivers (SQLite, DuckDB, Beancount), Snowflake, and Teradata are not monitored.
 
@@ -214,7 +214,7 @@ SET search_path TO myschema, public;
 
 A failed statement is logged and skipped; the connection still opens.
 
-## Editing, Deleting, and Storage
+## Editing, deleting, and storage
 
 Right-click a connection to edit or delete it. Changes apply on the next connect; deleting removes the saved settings only.
 

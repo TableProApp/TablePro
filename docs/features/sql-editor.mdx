@@ -10,7 +10,7 @@ Write and run SQL with tree-sitter syntax highlighting, schema-aware autocomplet
   <img className="hidden dark:block" src="/images/sql-editor-dark.png" alt="SQL Editor" />
 </Frame>
 
-## Inline Diagnostics
+## Inline diagnostics
 
 The editor underlines a structural mistake in red while you type, and clears it as soon as you fix it. It reports only what more typing cannot fix:
 
@@ -26,7 +26,7 @@ On MongoDB connections the query parser runs too, so an unknown collection metho
 
 Checking runs 500ms after you stop typing, and is skipped on very large documents.
 
-## Writing Queries
+## Writing queries
 
 Separate statements with semicolons. Place the cursor in any statement and press `Cmd+Enter` to run just that one.
 
@@ -50,7 +50,7 @@ Autocomplete suggests tables, columns, and keywords as you type, and resolves al
 
 Use `:name` placeholders instead of hardcoding values; they bind via prepared statements. See [Query Parameters](/features/query-parameters).
 
-## Per-Tab Database Picker
+## Per-tab database picker
 
 The editor toolbar shows a database picker (or schema picker, depending on the engine). Each SQL tab binds to its own database:
 
@@ -58,7 +58,7 @@ The editor toolbar shows a database picker (or schema picker, depending on the e
 - The picker lists the databases visible in the sidebar, so it follows the sidebar database filter.
 - Databases whose driver reconnects the session to switch, PostgreSQL, Redshift, and CockroachDB, show a lock instead of a menu: there is no in-place way to change database from this picker. The tab still keeps the database it was opened with; on these engines a tab bound to a database other than the connection's active one runs on a separate connection for that database. See [Cross-Database Tabs](/databases/postgresql#cross-database-tabs).
 
-## Find and Replace
+## Find and replace
 
 Press `Cmd+F` in a query tab to open the find panel. Switch the panel to Replace mode to replace the current match or all matches.
 
@@ -70,7 +70,7 @@ Press `Cmd+F` in a query tab to open the find panel. Switch the panel to Replace
 
 Match modes: contains, matches word, starts with, ends with, or regular expression, plus match case and wrap around toggles.
 
-## Query Execution
+## Query execution
 
 | Action | Shortcut | Description |
 |--------|----------|-------------|
@@ -81,7 +81,7 @@ Match modes: contains, matches word, starts with, ends with, or regular expressi
 | Explain query | `Cmd+Option+E` | Shows the execution plan for the query at cursor as a tree or diagram (see [Explain Visualization](/features/explain-visualization)) |
 | Format query | `Cmd+Shift+L` | Formats the current query |
 
-### Statement Markers
+### Statement markers
 
 A tab can hold many statements, and the editor marks which one it is about to run.
 
@@ -92,7 +92,7 @@ A tab can hold many statements, and the editor marks which one it is about to ru
 - A `BEGIN … END` body counts as one statement, so a trigger or stored procedure gets one button rather than one per line inside it. `BEGIN;` and `BEGIN TRANSACTION;` are statements of their own.
 - Turn either off in **Settings > Editor** with **Highlight current statement** and **Run button beside each statement**.
 
-### Moving Between Statements
+### Moving between statements
 
 - `Ctrl+Cmd+Left` and `Ctrl+Cmd+Right` move the cursor to the previous and next statement. From part-way through a statement, the first press back lands on that statement's own start. Neither wraps: at the last statement, next does nothing.
 - `Ctrl+Cmd+Enter` runs the statement the cursor is in and then moves to the next one, so you can work down a script without reaching for the mouse. The cursor moves first, so you can see what is queued while the current one runs.
@@ -105,7 +105,7 @@ A tab can hold many statements, and the editor marks which one it is about to ru
   <img className="hidden dark:block" src="/images/sql-editor-statement-run-dark.png" alt="Statement run controls in the editor gutter" />
 </Frame>
 
-### Automatic Row Limit
+### Automatic row limit
 
 SELECT and WITH queries without their own `LIMIT` or `FETCH FIRST` run with the configured row cap:
 
@@ -135,7 +135,7 @@ Results appear in the data grid below the editor with row count and execution ti
 - **Errors**: a red banner above the results shows the database error message with a **Fix with AI** button.
 - **Non-SELECT statements** (INSERT, UPDATE, DELETE, DDL) show a success view with affected row count and execution time.
 
-## SQL Formatting
+## SQL formatting
 
 Press `Cmd+Shift+L` to format the current query. You can also click the format button in the editor toolbar (its tooltip reads Format Query) or use **Query > Format Query**; the shortcut is rebindable in **Settings > Keyboard**. The token-based formatter:
 
@@ -166,11 +166,11 @@ HAVING COUNT(o.id) > 5
 ORDER BY order_count DESC;
 ```
 
-## Vim Mode
+## Vim mode
 
 Enable Vim keybindings in **Settings > Editor > Vim mode**. Normal, Insert, Replace, Visual, Visual Line, and Command-line modes are supported, with standard motions, operators, count prefixes, and text objects. `:w` executes the query and `:q` closes the tab. Jump to a line with `10G` or `10gg` (`:10` is not supported). Control-key bindings other than `Ctrl+R` are not intercepted. Full key reference: [Vim Mode](/features/vim-mode).
 
-## Code Folding
+## Code folding
 
 Move the pointer over the gutter and a chevron appears next to every region that spans more than one line: whole statements, table bodies, CTEs, subqueries, `BEGIN` blocks, and block comments. The chevron points down while the region is showing and right while it is folded, the way a disclosure control works everywhere else in macOS. Resting on a chevron marks how far its region reaches. Click to collapse, click again to expand.
 
@@ -194,17 +194,17 @@ Turn folding off in **Settings > Editor**. It also works on the DDL and trigger 
 
 Turning line numbers off in **Settings > Editor** removes the gutter, and the chevrons with it. Toggle Fold, Fold All, Unfold All and the collapsed chips still work.
 
-## Editor Settings
+## Editor settings
 
 **Settings > Editor** covers line numbers, current-line highlight, current-statement highlight, word wrap, code folding, the per-statement run button, tab width, auto-uppercase keywords as you type, query parameters, and Vim mode. Editor font family and size are set per theme in **Settings > Appearance**.
 
 Editor windows remember their size, position, and font zoom between launches. See [Query Tabs](/features/tabs#windows-and-connections).
 
-## AI Assistance
+## AI assistance
 
 **Explain with AI** (`Cmd+L`) explains the query at cursor, **Optimize with AI** (`Cmd+Option+L`) suggests performance improvements, and **Fix with AI** in the error banner rewrites a failing query. Inline AI suggestions (ghost text) complete your SQL as you type: Tab accepts, Escape dismisses. See [AI Assistant](/features/ai-assistant) for setup.
 
-## SQL Files
+## SQL files
 
 TablePro opens `.sql`, `.psql`, and `.pgsql` files:
 
@@ -225,7 +225,7 @@ The title bar shows the filename for file-backed tabs, with the standard macOS u
 When a tab has both unsaved file changes and pending data grid edits, `Cmd+S` saves the grid changes first. Save the file after the grid save completes.
 </Note>
 
-### External Modifications
+### External modifications
 
 If a file changes on disk while open (a `git pull`, an edit in another editor), a yellow banner offers **Reload from Disk**, which replaces your tab edits with the new content. Saving over an externally changed file shows a side-by-side diff with three actions: **Keep My Changes**, **Reload from Disk**, or **Cancel**.
 

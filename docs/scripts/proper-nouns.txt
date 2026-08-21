@@ -1,0 +1,30 @@
+# Words that keep their capital inside a sentence-case heading.
+#
+# Acronyms (SQL, URL, IAM), names with an interior capital (MySQL, PGlite), and any
+# heading that is literally a control or menu item in the app are recognised
+# automatically from the source. This file is for the rest: product names whose
+# second word is an ordinary English word, which no rule can tell from prose.
+#
+# One per line. Comments start with #.
+Atlas
+Authentication
+Beancount
+Cloud
+Connector
+Drive
+Finder
+Homebrew
+Insights
+Instant
+Kerberos
+Keyspaces
+Library
+Local
+Proxy
+Quack
+Shortcuts
+Studio
+Sync
+Tunnel
+Turso
+Vantage

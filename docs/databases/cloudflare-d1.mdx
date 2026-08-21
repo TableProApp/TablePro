@@ -5,7 +5,7 @@ description: Connect to Cloudflare D1 databases over the Cloudflare REST API
 
 TablePro connects to Cloudflare D1, a serverless SQLite-compatible database, via the Cloudflare REST API. No direct database connection or SSH tunnel is involved. The driver is a downloadable plugin; TablePro offers to install it when you select **Cloudflare D1** in the connection form. See [Plugins](/features/plugins).
 
-## Connection Settings
+## Connection settings
 
 | Field | Description |
 |-------|-------------|
@@ -20,7 +20,7 @@ TablePro connects to Cloudflare D1, a serverless SQLite-compatible database, via
 
 Click **Test Connection** to verify, then **Save & Connect**.
 
-## Getting Your Credentials
+## Getting your credentials
 
 **Account ID**: On the [Cloudflare dashboard](https://dash.cloudflare.com) right sidebar, or `npx wrangler whoami`.
 
@@ -35,15 +35,15 @@ Click **Test Connection** to verify, then **Save & Connect**.
 The token grants access to all D1 databases in your account. Scope it to the account you need.
 </Warning>
 
-## Database Management
+## Database management
 
 Use the database switcher in the toolbar to list every D1 database in your account and switch between them without reconnecting. You can also create and drop D1 databases directly from TablePro, or with `wrangler d1 create <name>`.
 
-## Schema and Triggers
+## Schema and triggers
 
 The structure editor creates tables, adds and drops columns with generated `ALTER TABLE` DDL, and creates and drops indexes. It cannot change an existing column's name, type, nullability, or default: recreate the table for that. Triggers appear under **Triggers** in the Structure tab, where you can create, edit, and drop them.
 
-## SQL Dialect
+## SQL dialect
 
 D1 uses SQLite syntax; browsing, EXPLAIN QUERY PLAN, data editing, and export work as they do for SQLite. See [SQLite](/databases/sqlite).
 

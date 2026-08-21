@@ -45,7 +45,7 @@ Duplicates match by host, port, database, and username, and start unchecked. Che
 
 TablePro for iPhone reads and writes the same `.tablepro` file. Import: tap the **more** menu (•••) above the connection list > **Import Connections**, or open a `.tablepro` file from Files or AirDrop. Export: **more** menu > **Export Connections** shares through the system share sheet. Passwords are left out unless you turn on **Include passwords** and set a passphrase.
 
-## Import from Other Apps
+## Import from other apps
 
 1. **File > Import from Other App…**
 2. Pick the source app. Navicat asks for the `.ncx` file you exported from Navicat.
@@ -67,7 +67,7 @@ TablePro for iPhone reads and writes the same `.tablepro` file. Import: tap the 
 
 Groups and folders carry over. The source app doesn't need to be running. DBeaver is read from its data folder, so every edition works. DataGrip imports from its recent projects with SSH tunnel and SSL settings; master-password-protected connections can't be read. Beekeeper Studio imports include encrypted passwords and SSH bastion hosts. Navicat needs an export first: **File > Export Connections** in Navicat, with **Export Password** on to bring passwords across.
 
-## Share via Link
+## Share via link
 
 Right-click a connection > **Share > Copy TablePro Link**. Produces a `tablepro://import?…` URL with the name, host, port, type, username, database, and any SSH or SSL settings. No passwords, key passphrases, or TOTP secrets. The recipient opens the link, reviews the prefilled form, adds their own password, and saves.
 
@@ -140,7 +140,7 @@ Use `$VAR` and `${VAR}` in `.tablepro` files. Resolved from TablePro's process e
 }
 ```
 
-## Password Sources
+## Password sources
 
 Connections in `~/Library/Application Support/TablePro/connections.json` can declare where their password comes from instead of storing it in the Keychain. Useful when a script provisions connections, for example one Docker database per git worktree. The password resolves at connect time and is not synced to iCloud, since the path, variable, or command is specific to one Mac.
 
@@ -160,7 +160,7 @@ Add a `passwordSource` object to the connection:
 
 When `passwordSource` is set it replaces the Keychain lookup. If resolution fails, the connection reports the error instead of falling back to the Keychain.
 
-### Secret Managers
+### Secret managers
 
 1Password, HashiCorp Vault, and AWS Secrets Manager have dedicated kinds. They build the CLI call for you and quote every argument, so a reference can't break out into the shell.
 
@@ -176,7 +176,7 @@ When `passwordSource` is set it replaces the Keychain lookup. If resolution fail
 
 The CLI tools must be on `PATH`; TablePro also looks in `/usr/local/bin` and `/opt/homebrew/bin`. Same 30 second timeout as `command`.
 
-## File Format
+## File format
 
 JSON. The envelope needs `formatVersion`, `exportedAt`, and `appVersion`; each connection needs `name`, `host`, `port`, `database`, `username`, and `type` (empty strings are fine where a value doesn't apply).
 

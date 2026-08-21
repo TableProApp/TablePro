@@ -39,7 +39,7 @@ Redis shows a key-pattern search bar (for example `user:*`) with a key-type pick
 
 BETWEEN shows two value fields. IN/NOT IN takes comma-separated values.
 
-## Case Sensitivity
+## Case sensitivity
 
 Contains, not contains, starts with, and ends with ignore case. Equals, not equals, IN, NOT IN, and regex match case. Open the operator menu and use **Match Case** to change either one for that row. A small `Aa` icon on the operator button marks a row that is not using its usual setting.
 
@@ -51,7 +51,7 @@ On MySQL, MariaDB, SQL Server, SQLite, libSQL, and Cloudflare D1 the column's co
 
 Filters saved before this option existed follow the same rules, so a saved "contains" filter now ignores case on PostgreSQL, DuckDB, Oracle, and BigQuery. Turn **Match Case** on to get the old behavior back.
 
-## Nested Fields
+## Nested fields
 
 On a document store such as MongoDB, a field holding an object or an array of objects is one column in the grid, showing its JSON. The column picker also lists the paths inside it, so you can filter on `customer.country` or `items.sku` directly.
 
@@ -64,7 +64,7 @@ TablePro reads the paths from a sample of the collection, so the picker lists th
 
 A field whose name contains a literal dot is left out. MongoDB reads the dot in a query as a path separator, so a filter naming such a field would match a different field.
 
-### Fields Inside an Array
+### Fields inside an array
 
 A row on a field inside an array gets one more control, because MongoDB has two different answers here:
 

@@ -10,7 +10,7 @@ TablePro is built with:
 - **Swift Concurrency** (async/await, actors) for all async work
 - **Native C libraries** for database connectivity, linked as static `.a` files
 
-## Design Patterns
+## Design patterns
 
 ### MVVM
 
@@ -18,7 +18,7 @@ TablePro is built with:
 - **ViewModels**: `@Observable` classes
 - **Views**: SwiftUI, with AppKit bridging where needed
 
-### Protocol-Oriented Drivers
+### Protocol-oriented drivers
 
 All database connectivity goes through one protocol:
 
@@ -34,7 +34,7 @@ protocol DatabaseDriver: AnyObject {
 
 No switch statements on database type. No hardcoded driver list. Plugins register themselves, and the factory resolves them by `DatabaseType.pluginTypeId`. `DatabaseType` is a string-based struct, not an enum, so unknown types from future plugins stay valid.
 
-### Actor Isolation
+### Actor isolation
 
 Thread-safe shared state uses Swift actors:
 
@@ -57,7 +57,7 @@ actor SSHTunnelManager {
 | swift-certificates | SPM, 1.19.0+ | X.509 types, linked by the app target |
 | Yams | SPM, 5.1.0+ | YAML parsing for project folder import |
 
-## Plugin System
+## Plugin system
 
 All database drivers are `.tableplugin` bundles loaded at runtime. This keeps the app binary small and makes adding new databases a matter of dropping in a bundle.
 
@@ -70,7 +70,7 @@ All database drivers are `.tableplugin` bundles loaded at runtime. This keeps th
 
 `Packages/TableProCore/Sources/TableProPluginKit` is a symlink to the same files, so edit only `Plugins/TableProPluginKit/`.
 
-### Driver Plugins
+### Driver plugins
 
 Five driver plugins ship inside the app bundle, covering nine database types:
 
@@ -112,7 +112,7 @@ TableProPluginKit builds with Swift Library Evolution (`BUILD_LIBRARY_FOR_DISTRI
 
 Additive changes (a new requirement with a default implementation, a new field added through a new initializer overload) need no version bump. Breaking changes bump `currentPluginKitVersion` in `PluginManager.swift`, and the loader then rejects mismatched plugins cleanly. Run `scripts/check-pluginkit-abi.sh` before merging any change under `Plugins/TableProPluginKit/`. See [Plugin Development](/development/plugin-development) for the full rules.
 
-### Opt-in Plugin Protocols
+### Opt-in plugin protocols
 
 Plugins can adopt protocols beyond `PluginDatabaseDriver` to expose extra capabilities. These are runtime-cast (`as?`), so plugins that do not conform keep working without an ABI bump.
 
@@ -124,7 +124,7 @@ Plugins can adopt protocols beyond `PluginDatabaseDriver` to expose extra capabi
 | `PluginPrincipalManagement` | Serve users, roles, and grants to the Users & Roles tab |
 | `PluginBrowseFilterProvider` | Describe how the sidebar's object filter behaves for this driver (glob, case sensitivity, type scopes) |
 
-## Key Components
+## Key components
 
 ### DatabaseManager
 
@@ -134,7 +134,7 @@ Connection pool and lifecycle management. Primary interface between UI and drive
 
 Pings active connections every 30 seconds. Auto-reconnects with exponential backoff on failure.
 
-### Change Tracking
+### Change tracking
 
 1. A cell edit is recorded by `DataChangeManager` as a pending change
 2. Save runs `SQLStatementGenerator`, which turns pending changes into INSERT, UPDATE, and DELETE statements
@@ -145,7 +145,7 @@ Pings active connections every 30 seconds. Auto-reconnects with exponential back
 
 The central coordinator for the main window. It is split across extension files in `Views/Main/Extensions/` (`MainContentCoordinator+Alerts`, `+Filtering`, `+Pagination`, and so on). New coordinator functionality goes in a new extension file, not the main file.
 
-### Autocomplete Engine
+### Autocomplete engine
 
 ```mermaid
 flowchart LR
@@ -160,7 +160,7 @@ flowchart LR
 - **SQLContextAnalyzer**: parses cursor position context (table ref, column ref, keyword)
 - **SQLSchemaProvider**: actor that caches and serves schema data
 
-### MCP Server
+### MCP server
 
 The MCP server lives under `Core/MCP/`, and it speaks Model Context Protocol revision `2026-07-28` plus two legacy revisions.
 
@@ -184,7 +184,7 @@ Nothing in the server is reachable off the machine. It binds loopback and speaks
 
 See [MCP Protocol](/external-api/mcp-protocol), the [tool catalog](/external-api/mcp-tools), and [Versioning](/external-api/versioning).
 
-## Data Flow
+## Data flow
 
 ### Connection
 
@@ -199,7 +199,7 @@ flowchart TD
     SSH --> Connected
 ```
 
-### Query Execution
+### Query execution
 
 ```mermaid
 flowchart TD
@@ -210,7 +210,7 @@ flowchart TD
     Result --> Grid["DataGridView"]
 ```
 
-## State Management
+## State management
 
 | Pattern | What | Where |
 |---------|------|-------|

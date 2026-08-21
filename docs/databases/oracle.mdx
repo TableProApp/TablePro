@@ -25,7 +25,7 @@ The Oracle driver is a downloadable plugin on macOS. When you select Oracle in t
 2. Find **Oracle Driver** and click **Install**
 3. The plugin downloads and loads immediately, no restart needed
 
-## Connection Settings
+## Connection settings
 
 Enter host, port, username, password, and service name, then click **Save & Connect**.
 
@@ -42,7 +42,7 @@ Enter host, port, username, password, and service name, then click **Save & Conn
   <img className="hidden dark:block" src="/images/oracle-connection-form-dark.png" alt="Oracle connection form with Connection Type and Service Name fields" />
 </Frame>
 
-## Example Configurations
+## Example configurations
 
 **Local (Oracle XE)**: host `localhost:1521`, user `system`, service `XEPDB1`
 
@@ -85,7 +85,7 @@ OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY;
 
 **Schema Editing**: ALTER TABLE with double quotes for case-sensitive names. Supports ADD, RENAME COLUMN, MODIFY, DROP, CREATE INDEX.
 
-## Auth Compatibility
+## Auth compatibility
 
 TablePro authenticates via `OracleNIO`, a pure-Swift implementation of the Oracle TNS wire protocol (no Oracle Instant Client needed). Username and password are the only credentials it accepts; OS auth and Oracle wallets are not supported. Create a user with:
 
@@ -112,7 +112,7 @@ SELECT username, password_versions FROM dba_users WHERE username = '<USER>';
 
 If the connection fails with "Unsupported Password Verifier", check `password_versions` first. "Server Version Not Supported" means the database is older than 11.1 (10g or earlier), which the driver cannot connect to.
 
-## Column Type Support
+## Column type support
 
 | Oracle type | Display |
 |---|---|

@@ -199,6 +199,86 @@ def check_pluginkit_version(root: Path, docs: Path) -> list[str]:
     return failures
 
 
+def check_changelog_parity(root: Path, docs: Path) -> list[str]:
+    """Every release in CHANGELOG.md must appear on the changelog page.
+
+    The two are not copies of each other and must not be generated from one another:
+    0.67.0 is 201 terse entries in CHANGELOG.md and 113 merged, longer ones on the
+    page, because the page is edited for readers and the file is edited for the
+    release notes. What they must agree on is which versions exist.
+
+    The check is deliberately one-way. The page may carry a version the file does not,
+    which is how 0.39.0 is documented: it was tagged and shipped, failed to launch with
+    errno 163, and 0.39.1 replaced it the same day.
+    """
+    shipped = set(
+        re.findall(r"^## \[([0-9][^\]]*)\]", (root / "CHANGELOG.md").read_text(), re.M)
+    )
+    documented = set(
+        re.findall(r'<Update label="v?([^"]+)"', (docs / "changelog.mdx").read_text())
+    )
+    missing = sorted(shipped - documented)
+    return [
+        f"changelog.mdx: {version} is in CHANGELOG.md and not on the page"
+        for version in missing
+    ]
+
+
+def check_changelog_anchors(root: Path, docs: Path) -> list[str]:
+    """An Update's label is its anchor and its RSS title, so it has to be unique.
+
+    Dated labels collided on 22 days across 49 releases, which left no release on the
+    page linkable and every feed item titled with a date instead of a version.
+    """
+    labels = re.findall(r'<Update label="([^"]*)"', (docs / "changelog.mdx").read_text())
+    seen, repeated = set(), set()
+    for label in labels:
+        if label in seen:
+            repeated.add(label)
+        seen.add(label)
+    return [f"changelog.mdx: label {label!r} is used more than once" for label in sorted(repeated)]
+
+
+def check_heading_case(root: Path, docs: Path) -> list[str]:
+    """Headings are sentence case, except where the heading is a name.
+
+    An acronym, a name with an interior capital, and a heading that is literally a
+    control or menu item in the app all keep their capitals. The last exemption reads
+    the app's own strings, so a renamed control never leaves a stale allowlist behind.
+    """
+    ui = set()
+    for swift in (root / "TablePro").rglob("*.swift"):
+        ui |= set(re.findall(r'String\(localized:\s*"((?:[^"\\]|\\.)*)"', swift.read_text()))
+
+    acronym = re.compile(r"^[A-Z0-9]{2,}$")
+    inner = re.compile(r"^[A-Za-z][a-z0-9.]*[A-Z]")
+    known = {w for s in ui for w in s.split() if acronym.match(w) or inner.match(w)}
+    nouns = Path(__file__).with_name("proper-nouns.txt").read_text().splitlines()
+    known |= {n.strip() for n in nouns if n.strip() and not n.startswith("#")}
+
+    failures = []
+    for page in doc_pages(docs):
+        for line_no, line in enumerate(page.read_text().splitlines(), start=1):
+            match = re.match(r"^#{2,4} (.+)$", line)
+            if not match:
+                continue
+            heading = re.sub(r"^\d+\.\s*", "", match.group(1).strip())
+            if heading in ui or match.group(1).strip() in ui:
+                continue
+            for word in heading.split()[1:]:
+                core = word.strip("`*_()[],.:;?!\"'")
+                if not core or not core[0].isupper():
+                    continue
+                if acronym.match(core) or inner.match(core) or core in known:
+                    continue
+                failures.append(
+                    f"{page.relative_to(docs)}:{line_no}: sentence case, so {core!r} "
+                    f"in {heading!r} is capitalised without being a name"
+                )
+                break
+    return failures
+
+
 def main() -> int:
     root = repo_root()
     docs = root / "docs"
@@ -207,6 +287,9 @@ def main() -> int:
         ("menu paths", check_menu_paths),
         ("keyboard shortcuts", check_shortcuts),
         ("PluginKit version", check_pluginkit_version),
+        ("changelog parity", check_changelog_parity),
+        ("changelog anchors", check_changelog_anchors),
+        ("heading case", check_heading_case),
     )
 
     total = 0

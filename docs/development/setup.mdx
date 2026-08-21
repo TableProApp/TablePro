@@ -21,7 +21,7 @@ Optional but recommended:
 | SwiftFormat | `brew install swiftformat` | Code formatting |
 | GitHub CLI | `brew install gh` | Used by `download-libs.sh` |
 
-## Quick Start
+## Quick start
 
 <Steps>
   <Step title="Clone the repository">
@@ -117,7 +117,7 @@ Writing a driver plugin? See [Plugin Development](/development/plugin-developmen
   />
 </Frame>
 
-## Project Structure
+## Project structure
 
 <Tree>
   <Tree.Folder name="TablePro" defaultOpen>
@@ -160,7 +160,7 @@ Writing a driver plugin? See [Plugin Development](/development/plugin-developmen
 
 `Packages/TableProCore/Sources/TableProPluginKit` is a symlink to `Plugins/TableProPluginKit`. Edit the files under `Plugins/` only.
 
-## Running Tests
+## Running tests
 
 ```bash
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
@@ -168,7 +168,7 @@ xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginV
 
 Or in Xcode: `Cmd+U`. To run a single class or method, pass `-only-testing:TableProTests/TestClassName` or `-only-testing:TableProTests/TestClassName/testMethodName`.
 
-## Linting and Formatting
+## Linting and formatting
 
 Before committing:
 

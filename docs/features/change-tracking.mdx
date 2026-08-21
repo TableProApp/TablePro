@@ -10,7 +10,7 @@ Changes are queued in memory, not applied immediately. Edit cells, insert rows, 
   <img className="hidden dark:block" src="/images/change-tracking-dark.png" alt="Pending edits, inserts, and deletions highlighted in the data grid" />
 </Frame>
 
-## Data Changes
+## Data changes
 
 **Edit cells**: double-click a cell to edit (see [Data Grid](/features/data-grid)). Changes queue immediately. Changing a value back to its original removes it from the queue. Columns the driver marks immutable, such as MongoDB's `_id`, cannot be edited.
 
@@ -44,7 +44,7 @@ There is no discard button. To drop pending changes, undo them, or accept the **
 
 Click the eye icon in the toolbar or press `Cmd+Shift+P` to see the exact SQL before saving. The preview inlines parameter values so you can verify what will run, and **Copy All** copies every statement.
 
-## Undo & Redo
+## Undo & redo
 
 | Action | Shortcut |
 |--------|----------|
@@ -53,6 +53,6 @@ Click the eye icon in the toolbar or press `Cmd+Shift+P` to see the exact SQL be
 
 `Cmd+Z` is context-aware: it undoes text edits when the SQL editor is focused and data changes when the grid is focused. Deleting multiple rows is a single undo action; undoing restores them all at once. Stacks are per-tab, and saving clears them.
 
-## Schema Changes
+## Schema changes
 
 Structure edits (columns, indexes, foreign keys, primary key) use the same queue: changes are tracked locally with visual indicators, previewable as DDL, and applied with **Save Changes**. See [Table Structure](/features/table-structure).

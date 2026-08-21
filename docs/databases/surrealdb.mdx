@@ -7,7 +7,7 @@ TablePro connects to SurrealDB 2.x and 3.x over the HTTP RPC protocol. Browse na
 
 The driver talks CBOR, so record links, datetimes, durations, decimals, and UUIDs keep their types instead of arriving as plain strings.
 
-## Quick Setup
+## Quick setup
 
 Click **Create Connection…**, select **SurrealDB**, enter the host and port (default `8000`), pick an auth level, and connect.
 
@@ -15,7 +15,7 @@ SurrealDB is a registry plugin. Picking it in the **Choose a Database** sheet pr
 
 TablePro registers the `surrealdb://` URL scheme, so `surrealdb://user:pass@host:8000` links pre-fill the connection form (see [Connection URL Reference](/databases/connection-urls)). For a remote server, connect through an [SSH tunnel](/databases/ssh-tunneling).
 
-## Namespaces and Databases
+## Namespaces and databases
 
 SurrealDB nests tables under a namespace and a database. TablePro maps that straight onto the sidebar: namespaces sit at the top level, databases sit inside them, and tables sit inside a database. Switch either level without reconnecting.
 
@@ -37,9 +37,9 @@ SurrealDB cannot infer which level your credentials belong to, so pick the one t
 
 Only a root user can list every namespace. With namespace or database credentials, TablePro browses the scope your user is limited to.
 
-## Connection Settings
+## Connection settings
 
-### Required Fields
+### Required fields
 
 | Field | Description |
 |-------|-------------|
@@ -47,7 +47,7 @@ Only a root user can list every namespace. With namespace or database credential
 | **Port** | HTTP port, default `8000` |
 | **Auth Level** | Root, Namespace, Database, Record Access, or Token |
 
-### Optional Fields
+### Optional fields
 
 | Field | Description |
 |-------|-------------|
@@ -58,7 +58,7 @@ Only a root user can list every namespace. With namespace or database credential
 | **Token** | A JWT, shown when Auth Level is Token |
 | **Access Method** | The name from `DEFINE ACCESS`, shown when Auth Level is Record Access |
 
-## Editing Records
+## Editing records
 
 <Frame caption="SurrealDB records in the data grid">
   <img className="block dark:hidden" src="/images/surrealdb-record-grid.png" alt="SurrealDB table records with record links and typed values in the data grid" />
@@ -73,11 +73,11 @@ The grid writes one field at a time. Changing a cell runs an `UPDATE` that sets 
 
 Values are sent as typed parameters, so an `int` column stays an `int` and a filter value is never treated as SurrealQL.
 
-## Schemaless Tables
+## Schemaless tables
 
 A `SCHEMALESS` table has no declared fields. TablePro reads the columns from the rows it fetched, so a field only some records carry still gets a column, and records missing it show an empty cell.
 
-## Query Plans
+## Query plans
 
 The Explain button in the editor offers **Explain** and **Explain Full**, which run the current query with SurrealDB's `EXPLAIN` and `EXPLAIN FULL` to show how it resolves, for example whether an index is used.
 

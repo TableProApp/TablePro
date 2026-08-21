@@ -5,7 +5,7 @@ description: Save SSH tunnel configurations as reusable profiles shared across c
 
 Define an SSH tunnel config once, then reuse it across multiple connections. A profile stores the server (host, port, username), the authentication method, optional two-factor (TOTP) settings, and jump hosts. For tunnel mechanics (auth methods, TOTP modes, jump hosts, `~/.ssh/config` resolution, troubleshooting), see [SSH Tunneling](/databases/ssh-tunneling).
 
-## Creating a Profile
+## Creating a profile
 
 1. Open any connection's **SSH Tunnel** pane
 2. Click **Create New Profile…**
@@ -21,17 +21,17 @@ Select the profile from the **Profile** picker in other connections. A **Profile
 
 To convert an existing inline SSH config into a profile, click **Save Current as Profile…**.
 
-## Profiles vs Inline Config
+## Profiles vs inline config
 
 Each connection can use either a shared profile or an inline (one-off) SSH config. Inline configs are stored with the connection and don't affect other connections. Profiles are stored globally and shared.
 
 Use a profile when multiple connections go through the same bastion host. Use inline for a one-off tunnel specific to a single connection.
 
-## Editing and Deleting
+## Editing and deleting
 
 Select a profile and click **Edit Profile…** to modify it. **Delete Profile** is at the bottom of the editor.
 
-## Testing a Profile
+## Testing a profile
 
 Click **Test Connection** in the profile editor to verify SSH settings without connecting to a database. TablePro performs the SSH handshake, verifies the host key, and authenticates. On success the button shows a green checkmark and **Connected** appears next to it. On failure the button shows a red X and the error appears in orange, cut to two lines. If the server asks for a verification code or another interactive response, the same prompt you'd see on Connect appears during the test.
 

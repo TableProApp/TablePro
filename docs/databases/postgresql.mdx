@@ -5,7 +5,7 @@ description: Connect to PostgreSQL 12 and later with the libpq driver, including
 
 TablePro supports PostgreSQL 12 and later via the libpq C connector. The same driver powers [Amazon Redshift](/databases/redshift), [CockroachDB](/databases/cockroachdb), and [PGlite](/databases/pglite) connections.
 
-## Connection Settings
+## Connection settings
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -29,7 +29,7 @@ postgresql://user:password@host:5432/database
 
 `postgres://` also works. Opening a URL connects directly. See [Connection URL Reference](/databases/connection-urls).
 
-## AWS IAM Authentication
+## AWS IAM authentication
 
 Connect to RDS or Aurora with your AWS identity instead of a static password: set **Authentication** to an AWS IAM option and set **Username** to a database role granted `rds_iam`. See [AWS IAM Authentication](/databases/aws-iam) for setup, credential sources, and troubleshooting.
 
@@ -53,7 +53,7 @@ Connect to RDS or Aurora with your AWS identity instead of a static password: se
 
 **Backup & Restore**: **Backup Dump** and **Restore Dump** run `pg_dump` and `pg_restore`. Among TablePro's databases this is available for PostgreSQL and Redshift only. See [Backup & Restore](/features/backup-restore).
 
-## Cross-Database Tabs
+## Cross-database tabs
 
 A tab stays on the database and schema it was opened with for its whole life, even if the sidebar or another tab switches to a different one. See [Tabs](/features/tabs#database-binding). PostgreSQL, like Redshift and CockroachDB, changes database only by reconnecting: there is no in-place `USE` statement. So a tab bound to a database other than the connection's active one runs on a separate connection for that database instead.
 

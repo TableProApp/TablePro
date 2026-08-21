@@ -5,11 +5,11 @@ description: Connect to Amazon DynamoDB with PartiQL queries, GSI/LSI browsing, 
 
 TablePro connects to Amazon DynamoDB over the AWS HTTP API. Sign in with IAM credentials, an AWS profile, or SSO. Browse tables, run PartiQL queries, inspect GSI and LSI indexes, and edit items in the data grid.
 
-## Quick Setup
+## Quick setup
 
 Click **Create Connection…**, select **DynamoDB**, choose an auth method, enter your credentials and region, then click **Save & Connect**. The plugin auto-installs when you pick DynamoDB, or install it from **Settings > Plugins > Browse > DynamoDB Driver**.
 
-## Authentication Methods
+## Authentication methods
 
 **Access Key + Secret Key**: IAM credentials. Add a session token if you are using temporary credentials from STS.
 
@@ -17,7 +17,7 @@ Click **Create Connection…**, select **DynamoDB**, choose an auth method, ente
 
 **AWS SSO**: Reads the cached SSO token from `~/.aws/sso/cache/`. Run `aws sso login --profile my-sso-profile` before connecting. Tokens expire; the connection re-resolves credentials automatically and tells you to re-run `aws sso login` when the session has ended.
 
-## Connection Settings
+## Connection settings
 
 | Field | Description |
 |-------|-------------|
@@ -79,7 +79,7 @@ Table names in PartiQL must be quoted with double quotes: `"TableName"`. String 
 
 **Export**: CSV, JSON, SQL, XLSX formats.
 
-## IAM Permissions
+## IAM permissions
 
 The IAM user or role needs these permissions at minimum:
 

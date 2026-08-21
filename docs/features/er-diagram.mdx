@@ -41,7 +41,7 @@ Each table node shows:
 | Reset to 100% | Click the zoom percentage label |
 | Copy diagram | `Cmd+C` |
 
-## Moving Tables
+## Moving tables
 
 Click and drag any table node to reposition it. Positions are saved automatically and persist across sessions. Drag a table toward the edge of the viewport to auto-scroll the canvas in that direction.
 
@@ -51,7 +51,7 @@ Click **Reset Layout** (the circular arrow button) to return all tables to their
 
 Toggle compact mode with the compress button in the toolbar. In compact mode, each table shows only primary key and foreign key columns.
 
-## Edge Notation
+## Edge notation
 
 Edges use crow's foot notation. The referenced table always carries a single **bar** ("exactly one"). The foreign key side shows the relationship's cardinality, inferred from the column's primary key and unique index data:
 
@@ -64,7 +64,7 @@ Edges use crow's foot notation. The referenced table always carries a single **b
 
 A **fork** (three lines) marks the "many" side, a **bar** marks "one", and a **circle** marks an optional (nullable) side. An edge from `orders.user_id` to `users.id` shows a fork at `orders` and a bar at `users`.
 
-## Junction Tables
+## Junction tables
 
 When a table's primary key is made of two foreign keys (a junction table like `user_roles`), TablePro treats it as a many-to-many relationship. By default the junction table is hidden and a single many-to-many edge is drawn between the two related tables, with a fork at each end.
 
@@ -75,7 +75,7 @@ Use the **Collapse Junction Tables** toggle in the toolbar (shown only when the 
 - **Export as PNG**: saves the diagram as an image. `Cmd+C` copies it to the clipboard instead.
 - **Export as SQL**: opens a new query tab with `CREATE TABLE` and foreign key statements for the diagram's tables, written in the connection's SQL dialect. SQLite inlines foreign keys in each `CREATE TABLE`; other databases add them with `ALTER TABLE … ADD CONSTRAINT` after the tables are created, so the script handles circular references.
 
-## Database Support
+## Database support
 
 These drivers report foreign keys, so their diagrams draw edges:
 

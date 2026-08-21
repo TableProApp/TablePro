@@ -12,7 +12,7 @@ flowchart LR
     TablePro["TablePro<br>localhost:60000"] -->|"Encrypted tunnel"| SSH["SSH server"] -->|"Internal network"| DB["Database<br>db:3306"]
 ```
 
-## Setting Up
+## Setting up
 
 1. Open the connection form and switch to the **SSH Tunnel** pane
 2. Toggle **Enable SSH Tunnel** on
@@ -33,7 +33,7 @@ To reuse one SSH config across several connections, save it as a profile with **
   <img className="hidden dark:block" src="/images/ssh-tunnel-config-dark.png" alt="SSH Tunnel pane with a saved profile selected" />
 </Frame>
 
-## Authentication Methods
+## Authentication methods
 
 <Tabs>
   <Tab title="Password">
@@ -66,7 +66,7 @@ To reuse one SSH config across several connections, save it as a profile with **
   </Tab>
 </Tabs>
 
-### Verification Prompts and Two-Factor Authentication
+### Verification prompts and two-factor authentication
 
 If the SSH server issues a keyboard-interactive challenge during authentication, for example a verification code from `google-authenticator` or `duo_unix`, TablePro shows the server's prompt and takes your response. This works with every authentication method except **None**, including a private key or SSH agent followed by a second factor (`AuthenticationMethods publickey,keyboard-interactive`).
 
@@ -75,7 +75,7 @@ Use the **Two-Factor Authentication** section to skip that prompt for TOTP codes
 - **None** or **Prompt at Connect**: TablePro asks for the code when the server requests it.
 - **Auto Generate**: TablePro computes the code from your base32 **TOTP Secret** (the key from your authenticator enrollment). Algorithm (SHA1, SHA256, SHA512), digits (6 or 8), and period (30s or 60s) are configurable; defaults match most setups.
 
-## Host Keys
+## Host keys
 
 On first connection TablePro shows the server's key type and SHA-256 fingerprint (same format as `ssh-keygen -l`) and asks whether to trust it. Trusted keys are stored in `~/Library/Application Support/TablePro/known_hosts`.
 
@@ -104,7 +104,7 @@ When the database sits behind one or more bastions, expand the **Jump Hosts** se
 
 Password auth is not available for jump hosts. If the jump host list is empty and the SSH host matches a config entry with a `ProxyJump` directive, TablePro follows it.
 
-## Forwarding to a Unix Socket
+## Forwarding to a unix socket
 
 Some servers only listen on a Unix socket, with no TCP port open at all. A PostgreSQL box configured for `local` connections in `pg_hba.conf` is the common case. Fill in **Socket Path** on the General pane and TablePro forwards to that socket instead of a host and port, the same thing `ssh -L 5434:/var/run/postgresql/.s.PGSQL.5432 server` does by hand. **Host** and **Port** are ignored while a socket path is set.
 

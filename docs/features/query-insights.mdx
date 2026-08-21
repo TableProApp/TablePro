@@ -16,7 +16,7 @@ Open it from **Database > Query Insights**. It opens as a tab, one per connectio
   <img className="hidden dark:block" src="/images/query-insights-dark.png" alt="Query Insights tab" />
 </Frame>
 
-## Queries Are Grouped by Shape
+## Queries are grouped by shape
 
 `SELECT * FROM users WHERE id = 1` and `SELECT * FROM users WHERE id = 2` are the same query run twice, not two queries run once. Insights strips the values out of every statement and groups by what is left:
 
@@ -34,7 +34,7 @@ Two things are deliberately **not** merged. Table and column names keep their ca
 
 Each row shows the shape, not the literal query you ran. **Copy Query** and **Load in Editor** in the right-click menu give you the most recent real query in the group, values and all. It always comes from a run the row is actually counting: the connection, the sources and the date range you picked all apply to it, so a matching query run somewhere you filtered out never supplies the values. In **Failures** it comes from a run that failed, which is the one that produced the error shown beside it.
 
-## The Panels
+## The panels
 
 **Summary** across the top: how many queries ran, what share failed, the average duration, and the total time spent waiting.
 
@@ -72,7 +72,7 @@ There is no outcome filter, on purpose. Hiding failed queries would make the fai
 
 Insights refreshes itself as you run queries. The refresh button is there for when you want it now.
 
-## What It Cannot Tell You
+## What it cannot tell you
 
 It only knows what your Mac recorded. Queries run before you installed TablePro, run by other people, or run while [capture was paused](/features/query-history#pausing) are not in it. Queries pruned by your [retention settings](/features/query-history#storage-and-retention), 10,000 entries and 90 days by default, are gone too, so a long **All Time** range does not reach further back than retention allows.
 

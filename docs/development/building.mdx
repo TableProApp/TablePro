@@ -3,7 +3,7 @@ title: Building
 description: Development builds, release builds, static libraries, DMG packaging, and CI/CD
 ---
 
-## Development Builds
+## Development builds
 
 <Note>
 `TablePro.xcodeproj` is generated from `project.yml` by `scripts/generate-project.sh` and is not
@@ -17,7 +17,7 @@ or deleting a source file. See [Development Setup](/development/setup).
 - `Cmd+B` to build only
 - Scheme: **TablePro**, Destination: **My Mac**
 
-### Command Line
+### Command line
 
 ```bash
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
@@ -35,7 +35,7 @@ xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug bui
 
 Debug builds use automatic signing with an Apple Development identity. Set `TABLEPRO_DEVELOPMENT_TEAM` in `Configs/Secrets.xcconfig` to your own Apple Developer account (a free account works), see [Development Setup](/development/setup). Signing matters even locally: plugin signature verification derives the required team from the running app's signature.
 
-## Release Builds
+## Release builds
 
 ```bash
 scripts/build-release.sh arm64      # Apple Silicon
@@ -55,7 +55,7 @@ The script extracts the right slice from the universal static libraries, strips 
 
 Notarization uses a `notarytool` keychain profile named `TablePro`. Create it once with `xcrun notarytool store-credentials "TablePro" --apple-id … --team-id … --password …`. Do not sign or notarize by hand; the script already does it per binary, which is what Apple's guidance requires.
 
-## Static Libraries
+## Static libraries
 
 Static `.a` files (libmariadb, libpq, libsybdb, and others) are hosted on the `libs-v1` GitHub Release, not in git.
 
@@ -65,7 +65,7 @@ scripts/download-libs.sh --force  # Re-download and overwrite
 scripts/generate-project.sh       # Regenerate both .xcodeproj bundles from project.yml
 ```
 
-### Publishing Libraries (Maintainers)
+### Publishing libraries (maintainers)
 
 After rebuilding a library, publish it with `scripts/publish-libs.sh`, naming every lib you rebuilt:
 
@@ -98,7 +98,7 @@ scripts/create-dmg.sh 0.57.0 arm64 build/Release/TablePro-arm64.app
 
 Output: `build/Release/TablePro-0.57.0-arm64.dmg`.
 
-## Clean Build
+## Clean build
 
 | Method | Command |
 |--------|---------|
@@ -108,13 +108,13 @@ Output: `build/Release/TablePro-0.57.0-arm64.dmg`.
 
 ## CI/CD
 
-### App Releases
+### App releases
 
 `.github/workflows/build.yml`, triggered by `v*` tags (e.g. `v0.57.0`).
 
 Jobs: SwiftLint, macOS Tests, Build ARM64, Build x86_64, Registry Readiness. The release job needs all five, so failing tests block the release. It produces DMGs, ZIPs, and Sparkle signatures, with release notes extracted from `CHANGELOG.md`.
 
-### Plugin Releases
+### Plugin releases
 
 `.github/workflows/build-plugin.yml`, triggered by `plugin-*-v*` tags (e.g. `plugin-oracle-v1.0.0`) or by `workflow_dispatch`. The dispatch input takes comma-separated `tag:pluginKitVersion` pairs, e.g. `plugin-mongodb-v1.0.25:13`. Omit `:pluginKitVersion` and the workflow reads `currentPluginKitVersion` from `PluginManager.swift`.
 

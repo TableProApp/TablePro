@@ -5,7 +5,7 @@ description: Connect to MySQL 5.7 and later with the bundled MariaDB Connector/C
 
 TablePro connects to MySQL 5.7 and later through its bundled driver, built on MariaDB Connector/C. MySQL 8's `caching_sha2_password` auth works out of the box. MariaDB uses the same driver; MariaDB-specific notes are on [MariaDB](/databases/mariadb).
 
-## Quick Setup
+## Quick setup
 
 <Steps>
   <Step title="Create Connection">
@@ -16,7 +16,7 @@ TablePro connects to MySQL 5.7 and later through its bundled driver, built on Ma
   </Step>
 </Steps>
 
-## Connection Settings
+## Connection settings
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -33,7 +33,7 @@ mysql://user:password@host:3306/database
 
 Opening a URL connects directly. See [Connection URL Reference](/databases/connection-urls).
 
-## Common Setups
+## Common setups
 
 | Where | Settings |
 |-------|----------|
@@ -44,7 +44,7 @@ Opening a URL connects directly. See [Connection URL Reference](/databases/conne
 | Google Cloud SQL | [Cloud SQL Auth Proxy](/databases/cloud-sql-proxy) |
 | Remote production | [SSH tunnel](/databases/ssh-tunneling) |
 
-## AWS IAM Authentication
+## AWS IAM authentication
 
 RDS and Aurora connections can use your AWS identity instead of a static password: TablePro signs a fresh 15-minute token on every connect and reconnect. Setup and troubleshooting are on [AWS IAM Authentication](/databases/aws-iam).
 
@@ -56,7 +56,7 @@ Turn on **Cloud SQL Auth Proxy** in the connection form and enter the instance c
 
 **Database > Users & Roles** manages users, roles, and privileges on MySQL servers. Changes are staged, undoable, and shown as SQL before they run. See [Users & Roles](/features/users-roles).
 
-## Query Plans
+## Query plans
 
 **EXPLAIN FORMAT=JSON**, **EXPLAIN FORMAT=TREE**, and **EXPLAIN ANALYZE** results render as a visual plan diagram or tree. Plain multi-column **EXPLAIN** output stays in the results grid. See [EXPLAIN Visualization](/features/explain-visualization).
 

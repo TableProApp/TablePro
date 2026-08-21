@@ -5,7 +5,7 @@ description: Registry manifest format, binary selection, publishing, and PluginK
 
 The plugin registry is a JSON manifest (`plugins.json`) hosted at [github.com/TableProApp/plugins](https://github.com/TableProApp/plugins). TablePro fetches it to populate **Settings > Plugins > Browse** and to auto-install a driver when a user selects a database type with no loaded plugin. This page covers the manifest and publishing pipeline; for install and update behavior in the app, see [Plugins & Themes](/features/plugins). To build a plugin, see [Plugin Development](/development/plugin-development).
 
-## Manifest Format
+## Manifest format
 
 ```json
 {
@@ -16,7 +16,7 @@ The plugin registry is a JSON manifest (`plugins.json`) hosted at [github.com/Ta
 
 The current schema version is 2. The app rejects a manifest with a higher `schemaVersion` than it supports and falls back to its cached copy.
 
-## Entry Fields
+## Entry fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -47,13 +47,13 @@ Each entry in `binaries`:
 v1 manifests carried top-level `downloadURL`, `sha256`, and `minPluginKitVersion` instead of `binaries`. The app still decodes them as a fallback: when `binaries` is absent it synthesizes one entry per architecture, using `minPluginKitVersion` as the binary's `pluginKitVersion`. New entries must use `binaries`.
 </Note>
 
-## Binary Selection
+## Binary selection
 
 For a database driver, the app filters `binaries` to the current architecture, keeps those whose `pluginKitVersion` falls within `[minimumCompatiblePluginKitVersion, currentPluginKitVersion]` (both declared in `PluginManager.swift`, both 19), and installs the highest. A driver binary without `pluginKitVersion` never resolves, and install fails with `noCompatibleBinary`.
 
 Themes carry no native code, so they match on architecture only.
 
-## Example Entry
+## Example entry
 
 ```json
 {
@@ -85,7 +85,7 @@ Themes carry no native code, so they match on architecture only.
 }
 ```
 
-## Plugin Metadata
+## Plugin metadata
 
 The optional `metadata` object makes a registry plugin self-describing: the app uses it to render the connection form, sidebar, and editor for a database type before the plugin is installed. Registry driver entries should carry it, or users see a bare form until the download completes. `update-registry.py` preserves an existing `metadata` block across releases; edit it by hand in the registry repo.
 
@@ -98,7 +98,7 @@ The optional `metadata` object makes a registry plugin self-describing: the app 
 
 The full field list is `RegistryPluginMetadata` in `TablePro/Core/Plugins/Registry/RegistryModels.swift`.
 
-## Registry Plugins and databaseTypeIds
+## Registry plugins and databaseTypeIds
 
 `databaseTypeIds` tells the app which plugin to install when a user picks a database type with no loaded driver. Tag names must match the `case "$PLUGIN_NAME"` block in the `Resolve plugin info` step of `.github/workflows/build-plugin.yml`. Note the non-obvious tags for Cloudflare D1 and etcd.
 
@@ -124,7 +124,7 @@ The full field list is `RegistryPluginMetadata` in `TablePro/Core/Plugins/Regist
 
 Bundled plugins (MySQL, PostgreSQL, SQLite, ClickHouse, Redis, and the import/export formats) ship inside the app and are never published to the registry.
 
-## Publishing a Plugin
+## Publishing a plugin
 
 A new plugin needs a case in the `Resolve plugin info` step of `.github/workflows/build-plugin.yml` before its first tag. Without one the workflow exits with `Unknown plugin name`.
 
@@ -147,7 +147,7 @@ gh workflow run build-plugin.yml --field "tags=plugin-oracle-v1.0.26"
 
 CI then builds both architectures, signs and notarizes the bundles, verifies each bundle's `TableProPluginKitVersion` matches the release label, creates a GitHub release, re-verifies the published assets, and updates `plugins.json` via `.github/scripts/update-registry.py` (atomic write with a rebase-and-retry loop against concurrent matrix jobs).
 
-## PluginKit Compatibility
+## PluginKit compatibility
 
 TableProPluginKit builds with Swift Library Evolution, so a plugin built against any PluginKit version in the app's `[minimum, current]` range loads, and the runtime fills newer requirements from their defaults. What that means for releases:
 
@@ -162,7 +162,7 @@ When an installed driver predates a breaking bump, the app updates it in the bac
 
 The app fetches the manifest from `raw.githubusercontent.com/TableProApp/plugins/main/plugins.json`, which caches at the edge for about five minutes. Every fetch revalidates with a conditional request, the list refreshes at launch and when the plugin browser opens (throttled to one check per five minutes), and an install prompt forces a fresh fetch before reporting a plugin as missing. CI also purges the jsDelivr cache after each registry push for older app versions that still fetch from there. A newly published plugin is visible in the app within minutes.
 
-## Theme Distribution
+## Theme distribution
 
 Themes use the same manifest format with `category: "theme"`. Differences from driver plugins:
 
@@ -185,7 +185,7 @@ Themes use the same manifest format with `category: "theme"`. Differences from d
 }
 ```
 
-## Custom Registry URL
+## Custom registry URL
 
 For enterprise or private registries:
 

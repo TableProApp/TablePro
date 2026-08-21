@@ -5,7 +5,7 @@ description: Swift conventions, tooling, naming, and file organization rules
 
 `.swiftlint.yml` and `.swiftformat` are the source of truth. When in doubt, check those files.
 
-## Core Rules
+## Core rules
 
 - **No comments.** Code must be self-explanatory through naming and structure. Do not add comments that describe what code does, reference tickets, or explain callers.
 - **Early returns.** Use `guard` and early `return` instead of nested `if/else` blocks. Flatten control flow.
@@ -51,7 +51,7 @@ Trailing commas are omitted by convention. Both tools have their trailing-comma 
 | Factory methods | make prefix | `makeConnection()` |
 | Acronyms | Treat as words | `JsonEncoder` not `JSONEncoder` (except SDK types) |
 
-## Access Control
+## Access control
 
 Always explicit. Prefer the most restrictive level that works.
 
@@ -105,7 +105,7 @@ private static let logger = Logger(subsystem: "com.TablePro", category: "Databas
 - Do not localize technical terms: font names, database types, SQL keywords, encoding names
 - Never use `String(localized:)` with string interpolation. Use `String(format: String(localized: "Preview %@"), name)` instead.
 
-## SwiftUI Patterns
+## SwiftUI patterns
 
 - `@State` for local view state
 - `@Observable` for viewmodels (Swift 5.9+)

@@ -29,7 +29,7 @@ Open with `Cmd+,`. Settings are grouped into ten tabs.
 
 System (default), English, Tiếng Việt, 简体中文, 繁體中文, 한국어, Türkçe. Changing the language requires restarting TablePro.
 
-### Startup Behavior
+### Startup behavior
 
 | Option | Description |
 |--------|-------------|
@@ -55,7 +55,7 @@ Reopened tabs restore their SQL, cursor position, sort, filters, page, and colum
 | **Row size** | Match System | How tall sidebar rows are. Match System follows **Sidebar icon size** in System Settings > Appearance, so the sidebar matches Finder and Mail. Pick Small, Medium or Large to override it and fit more objects on screen. Also under **View Options** in the sidebar right-click menu |
 | **Default layout for new connections** | List | List or Tree, for servers that support a database tree. Switch the current connection from the **View** menu |
 
-### Query Execution
+### Query execution
 
 **Query timeout** sets the maximum seconds a query runs before cancellation. Default 60; choices from 10 to 600 seconds, plus **No limit**. Applies to new connections, so a change requires a reconnect.
 
@@ -73,15 +73,15 @@ Enforcement happens at the database level where supported:
 
 **No limit** raises the HTTP transport ceiling to 1 hour.
 
-### Command Line
+### Command line
 
 **Install** writes a `tablepro` command to `/usr/local/bin` that opens database URLs in TablePro. If TablePro cannot write there, it shows a command for you to run in Terminal. See [Terminal and DDEV](/external-api/terminal).
 
-### Trusted Links
+### Trusted links
 
 Lists external links you chose to always allow, with **Forget** per entry and **Forget All**. Only databases on this machine can be trusted; remote links ask for confirmation every time.
 
-### Software Update
+### Software update
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -138,7 +138,7 @@ macOS asks for notification permission the first time TablePro actually has some
 
 API keys are stored in the macOS Keychain; removing a provider deletes its key.
 
-### Inline Suggestions
+### Inline suggestions
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -190,7 +190,7 @@ The **Integrations** tab runs the MCP server. **Enable MCP Server** (default off
 
 Switching it off accepts a local caller with no token, but only as a read-only one: it can read schema and run `SELECT`, and can never write, drop, or administer.
 
-### Clients and Activity
+### Clients and activity
 
 **Connect a Client…** shows setup steps and config snippets for Claude Code, Claude Desktop, Cursor, and Zed. **View Activity…** opens the Integrations Activity window with the activity log and the clients that have called in the last five minutes. **Disconnect** there revokes that client's token.
 
@@ -213,7 +213,7 @@ Activate, deactivate, or view your license here. TablePro checks the license sig
 
 iCloud sync and linked folders live on the same tab. See [iCloud Sync](/features/icloud-sync).
 
-## Settings Storage
+## Settings storage
 
 Settings live in `~/Library/Preferences/com.TablePro.plist`. Use **Reset All Settings to Defaults** on the General tab to reset them.
 

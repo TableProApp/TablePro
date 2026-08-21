@@ -5,13 +5,13 @@ description: Connect to Cassandra and ScyllaDB clusters, browse keyspaces, and r
 
 TablePro supports Apache Cassandra 3.0+ and ScyllaDB via the CQL native protocol. The driver requires the `system_schema` keyspace, introduced in Cassandra 3.0. Browse keyspaces and tables, inspect table structure, and run CQL in the editor.
 
-## Quick Setup
+## Quick setup
 
 Click **Create Connection…**, select **Cassandra** or **ScyllaDB** (both entries use the same driver), enter host, port, and credentials, and connect.
 
 Cassandra is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved Cassandra connection installs it without asking. You can also install **Cassandra Driver** from **Settings > Plugins > Browse**.
 
-## Connection Settings
+## Connection settings
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -31,7 +31,7 @@ scylladb://user:password@host:9042/keyspace
 
 `cql://` and `scylla://` work too. See [Connection URL Reference](/databases/connection-urls#cassandra-/-scylladb).
 
-## Example Configurations
+## Example configurations
 
 **Local**: host `localhost:9042`, no auth
 
@@ -60,7 +60,7 @@ The Cassandra driver has no TLS fallback. **Preferred** behaves the same as **Re
   <img className="hidden dark:block" src="/images/cassandra-keyspace-browser-dark.png" alt="Cassandra keyspace and tables in the sidebar with table data in the grid" />
 </Frame>
 
-### CQL Editor
+### CQL editor
 
 ```sql
 SELECT * FROM users WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX ON users (email);
 ```
 
-## CQL Notes
+## CQL notes
 
 - No JOINs or subqueries: denormalize, or run sequential statements.
 - Every SELECT needs the full partition key in WHERE, or `ALLOW FILTERING` (a cluster scan, slow in production).

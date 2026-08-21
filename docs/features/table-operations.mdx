@@ -5,11 +5,11 @@ description: Drop, truncate, run maintenance, manage views, and switch databases
 
 Right-click tables in the sidebar to drop, truncate, run maintenance, or manage views. Switch between databases on the same connection with Cmd+K.
 
-## Create Table or View
+## Create table or view
 
 Click the plus button in the bottom-left of the sidebar and choose **New Table** or **New View**. New Table opens the visual structure editor (see [Table Structure](/features/table-structure)). New View opens a SQL editor tab with a CREATE VIEW template for your database type. The button is disabled while [safe mode](/features/safe-mode) blocks writes.
 
-## Drop and Truncate
+## Drop and truncate
 
 Right-click a table and choose **Delete** to drop it, or **Truncate** to remove all rows while keeping the structure. Hold Cmd and click to select multiple tables; the same options apply to all of them.
 
@@ -64,9 +64,9 @@ Views appear in the sidebar with an eye icon in your accent color. Materialized 
 - **Edit**: right-click a view > **Edit View Definition**. The current definition opens in a SQL editor tab; modify and execute to update.
 - **Drop**: right-click a view > **Drop View**. Only the definition is removed; underlying table data stays intact.
 
-## Database Operations
+## Database operations
 
-### Switch Databases
+### Switch databases
 
 Click the database name in the toolbar or press `Cmd+K`. Type to filter, move with the arrow keys, then press Return or double-click to switch. `Cmd+R` refreshes the list. The switcher adapts to the engine's vocabulary: Schema on Oracle, Keyspace on Cassandra, Dataset on BigQuery, Namespace on SurrealDB. SQLite is file-based, so the switcher points you to the Welcome window to open a different file.
 
@@ -79,7 +79,7 @@ Click the database name in the toolbar or press `Cmd+K`. Type to filter, move wi
 
 Click **New Database…** at the bottom of the switcher. The form fields come from the driver: MySQL/MariaDB ask for a name, character set, and collation; PostgreSQL, ClickHouse, MongoDB, and others show their own fields. The button only appears on engines that support creating databases.
 
-### Drop Database
+### Drop database
 
 Right-click a database in the switcher or in the sidebar tree and choose **Drop Database…**. The item is hidden for system databases and for the database you are currently connected to; switch to another one first. A confirmation dialog shows the database name in its title with a red **Drop Database** button.
 
@@ -87,7 +87,7 @@ Right-click a database in the switcher or in the sidebar tree and choose **Drop 
 Dropping a database permanently deletes all its tables and data. The server rejects the drop if your account lacks the required privilege.
 </Warning>
 
-### Work on Several Databases at Once
+### Work on several databases at once
 
 Select more than one database in the sidebar tree or in the switcher: Shift-click for a range, Cmd-click to add or remove one. The right-click menu then acts on the whole selection and says how many it covers, for example **Drop 3 Databases…**.
 
@@ -102,7 +102,7 @@ The menu follows the row you right-click: if it is part of the selection, the ac
 
 Databases the server will not let you drop are left out of the Drop item: system databases and the one you are connected to. If a drop fails partway, TablePro finishes the rest and then reports which ones failed and why.
 
-### Drop Schema
+### Drop schema
 
 On engines that group tables by schema, the same menu appears on a schema row. PostgreSQL, SQL Server and SurrealDB support it. PostgreSQL drops the schema with `CASCADE`, so objects that depend on it go too. SQL Server has no cascade, so it refuses to drop a schema that still holds objects; drop those first.
 

@@ -15,7 +15,7 @@ The SQL Server driver is a downloadable plugin. When you select SQL Server in th
 
 See [Plugins](/features/plugins) for how plugin installs and updates work.
 
-## Connection Settings
+## Connection settings
 
 Click **Create Connection…**, select **SQL Server**, fill in the fields, and click **Save & Connect**.
 
@@ -139,7 +139,7 @@ mssql://user:password@host:1433/database
 
 See [Connection URL Reference](/databases/connection-urls) for all parameters.
 
-## Databases and Schemas
+## Databases and schemas
 
 The sidebar nests tables under their schema and hides the built-in role schemas (`db_owner`, `guest`, and the rest). Switch the active database with `Cmd+K`; switches happen in place, no reconnect. The toolbar shows the active database and schema side by side, and clicking the schema opens the schema list. You can also click a schema in the sidebar to make it active, or set a starting schema in the connection's **Schema** field. Opening a table always queries it in the schema it is listed under, so tables outside `dbo` work without switching first. `master`, `tempdb`, `model`, and `msdb` are marked as system databases.
 

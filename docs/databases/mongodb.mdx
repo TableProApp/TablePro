@@ -7,7 +7,7 @@ Collections appear as tables in the sidebar. Documents display with top-level fi
 
 MongoDB is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved MongoDB connection installs it without asking. You can also install **MongoDB Driver** from **Settings > Plugins > Browse**.
 
-## Quick Setup
+## Quick setup
 
 <Steps>
   <Step title="Create Connection">
@@ -18,7 +18,7 @@ MongoDB is a registry plugin. Picking it in the **Choose a Database** sheet prom
   </Step>
 </Steps>
 
-## Connection Settings
+## Connection settings
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -45,7 +45,7 @@ Leaving **Auth Database** empty authenticates against the database in the connec
 
 The **Use SRV Record** toggle in Advanced connects with the `mongodb+srv://` scheme. For hosts ending in `.mongodb.net`, TablePro enables SRV automatically and turns TLS on if the SSL mode is Disabled, since Atlas requires both. An Atlas connection needs only the cluster hostname, username, and password.
 
-## Replica Sets
+## Replica sets
 
 The **Hosts** field accepts multiple `host:port` pairs separated by commas (for example `host1:27017,host2:27017,host3:27017`). TablePro discovers the primary automatically and routes writes there. Set the replica set name in **Advanced**.
 

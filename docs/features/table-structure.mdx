@@ -14,7 +14,7 @@ Open a table, then pick **Structure** in the Data / Structure / JSON control at 
 
 Tabs: **Columns**, **Indexes**, **Foreign Keys**, **Triggers**, **DDL**, and **Parts** (ClickHouse only). The Columns, Indexes, Foreign Keys, and Triggers labels show item counts. Tabs the database cannot support are hidden, such as Foreign Keys on ClickHouse or Triggers on Redshift. A filter field above the grid narrows rows by name; click a column header to sort.
 
-## Columns Tab
+## Columns tab
 
 Columns are edited inline in the grid:
 
@@ -31,15 +31,15 @@ Columns are edited inline in the grid:
 
 Add a column with the **+** button at the right of the status bar or `Cmd+Shift+N`. Select rows and click **-** or press `Delete` to mark them for removal.
 
-### Primary Keys
+### Primary keys
 
 Toggle the **Primary Key** flag on one or more columns; multiple flagged columns produce a composite key in a single `PRIMARY KEY (col1, col2)` clause. Changing the key on an existing table runs a drop-and-add sequence on MySQL, MariaDB, PostgreSQL, PGlite, SQL Server, DuckDB, and Snowflake. Other engines, SQLite, ClickHouse, Cassandra, ScyllaDB, and Oracle among them, cannot alter a primary key in place: the dropdown stays editable but the change generates no SQL.
 
-### Reordering Columns
+### Reordering columns
 
 Drag a column row to a new position (MySQL and MariaDB only). The reorder executes immediately as `ALTER TABLE … MODIFY COLUMN … AFTER` and is recorded in query history. Dragging is disabled while unsaved structure changes exist.
 
-## Indexes Tab
+## Indexes tab
 
 | Field | Description |
 |-------|-------------|
@@ -48,7 +48,7 @@ Drag a column row to a new position (MySQL and MariaDB only). The reorder execut
 | **Unique** | Whether the index enforces uniqueness |
 | **Condition** | `WHERE` predicate for partial indexes (PostgreSQL) |
 
-## Foreign Keys Tab
+## Foreign keys tab
 
 | Field | Description |
 |-------|-------------|
@@ -59,7 +59,7 @@ Drag a column row to a new position (MySQL and MariaDB only). The reorder execut
 
 Right-click a foreign key and choose **Open [table]** to jump to the referenced table.
 
-## Saving Changes
+## Saving changes
 
 Structure edits queue locally; nothing runs until you save. See [Change Tracking](/features/change-tracking) for how the queue, undo (`Cmd+Z`), and redo (`Cmd+Shift+Z`) work. Saving runs on the tab's own connection, database, and schema, the ones it was opened on. It never moves the sidebar's selected database or the toolbar.
 
@@ -77,11 +77,11 @@ The same holds for a table you are still defining in a Create Table tab. The nam
   <img className="hidden dark:block" src="/images/schema-change-preview-dark.png" alt="Schema change preview with ALTER TABLE statements" />
 </Frame>
 
-### Row Context Menu
+### Row context menu
 
 Right-click rows in the Columns, Indexes, or Foreign Keys tabs for **Copy Name**, **Copy Definition**, **Copy As** (CSV, JSON, SQL), **Duplicate** (`Cmd+D`), and **Delete**. Rows already marked for deletion offer **Undo Delete** instead. Multi-select to act on several rows at once.
 
-## Triggers Tab
+## Triggers tab
 
 Lists the table's triggers with **Name**, **Timing** (BEFORE, AFTER, INSTEAD OF), **Event** (INSERT, UPDATE, DELETE), and **Enabled** where the database reports it. Select a trigger to see its full `CREATE TRIGGER` statement, fetched from the engine's catalog, in a syntax-highlighted viewer with **Copy** and **Open in Editor**.
 
@@ -91,15 +91,15 @@ Lists the table's triggers with **Name**, **Timing** (BEFORE, AFTER, INSTEAD OF)
 Triggers are available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1; the tab is hidden elsewhere. Oracle does not return the trigger body, so editing starts from the trigger header.
 </Note>
 
-## DDL Tab
+## DDL tab
 
 Read-only `CREATE TABLE` statement with syntax highlighting and font size controls. Toolbar buttons: **Copy**, **Export** as a `.sql` file, and **Open in Editor** to send the DDL to a new query tab.
 
-## Parts Tab (ClickHouse)
+## Parts tab (ClickHouse)
 
 Lists the table's partitions and parts from `system.parts`. Toolbar actions: **Optimize** (merge parts), **Drop Partition**, and **Detach Partition** for the selected partition.
 
-## Creating a New Table
+## Creating a new table
 
 Choose **Database > New Table…**, or right-click the empty space in the sidebar and choose **New Table…**. The editor opens as a tab with:
 
@@ -122,7 +122,7 @@ TablePro disables operations the database cannot perform:
 - **Redshift, CockroachDB, Cloudflare D1, Beancount**: structure is read-only.
 - **Redis, etcd, DynamoDB**: no table schema to edit.
 
-## MongoDB Collections
+## MongoDB collections
 
 MongoDB structure is read-only. TablePro infers the schema from the first 50 documents of the collection: it unions the top-level field names across the sample and picks each field's most common BSON type. `_id` is listed first and marked as the primary key. The DDL tab shows indexes as `createIndex()` commands you can run in `mongosh`, plus the collection's validator and capped-collection options when present. Edit documents in the data grid instead.
 

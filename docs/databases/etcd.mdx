@@ -5,13 +5,13 @@ description: Connect to etcd v3 clusters with prefix-based key browsing and an e
 
 TablePro connects to etcd v3 over the HTTP/JSON gRPC-gateway (it never speaks raw gRPC). On connect it probes the `/v3/`, `/v3beta/`, and `/v3alpha/` gateway prefixes in order, so etcd 3.2 through current releases work without configuration. Browse keys grouped by prefix, edit values in the grid, and run etcdctl-style commands in the editor.
 
-## Quick Setup
+## Quick setup
 
 Click **Create Connection…**, select **etcd**, enter host (default `localhost`) and port (default `2379`), and connect.
 
 etcd is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved etcd connection installs it without asking. You can also install **etcd Driver** from **Settings > Plugins > Browse**.
 
-## Connection Settings
+## Connection settings
 
 | Field | Description |
 |-------|-------------|
@@ -21,7 +21,7 @@ etcd is a registry plugin. Picking it in the **Choose a Database** sheet prompts
 
 With a username set, TablePro exchanges the credentials for a gateway token via the gateway's `auth/authenticate` endpoint and retries once with a fresh token when a request returns 401.
 
-### Advanced Fields
+### Advanced fields
 
 | Field | Description |
 |-------|-------------|
@@ -42,11 +42,11 @@ etcds://127.0.0.1:2379
 
 Both schemes are accepted when importing a URL. The scheme alone does not switch TLS on; set **TLS Mode** in the Advanced fields.
 
-## Browsing Keys
+## Browsing keys
 
 The sidebar groups keys by their first path segment under the Key Prefix Root; keys without a segment appear under **(root)**. The grid shows one row per key with the columns **Key**, **Value**, **Version**, **ModRevision**, **CreateRevision**, and **Lease**. Key is the primary key. Saving grid edits generates `put` and `del` commands.
 
-## Command Editor
+## Command editor
 
 The editor accepts etcdctl-style commands with autocomplete for commands and flags.
 

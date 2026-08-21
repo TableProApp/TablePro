@@ -10,7 +10,7 @@ Query results and table data open in a spreadsheet-style grid. Sort and filter c
   <img className="hidden dark:block" src="/images/data-grid-dark.png" alt="Data grid" />
 </Frame>
 
-## View Modes
+## View modes
 
 Switch between **Data**, **Structure**, **JSON**, and **Chart** with the switcher at the left of the status bar, or from **View > Result View**. Query tabs show Data, JSON, and Chart only. The mode is remembered per tab.
 
@@ -54,7 +54,7 @@ The header gives you two filters:
 Value filters run on the rows already loaded, so they cover the current page only.
 </Note>
 
-### Resize and Hide
+### Resize and hide
 
 Drag a column border to resize, or double-click it to fit the content. The header menu has **Size to Fit** for one column and **Size All Columns to Fit** for all of them. Fitting reads the loaded page rather than a sample of it, and leaves room for any action button the cells draw, such as the arrows on a date. Sizing every column of a very wide result reads fewer rows per column so the command stays quick. Fitted columns stop at half the visible grid width, so one long-text column can't push the rest off screen.
 
@@ -66,7 +66,7 @@ Column widths, order, and which columns are hidden are remembered per table, sco
 
 A result with hundreds of columns only builds the ones near the viewport, so scrolling stays smooth on very wide tables. The horizontal scroller still covers the whole result, and columns are built as you reach them.
 
-### Display Format
+### Display format
 
 UUIDs and Unix timestamps render in a readable form when the column type and name match (for example a `BINARY(16)` column named `uuid`). Right-click a header and choose **Display As** to set the format per column: Raw Value, UUID, Unix Timestamp (seconds or milliseconds), JSON, or PHP Serialized. See [Cell and Row Viewers](/features/json-viewer) for what each format does, and for how MongoDB binary columns differ. Toggle the automatic detection in **Settings > Data > Smart value detection**.
 
@@ -110,7 +110,7 @@ Step back through the references you followed with the Back and Forward buttons 
   <img className="hidden dark:block" src="/images/fk-lookup-popover-dark.png" alt="Foreign key lookup" />
 </Frame>
 
-### Row Operations
+### Row operations
 
 - **Add** (`Cmd+Shift+N`): click **+** in the toolbar, use **Edit > Add Row**, or press the shortcut.
 - **Duplicate** (`Cmd+Shift+D`): right-click a row and choose **Duplicate**. The primary key resets to `DEFAULT` so the database assigns a new one.
@@ -118,7 +118,7 @@ Step back through the references you followed with the Back and Forward buttons 
 - **Paste**: copy rows, then right-click and choose **Paste** to insert them as new rows.
 - **Fill Column**: right-click a header to set one value across all loaded rows. It skips primary key columns.
 
-### Saving Changes
+### Saving changes
 
 Edits are queued, not applied right away. The toolbar shows the pending count, modified cells are highlighted, and new and deleted rows are marked.
 
@@ -141,7 +141,7 @@ In the Structure tab, the inspector follows the structure grid instead: select a
   <img className="hidden dark:block" src="/images/cell-inspector-dark.png" alt="Row inspector" />
 </Frame>
 
-## Select and Copy
+## Select and copy
 
 Click a cell to select it, drag or `Shift`-click for a range, and click row numbers for whole rows. Copy, **Copy as**, and Delete act on the whole current selection, whether that is a cell range, a column (`Cmd`-click its header), or rows picked by their row numbers.
 
@@ -162,7 +162,7 @@ Right-click a row and choose **Copy as** for more formats:
 
 Copies follow the grid as shown: hidden columns are left out and columns keep their current order. When you select specific cells, **Copy as** (JSON, CSV, Markdown, INSERT, and UPDATE) includes only the columns you selected; select whole rows to include every column. The UPDATE format still keys its WHERE clause on the primary key, even when the primary key cell is not part of the selection. Right-click a header and choose **Copy Column Values** to copy a whole column, one value per line.
 
-## Find in Results
+## Find in results
 
 `Cmd+F` on a table tab opens a find bar above the grid. Type a term and the matching cell is highlighted and scrolled into view. `Return` and `Cmd+G` step forward, `Cmd+Shift+G` steps back, and `Escape` clears the term, then closes the bar.
 
@@ -179,7 +179,7 @@ Matching is case and accent insensitive, and it runs over the text you see, so a
 
 When nothing matches on the page and more rows exist, **Search All Rows** turns the term into a filter that runs on the server, so the answer covers the whole table. That button replaces the filters on the tab, so it only appears when you have none applied. With filters already set, add your search to the filter panel instead.
 
-## Pagination and Limits
+## Pagination and limits
 
 **Table tabs** page through data. The status bar has a rows-per-page menu (5 to 1,000, a custom size up to 1,000,000, or **All rows**) and First / Previous / Next / Last controls. Click the page indicator (for example `3 / 12`) to type a page number and jump to it. Set the default page size in **Settings > Data**.
 
@@ -195,11 +195,11 @@ While the total is an estimate it never bounds navigation: the page indicator ma
 
 Press `Cmd+.` to cancel a running query or a Fetch All.
 
-## Display Settings
+## Display settings
 
 NULL shows as styled `NULL` text. Set the NULL display, date format, row height, row numbers, and alternate row backgrounds in **Settings > Data**.
 
-## MongoDB Collections
+## MongoDB collections
 
 MongoDB has no fixed schema, so TablePro infers columns by sampling up to 50 documents. Missing fields show as NULL, and the `_id` column is read-only (delete and re-insert to change it). BSON values display as `ObjectId("…")`, ISO 8601 dates, `BinData(…)`, decimal strings, and `DBRef(…)`.
 
