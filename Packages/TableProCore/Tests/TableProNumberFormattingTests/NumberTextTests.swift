@@ -58,6 +58,28 @@ final class NumberTextTests: XCTestCase {
         XCTAssertEqual(NumberText.json(from: ["flag": true]), #"{"flag":true}"#)
     }
 
+    func testForwardSlashesAreNotEscaped() {
+        XCTAssertEqual(
+            NumberText.json(from: ["topic": "device/state/up/122"]),
+            #"{"topic":"device/state/up/122"}"#
+        )
+    }
+
+    func testForwardSlashesStayUnescapedInsideNestedValues() {
+        let value: [String: Any] = ["destinations": [["topic": "device/state/up/122"]]]
+        XCTAssertEqual(
+            NumberText.json(from: value),
+            #"{"destinations":[{"topic":"device/state/up/122"}]}"#
+        )
+    }
+
+    func testBackslashesAreStillEscaped() {
+        XCTAssertEqual(
+            NumberText.json(from: ["path": #"a\b"#]),
+            #"{"path":"a\\b"}"#
+        )
+    }
+
     func testPrettyPrintedJsonUsesTheSameNumbers() {
         let json = NumberText.json(from: ["rate": 0.1], prettyPrinted: true)
         XCTAssertEqual(json?.contains("0.1"), true)

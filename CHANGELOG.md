@@ -77,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Forward slashes in a nested object or array value are no longer escaped as `\/` in the JSON view and the right sidebar. A path, URL or MQTT topic such as `device/state/up/122` now reads and copies the way it is stored. This covers MongoDB, ClickHouse, Elasticsearch, DynamoDB, Beancount and JSON import. (#2322)
 - A MongoDB filter TablePro could not translate no longer quietly matches the whole collection. A **between** filter whose value contained a comma did exactly that, showing every row while the panel reported the filter as applied. Such a filter now matches nothing, and a **between** value can contain a comma. (#2315)
 - The raw filter row works on MongoDB. It reached the server as a field literally named `__RAW__`, so it always returned no rows without reporting an error. It now takes a MongoDB filter document, and it is labelled **Raw Filter** rather than **Raw SQL** on databases that do not speak SQL. (#2315)
 - Turning off **Match Case** on a MongoDB number, date or ObjectId field no longer breaks the filter. Matching that ignores case is done with a pattern, and a pattern only ever matches text, so **equals** returned nothing and **not equals** returned everything. Case now applies to text fields only. (#2315)
