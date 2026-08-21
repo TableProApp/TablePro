@@ -45,12 +45,17 @@ esac
 
 echo "Checking the curated table against Redis $VERSION at $HOST:$PORT"
 
-redis-cli --json -h "$HOST" -p "$PORT" command > /tmp/redis-command-table.json || {
+# A private directory, matching every sibling check script. /tmp is world-writable, so a fixed
+# name is something another local user can pre-create and control.
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+redis-cli --json -h "$HOST" -p "$PORT" command > "$WORK/command-table.json" || {
     echo "COMMAND was refused; the user's ACL has to allow it for this check" >&2
     exit 3
 }
 
-python3 - "$SOURCE" /tmp/redis-command-table.json <<'PY'
+python3 - "$SOURCE" "$WORK/command-table.json" <<'PY'
 import json
 import re
 import sys
@@ -180,5 +185,4 @@ if mismatches:
 print("the curated table matches the server")
 PY
 status=$?
-rm -f /tmp/redis-command-table.json
 exit $status

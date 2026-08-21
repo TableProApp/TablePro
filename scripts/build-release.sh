@@ -12,7 +12,6 @@ BUILD_DIR="build/Release"
 SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Dat Ngo Quoc (D7HJ5TFYCU)}"
 TEAM_ID="D7HJ5TFYCU"
 NOTARIZE="${NOTARIZE:-false}"
-APPLE_ID="${APPLE_ID:-datngoquoc@icloud.com}"
 
 echo "🏗️  Building TablePro for: $ARCH"
 
@@ -360,7 +359,6 @@ build_for_arch() {
         CLANG_COVERAGE_MAPPING=NO \
         ENABLE_CODE_COVERAGE=NO \
         ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} \
-        ${ANALYTICS_HMAC_SECRET:+ANALYTICS_HMAC_SECRET="$ANALYTICS_HMAC_SECRET"} \
         -skipPackagePluginValidation \
         -clonedSourcePackagesDirPath "$SPM_CACHE_DIR" \
         -derivedDataPath build/DerivedData \

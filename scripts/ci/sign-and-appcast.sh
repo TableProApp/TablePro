@@ -22,8 +22,18 @@ fi
 # ---------------------------------------------------------------------------
 # 1. Locate Sparkle tools
 # ---------------------------------------------------------------------------
-brew list --cask sparkle &>/dev/null || brew install --cask sparkle
-SPARKLE_BIN="$(brew --caskroom)/sparkle/$(ls "$(brew --caskroom)/sparkle" | head -1)/bin"
+# Pinned and checksum-verified rather than installed from a cask that tracks latest. This step
+# holds the EdDSA private key that signs every update every user receives, so it should not run a
+# binary whose contents can change between releases. The version matches the Sparkle framework
+# pinned in Package.resolved, so both move together.
+SPARKLE_VERSION="2.9.5"
+SPARKLE_SHA256="015336b601493e05c237964954bff6191370003d94edefe663724c88840d73cc"
+SPARKLE_DIR="$(mktemp -d)"
+curl -sSLo "$SPARKLE_DIR/sparkle.tar.xz" \
+    "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+echo "$SPARKLE_SHA256  $SPARKLE_DIR/sparkle.tar.xz" | shasum -a 256 -c -
+tar xf "$SPARKLE_DIR/sparkle.tar.xz" -C "$SPARKLE_DIR"
+SPARKLE_BIN="$SPARKLE_DIR/bin"
 
 # ---------------------------------------------------------------------------
 # 2. Extract release notes from CHANGELOG.md → HTML
