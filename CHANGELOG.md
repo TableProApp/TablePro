@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fixed a crash on macOS 26 and later when the editor redrew a diagnostic underline or search highlight whose text had been edited away.
 - Fixed a crash when an input method, dictation or Look Up asked the editor about text that had already been edited away. (#2339)
+- A search highlight or diagnostic underline whose text you delete now disappears, instead of staying put or jumping to the end of the editor. (#2341)
 - The XLSX, MQL and SQL Import plugins linked to a documentation page that did not exist. They now point at Import & Export.
 
 ## [0.67.0] - 2026-08-21

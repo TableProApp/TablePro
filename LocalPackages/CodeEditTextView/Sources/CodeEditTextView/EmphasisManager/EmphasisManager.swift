@@ -150,8 +150,16 @@ public final class EmphasisManager {
                 forStyle: emphasis.emphasis.style,
                 range: emphasis.emphasis.range
             ) else {
+                // An emphasis marks specific text. Once that text is gone there is no shape to
+                // draw, and the layer would otherwise keep painting the last one it had, over
+                // whatever now occupies that place. Hiding rather than clearing is what lets the
+                // shape come back when the range lays out again.
+                emphasis.layer.isHidden = true
+                emphasis.textLayer?.isHidden = true
                 continue
             }
+            emphasis.layer.isHidden = false
+            emphasis.textLayer?.isHidden = false
             if #available(macOS 14.0, *) {
                 emphasis.layer.path = shapePath.cgPath
             } else {
@@ -194,6 +202,15 @@ public final class EmphasisManager {
     }
 
     private func makeShapePath(forStyle emphasisStyle: EmphasisStyle, range: NSRange) -> NSBezierPath? {
+        // A range that no longer fits the document names text an edit has removed. Drawing it
+        // anyway puts the emphasis somewhere it does not belong: `roundedPathForRange` answers a
+        // range past the end with the caret rect at the end of the document, so a stale search
+        // highlight would reappear there rather than disappear.
+        guard let documentLength = textView?.textStorage.length,
+              range.resolved(inDocumentOfLength: documentLength) == range else {
+            return nil
+        }
+
         switch emphasisStyle {
         case .standard, .outline:
             return textView?.layoutManager.roundedPathForRange(range, cornerRadius: emphasisStyle.shapeRadius)
