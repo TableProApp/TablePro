@@ -192,15 +192,12 @@ struct ForeignKeyPreviewView: View {
         let quotedColumn = driver.quoteIdentifier(fkInfo.referencedColumn)
         let escapedValue = driver.escapeStringLiteral(value)
 
-        let limitClause: String
-        switch PluginManager.shared.paginationStyle(for: databaseType) {
-        case .offsetFetch:
-            limitClause = "OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY"
-        case .limit:
-            limitClause = "LIMIT 1"
-        }
-
-        let query = "SELECT * FROM \(quotedTable) WHERE \(quotedColumn) = '\(escapedValue)' \(limitClause)"
+        let query = ForeignKeyPreviewQuery.singleRow(
+            quotedTable: quotedTable,
+            quotedColumn: quotedColumn,
+            escapedValue: escapedValue,
+            dialect: PluginManager.shared.sqlDialect(for: databaseType)
+        )
 
         do {
             let result = try await driver.execute(query: query)

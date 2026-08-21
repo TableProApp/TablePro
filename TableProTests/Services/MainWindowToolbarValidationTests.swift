@@ -51,7 +51,9 @@ struct MainWindowToolbarValidationTests {
         fileBased: Bool = false,
         supportsContainerSwitching: Bool = true,
         supportsImport: Bool = true,
-        supportsServerDashboard: Bool = true
+        supportsServerDashboard: Bool = true,
+        canNavigateBack: Bool = false,
+        canNavigateForward: Bool = false
     ) -> MainWindowToolbar.ValidationContext {
         MainWindowToolbar.ValidationContext(
             connected: connected,
@@ -63,7 +65,9 @@ struct MainWindowToolbarValidationTests {
             fileBased: fileBased,
             supportsContainerSwitching: supportsContainerSwitching,
             supportsImport: supportsImport,
-            supportsServerDashboard: supportsServerDashboard
+            supportsServerDashboard: supportsServerDashboard,
+            canNavigateBack: canNavigateBack,
+            canNavigateForward: canNavigateForward
         )
     }
 
@@ -525,6 +529,86 @@ struct MainWindowToolbarRepointTests {
     }
 }
 
+@Suite("MainWindowToolbar back and forward validation")
+@MainActor
+struct MainWindowToolbarNavigationValidationTests {
+    private func context(
+        connected: Bool = true,
+        canNavigateBack: Bool = false,
+        canNavigateForward: Bool = false
+    ) -> MainWindowToolbar.ValidationContext {
+        MainWindowToolbar.ValidationContext(
+            connected: connected,
+            isTableTab: true,
+            canAddRow: false,
+            hasPendingChanges: false,
+            hasDataPendingChanges: false,
+            blocksAllWrites: false,
+            fileBased: false,
+            supportsContainerSwitching: true,
+            supportsImport: true,
+            supportsServerDashboard: true,
+            canNavigateBack: canNavigateBack,
+            canNavigateForward: canNavigateForward
+        )
+    }
+
+    @Test("Back is disabled with an empty history rather than hidden")
+    func backDisabledWithoutHistory() {
+        #expect(
+            MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.navigateBack,
+                context: context()
+            ) == false
+        )
+    }
+
+    @Test("Back is enabled once the tab has somewhere to go back to")
+    func backEnabledWithHistory() {
+        #expect(
+            MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.navigateBack,
+                context: context(canNavigateBack: true)
+            )
+        )
+    }
+
+    @Test("Back and Forward run out independently")
+    func backAndForwardAreSeparate() {
+        let onlyBack = context(canNavigateBack: true)
+        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.navigateBack, context: onlyBack))
+        #expect(
+            MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.navigateForward,
+                context: onlyBack
+            ) == false
+        )
+    }
+
+    @Test("Neither is offered without a connection")
+    func bothNeedAConnection() {
+        let disconnected = context(connected: false, canNavigateBack: true, canNavigateForward: true)
+        #expect(
+            MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.navigateBack,
+                context: disconnected
+            ) == false
+        )
+        #expect(
+            MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.navigateForward,
+                context: disconnected
+            ) == false
+        )
+    }
+
+    @Test("The group is offered by default so it reaches an existing toolbar")
+    func groupIsADefaultItem() {
+        #expect(MainWindowToolbar.defaultItemIdentifiers.contains(MainWindowToolbar.backForwardGroup))
+        #expect(MainWindowToolbar.allowedItemIdentifiers.contains(MainWindowToolbar.backForwardGroup))
+    }
+}
+
 @Suite("MainWindowToolbar Add Row validation")
 @MainActor
 struct MainWindowToolbarAddRowValidationTests {
@@ -539,7 +623,9 @@ struct MainWindowToolbarAddRowValidationTests {
             fileBased: false,
             supportsContainerSwitching: true,
             supportsImport: true,
-            supportsServerDashboard: true
+            supportsServerDashboard: true,
+            canNavigateBack: false,
+            canNavigateForward: false
         )
     }
 

@@ -219,6 +219,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
     static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
     static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
+    static let backForwardGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.backForwardGroup")
+    static let navigateBack = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateBack")
+    static let navigateForward = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateForward")
 
     // MARK: - NSToolbarDelegate
 
@@ -235,6 +238,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     internal static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
         sidebarToggle,
         .sidebarTrackingSeparator,
+        backForwardGroup,
         connectionGroup,
         principal,
         .flexibleSpace,

@@ -15,6 +15,14 @@ extension MainWindowToolbar {
         coordinator?.commandActions?.openDatabaseSwitcher()
     }
 
+    @objc func performNavigateBack(_ sender: Any?) {
+        coordinator?.commandActions?.navigateBack()
+    }
+
+    @objc func performNavigateForward(_ sender: Any?) {
+        coordinator?.commandActions?.navigateForward()
+    }
+
     @objc func performRefresh(_ sender: Any?) {
         coordinator?.commandActions?.refresh()
     }

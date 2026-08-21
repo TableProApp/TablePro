@@ -93,6 +93,19 @@ enum ViewMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
+                String(localized: "Back"),
+                action: #selector(MainSplitViewController.navigateBack(_:)),
+                shortcut: .navigateBack,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Forward"),
+                action: #selector(MainSplitViewController.navigateForward(_:)),
+                shortcut: .navigateForward,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
                 String(localized: "Show Previous Connection"),
                 action: #selector(MainSplitViewController.showPreviousWorkspace(_:)),
                 shortcut: .showPreviousWorkspace,

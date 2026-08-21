@@ -282,6 +282,18 @@ final class MainContentCoordinator {
     /// Which user-requested exact count currently owns each tab's counting indicator.
     @ObservationIgnored internal var exactCountOwners: [UUID: UUID] = [:]
     @ObservationIgnored internal var tableLoadTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
+
+    /// Each tab's browse history, keyed by tab id the way the other per-tab caches here are.
+    ///
+    /// Not a field on `QueryTab`: that struct is the persisted shape of a tab, and an entry
+    /// describes rows that may be gone by the next launch. Keeping it out of the struct also keeps
+    /// it out of the hand-written `Equatable`, so a push never re-publishes the tab list.
+    @ObservationIgnored internal var navigationHistories: [UUID: TabNavigationHistory] = [:]
+
+    /// The row a restored tab should land on, keyed by tab because one grid coordinator serves
+    /// every tab in the window. Set when a navigation starts and consumed by the first draw that
+    /// has the rows, or dropped with the tab.
+    @ObservationIgnored internal var pendingRowAnchors: [UUID: [String: String]] = [:]
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
     @ObservationIgnored private var periodicSaveTask: Task<Void, Never>?
     @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
@@ -565,23 +577,6 @@ final class MainContentCoordinator {
         where tab.id != selectedId && !tab.pendingChanges.hasChanges {
             tabSessionRegistry.evict(for: tab.id)
             tabManager.mutate(at: index) { $0.loadEpoch &+= 1 }
-        }
-    }
-
-    /// Remove cache entries for tabs that no longer exist
-    func cleanupTabCaches(openTabIds: Set<UUID>) {
-        if displayFormatsCache.keys.contains(where: { !openTabIds.contains($0) }) {
-            displayFormatsCache = displayFormatsCache.filter { openTabIds.contains($0.key) }
-        }
-        if displayOrderCache.keys.contains(where: { !openTabIds.contains($0) }) {
-            displayOrderCache = displayOrderCache.filter { openTabIds.contains($0.key) }
-        }
-        for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
-            session.releaseViewWiring()
-            structureSessions.removeValue(forKey: tabId)
-        }
-        if createTableDrafts.keys.contains(where: { !openTabIds.contains($0) }) {
-            createTableDrafts = createTableDrafts.filter { openTabIds.contains($0.key) }
         }
     }
 
