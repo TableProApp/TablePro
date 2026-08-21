@@ -24,7 +24,6 @@ QueryExecutorTests
 ClickHouseDialectTests
 ValidateDriverDescriptorTests
 PluginCapabilityTests
-FreeTDSClassifierTests
 DatabaseTypeCassandraTests
 RowOperationsManagerTests
 StructureGridDelegateAddRowTests

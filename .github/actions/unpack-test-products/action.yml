@@ -1,0 +1,41 @@
+name: Unpack test products
+description: Downloads the products the build job produced and points XCTESTRUN at them.
+
+runs:
+  using: composite
+  steps:
+    - name: Download the built products
+      uses: actions/download-artifact@v8
+      with:
+        name: test-products
+
+    - name: Unpack and locate the test plans
+      shell: bash
+      # Every path inside a generated .xctestrun is written relative to __TESTROOT__, which
+      # resolves to the directory holding the file, so the products run from wherever they land.
+      # The file name carries the SDK version (TablePro_macosx26.4-arm64.xctestrun), which is why
+      # it is found rather than spelled out: an Xcode bump would otherwise break this silently.
+      run: |
+        set -euo pipefail
+        mkdir -p DerivedData/Build
+        tar -xzf products.tar.gz -C DerivedData/Build
+        rm -f products.tar.gz
+
+        products="$PWD/DerivedData/Build/Products"
+        [ -d "$products" ] || { echo "::error::the artifact did not contain Build/Products"; exit 1; }
+
+        locate() {
+            local scheme="$1" found
+            found="$(find "$products" -maxdepth 1 -name "${scheme}_*.xctestrun" -print -quit)"
+            if [ -z "$found" ]; then
+                echo "::error::no .xctestrun for scheme ${scheme} in $products"
+                ls -1 "$products" >&2
+                exit 1
+            fi
+            printf '%s' "$found"
+        }
+
+        {
+            echo "XCTESTRUN=$(locate TablePro)"
+            echo "DAMENG_XCTESTRUN=$(locate DamengDriverTests)"
+        } >> "$GITHUB_ENV"

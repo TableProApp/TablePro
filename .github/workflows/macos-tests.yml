@@ -17,8 +17,14 @@ on:
       - "TableProUITests/**"
       - "Native/**"
       - "project.yml"
+      - "TableProMobile/project.yml"
       - "Configs/**"
       - "Libs/**"
+      - "scripts/**"
+      - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      - ".github/actions/**"
+      - ".github/macos-test-quarantine.txt"
+      - ".github/macos-ui-test-quarantine.txt"
       - ".github/workflows/macos-tests.yml"
   workflow_dispatch:
   workflow_call:
@@ -28,21 +34,28 @@ concurrency:
   group: macos-tests-${{ github.ref }}
   cancel-in-progress: true
 
+# A downgrade or an exact match is always allowed for a called workflow; only asking for more than
+# the caller holds fails at run creation. Declaring read here therefore cannot break build.yml's
+# workflow_call, and it stops every job in this file from inheriting a write token if the repository
+# default is ever flipped.
+permissions:
+  contents: read
+
 env:
+  XCODE_VERSION: "26.4.1"
   XCODE_PROJECT: TablePro.xcodeproj
   XCODE_SCHEME: TablePro
   TEST_DESTINATION: "platform=macOS"
+  # Inside the workspace rather than the default location, because the build job tars it and the
+  # test jobs unpack it. Every path inside the generated .xctestrun is written relative to
+  # __TESTROOT__, so the products relocate to any directory.
+  DERIVED_DATA: DerivedData
 
 jobs:
   # Reproduces the paths filter this workflow used to carry on `on: pull_request`. Keep this
   # list and the `push:` paths above identical, so a pull request and a push to main run the
   # same suites. `Native/` is on both because the Dameng steps below build and test the Rust
   # bridge that lives there, and a bridge-only change would otherwise compile nowhere.
-  # Never give this job a `permissions:` block. build.yml calls this workflow with
-  # workflow_call, and a called job may not request more than the caller holds. The repository
-  # default is read, which carries no pull-requests scope, so asking for one fails the whole
-  # release at run creation, before a single job starts. Reading the diff from git keeps this
-  # job inside contents:read, which every caller already grants.
   changes:
     name: Detect relevant changes
     runs-on: ubuntu-latest
@@ -102,14 +115,20 @@ jobs:
           git -c core.quotePath=false diff --no-renames --name-only -z \
               "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-files"
 
-          if LC_ALL=C grep -zqE '^(TablePro/|Plugins/|Packages/|LocalPackages/|TableProTests/|TableProUITests/|Native/|Configs/|Libs/|project\.yml$|\.github/workflows/macos-tests\.yml$)' "$RUNNER_TEMP/changed-files"; then
+          # Keep in step with the `push: paths:` list above. scripts/ and .github/actions/ are on
+          # both because the jobs below execute them: a change to the shard tooling or to the
+          # quarantine files used to merge behind a green gate having run nothing.
+          if LC_ALL=C grep -zqE '^(TablePro/|Plugins/|Packages/|LocalPackages/|TableProTests/|TableProUITests/|Native/|Configs/|Libs/|scripts/|\.github/actions/|\.github/macos-(ui-)?test-quarantine\.txt$|TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$|TableProMobile/project\.yml$|project\.yml$|\.github/workflows/macos-tests\.yml$)' "$RUNNER_TEMP/changed-files"; then
               echo "run=true" >> "$GITHUB_OUTPUT"
           else
               echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 
-  package-tests:
-    name: TableProCore Package Tests
+  # One job for both packages rather than two. They cost 1.3 and 2.1 minutes, and a macOS
+  # concurrency slot is the scarce resource here: the account runs five at a time, and the build
+  # plus three UI shards plus the unit job already want four of them.
+  packages:
+    name: Package Tests
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
@@ -120,24 +139,10 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
-          xcode-version: '26.4.1'
+          xcode-version: ${{ env.XCODE_VERSION }}
 
-      - name: Run package tests
+      - name: Run TableProCore package tests
         run: swift test --package-path Packages/TableProCore
-
-  editor-tests:
-    name: CodeEditTextView Package Tests
-    needs: changes
-    if: needs.changes.outputs.run == 'true'
-    runs-on: macos-26
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        with:
-          xcode-version: '26.4.1'
 
       # CodeEditSourceEditor is deliberately not run here. `swift test` cannot build it on this
       # runner: its CodeEditSymbols dependency fails with "type 'Bundle' has no member 'module'",
@@ -145,28 +150,27 @@ jobs:
       # Xcode project, so the app target still compiles it; only the standalone package test run
       # is broken. Its own suites also fail on main (HighlighterTests, TagEditingTests, plus one
       # that aborts the runner), so this needs fixing at the package level before it can gate.
-      - name: Run editor package tests
+      - name: Run CodeEditTextView package tests
         run: swift test --package-path LocalPackages/CodeEditTextView
 
-  # Budget on a macos-26 runner, measured on run 32391276238: ~3 min of setup and package
-  # resolution, ~5 min to compile every plugin, ~21 min for the unit step (17 of them building the
-  # app and both test bundles, 4.5 running 11,500 tests), and ~43 min for the UI suite, which
-  # launches the app once per test at roughly 30 seconds each. That is ~72 min, so 60 killed the
-  # job with ten UI suites still to run. A slow runner stretches all of it and one UI retry costs
-  # another minute or two, so keep real headroom here rather than trimming to the last measurement.
-  app-tests:
-    name: macOS App Tests
+  # Compiles the app, both test bundles and all 31 plugins once, then hands the products to the
+  # test jobs. That build used to happen inside the same job that ran the tests, which meant the
+  # unit step spent 12 of its 15.3 minutes compiling and the UI step could not start until the
+  # unit step had finished. All 12,662 unit cases execute in 206 seconds, so the build was almost
+  # all of the cost and none of it was parallel.
+  build:
+    name: Build for testing
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
-    timeout-minutes: 90
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
-          xcode-version: '26.4.1'
+          xcode-version: ${{ env.XCODE_VERSION }}
 
       - name: Install xcbeautify
         run: brew list xcbeautify &>/dev/null || brew install xcbeautify
@@ -196,12 +200,10 @@ jobs:
         working-directory: Native/DamengBridge
         run: cargo test --locked
 
-      # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so an empty
-      # value is enough for the project to resolve $(ANALYTICS_HMAC_SECRET).
+      # Secrets.xcconfig is gitignored. Tests do not need analytics keys, and the project only
+      # needs the variable to resolve, so an empty value is enough and no secret is read here.
       - name: Create Secrets.xcconfig
-        env:
-          ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
-        run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Configs/Secrets.xcconfig
+        run: echo "ANALYTICS_HMAC_SECRET = " > Configs/Secrets.xcconfig
 
       - name: Setup XcodeGen
         uses: ./.github/actions/setup-xcodegen
@@ -209,15 +211,26 @@ jobs:
       - name: Generate Xcode project
         run: scripts/generate-project.sh
 
+      # Package.resolved pins every revision and is tracked, which is why it can key the cache.
+      # build.yml has cached these checkouts for a while; this workflow paid 1.5 minutes a run
+      # re-resolving them.
+      - name: Cache Swift package checkouts
+        uses: actions/cache@v6
+        with:
+          path: ~/.spm-cache
+          key: ${{ runner.os }}-spm-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: ${{ runner.os }}-spm-
+
       - name: Resolve Swift package dependencies
         run: |
           xcodebuild -resolvePackageDependencies \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
+            -clonedSourcePackagesDirPath ~/.spm-cache \
             -skipPackagePluginValidation
 
       # The TablePro scheme only builds the 14 bundled plugins, so a change confined to one
-      # of the 16 registry-only plugins compiles nowhere else in CI. AllPlugins is the only
+      # of the 17 registry-only plugins compiles nowhere else in CI. AllPlugins is the only
       # target that covers them, and build-plugin.yml does not run until a release tag.
       - name: Compile every plugin
         run: |
@@ -226,6 +239,21 @@ jobs:
             -project "$XCODE_PROJECT" \
             -scheme AllPlugins \
             -destination "$TEST_DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -clonedSourcePackagesDirPath ~/.spm-cache \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      - name: Build the app and both test bundles
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "$TEST_DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -clonedSourcePackagesDirPath ~/.spm-cache \
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
@@ -233,87 +261,161 @@ jobs:
       # DamengDriverTests is the one plugin-owned unit bundle: its suites import CDameng, so
       # they cannot move into TableProTests the way pure-logic plugin tests do. Without this
       # step nothing runs them and they rot silently.
-      - name: Run Dameng driver tests
+      - name: Build the Dameng driver tests
         run: |
           set -o pipefail
-          xcodebuild test \
+          xcodebuild build-for-testing \
             -project "$XCODE_PROJECT" \
             -scheme DamengDriverTests \
             -destination "$TEST_DESTINATION" \
-            -parallel-testing-enabled NO \
+            -derivedDataPath "$DERIVED_DATA" \
+            -clonedSourcePackagesDirPath ~/.spm-cache \
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
 
+      # Tarred rather than uploaded as a directory. actions/upload-artifact does not preserve
+      # the executable bit or symlinks, and both matter to an .app bundle: the app would arrive
+      # unable to run. The archive measures 144 MB against 559 MB on disk.
+      - name: Pack the built products
+        run: tar -czf products.tar.gz -C "$DERIVED_DATA/Build" Products
+
+      - name: Upload the built products
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-products
+          path: products.tar.gz
+          retention-days: 1
+          compression-level: 0
+
+  unit:
+    name: Unit tests
+    needs: [changes, build]
+    if: needs.changes.outputs.run == 'true'
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Install xcbeautify
+        run: brew list xcbeautify &>/dev/null || brew install xcbeautify
+
+      - uses: ./.github/actions/unpack-test-products
+
       # Quarantined suites (driver-loading, env-coupled, or hanging headless) are listed
-      # in .github/macos-test-quarantine.txt. Burn that list down over time.
+      # in .github/macos-test-quarantine.txt. Burn that list down. The script refuses to run if
+      # an entry no longer names a suite, because xcodebuild accepts -skip-testing for a suite
+      # that does not exist and says nothing, which left one line inert for 479 commits.
       - name: Run unit tests
         run: |
           set -o pipefail
+          # A read loop, not mapfile: the macOS runner's /bin/bash is 3.2, which has neither
+          # mapfile nor readarray, and a `run:` block gets that bash.
           SKIP_ARGS=()
-          while IFS= read -r line; do
-            suite="${line%%#*}"
-            suite="$(echo "$suite" | xargs)"
-            [ -z "$suite" ] && continue
-            SKIP_ARGS+=("-skip-testing:TableProTests/$suite")
-          done < .github/macos-test-quarantine.txt
-          xcodebuild test \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
+          while IFS= read -r arg; do
+            SKIP_ARGS+=("$arg")
+          done < <(scripts/ci/quarantine-args.sh .github/macos-test-quarantine.txt TableProTests TableProTests)
+          xcodebuild test-without-building \
+            -xctestrun "$XCTESTRUN" \
             -destination "$TEST_DESTINATION" \
             -only-testing:TableProTests \
             "${SKIP_ARGS[@]}" \
             -parallel-testing-enabled NO \
-            -skipPackagePluginValidation \
             -resultBundlePath TestResults.xcresult \
-            CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
 
-      # UI tests drive the real app, so they need the runner's GUI session and cannot run beside
-      # the unit run. Every case launches the app against a throwaway storage sandbox that
-      # UITestCase hands it, so nothing here touches a real store.
-      #
-      # One retry is allowed. A full local suite flaked once in three runs on a single
-      # waitForExistence, which without a retry would fail roughly a third of runs and train
-      # people to re-run until green. A case that fails twice is a real failure.
-      - name: Run UI tests
+      - name: Run Dameng driver tests
         run: |
           set -o pipefail
-          SKIP_ARGS=()
-          while IFS= read -r line; do
-            entry="${line%%#*}"
-            entry="$(echo "$entry" | xargs)"
-            [ -z "$entry" ] && continue
-            SKIP_ARGS+=("-skip-testing:TableProUITests/$entry")
-          done < .github/macos-ui-test-quarantine.txt
-          xcodebuild test \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
+          xcodebuild test-without-building \
+            -xctestrun "$DAMENG_XCTESTRUN" \
             -destination "$TEST_DESTINATION" \
-            -only-testing:TableProUITests \
-            "${SKIP_ARGS[@]}" \
             -parallel-testing-enabled NO \
-            -test-iterations 2 \
-            -retry-tests-on-failure \
-            -skipPackagePluginValidation \
-            -resultBundlePath UITestResults.xcresult \
-            CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
 
-      - name: Upload UI test results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: macos-ui-test-results
-          path: UITestResults.xcresult
-          retention-days: 7
-
       - name: Upload test results
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: macos-test-results
           path: TestResults.xcresult
+          retention-days: 7
+
+  # UI tests drive the real app, so they need the runner's GUI session and cannot run beside
+  # the unit run. Every case launches the app against a throwaway storage sandbox that
+  # UITestCase hands it, so nothing here touches a real store.
+  #
+  # Sharded across runners rather than parallelised on one. Three things in the suite are shared
+  # per machine and cannot be made per-worker: the single `com.TablePro.uitest` defaults domain,
+  # the preferences sweep in UITestCase's class setUp, and the menu bar itself, which belongs to
+  # whichever app is frontmost. A separate runner per shard has its own of all three.
+  ui:
+    name: UI tests ${{ matrix.shard }}/${{ matrix.of }}
+    needs: [changes, build]
+    if: needs.changes.outputs.run == 'true'
+    runs-on: macos-26
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+        of: [3]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Install xcbeautify
+        run: brew list xcbeautify &>/dev/null || brew install xcbeautify
+
+      - uses: ./.github/actions/unpack-test-products
+
+      # One retry is allowed. A full local suite flaked once in three runs on a single
+      # waitForExistence, which without a retry would fail roughly a third of runs and train
+      # people to re-run until green. A case that fails twice is a real failure.
+      - name: Run UI tests
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARD_COUNT: ${{ matrix.of }}
+        run: |
+          set -o pipefail
+          # A read loop, not mapfile: the macOS runner's /bin/bash is 3.2, which has neither.
+          ONLY_ARGS=()
+          while IFS= read -r arg; do
+            ONLY_ARGS+=("$arg")
+          done < <(
+            scripts/ci/list-tests.sh \
+              --xctestrun "$XCTESTRUN" \
+              --target TableProUITests \
+              --quarantine .github/macos-ui-test-quarantine.txt \
+              --shard "$SHARD/$SHARD_COUNT"
+          )
+          [ "${#ONLY_ARGS[@]}" -gt 0 ] || { echo "::error::shard $SHARD selected no cases"; exit 1; }
+          echo "shard $SHARD of $SHARD_COUNT runs ${#ONLY_ARGS[@]} cases"
+          xcodebuild test-without-building \
+            -xctestrun "$XCTESTRUN" \
+            -destination "$TEST_DESTINATION" \
+            "${ONLY_ARGS[@]}" \
+            -parallel-testing-enabled NO \
+            -test-iterations 2 \
+            -retry-tests-on-failure \
+            -resultBundlePath UITestResults.xcresult \
+            | xcbeautify --renderer github-actions
+
+      - name: Upload UI test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-ui-test-results-${{ matrix.shard }}
+          path: UITestResults.xcresult
           retention-days: 7
 
   # The one check to mark required on main. It reports on every pull request, so a docs-only
@@ -321,7 +423,7 @@ jobs:
   gate:
     name: macOS Tests Gate
     if: always()
-    needs: [changes, package-tests, editor-tests, app-tests]
+    needs: [changes, packages, build, unit, ui]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
