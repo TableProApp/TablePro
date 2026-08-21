@@ -27,6 +27,25 @@ class MarkedTextManager {
         markedRanges.removeAll()
     }
 
+    /// Resolves the stored ranges against a document of `length`, dropping any that name no
+    /// position in it and collapsing any that resolve to the same one.
+    ///
+    /// An input session spans many callbacks and this object has no hook for edits made through
+    /// any other path, so an edit that shrinks the document leaves its ranges behind. Resolving
+    /// before they are used keeps the next keystroke of a composition computed against text that
+    /// still exists, rather than replacing at a position the document no longer has.
+    func resolveRanges(inDocumentOfLength length: Int) {
+        var resolved: [NSRange] = []
+        for range in markedRanges {
+            guard let clamped = range.resolved(inDocumentOfLength: length),
+                  !resolved.contains(clamped) else {
+                continue
+            }
+            resolved.append(clamped)
+        }
+        markedRanges = resolved
+    }
+
     /// Updates the stored marked ranges.
     ///
     /// Two cases here:

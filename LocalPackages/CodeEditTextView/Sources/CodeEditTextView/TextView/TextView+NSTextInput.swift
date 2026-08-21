@@ -51,7 +51,7 @@ extension TextView: NSTextInputClient {
             insertString = LineEnding.carriageReturnLineFeed.rawValue
         }
 
-        replaceCharacters(in: replacementRanges, with: insertString)
+        replaceCharacters(in: resolvedReplacementRanges(replacementRanges), with: insertString)
 
         selectionManager.textSelections.forEach { $0.suggestedXPos = nil }
     }
@@ -85,6 +85,7 @@ extension TextView: NSTextInputClient {
     @objc public func insertText(_ string: Any, replacementRange: NSRange) {
         guard isEditable, let insertString = anyToString(string) else { return }
 
+        layoutManager.markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
         let markedRanges = layoutManager.markedTextManager.markedRanges
         let hadMarkedText = !markedRanges.isEmpty
 
@@ -126,6 +127,7 @@ extension TextView: NSTextInputClient {
         guard isEditable, let insertString = anyToString(string) else { return }
         // Needs to insert text, but not notify the undo manager.
         _undoManager?.disable()
+        layoutManager.markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
         let shouldInsert = layoutManager.markedTextManager.markedRanges.isEmpty
 
         // Copy the text selections *before* we modify them.
@@ -172,6 +174,7 @@ extension TextView: NSTextInputClient {
     @objc public func unmarkText() {
         if layoutManager.markedTextManager.hasMarkedText {
             _undoManager?.disable()
+            layoutManager.markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
             replaceCharacters(in: layoutManager.markedTextManager.markedRanges, with: "")
             _undoManager?.enable()
             layoutManager.markedTextManager.removeAll()
@@ -238,9 +241,47 @@ extension TextView: NSTextInputClient {
         forProposedRange range: NSRange,
         actualRange: NSRangePointer?
     ) -> NSAttributedString? {
-        let realRange = (textStorage.string as NSString).rangeOfComposedCharacterSequences(for: range)
+        actualRange?.pointee = .notFound
+        guard let realRange = composedRange(forProposedRange: range) else { return nil }
         actualRange?.pointee = realRange
         return textStorage.attributedSubstring(from: realRange)
+    }
+
+    /// Resolves a range handed to us by an input service against the document.
+    ///
+    /// Returns `nil` when the range starts outside the document, which is the case
+    /// `NSTextInputClient` documents as having no answer. A range that starts inside it keeps its
+    /// position and gives up only the part that no longer exists, so a caret question still has
+    /// an answer and an empty result means "no characters there" rather than "no such place".
+    private func composedRange(forProposedRange range: NSRange) -> NSRange? {
+        let documentLength = textStorage.length
+        guard let clamped = range.resolved(inDocumentOfLength: documentLength),
+              clamped.location == range.location else {
+            return nil
+        }
+        guard !clamped.isEmpty else { return clamped }
+        return (textStorage.string as NSString).rangeOfComposedCharacterSequences(for: clamped)
+    }
+
+    /// Resolves the ranges an input service asked us to replace against the current document.
+    ///
+    /// The ranges an input session works with are computed against the document as it was, and any
+    /// edit made through another path can leave them behind: marked-text bookkeeping keeps its own
+    /// ranges and has no hook for those edits. `replaceCharacters` registers undo before it
+    /// mutates, and building the inverse slices the storage, so a range that outruns the document
+    /// traps there rather than raising something catchable. Two ranges that resolve to the same
+    /// position would replace the same text twice, so they collapse to one.
+    internal func resolvedReplacementRanges(_ ranges: [NSRange]) -> [NSRange] {
+        let documentLength = textStorage.length
+        var resolved: [NSRange] = []
+        for range in ranges {
+            guard let clamped = range.resolved(inDocumentOfLength: documentLength),
+                  !resolved.contains(clamped) else {
+                continue
+            }
+            resolved.append(clamped)
+        }
+        return resolved
     }
 
     /// Returns an attributed string representing the receiver's text storage.
@@ -259,14 +300,21 @@ extension TextView: NSTextInputClient {
     /// - Returns: The boundary rectangle for the given range of characters, in *screen* coordinates.
     ///            The rectangle’s size value can be negative if the text flows to the left.
     @objc public func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
-        if actualRange != nil {
-            let realRange = (textStorage.string as NSString).rangeOfComposedCharacterSequences(for: range)
-            if realRange != range {
-                actualRange?.pointee = realRange
-            }
+        actualRange?.pointee = .notFound
+
+        // A range we cannot resolve still has to produce a usable rect: an input service places
+        // its candidate window, accent popover or dictation indicator here, and a zero rect puts
+        // all of them in the corner of the display. The end of the document is where the old code
+        // landed for those, because `rectForOffset` answers any offset past the end that way.
+        let offset: Int
+        if let realRange = composedRange(forProposedRange: range) {
+            actualRange?.pointee = realRange
+            offset = realRange.location
+        } else {
+            offset = textStorage.length
         }
 
-        let localRect = (layoutManager.rectForOffset(range.location) ?? .zero)
+        let localRect = (layoutManager.rectForOffset(offset) ?? .zero)
         let windowRect = convert(localRect, to: nil)
         return window?.convertToScreen(windowRect) ?? .zero
     }
