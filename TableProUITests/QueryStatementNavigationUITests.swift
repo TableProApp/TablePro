@@ -62,14 +62,14 @@ final class QueryStatementNavigationUITests: UITestCase {
 
     // MARK: - Helpers
 
+    /// Resolved and clicked in one step, with no click on the parent menu first. macOS exposes an
+    /// unopened menu's items in the accessibility tree, so opening the parent buys nothing and
+    /// costs XCUITest a second traversal of the menu bar, which measures at 4 to 6 seconds on the
+    /// CI runner once a connection window is loaded. `launchWithSampleDatabase` has always relied
+    /// on this.
     private func clickQueryMenuItem(_ title: String, in app: XCUIApplication) {
-        let queryMenu = app.menuBars.menuBarItems["Query"]
-        XCTAssertTrue(queryMenu.waitToExist(timeout: 10), "The Query menu must exist")
-        queryMenu.click()
-
         let item = app.menuBars.menuItems[title]
         XCTAssertTrue(item.waitToExist(timeout: 10), "Query > \(title) must exist")
-        XCTAssertTrue(waitUntilHittable(item, timeout: 10), "Query > \(title) must be clickable")
         item.click()
     }
 

@@ -183,20 +183,17 @@ final class OpenQuicklyCommandUITests: UITestCase {
         )
         app.activate()
 
-        let fileMenu = app.menuBars.menuBarItems["File"]
-        XCTAssertTrue(fileMenu.waitToExist(timeout: 10))
-        fileMenu.click()
-
+        /// Resolved and clicked without opening File first; see the note in
+        /// QueryStatementNavigationUITests for why the parent click only costs a traversal.
         let openQuickly = app.menuBars.menuItems["Open Quickly…"]
         XCTAssertTrue(openQuickly.waitToExist(timeout: 5))
-        XCTAssertTrue(waitUntilHittable(openQuickly, timeout: 5))
         openQuickly.click()
 
         let searchField = switcherPanel(in: app).textFields["quick-switcher-search-field"]
         XCTAssertTrue(searchField.waitToExist(timeout: 15))
 
         XCTAssertFalse(
-            app.menuBars.menuItems["Quick Switcher..."].exists,
+            app.menuBars.menuBarItems["Database"].menuItems["Quick Switcher..."].exists,
             "The old Database menu item must not survive the move"
         )
     }

@@ -51,7 +51,7 @@ final class ResultStatementLinkUITests: UITestCase {
         XCTAssertFalse(before.isEmpty, "The editor must hold the script that was run")
 
         let tabs = app.buttons.matching(identifier: "result-tab")
-        waitUntilHittable(tabs.element(boundBy: 2))
+        XCTAssertTrue(waitUntilHittable(tabs.element(boundBy: 2), timeout: 10))
         tabs.element(boundBy: 2).click()
         tabs.element(boundBy: 0).click()
         tabs.element(boundBy: 0).click()
@@ -79,13 +79,5 @@ final class ResultStatementLinkUITests: UITestCase {
             "The script must produce a result per statement"
         )
         return app
-    }
-
-    /// A control in a pane that is still settling exists but hit-tests to nothing, so existence is not enough to
-    /// click on.
-    private func waitUntilHittable(_ element: XCUIElement) {
-        let hittable = NSPredicate(format: "isHittable == true")
-        let expectation = XCTNSPredicateExpectation(predicate: hittable, object: element)
-        XCTAssertEqual(XCTWaiter().wait(for: [expectation], timeout: 10), .completed)
     }
 }
