@@ -60,7 +60,7 @@ Closing the last tab leaves the connection open on its empty state rather than c
 
 **Close Tabs for Other Databases** closes only tabs opened against a database other than the one the connection is on now. It never touches the tab you are looking at, and it is limited to the current connection. Tabs from different databases are meant to coexist, so switching databases never closes anything on its own. On engines that switch schemas instead of databases, such as BigQuery and Oracle, the command reads **Close Tabs for Other Schemas**.
 
-Closing a query tab keeps its SQL in Recently Closed, so an accidental close costs nothing, including when you close a whole group at once. That is why a tab holding only typed query text closes without asking: the text comes back.
+Closing a query tab keeps its SQL, so an accidental close costs nothing, including when you close a whole group at once. That is why a tab holding only typed query text closes without asking: the text comes back.
 
 TablePro asks before closing when unsaved work would be lost, and the prompt offers Save, Cancel and Don't Save. It covers unsaved cell edits in a table tab, a `.sql` file that differs from what is on disk, staged structure and Create Table changes, and staged user and role changes. Save closes the tab once the save lands, except for user and role changes, where Save opens the review sheet instead and leaves the tab open until you execute or discard there. A bulk close asks once, and cancelling stops the rest.
 
@@ -83,7 +83,7 @@ Tabs cannot be pinned. Pinning exists for result tabs inside a query tab (`Cmd+O
 | Action | How |
 |--------|-----|
 | Reopen the last closed tab | `Cmd+Shift+T` or **File > Reopen Closed Tab** |
-| Reopen an older tab | **File > Recently Closed** |
+| Reopen the last closed tab | **File > Reopen Closed Tab** (`Cmd+Shift+T`) |
 
 The last 20 closed query and table tabs are kept for 30 days. A reopened tab comes back with its SQL, cursor position, and database context. Deleting a connection also deletes its closed tabs.
 

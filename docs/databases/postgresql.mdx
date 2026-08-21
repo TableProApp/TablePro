@@ -49,7 +49,7 @@ Connect to RDS or Aurora with your AWS identity instead of a static password: se
 
 **PostGIS**: `geometry` and `geography` columns render as EWKT with the SRID preserved (`SRID=4326;POINT(-73 40.7237)`) instead of the raw EWKB hex libpq returns. TablePro detects spatial columns from a one-time `pg_type` lookup at connect time and converts fetched values with `ST_AsEWKT(…)`. Your query is never re-run, so parameterized and multi-statement queries render EWKT too. If conversion fails, the raw hex is kept without an error.
 
-**Users & Roles**: Manage database users, roles, and privileges under **View > Users & Roles**: see where each privilege comes from, then grant or revoke it. See [Users & Roles](/features/users-roles).
+**Users & Roles**: Manage database users, roles, and privileges under **Database > Users & Roles**: see where each privilege comes from, then grant or revoke it. See [Users & Roles](/features/users-roles).
 
 **Backup & Restore**: **Backup Dump** and **Restore Dump** run `pg_dump` and `pg_restore`. Among TablePro's databases this is available for PostgreSQL and Redshift only. See [Backup & Restore](/features/backup-restore).
 
