@@ -43,6 +43,7 @@ PLUGINS=(
     surrealdb
     teradata
     trino
+    dameng
 )
 
 BUNDLED_PLUGINS=(
