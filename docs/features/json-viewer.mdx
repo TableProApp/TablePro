@@ -72,13 +72,30 @@ A value that refuses to open in one mode still opens in another.
 
 ## Row details inspector
 
-**View > Show Inspector** (`Cmd+Option+I`) opens the right sidebar. Select a row and every field appears with an editor matched to its content, with no **Display As** step: JSON columns and text values that parse as JSON get the JSON editor, PHP serialized values the read-only tree, blob columns the hex editor, and enum, set, and boolean columns get pickers.
+**View > Show Inspector** (`Cmd+Option+I`), or the toolbar button at the trailing end, opens it. A field's editor follows its content, with no **Display As** step, and the first match wins.
+
+| Content | Editor |
+| --- | --- |
+| A JSON column, or text that parses as JSON | JSON editor |
+| A PHP serialized value | Read-only [PHP viewer](#php-serialized-viewer) |
+| An enum, set, or boolean column | Picker |
+| A blob column | Hex editor |
+| A `TEXT` variant, `CLOB` or `NTEXT` column, or any value with a line break or over 80 characters | Scrolling text box |
+| Anything else | One-line field |
 
 <Frame caption="Row details inspector with per-field editors">
   <img className="block dark:hidden" src="/images/row-details-inspector.png" alt="Row details inspector" />
   <img className="hidden dark:block" src="/images/row-details-inspector-dark.png" alt="Row details inspector" />
 </Frame>
 
-JSON and PHP fields carry buttons to expand inside the sidebar or pop out to a window. Hover an editable field for a menu that sets NULL, the column default, an empty value, or a SQL function. With no row selected, the inspector lists table statistics instead: data, index and total size, row count, average row size, engine, collation, and creation and update dates, as far as the database reports them. On a Structure tab it follows the structure grid instead of the rows.
+The length test reads the stored value, so a long value pasted into a one-line field stays on one line until you save and reselect the row.
+
+The text box and the JSON editor each carry a drag handle under them, with separate remembered heights that survive a relaunch.
+
+**Open in Window** detaches a JSON, PHP or text value into its own resizable window; on an editable row, edits there join the same pending changes as the field. **Expand in Sidebar**, on JSON and PHP only, fills the inspector with that one field, and **Fields** goes back.
+
+Right-click a field for its menu; an editable field also shows it on a hover button. **Set NULL**, **Set DEFAULT**, **Set EMPTY** and **SQL Functions** need an editable field. **Copy Value** is always there, and a read-only field keeps its text selectable.
+
+With no row selected, the inspector describes the table: data, index and total size, row count, average row size, engine, collation, and creation and update dates, as far as the database reports them. On a Structure tab it follows the structure grid.
 
 For whole-row JSON, switch the result to JSON mode with the switcher at the leading edge of the status bar, or from **View > Result View**. It shows what the [grid](/features/data-grid) shows, in the same order, minus hidden columns and rows marked for deletion, which the count line reports separately. Select rows in Data mode first to narrow it, then click **Copy JSON**.

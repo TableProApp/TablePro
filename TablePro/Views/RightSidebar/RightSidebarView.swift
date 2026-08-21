@@ -266,6 +266,20 @@ struct RightSidebarView: View {
         PhpViewerWindowController.open(text: text, columnName: field.columnName)
     }
 
+    private func popOutTextField(text: String? = nil, field: FieldEditState, isEditable: Bool) {
+        let text = text ?? field.pendingValue ?? field.originalValue
+        let fieldId = field.id
+        TextViewerWindowController.open(
+            text: text,
+            columnName: field.columnName,
+            isEditable: isEditable,
+            onCommit: isEditable ? { [editState] newValue in
+                guard let current = editState.fields.first(where: { $0.id == fieldId }) else { return }
+                editState.updateField(at: current.columnIndex, value: newValue)
+            } : nil
+        )
+    }
+
     // MARK: - Field List
 
     private func fieldListForm(
@@ -320,6 +334,7 @@ struct RightSidebarView: View {
         let isJsonField = kind == .json
         let isPhpField = kind == .phpSerialized
         let isStructuredField = isJsonField || isPhpField
+        let isTextField = kind == .multiLine
 
         FieldDetailView(
             context: FieldEditorContext(
@@ -355,11 +370,13 @@ struct RightSidebarView: View {
                     expandedPhpColumnIndex = field.columnIndex
                 }
             } : nil,
-            onPopOut: isStructuredField ? { currentText in
+            onPopOut: isStructuredField || isTextField ? { currentText in
                 if isJsonField {
                     popOutJsonField(text: currentText, field: field, isEditable: isEditable)
-                } else {
+                } else if isPhpField {
                     popOutPhpField(text: currentText, field: field)
+                } else {
+                    popOutTextField(text: currentText, field: field, isEditable: isEditable)
                 }
             } : nil
         )
