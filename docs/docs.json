@@ -2,20 +2,46 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "aspen",
   "name": "TablePro",
+  "description": "TablePro is a native macOS database client for MySQL, PostgreSQL, SQLite, MongoDB, Redis and 20 more, built on AppKit and SwiftUI with a plugin-based driver system.",
   "colors": {
-    "primary": "#FFAA46",
-    "light": "#FFAA46",
-    "dark": "#FFAA46"
+    "primary": "#A85A00",
+    "light": "#FFBB6B",
+    "dark": "#A85A00"
   },
   "fonts": {
     "family": "Inter"
   },
   "favicon": "/favicon.png",
-  "metadata": {
-    "og:image": "https://tablepro.app/og.png",
-    "og:site_name": "TablePro",
-    "twitter:card": "summary_large_image",
-    "twitter:image": "https://tablepro.app/og.png"
+  "logo": {
+    "light": "/logo/logo.png",
+    "dark": "/logo/logo.png",
+    "href": "https://tablepro.app"
+  },
+  "seo": {
+    "indexing": "navigable",
+    "metatags": {
+      "og:site_name": "TablePro",
+      "og:type": "website",
+      "twitter:card": "summary_large_image"
+    },
+    "organization": {
+      "id": "https://tablepro.app/#organization",
+      "name": "TablePro",
+      "url": "https://tablepro.app",
+      "sameAs": [
+        "https://github.com/TableProApp/TablePro"
+      ]
+    }
+  },
+  "search": {
+    "prompt": "Search the docs"
+  },
+  "errors": {
+    "404": {
+      "redirect": false,
+      "title": "That page moved or never existed",
+      "description": "Try [the docs home](/), or search with `Cmd+K`. If a link here sent you, [open an issue](https://github.com/TableProApp/TablePro/issues)."
+    }
   },
   "redirects": [
     {
@@ -29,6 +55,14 @@
     {
       "source": "/features/quick-switcher",
       "destination": "/features/open-quickly"
+    },
+    {
+      "source": "/features/export",
+      "destination": "/features/import-export"
+    },
+    {
+      "source": "/features/import",
+      "destination": "/features/import-export"
     }
   ],
   "navigation": {
@@ -38,7 +72,13 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": ["index", "quickstart", "installation", "switching", "changelog"]
+            "pages": [
+              "index",
+              "quickstart",
+              "installation",
+              "switching",
+              "changelog"
+            ]
           },
           {
             "group": "Database Connections",
@@ -95,7 +135,11 @@
               },
               {
                 "group": "Analytics",
-                "pages": ["databases/clickhouse", "databases/teradata", "databases/trino"]
+                "pages": [
+                  "databases/clickhouse",
+                  "databases/teradata",
+                  "databases/trino"
+                ]
               }
             ]
           },
@@ -173,7 +217,10 @@
               },
               {
                 "group": "Team & Licensing",
-                "pages": ["features/team", "features/licensing"]
+                "pages": [
+                  "features/team",
+                  "features/licensing"
+                ]
               },
               "features/plugins",
               "features/acknowledgements"
@@ -252,11 +299,6 @@
         }
       ]
     }
-  },
-  "logo": {
-    "light": "/logo/logo.png",
-    "dark": "/logo/logo.png",
-    "href": "https://tablepro.app"
   },
   "navbar": {
     "links": [
