@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 # Build static OpenSSL for iOS (device + simulator) → xcframework
@@ -74,9 +74,6 @@ build_openssl_slice() {
     cp -R "$OPENSSL_SRC" "$SRC_COPY"
     cd "$SRC_COPY"
 
-    local SDK_PATH
-    SDK_PATH=$(xcrun --sdk "$PLATFORM" --show-sdk-path)
-
     export IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOY_TARGET"
 
     run_quiet ./Configure "$TARGET" \
@@ -103,7 +100,6 @@ SIMULATOR_SRC="$BUILD_DIR/openssl-iphonesimulator-arm64"
 cp -R "$OPENSSL_SRC" "$SIMULATOR_SRC"
 cd "$SIMULATOR_SRC"
 
-SIMULATOR_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
 SIMULATOR_INSTALL="$BUILD_DIR/install-iphonesimulator-arm64"
 
 export IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOY_TARGET"

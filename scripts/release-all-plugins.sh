@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Trigger a bulk re-release of all registry plugins for a given PluginKit version.
 #
 # Usage: ./scripts/release-all-plugins.sh <pluginKitVersion>

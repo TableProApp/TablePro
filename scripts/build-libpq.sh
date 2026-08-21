@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 # Run a command silently, showing output only on failure.
@@ -43,6 +43,10 @@ ARCH="${1:-both}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIBS_DIR="$PROJECT_DIR/Libs"
+# The PostgreSQL driver became a plugin, and its headers moved with it. This pointed at
+# TablePro/Core/Database/CLibPQ/include, which no longer exists, so every rebuild recreated a dead
+# directory and never updated the headers the plugin actually compiles against.
+HEADER_DIR="$PROJECT_DIR/Plugins/PostgreSQLDriverPlugin/CLibPQ/include"
 BUILD_DIR="$(mktemp -d)"
 NCPU=$(sysctl -n hw.ncpu)
 
@@ -200,7 +204,7 @@ install_libs() {
 install_headers() {
     local arch=$1
     local pg_src="$BUILD_DIR/postgresql-$PG_VERSION-$arch"
-    local dest="$PROJECT_DIR/TablePro/Core/Database/CLibPQ/include"
+    local dest="$HEADER_DIR"
 
     echo "📦 Installing libpq headers..."
     mkdir -p "$dest"
@@ -220,6 +224,9 @@ create_universal() {
                 "$LIBS_DIR/${lib}_arm64.a" \
                 "$LIBS_DIR/${lib}_x86_64.a" \
                 -output "$LIBS_DIR/${lib}_universal.a"
+            if ! [ "$LIBS_DIR/${lib}_universal.a" -ef "$LIBS_DIR/${lib}.a" ]; then
+                cp "$LIBS_DIR/${lib}_universal.a" "$LIBS_DIR/${lib}.a"
+            fi
             echo "   ${lib}_universal.a ($(ls -lh "$LIBS_DIR/${lib}_universal.a" | awk '{print $5}'))"
         fi
     done
@@ -230,10 +237,9 @@ build_for_arch() {
     build_openssl "$arch"
     build_libpq "$arch"
     install_libs "$arch"
-    # Install headers once (they're arch-independent)
-    if [ ! -f "$PROJECT_DIR/TablePro/Core/Database/CLibPQ/include/libpq-fe.h" ]; then
-        install_headers "$arch"
-    fi
+    # Unconditional. Skipping when a header already exists meant a version bump shipped new
+    # binaries against the previous release's headers.
+    install_headers "$arch"
 }
 
 verify_deployment_target() {
@@ -249,7 +255,10 @@ verify_deployment_target() {
             min_ver=$(otool -l "$lib" 2>/dev/null | awk '/LC_VERSION_MIN_MACOSX/{found=1} found && /version/{print $2; found=0}' | sort -V | tail -1)
         fi
         if [ -n "$min_ver" ]; then
-            if [ "$(printf '%s\n' "$DEPLOY_TARGET" "$min_ver" | sort -V | head -1)" != "$DEPLOY_TARGET" ]; then
+            # max(target, minos) must be the target: a library built for a NEWER macOS than the
+            # app cannot run on the app's floor, while one built for an older macOS is fine. The
+            # head form asked the opposite question, so it passed exactly the libraries that break.
+            if [ "$(printf '%s\n' "$DEPLOY_TARGET" "$min_ver" | sort -V | tail -1)" != "$DEPLOY_TARGET" ]; then
                 echo "   ❌ $name targets macOS $min_ver (expected $DEPLOY_TARGET)"
                 failed=1
             else

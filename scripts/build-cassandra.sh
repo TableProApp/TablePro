@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Build DataStax C/C++ driver (cassandra-cpp-driver) static library for TablePro

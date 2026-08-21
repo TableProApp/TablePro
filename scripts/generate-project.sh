@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Generates TablePro.xcodeproj and TableProMobile/TableProMobile.xcodeproj from their

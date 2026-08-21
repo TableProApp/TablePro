@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Create a DMG installer with drag-and-drop installation window
 # Uses create-dmg tool for reliable CI builds
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 # Run a command silently, showing output only on failure.
@@ -221,6 +221,9 @@ create_universal() {
             "$LIBS_DIR/libssh2_arm64.a" \
             "$LIBS_DIR/libssh2_x86_64.a" \
             -output "$LIBS_DIR/libssh2_universal.a"
+        if ! [ "$LIBS_DIR/libssh2_universal.a" -ef "$LIBS_DIR/libssh2.a" ]; then
+            cp "$LIBS_DIR/libssh2_universal.a" "$LIBS_DIR/libssh2.a"
+        fi
         echo "   libssh2_universal.a ($(ls -lh "$LIBS_DIR/libssh2_universal.a" | awk '{print $5}'))"
     fi
 }

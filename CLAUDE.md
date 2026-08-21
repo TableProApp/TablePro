@@ -345,6 +345,8 @@ If anything matches, rewrite before committing.
 
 GitHub Actions (`.github/workflows/build.yml`) triggered by `v*` tags. The `release` job needs all four of `lint`, `test`, `build` (a matrix over arm64 and x86_64) and `registry-readiness`, so a red test suite or a registry missing a compatible plugin binary blocks the tag. It produces the DMG and ZIP plus Sparkle signatures, and release notes are auto-extracted from `CHANGELOG.md`.
 
+**Repo hygiene** (`.github/workflows/repo-hygiene.yml`): runs `actionlint` over every workflow (which shells out to `shellcheck` for each inline `run:` block, the only way those get checked), `shellcheck --severity=warning` over every script, and the plugin manifest check. Ubuntu, under a minute, free on a public repo. The scripts hold at zero warning-level findings; the remaining informational ones are almost all `SC2012`.
+
 **Plugin CI** (`.github/workflows/build-plugin.yml`): triggered by `plugin-*-v*` tags or `workflow_dispatch`. The dispatch input accepts comma-separated `tag:pluginKitVersion` pairs; if `:pluginKitVersion` is omitted, the workflow reads `currentPluginKitVersion` from `PluginManager.swift`. Registry update logic lives in `.github/scripts/update-registry.py` (atomic write, per-binary `pluginKitVersion`, prune-old policy). Use `scripts/release-all-plugins.sh <version>` for bulk re-release after an ABI bump.
 
 **Plugin tag naming**: The slug in a tag must be a key in `.github/plugin-registry.json`, which maps it to the target and the release metadata. Notable non-obvious mappings: `CloudflareD1DriverPlugin` → `plugin-cloudflare-d1-v*`, `EtcdDriverPlugin` → `plugin-etcd-v*`. Check existing tags with `git tag -l "plugin-*"` before creating new ones.

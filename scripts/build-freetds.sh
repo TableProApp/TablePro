@@ -239,7 +239,7 @@ rm -f \
 echo ""
 echo "FreeTDS.xcframework built at: $XCFRAMEWORK_OUT"
 echo "Slices:"
-ls -1 "$XCFRAMEWORK_OUT" | grep -v Info.plist | sed 's/^/  - /'
+find "$XCFRAMEWORK_OUT" -mindepth 1 -maxdepth 1 ! -name Info.plist -exec basename {} \; | sed 's/^/  - /'
 echo ""
 echo "NEXT STEPS:"
 echo "  1. Inspect: xcodebuild -checkFirstLaunchStatus; file ${XCFRAMEWORK_OUT}/*/libsybdb.a"

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 # Build static hiredis (with SSL) for iOS → xcframework
@@ -54,9 +54,12 @@ resolve_openssl() {
     fi
 
     # Find the correct slice directory
-    local SSL_LIB=$(find "$XCFW_SSL" -path "*$PLATFORM*/libssl.a" | head -1)
-    local CRYPTO_LIB=$(find "$XCFW_CRYPTO" -path "*$PLATFORM*/libcrypto.a" | head -1)
-    local HEADERS=$(find "$XCFW_SSL" -path "*$PLATFORM*/Headers" -type d | head -1)
+    local SSL_LIB
+    SSL_LIB=$(find "$XCFW_SSL" -path "*$PLATFORM*/libssl.a" | head -1)
+    local CRYPTO_LIB
+    CRYPTO_LIB=$(find "$XCFW_CRYPTO" -path "*$PLATFORM*/libcrypto.a" | head -1)
+    local HEADERS
+    HEADERS=$(find "$XCFW_SSL" -path "*$PLATFORM*/Headers" -type d | head -1)
 
     if [ -z "$SSL_LIB" ] || [ -z "$CRYPTO_LIB" ]; then
         echo "ERROR: Could not find OpenSSL libs for platform $PLATFORM"
@@ -66,7 +69,6 @@ resolve_openssl() {
     OPENSSL_SSL_LIB="$SSL_LIB"
     OPENSSL_CRYPTO_LIB="$CRYPTO_LIB"
     OPENSSL_INCLUDE="$HEADERS"
-    OPENSSL_LIB_DIR="$(dirname "$SSL_LIB")"
 }
 
 # --- Download hiredis ---

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 # Build static libssh2 for iOS → xcframework
@@ -43,9 +43,12 @@ resolve_openssl() {
     local PLATFORM_KEY=$1
     local PREFIX="$BUILD_DIR/openssl-$PLATFORM_KEY"
 
-    local SSL_LIB=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/libssl.a" | head -1)
-    local CRYPTO_LIB=$(find "$LIBS_DIR/OpenSSL-Crypto.xcframework" -path "*$PLATFORM_KEY*/libcrypto.a" | head -1)
-    local HEADERS=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/Headers" -type d | head -1)
+    local SSL_LIB
+    SSL_LIB=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/libssl.a" | head -1)
+    local CRYPTO_LIB
+    CRYPTO_LIB=$(find "$LIBS_DIR/OpenSSL-Crypto.xcframework" -path "*$PLATFORM_KEY*/libcrypto.a" | head -1)
+    local HEADERS
+    HEADERS=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/Headers" -type d | head -1)
 
     if [ -z "$SSL_LIB" ] || [ -z "$CRYPTO_LIB" ]; then
         echo "ERROR: OpenSSL not found for $PLATFORM_KEY. Run build-openssl-ios.sh first."

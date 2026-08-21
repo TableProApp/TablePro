@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Build script for creating architecture-specific releases
@@ -393,7 +393,7 @@ build_for_arch() {
     # Copy and rename app. Removed first: cp -R onto an existing bundle merges into it, so a
     # rebuild carried the previous build's files into the one being signed and shipped.
     OUTPUT_NAME="TablePro-${arch}.app"
-    rm -rf "$BUILD_DIR/$OUTPUT_NAME"
+    rm -rf "${BUILD_DIR:?}/$OUTPUT_NAME"
     echo "Copying app bundle to release directory..."
     if ! cp -R "$APP_PATH" "$BUILD_DIR/$OUTPUT_NAME"; then
         echo "❌ FATAL: Failed to copy app bundle"

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Proves scripts/patches/freetds/freetds-fedauth.patch still produces the LOGIN7 bytes
 # Microsoft Entra ID authentication needs, and that it leaves password logins alone.
 #
@@ -84,8 +84,8 @@ run_case() {
     python3 "$CHECK_DIR/fake-tds-server.py" "$mode" "$expect" "$BUILD_DIR/results-$mode.json" \
         > "$BUILD_DIR/server-$mode.log" 2>&1 &
     local srv=$!
-    local port="" i
-    for i in $(seq 1 100); do
+    local port=""
+    for _ in $(seq 1 100); do
         port=$(head -1 "$BUILD_DIR/server-$mode.log" 2>/dev/null)
         [ -n "$port" ] && break
     done

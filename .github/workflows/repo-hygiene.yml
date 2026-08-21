@@ -1,0 +1,70 @@
+name: Repo Hygiene
+
+# Lints the parts of the repo the macOS suite cannot reach. 7,500 lines of shell build, sign,
+# notarize and publish this app, and nothing checked any of it: the six findings actionlint reported
+# the first time it ran here were all inside `run:` blocks in the release and plugin workflows.
+#
+# Runs on ubuntu, where minutes are free on a public repo, and finishes in well under a minute.
+
+on:
+  pull_request:
+    paths:
+      - "scripts/**"
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - ".github/scripts/**"
+      - ".github/plugin-registry.json"
+      - "Plugins/**/*.swift"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - ".github/scripts/**"
+      - ".github/plugin-registry.json"
+      - "Plugins/**/*.swift"
+  workflow_dispatch:
+
+concurrency:
+  group: repo-hygiene-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint workflows and scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install shellcheck and actionlint
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint --version
+
+      # actionlint shells out to shellcheck for every inline `run:` block, which is the only way
+      # those get checked at all: they are not files, so a plain shellcheck run never sees them.
+      - name: Lint workflows
+        run: ./actionlint -color
+
+      # --severity=warning is the floor the repo currently holds at zero. The remaining
+      # informational findings are almost all SC2012 (`ls` where `find` would be sturdier) in
+      # message strings, and gating on them today would only add noise.
+      - name: Lint scripts
+        run: |
+          set -euo pipefail
+          mapfile -t SCRIPTS < <(find scripts .claude/skills -name '*.sh' | sort)
+          echo "checking ${#SCRIPTS[@]} scripts"
+          shellcheck --severity=warning "${SCRIPTS[@]}"
+
+      - name: Check the plugin manifest against the plugin classes
+        run: python3 scripts/ci/check-plugin-manifest.py
+
+      - name: Validate the registry update script
+        run: python3 .github/scripts/test_update_registry.py

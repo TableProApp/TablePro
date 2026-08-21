@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 # Run a command silently, showing output only on failure.
@@ -200,6 +200,9 @@ create_universal() {
                 "$LIBS_DIR/${lib}_arm64.a" \
                 "$LIBS_DIR/${lib}_x86_64.a" \
                 -output "$LIBS_DIR/${lib}_universal.a"
+            if ! [ "$LIBS_DIR/${lib}_universal.a" -ef "$LIBS_DIR/${lib}.a" ]; then
+                cp "$LIBS_DIR/${lib}_universal.a" "$LIBS_DIR/${lib}.a"
+            fi
             echo "   ${lib}_universal.a ($(ls -lh "$LIBS_DIR/${lib}_universal.a" | awk '{print $5}'))"
         fi
     done
@@ -229,7 +232,10 @@ verify_deployment_target() {
             min_ver=$(otool -l "$lib" 2>/dev/null | awk '/LC_VERSION_MIN_MACOSX/{found=1} found && /version/{print $2; found=0}' | sort -V | tail -1)
         fi
         if [ -n "$min_ver" ]; then
-            if [ "$(printf '%s\n' "$DEPLOY_TARGET" "$min_ver" | sort -V | head -1)" != "$DEPLOY_TARGET" ]; then
+            # max(target, minos) must be the target: a library built for a NEWER macOS than the
+            # app cannot run on the app's floor, while one built for an older macOS is fine. The
+            # head form asked the opposite question, so it passed exactly the libraries that break.
+            if [ "$(printf '%s\n' "$DEPLOY_TARGET" "$min_ver" | sort -V | tail -1)" != "$DEPLOY_TARGET" ]; then
                 echo "   ❌ $name targets macOS $min_ver (expected $DEPLOY_TARGET)"
                 failed=1
             else

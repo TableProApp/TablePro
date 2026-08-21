@@ -35,8 +35,10 @@ indent_size = 2
 indent_size = 4
 
 # Shell scripts
+# CLAUDE.md sets 4 spaces for the codebase, and 34 of the 43 shell scripts already use it.
+# This file said 2, so it disagreed with both.
 [*.sh]
-indent_size = 2
+indent_size = 4
 
 # Makefile
 [Makefile]

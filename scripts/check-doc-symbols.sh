@@ -106,7 +106,7 @@ prose() {
 # ------------------------------------------------------------------ checks
 
 check_doc() {
-    local doc="$1" dir line body token target
+    local doc="$1" dir line token
     dir="$(dirname "$doc")"
     prose "$doc" > "$WORK/prose"
 
