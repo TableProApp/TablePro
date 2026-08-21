@@ -53,7 +53,7 @@ public struct FocusQueryTabTool: MCPToolImplementation {
 
         let raised = await MainActor.run { () -> Bool in
             guard let window = snapshot.window else { return false }
-            NSApp.activate(ignoringOtherApps: true)
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
             return true
         }

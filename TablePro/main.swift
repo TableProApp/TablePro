@@ -14,7 +14,13 @@ import AppKit
 /// Storage resolves first. Any store reached from a static initializer would otherwise have
 /// computed a production path already, and a sandbox that arrives afterwards only covers whatever
 /// had not been touched yet.
+///
+/// The activation policy resolves next, before `NSApplicationMain`. A process the MCP bridge
+/// started opens no window, and this is the only point early enough to keep LaunchServices from
+/// registering it as a foreground app and putting it in the Dock first.
 AppStorageEnvironment.bootstrap()
+let application = NSApplication.shared
+MainActor.assumeIsolated { AppActivationPolicyController.shared.applyLaunchRole() }
 let delegate = MainActor.assumeIsolated { AppDelegate() }
-NSApplication.shared.delegate = delegate
+application.delegate = delegate
 _ = NSApplicationMain(CommandLine.argc, CommandLine.unsafeArgv)

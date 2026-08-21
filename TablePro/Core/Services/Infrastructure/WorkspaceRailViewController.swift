@@ -378,7 +378,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             group.selectedWindow = window
         }
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        AppActivationPolicyController.shared.activate()
         moveBrowseCursor(of: window, to: workspace)
         applySelection()
     }

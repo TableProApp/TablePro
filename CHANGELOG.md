@@ -76,6 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- TablePro stays out of the Dock and the app switcher when an MCP client starts it. Adding the MCP server used to put TablePro in both the moment a client asked it a question, even though nothing was on screen and you had not opened it. It now runs in the background until it has a window to show you, takes its Dock icon and menu bar for as long as it does, and goes quiet again when you close it. Opening TablePro yourself works as it always has.
+- A confirmation TablePro cannot attach to a window now comes to the front instead of waiting behind other apps. An AI client asking to run a destructive statement while TablePro had no window open could leave the request waiting on a prompt nobody could see.
 - Deleting a connection that has saved queries now always warns that they go with it. The confirmation used to appear before the check for saved queries had finished, so it usually showed the shorter message and the warning was missed. (#2310)
 - Deleting a connection you had published to the Team Library no longer deletes your own local copy of it instead. The shared row was reusing the local connection's identity, so its Edit and Delete acted on the wrong one, taking the saved passwords with it.
 - Opening a connection from a linked folder or the Team Library now works. Double-clicking one, or selecting it and pressing Return, used to do nothing at all, with no window, no error, and nothing on screen to say why.

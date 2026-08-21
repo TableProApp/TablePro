@@ -18,6 +18,8 @@ Open **Settings > Integrations** and turn on **Enable MCP Server**. A status row
 
 You can also skip the toggle. The server starts on demand: the bundled `tablepro-mcp` bridge fires `tablepro://integrations/start-mcp` when a client launches it, and pairing an extension starts it too.
 
+TablePro stays out of the Dock and the app switcher while it is only answering a client. It appears in both, with its menu bar, whenever it has a window on screen, including a window a client asked it to open.
+
 The server binds `127.0.0.1` on the configured port (default **23508**) and speaks plain HTTP. If that port is taken, TablePro asks the kernel for a free one instead. Either way the real port is written to `~/Library/Application Support/TablePro/mcp-handshake.json`, which the bridge reads, so client configs never carry a port.
 
 ## Server configuration
