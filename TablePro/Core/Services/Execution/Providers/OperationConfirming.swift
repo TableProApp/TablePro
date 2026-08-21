@@ -13,7 +13,7 @@ internal protocol OperationConfirming: Sendable {
 internal struct AlertOperationConfirming: OperationConfirming {
     @MainActor
     func confirm(sql: String, operationDescription: String, connectionId: UUID, isDestructive: Bool) async -> Bool {
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         let window = WindowLifecycleMonitor.shared.activeWindow(for: connectionId, preferring: NSApp.keyWindow)
         let preview = Self.preview(of: sql)
 

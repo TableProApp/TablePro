@@ -29,7 +29,7 @@ internal final class WindowOpener {
         perform { opener in
             guard let present = opener.openWelcomeAction else { return false }
             present()
-            NSApp.activate()
+            AppActivationPolicyController.shared.activate()
             return true
         }
     }
@@ -125,6 +125,7 @@ internal final class WindowOpener {
     /// queues the call. Each window registers independently, so one that has already migrated
     /// to AppKit never waits on one that has not.
     private func perform(_ block: @escaping (WindowOpener) -> Bool) {
+        AppActivationPolicyController.shared.enterForeground()
         guard !block(self) else { return }
         Self.logger.notice("WindowOpener call queued; presenter not registered yet")
         pendingCalls.append { [weak self] in

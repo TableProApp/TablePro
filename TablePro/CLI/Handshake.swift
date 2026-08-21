@@ -46,11 +46,17 @@ struct MCPHandshakeAcquirer: Sendable {
         }
     }
 
+    /// `open` hands its own environment to the app it launches, which is how the flag arrives early
+    /// enough for the app to stay out of the Dock and the app switcher. Nobody asked for this window
+    /// of TablePro: a client did, to answer a question.
     private func launchHostApp() throws {
         logger.log(.info, "No trusted MCP handshake; launching TablePro via \(Self.launchUrl)")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = ["-g", Self.launchUrl]
+        var environment = ProcessInfo.processInfo.environment
+        environment[BackgroundLaunchFlag.variable] = BackgroundLaunchFlag.value
+        process.environment = environment
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {

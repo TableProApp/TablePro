@@ -127,6 +127,8 @@ Starts the MCP server if it is not already running, then returns. Used by the bu
 
 The user does not need to enable MCP in Settings beforehand. The server binds to the configured port (default `23508`); if that port is taken, it falls back to a free port in the `51000-52000` range. Either way it writes a handshake file at `~/Library/Application Support/TablePro/mcp-handshake.json` with the actual port.
 
+A launch whose only reason is this URL leaves TablePro in the background, with no Dock icon and no app switcher entry, until it has a window to show. The bundled `tablepro-mcp` CLI sets `TABLEPRO_BACKGROUND_LAUNCH=1` on the `open` it runs so the app knows before it finishes launching; another caller reaches the same state a moment later, after the icon has briefly appeared.
+
 ```bash
 open "tablepro://integrations/start-mcp"
 ```
