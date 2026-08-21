@@ -49,7 +49,7 @@ v1 manifests carried top-level `downloadURL`, `sha256`, and `minPluginKitVersion
 
 ## Binary Selection
 
-For a database driver, the app filters `binaries` to the current architecture, keeps those whose `pluginKitVersion` falls within `[minimumCompatiblePluginKitVersion, currentPluginKitVersion]` (both declared in `PluginManager.swift`, both 18 and unchanged since 0.48.0), and installs the highest. A driver binary without `pluginKitVersion` never resolves, and install fails with `noCompatibleBinary`.
+For a database driver, the app filters `binaries` to the current architecture, keeps those whose `pluginKitVersion` falls within `[minimumCompatiblePluginKitVersion, currentPluginKitVersion]` (both declared in `PluginManager.swift`, both 19), and installs the highest. A driver binary without `pluginKitVersion` never resolves, and install fails with `noCompatibleBinary`.
 
 Themes carry no native code, so they match on architecture only.
 
@@ -68,13 +68,13 @@ Themes carry no native code, so they match on architecture only.
   "binaries": [
     {
       "architecture": "arm64",
-      "pluginKitVersion": 18,
+      "pluginKitVersion": 19,
       "downloadURL": "https://github.com/TableProApp/TablePro/releases/download/plugin-oracle-v1.0.26/OracleDriver-arm64.zip",
       "sha256": "<sha256>"
     },
     {
       "architecture": "x86_64",
-      "pluginKitVersion": 18,
+      "pluginKitVersion": 19,
       "downloadURL": "https://github.com/TableProApp/TablePro/releases/download/plugin-oracle-v1.0.26/OracleDriver-x86_64.zip",
       "sha256": "<sha256>"
     }

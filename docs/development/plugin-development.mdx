@@ -13,7 +13,7 @@ A plugin is a macOS loadable bundle target with `WRAPPER_EXTENSION = tableplugin
 
 | Key | Type | Required | Purpose |
 |-----|------|----------|---------|
-| `TableProPluginKitVersion` | integer | Yes | PluginKit ABI version the plugin was built against (18, unchanged since 0.48.0) |
+| `TableProPluginKitVersion` | integer | Yes | PluginKit ABI version the plugin was built against (19) |
 | `TableProProvidesDatabaseTypeIds` | array of strings | Recommended | Database type IDs the plugin serves. Enables lazy loading. |
 | `TableProMinAppVersion` | string | No | Loader rejects the plugin on older app versions |
 | `CFBundleShortVersionString` | string | Yes | Plugin version, used for registry update checks |

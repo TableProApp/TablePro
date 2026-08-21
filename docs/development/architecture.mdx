@@ -51,11 +51,11 @@ actor SSHTunnelManager {
 |---------|--------|---------|
 | CodeEditSourceEditor | Vendored in `LocalPackages/` (with CodeEditTextView, CodeEditLanguages) | Tree-sitter code editor |
 | TableProCore | Local package in `Packages/` | Shared SwiftPM modules the macOS and iOS apps both use |
-| Sparkle | SPM, 2.9.0 | Auto-update with EdDSA signing |
+| Sparkle | SPM, 2.9.5+ | Auto-update with EdDSA signing |
 | OracleNIO | SPM, TablePro fork pinned by revision | Oracle wire protocol for OracleDriverPlugin |
 | rust-dameng | Cargo, TablePro fork pinned by revision | DM8 wire protocol for DamengDriverPlugin |
-| swift-certificates | SPM, 1.19.0 | X.509 types, linked by the app target |
-| Yams | SPM, 5.4.0 | YAML parsing for project folder import |
+| swift-certificates | SPM, 1.19.0+ | X.509 types, linked by the app target |
+| Yams | SPM, 5.1.0+ | YAML parsing for project folder import |
 
 ## Plugin System
 
@@ -110,7 +110,7 @@ The remaining 17 driver plugins are downloaded on demand from the [plugin regist
 
 TableProPluginKit builds with Swift Library Evolution (`BUILD_LIBRARY_FOR_DISTRIBUTION = YES`), so its public ABI is resilient. Plugins built against an older PluginKit keep loading under a newer app: the runtime fills unimplemented protocol requirements from their defaults.
 
-Additive changes (a new requirement with a default implementation, a new field added through a new initializer overload) need no version bump. Breaking changes bump `currentPluginKitVersion` (18, unchanged since 0.48.0) in `PluginManager.swift`, and the loader then rejects mismatched plugins cleanly. Run `scripts/check-pluginkit-abi.sh` before merging any change under `Plugins/TableProPluginKit/`. See [Plugin Development](/development/plugin-development) for the full rules.
+Additive changes (a new requirement with a default implementation, a new field added through a new initializer overload) need no version bump. Breaking changes bump `currentPluginKitVersion` in `PluginManager.swift`, and the loader then rejects mismatched plugins cleanly. Run `scripts/check-pluginkit-abi.sh` before merging any change under `Plugins/TableProPluginKit/`. See [Plugin Development](/development/plugin-development) for the full rules.
 
 ### Opt-in Plugin Protocols
 
@@ -218,6 +218,6 @@ flowchart TD
 | UserDefaults via `AppSettingsStorage` | User preferences | `Core/Storage`; a few view-local toggles use `@AppStorage` |
 | Keychain | Connection passwords | ConnectionStorage |
 | SQLite FTS5 | Query history (full-text search) | QueryHistoryStorage |
-| JSON files | Tab state persistence | TabStateStorage |
+| JSON files | Tab state persistence | `TabPersistenceCoordinator`, `TabDiskActor` |
 
 For the repository layout, see [Project Structure](/development/setup#project-structure).
