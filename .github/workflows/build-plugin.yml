@@ -172,6 +172,24 @@ jobs:
       # Assert the result rather than trusting the flag. The previous notarization step was
       # gated on an environment variable nothing defined, so it never ran and nothing noticed
       # for every plugin release the registry has ever published.
+      # Before anything is published. The registry serves these to users directly, so a bundle
+      # that will not load is a plugin nobody can install.
+      - name: Verify the built bundles load
+        env:
+          BUNDLE_NAME: ${{ steps.plugin.outputs.bundleName }}
+        run: |
+          set -euo pipefail
+          for ARCH in arm64 x86_64; do
+            WORK="$(mktemp -d)"
+            unzip -oq "build/Plugins/${BUNDLE_NAME}-${ARCH}.zip" -d "$WORK"
+            # Only the native slice can be dlopened on this runner; the other is checked by
+            # `lipo -info` having produced it and by Gatekeeper below.
+            if [ "$ARCH" = "arm64" ]; then
+              scripts/ci/verify-plugin-loads.sh "$WORK"
+            fi
+            rm -rf "$WORK"
+          done
+
       - name: Verify the built bundles are notarized
         run: |
           BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"

@@ -215,6 +215,12 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
 
+      # Builds and signs used to be the whole check: nothing ever tried to load one. "Bundle
+      # failed to load executable" has shipped twice, and dlopen is exactly the dyld path that
+      # fails in that case.
+      - name: Verify every plugin loads
+        run: scripts/ci/verify-plugin-loads.sh "$DERIVED_DATA/Build/Products/Debug"
+
       - name: Build the app and both test bundles
         run: |
           set -o pipefail
@@ -308,6 +314,11 @@ jobs:
             -parallel-testing-enabled NO \
             | xcbeautify --renderer github-actions
 
+      # Always, including on failure: a red run is when the durations matter most.
+      - name: Summarise test durations
+        if: ${{ !cancelled() }}
+        run: scripts/ci/summarize-xcresult.sh TestResults.xcresult "Unit tests"
+
       - name: Upload test results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -379,6 +390,10 @@ jobs:
             -retry-tests-on-failure \
             -resultBundlePath UITestResults.xcresult \
             | xcbeautify --renderer github-actions
+
+      - name: Summarise UI test durations
+        if: ${{ !cancelled() }}
+        run: scripts/ci/summarize-xcresult.sh UITestResults.xcresult "UI tests ${{ matrix.shard }}/${{ matrix.of }}"
 
       - name: Upload UI test results
         if: ${{ !cancelled() }}
