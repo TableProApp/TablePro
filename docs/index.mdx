@@ -1,14 +1,26 @@
 ---
 title: Introduction
-description: Native macOS database client for MySQL, PostgreSQL, SQLite, MongoDB, Redis, and 20 more
+description: Native macOS database client for MySQL, PostgreSQL, SQLite, MongoDB, Redis, and 22 more
 ---
 
-Native macOS client for 26 databases. Built with SwiftUI and AppKit, no Electron. The download is about 20 MB.
+Native macOS client for 27 databases. Built with SwiftUI and AppKit, no Electron. The download is about 20 MB.
 
 <Frame caption="TablePro - Native macOS Database Client">
   <img className="block dark:hidden" src="/images/app.png" alt="TablePro main interface" />
   <img className="hidden dark:block" src="/images/app-dark.png" alt="TablePro main interface" />
 </Frame>
+
+<CardGroup cols={3}>
+  <Card title="Install it" icon="download" href="/installation">
+    Homebrew or the DMG, on macOS 14 and later.
+  </Card>
+  <Card title="Connect to something" icon="plug" href="/quickstart">
+    A first connection and a first query, or the bundled sample database if you have no server.
+  </Card>
+  <Card title="Coming from another client" icon="right-left" href="/switching">
+    Import connections from TablePlus, Sequel Ace, DBeaver, DataGrip and others.
+  </Card>
+</CardGroup>
 
 ## Features
 
@@ -29,32 +41,33 @@ Native macOS client for 26 databases. Built with SwiftUI and AppKit, no Electron
 
 | Database | Default Port | Distribution |
 |----------|--------------|--------------|
-| MySQL | 3306 | Built-in |
-| MariaDB | 3306 | Built-in |
-| PostgreSQL | 5432 | Built-in |
-| SQLite | N/A (file-based) | Built-in |
-| Amazon Redshift | 5439 | Built-in |
-| CockroachDB | 26257 | Built-in |
-| PGlite | 5432 | Built-in |
-| Microsoft SQL Server | 1433 | Plugin |
-| ClickHouse | 8123 | Built-in |
-| Redis | 6379 | Built-in |
-| MongoDB | 27017 | Plugin |
-| Oracle Database | 1521 | Plugin |
-| Dameng DM8 | 5236 | Plugin |
-| DuckDB | File, or 9494 remote | Plugin |
-| Beancount | N/A (file-based) | Plugin |
-| Cassandra / ScyllaDB | 9042 | Plugin |
-| etcd | 2379 | Plugin |
-| Cloudflare D1 | N/A (API-based) | Plugin |
-| DynamoDB | N/A (API-based) | Plugin |
-| BigQuery | N/A (API-based) | Plugin |
-| Snowflake | 443 | Plugin |
-| Teradata | 1025 | Plugin |
-| libSQL / Turso | N/A (API-based) | Plugin |
-| Elasticsearch | 9200 | Plugin |
-| SurrealDB | 8000 | Plugin |
-| Trino | 8080 | Plugin |
+| [MySQL](/databases/mysql) | 3306 | Built-in |
+| [MariaDB](/databases/mariadb) | 3306 | Built-in |
+| [PostgreSQL](/databases/postgresql) | 5432 | Built-in |
+| [SQLite](/databases/sqlite) | N/A (file-based) | Built-in |
+| [Amazon Redshift](/databases/redshift) | 5439 | Built-in |
+| [CockroachDB](/databases/cockroachdb) | 26257 | Built-in |
+| [PGlite](/databases/pglite) | 5432 | Built-in |
+| [Microsoft SQL Server](/databases/mssql) | 1433 | Plugin |
+| [ClickHouse](/databases/clickhouse) | 8123 | Built-in |
+| [Redis](/databases/redis) | 6379 | Built-in |
+| [MongoDB](/databases/mongodb) | 27017 | Plugin |
+| [Oracle Database](/databases/oracle) | 1521 | Plugin |
+| [Dameng DM8](/databases/dameng) | 5236 | Plugin |
+| [DuckDB](/databases/duckdb) | File, or 9494 remote | Plugin |
+| [Beancount](/databases/beancount) | N/A (file-based) | Plugin |
+| [Cassandra](/databases/cassandra) | 9042 | Plugin |
+| [ScyllaDB](/databases/cassandra) | 9042 | Plugin |
+| [etcd](/databases/etcd) | 2379 | Plugin |
+| [Cloudflare D1](/databases/cloudflare-d1) | N/A (API-based) | Plugin |
+| [DynamoDB](/databases/dynamodb) | N/A (API-based) | Plugin |
+| [BigQuery](/databases/bigquery) | N/A (API-based) | Plugin |
+| [Snowflake](/databases/snowflake) | 443 | Plugin |
+| [Teradata](/databases/teradata) | 1025 | Plugin |
+| [libSQL / Turso](/databases/libsql) | N/A (API-based) | Plugin |
+| [Elasticsearch](/databases/elasticsearch) | 9200 | Plugin |
+| [SurrealDB](/databases/surrealdb) | 8000 | Plugin |
+| [Trino](/databases/trino) | 8080 | Plugin |
 
 ## System requirements
 
