@@ -195,6 +195,15 @@ struct SortState: Equatable {
 
     var isSorting: Bool { !columns.isEmpty }
 
+    /// The sort in the name-keyed shape both persistence and navigation history store it in. A
+    /// column with no name cannot be resolved back against a re-fetched result, so it is dropped.
+    var persistedColumns: [PersistedSortColumn] {
+        columns.compactMap { column in
+            guard let name = column.columnName else { return nil }
+            return PersistedSortColumn(columnName: name, direction: column.direction)
+        }
+    }
+
     // Backward-compatible computed properties for single-column access
     var columnIndex: Int? { columns.first?.columnIndex }
     var direction: SortDirection { columns.first?.direction ?? .ascending }

@@ -148,6 +148,23 @@ struct MainMenuValidationTests {
         #expect(!enabled(#selector(MainSplitViewController.exportTables(_:)), context))
     }
 
+    @Test("Back and Forward need a connection and a history of their own")
+    func backAndForwardNeedTheirOwnHistory() {
+        var context = MenuValidationContext()
+        context.canNavigateBack = true
+        context.canNavigateForward = true
+        #expect(!enabled(#selector(MainSplitViewController.navigateBack(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.navigateForward(_:)), context))
+
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.navigateBack(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.navigateForward(_:)), context))
+
+        context.canNavigateBack = false
+        #expect(!enabled(#selector(MainSplitViewController.navigateBack(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.navigateForward(_:)), context))
+    }
+
     @Test("Execute needs both a connection and query text")
     func executeNeedsQueryText() {
         var context = MenuValidationContext()

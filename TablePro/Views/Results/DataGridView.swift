@@ -342,9 +342,7 @@ struct DataGridView: NSViewRepresentable {
         let currentSelection = tableView.selectedRowIndexes
         let targetSelection = IndexSet(selectedRowIndices)
         guard currentSelection != targetSelection else { return }
-        coordinator.isApplyingProgrammaticRowSelection = true
-        tableView.selectRowIndexes(targetSelection, byExtendingSelection: false)
-        coordinator.isApplyingProgrammaticRowSelection = false
+        coordinator.selectRowsProgrammatically(targetSelection, in: tableView)
     }
 
     private static func effectiveColumnComments(for tableRows: TableRows) -> [String: String] {

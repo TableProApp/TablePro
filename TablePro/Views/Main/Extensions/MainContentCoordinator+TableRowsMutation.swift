@@ -183,5 +183,13 @@ extension MainContentCoordinator {
         if pendingScrollToTopAfterReplace.remove(tabId) != nil {
             dataTabDelegate?.tableViewCoordinator?.scrollToTop()
         }
+
+        /// Only once there are rows to find it in. The retarget that starts a navigation replaces
+        /// the buffer with an empty one first, and consuming the anchor there would spend it before
+        /// the rows it names have arrived.
+        if !tabSessionRegistry.tableRows(for: tabId).rows.isEmpty,
+           let anchor = pendingRowAnchors.removeValue(forKey: tabId) {
+            dataTabDelegate?.tableViewCoordinator?.selectRow(matchingKey: anchor)
+        }
     }
 }

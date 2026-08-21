@@ -2863,6 +2863,34 @@
         }
       }
     },
+    "Could Not Load the Referenced Row" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "참조된 행을 불러올 수 없음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể tải dòng tham chiếu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法载入引用行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法載入參照列"
+          }
+        }
+      }
+    },
     "Could not complete Oracle native network encryption with this server. It may require an encryption or checksum algorithm the driver does not support." : {
       "localizations" : {
         "ko" : {

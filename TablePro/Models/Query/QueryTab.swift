@@ -303,10 +303,7 @@ struct QueryTab: Identifiable, Equatable {
         let carriesPendingState = tabType == .table && execution.lastExecutedAt == nil
 
         let persistedSort: [PersistedSortColumn]? = {
-            let resolved = sortState.columns.compactMap { column -> PersistedSortColumn? in
-                guard let name = column.columnName else { return nil }
-                return PersistedSortColumn(columnName: name, direction: column.direction)
-            }
+            let resolved = sortState.persistedColumns
             guard resolved.isEmpty else { return resolved }
             return carriesPendingState ? pendingRestoredSort : nil
         }()

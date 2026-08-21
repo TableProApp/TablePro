@@ -569,6 +569,43 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         startBackgroundPrewarm()
     }
 
+    /// Selects and reveals the row a navigation asked this grid to land on.
+    ///
+    /// Pushed in when the rows land rather than polled from the update pass, the way
+    /// `applyFindMatch(_:)` is. A miss is silent and final: the row may have been deleted, moved to
+    /// another page, or hidden by a value filter, and none of those is worth telling the reader
+    /// about when the view they asked for is otherwise back.
+    func selectRow(matchingKey key: [String: String]) {
+        guard let tableView else { return }
+        let tableRows = tableRowsProvider()
+
+        let keyColumns = key.compactMap { name, value in
+            tableRows.columns.firstIndex(of: name).map { (column: $0, value: value) }
+        }
+        guard keyColumns.count == key.count else { return }
+
+        guard let match = tableRows.rows.first(where: { row in
+            keyColumns.allSatisfy { row[$0.column].asText == $0.value }
+        }) else { return }
+
+        guard let displayIndex = DisplayRowMapping.displayIndex(
+            forRowID: match.id,
+            displayIDs: displayIDs,
+            in: tableRows
+        ), displayIndex < tableView.numberOfRows else { return }
+
+        selectRowsProgrammatically(IndexSet(integer: displayIndex), in: tableView)
+        tableView.scrollRowToVisible(displayIndex)
+    }
+
+    /// A selection the app made, not the reader. The flag is what keeps the selection delegate from
+    /// reading it back as a gesture.
+    func selectRowsProgrammatically(_ indexes: IndexSet, in tableView: NSTableView) {
+        isApplyingProgrammaticRowSelection = true
+        tableView.selectRowIndexes(indexes, byExtendingSelection: false)
+        isApplyingProgrammaticRowSelection = false
+    }
+
     func displayRow(at displayIndex: Int) -> Row? {
         displayRow(at: displayIndex, in: tableRowsProvider())
     }

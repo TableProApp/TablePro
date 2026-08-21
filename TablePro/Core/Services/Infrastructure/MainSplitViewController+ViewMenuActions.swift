@@ -56,6 +56,14 @@ extension MainSplitViewController {
         commandActions?.toggleResults()
     }
 
+    @objc func navigateBack(_ sender: Any?) {
+        commandActions?.navigateBack()
+    }
+
+    @objc func navigateForward(_ sender: Any?) {
+        commandActions?.navigateForward()
+    }
+
     @objc func showPreviousResult(_ sender: Any?) {
         commandActions?.previousResultTab()
     }
