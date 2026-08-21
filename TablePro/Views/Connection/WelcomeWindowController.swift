@@ -20,7 +20,7 @@ internal final class WelcomeWindowController: NSWindowController {
         shared = controller
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        AppActivationPolicyController.shared.activate()
     }
 
     private convenience init() {

@@ -61,7 +61,14 @@ final class AlertHelper {
         completion: @escaping @MainActor (NSApplication.ModalResponse) -> Void = { _ in }
     ) {
         guard let parent = resolveWindow(window) else {
-            completion(alert.runModal())
+            /// The two sibling detached-modal paths already come forward before they block, and this
+            /// one did not. An alert nobody can see still holds a nested modal run loop, and a
+            /// process serving MCP in the background has no window to click and no Dock icon to
+            /// reach for, so the caller waits on an answer that can never be given.
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+            let response = alert.runModal()
+            AppActivationPolicyController.shared.reevaluate()
+            completion(response)
             return
         }
         alert.beginSheetModal(for: parent, completionHandler: completion)
@@ -115,14 +122,16 @@ final class AlertHelper {
         confirm: String,
         cancel: String
     ) async -> Bool {
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.addButton(withTitle: confirm)
         alert.addButton(withTitle: cancel)
-        return alert.runModal() == .alertFirstButtonReturn
+        let response = alert.runModal()
+        AppActivationPolicyController.shared.reevaluate()
+        return response == .alertFirstButtonReturn
     }
 
     /// Pairing is a security decision, so the attached case uses a critical sheet: it must not
@@ -154,10 +163,11 @@ final class AlertHelper {
                 NSApp.stopModal()
                 sheetWindow?.close()
             }
-            NSApp.activate(ignoringOtherApps: true)
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             sheetWindow.center()
             defer { withExtendedLifetime(delegate) {} }
             NSApp.runModal(for: sheetWindow)
+            AppActivationPolicyController.shared.reevaluate(excluding: sheetWindow)
             return try gate.result()
         }
 

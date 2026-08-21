@@ -55,7 +55,7 @@ extension OperationCompletionReporter: NotificationHandling {
     }
 
     private func focusOwner(_ payload: OperationNotificationPayload) {
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
 
         guard let window = ownerWindow(payload) else { return }
         window.makeKeyAndOrderFront(nil)

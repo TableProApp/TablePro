@@ -49,17 +49,17 @@ struct ConnectionWindowIdentityTests {
     func welcomeVisibilityPolicy() {
         #expect(
             WelcomeVisibilityPolicy.shouldPresentWelcome(
-                closingWindowWasPrimary: true, remainingVisiblePrimaryWindows: 0
+                closingWindowWasPrimary: true, remainingVisiblePrimaryWindows: 0, sessionOrigin: .user
             )
         )
         #expect(
             !WelcomeVisibilityPolicy.shouldPresentWelcome(
-                closingWindowWasPrimary: true, remainingVisiblePrimaryWindows: 1
+                closingWindowWasPrimary: true, remainingVisiblePrimaryWindows: 1, sessionOrigin: .user
             )
         )
         #expect(
             !WelcomeVisibilityPolicy.shouldPresentWelcome(
-                closingWindowWasPrimary: false, remainingVisiblePrimaryWindows: 0
+                closingWindowWasPrimary: false, remainingVisiblePrimaryWindows: 0, sessionOrigin: .user
             )
         )
     }
