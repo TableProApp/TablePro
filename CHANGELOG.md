@@ -76,7 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Open Quickly no longer shows a faint rectangular outline outside its rounded Liquid Glass surface. Its native drop shadow now follows the panel's continuous corners. (#2321)
+- Open Quickly no longer shows a faint rectangular outline around its rounded Liquid Glass surface on macOS 26 and later. The glass was tinting the panel's square window bounds outside its own corners. The panel keeps its drop shadow, and macOS 14 and 15 are unchanged. (#2321)
 - Skip and Continue no longer gives up on the first unreadable line of a JSON file. A line the parser cannot read is recorded against its line number like any other failed row, and the rest of the file still imports. The stop modes still stop, as they should.
 - An import no longer reports rows as imported when nothing was written for them. A row carrying values that matched no mapped column used to be dropped in silence and still counted, so the summary claimed more rows than reached the database. Skip and Continue now names it, and the stop modes stop.
 - Retrying an import of a compressed .sql file no longer leaves the expanded copy behind in the temporary folder each time.
