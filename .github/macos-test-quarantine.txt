@@ -17,18 +17,10 @@
 #     nothing when there is none: `adapterProvider()?.foreignKeyDisableStatements() ?? []`. The
 #     built-in DatabaseType switches these expect were deleted, so the empty result is correct and
 #     the expectation is what is stale. Each needs rewriting against a stub adapter.
-TableOperationsPluginTests/combinedMySQLWithFK()
-TableOperationsPluginTests/dropMySQL()
-TableOperationsPluginTests/dropPostgreSQLCascade()
-TableOperationsPluginTests/fkDisableMariaDB()
-TableOperationsPluginTests/fkDisableMySQL()
-TableOperationsPluginTests/fkDisableSQLite()
-TableOperationsPluginTests/fkEnableMySQL()
-TableOperationsPluginTests/fkEnableSQLite()
-TableOperationsPluginTests/sortedOrder()
-TableOperationsPluginTests/truncateMySQL()
-TableOperationsPluginTests/truncatePostgreSQLCascade()
-TableOperationsPluginTests/truncatePostgreSQLNoCascade()
+#
+#     TableOperationsPluginTests, 12 of these, is gone: every case asserted the deleted fallback and
+#     the thirteenth passed only because an absent driver returns nothing. Its coverage lives in
+#     TableProTests/Core/Database/TableOperationSQLBuilderTests.swift, against a stub driver.
 TableQueryBuilderFilteredQueryTests/filteredQueryExcludesDisabledFilter()
 TableQueryBuilderFilteredQueryTests/filteredQueryWithEnabledFilter()
 ClickHouseDialectTests/testFactoryFallbackWithoutPlugin()
