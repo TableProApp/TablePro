@@ -3,15 +3,39 @@ title: Features Overview
 description: Every feature page, grouped the way the sidebar groups them
 ---
 
-Every feature in TablePro, grouped so you can jump straight to what you need.
+First time here: [Quick Start](/quickstart) gets you from install to a query without a database server of your own, using the bundled Chinook sample.
 
-TablePro opens with a welcome window: an actions panel on the left and your saved connections on the right. The panel has **Create Connection…** and an **Add from Existing** menu holding Import from URL, Import from Other App, Open Project Folder, and Import Connections. Search sits in the connections panel header; press `Cmd+F` to focus it. With nothing saved yet, the connections panel offers **Try Sample Database**, a bundled Chinook SQLite database. Reset it any time from **Help > Reset Sample Database…**.
+## Start here
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Homebrew or DMG, on macOS 14.0+.
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Connect and run a query, sample database included.
+  </Card>
+  <Card title="Switching to TablePro" icon="right-left" href="/switching">
+    Import from TablePlus, Sequel Ace, DBeaver, and others.
+  </Card>
+  <Card title="FAQ" icon="circle-question" href="/faq">
+    Licensing, privacy, offline use, coverage.
+  </Card>
+  <Card title="Troubleshooting" icon="screwdriver-wrench" href="/troubleshooting">
+    Symptom-first checks for launch, connect, and save failures.
+  </Card>
+</CardGroup>
 
 ## Connections
 
 <CardGroup cols={2}>
+  <Card title="Managing Connections" icon="list-check" href="/connections">
+    Create, organize, and switch connections.
+  </Card>
+  <Card title="Connection URLs" icon="link" href="/connections/urls">
+    Paste a URL, get a connection.
+  </Card>
   <Card title="SSH Tunneling" icon="shield-halved" href="/connections/ssh-tunneling">
-    Reach a database behind a bastion. Built-in libssh2, no `ssh` binary required.
+    Reach a database behind a bastion, no `ssh` binary needed.
   </Card>
   <Card title="SSH Profiles" icon="user-lock" href="/connections/ssh-profiles">
     Reusable SSH tunnel configurations.
@@ -23,15 +47,18 @@ TablePro opens with a welcome window: an actions panel on the left and your save
     Export and import connection definitions.
   </Card>
   <Card title="Open Project Folder" icon="folder-open" href="/features/project-folder-import">
-    Create a connection from the database settings in a project's config files.
+    A connection from the settings in a project's config files.
   </Card>
 </CardGroup>
 
 ## Databases
 
 <CardGroup cols={2}>
+  <Card title="Supported databases" icon="database" href="/">
+    Every engine, and where its driver comes from.
+  </Card>
   <Card title="Plugins & Themes" icon="puzzle-piece" href="/features/plugins">
-    Install drivers, import and export formats, and themes from the registry.
+    Drivers, import and export formats, and themes from the registry.
   </Card>
 </CardGroup>
 
@@ -39,22 +66,28 @@ TablePro opens with a welcome window: an actions panel on the left and your save
 
 <CardGroup cols={2}>
   <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Tree-sitter highlighting, multi-statement execution, formatting.
+    Highlighting, multi-statement execution, formatting.
   </Card>
   <Card title="Autocomplete" icon="wand-magic-sparkles" href="/features/autocomplete">
-    Schema-aware completions backed by cached column metadata.
+    Schema-aware completions from cached column metadata.
   </Card>
   <Card title="Query Parameters" icon="sliders" href="/features/query-parameters">
     `:name` placeholders filled in a panel, run as prepared statements.
   </Card>
   <Card title="Vim Mode" icon="keyboard" href="/features/vim-mode">
-    Modal editing in the SQL editor with motions, operators, text objects, and macros.
+    Motions, operators, text objects, and macros in the editor.
   </Card>
   <Card title="Query History" icon="clock-rotate-left" href="/features/query-history">
     SQLite FTS5-backed history with full-text search.
   </Card>
   <Card title="Query Insights" icon="chart-line" href="/features/query-insights">
-    What your own query history says about which statements are slow and which repeat. Starter feature.
+    Which of your statements are slow and which repeat. Starter feature.
+  </Card>
+  <Card title="Code Folding" icon="code-branch" href="/features/code-folding">
+    Collapse statements, CTEs, subqueries and `BEGIN` blocks from the gutter.
+  </Card>
+  <Card title="SQL Files" icon="file-code" href="/features/sql-files">
+    Open a `.sql` file as a query tab and save back to it.
   </Card>
 </CardGroup>
 
@@ -62,7 +95,7 @@ TablePro opens with a welcome window: an actions panel on the left and your save
 
 <CardGroup cols={2}>
   <Card title="Data Grid" icon="table" href="/features/data-grid">
-    Inline editing, sorting, filtering, change tracking with undo.
+    Inline editing, sorting, filtering, undo.
   </Card>
   <Card title="Filtering" icon="filter" href="/features/filtering">
     Per-column filters, presets, persisted per table.
@@ -71,10 +104,13 @@ TablePro opens with a welcome window: an actions panel on the left and your save
     Stage edits, preview SQL, save or discard.
   </Card>
   <Card title="Cell and Row Viewers" icon="brackets-curly" href="/features/json-viewer">
-    JSON, PHP serialized, and binary viewers, per-column display formats, row details inspector.
+    JSON, PHP serialized, and binary viewers, plus row details.
   </Card>
   <Card title="CSV Inspector" icon="file-csv" href="/features/csv-inspector">
-    Open and edit CSV and TSV files without importing them.
+    Edit CSV and TSV files without importing them.
+  </Card>
+  <Card title="Query Results" icon="list-check" href="/features/query-results">
+    Result tabs, pinning, the row cap, and what a failed statement shows.
   </Card>
 </CardGroup>
 
@@ -85,7 +121,7 @@ TablePro opens with a welcome window: an actions panel on the left and your save
     Alter columns, indexes, foreign keys, primary keys.
   </Card>
   <Card title="Table Operations" icon="table-cells" href="/features/table-operations">
-    Truncate, drop, rename, duplicate, copy DDL.
+    Truncate, drop, maintenance, views, databases.
   </Card>
   <Card title="ER Diagram" icon="diagram-project" href="/features/er-diagram">
     Visualize tables and foreign keys.
@@ -97,7 +133,7 @@ TablePro opens with a welcome window: an actions panel on the left and your save
     Live server stats and activity.
   </Card>
   <Card title="Users & Roles" icon="user-shield" href="/features/users-roles">
-    Manage users, roles, and privileges on MySQL and PostgreSQL.
+    Users, roles, and privileges on MySQL and PostgreSQL.
   </Card>
 </CardGroup>
 
@@ -122,10 +158,10 @@ TablePro opens with a welcome window: an actions panel on the left and your save
     Expose TablePro to Claude and other MCP clients.
   </Card>
   <Card title="External API" icon="bolt" href="/external-api">
-    URL scheme, MCP, and pairing for Raycast, Cursor, Claude Desktop.
+    URL scheme, MCP, and pairing for other apps.
   </Card>
   <Card title="Raycast Extension" icon="magnifying-glass" href="/external-api/raycast">
-    Search connections, run queries, focus tabs from Raycast.
+    Search connections, run queries, focus tabs.
   </Card>
   <Card title="URL Scheme" icon="link" href="/external-api/url-scheme">
     `tablepro://` URLs to open connections, tables, and queries.
@@ -139,16 +175,16 @@ TablePro opens with a welcome window: an actions panel on the left and your save
     A tab strip per connection, in one window.
   </Card>
   <Card title="Connections strip" icon="bars" href="/features/workspace-rail">
-    The narrow column listing every connection and database you have open.
+    Every connection and database you have open, one click away.
   </Card>
   <Card title="Open Quickly" icon="compass" href="/features/open-quickly">
-    Cmd+Shift+O fuzzy search across tables, databases, and saved queries.
+    Fuzzy search over tables, databases, and saved queries.
   </Card>
   <Card title="Favorites" icon="star" href="/features/favorites">
-    Pin tables and save reusable queries.
+    Pin tables, save queries, link a folder of `.sql` files.
   </Card>
   <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
-    Full shortcut reference.
+    Every default binding, and how to rebind it.
   </Card>
 </CardGroup>
 
@@ -156,23 +192,54 @@ TablePro opens with a welcome window: an actions panel on the left and your save
 
 <CardGroup cols={2}>
   <Card title="iCloud Sync" icon="cloud" href="/features/icloud-sync">
-    Sync connections, favorites, and settings across Macs.
+    Connections, favorites, and settings across Macs.
   </Card>
   <Card title="Handoff" icon="arrow-right-arrow-left" href="/features/handoff">
-    Resume the active connection or table on another Mac.
+    Resume the active connection or table on another device.
   </Card>
   <Card title="Licensing" icon="key" href="/features/licensing">
-    Activate a license key, tier comparison, offline validation.
+    License keys, tiers, offline validation.
   </Card>
   <Card title="Team Plan" icon="users" href="/features/team">
-    Share one license, manage seats on the web, join with an invite code.
+    Share one license, manage seats, invite codes.
+  </Card>
+</CardGroup>
+
+## Customization
+
+<CardGroup cols={2}>
+  <Card title="Settings" icon="gear" href="/customization/settings">
+    Every tab, its controls, and their defaults.
+  </Card>
+  <Card title="Appearance" icon="palette" href="/customization/appearance">
+    Themes, fonts, colors, connection colors.
+  </Card>
+  <Card title="Editor Settings" icon="pen-ruler" href="/customization/editor-settings">
+    Editor toggles, Vim mode, indentation.
+  </Card>
+  <Card title="Data Settings" icon="table-list" href="/customization/data-settings">
+    Page size, result cap, JSON viewer, history.
+  </Card>
+</CardGroup>
+
+## iPhone and iPad
+
+<CardGroup cols={2}>
+  <Card title="iPhone and iPad" icon="mobile-screen" href="/ios">
+    Browse, query, and edit rows on a synced connection list.
   </Card>
 </CardGroup>
 
 ## Security and privacy
 
 <CardGroup cols={2}>
+  <Card title="Privacy" icon="lock" href="/security/privacy">
+    Every outbound request and where its off switch is.
+  </Card>
   <Card title="Safe Mode" icon="shield-halved" href="/features/safe-mode">
     Prompt before destructive statements on production.
+  </Card>
+  <Card title="Acknowledgements" icon="book" href="/features/acknowledgements">
+    The open source libraries in the app, and their licenses.
   </Card>
 </CardGroup>

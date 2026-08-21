@@ -3,7 +3,9 @@ title: Plugins & Themes
 description: Install database drivers, import and export formats, and themes from the plugin registry, and keep them updated
 ---
 
-Most drivers arrive on their own. Pick a database type badged **Not Installed** in the chooser and the download runs before the connection opens, with no restart. Five drivers ship inside the app and cover 9 databases; the other 17 come from the registry.
+import DriverCounts from "/snippets/driver-counts.mdx";
+
+Pick a database type badged **Not Installed** in the chooser and the download runs before the connection opens, with no restart. <DriverCounts />
 
 ## Bundled plugins
 
@@ -46,40 +48,36 @@ These install from the registry when you need them:
 
 ## Installing plugins
 
-You usually don't install drivers by hand. The database type chooser marks registry drivers you don't have with a **Not Installed** badge; pick one anyway and TablePro downloads the plugin before connecting. No restart needed.
-
-To browse the full catalog, open **Settings > Plugins > Browse**. Search, filter by category (Database Drivers, Export Formats, Import Formats, Themes, Other), and click **Install**.
+To browse the catalog instead of waiting for a connection to need something, open **Settings > Plugins > Browse** and filter by category: Database Drivers, Export Formats, Import Formats, Themes, Other.
 
 <Frame caption="Browse and install plugins from the registry">
   <img className="block dark:hidden" src="/images/settings-plugins-browse.png" alt="Plugin registry browser in Settings" />
   <img className="hidden dark:block" src="/images/settings-plugins-browse-dark.png" alt="Plugin registry browser in Settings" />
 </Frame>
 
-To install from a file, drag a `.tableplugin` or `.zip` onto **Settings > Plugins > Installed**, or click the **+** button there. User-installed plugins live in `~/Library/Application Support/TablePro/Plugins`.
+On a Mac with no network, install from a file: drag a `.tableplugin` or `.zip` onto **Installed**, or click the **+** button there. User-installed plugins live in `~/Library/Application Support/TablePro/Plugins`.
 
-Every plugin is verified before it loads. Registry downloads must match the SHA-256 checksum in the registry manifest, and the bundle must carry a valid code signature.
+Every plugin is verified before it loads. A registry download must match the SHA-256 checksum in the registry manifest, and the bundle must carry a valid code signature.
 
 ### Plugins from other developers
 
-A plugin TablePro signed itself installs with no extra step.
-
-A plugin signed by someone else installs only after you agree to trust that developer. TablePro asks once, naming the developer and their Apple Team ID, and the plugin is discarded if you decline. The bundle must be signed with an Apple Developer ID to get that far; unsigned and ad-hoc signed bundles are refused outright and there is no way to override that. A Developer ID signature says Apple issued that certificate to a named developer and that nobody has altered the bundle since. It is not a review of what the plugin does, which is why the decision to trust the developer is yours and not something TablePro makes for you.
+A plugin TablePro signed itself installs with no extra step. A plugin signed by someone else installs only after you agree to trust that developer: TablePro asks once, naming the developer and their Apple Team ID, and discards the plugin if you decline. Unsigned and ad-hoc signed bundles are refused outright, with no override.
 
 Say yes only if you would give that developer your database credentials, because that is what you are granting. A driver plugin runs as part of TablePro and can read the credentials of every connection you open.
 
-Trust is recorded per developer rather than per plugin, so later plugins and updates from the same developer install without asking again. Withdraw it in **Settings > Plugins**, which stops every plugin signed by that developer from loading.
+Trust is per developer, not per plugin, so later plugins and updates from the same developer install without asking again. Withdraw it in **Settings > Plugins** to stop every plugin signed by that developer from loading.
 
 Themes are different: they are JSON with no executable code, so they need no signature and never ask. They are still checked against their SHA-256 checksum.
 
 ## Updates
 
-TablePro compares installed plugin versions against the registry and shows a badge on the Plugins settings tab counting pending updates and plugins that failed to load. Select the plugin under **Installed** and click **Update**.
+The Plugins settings tab carries a badge counting pending updates and plugins that failed to load. Select a plugin under **Installed** to see its installed version, then click **Update**.
 
 If a driver has open connections, the update is staged instead of applied. The staged version activates when the last connection using the driver closes, or click **Activate Now** after closing them. Quit before it activates and the update is offered again on next launch.
 
 ## After an app update
 
-An app update can raise the plugin interface version. Plugins built against the old version are rejected at load instead of crashing, and TablePro repairs them on its own: at launch it fetches the registry and reinstalls a compatible build of each outdated plugin, retrying after 30 seconds, then 5 and 10 minutes (up to five attempts), when the registry is unreachable or a download fails. It tries again when the network comes back, and connecting to a database whose plugin is outdated updates that plugin first.
+An app update can raise the plugin interface version. Plugins built against the old version are rejected at load instead of crashing, and TablePro repairs them itself: at launch it reinstalls a compatible build of each outdated plugin, retrying in the background if the registry is unreachable. Connecting to a database whose plugin is outdated updates that plugin first.
 
 Until a plugin is repaired, it appears in a banner in **Settings > Plugins > Installed** with the reason and an action:
 
@@ -94,11 +92,13 @@ Until a plugin is repaired, it appears in a banner in **Settings > Plugins > Ins
 
 In **Settings > Plugins > Installed**:
 
-- Toggle a plugin off to unload its drivers and formats without deleting it; toggle it back on to reload.
-- Click **Uninstall** to remove a user-installed plugin from disk. Bundled plugins can't be uninstalled.
+- The switch beside a plugin's name unloads its drivers and formats without deleting it. Switch it back on to reload.
+- **Uninstall** removes a user-installed plugin from disk. Bundled plugins cannot be uninstalled.
 - The detail pane shows version, bundle ID, capabilities, database type, and default port. Plugins with their own settings show them here.
 
-macOS can't fully unload a plugin's code until relaunch, so after removing one a banner offers **Quit & Reopen**.
+macOS cannot fully unload a plugin's code until relaunch, so a banner offers **Quit & Reopen** after you remove one.
+
+Saved connections survive either way. A connection whose driver is switched off or uninstalled stays in the list, and opening it lands on "Could not connect", with **Install Plugin…** as the button.
 
 ## Themes
 
@@ -106,4 +106,4 @@ Themes are plugins too: install registry themes from **Settings > Plugins > Brow
 
 ## Writing plugins
 
-Want to build your own driver, format, or theme? See [Plugin Development](/development/plugin-development).
+To build your own driver, format, or theme, see [Plugin Development](/development/plugin-development).

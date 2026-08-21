@@ -6,6 +6,7 @@
 # second word is an ordinary English word, which no rule can tell from prose.
 #
 # One per line. Comments start with #.
+Agent
 Atlas
 Authentication
 Beancount
@@ -21,10 +22,13 @@ Kerberos
 Keyspaces
 Library
 Local
+Mac
 Mac's
 Microsoft
+Mode
 Proxy
 Quack
+Safe
 Shortcuts
 Studio
 Sync

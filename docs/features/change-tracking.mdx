@@ -1,34 +1,67 @@
 ---
 title: Change Tracking
-description: Queue cell edits, row inserts, and deletions locally, review the SQL, then save
+description: Queue cell edits, row inserts and deletions, review the SQL, then save
 ---
 
-Changes are queued in memory, not applied immediately. Edit cells, insert rows, delete rows, then review everything before saving. Nothing touches the database until you click **Save Changes**. The queue is per-tab; switching tabs preserves your edits.
+import StagedUntilSave from "/snippets/staged-until-save.mdx";
+
+<StagedUntilSave what="Cell edits, inserts and deletes" /> The toolbar counts what is pending, modified cells stay highlighted, `Cmd+Shift+P` shows the statements the queue will produce, and `Cmd+S` runs them. The queue belongs to the tab, so switching tabs leaves it alone.
 
 <Frame caption="Data grid with pending changes highlighted">
   <img className="block dark:hidden" src="/images/change-tracking.png" alt="Pending edits, inserts, and deletions highlighted in the data grid" />
   <img className="hidden dark:block" src="/images/change-tracking-dark.png" alt="Pending edits, inserts, and deletions highlighted in the data grid" />
 </Frame>
 
-## Data changes
+## Editing a cell
 
-**Edit cells**: double-click a cell to edit (see [Data Grid](/features/data-grid)). Changes queue immediately. Changing a value back to its original removes it from the queue. Columns the driver marks immutable, such as MongoDB's `_id`, cannot be edited.
+Double-click a cell, or press `Enter` on it. `Enter` commits the edit to the queue, `Escape` cancels. Setting a value back to what it was drops it from the queue again. Some types open an editor of their own:
 
-<Info>
-Generated columns are read-only: MySQL and MariaDB `STORED` and `VIRTUAL` columns, PostgreSQL `GENERATED ALWAYS AS … STORED` columns, and ClickHouse `MATERIALIZED` and `ALIAS` columns. The server computes them and rejects any value you send, so TablePro leaves them out of every INSERT and UPDATE it writes, including SQL export.
-</Info>
+| Column type | Editor |
+|---|---|
+| Date, time, datetime, timestamp | Calendar and time picker, or edit as text |
+| Foreign key | Searchable list of referenced values |
+| Boolean, `BIT`, `TINYINT(1)` | Checkbox, with a third state for nullable columns |
+| `ENUM` | Searchable value list |
+| `SET` (MySQL/MariaDB) | Multi-select checkboxes |
+| Array of a simple type (PostgreSQL) | Ordered list, one row per element |
+| `JSON`, `JSONB`, `BLOB`, binary | [Cell viewers](/features/json-viewer) |
 
-**Add rows**: click **+** in the toolbar, use **Edit > Add Row**, or press `Cmd+Shift+N`. A new row appears at the bottom of the grid; columns with default values are pre-filled with `DEFAULT`. Edits to cells in a new row fold into the INSERT, not tracked as separate updates.
+<Frame caption="Type-specific cell editor">
+  <img className="block dark:hidden" src="/images/date-picker-editor.png" alt="Cell editor" />
+  <img className="hidden dark:block" src="/images/date-picker-editor-dark.png" alt="Cell editor" />
+</Frame>
 
-**Delete rows**: select rows and press `Delete`. Deleted rows show a strikethrough and stay visible until you save. Saving asks you to confirm before the rows are permanently deleted.
+Right-click an editable cell and open **Set Value** for the common ones without typing: **Empty**, **NULL** on a nullable column, **Default** on a column that has one, and date functions such as `NOW()` or `CURRENT_DATE` on date columns.
 
-<Note>
-Deleting many rows saves as one batched DELETE with OR-combined conditions, not one query per row. Very large selections are split into a few statements to stay within the engine's bind-parameter limit.
-</Note>
+## Adding and deleting rows
+
+- **Add Row** (`Cmd+Shift+N`), the **+** button, or **Edit > Add Row**. The row appears at the bottom, columns with a default pre-filled as `DEFAULT`. Later edits to it fold into the INSERT rather than queueing as updates.
+- **Duplicate Row** (`Cmd+Shift+D`) on the right-click menu copies a row and resets its primary key to `DEFAULT`, so the database assigns a new one.
+- **Delete**: select rows by their row numbers (`Shift`-click for a range, `Cmd`-click for separate rows) and press `Delete`. They stay visible with a strikethrough, and saving asks "Delete 5 rows?" before they go.
+- **Paste** on the right-click menu inserts copied rows as new rows.
+- **Fill Column** on the header right-click menu writes one value into every loaded row, skipping primary key columns.
+
+## When the grid will not edit
+
+A tab opened from the sidebar edits its table directly. A query tab edits only when the app can prove the rows came from exactly one table:
+
+| Query | Editable |
+|---|---|
+| `SELECT * FROM orders o WHERE o.id = 1` | Yes, alias or not |
+| Comments, `DISTINCT`, `ORDER BY`, `LIMIT`, `FOR UPDATE` | Yes |
+| `SELECT * FROM public.orders` on the schema you are browsing | Yes |
+| The same query naming any other schema | No |
+| Joins, comma joins, subqueries in `FROM`, CTEs, `UNION`, `EXCEPT`, `INTERSECT`, `FROM ONLY` | No |
+
+To change rows a join returned, open one of its tables from the sidebar and edit there. To edit through another schema, switch the session to that schema first.
+
+Two more shapes look editable and refuse. A column renamed with `AS` cannot be written back, though the rest of the row still can. A query that renames or omits the primary key blocks the save outright, because nothing is left to identify the row by.
+
+Individual columns stay read-only where the server owns them: generated columns, which are computed on write and left out of every INSERT and UPDATE, SQL export included, and columns the driver marks immutable, such as MongoDB's `_id`. A connection set to the Read-Only [safe mode](/features/safe-mode) level edits nothing at all.
 
 ## Saving
 
-Click **Save Changes** (the toolbar checkmark) or press `Cmd+S`. TablePro generates parameterized SQL, executes it, clears the queue, and refreshes the grid.
+Press `Cmd+S`, or click the toolbar checkmark. Values go out as bound parameters; `DEFAULT` and SQL functions such as `NOW()` are written into the statement as they stand.
 
 | Change | Generated SQL |
 |--------|--------------|
@@ -36,23 +69,20 @@ Click **Save Changes** (the toolbar checkmark) or press `Cmd+S`. TablePro genera
 | Row insertion | `INSERT INTO … (columns) VALUES (?, …)` |
 | Row deletion | `DELETE FROM … WHERE pk = ? OR pk = ?` |
 
-Tables without a primary key are updated and deleted by matching every original column value; NULL values match with `IS NULL`. Saving fails with an error only when a row cannot be identified.
+A table without a primary key is matched on every original column value instead, with `IS NULL` for the nulls.
 
-There is no discard button. To drop pending changes, undo them, or accept the **Discard Unsaved Changes?** prompt that appears when you refresh, sort, filter, change pages, or close the tab with edits pending.
+On an engine with transactions, the statements run inside one, so a failure rolls the whole save back and the table is left as it was. Without them, the statements that ran before the failure stand. Either way a failed save reports **Save Failed** with the server's message and keeps the queue intact, so correct the value and save again. A save that succeeds clears the queue, clears undo, and reloads the grid.
 
-## Previewing SQL
+There is no discard button. Undo the edits, or take the **Discard Unsaved Changes?** prompt that appears when you refresh, sort, filter, change page, or close the tab with edits pending.
 
-Click the eye icon in the toolbar or press `Cmd+Shift+P` to see the exact SQL before saving. The preview inlines parameter values so you can verify what will run, and **Copy All** copies every statement.
+## Previewing the SQL
 
-## Undo & redo
+`Cmd+Shift+P`, or the eye button in the toolbar, lists the statements with their parameter values inlined, so the preview reads as what will run. **Copy All** copies every statement.
 
-| Action | Shortcut |
-|--------|----------|
-| Undo | `Cmd+Z` |
-| Redo | `Cmd+Shift+Z` |
+## Undo and redo
 
-`Cmd+Z` is context-aware: it undoes text edits when the SQL editor is focused and data changes when the grid is focused. Deleting multiple rows is a single undo action; undoing restores them all at once. Stacks are per-tab, and saving clears them.
+`Cmd+Z` and `Cmd+Shift+Z`. Focus decides what they act on: text in the SQL editor, queued changes in the grid. Deleting several rows undoes as one step. The stacks are per tab, and a save clears them.
 
-## Schema changes
+## Structure changes
 
-Structure edits (columns, indexes, foreign keys, primary key) use the same queue: changes are tracked locally with visual indicators, previewable as DDL, and applied with **Save Changes**. See [Table Structure](/features/table-structure).
+Column, index, foreign key, and primary key edits queue in the same place and go out with the same Save, previewed as DDL instead of DML. See [Table Structure](/features/table-structure).

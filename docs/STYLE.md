@@ -98,6 +98,19 @@ pages away.
 > **Check variety across the reading order, not per page.** Before shipping a batch, read its
 > openings consecutively, in sidebar order. If two rhyme, rewrite one.
 
+The pass after that one failed the same way in a third costume. Told not to end on "nothing to
+install", it moved the negation to the front instead: a third of the batch opened on *no*, *not*,
+*never*, *nothing*, or *cannot*. Two adjacent transport pages came out as the same page with
+different nouns, down to a byte-identical closing sentence, because two agents wrote them
+independently and neither could see the other.
+
+So the rule is not "avoid last time's tic". It is this:
+
+> **If a sibling page already carries the sentence you are about to write, you do not need a
+> different wording. You need a snippet.** Rewording a duplicated fact eleven ways is how the corpus
+> got eleven templates for "this driver downloads on first use". `docs/snippets/` is where a shared
+> fact lives; `registry-plugin.mdx` and `helper-port.mdx` are the two that exist.
+
 Vary the shape deliberately: an imperative, a plain declarative, a constraint, a number, a full
 complex sentence. **At most one page in five may open on a sentence fragment.**
 

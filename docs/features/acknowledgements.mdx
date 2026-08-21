@@ -3,40 +3,13 @@ title: "Acknowledgements"
 description: "The open source libraries TablePro ships, and the licenses that cover them"
 ---
 
-TablePro is built on open source work by other people. **Help › Acknowledgements** lists every library the app redistributes, with its version, its license, and the full license text.
+**Help > Acknowledgements** opens a window listing every library that ends up inside the app or one of its plugin bundles. That covers the C libraries linked into the drivers, MariaDB Connector/C, libpq, FreeTDS, libssh2, hiredis, the MongoDB C driver, the DataStax C/C++ driver, DuckDB and OpenSSL among them; the Swift packages the app links, such as Sparkle, Yams and swift-certificates; and the editor packages vendored into the repository.
 
-## What the list covers
+Pick one and the detail pane gives its exact shipped version, its SPDX identifier, its copyright lines, and the full license text. All of it is selectable, so a compliance list is a matter of copy and paste. **Homepage** and **License** link out to the project itself.
 
-Every library that ends up inside the shipped app or inside one of its plugin bundles:
+Two labels carry meaning:
 
-- The C libraries linked into the database drivers, such as MariaDB Connector/C, libpq, FreeTDS, libssh2, hiredis, the MongoDB C driver, the DataStax C/C++ driver, DuckDB and OpenSSL.
-- The Swift packages the app links, such as Sparkle, Yams and swift-certificates.
-- The editor packages vendored into the repository.
+- **Modified** marks a library TablePro patches before building. The patches live in `scripts/patches/` in the public repository, next to the build script that pins the version. FreeTDS is patched for federated authentication and libssh2 for backported security fixes; nothing else is.
+- **License Not Yet Confirmed** is a separate section for libraries whose own project publishes no license file. TablePro cannot state one for them, and lists them anyway so the gap stays visible.
 
-Each entry names the exact version that shipped, so the license shown is the one that applied to that release and not to some later one.
-
-## Why the full text is there
-
-Most of these licenses require it. MIT asks for "the above copyright notice and this permission notice" in all copies. BSD asks for the conditions and the disclaimer. The PostgreSQL license names the two paragraphs that have to travel with it. MariaDB Connector/C is LGPL 2.1 and FreeTDS is LGPL 2.0, and section 6 of each asks the distributed work to say that the library is used, that its use is covered by that license, and to include a copy of it.
-
-So the app ships the license bodies rather than a credits list. A name and a version alone would not meet the terms.
-
-## Modified libraries
-
-An entry marked **Modified** is one TablePro patches before building. The patches live in `scripts/patches/` in the public repository, next to the build script that pins the version, so the modified source is available alongside the unmodified upstream release it is based on.
-
-Two libraries are patched today: FreeTDS, for federated authentication support, and libssh2, for backported security fixes.
-
-## Libraries whose license is not yet confirmed
-
-A small number of entries appear under **License Not Yet Confirmed**. These are libraries whose own project does not publish a license file, so TablePro cannot state one for them. They are listed rather than left out, because leaving them out would make the list look complete when it is not.
-
-## Keeping the list honest
-
-The version in each entry is checked against the version the build actually pins. `ThirdPartyLicenseInventoryTests` reads the pins out of `scripts/build-*.sh` and out of `Package.resolved`, and fails the test suite when an entry disagrees with them, or when a library is built with no entry at all.
-
-The check does not correct the version by itself. A version bump can change a license, as OpenSSL's did at 3.0 and Redis's did at 7.4, so the failure is there to make someone re-read the upstream license before the entry moves.
-
-## Reporting a problem
-
-If a library is missing, attributed to the wrong license, or credited incorrectly, [open an issue](https://github.com/TableProApp/TablePro/issues). TablePro's own source is available under the AGPL v3 at [github.com/TableProApp/TablePro](https://github.com/TableProApp/TablePro).
+TablePro's own source is available under the AGPL v3 at [github.com/TableProApp/TablePro](https://github.com/TableProApp/TablePro). If a library is missing, credited wrongly, or attributed to the wrong license, [open an issue](https://github.com/TableProApp/TablePro/issues).

@@ -3,11 +3,13 @@ title: Cell and Row Viewers
 description: View and edit JSON, PHP serialized, and binary cell values, set per-column display formats, and inspect whole rows in the sidebar
 ---
 
-An editable JSON or blob cell carries a chevron, and clicking it opens the value in a popover anchored to that cell. Which viewer opens follows the column: its declared type, or the **Display As** choice on its header. That choice changes rendering only, never what is stored.
+Click the chevron on a JSON or blob cell to open its value in a popover anchored to that cell. Which viewer opens follows the column: its declared type, or the **Display As** choice on its header, and that choice changes rendering only, never what is stored.
+
+Whether it opens for editing follows the row and the column. A row marked for deletion opens nothing at all. A result the app cannot write back to, a generated column, and a column the driver marks immutable such as MongoDB's `_id` all open read-only; [Change Tracking](/features/change-tracking) covers which results are writable. PHP serialized values, and binary past the hex cap, are read-only for everyone.
 
 ## Display as formats
 
-Right-click a column header and pick **Display As**. The submenu lists the formats that fit the column type, with a checkmark on the active one. MongoDB binary columns are the one exception: they never offer UUID, because the driver already decodes them under its own Legacy UUID Encoding setting.
+Right-click a column header and pick **Display As**. The submenu lists the formats that fit the column type, with a checkmark on the active one.
 
 | Format | Column types | Effect |
 | --- | --- | --- |
@@ -18,75 +20,65 @@ Right-click a column header and pick **Display As**. The submenu lists the forma
 | JSON | text | Opens the cell in the JSON viewer |
 | PHP Serialized | text | Opens the cell in the PHP serialized viewer |
 
-Formats are display only: they never change the stored value. Overrides persist per column, scoped to the connection and table. A column with a format set copies in that format when you copy a single cell; copying a block of cells or a whole row always copies the stored value.
+An override persists per column, scoped to the connection and table. A column with a format set copies in that format when you copy the single cell; a block of cells or a whole row always copies the stored value.
 
-TablePro also auto-detects two cases: `BINARY(16)` columns with id-like names and `CHAR(32)`/`CHAR(36)` columns named `uuid` or `guid` render as UUIDs, and integer columns named `*_at`, `*_time`, `*_timestamp`, `created`, `updated`, `modified`, or `timestamp` render as dates when sample values fall in a plausible range. A manual Display As choice always wins over detection, including **Raw Value**: picking it pins the column to its stored value instead of handing the column back to detection.
+Id-like binary and character columns, and integer columns whose names read as timestamps, pick up UUID and date rendering on their own. **Smart value detection** in [Settings > Data](/customization/data-settings) turns that off, and a manual choice always wins over it, **Raw Value** included. MongoDB binary columns never offer UUID, since the driver decodes them under its own Legacy UUID Encoding setting; see [MongoDB](/databases/mongodb).
 
 ## JSON viewer
 
-- **JSON-typed column**: click the chevron in the cell. Double-click or `Enter` edits the value inline instead.
-- **Text column holding JSON**: set **Display As > JSON**, then double-click or `Enter`.
+A JSON-typed column opens on the chevron; double-click or `Enter` edits it inline instead. A text column holding JSON needs **Display As > JSON** first.
 
-The viewer opens as a popover anchored to the cell, with two modes:
-
-- **Text**: syntax-highlighted JSON, pretty-printed. Editable when the cell is editable.
-- **Tree**: collapsible tree with a search field. Read-only navigation. See [Filtering a tree](#filtering-a-tree).
+The popover has two modes. **Text** is syntax-highlighted and pretty-printed, and editable when the cell is. **Tree** is collapsible, with a search field, and navigation only. Both keep your key order and exact number values, integers larger than JavaScript can represent included.
 
 <Frame caption="JSON editor popover with Text and Tree modes">
   <img className="block dark:hidden" src="/images/json-editor-popover.png" alt="JSON editor popover" />
   <img className="hidden dark:block" src="/images/json-editor-popover-dark.png" alt="JSON editor popover" />
 </Frame>
 
-Both modes keep your original key order and exact number values, including integers larger than JavaScript can represent. Pretty-printing caps at 500 KB; larger values show as stored. Tree mode parses documents up to 100 KB, and above that shows a "JSON Too Large" placeholder so you read the value in Text mode. A document that parses but runs past 5,000 nodes loads only the first 5,000 and marks the cut with a `…` row; filtering then says so, because the rows past the cut were never searched.
+The mode you switch to becomes the default for the next value, which is the same preference as **JSON Viewer > Default view** in Settings. The pop-out button detaches the viewer into its own resizable window.
+
+Opening a value and seeing it pretty-printed is not an edit: the row is marked changed only once you alter the content. **Save** commits a compact value, key order and numbers preserved, through the [change tracking](/features/change-tracking) queue. Text that is not valid JSON prompts first.
 
 ### Filtering a tree
 
-The search field above the tree filters keys and values as you type. Both the JSON tree and the [PHP serialized tree](#php-serialized-viewer) work the same way.
+The search field above the tree filters keys and values as you type. The [PHP serialized tree](#php-serialized-viewer) works the same way.
 
-- Matching ignores case and accents, so `cafe` finds `café`. It does not ignore full-width and half-width differences: `ABC` does not find `ＡＢＣ`.
-- A row matches on its whole value, not the shortened form shown in the row, so a match deep inside a long string still finds it.
-- Matches nested under collapsed parents open on their own, so you see the match rather than the parent hiding it.
-- A key that matches keeps its full contents and stays expandable, so you can search for a key and then read what is under it.
-- Rows you open or close while filtering stay that way for as long as the field has text. Clearing the field restores the layout you had before you started, which is why **Expand All** during a filter applies to the filtered view rather than to the whole document.
-- A filter that matches nothing says so. If the document was cut off at 5,000 nodes, it says that too instead of claiming the value does not contain what you typed.
-
-The mode you switch to becomes the default for the next open. The same preference lives in **Settings > Data > JSON Viewer > Default view** (`Cmd+,`).
-
-Click the pop-out button in the toolbar to detach the viewer into its own resizable window. The window supports fullscreen.
-
-### Editing
-
-Opening a value and seeing it pretty-printed is not an edit. The row is marked changed only when you alter the content, so browsing JSONB row by row stays clean. **Save** commits a compact value, with key order and numbers preserved, through the standard [change tracking](/features/change-tracking) flow. If the text is not valid JSON, the viewer asks before saving.
+- Matching ignores case and accents, so `cafe` finds `café`. Full-width and half-width differ: `ABC` does not find `ＡＢＣ`.
+- A row matches on its whole value, not the shortened form shown, so a match deep inside a long string counts. A match under a collapsed parent opens its parents, and a key that matches keeps its contents and stays expandable.
+- A filter that matches nothing says so, and says separately when the document was cut at 5,000 nodes, since the rows past the cut were never searched.
 
 ## PHP serialized viewer
 
-Set **Display As > PHP Serialized** on a text column, then double-click or `Enter`. The viewer is read-only: PHP serialized values round-trip through PHP itself, so TablePro does not write them back.
+Set **Display As > PHP Serialized** on a text column, then double-click or press `Enter`. The viewer is read-only: PHP serialized values round-trip through PHP itself.
 
-- **Tree**: collapsible tree with search, filtered the same way as the JSON tree. See [Filtering a tree](#filtering-a-tree). Nodes show type badges (`str`, `int`, `arr`, `obj`, `ser`, `ref`). Protected object members show a `protected` badge; private members show `private (ClassName)`. Custom-serialized classes (the `C:` token) appear as a single opaque leaf; references (`r:`/`R:`) show as `→ #N` and are not followed.
-- **Raw**: the original serialized string with text selection.
-
-Values above 5 MB are not parsed; the tree shows a placeholder and Raw mode still works. Trees cap at 5,000 nodes and 256 nesting levels, with a truncation marker beyond that. The toolbar pop-out button opens the value in its own window.
+**Tree** mode filters the same way as the JSON tree, with type badges on the nodes (`str`, `int`, `arr`, `obj`, `ser`, `ref`) and visibility badges on object members (`protected`, `private (ClassName)`). A custom-serialized class (the `C:` token) is one opaque leaf, and a reference (`r:`/`R:`) shows as `→ #N` and is not followed. **Raw** mode shows the original string with text selection.
 
 ## Blob and hex
 
-Blob cells render in the grid as compact hex (`0x48656C…`, first 64 bytes). Click the chevron or double-click to open the hex popover:
+A blob cell renders in the grid as compact hex (`0x48656C…`). Click the chevron or double-click for the popover: a classic hex dump with offset, byte columns, and ASCII, plus an editable hex field under it on an editable table. That field takes spaced or continuous hex, with or without a `0x` prefix, and invalid hex disables **Save**.
 
-- A classic hex dump (offset, byte columns, ASCII), capped at 10 KB.
-- On editable tables, an editable hex field below it. It accepts spaced or continuous hex, with or without a `0x` prefix. Invalid hex disables **Save**; values over 10 KB open read-only.
+## Limits
+
+A value that refuses to open in one mode still opens in another.
+
+| Viewer | Cap | Past the cap |
+| --- | --- | --- |
+| JSON pretty-printing | 500,000 characters | The value shows as stored |
+| JSON tree | 100,000 characters | "JSON Too Large". Read it in Text mode |
+| JSON and PHP trees | 5,000 nodes | The first 5,000 load, and a `…` row marks the cut |
+| PHP serialized | 5,000,000 characters, 256 levels deep | Tree shows a placeholder, Raw still works |
+| Hex dump and hex editor | 10 KB | The dump is truncated, and the editor opens read-only |
+| Blob cell in the grid | First 64 bytes | Rendered as `0x48656C…` |
 
 ## Row details inspector
 
-**View > Show Inspector** (`Cmd+Option+I`) opens the right sidebar. Select a row and every field appears with an editor matched to its content:
-
-- JSON columns, and text values that parse as JSON, get the JSON editor. No Display As step needed.
-- PHP serialized values are auto-detected the same way and get the read-only tree.
-- Blob columns get the hex editor; enum, set, and boolean columns get pickers.
+**View > Show Inspector** (`Cmd+Option+I`) opens the right sidebar. Select a row and every field appears with an editor matched to its content, with no **Display As** step: JSON columns and text values that parse as JSON get the JSON editor, PHP serialized values the read-only tree, blob columns the hex editor, and enum, set, and boolean columns get pickers.
 
 <Frame caption="Row details inspector with per-field editors">
   <img className="block dark:hidden" src="/images/row-details-inspector.png" alt="Row details inspector" />
   <img className="hidden dark:block" src="/images/row-details-inspector-dark.png" alt="Row details inspector" />
 </Frame>
 
-JSON and PHP fields have buttons to expand inside the sidebar or pop out to a window. Hover over an editable field for a menu that sets NULL, the column default, an empty value, or a SQL function. With no row selected, the inspector shows table info instead.
+JSON and PHP fields carry buttons to expand inside the sidebar or pop out to a window. Hover an editable field for a menu that sets NULL, the column default, an empty value, or a SQL function. With no row selected, the inspector lists table statistics instead: data, index and total size, row count, average row size, engine, collation, and creation and update dates, as far as the database reports them. On a Structure tab it follows the structure grid instead of the rows.
 
-For whole-row JSON across a result set, switch the results pane to its JSON view mode with the switcher at the left of the status bar, or from **View > Result View**. Table tabs show Data / Structure / JSON; query tabs show Data / JSON.
+For whole-row JSON, switch the result to JSON mode with the switcher at the leading edge of the status bar, or from **View > Result View**. It shows what the [grid](/features/data-grid) shows, in the same order, minus hidden columns and rows marked for deletion, which the count line reports separately. Select rows in Data mode first to narrow it, then click **Copy JSON**.

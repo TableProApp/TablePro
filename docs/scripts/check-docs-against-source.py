@@ -11,6 +11,7 @@ notice.
 Run from the repository root or from docs/.
 """
 
+import collections
 import re
 import sys
 from pathlib import Path
@@ -172,6 +173,18 @@ def check_shortcuts(root: Path, docs: Path) -> list[str]:
                 f"`{written}`, the app binds the chord {spelled}"
             )
     print(f"      {checked} of {len(documented)} documented rows joined to a binding")
+
+    spellings = collections.Counter()
+    for page in doc_pages(docs):
+        for line_no, line in enumerate(page.read_text().splitlines(), start=1):
+            for chord in re.findall(r"`((?:Cmd|Ctrl|Option|Shift)\+[A-Za-z0-9+]+)`", line):
+                for key, canonical in (("Return", "Enter"), ("Esc", "Escape"), ("Del", "Delete")):
+                    if chord.endswith("+" + key):
+                        spellings[(key, canonical)] += 1
+                        failures.append(
+                            f"{page.relative_to(docs)}:{line_no}: `{chord}` spells the key {key}; "
+                            f"the corpus spells it {canonical}"
+                        )
     return failures
 
 

@@ -22,7 +22,7 @@ Click **Create Connection…**, select **Cassandra** or **ScyllaDB**, enter host
 | **Username** | - | Only if the cluster has an authenticator configured |
 | **Password** | - | |
 
-There is no Keyspace field. Pick one in the sidebar after connecting, or put it in the URL path and import that URL. Later switches happen in place, with no reconnect, and the system keyspaces are filtered out of the list. Tabs already open are bound to their own keyspace and do not follow. See [Tabs](/features/tabs#database-binding).
+There is no Keyspace field. Pick one in the sidebar after connecting, or put it in the URL path and import that URL. Later switches happen in place, with no reconnect, and the system keyspaces are filtered out of the list. Tabs already open are bound to their own keyspace and do not follow. See [Tabs](/features/tabs#where-a-tab-points).
 
 There is no consistency level field either. The driver never sets one, so every statement runs at the DataStax C driver's default of `LOCAL_ONE`.
 
