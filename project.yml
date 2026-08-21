@@ -278,6 +278,7 @@ targets:
       - TablePro/Core/MCP/Transport/MCPStreamableHttpClientTransport.swift
       - TablePro/Core/MCP/Transport/MCPUpstreamCredentials.swift
       - TablePro/Core/MCP/Wire
+      - TablePro/Core/Services/Infrastructure/BackgroundLaunchFlag.swift
     scheme: {}
     settings:
       base:

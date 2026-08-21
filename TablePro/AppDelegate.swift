@@ -144,9 +144,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
+    /// Unhiding is the one way a window comes back without any window notification firing, and the
+    /// app reports every window it owns as invisible while it is hidden.
+    func applicationDidUnhide(_ notification: Notification) {
+        AppActivationPolicyController.shared.reevaluate()
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
         if hasUnsaved {
+            /// Quitting can be asked for from outside the app, so this alert has to come forward on
+            /// its own: it blocks termination in a nested modal loop, and a background process has
+            /// no Dock icon to reach it by.
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             let alert = NSAlert()
             alert.messageText = String(localized: "You have unsaved changes")
             alert.informativeText = String(localized: "Some tabs have unsaved edits. Quitting will discard these changes.")
@@ -197,7 +207,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             csvLogger.debug("AppDelegate.windowWillClose - main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing, remaining main windows=\(remaining, privacy: .public)")
             if WelcomeVisibilityPolicy.shouldPresentWelcome(
                 closingWindowWasPrimary: isPrimary,
-                remainingVisiblePrimaryWindows: remaining
+                remainingVisiblePrimaryWindows: remaining,
+                sessionOrigin: AppActivationPolicyController.shared.origin
             ) {
                 AppEvents.shared.mainWindowWillClose.send(())
                 WindowOpener.shared.openWelcome()
@@ -205,6 +216,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             csvLogger.debug("AppDelegate.windowWillClose - non-main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing")
         }
+        /// Any window, not only a primary one: a machine-started session can have nothing on screen
+        /// but a settings window, and closing it leaves the process with no user interface again.
+        AppActivationPolicyController.shared.reevaluate(excluding: window)
     }
 
     // MARK: - Dock Menu

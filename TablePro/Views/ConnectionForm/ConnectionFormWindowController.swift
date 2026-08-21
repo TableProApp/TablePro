@@ -19,7 +19,7 @@ internal final class ConnectionFormWindowController: NSWindowController, NSWindo
         controllers[request] = controller
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        AppActivationPolicyController.shared.activate()
     }
 
     private static func close(_ request: ConnectionFormRequest) {

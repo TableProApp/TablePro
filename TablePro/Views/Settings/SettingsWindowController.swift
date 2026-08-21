@@ -20,7 +20,7 @@ internal final class SettingsWindowController: NSWindowController {
         controller.paneController?.select(pane)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        AppActivationPolicyController.shared.activate()
     }
 
     private var paneController: SettingsPaneTabViewController? {

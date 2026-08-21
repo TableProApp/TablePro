@@ -22,7 +22,7 @@ If TablePro is installed somewhere other than `/Applications` (Setapp, a custom 
 ## What the bridge does
 
 1. Reads `~/Library/Application Support/TablePro/mcp-handshake.json` and checks it can be trusted: the file is a regular file, owned by you, mode `0600`, in a directory no one else can write, not expired, and its recorded PID is a live process inside the same app bundle.
-2. If any of that fails, runs `open -g tablepro://integrations/start-mcp` to launch TablePro, then polls every 200ms for up to 10 seconds for a good handshake. You do not need to start TablePro first.
+2. If any of that fails, runs `open -g tablepro://integrations/start-mcp` to launch TablePro, then polls every 200ms for up to 10 seconds for a good handshake. You do not need to start TablePro first. A TablePro started this way runs in the background: no Dock icon, no app switcher entry, no menu bar. It takes all three for as long as it has a window to show you, and drops them again when you close it. Opening TablePro yourself makes it an ordinary app for the rest of that run.
 3. Calls `server/discover` and refuses to start if the server does not speak `2026-07-28`.
 4. Answers `initialize` and `ping` itself, so a client that expects a handshake gets one, and forwards everything else upstream with the modern metadata and headers attached.
 

@@ -84,7 +84,7 @@ internal final class TabRouter {
         try await runPreConnectScriptIfNeeded(connection)
         try await DatabaseManager.shared.ensureConnected(connection)
         RecentlyClosedTabReopener.openWindowTab(for: entry)
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
     }
 
@@ -106,7 +106,7 @@ internal final class TabRouter {
         if let existing = WindowLifecycleMonitor.shared.mostRecentWindow(for: id)
             ?? WindowManager.shared.window(for: id) {
             existing.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
             guard DatabaseManager.shared.activeSessions[id]?.driver == nil else { return }
             if let splitVC = existing.contentViewController as? MainSplitViewController,
@@ -123,7 +123,7 @@ internal final class TabRouter {
             DatabaseManager.shared.registerPendingSession(connection)
         }
         WindowManager.shared.openTab(payload: payload, autoConnect: true)
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
     }
 
@@ -143,7 +143,7 @@ internal final class TabRouter {
             throw TabRouterError.connectionNotFound(connectionId)
         }
         if focusExistingTableTab(connectionId: connectionId, database: database, schema: schema, table: table) {
-            NSApp.activate(ignoringOtherApps: true)
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
             return
         }
@@ -160,7 +160,7 @@ internal final class TabRouter {
         )
         DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
 
         try await DatabaseManager.shared.ensureConnected(
@@ -214,7 +214,7 @@ internal final class TabRouter {
         guard confirmed else { throw TabRouterError.userCancelled }
 
         if focusExistingQueryTab(connectionId: connectionId, sql: sql) {
-            NSApp.activate(ignoringOtherApps: true)
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
             return
         }
@@ -228,7 +228,7 @@ internal final class TabRouter {
         )
         DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
 
         try await DatabaseManager.shared.ensureConnected(connection)
@@ -313,7 +313,7 @@ internal final class TabRouter {
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
         try await DatabaseManager.shared.ensureConnected(
             connection,
@@ -352,7 +352,7 @@ internal final class TabRouter {
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         DatabaseManager.shared.registerPendingSession(connection)
         WindowManager.shared.openTab(payload: payload)
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
         try await DatabaseManager.shared.ensureConnected(connection)
     }
@@ -362,7 +362,7 @@ internal final class TabRouter {
     private func openSQLFile(_ url: URL) async throws {
         if let existing = WindowLifecycleMonitor.shared.window(forSourceFile: url) {
             existing.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             return
         }
 
@@ -381,7 +381,7 @@ internal final class TabRouter {
                 sourceFileURL: url
             )
             WindowManager.shared.openTab(payload: payload)
-            NSApp.activate(ignoringOtherApps: true)
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         } else {
             WelcomeRouter.shared.enqueueSQLFile(url)
         }
@@ -395,7 +395,7 @@ internal final class TabRouter {
         } else {
             NSApp.windows.first { AppLaunchCoordinator.isMainWindow($0) && $0.isVisible }?.makeKeyAndOrderFront(nil)
         }
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
     }
 
     private func applyContainerSwitch(connectionId: UUID, database: String?, schema: String?) async {
