@@ -76,8 +76,8 @@ verify_deployment_target() {
     fi
 }
 
-OPENSSL_VERSION="3.4.3"
-OPENSSL_SHA256="fa727ed1399a64e754030a033435003991aee36bda9a5b080995cb2ac5cf7f37"
+# OPENSSL_VERSION and OPENSSL_SHA256 come from common.sh, sourced above. They were duplicated
+# here by the split, which is the thing this library exists to stop.
 
 # Downloads the OpenSSL tarball into BUILD_DIR once, verified against the pin above.
 fetch_openssl() {
