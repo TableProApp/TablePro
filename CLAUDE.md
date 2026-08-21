@@ -113,7 +113,7 @@ All database drivers are `.tableplugin` bundles loaded at runtime by `PluginMana
 - **DatabaseManager** (`Core/Database/DatabaseManager.swift`), connection pool, lifecycle, primary interface for views/coordinators
 - **ConnectionHealthMonitor**: 30s ping, auto-reconnect with exponential backoff
 
-When adding a new driver: create a new plugin bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver`, add the target to `project.yml`, add `DatabaseType` static constant, add a `case` arm to the `case "$PLUGIN_NAME"` block in the `Resolve plugin info` step of `.github/workflows/build-plugin.yml`, add row to `docs/index.mdx` supported databases table, and add CHANGELOG entry. See `docs/development/plugin-development.mdx` and `docs/development/plugin-registry.mdx` for details.
+When adding a new driver: create a new plugin bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver`, add the target to `project.yml`, add `DatabaseType` static constant, add an entry to `.github/plugin-registry.json`, add row to `docs/index.mdx` supported databases table, and add CHANGELOG entry. See `docs/development/plugin-development.mdx` and `docs/development/plugin-registry.mdx` for details.
 
 When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (with default implementation), then update `PluginDriverAdapter` to bridge it to `DatabaseDriver`. This is an additive, ABI-safe change (see below) and needs no version bump.
 
@@ -343,8 +343,8 @@ If anything matches, rewrite before committing.
 
 ## CI/CD
 
-GitHub Actions (`.github/workflows/build.yml`) triggered by `v*` tags. The `release` job needs all five of `lint`, `test`, `build-arm64`, `build-x86_64` and `registry-readiness`, so a red test suite or a registry missing a compatible plugin binary blocks the tag. It produces the DMG and ZIP plus Sparkle signatures, and release notes are auto-extracted from `CHANGELOG.md`.
+GitHub Actions (`.github/workflows/build.yml`) triggered by `v*` tags. The `release` job needs all four of `lint`, `test`, `build` (a matrix over arm64 and x86_64) and `registry-readiness`, so a red test suite or a registry missing a compatible plugin binary blocks the tag. It produces the DMG and ZIP plus Sparkle signatures, and release notes are auto-extracted from `CHANGELOG.md`.
 
 **Plugin CI** (`.github/workflows/build-plugin.yml`): triggered by `plugin-*-v*` tags or `workflow_dispatch`. The dispatch input accepts comma-separated `tag:pluginKitVersion` pairs; if `:pluginKitVersion` is omitted, the workflow reads `currentPluginKitVersion` from `PluginManager.swift`. Registry update logic lives in `.github/scripts/update-registry.py` (atomic write, per-binary `pluginKitVersion`, prune-old policy). Use `scripts/release-all-plugins.sh <version>` for bulk re-release after an ABI bump.
 
-**Plugin tag naming**: Tag names must match the `case "$PLUGIN_NAME"` mapping in the CI workflow's `Resolve plugin info` step. Notable non-obvious mappings: `CloudflareD1DriverPlugin` → `plugin-cloudflare-d1-v*`, `EtcdDriverPlugin` → `plugin-etcd-v*`. Check existing tags with `git tag -l "plugin-*"` before creating new ones.
+**Plugin tag naming**: The slug in a tag must be a key in `.github/plugin-registry.json`, which maps it to the target and the release metadata. Notable non-obvious mappings: `CloudflareD1DriverPlugin` → `plugin-cloudflare-d1-v*`, `EtcdDriverPlugin` → `plugin-etcd-v*`. Check existing tags with `git tag -l "plugin-*"` before creating new ones.

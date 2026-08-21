@@ -23,52 +23,28 @@ fi
 
 PKV="$1"
 
-# Registry-only plugins. Bundled plugins (Redis, ClickHouse, SQLite, MySQL,
-# PostgreSQL, CSV/JSON/SQL/XLSX/MQL export, SQL import) ship inside the app
-# bundle and must NEVER be published to the registry.
-PLUGINS=(
-    mongodb
-    oracle
-    duckdb
-    beancount
-    mssql
-    cassandra
-    etcd
-    cloudflare-d1
-    dynamodb
-    bigquery
-    snowflake
-    libsql
-    elasticsearch
-    surrealdb
-    teradata
-    trino
-    dameng
-)
+# Derived from .github/plugin-registry.json rather than restated here. This used to be two
+# hand-maintained arrays that had to agree with the workflow, the registry and each other, which is
+# three copies of one list and no way to tell when they drift apart.
+#
+# A bulk ABI re-release covers the registry-only plugins. The six marked `bundled` ship inside the
+# app and their binaries ride with the next app release, so re-publishing them here would put a
+# second copy in the registry for no one.
+PLUGINS=()
+while IFS= read -r PLUGIN; do
+    PLUGINS+=("$PLUGIN")
+done < <(python3 -c '
+import json, pathlib
+manifest = pathlib.Path(".github/plugin-registry.json")
+for slug, entry in sorted(json.loads(manifest.read_text())["plugins"].items()):
+    if not entry["bundled"]:
+        print(slug)
+')
 
-BUNDLED_PLUGINS=(
-    redis
-    clickhouse
-    sqlite
-    mysql
-    postgresql
-    csv
-    json
-    sql
-    xlsx
-    mql
-    sqlimport
-)
-
-for PLUGIN in "${PLUGINS[@]}"; do
-    for BUNDLED in "${BUNDLED_PLUGINS[@]}"; do
-        if [ "$PLUGIN" = "$BUNDLED" ]; then
-            echo "ERROR: '$PLUGIN' is a bundled plugin and must not be published to the registry." >&2
-            echo "Remove it from PLUGINS in $0." >&2
-            exit 1
-        fi
-    done
-done
+if [ "${#PLUGINS[@]}" -eq 0 ]; then
+    echo "ERROR: no registry-only plugins found in .github/plugin-registry.json" >&2
+    exit 1
+fi
 
 TAG_LIST=""
 FIRST=true
@@ -80,7 +56,7 @@ for PLUGIN in "${PLUGINS[@]}"; do
         echo "  WARNING: No remote tag found for plugin-${PLUGIN}-v*. Skipping."
         continue
     fi
-    LATEST_VER="${LATEST_TAG#plugin-${PLUGIN}-v}"
+    LATEST_VER="${LATEST_TAG#plugin-"${PLUGIN}"-v}"
     NEW_TAG="plugin-${PLUGIN}-v${LATEST_VER%.*}.$(( ${LATEST_VER##*.} + 1 ))"
     PAIR="${NEW_TAG}:${PKV}"
     if [ "$FIRST" = true ]; then

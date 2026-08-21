@@ -100,7 +100,7 @@ The full field list is `RegistryPluginMetadata` in `TablePro/Core/Plugins/Regist
 
 ## Registry Plugins and databaseTypeIds
 
-`databaseTypeIds` tells the app which plugin to install when a user picks a database type with no loaded driver. Tag names must match the `case "$PLUGIN_NAME"` block in the `Resolve plugin info` step of `.github/workflows/build-plugin.yml`. Note the non-obvious tags for Cloudflare D1 and etcd.
+`databaseTypeIds` tells the app which plugin to install when a user picks a database type with no loaded driver. The slug in a tag must be a key in `.github/plugin-registry.json`. Note the non-obvious tags for Cloudflare D1 and etcd.
 
 | Tag prefix | databaseTypeIds |
 |-----------|-----------------|
@@ -126,7 +126,7 @@ Bundled plugins (MySQL, PostgreSQL, SQLite, ClickHouse, Redis, and the import/ex
 
 ## Publishing a Plugin
 
-A new plugin needs a case in the `Resolve plugin info` step of `.github/workflows/build-plugin.yml` before its first tag. Without one the workflow exits with `Unknown plugin name`.
+A new plugin needs an entry in `.github/plugin-registry.json` before its first tag. Without one the workflow exits with `Unknown plugin`.
 
 Tag the commit and push that one tag:
 

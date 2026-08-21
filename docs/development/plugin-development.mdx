@@ -115,7 +115,7 @@ Link the XCFramework as **Do Not Embed**. The app supplies TableProPluginKit at 
 
 Publishing to TablePro's registry takes two steps in this repo:
 
-1. Add a case for your plugin to the `case "$PLUGIN_NAME"` block in the `Resolve plugin info` step of `.github/workflows/build-plugin.yml`: target name, bundle ID, display name, summary, database type IDs, icon, category, homepage. Without it the workflow exits with `Unknown plugin name`.
+1. Add an entry for your plugin to `.github/plugin-registry.json`, keyed by the slug its tag will use: target, bundle name, bundle ID, whether it is also bundled in the app, display name, summary, database type IDs, icon, category, homepage. Without one the release workflow stops with `Unknown plugin`. `icon` and `databaseTypeIds` must match what your `DriverPlugin` class declares; `scripts/ci/check-plugin-manifest.py` fails the release if they drift.
 2. Push the tag `plugin-<name>-v<version>`. CI builds both architectures, signs, notarizes, and updates `plugins.json`.
 
 CI signs with TablePro's own certificate, so a third-party plugin ships through a pull request, not a tag of your own. See [Plugin Registry](/development/plugin-registry) for the manifest format, the self-describing `metadata` block, and the publishing flow.
