@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The XLSX, MQL and SQL Import plugins linked to a documentation page that did not exist. They now point at Import & Export.
+
 ## [0.67.0] - 2026-08-21
 
 ### Added

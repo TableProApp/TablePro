@@ -242,17 +242,17 @@ jobs:
               TARGET="XLSXExport"; BUNDLE_ID="com.TablePro.XLSXExportPlugin"
               DISPLAY_NAME="XLSX Export"; SUMMARY="Export data to Microsoft Excel XLSX format"
               DB_TYPE_IDS='null'; ICON="doc.richtext"; BUNDLE_NAME="XLSXExport"
-              CATEGORY="export-format"; HOMEPAGE="https://docs.tablepro.app/features/export" ;;
+              CATEGORY="export-format"; HOMEPAGE="https://docs.tablepro.app/features/import-export" ;;
             mql)
               TARGET="MQLExport"; BUNDLE_ID="com.TablePro.MQLExportPlugin"
               DISPLAY_NAME="MQL Export"; SUMMARY="Export MongoDB data as MQL statements"
               DB_TYPE_IDS='null'; ICON="doc.text"; BUNDLE_NAME="MQLExport"
-              CATEGORY="export-format"; HOMEPAGE="https://docs.tablepro.app/features/export" ;;
+              CATEGORY="export-format"; HOMEPAGE="https://docs.tablepro.app/features/import-export" ;;
             sqlimport)
               TARGET="SQLImport"; BUNDLE_ID="com.TablePro.SQLImportPlugin"
               DISPLAY_NAME="SQL Import"; SUMMARY="Import data from SQL dump files"
               DB_TYPE_IDS='null'; ICON="square.and.arrow.down"; BUNDLE_NAME="SQLImport"
-              CATEGORY="import-format"; HOMEPAGE="https://docs.tablepro.app/features/import" ;;
+              CATEGORY="import-format"; HOMEPAGE="https://docs.tablepro.app/features/import-export" ;;
             *)
               echo "::error::Unknown plugin name: $PLUGIN_NAME"
               exit 1 ;;
