@@ -73,60 +73,24 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           REF: ${{ github.ref }}
+        # The reasoning lives in scripts/ci/detect-changed-paths.sh. It was inline here and in
+        # ios-tests.yml, with a comment asking a human to keep the two copies in step and nothing
+        # enforcing it.
         run: |
           set -euo pipefail
+          RUN=$(scripts/ci/detect-changed-paths.sh \
+            --event "$EVENT_NAME" \
+            --base "$BASE_SHA" \
+            --ref "$REF" \
+            --skip-release-commit \
+            'TablePro/' 'Plugins/' 'Packages/' 'LocalPackages/' \
+            'TableProTests/' 'TableProUITests/' 'Native/' 'Configs/' 'Libs/' 'scripts/' \
+            '\.github/actions/' '\.github/macos-(ui-)?test-quarantine\.txt$' \
+            'TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$' \
+            'TableProMobile/project\.yml$' 'project\.yml$' \
+            '\.github/workflows/macos-tests\.yml$')
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
 
-          # A release pushes the version commit to main and then tags that same commit, so the
-          # push and the tag both reach this workflow: once directly, once through build.yml's
-          # workflow_call. That tests one SHA twice on two macos-26 runners, and because the
-          # account runs five macOS jobs at a time, the duplicate is what leaves the release's
-          # own suite queued behind it. The tag run is the one that gates the release, so the
-          # push to main stands down. github.ref belongs to the caller, so build.yml's
-          # workflow_call reads refs/tags/v* here and can never match this guard, which is what
-          # keeps "a release that skipped its tests" impossible.
-          #
-          # The subject goes into a variable instead of a pipe into grep. grep -q exits on the
-          # first match, and the SIGPIPE that then kills git log would surface through pipefail
-          # as a skipped guard (the same trap scripts/check-freetds-fedauth.sh:69 documents).
-          SUBJECT="$(git log -1 --format=%s HEAD)"
-          if [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ] &&
-             [[ "$SUBJECT" =~ ^release:\ v[0-9] ]]; then
-              echo "run=false" >> "$GITHUB_OUTPUT"
-              exit 0
-          fi
-
-          # Anything that is not a pull request runs the full suite: a release calls this
-          # workflow with workflow_call, and a release that skipped its tests is the failure
-          # this guard exists to prevent.
-          if [ "$EVENT_NAME" != "pull_request" ]; then
-              echo "run=true" >> "$GITHUB_OUTPUT"
-              exit 0
-          fi
-
-          # core.quotePath defaults to true, which wraps any path holding a non-ASCII byte or a
-          # control character in double quotes and C-escapes it, so `TablePro/Café.swift` arrives
-          # as `"TablePro/Caf\303\251.swift"` and the leading quote defeats the `^` anchor. This
-          # detector fails open, so a misread means every suite skips behind a green gate. Reading
-          # raw NUL-separated records removes both that and any embedded-newline trick.
-          #
-          # A file, not a variable: bash drops NUL bytes from "$(...)", which would run every path
-          # together into one record. It also keeps grep out of a pipeline, so the SIGPIPE that
-          # scripts/check-freetds-fedauth.sh:69 warns about cannot come back.
-          git -c core.quotePath=false diff --no-renames --name-only -z \
-              "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-files"
-
-          # Keep in step with the `push: paths:` list above. scripts/ and .github/actions/ are on
-          # both because the jobs below execute them: a change to the shard tooling or to the
-          # quarantine files used to merge behind a green gate having run nothing.
-          if LC_ALL=C grep -zqE '^(TablePro/|Plugins/|Packages/|LocalPackages/|TableProTests/|TableProUITests/|Native/|Configs/|Libs/|scripts/|\.github/actions/|\.github/macos-(ui-)?test-quarantine\.txt$|TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$|TableProMobile/project\.yml$|project\.yml$|\.github/workflows/macos-tests\.yml$)' "$RUNNER_TEMP/changed-files"; then
-              echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-              echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  # One job for both packages rather than two. They cost 1.3 and 2.1 minutes, and a macOS
-  # concurrency slot is the scarce resource here: the account runs five at a time, and the build
-  # plus three UI shards plus the unit job already want four of them.
   packages:
     name: Package Tests
     needs: changes
@@ -186,6 +150,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh
 
+      # Compiles a C probe against Libs/libbson and parses every filter document the MongoDB
+      # query builder can emit. It guarded that invariant and ran nowhere; it needs clang and the
+      # vendored libraries, so this is the first job where it can run at all.
+      - name: Check the MongoDB filter shapes against the query builder
+        run: scripts/check-mongodb-filter-shapes.sh
+
       # Cargo and rustup need access outside Xcode's user-script sandbox. Build the
       # native bridge explicitly before compiling the driver target.
       - name: Build Dameng native bridge
@@ -244,6 +214,12 @@ jobs:
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
+
+      # Builds and signs used to be the whole check: nothing ever tried to load one. "Bundle
+      # failed to load executable" has shipped twice, and dlopen is exactly the dyld path that
+      # fails in that case.
+      - name: Verify every plugin loads
+        run: scripts/ci/verify-plugin-loads.sh "$DERIVED_DATA/Build/Products/Debug"
 
       - name: Build the app and both test bundles
         run: |
@@ -338,6 +314,11 @@ jobs:
             -parallel-testing-enabled NO \
             | xcbeautify --renderer github-actions
 
+      # Always, including on failure: a red run is when the durations matter most.
+      - name: Summarise test durations
+        if: ${{ !cancelled() }}
+        run: scripts/ci/summarize-xcresult.sh TestResults.xcresult "Unit tests"
+
       - name: Upload test results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -409,6 +390,10 @@ jobs:
             -retry-tests-on-failure \
             -resultBundlePath UITestResults.xcresult \
             | xcbeautify --renderer github-actions
+
+      - name: Summarise UI test durations
+        if: ${{ !cancelled() }}
+        run: scripts/ci/summarize-xcresult.sh UITestResults.xcresult "UI tests ${{ matrix.shard }}/${{ matrix.of }}"
 
       - name: Upload UI test results
         if: ${{ !cancelled() }}

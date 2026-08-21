@@ -81,11 +81,13 @@ git add Libs/checksums.sha256 && git commit -m "build: update static library che
 
 Never run `shasum -a 256 Libs/*.a > Libs/checksums.sha256` by hand: regenerating from a stale `Libs/` reverts other libraries silently (this shipped a broken libmongoc and rolled back DuckDB once). `publish-libs.sh` exists to make that impossible.
 
+The same applies to the iOS xcframeworks. `download-libs.sh` verifies `Libs/ios` against `Libs/ios/checksums.sha256` on every run, so the archive and its baseline have to move together; `publish-ios-libs.sh` does both and refuses a publish that changes nothing. It takes `--dry-run`.
+
 ```bash
 
 # iOS xcframeworks (Libs/ios/*.xcframework)
-tar czf /tmp/tablepro-libs-ios-v1.tar.gz -C Libs/ios .
-gh release upload libs-v1 /tmp/tablepro-libs-ios-v1.tar.gz --clobber --repo TableProApp/TablePro
+scripts/publish-ios-libs.sh
+git add Libs/ios/checksums.sha256 && git commit -m "build: update iOS xcframework checksums"
 ```
 
 ## Architecture
@@ -151,8 +153,8 @@ When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (
 
 ### Editor Architecture (CodeEditSourceEditor)
 
-- **`SQLEditorTheme`**: single source of truth for editor colors/fonts
-- **`TableProEditorTheme`**: adapter to CodeEdit's `EditorTheme` protocol
+- **`ThemeEngine`**: the `@Observable` singleton that owns the active theme, and the single source of truth for editor colors and fonts
+- **`TableProEditorTheme`**: adapter to CodeEdit's `EditorTheme` protocol; `ThemeEngine.makeEditorTheme()` builds it
 - **`CompletionEngine`**: framework-agnostic; **`QueryCompletionAdapter`** bridges to CodeEdit's `CodeSuggestionDelegate`
 - Editor tabs are drawn by `EditorTabStrip`, not by native window tabs. A window belongs to exactly one `NSWindow` tab group and that group's bar shows every window in it, so a window hosting several connections could only ever show all of their tabs interleaved. Window tabbing itself stays on AppKit's terms: `TabWindowController` leaves `tabbingMode` at `.automatic`, which is the user's own System Settings preference, and never forces `.preferred`.
 - Cursor model: `cursorPositions: [CursorPosition]` (multi-cursor via CodeEditSourceEditor)

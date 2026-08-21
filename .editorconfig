@@ -12,6 +12,12 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
 
+# String catalogs. Xcode writes these with no trailing newline, and scripts/localization.py
+# reproduces that byte for byte so a translation merge does not reformat a 109,000-line file.
+# The [*] rule above would add one back on every save and break `localization.py verify`.
+[*.xcstrings]
+insert_final_newline = false
+
 # Swift files
 [*.swift]
 indent_size = 4

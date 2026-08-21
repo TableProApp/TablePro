@@ -259,7 +259,6 @@ build_slice() {
         src/common/psprintf.c
         src/common/logging.c
         src/common/percentrepl.c
-        src/common/md5_common.c
         src/common/sha1.c
         src/common/sha1_int.c
         src/common/sha2.c
@@ -280,7 +279,6 @@ build_slice() {
         src/port/strerror.c
         src/port/thread.c
         src/port/path.c
-        src/port/pg_strong_random.c
         src/port/pgstrcasecmp.c
         src/port/explicit_bzero.c
         src/port/user.c
@@ -292,19 +290,34 @@ build_slice() {
     # Compile all source files
     local ALL_OBJS=()
     local FAILED_SRCS=()
+    local MISSING_SRCS=()
     for src in "${LIBPQ_SRCS[@]}" "${COMMON_SRCS[@]}" "${PORT_SRCS[@]}"; do
         local obj_name
         obj_name=$(basename "${src%.c}.o")
-        if [ -f "$src" ]; then
-            if "$CC" "${CFLAGS[@]}" "${PG_INCLUDES[@]}" -DFRONTEND -c "$src" -o "$OBJ_DIR/$obj_name" 2>"$OBJ_DIR/${obj_name}.err"; then
-                ALL_OBJS+=("$OBJ_DIR/$obj_name")
-            else
-                FAILED_SRCS+=("$src")
-                echo "   FAILED: $src"
-                cat "$OBJ_DIR/${obj_name}.err"
-            fi
+        # A source that is not there used to be skipped in silence, so a PostgreSQL bump that
+        # renamed or moved a file produced a libpq.a quietly missing that object. Only a
+        # compile failure was ever reported.
+        if [ ! -f "$src" ]; then
+            MISSING_SRCS+=("$src")
+            continue
+        fi
+        if "$CC" "${CFLAGS[@]}" "${PG_INCLUDES[@]}" -DFRONTEND -c "$src" -o "$OBJ_DIR/$obj_name" 2>"$OBJ_DIR/${obj_name}.err"; then
+            ALL_OBJS+=("$OBJ_DIR/$obj_name")
+        else
+            FAILED_SRCS+=("$src")
+            echo "   FAILED: $src"
+            cat "$OBJ_DIR/${obj_name}.err"
         fi
     done
+
+    if [ ${#MISSING_SRCS[@]} -gt 0 ]; then
+        echo ""
+        echo "ERROR: ${#MISSING_SRCS[@]} source file(s) listed here are not in PostgreSQL $PG_VERSION:"
+        printf '   %s\n' "${MISSING_SRCS[@]}"
+        echo ""
+        echo "Update the source lists in this script to match the version being built."
+        exit 1
+    fi
 
     if [ ${#FAILED_SRCS[@]} -gt 0 ]; then
         echo ""

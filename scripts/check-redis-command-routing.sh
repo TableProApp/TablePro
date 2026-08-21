@@ -45,12 +45,17 @@ esac
 
 echo "Checking the curated table against Redis $VERSION at $HOST:$PORT"
 
-redis-cli --json -h "$HOST" -p "$PORT" command > /tmp/redis-command-table.json || {
+# A private directory, matching every sibling check script. /tmp is world-writable, so a fixed
+# name is something another local user can pre-create and control.
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+redis-cli --json -h "$HOST" -p "$PORT" command > "$WORK/command-table.json" || {
     echo "COMMAND was refused; the user's ACL has to allow it for this check" >&2
     exit 3
 }
 
-python3 - "$SOURCE" /tmp/redis-command-table.json <<'PY'
+python3 - "$SOURCE" "$WORK/command-table.json" <<'PY'
 import json
 import re
 import sys
@@ -77,6 +82,18 @@ def policies(text):
 
 curated = {}
 
+# This parses Swift with regular expressions, which works until somebody reformats the table.
+# The dangerous shape is a partial parse: 115 of the 151 entries live inside `for name in [...]`
+# blocks, so a change to how those are written drops three quarters of the table and the check
+# still reports that the curated list matches the server. Both counts are therefore asserted
+# against the source before anything is compared.
+# Every add(spec(...)) call in the source must be accounted for by exactly one parsed construct,
+# either a direct entry or a `for name in [...]` block. Counting the blocks alone is not enough:
+# renaming the loop variable makes both the expectation and the match zero, and the check would
+# sail past having lost three quarters of the table.
+expected_calls = len(re.findall(r'add\(spec\(', table))
+expected_direct = len(re.findall(r'add\(spec\(\s*"', table))
+
 # add(spec("name", first, last, step, ...))
 for match in re.finditer(r'spec\(\s*"([^"]+)",\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)([^)]*)\)', table):
     name, first, last, step, rest = match.groups()
@@ -87,8 +104,22 @@ for match in re.finditer(r'spec\(\s*"([^"]+)",\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)([
         "request": request, "response": response,
     }
 
+if len(curated) != expected_direct:
+    sys.exit(
+        f"parsed {len(curated)} direct spec() entries but the source has {expected_direct}; "
+        "the parser and RedisCommandRouting.swift have diverged"
+    )
+
 # for name in [...] { add(spec(name, first, last, step, ...)) }
-for block, values in re.findall(r'for name in \[(.*?)\]\s*\{\s*add\(spec\(name,\s*(.*?)\)\)', table, re.S):
+blocks = re.findall(r'for name in \[(.*?)\]\s*\{\s*add\(spec\(name,\s*(.*?)\)\)', table, re.S)
+if len(curated) + len(blocks) != expected_calls:
+    sys.exit(
+        f"accounted for {len(curated)} direct entries and {len(blocks)} loop blocks, "
+        f"but the source makes {expected_calls} add(spec(...)) calls; "
+        "the parser and RedisCommandRouting.swift have diverged"
+    )
+
+for block, values in blocks:
     parts = values.split(",")
     positions = [int(p.strip()) for p in parts[:3]]
     rest = ",".join(parts[3:])
@@ -154,5 +185,4 @@ if mismatches:
 print("the curated table matches the server")
 PY
 status=$?
-rm -f /tmp/redis-command-table.json
 exit $status

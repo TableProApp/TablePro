@@ -81,6 +81,43 @@ struct EmphasisManagerTests {
         #expect(textView.layer?.sublayers?.count == 2)
     }
 
+    /// The layer keeps the last path it was given, so an emphasis whose text has been deleted would
+    /// otherwise go on painting over whatever now occupies that place. A search highlight was the
+    /// worst case: a range past the end resolves to the caret rect, so it reappeared at the end of
+    /// the document instead of disappearing.
+    @Test()
+    @MainActor
+    func anEmphasisWhoseTextIsGoneStopsBeingDrawn() throws {
+        let textView = makeLaidOutTextView()
+
+        textView.emphasisManager?.addEmphasis(
+            Emphasis(range: NSRange(location: 6, length: 5), style: .standard),
+            for: "e"
+        )
+        let layer = try #require(textView.layer?.sublayers?.first)
+        #expect(layer.isHidden == false)
+
+        textView.textStorage.replaceCharacters(in: NSRange(location: 5, length: 6), with: "")
+        textView.layoutManager.layoutLines(in: CGRect(origin: .zero, size: CGSize(width: 1_000, height: 100)))
+        textView.emphasisManager?.updateLayerBackgrounds()
+
+        #expect(textView.layer?.sublayers?.allSatisfy(\.isHidden) == true)
+    }
+
+    @Test()
+    @MainActor
+    func anEmphasisWhoseTextIsStillThereKeepsBeingDrawn() {
+        let textView = makeLaidOutTextView()
+
+        textView.emphasisManager?.addEmphasis(
+            Emphasis(range: NSRange(location: 0, length: 5), style: .standard),
+            for: "e"
+        )
+        textView.emphasisManager?.updateLayerBackgrounds()
+
+        #expect(textView.layer?.sublayers?.contains(where: \.isHidden) == false)
+    }
+
     @MainActor
     private func makeLaidOutTextView() -> TextView {
         let textView = TextView(string: "Lorem Ipsum")
