@@ -55,6 +55,11 @@ Filters saved before this option existed follow the same rules, so a saved "cont
 
 On a document store such as MongoDB, a field holding an object or an array of objects is one column in the grid, showing its JSON. The column picker also lists the paths inside it, so you can filter on `customer.country` or `items.sku` directly.
 
+<Frame caption="Column picker listing nested field paths under their parent">
+  <img className="block dark:hidden" src="/images/filter-nested-fields.png" alt="Filter column picker with nested paths grouped under their top-level field" />
+  <img className="hidden dark:block" src="/images/filter-nested-fields-dark.png" alt="Filter column picker with nested paths grouped under their top-level field" />
+</Frame>
+
 TablePro reads the paths from a sample of the collection, so the picker lists the fields the sample actually contained, grouped under their top-level parent. Only the first two levels go in the picker. The button beside it opens a searchable list of every path found, and typing a path there that no document in the sample had uses it anyway, which is how you reach a field that only some documents carry.
 
 A field whose name contains a literal dot is left out. MongoDB reads the dot in a query as a path separator, so a filter naming such a field would match a different field.
@@ -62,6 +67,11 @@ A field whose name contains a literal dot is left out. MongoDB reads the dot in 
 ### Fields Inside an Array
 
 A row on a field inside an array gets one more control, because MongoDB has two different answers here:
+
+<Frame caption="Two rows on items set to same element, so one array entry must satisfy both">
+  <img className="block dark:hidden" src="/images/filter-array-element-scope.png" alt="Filter rows on an array field showing the any element and same element control" />
+  <img className="hidden dark:block" src="/images/filter-array-element-scope-dark.png" alt="Filter rows on an array field showing the any element and same element control" />
+</Frame>
 
 | Setting | What it matches |
 |---------|-----------------|
