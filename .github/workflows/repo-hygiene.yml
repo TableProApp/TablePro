@@ -75,10 +75,9 @@ jobs:
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py
 
-      # Two checks that guarded real invariants and ran nowhere. Both are pure bash and grep, so
-      # they belong on the free Linux runner rather than in the macOS suite.
-      - name: Check the MongoDB filter shapes against the query builder
-        run: scripts/check-mongodb-filter-shapes.sh
-
+      # A check that guarded a real invariant and ran nowhere. Pure grep over Swift sources, so it
+      # belongs on the free Linux runner. The MongoDB filter-shape check is the other one that was
+      # orphaned, but it compiles a C probe against Libs/libbson, so it lives in the macOS build
+      # job in macos-tests.yml where the toolchain and the libraries already are.
       - name: Check the shared-contract drift gates
         run: scripts/audit-refactor-health.sh --check
