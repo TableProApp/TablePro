@@ -123,12 +123,19 @@ appear when its final job succeeds.
 gh release view v<version> --json tagName,assets -q '"\(.tagName) assets=\(.assets|length)"'
 gh run list --limit 5 --json workflowName,headBranch,status,conclusion \
   -q '.[] | "\(.headBranch) \(.workflowName) \(.status)/\(.conclusion // "-")"'
-curl -s https://tablepro.app/appcast.xml | grep -o 'sparkle:shortVersionString="[^"]*"' | head -2
+curl -s https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml \
+  | grep -o '<sparkle:shortVersionString>[^<]*' | head -2
 ```
 
 "release not found" with the tag pushed means the build is still running or it failed. Sending
 then puts people on a Download button that hands them the previous version, and Check for
 Updates tells them they are up to date. Wait for the release object and the appcast entry.
+
+The feed is the `SUFeedURL` in `TablePro/Info.plist`, which is the raw GitHub URL above.
+`https://tablepro.app/appcast.xml` is a 404 and always has been, and
+`shortVersionString` is an XML element, not an attribute, so a grep written for
+`sparkle:shortVersionString="..."` silently matches nothing and reads as "not
+published yet".
 
 At 0.66 the tag was pushed, all seven plugin builds had finished, and Build TablePro was still
 in progress, which is exactly the window in which the email looks ready and is not.

@@ -290,7 +290,8 @@ when its final job succeeds.
 ```bash
 gh run list --workflow build.yml --limit 1
 gh release view v<version> --json tagName,assets -q '"\(.tagName) assets=\(.assets|length)"'
-curl -s https://tablepro.app/appcast.xml | grep -o 'sparkle:shortVersionString="[^"]*"' | head -2
+curl -s https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml \
+  | grep -o '<sparkle:shortVersionString>[^<]*' | head -2
 ```
 
 Report blockers separately from any draft, as a list of things that must be true
