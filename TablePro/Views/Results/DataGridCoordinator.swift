@@ -398,6 +398,22 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
+    /// Repaints whole rows, across the row-number column and every drawn cell.
+    ///
+    /// `reloadData(forRowIndexes:columnIndexes:)` rebuilds a cell view, and the row-number column is
+    /// the only one that still mounts one, so on its own it repaints a row's number and nothing
+    /// else. Every caller that used to reload a row's full column range goes through here (#2381).
+    func repaintRows(_ rows: IndexSet) {
+        guard let tableView, !rows.isEmpty else { return }
+        let rowNumberColumn = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
+        if rowNumberColumn >= 0 {
+            tableView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: rowNumberColumn))
+        }
+        for row in rows {
+            (tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView)?.redrawCells()
+        }
+    }
+
     /// Repaints one drawn cell, which is what a mounted cell got from `setNeedsDisplay` on itself.
     func redrawCell(row: Int, columnIndex: Int) {
         guard let tableView,
@@ -496,10 +512,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             let visibleRect = tableView.visibleRect
             let visibleRange = tableView.rows(in: visibleRect)
             if visibleRange.length > 0 {
-                tableView.reloadData(
-                    forRowIndexes: IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)),
-                    columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
-                )
+                repaintRows(IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)))
             }
             startBackgroundPrewarm()
         }
@@ -947,10 +960,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             guard row >= 0, row < tableView.numberOfRows else { return }
             invalidateDisplayCache(forDisplayRow: row, column: column)
             visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
-            tableView.reloadData(
-                forRowIndexes: IndexSet(integer: row),
-                columnIndexes: IndexSet(integer: tableColumn)
-            )
+            redrawCells(rows: IndexSet(integer: row), tableColumnIndexes: IndexSet(integer: tableColumn))
         case .cellsChanged(let positions):
             guard !positions.isEmpty, let tableView else { return }
             var rowSet = IndexSet()
@@ -1006,10 +1016,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         let visibleRange = tableView.rows(in: tableView.visibleRect)
         guard visibleRange.length > 0 else { return }
         invalidateDisplayCache()
-        tableView.reloadData(
-            forRowIndexes: IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)),
-            columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
-        )
+        repaintRows(IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)))
         refreshVisibleRowVisualStates()
         startBackgroundPrewarm()
     }
@@ -1020,10 +1027,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func reloadRowAndState(at row: Int) {
         guard let tableView, row >= 0, row < tableView.numberOfRows else { return }
         invalidateDisplayCache(forDisplayRow: row)
-        tableView.reloadData(
-            forRowIndexes: IndexSet(integer: row),
-            columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
-        )
+        repaintRows(IndexSet(integer: row))
         refreshRowVisualState(at: row)
     }
 
@@ -1105,12 +1109,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         let affected = IndexSet([previous?.displayRow, match?.displayRow]
             .compactMap(\.self)
             .filter { $0 >= 0 && $0 < tableView.numberOfRows })
-        if !affected.isEmpty {
-            tableView.reloadData(
-                forRowIndexes: affected,
-                columnIndexes: IndexSet(integersIn: 0 ..< tableView.numberOfColumns)
-            )
-        }
+        repaintRows(affected)
 
         guard let match, match.displayRow >= 0, match.displayRow < tableView.numberOfRows else { return }
         tableView.scrollRowToVisible(match.displayRow)

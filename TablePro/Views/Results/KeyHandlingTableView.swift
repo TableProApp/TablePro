@@ -18,6 +18,26 @@ final class KeyHandlingTableView: NSTableView {
         window.makeFirstResponder(self)
     }
 
+    /// Continues the column separators past the last row.
+    ///
+    /// A row view covers whatever the table view drew beneath it, so this reaches only the area no
+    /// row occupies, which is exactly the area the rows cannot draw. See `DataGridBodyChrome`.
+    override func drawBackground(inClipRect clipRect: NSRect) {
+        super.drawBackground(inClipRect: clipRect)
+        guard let coordinator else { return }
+        let lastRowBottom = numberOfRows > 0 ? rect(ofRow: numberOfRows - 1).maxY : bounds.minY
+        let belowRows = clipRect.intersection(
+            NSRect(x: clipRect.minX, y: lastRowBottom, width: clipRect.width, height: bounds.height)
+        )
+        guard !belowRows.isEmpty else { return }
+        DataGridBodyChrome.drawColumnSeparators(
+            in: belowRows,
+            of: self,
+            tableView: self,
+            presentsColumn: { coordinator.presentsColumn(atTableColumnIndex: $0) }
+        )
+    }
+
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
         guard !isRaisingOverlay else { return }

@@ -54,6 +54,9 @@ class DataGridRowView: NSTableRowView {
         accessibilityCellsAreStale = true
     }
 
+    /// Whether this row's drawn cells are waiting to be repainted.
+    var needsToDrawCells: Bool { contentView.needsDisplay }
+
     // MARK: - Accessibility
 
     /// One element per data column, vended as this row's accessibility children.
@@ -200,6 +203,17 @@ class DataGridRowView: NSTableRowView {
                 in: NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
             )
         }
+    }
+
+    /// Draws the column separators crossing this row. See `DataGridBodyChrome`.
+    func drawColumnSeparators(in dirtyRect: NSRect, of view: NSView) {
+        guard let coordinator, let tableView = coordinator.tableView else { return }
+        DataGridBodyChrome.drawColumnSeparators(
+            in: dirtyRect,
+            of: view,
+            tableView: tableView,
+            presentsColumn: { coordinator.presentsColumn(atTableColumnIndex: $0) }
+        )
     }
 
     required init?(coder: NSCoder) {
@@ -765,8 +779,12 @@ final class DataGridRowContentView: NSView {
     override var isFlipped: Bool { true }
     override var allowsVibrancy: Bool { false }
 
+    /// The separators go down in a second pass, after every cell, because a cell fills its whole
+    /// rect for a modified or find-match tint and would paint over a line drawn beside it. AppKit's
+    /// own separator views composite above the rows for the same reason.
     override func draw(_ dirtyRect: NSRect) {
         rowView?.drawCells(in: dirtyRect, of: self)
+        rowView?.drawColumnSeparators(in: dirtyRect, of: self)
     }
 
     override func mouseDown(with event: NSEvent) {

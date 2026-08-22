@@ -10,9 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The data grid draws its cells instead of building a view for each one, so a result with hundreds of columns opens at once and holds a fraction of the memory. (#2381)
+- The data grid draws its own column separators. (#2381)
+- The inline cell editor scrolls a long line instead of wrapping it. (#2381)
 
 ### Fixed
 
+- A second of delay opening the inline editor on a result with hundreds of columns. (#2381)
 - Flickering columns, blank columns, and an unpainted gap while scrolling a result with about 100 columns sideways. (#2381)
 - Find, arrow keys, and the inline editor unable to reach a column scrolled off the side of a wide result.
 - Return opening no editor on a row selected with the arrow keys.
