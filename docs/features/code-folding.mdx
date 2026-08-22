@@ -5,6 +5,11 @@ description: Collapse statements, CTEs, subqueries and BEGIN blocks in the SQL e
 
 Move the pointer into the gutter and chevrons appear. Every region that spans more than one line gets one, which covers whole statements, table bodies, CTEs, subqueries, `BEGIN` blocks and block comments. Click to collapse, click again to expand.
 
+<Frame caption="A folded region and its chip in the gutter">
+  <img className="block dark:hidden" src="/images/code-folding.png" alt="Code folding in the SQL editor" />
+  <img className="hidden dark:block" src="/images/code-folding-dark.png" alt="Code folding in the SQL editor" />
+</Frame>
+
 The chevron points down while the region is showing and right while it is folded, the way a disclosure control behaves everywhere else in macOS. Resting on one marks how far its region reaches. Where a statement and the block inside it open on the same line, the chevron folds the larger of the two.
 
 A folded region keeps its chevron whether or not the pointer is in the gutter, so nothing is hidden without a visible way back. Move the pointer away from a gutter with nothing folded and it is line numbers again.
