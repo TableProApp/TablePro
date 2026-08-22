@@ -575,10 +575,9 @@ final class MainContentCoordinator {
     /// Background tabs are re-fetched automatically when selected.
     func evictInactiveRowData() {
         let selectedId = tabManager.selectedTabId
-        for (index, tab) in tabManager.tabs.enumerated()
+        for tab in tabManager.tabs
         where tab.id != selectedId && !tab.pendingChanges.hasChanges {
-            tabSessionRegistry.evict(for: tab.id)
-            tabManager.mutate(at: index) { $0.loadEpoch &+= 1 }
+            evictReloadableTableRows(for: tab.id)
         }
     }
 

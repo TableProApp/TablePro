@@ -68,6 +68,21 @@ struct RowDisplayCacheTests {
         #expect(cache.box(forID: .existing(2)) != nil)
     }
 
+    @Test("Updating the same mutable box uses its previously recorded cost")
+    func mutableBoxCostUpdateEvicts() {
+        let cache = RowDisplayCache(countLimit: 1_000, costLimit: 10)
+        let firstID = RowID.existing(1)
+        let box = makeBox(["a"])
+        cache.setBox(box, forID: firstID, cost: 1)
+
+        box.values[0] = "123456789"
+        cache.setBox(box, forID: firstID, cost: 9)
+        cache.setBox(makeBox(["xy"]), forID: .existing(2), cost: 2)
+
+        #expect(cache.box(forID: firstID) == nil)
+        #expect(cache.box(forID: .existing(2)) != nil)
+    }
+
     @Test("Replacing an existing key does not consume queue slot")
     func replaceExistingKey() {
         let cache = RowDisplayCache(countLimit: 2, costLimit: 1_000_000)
@@ -155,6 +170,22 @@ struct RowDisplayCacheTests {
         cache.setBox(box, forID: id, cost: 3)
 
         #expect(cache.box(forID: id)?.values.first == "new")
+    }
+
+    @Test("Refilling a cleared mutable box restores its recorded cost")
+    func clearedRowRefillRestoresCost() {
+        let cache = RowDisplayCache(countLimit: 1_000, costLimit: 10)
+        let firstID = RowID.existing(1)
+        let box = makeBox(["123456789"])
+        cache.setBox(box, forID: firstID, cost: 9)
+        cache.clearValues(forID: firstID)
+        cache.setBox(makeBox(["abcdefghij"]), forID: .existing(2), cost: 10)
+
+        box.values[0] = "123456789"
+        cache.setBox(box, forID: firstID, cost: 9)
+
+        #expect(cache.box(forID: firstID) == nil)
+        #expect(cache.box(forID: .existing(2)) != nil)
     }
 
     @Test("Inserted row IDs of both kinds round-trip")

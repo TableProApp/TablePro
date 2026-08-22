@@ -27,6 +27,8 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var fetchTablesCallCount = 0
     var fetchColumnsCallCount = 0
     var fetchColumnsCalls: [String] = []
+    var fetchAllColumnsCallCount = 0
+    var allColumnsToReturn: [String: [ColumnInfo]] = [:]
     var fetchSchemaTablesCalls: [String] = []
     var applyQueryTimeoutValues: [Int] = []
     var cancelQueryCallCount = 0
@@ -111,7 +113,8 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     }
 
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
-        [:]
+        fetchAllColumnsCallCount += 1
+        return allColumnsToReturn
     }
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
@@ -419,7 +422,7 @@ struct SQLSchemaProviderTests {
     }
 
     @Test("eager column load uses injected metadata source instead of cached driver")
-    func eagerLoadUsesMetadataSource() async throws {
+    func eagerLoadUsesMetadataSource() async {
         let driver = MockDatabaseDriver()
         driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "from_driver")]]
         let source = SQLSchemaProvider.ColumnMetadataSource(
@@ -428,12 +431,47 @@ struct SQLSchemaProviderTests {
         )
         let provider = SQLSchemaProvider(metadataSource: source)
         await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
-
-        try await Task.sleep(nanoseconds: 300_000_000)
+        await provider.waitForEagerColumnLoad()
 
         let columns = await provider.getColumns(for: "users")
         #expect(columns.first?.name == "eager_source")
         #expect(driver.fetchColumnsCallCount == 0)
+    }
+
+    @Test("eager column load runs when the schema fits in the cache")
+    func eagerLoadRunsForBoundedSchema() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = (0..<50).map { TestFixtures.makeTableInfo(name: "table_\($0)") }
+        driver.allColumnsToReturn = [
+            "table_49": [TestFixtures.makeColumnInfo(name: "eager_column")]
+        ]
+
+        let provider = SQLSchemaProvider()
+        await provider.loadSchema(using: driver)
+        await provider.waitForEagerColumnLoad()
+
+        let columns = await provider.getColumns(for: "table_49")
+        #expect(driver.fetchAllColumnsCallCount == 1)
+        #expect(driver.fetchColumnsCallCount == 0)
+        #expect(columns.first?.name == "eager_column")
+    }
+
+    @Test("large schemas skip eager column loading and fetch columns lazily")
+    func largeSchemaSkipsEagerLoad() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = (0..<51).map { TestFixtures.makeTableInfo(name: "table_\($0)") }
+        driver.columnsToReturn = [
+            "table_50": [TestFixtures.makeColumnInfo(name: "lazy_column")]
+        ]
+
+        let provider = SQLSchemaProvider()
+        await provider.loadSchema(using: driver)
+        await provider.waitForEagerColumnLoad()
+
+        let columns = await provider.getColumns(for: "table_50")
+        #expect(driver.fetchAllColumnsCallCount == 0)
+        #expect(driver.fetchColumnsCalls == ["table_50"])
+        #expect(columns.first?.name == "lazy_column")
     }
 
     // MARK: - Namespaces (database/schema segments)

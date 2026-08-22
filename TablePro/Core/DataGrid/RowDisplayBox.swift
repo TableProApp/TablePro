@@ -15,7 +15,13 @@ final class RowDisplayBox {
 
 @MainActor
 final class RowDisplayCache {
-    private var storage: [RowID: RowDisplayBox] = [:]
+    /// Cost is captured separately because callers mutate a cached box before updating it.
+    private struct Entry {
+        let box: RowDisplayBox
+        let cost: Int
+    }
+
+    private var storage: [RowID: Entry] = [:]
     private var insertionOrder: [RowID] = []
     private var insertionHead: Int = 0
     private var totalCost: Int = 0
@@ -28,16 +34,16 @@ final class RowDisplayCache {
     }
 
     func box(forID id: RowID) -> RowDisplayBox? {
-        storage[id]
+        storage[id]?.box
     }
 
     func setBox(_ box: RowDisplayBox, forID id: RowID, cost: Int) {
         if let existing = storage[id] {
-            totalCost -= rowCost(existing.values)
+            totalCost -= existing.cost
         } else {
             insertionOrder.append(id)
         }
-        storage[id] = box
+        storage[id] = Entry(box: box, cost: cost)
         totalCost += cost
         evictIfNeeded()
     }
@@ -54,11 +60,12 @@ final class RowDisplayCache {
     /// whose content changed in place keeps its id and would otherwise be served
     /// its pre-edit text.
     func clearValues(forID id: RowID) {
-        guard let box = storage[id] else { return }
-        totalCost -= rowCost(box.values)
-        for index in box.values.indices {
-            box.values[index] = nil
+        guard let existing = storage[id] else { return }
+        totalCost -= existing.cost
+        for index in existing.box.values.indices {
+            existing.box.values[index] = nil
         }
+        storage[id] = Entry(box: existing.box, cost: 0)
     }
 
     private func evictIfNeeded() {
@@ -67,20 +74,12 @@ final class RowDisplayCache {
             let oldest = insertionOrder[insertionHead]
             insertionHead += 1
             if let removed = storage.removeValue(forKey: oldest) {
-                totalCost -= rowCost(removed.values)
+                totalCost -= removed.cost
             }
         }
         if insertionHead > 10_000 {
             insertionOrder.removeFirst(insertionHead)
             insertionHead = 0
         }
-    }
-
-    private func rowCost(_ values: ContiguousArray<String?>) -> Int {
-        var total = 0
-        for value in values {
-            if let s = value { total &+= s.utf8.count }
-        }
-        return total
     }
 }

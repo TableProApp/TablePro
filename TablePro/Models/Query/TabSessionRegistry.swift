@@ -72,7 +72,7 @@ final class TabSessionRegistry {
     func evict(for tabId: UUID) {
         guard let session = sessions[tabId] else { return }
         guard !session.tableRows.rows.isEmpty else { return }
-        session.tableRows.rows = []
+        session.tableRows.discardRowsKeepingMetadata()
         session.isEvicted = true
         session.dataRevision &+= 1
     }

@@ -126,12 +126,52 @@ extension MainContentCoordinator {
         }
     }
 
+    /// Table tabs can reconstruct their rows from their generated query. Query tabs cannot, and a
+    /// pinned result must keep its shared buffer intact, so those tabs stay resident.
+    @discardableResult
+    func evictReloadableTableRows(for tabId: UUID) -> Bool {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return false }
+        let tab = tabManager.tabs[index]
+        guard tab.id != tabManager.selectedTabId,
+              tab.tabType == .table,
+              tab.execution.errorMessage == nil,
+              !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !tab.pendingChanges.hasChanges,
+              !tab.display.hasPinnedResults,
+              !tab.pagination.isLoading,
+              !tab.pagination.isLoadingMore,
+              !tabExecution.isExecuting(tabId),
+              tableLoadTasks[tabId] == nil,
+              !tabSessionRegistry.isEvicted(tabId),
+              let rows = tabSessionRegistry.existingTableRows(for: tabId),
+              !rows.rows.isEmpty
+        else { return false }
+
+        tabManager.mutate(at: index) { tab in
+            for resultSet in tab.display.resultSets where !resultSet.isPinned {
+                resultSet.tableRows.discardRowsKeepingMetadata()
+            }
+            tab.loadEpoch &+= 1
+        }
+        tabSessionRegistry.evict(for: tabId)
+        return true
+    }
+
     private func evictInactiveTabs(excluding activeTabIds: Set<UUID>) {
         let start = Date()
         let candidates: [(tab: QueryTab, rows: TableRows)] = tabManager.tabs.compactMap { tab in
             guard !activeTabIds.contains(tab.id),
+                  tab.id != tabManager.selectedTabId,
+                  tab.tabType == .table,
+                  tab.execution.errorMessage == nil,
+                  !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   tab.execution.lastExecutedAt != nil,
                   !tab.pendingChanges.hasChanges,
+                  !tab.display.hasPinnedResults,
+                  !tab.pagination.isLoading,
+                  !tab.pagination.isLoadingMore,
+                  !tabExecution.isExecuting(tab.id),
+                  tableLoadTasks[tab.id] == nil,
                   let rows = tabSessionRegistry.existingTableRows(for: tab.id),
                   !tabSessionRegistry.isEvicted(tab.id),
                   !rows.rows.isEmpty
@@ -164,8 +204,7 @@ extension MainContentCoordinator {
         let toEvict = sorted.dropLast(maxInactiveLoaded)
 
         for entry in toEvict {
-            tabSessionRegistry.evict(for: entry.tab.id)
-            tabManager.mutate(tabId: entry.tab.id) { $0.loadEpoch &+= 1 }
+            evictReloadableTableRows(for: entry.tab.id)
         }
         Self.lifecycleLogger.debug(
             "[switch] evictInactiveTabs evicted=\(toEvict.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"

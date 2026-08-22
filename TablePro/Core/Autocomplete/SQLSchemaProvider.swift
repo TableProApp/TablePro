@@ -12,12 +12,12 @@ import TableProPluginKit
 /// Provides cached database schema information for autocomplete
 actor SQLSchemaProvider {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLSchemaProvider")
+    private static let maxCachedTables = 50
     // MARK: - Properties
 
     private var tables: [TableInfo] = []
     private var columnCache: [String: [ColumnInfo]] = [:]
     private var columnAccessOrder: [String] = []
-    private let maxCachedTables = 50
     private var isLoading = false
     private var lastLoadError: Error?
     private var lastRetryAttempt: Date?
@@ -146,7 +146,7 @@ actor SQLSchemaProvider {
     }
 
     private func evictIfNeeded() {
-        while columnAccessOrder.count > maxCachedTables {
+        while columnAccessOrder.count > Self.maxCachedTables {
             let evicted = columnAccessOrder.removeFirst()
             columnCache.removeValue(forKey: evicted)
         }
@@ -204,12 +204,20 @@ actor SQLSchemaProvider {
     // MARK: - Eager Column Loading
 
     private func startEagerColumnLoad() {
-        guard !tables.isEmpty else { return }
+        eagerColumnTask?.cancel()
+        eagerColumnTask = nil
+
+        let tableCount = tables.count
+        guard tableCount > 0 else { return }
+        guard tableCount <= Self.maxCachedTables else {
+            Self.logger.info(
+                "[schema] eager column load skipped tableCount=\(tableCount) limit=\(Self.maxCachedTables)"
+            )
+            return
+        }
         let source = metadataSource
         let driver = cachedDriver
         guard source != nil || driver != nil else { return }
-        eagerColumnTask?.cancel()
-        let tableCount = tables.count
         eagerColumnTask = Task(priority: .utility) {
             Self.logger.info("[schema] eager column load starting tableCount=\(tableCount)")
             do {
@@ -235,10 +243,14 @@ actor SQLSchemaProvider {
         for (tableName, columns) in allColumns {
             let key = tableName.lowercased()
             guard columnCache[key] == nil else { continue }
-            guard columnAccessOrder.count < maxCachedTables else { break }
+            guard columnAccessOrder.count < Self.maxCachedTables else { break }
             columnCache[key] = columns
             columnAccessOrder.append(key)
         }
+    }
+
+    func waitForEagerColumnLoad() async {
+        await eagerColumnTask?.value
     }
 
     /// Find table name from alias
