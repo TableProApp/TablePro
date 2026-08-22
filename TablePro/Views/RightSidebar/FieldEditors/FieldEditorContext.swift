@@ -56,4 +56,19 @@ internal struct FieldEditorContext {
             return "NULL"
         }
     }
+
+    /// Set NULL, Set DEFAULT and the SQL functions only make sense where an edit can be recorded.
+    /// The copy actions in the same menu are always available, which is why this is its own flag.
+    var canMutate: Bool {
+        !isReadOnly && allowsNullAndDefault
+    }
+
+    /// A text view has no placeholder of its own, and echoing a long stored value behind an
+    /// emptied editor would draw the whole value twice. Only the state placeholders belong there,
+    /// and nil where the stored value really is the empty string: a database client must not
+    /// report `''` as NULL.
+    var emptyStatePlaceholder: String? {
+        if hasMultipleValues { return String(localized: "Multiple values") }
+        return originalValue == nil ? "NULL" : nil
+    }
 }

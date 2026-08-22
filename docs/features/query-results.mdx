@@ -7,6 +7,11 @@ import RowCap from "/snippets/row-cap.mdx";
 
 Every statement you run gets its own result tab. The next run reuses an unpinned one rather than adding to the pile, so a tab survives only as long as you leave it unpinned.
 
+<Frame caption="Result tabs above the grid">
+  <img className="block dark:hidden" src="/images/query-results.png" alt="Query result tabs" />
+  <img className="hidden dark:block" src="/images/query-results-dark.png" alt="Query result tabs" />
+</Frame>
+
 ## Naming
 
 A result is named after the table it came from. When there is no single table, the statement names itself, and a line comment written above the statement wins over the SQL:
@@ -36,11 +41,11 @@ The results panel expands itself when a query runs. The toolbar's trash button c
 
 ## The row cap
 
-A `SELECT` or `WITH` query with no `LIMIT`, `FETCH FIRST` or `TOP` of its own stops at the row cap. <RowCap />, and `EXPLAIN`, `SHOW`, writes and DDL are never capped.
+A `SELECT` or `WITH` query with no `LIMIT`, `FETCH FIRST` or `TOP` of its own stops at the row cap.
+
+<RowCap />
 
 When the cap trims a result the status bar reads **Showing N rows** and offers **Fetch All**, which extends the result in place. To skip the cap for one run, press `Cmd+Option+Enter` or choose **Execute Without Limit** from the Execute button's menu.
-
-The cap and its off switch are in [Settings > Data](/customization/data-settings#query-result-row-cap).
 
 ## Statements that return no rows
 

@@ -5,6 +5,7 @@
 //  Created by Ngo Quoc Dat on 31/3/26.
 //
 
+import AppKit
 import SwiftUI
 import TableProPluginKit
 
@@ -121,50 +122,14 @@ struct ConnectionAdvancedView: View {
 
 // MARK: - Startup Commands Editor
 
-struct StartupCommandsEditor: NSViewRepresentable {
+struct StartupCommandsEditor: View {
     @Binding var text: String
 
-    func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
-        guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
-
-        textView.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.isRichText = false
-        textView.string = text
-        textView.textContainerInset = NSSize(width: 4, height: 6)
-        textView.delegate = context.coordinator
-
-        scrollView.borderType = .bezelBorder
-        scrollView.hasVerticalScroller = true
-
-        return scrollView
-    }
-
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
-        if textView.string != text {
-            textView.string = text
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
-    }
-
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        private var text: Binding<String>
-
-        init(text: Binding<String>) {
-            self.text = text
-        }
-
-        func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            text.wrappedValue = textView.string
-        }
+    var body: some View {
+        TextValueEditor(
+            text: $text,
+            font: .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
+            borderType: .bezelBorder
+        )
     }
 }

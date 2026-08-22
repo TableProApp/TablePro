@@ -241,11 +241,24 @@ struct PluginCapabilityTests {
         #expect(decoded == original)
     }
 
-    @Test("decoding removed raw value 3 fails gracefully")
-    func decodingRemovedRawValueFails() {
-        let json = Data("3".utf8)
-        let decoded = try? JSONDecoder().decode(PluginCapability.self, from: json)
+    /// `PluginCapability` is a growing set, so a raw value that means nothing today can mean
+    /// something tomorrow: this asserted that 3 was undecodable and 3 is now `documentInspector`.
+    /// A value far outside the range keeps the property under test, which is that an unknown
+    /// capability decodes to nothing rather than to a neighbouring case.
+    @Test("decoding an unknown raw value fails gracefully")
+    func decodingUnknownRawValueFails() {
+        let decoded = try? JSONDecoder().decode(PluginCapability.self, from: Data("9999".utf8))
         #expect(decoded == nil)
+    }
+
+    @Test("every declared capability round-trips")
+    func declaredCapabilitiesRoundTrip() {
+        for capability in [
+            PluginCapability.databaseDriver, .exportFormat, .importFormat, .documentInspector,
+        ] {
+            let data = try? JSONEncoder().encode(capability)
+            #expect(data.flatMap { try? JSONDecoder().decode(PluginCapability.self, from: $0) } == capability)
+        }
     }
 }
 

@@ -342,6 +342,10 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHouseCapabilities.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCredentials.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseGeneratedColumnClassification.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHousePlugin.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+Http.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+Schema.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+TableOperations.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift

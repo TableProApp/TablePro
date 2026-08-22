@@ -7,10 +7,14 @@ import SwiftUI
 
 /// The field actions (Set NULL/DEFAULT/EMPTY, copy, SQL functions). Shared by the
 /// hover menu button and the field's context menu so both stay in sync.
+///
+/// A read-only field keeps the copy actions and loses the mutating ones. Hiding the whole menu
+/// left a value that is neither selectable nor copyable.
 internal struct FieldMenuContent: View {
     let value: String
     let columnType: ColumnType
     let sqlFunctions: [SQLFunctionProvider.SQLFunction]
+    let canMutate: Bool
     let isPendingNull: Bool
     let isPendingDefault: Bool
     let onSetNull: () -> Void
@@ -20,11 +24,13 @@ internal struct FieldMenuContent: View {
     let onClear: () -> Void
 
     var body: some View {
-        Button("Set NULL") { onSetNull() }
-        Button("Set DEFAULT") { onSetDefault() }
-        Button("Set EMPTY") { onSetEmpty() }
+        if canMutate {
+            Button("Set NULL") { onSetNull() }
+            Button("Set DEFAULT") { onSetDefault() }
+            Button("Set EMPTY") { onSetEmpty() }
 
-        Divider()
+            Divider()
+        }
 
         if columnType.isJsonType {
             Button("Pretty Print") {
@@ -46,17 +52,19 @@ internal struct FieldMenuContent: View {
             ClipboardService.shared.writeText(value)
         }
 
-        Divider()
-
-        Menu("SQL Functions") {
-            ForEach(sqlFunctions, id: \.expression) { function in
-                Button(function.label) { onSetFunction(function.expression) }
-            }
-        }
-
-        if isPendingNull || isPendingDefault {
+        if canMutate {
             Divider()
-            Button("Clear") { onClear() }
+
+            Menu("SQL Functions") {
+                ForEach(sqlFunctions, id: \.expression) { function in
+                    Button(function.label) { onSetFunction(function.expression) }
+                }
+            }
+
+            if isPendingNull || isPendingDefault {
+                Divider()
+                Button("Clear") { onClear() }
+            }
         }
     }
 }
@@ -65,6 +73,7 @@ internal struct FieldMenuView: View {
     let value: String
     let columnType: ColumnType
     let sqlFunctions: [SQLFunctionProvider.SQLFunction]
+    let canMutate: Bool
     let isPendingNull: Bool
     let isPendingDefault: Bool
     let onSetNull: () -> Void
@@ -79,6 +88,7 @@ internal struct FieldMenuView: View {
                 value: value,
                 columnType: columnType,
                 sqlFunctions: sqlFunctions,
+                canMutate: canMutate,
                 isPendingNull: isPendingNull,
                 isPendingDefault: isPendingDefault,
                 onSetNull: onSetNull,

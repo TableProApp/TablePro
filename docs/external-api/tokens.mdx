@@ -5,6 +5,11 @@ description: Token model, scopes, connection allowlists, expiry, revocation, and
 
 **Read Only** is where the **Generate Token** sheet starts, and it is the right level for a client that only reads. Move to **Read & Write** when an agent has to change data, and to **Full Access** only for `DROP` and `TRUNCATE`, which nothing below it can reach. The plaintext is shown once at creation and never again; what persists is a salted SHA-256 hash in the login keychain.
 
+<Frame caption="The MCP tab in Settings">
+  <img className="block dark:hidden" src="/images/mcp-tokens.png" alt="MCP tokens" />
+  <img className="hidden dark:block" src="/images/mcp-tokens-dark.png" alt="MCP tokens" />
+</Frame>
+
 ## Permission levels
 
 | Level | Scopes | What it can do |

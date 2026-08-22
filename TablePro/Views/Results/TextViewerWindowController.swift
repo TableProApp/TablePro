@@ -1,5 +1,5 @@
 //
-//  JSONViewerWindowController.swift
+//  TextViewerWindowController.swift
 //  TablePro
 //
 
@@ -7,42 +7,39 @@ import AppKit
 import SwiftUI
 
 @MainActor
-internal final class JSONViewerWindowController: ValueViewerWindowController {
-    @discardableResult
+internal final class TextViewerWindowController: ValueViewerWindowController {
     static func open(
         text: String?,
         columnName: String?,
         isEditable: Bool,
         onCommit: ((String) -> Void)?
-    ) -> JSONViewerWindowController {
+    ) {
         let title: String
         if let columnName {
-            title = String(format: String(localized: "JSON: %@"), columnName)
+            title = String(format: String(localized: "Text: %@"), columnName)
         } else {
-            title = String(localized: "JSON Viewer")
+            title = String(localized: "Text Viewer")
         }
 
-        let controller = JSONViewerWindowController()
+        let controller = TextViewerWindowController()
         controller.present(
-            identifier: "json-viewer",
+            identifier: "text-viewer",
             title: title,
-            autosaveName: "JSONViewerWindow"
+            autosaveName: "TextViewerWindow"
         ) { dismiss in
-            JSONViewerWindowContent(
+            TextViewerWindowContent(
                 initialValue: text,
                 isEditable: isEditable,
                 onCommit: onCommit,
                 onDismiss: dismiss
             )
         }
-        return controller
     }
 }
 
 // MARK: - Window Content
 
-private struct JSONViewerWindowContent: View {
-    let initialValue: String?
+private struct TextViewerWindowContent: View {
     let isEditable: Bool
     let onCommit: ((String) -> Void)?
     let onDismiss: (() -> Void)?
@@ -55,7 +52,6 @@ private struct JSONViewerWindowContent: View {
         onCommit: ((String) -> Void)?,
         onDismiss: (() -> Void)?
     ) {
-        self.initialValue = initialValue
         self.isEditable = isEditable
         self.onCommit = onCommit
         self.onDismiss = onDismiss
@@ -63,16 +59,16 @@ private struct JSONViewerWindowContent: View {
     }
 
     var body: some View {
-        JSONViewerView(
+        TextValueEditor(
             text: $text,
             isEditable: isEditable,
-            onDismiss: onDismiss,
-            onCommit: isEditable ? { newValue in
-                if newValue.isEmpty && initialValue == nil { return }
-                if newValue != JsonReindenter.normalize(initialValue ?? "") {
-                    onCommit?(newValue)
-                }
-            } : nil
+            font: .preferredFont(forTextStyle: .body),
+            textContainerInset: NSSize(width: 8, height: 10)
         )
+        .onChange(of: text) {
+            guard isEditable else { return }
+            onCommit?(text)
+        }
+        .onExitCommand { onDismiss?() }
     }
 }

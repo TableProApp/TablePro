@@ -28,6 +28,44 @@ def nav_pages(node, out, collecting=False):
         out.add(node)
 
 
+IMPORT = re.compile(r'^import\s+(\w+)\s+from\s+"(/snippets/[^"]+)"', re.M)
+CONTINUES = re.compile(r"^[,;:)]|^(and|or|but|so|then|which|while|with)\b")
+
+
+def check_snippets(path, raw, failures):
+    """A snippet may end a line, but the sentence may not carry on past it.
+
+    Snippets are block content: several sentences, sometimes a markdown link that wraps. Starting a
+    new sentence after one on the same line renders fine. Continuing the same sentence does not:
+    `features/query-results.mdx` shipped `<RowCap />, and ...`, which built green under
+    `mint validate` and returned HTTP 500 in production.
+    """
+    rel = path.relative_to(DOCS)
+    declared = {}
+    for name, source in IMPORT.findall(raw):
+        declared[name] = source
+        if not (DOCS / source.lstrip("/")).exists():
+            failures.append(f"{rel} imports {source}, which is not in docs/snippets")
+    if not declared:
+        return
+
+    used = "|".join(re.escape(n) for n in declared)
+    in_fence = False
+    for line_no, line in enumerate(raw.splitlines(), 1):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        for match in re.finditer(rf"<({used})\b[^>]*/>", line):
+            trailing = line[match.end():].strip()
+            if trailing and CONTINUES.match(trailing):
+                failures.append(
+                    f"{rel}:{line_no} carries the sentence on past <{match.group(1)} />; "
+                    f"a snippet is block content, so start a new sentence or a new line"
+                )
+
+
 def main() -> int:
     config = json.loads((DOCS / "docs.json").read_text())
     pages = set()
@@ -62,6 +100,7 @@ def main() -> int:
             continue
         rel = path.relative_to(DOCS)
         body = FENCE.sub("", path.read_text())
+        check_snippets(path, body, failures)
         for line_no, line in enumerate(body.splitlines(), 1):
             for target in LINK.findall(line):
                 page, _, anchor = target.partition("#")

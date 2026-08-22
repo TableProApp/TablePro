@@ -21,12 +21,11 @@
 #     TableOperationsPluginTests, 12 of these, is gone: every case asserted the deleted fallback and
 #     the thirteenth passed only because an absent driver returns nothing. Its coverage lives in
 #     TableProTests/Core/Database/TableOperationSQLBuilderTests.swift, against a stub driver.
-TableQueryBuilderFilteredQueryTests/filteredQueryExcludesDisabledFilter()
-TableQueryBuilderFilteredQueryTests/filteredQueryWithEnabledFilter()
-ClickHouseDialectTests/testFactoryFallbackWithoutPlugin()
-SQLStatementGeneratorPKRegressionTests/testClickHouseDeleteWithPK()
-DataChangeManagerClickHouseTests/alterTableUpdateCounted()
-DataChangeManagerClickHouseTests/clickhouseUpdateWithoutPrimaryKey()
+#
+#     The three ClickHouse cases are gone the same way: ALTER TABLE ... UPDATE and DELETE WHERE are
+#     written only by ClickHousePlugin.generateStatements, and the app's SQLStatementGenerator emits
+#     the plain form for every engine. Asserted at the layer that owns them in
+#     TableProTests/Core/ClickHouse/ClickHouseDMLStatementTests.swift.
 SQLCompletionProviderTests/testCommaFromScopesColumnsToAllTables()
 SQLCompletionProviderTests/testMySQLProviderTypes()
 SQLCompletionProviderTests/testProviderAcceptsDatabaseType()
@@ -36,13 +35,16 @@ SQLCompletionProviderTests/testProviderAcceptsDatabaseType()
 #     empty registry produces: with nothing registered there is no duplicate to reject.
 ValidateDriverDescriptorTests/rejectsDuplicateAdditionalTypeId()
 ValidateDriverDescriptorTests/rejectsDuplicatePrimaryTypeId()
-PluginCapabilityTests/decodingRemovedRawValueFails()
 
 # --- Stale fixture: the model gained a field the fixture JSON does not carry, so decoding throws
 #     before the assertion is reached.
-DatabaseConnectionExternalAccessTests/decodeJSONWithExplicitValue()
-DatabaseConnectionExternalAccessTests/decodeLegacyJSONDefaultsToReadOnly()
-DataGridSettingsDefaultSortDecoderTests/missingKeyFallsBackToNone()
+#
+#     The three that were here are gone, and they were not all the same. SSHConfiguration required
+#     agentSocketPath despite the property having a default, so any stored config written before
+#     that field existed threw keyNotFound and took the whole connection with it; the decoder now
+#     treats every defaulted key as optional, the way its siblings already did. The row-height one
+#     was the other way round: DataGridRowHeight has been Int-backed since it was introduced, so the
+#     fixture's "rowHeight": "normal" described JSON that never shipped.
 
 # --- Asserts a string the app no longer produces. The behaviour changed on purpose; the expected
 #     value did not follow.

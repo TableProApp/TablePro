@@ -10,10 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Database favorites can be tagged by environment, filtered in the Favorites sidebar, opened directly, and synced through iCloud. (#1553)
+- Open in Window on a row inspector text field, for reading or editing a long value on a bigger surface.
 
 ### Fixed
 
+- A saved connection whose SSH settings were written before the agent socket field existed now loads instead of disappearing.
 - Switch Connection and Open Database now open on a narrow window, and after you remove their toolbar button, instead of doing nothing at all.
+- A large text value in the row inspector now scrolls in a resizable text view instead of being clipped, and stays selectable and copyable when the row is read-only.
+- The inspector picks its multi-line editor from the value, so a large value in `VARCHAR(MAX)`, `NCLOB` or ClickHouse's `Nullable(String)` is no longer stuck on one line.
+- Right-clicking a read-only inspector field now offers Copy Value instead of an empty menu.
 
 ## [0.67.1] - 2026-08-22
 
