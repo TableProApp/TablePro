@@ -13,6 +13,14 @@
 # Burn this list down: fix a case, delete its line, and it rejoins the gate.
 
 # --- Asserts a fallback that no longer exists.
+#
+#     The one case left here is not a fallback problem. Comma-separated FROM is supported on
+#     purpose: SQLContextAnalyzer.fromListRegex captures the list and its comment says every listed
+#     table stays in scope for column completion. The provider also caps a result set at
+#     defaultMaxSuggestions, 20, and an unfiltered WHERE fills that with keywords before a column
+#     reaches it, so the case now asks for each column behind its own prefix and still fails. What
+#     is left to check is the test's own schema setup, MockDatabaseDriver through
+#     SQLSchemaProvider.loadSchema, not the analyzer.
 #     TableOperationSQLBuilder delegates every statement to the connected plugin adapter and returns
 #     nothing when there is none: `adapterProvider()?.foreignKeyDisableStatements() ?? []`. The
 #     built-in DatabaseType switches these expect were deleted, so the empty result is correct and
@@ -27,10 +35,12 @@
 #     the plain form for every engine. Asserted at the layer that owns them in
 #     TableProTests/Core/ClickHouse/ClickHouseDMLStatementTests.swift.
 SQLCompletionProviderTests/testCommaFromScopesColumnsToAllTables()
-SQLCompletionProviderTests/testMySQLProviderTypes()
-SQLCompletionProviderTests/testProviderAcceptsDatabaseType()
 
 # --- Needs a driver actually registered in the host.
+#     Confirmed: validateDriverDescriptor checks `driverPlugins[typeId] != nil`, and that table is
+#     filled when a plugin loads rather than when it is discovered. Calling PluginManager.loadPlugins()
+#     from the test does not fill it either, so the bundles do not register in the xctest host and
+#     the duplicate check has nothing to collide with. A stub registration seam is what these need.
 #     Both duplicate-ID checks report "an error was expected but none was thrown", which is what an
 #     empty registry produces: with nothing registered there is no duplicate to reject.
 ValidateDriverDescriptorTests/rejectsDuplicateAdditionalTypeId()
@@ -85,11 +95,9 @@ SaveCompletionTests/silentLevel_pendingTruncates_clearsViaNormalPath()
 DataChangeManagerExtendedTests/discardChangesPreservesUndoRedoUnlikeClearChanges()
 DataChangeManagerExtendedTests/insertThenEditThenUndoRevertsCell()
 RowOperationsManagerTests/addNewRowUsesNilForNoDefaults()
-StructureGridDelegateAddRowTests/sqliteIndexes_deleteIsNoOp()
 StructureChangeManagerUndoTests/multipleUndos()
 StructureChangeManagerUndoTests/undoDeleteNewColumnReAdds()
 StructureChangeManagerUndoTests/undoTwoDeletesNoDuplicates()
-StructureGridDelegateAddRowTests/sqliteIndexes_isNoOp()
 
 # --- Environment-coupled: reads the login keychain or an app installed on the machine.
 KeychainHelperTests/writeOverwritesExistingValue()

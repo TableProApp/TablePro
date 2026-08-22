@@ -295,8 +295,16 @@ struct SQLCompletionProviderTests {
     // MARK: - P0: CF-1 - DatabaseType Threading
 
     @Test("Provider accepts databaseType parameter")
+    /// The data types come from the dialect, not from `databaseType`: the provider keeps a
+    /// `cachedDialect` and falls back to generic SQL when it has none. Built with a type but no
+    /// dialect, these asked a generic provider for engine-specific types, which is why they sat in
+    /// the quarantine file. The registry carries the real one, published by the bundled driver.
     func testProviderAcceptsDatabaseType() async {
-        let pgProvider = SQLCompletionProvider(schemaProvider: schemaProvider, databaseType: .postgresql)
+        let pgProvider = await SQLCompletionProvider(
+            schemaProvider: schemaProvider,
+            databaseType: .postgresql,
+            dialect: MainActor.run { PluginMetadataRegistry.shared.snapshot(forTypeId: DatabaseType.postgresql.pluginTypeId)?.editor.sqlDialect }
+        )
         // Use prefix "JSON" to filter past the 20-item limit so JSONB appears
         let text = "CREATE TABLE test (col JSON"
         let (items, _) = await pgProvider.getCompletions(text: text, cursorPosition: text.count)
@@ -306,8 +314,16 @@ struct SQLCompletionProviderTests {
     }
 
     @Test("MySQL provider shows MySQL-specific types")
+    /// The data types come from the dialect, not from `databaseType`: the provider keeps a
+    /// `cachedDialect` and falls back to generic SQL when it has none. Built with a type but no
+    /// dialect, these asked a generic provider for engine-specific types, which is why they sat in
+    /// the quarantine file. The registry carries the real one, published by the bundled driver.
     func testMySQLProviderTypes() async {
-        let mysqlProvider = SQLCompletionProvider(schemaProvider: schemaProvider, databaseType: .mysql)
+        let mysqlProvider = await SQLCompletionProvider(
+            schemaProvider: schemaProvider,
+            databaseType: .mysql,
+            dialect: MainActor.run { PluginMetadataRegistry.shared.snapshot(forTypeId: DatabaseType.mysql.pluginTypeId)?.editor.sqlDialect }
+        )
         let text = "CREATE TABLE test (col "
         let (items, _) = await mysqlProvider.getCompletions(text: text, cursorPosition: text.count)
         let hasEnum = items.contains { $0.label == "ENUM" }
@@ -1188,11 +1204,21 @@ struct SQLCompletionProviderTests {
         ]
         await schemaProvider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
 
-        let text = "SELECT * FROM users u, orders o WHERE "
-        let (items, context) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        /// Each column is asked for behind its own prefix. The provider caps a result set at
+        /// `defaultMaxSuggestions`, 20, and an unfiltered WHERE fills that with keywords before any
+        /// column reaches it, so the unprefixed form asserted scoping it could not observe. The
+        /// JSONB case above already works this way.
+        let base = "SELECT * FROM users u, orders o WHERE "
 
+        let (userItems, context) = await provider.getCompletions(
+            text: base + "user_", cursorPosition: (base + "user_").count
+        )
         #expect(context.clauseType == .where_)
-        #expect(items.contains { $0.kind == .column && $0.label == "user_name" })
-        #expect(items.contains { $0.kind == .column && $0.label == "order_total" })
+        #expect(userItems.contains { $0.kind == .column && $0.label == "user_name" })
+
+        let (orderItems, _) = await provider.getCompletions(
+            text: base + "order_", cursorPosition: (base + "order_").count
+        )
+        #expect(orderItems.contains { $0.kind == .column && $0.label == "order_total" })
     }
 }
