@@ -55,7 +55,7 @@ Right-click a foreign key and choose **Open [table]** to jump to the referenced 
 
 ## Saving changes
 
-<StagedUntilSave what="Column, index and key changes" />; see [Change Tracking](/features/change-tracking) for the queue, undo (`Cmd+Z`) and redo (`Cmd+Shift+Z`). A save runs on the tab's own connection, database, and schema, the ones it was opened on, and never moves the sidebar or the toolbar.
+<StagedUntilSave what="Column, index and key changes" /> [Change Tracking](/features/change-tracking) covers the queue, undo (`Cmd+Z`) and redo (`Cmd+Shift+Z`). A save runs on the tab's own connection, database, and schema, the ones it was opened on, and never moves the sidebar or the toolbar.
 
 - **Save Changes** (`Cmd+S` or the toolbar checkmark) applies the queue. Changes that can lose data, dropping a column, changing a type, adding NOT NULL, changing the primary key, first show a confirmation listing each one.
 - **Preview SQL** (`Cmd+Shift+P`) shows the generated statements without executing them.

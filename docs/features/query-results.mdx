@@ -36,11 +36,11 @@ The results panel expands itself when a query runs. The toolbar's trash button c
 
 ## The row cap
 
-A `SELECT` or `WITH` query with no `LIMIT`, `FETCH FIRST` or `TOP` of its own stops at the row cap. <RowCap />, and `EXPLAIN`, `SHOW`, writes and DDL are never capped.
+A `SELECT` or `WITH` query with no `LIMIT`, `FETCH FIRST` or `TOP` of its own stops at the row cap.
+
+<RowCap />
 
 When the cap trims a result the status bar reads **Showing N rows** and offers **Fetch All**, which extends the result in place. To skip the cap for one run, press `Cmd+Option+Enter` or choose **Execute Without Limit** from the Execute button's menu.
-
-The cap and its off switch are in [Settings > Data](/customization/data-settings#query-result-row-cap).
 
 ## Statements that return no rows
 
