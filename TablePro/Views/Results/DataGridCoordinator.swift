@@ -162,20 +162,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     /// The single way to reach a column, for Find, cell navigation and the inline editor alike.
-    ///
-    /// A column the window left out has no frame at all, so `scrollColumnToVisible` scrolls to the
-    /// document origin instead of the column and the editor's own empty-frame guard opens nothing.
-    /// Mounting first gives it one. Only a mount that had to widen the window drops it afterwards,
-    /// so stepping column by column keeps the resolver's hysteresis instead of re-windowing on
-    /// every keystroke.
     func scrollColumnToVisible(tableColumnIndex index: Int) {
         guard let tableView, index >= 0, index < tableView.numberOfColumns else { return }
-        let widened = columnPool.mountColumn(tableView.tableColumns[index], in: tableView)
         tableView.scrollColumnToVisible(index)
-        if widened {
-            columnPool.invalidateColumnWindow()
-        }
-        updateColumnWindow()
     }
 
     /// The columns the user is looking at, which is every presented column and not merely the
@@ -388,6 +377,34 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     let cellFactory = DataGridCellFactory()
     let cellRegistry: DataGridCellRegistry
     let columnPool = DataGridColumnPool()
+    /// Draws every data cell in the grid. One renderer for the whole table, because its only state
+    /// is a cache of laid-out lines and every row draws the same values as it scrolls.
+    let cellRenderer = DataGridCellRenderer()
+    /// The cell an overlay editor or viewer is open over, which draws no text of its own behind it.
+    var overlayCell: CellPosition? {
+        didSet {
+            guard overlayCell != oldValue else { return }
+            for position in [oldValue, overlayCell].compactMap({ $0 }) {
+                redrawCell(row: position.row, columnIndex: position.column)
+            }
+        }
+    }
+
+    /// Repaints every drawn cell on screen, for a change that moves all of them at once.
+    func redrawVisibleCells() {
+        guard let tableView else { return }
+        tableView.enumerateAvailableRowViews { rowView, _ in
+            (rowView as? DataGridRowView)?.redrawCells()
+        }
+    }
+
+    /// Repaints one drawn cell, which is what a mounted cell got from `setNeedsDisplay` on itself.
+    func redrawCell(row: Int, columnIndex: Int) {
+        guard let tableView,
+              let rowView = tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView,
+              let position = tableColumnIndex(for: columnIndex) else { return }
+        rowView.redrawCell(atTableColumnIndex: position)
+    }
     let selectionController = GridSelectionController()
     var overlayEditor: CellOverlayEditor?
     var overlayViewer: CellOverlayViewer?
@@ -842,36 +859,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 self?.schedulePrewarmResume()
             }
         }
-        scrollView.contentView.postsBoundsChangedNotifications = true
-        let bounds = NotificationCenter.default.addObserver(
-            forName: NSView.boundsDidChangeNotification,
-            object: scrollView.contentView,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.updateColumnWindow()
-            }
-        }
-        // A bounds change is scrolling; a frame change is the viewport resizing. Widening the
-        // window exposes area the window never covered, and only this fires for that.
-        scrollView.contentView.postsFrameChangedNotifications = true
-        let frame = NotificationCenter.default.addObserver(
-            forName: NSView.frameDidChangeNotification,
-            object: scrollView.contentView,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.updateColumnWindow()
-            }
-        }
-        scrollObservers = [start, end, bounds, frame]
-    }
-
-    /// Re-mounts the columns the viewport can now reach. The resolver keeps the range stable while
-    /// the viewport stays inside its margin, so most scroll frames return without touching a column.
-    func updateColumnWindow() {
-        guard let tableView, !isRebuildingColumns else { return }
-        columnPool.applyColumnWindow(in: tableView)
+        scrollObservers = [start, end]
     }
 
     private func detachScrollObservers() {
@@ -980,7 +968,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             for row in rowSet {
                 visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
             }
-            tableView.reloadData(forRowIndexes: rowSet, columnIndexes: colSet)
+            redrawCells(rows: rowSet, tableColumnIndexes: colSet)
         case .rowsInserted(let indices):
             guard !indices.isEmpty else { return }
             overlayEditor?.dismiss(commit: false)
@@ -1168,7 +1156,24 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         let visibleRows = IndexSet(
             integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)
         )
-        tableView.reloadData(forRowIndexes: visibleRows, columnIndexes: changedTableColumnIndices)
+        redrawCells(rows: visibleRows, tableColumnIndexes: changedTableColumnIndices)
+    }
+
+    /// Repaints a set of drawn cells.
+    ///
+    /// `reloadData(forRowIndexes:columnIndexes:)` rebuilt a cell view per pair, which is how a
+    /// mounted cell was refreshed. A data cell has no view now, so that call reaches nothing and the
+    /// change never appears; the rows that draw the cells are asked instead.
+    func redrawCells(rows: IndexSet, tableColumnIndexes: IndexSet) {
+        guard let tableView else { return }
+        for row in rows {
+            guard let rowView = tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView else {
+                continue
+            }
+            for tableColumnIndex in tableColumnIndexes {
+                rowView.redrawCell(atTableColumnIndex: tableColumnIndex)
+            }
+        }
     }
 
     func flushPendingCellPresentationRefresh() {

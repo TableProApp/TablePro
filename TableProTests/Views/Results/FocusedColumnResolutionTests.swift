@@ -18,9 +18,9 @@ private final class FocusedColumnLayoutPersister: ColumnLayoutPersisting {
 }
 
 /// `focusedColumn` is a position in `tableView.tableColumns`, which carries the row-number column
-/// and a hidden spacer ahead of the data and which the reader can reorder. Preview FK Reference
-/// used to turn it into a data index by subtracting 1, so the menu command previewed the wrong
-/// column or silently nothing while the key-equivalent path on the same cell worked.
+/// ahead of the data and which the reader can reorder. Preview FK Reference used to turn it into a
+/// data index by subtracting 1, so the menu command previewed the wrong column or silently nothing
+/// while the key-equivalent path on the same cell worked.
 @Suite("Focused column resolution")
 @MainActor
 struct FocusedColumnResolutionTests {
@@ -90,10 +90,10 @@ struct FocusedColumnResolutionTests {
     }
 
     /// Moving the selection with the keyboard leaves no cell cursor behind, so the grid seeds one
-    /// from the selection change. Seeding it with a fixed position lands on the window's leading
-    /// spacer, and every command that reads the cursor then resolves it to no column at all: Return
-    /// opens no editor while the menu item still validates as enabled (#2381).
-    @Test("A selection with no cell cursor seeds one on a data column, not a spacer")
+    /// from the selection change. Seeding it with a fixed position landed on chrome, and every
+    /// command that reads the cursor then resolved it to no column at all: Return opened no editor
+    /// while the menu item still validated as enabled (#2381).
+    @Test("A selection with no cell cursor seeds one on a data column, not chrome")
     func selectionSeedsTheCursorOnADataColumn() throws {
         let coordinator = makeCoordinator(columns: ["id", "name"])
         let tableView = try #require(coordinator.tableView as? KeyHandlingTableView)
@@ -116,8 +116,8 @@ struct FocusedColumnResolutionTests {
     }
 
     /// The whole keystroke, not just the seed: with no cell cursor, a selection change seeds one and
-    /// Return has to open the editor on it. Seeded onto a spacer, every step past the seed resolved
-    /// to no column and the keystroke was swallowed (#2381).
+    /// Return has to open the editor on it. Seeded onto chrome, every step past the seed resolved to
+    /// no column and the keystroke was swallowed (#2381).
     @Test("Return opens the editor on the column a keyboard selection seeded")
     func returnOpensTheEditorOnTheSeededColumn() throws {
         let coordinator = makeCoordinator(columns: ["id", "name"])
@@ -142,15 +142,19 @@ struct FocusedColumnResolutionTests {
         #expect(coordinator.overlayEditor != nil)
     }
 
-    @Test("A data column does not sit one place after its data index")
-    func dataColumnsAreNotOffsetByOne() throws {
+    /// Resolution goes through the column's own identifier. Subtracting a fixed offset from the
+    /// position happens to agree while the row-number column is the only chrome, and stops agreeing
+    /// the moment the reader reorders a column or the grid grows another chrome column.
+    @Test("A data column resolves by identity, not by its distance from the start")
+    func dataColumnsResolveByIdentity() throws {
         let grid = makeGrid(columns: ["id", "name", "customer_id"])
         let tableColumn = try #require(tableColumnIndex(of: "customer_id", in: grid))
 
-        let resolved = DataGridView.dataColumnIndex(for: tableColumn, in: grid.tableView, schema: grid.schema)
+        #expect(DataGridView.dataColumnIndex(for: tableColumn, in: grid.tableView, schema: grid.schema) == 2)
 
-        #expect(resolved == 2)
-        #expect(tableColumn - 1 != resolved, "the subtract-one mapping is what shipped broken")
+        grid.tableView.moveColumn(tableColumn, toColumn: 1)
+        let moved = try #require(tableColumnIndex(of: "customer_id", in: grid))
+        #expect(DataGridView.dataColumnIndex(for: moved, in: grid.tableView, schema: grid.schema) == 2)
     }
 
     @Test("Every data column resolves back to its own index")
@@ -177,9 +181,9 @@ struct FocusedColumnResolutionTests {
         #expect(DataGridView.dataColumnIndex(for: after, in: grid.tableView, schema: grid.schema) == 2)
     }
 
-    /// The row-number column and the window's two spacers all sit in `tableColumns`, and one spacer
-    /// sits ahead of the first data column, so a fixed position names chrome rather than data.
-    @Test("Neither the row-number column nor the window's spacers are data columns")
+    /// The row-number column sits in `tableColumns` too, so a fixed position names chrome rather
+    /// than data.
+    @Test("The row-number column is not a data column")
     func chromeColumnsAreNotData() {
         let grid = makeGrid(columns: ["id", "name"])
 
@@ -187,7 +191,6 @@ struct FocusedColumnResolutionTests {
             DataGridView.dataColumnIndex(for: $0, in: grid.tableView, schema: grid.schema) == nil
         }
 
-        #expect(chrome.contains(0))
-        #expect(chrome.count == 3)
+        #expect(chrome == [0])
     }
 }

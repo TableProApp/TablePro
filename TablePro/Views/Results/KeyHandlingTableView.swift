@@ -77,7 +77,7 @@ final class KeyHandlingTableView: NSTableView {
         let validRows = pendingRows.filteredIndexSet { $0 < numberOfRows }
         let validColumns = pendingColumns.filteredIndexSet { $0 < numberOfColumns }
         guard !validRows.isEmpty, !validColumns.isEmpty else { return }
-        reloadData(forRowIndexes: validRows, columnIndexes: validColumns)
+        coordinator?.redrawCells(rows: validRows, tableColumnIndexes: validColumns)
     }
 
     var focusedRow: Int {
@@ -497,13 +497,29 @@ final class KeyHandlingTableView: NSTableView {
     /// cell the grid's own cursor is on, so the cursor was invisible to it. The selected-cells
     /// override is clamped to the visible rows: AppKit will happily ask for every cell in a
     /// million-row selection otherwise.
-    /// The cursor moved, so assistive technology is told to re-read where focus now is. The
-    /// element itself stays the table: `NSTableView`'s own focused-element resolution already
-    /// walks to the cell, and overriding it in Swift is not available on this type.
+    /// The cursor moved, so assistive technology is told to re-read where focus now is.
+    ///
+    /// A cell is drawn rather than mounted, so the element comes from the row's own accessibility
+    /// children rather than from a cell view.
     internal func postCellCursorMoved() {
         guard selectedRow >= 0, presentsDataColumn(at: focusedColumn) else { return }
-        guard let cell = view(atColumn: focusedColumn, row: selectedRow, makeIfNecessary: false) else { return }
-        NSAccessibility.post(element: cell, notification: .focusedUIElementChanged)
+        guard let element = accessibilityCellElement(row: selectedRow, tableColumnIndex: focusedColumn) else { return }
+        NSAccessibility.post(element: element, notification: .focusedUIElementChanged)
+    }
+
+    /// The accessibility element standing for one drawn cell.
+    private func accessibilityCellElement(row: Int, tableColumnIndex: Int) -> NSAccessibilityElement? {
+        guard let coordinator,
+              tableColumnIndex >= 0, tableColumnIndex < tableColumns.count,
+              let dataColumn = coordinator.dataColumnIndex(from: tableColumns[tableColumnIndex].identifier),
+              let rowView = rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView else { return nil }
+        return rowView.accessibilityCell(forDataColumn: dataColumn)
+    }
+
+    /// VoiceOver's table navigation asks for a cell by coordinate, which AppKit answered from the
+    /// cell views. It now comes from the row that draws them.
+    override func accessibilityCell(forColumn column: Int, row: Int) -> Any? {
+        accessibilityCellElement(row: row, tableColumnIndex: column) ?? super.accessibilityCell(forColumn: column, row: row)
     }
 
     override func accessibilitySelectedCells() -> [Any]? {
@@ -516,8 +532,9 @@ final class KeyHandlingTableView: NSTableView {
         for rectangle in controller.selection.rectangles {
             for row in rectangle.rows where NSLocationInRange(row, visible) {
                 for column in rectangle.columns {
-                    guard let cell = view(atColumn: column, row: row, makeIfNecessary: false) else { continue }
-                    cells.append(cell)
+                    guard let position = coordinator?.tableColumnIndex(for: column),
+                          let element = accessibilityCellElement(row: row, tableColumnIndex: position) else { continue }
+                    cells.append(element)
                 }
             }
         }

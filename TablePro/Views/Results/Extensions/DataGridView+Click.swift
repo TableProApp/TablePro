@@ -12,7 +12,9 @@ extension TableViewCoordinator {
 
     func handleCellInteraction(row: Int, tableColumn: Int, columnIndex: Int, tableView: NSTableView) {
         guard let context = makeCellContext(row: row, columnIndex: columnIndex) else { return }
-        guard tableView.view(atColumn: tableColumn, row: row, makeIfNecessary: false) != nil else { return }
+        // A data cell is drawn rather than mounted, so the row being on screen is what says the
+        // interaction has somewhere to land. Asking for a cell view here always answered nil.
+        guard tableView.rowView(atRow: row, makeIfNecessary: false) != nil else { return }
 
         switch CellInteractionResolver().resolve(context) {
         case .blocked:
