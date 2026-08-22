@@ -115,6 +115,33 @@ struct FocusedColumnResolutionTests {
         )
     }
 
+    /// The whole keystroke, not just the seed: with no cell cursor, a selection change seeds one and
+    /// Return has to open the editor on it. Seeded onto a spacer, every step past the seed resolved
+    /// to no column and the keystroke was swallowed (#2381).
+    @Test("Return opens the editor on the column a keyboard selection seeded")
+    func returnOpensTheEditorOnTheSeededColumn() throws {
+        let coordinator = makeCoordinator(columns: ["id", "name"])
+        let tableView = try #require(coordinator.tableView as? KeyHandlingTableView)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = tableView
+        tableView.layoutSubtreeIfNeeded()
+        tableView.focusedRow = -1
+        tableView.focusedColumn = -1
+
+        tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        coordinator.tableViewSelectionDidChange(
+            Notification(name: NSTableView.selectionDidChangeNotification, object: tableView)
+        )
+        tableView.insertNewline(nil)
+
+        #expect(coordinator.overlayEditor != nil)
+    }
+
     @Test("A data column does not sit one place after its data index")
     func dataColumnsAreNotOffsetByOne() throws {
         let grid = makeGrid(columns: ["id", "name", "customer_id"])

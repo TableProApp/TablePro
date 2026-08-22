@@ -127,8 +127,7 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        let column = tableColumns[clickedColumn]
-        let isDataColumn = column.identifier != ColumnIdentitySchema.rowNumberIdentifier
+        let isDataColumn = presentsDataColumn(at: clickedColumn)
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
         if event.clickCount >= 2 {
