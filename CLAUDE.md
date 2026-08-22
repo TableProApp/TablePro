@@ -305,6 +305,8 @@ These are **non-negotiable**, never skip them:
     - Settings changes → `docs/customization/settings.mdx`
     - Database driver changes → `docs/databases/*.mdx`
 
+    **`docs/STYLE.md` is the spec for how a page is written, and it is binding.** Read it before writing, not after. Then run `.claude/skills/fix-issue/scripts/verify.sh docs`, which runs the two checks that actually read `docs/`. The `agent docs:` line in `verify.sh lint` is a different check over `CLAUDE.md` and `.claude/`; it never opens `docs/`. `.claude/rules/docs-authoring.md` lists the STYLE.md rules no script enforces, each with the defect that produced it.
+
 4. **Tests**: Every change with testable behavior must include or update unit/function tests. UI and user-flow changes should add or update `TableProUITests` UI automation where the flow runs deterministically; if it can't, note why in the PR description. When tests fail, fix the source code, never adjust tests to match incorrect output. Tests define expected behavior.
 
 5. **Lint after changes**: Run `swiftlint lint --strict` to verify compliance. `.swiftlint.yml` sets `included: [TablePro]`, so a bare run never sees `Plugins/`, `Packages/`, `LocalPackages/` or the test targets. Pass those paths explicitly when your change is outside the app target, or the run passes while your code is broken.
