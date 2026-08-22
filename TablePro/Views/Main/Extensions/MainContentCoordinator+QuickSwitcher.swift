@@ -83,6 +83,10 @@ extension MainContentCoordinator {
                 await switchSchema(to: item.name)
             }
 
+        case .procedure, .function, .trigger:
+            guard let objectRef = item.objectRef else { return }
+            showObjectSource(objectRef)
+
         case .savedQuery:
             loadQueryIntoEditor(
                 item.payload ?? item.name,

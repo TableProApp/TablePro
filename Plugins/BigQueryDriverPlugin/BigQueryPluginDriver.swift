@@ -27,7 +27,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     private var _columnTypeCache: [String: [String]] = [:]
     private var _queryTimeoutSeconds: Int = 300
 
-    private var connection: BigQueryConnection? {
+    var connection: BigQueryConnection? {
         lock.withLock { _connection }
     }
 

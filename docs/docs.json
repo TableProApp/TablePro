@@ -201,6 +201,7 @@
             "icon": "sitemap",
             "pages": [
               "features/table-structure",
+              "features/routines-triggers",
               "features/table-operations",
               "features/er-diagram",
               "features/explain-visualization",

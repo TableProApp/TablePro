@@ -52,7 +52,7 @@ extension DatabaseTreeOutlineCoordinator {
             return redisChildren(of: nil)
         case .redisNode(let redisNode):
             return redisChildren(of: redisNode)
-        case .recentTable, .routine, .status:
+        case .recentTable, .routine, .trigger, .status:
             return []
         }
     }
@@ -142,32 +142,52 @@ extension DatabaseTreeOutlineCoordinator {
         let itemCounts = SidebarObjectKind.allCases.reduce(into: [SidebarObjectKind: Int]()) {
             $0[$1] = flatItemCount(for: $1)
         }
-        return SidebarObjectKind.visible(itemCounts: itemCounts, includingEmptyTables: true)
+        return SidebarObjectKind.visible(
+            itemCounts: itemCounts,
+            declaredKinds: declaredObjectKinds,
+            includingEmptyTables: true
+        )
+    }
+
+    /// What the engine says it has, so a database that genuinely holds no procedures still shows a
+    /// Procedures section saying so, instead of looking like an engine that never implemented the
+    /// fetch. It only ever adds a section; a kind with rows is listed whatever this returns.
+    internal var declaredObjectKinds: Set<SidebarObjectKind> {
+        databaseType.declaredObjectKinds
     }
 
     internal func flatItemCount(for kind: SidebarObjectKind) -> Int {
         guard let viewModel else { return 0 }
-        if kind.isRoutine {
+        switch kind.category {
+        case .table:
+            return viewModel.filteredTables(of: kind, from: schemaService.tables(for: connectionId)).count
+        case .routine:
             return viewModel.filteredRoutines(of: kind, from: schemaService.routines(for: connectionId)).count
+        case .trigger:
+            return viewModel.filteredTriggers(from: schemaService.triggers(for: connectionId)).count
         }
-        return viewModel.filteredTables(of: kind, from: schemaService.tables(for: connectionId)).count
     }
 
     private func flatObjectNodes(for kind: SidebarObjectKind) -> [DatabaseTreeNode] {
         guard let viewModel else { return [] }
         let database = browsingDatabase
-        if kind.isRoutine {
-            return viewModel.filteredRoutines(of: kind, from: schemaService.routines(for: connectionId))
-                .map { routine in
-                    let ref = DatabaseTreeRoutineRef(database: database, schema: routine.schema, routine: routine)
-                    return node(id: DatabaseTreeNode.routineId(ref), kind: .routine(ref))
+        switch kind.category {
+        case .table:
+            return viewModel.filteredTables(of: kind, from: schemaService.tables(for: connectionId))
+                .map { table in
+                    let ref = DatabaseTreeTableRef(database: database, schema: table.schema, table: table)
+                    return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
+                }
+        case .routine:
+            let routines = viewModel.filteredRoutines(of: kind, from: schemaService.routines(for: connectionId))
+            return routineNodes(routines, database: database, schema: { $0.schema })
+        case .trigger:
+            return viewModel.filteredTriggers(from: schemaService.triggers(for: connectionId))
+                .map { trigger in
+                    let ref = DatabaseTreeTriggerRef(database: database, schema: trigger.schema, trigger: trigger)
+                    return node(id: DatabaseTreeNode.triggerId(ref), kind: .trigger(ref))
                 }
         }
-        return viewModel.filteredTables(of: kind, from: schemaService.tables(for: connectionId))
-            .map { table in
-                let ref = DatabaseTreeTableRef(database: database, schema: table.schema, table: table)
-                return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
-            }
     }
 
     private func hierarchicalRootNodes() -> [DatabaseTreeNode] {
@@ -293,6 +313,7 @@ extension DatabaseTreeOutlineCoordinator {
         let buckets = DatabaseTreeFilter.objectBuckets(
             tables: service.tables(connectionId: connectionId, database: database, schema: schema),
             routines: service.routines(connectionId: connectionId, database: database, schema: schema),
+            triggers: service.triggers(connectionId: connectionId, database: database, schema: schema),
             searchText: searchText
         )
         objectBucketsCache[key] = buckets
@@ -302,19 +323,24 @@ extension DatabaseTreeOutlineCoordinator {
     private func loadedObjectNodes(database: String, schema: String?, parentId: String) -> [DatabaseTreeNode] {
         let buckets = objectBuckets(database: database, schema: schema)
         let routinesState = service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)
+        let triggersState = service.triggersLoadState(connectionId: connectionId, database: database, schema: schema)
+        let sideStates = [routinesState.erased, triggersState.erased]
+        let sideFailure = sideStates.compactMap(\.failureMessage).first
 
         guard !buckets.isEmpty else {
-            switch routinesState {
-            case .failed(let message): return [statusNode(parentId: parentId, status: .error(message))]
-            case .loaded: return [statusNode(parentId: parentId, status: .empty)]
-            case .idle, .loading: return [statusNode(parentId: parentId, status: .loading)]
+            if let sideFailure {
+                return [statusNode(parentId: parentId, status: .error(sideFailure))]
             }
+            return sideStates.allSatisfy(\.isLoaded)
+                ? [statusNode(parentId: parentId, status: .empty)]
+                : [statusNode(parentId: parentId, status: .loading)]
         }
 
         let groups = DatabaseTreeObjectGroupResolver.groups(
             database: database,
             schema: schema,
-            itemCounts: buckets.itemCounts
+            itemCounts: buckets.itemCounts,
+            declaredKinds: declaredObjectKinds
         )
         var nodes = groups.map { group in
             node(
@@ -322,34 +348,56 @@ extension DatabaseTreeOutlineCoordinator {
                 kind: .containerObjectKindSection(group)
             )
         }
-        if case .failed(let message) = routinesState {
-            nodes.append(statusNode(parentId: parentId, status: .error(message)))
+        if let sideFailure {
+            nodes.append(statusNode(parentId: parentId, status: .error(sideFailure)))
         }
         return nodes
     }
 
     private func containerObjectNodes(for group: DatabaseTreeObjectGroup) -> [DatabaseTreeNode] {
         let buckets = objectBuckets(database: group.database, schema: group.schema)
-        if group.kind.isRoutine {
+        let emptyId = DatabaseTreeNode.containerObjectKindSectionId(group)
+        switch group.kind.category {
+        case .table:
+            let tables = buckets.tables[group.kind] ?? []
+            guard !tables.isEmpty else {
+                return [statusNode(parentId: emptyId, status: .empty)]
+            }
+            return tables.map { table in
+                let ref = DatabaseTreeTableRef(database: group.database, schema: group.schema, table: table)
+                return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
+            }
+        case .routine:
             let routines = buckets.routines[group.kind] ?? []
             guard !routines.isEmpty else {
-                return [statusNode(parentId: DatabaseTreeNode.containerObjectKindSectionId(group), status: .empty)]
+                return [statusNode(parentId: emptyId, status: .empty)]
             }
-            return routines.map { routine in
-                let ref = DatabaseTreeRoutineRef(
-                    database: group.database, schema: group.schema, routine: routine
+            return routineNodes(routines, database: group.database, schema: { _ in group.schema })
+        case .trigger:
+            guard !buckets.triggers.isEmpty else {
+                return [statusNode(parentId: emptyId, status: .empty)]
+            }
+            return buckets.triggers.map { trigger in
+                let ref = DatabaseTreeTriggerRef(
+                    database: group.database, schema: group.schema, trigger: trigger
                 )
-                return node(id: DatabaseTreeNode.routineId(ref), kind: .routine(ref))
+                return node(id: DatabaseTreeNode.triggerId(ref), kind: .trigger(ref))
             }
         }
+    }
 
-        let tables = buckets.tables[group.kind] ?? []
-        guard !tables.isEmpty else {
-            return [statusNode(parentId: DatabaseTreeNode.containerObjectKindSectionId(group), status: .empty)]
-        }
-        return tables.map { table in
-            let ref = DatabaseTreeTableRef(database: group.database, schema: group.schema, table: table)
-            return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
+    /// The labels are decided over the whole section at once, because "is this name ambiguous"
+    /// is a question about the section and not about the routine.
+    private func routineNodes(
+        _ routines: [RoutineInfo],
+        database: String?,
+        schema: (RoutineInfo) -> String?
+    ) -> [DatabaseTreeNode] {
+        let labels = RoutineDisplayLabel.labels(for: routines)
+        return routines.map { routine in
+            let ref = DatabaseTreeRoutineRef(database: database, schema: schema(routine), routine: routine)
+            routineDisplayLabels[ref.id] = labels[routine.id] ?? routine.name
+            return node(id: DatabaseTreeNode.routineId(ref), kind: .routine(ref))
         }
     }
 

@@ -225,12 +225,35 @@ struct MainEditorContentView: View {
             usersRolesContent(tab: tab)
         case .insights:
             queryInsightsContent(tab: tab)
+        case .objectSource:
+            objectSourceContent(tab: tab)
+        }
+    }
+
+    // MARK: - Object Source Tab Content
+
+    @ViewBuilder
+    private func objectSourceContent(tab: QueryTab) -> some View {
+        if let objectRef = tab.display.objectRef {
+            ObjectSourceTabView(
+                connectionId: connection.id,
+                databaseType: connection.type,
+                objectRef: objectRef,
+                onOpenInEditor: { source in
+                    coordinator.openObjectSourceInEditor(objectRef, source: source)
+                }
+            )
+            .id(objectRef)
+        } else {
+            ContentUnavailableView(
+                String(localized: "No Object"),
+                systemImage: "questionmark.square.dashed"
+            )
         }
     }
 
     // MARK: - Query Insights Tab Content
 
-    @ViewBuilder
     private func queryInsightsContent(tab: QueryTab) -> some View {
         Group {
             if let vm = queryInsightsViewModels[tab.id] {

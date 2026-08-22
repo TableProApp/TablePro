@@ -758,53 +758,47 @@ final class MainContentCoordinator {
         pruneStaleSidebarState()
     }
 
-    func refreshProcedures() async {
+    func refreshRoutines() async {
         try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
-            _ = await services.schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
+            _ = await services.schemaService.reloadRoutines(connectionId: connectionId, driver: driver)
         }
     }
 
-    func refreshFunctions() async {
+    func refreshTriggers() async {
+        guard connection.type.supportsDatabaseTriggerBrowse else { return }
         try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
-            _ = await services.schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
+            _ = await services.schemaService.reloadTriggers(connectionId: connectionId, driver: driver)
         }
     }
 
-    func showRoutineDDL(_ routine: RoutineInfo) {
-        guard let adapter = services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter else {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Cannot Show DDL"),
-                message: String(localized: "This driver does not expose routine DDL."),
-                window: nil
-            )
-            return
-        }
-        Task { [connectionId = connection.id, routine] in
-            do {
-                let ddl = try await adapter.fetchRoutineDDL(routine: routine)
-                let titleFormat: String = routine.kind == .procedure
-                    ? String(localized: "Procedure: %@")
-                    : String(localized: "Function: %@")
-                let payload = EditorTabPayload(
-                    connectionId: connectionId,
-                    tabType: .query,
-                    initialQuery: ddl,
-                    skipAutoExecute: true,
-                    tabTitle: String(format: titleFormat, routine.name)
-                )
-                await MainActor.run {
-                    WindowManager.shared.openTab(payload: payload)
-                }
-            } catch {
-                await MainActor.run {
-                    AlertHelper.showErrorSheet(
-                        title: String(localized: "Failed to Fetch DDL"),
-                        message: error.localizedDescription,
-                        window: nil
-                    )
-                }
-            }
-        }
+    /// Opens the viewer rather than fetching here. Inspecting an object should not put its source
+    /// into an editable query buffer, where the next Cmd+Return runs it, and the viewer refetches
+    /// on its own so a restored tab shows the current definition instead of a stale one.
+    func showObjectSource(_ objectRef: DatabaseObjectRef) {
+        let resolved = objectRef.resolvingDatabase(browseDatabaseName)
+        let payload = EditorTabPayload(
+            connectionId: connectionId,
+            tabType: .objectSource,
+            databaseName: resolved.database,
+            schemaName: resolved.schema,
+            objectRef: resolved,
+            tabTitle: QueryTabManager.objectSourceTitle(for: resolved)
+        )
+        WindowManager.shared.openTab(payload: payload)
+    }
+
+    func openObjectSourceInEditor(_ objectRef: DatabaseObjectRef, source: String) {
+        let resolved = objectRef.resolvingDatabase(browseDatabaseName)
+        let payload = EditorTabPayload(
+            connectionId: connectionId,
+            tabType: .query,
+            databaseName: resolved.database,
+            schemaName: resolved.schema,
+            initialQuery: source,
+            skipAutoExecute: true,
+            tabTitle: resolved.displayIdentity
+        )
+        WindowManager.shared.openTab(payload: payload)
     }
 
     /// Drop sidebar state for tables that no longer exist. The selection lives in this

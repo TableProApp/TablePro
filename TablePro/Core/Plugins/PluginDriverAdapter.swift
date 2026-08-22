@@ -287,16 +287,19 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] {
-        let pluginTriggers = try await pluginDriver.fetchTriggers(table: table, schema: pluginDriver.currentSchema)
-        return pluginTriggers.map { trigger in
-            TriggerInfo(
-                name: trigger.name,
-                timing: trigger.timing,
-                event: trigger.event,
-                statement: trigger.statement,
-                enabled: trigger.enabled
-            )
-        }
+        let schema = pluginDriver.currentSchema
+        let pluginTriggers = try await pluginDriver.fetchTriggers(table: table, schema: schema)
+        return pluginTriggers.map { TriggerInfo($0.adopting(table: table, schema: schema)) }
+    }
+
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] {
+        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        let pluginTriggers = try await pluginDriver.fetchAllTriggers(schema: resolvedSchema)
+        return pluginTriggers.map { TriggerInfo($0.adopting(table: nil, schema: resolvedSchema)) }
+    }
+
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
+        try await pluginDriver.fetchTriggerDDL(trigger.pluginTrigger)
     }
 
     func createTriggerTemplate(table: String) -> String? {
@@ -390,59 +393,20 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.fetchExternalSchemaNames()
     }
 
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] {
-        guard let support = pluginDriver as? PluginProcedureFunctionSupport else { return [] }
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
         let resolvedSchema = schema ?? pluginDriver.currentSchema
         do {
-            let pluginRoutines = try await support.fetchProcedures(schema: resolvedSchema)
-            return pluginRoutines.map { routine in
-                RoutineInfo(
-                    name: routine.name,
-                    schema: resolvedSchema,
-                    kind: .procedure,
-                    signature: routine.returnType
-                )
-            }
+            let pluginRoutines = try await pluginDriver.fetchRoutines(schema: resolvedSchema)
+            return pluginRoutines.map { RoutineInfo($0.adopting(kind: $0.kind, schema: resolvedSchema)) }
+                .sorted { ($0.kind.rawValue, $0.name) < ($1.kind.rawValue, $1.name) }
         } catch {
-            Self.logger.warning("fetchProcedures failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("fetchRoutines failed: \(error.localizedDescription, privacy: .public)")
             throw error
         }
     }
 
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] {
-        guard let support = pluginDriver as? PluginProcedureFunctionSupport else { return [] }
-        let resolvedSchema = schema ?? pluginDriver.currentSchema
-        do {
-            let pluginRoutines = try await support.fetchFunctions(schema: resolvedSchema)
-            return pluginRoutines.map { routine in
-                RoutineInfo(
-                    name: routine.name,
-                    schema: resolvedSchema,
-                    kind: .function,
-                    signature: routine.returnType
-                )
-            }
-        } catch {
-            Self.logger.warning("fetchFunctions failed: \(error.localizedDescription, privacy: .public)")
-            throw error
-        }
-    }
-
-    func fetchRoutineDDL(routine: RoutineInfo) async throws -> String {
-        guard let support = pluginDriver as? PluginProcedureFunctionSupport else {
-            throw NSError(
-                domain: "PluginDriverAdapter",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: String(localized: "This driver does not expose routine DDL.")]
-            )
-        }
-        let resolvedSchema = routine.schema ?? pluginDriver.currentSchema
-        switch routine.kind {
-        case .procedure:
-            return try await support.fetchProcedureDDL(name: routine.name, schema: resolvedSchema)
-        case .function:
-            return try await support.fetchFunctionDDL(name: routine.name, schema: resolvedSchema)
-        }
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
+        try await pluginDriver.fetchRoutineDDL(routine.pluginRoutine)
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {

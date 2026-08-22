@@ -357,6 +357,8 @@ struct QuickSwitcherPanelContent: View {
             return item.isOpenInTab ? String(localized: "Switch to Tab") : String(localized: "Open")
         case .database, .schema:
             return String(localized: "Switch")
+        case .procedure, .function, .trigger:
+            return String(localized: "Show DDL")
         case .savedQuery, .queryHistory:
             return String(localized: "Load Query")
         }

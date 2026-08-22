@@ -34,12 +34,14 @@ final class DatabaseTreeMetadataService {
     private(set) var schemaList: [DatabaseKey: MetadataLoadState<[String]>] = [:]
     private(set) var tablesState: [ObjectsKey: MetadataLoadState<[TableInfo]>] = [:]
     private(set) var routinesState: [ObjectsKey: MetadataLoadState<[RoutineInfo]>] = [:]
+    private(set) var triggersState: [ObjectsKey: MetadataLoadState<[TriggerInfo]>] = [:]
     private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[TableInfo]>] = [:]
 
     @ObservationIgnored private let databaseDedup = OnceTask<UUID, [DatabaseMetadata]>()
     @ObservationIgnored private let schemaDedup = OnceTask<DatabaseKey, [String]>()
     @ObservationIgnored private let tablesDedup = OnceTask<ObjectsKey, [TableInfo]>()
     @ObservationIgnored private let routinesDedup = OnceTask<ObjectsKey, [RoutineInfo]>()
+    @ObservationIgnored private let triggersDedup = OnceTask<ObjectsKey, [TriggerInfo]>()
     @ObservationIgnored private let partitionsDedup = OnceTask<PartitionsKey, [TableInfo]>()
 
     @ObservationIgnored nonisolated private static let logger = Logger(
@@ -80,6 +82,14 @@ final class DatabaseTreeMetadataService {
 
     func routines(connectionId: UUID, database: String, schema: String?) -> [RoutineInfo] {
         routinesState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value ?? []
+    }
+
+    func triggersLoadState(connectionId: UUID, database: String, schema: String?) -> MetadataLoadState<[TriggerInfo]> {
+        triggersState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)] ?? .idle
+    }
+
+    func triggers(connectionId: UUID, database: String, schema: String?) -> [TriggerInfo] {
+        triggersState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value ?? []
     }
 
     func partitionsLoadState(
@@ -196,6 +206,26 @@ final class DatabaseTreeMetadataService {
         }
     }
 
+    func loadTriggers(connectionId: UUID, database: String, schema: String?) async {
+        guard isConnected(connectionId), browsesTriggers(connectionId) else { return }
+        let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        switch triggersState[key] ?? .idle {
+        case .loaded, .loading: return
+        case .idle, .failed: break
+        }
+        triggersState[key] = .loading
+        do {
+            triggersState[key] = .loaded(try await fetchTriggerList(key))
+        } catch is CancellationError {
+            if case .loading = triggersState[key] { triggersState[key] = .idle }
+        } catch {
+            triggersState[key] = .failed(error.localizedDescription)
+            Self.logger.warning(
+                "triggers load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
     private func fetchRoutineList(_ key: ObjectsKey) async throws -> [RoutineInfo] {
         let schema = key.schema
         return try await routinesDedup.execute(key: key) { [self] in
@@ -205,9 +235,21 @@ final class DatabaseTreeMetadataService {
                 schema: schema,
                 workload: .bulk
             ) { driver in
-                let procedures = try await driver.fetchProcedures(schema: schema)
-                let functions = try await driver.fetchFunctions(schema: schema)
-                return procedures + functions
+                try await driver.fetchRoutines(schema: schema)
+            }
+        }
+    }
+
+    private func fetchTriggerList(_ key: ObjectsKey) async throws -> [TriggerInfo] {
+        let schema = key.schema
+        return try await triggersDedup.execute(key: key) { [self] in
+            try await withDriver(
+                connectionId: key.connectionId,
+                database: key.database,
+                schema: schema,
+                workload: .bulk
+            ) { driver in
+                try await driver.fetchAllTriggers(schema: schema)
             }
         }
     }
@@ -286,12 +328,13 @@ final class DatabaseTreeMetadataService {
     func refreshObjects(connectionId: UUID, database: String, schema: String?) async {
         async let tables: Void = refreshTableObjects(connectionId: connectionId, database: database, schema: schema)
         async let routines: Void = refreshRoutineObjects(connectionId: connectionId, database: database, schema: schema)
-        _ = await (tables, routines)
+        async let triggers: Void = refreshTriggerObjects(connectionId: connectionId, database: database, schema: schema)
+        _ = await (tables, routines, triggers)
     }
 
-    /// Tables and routines are two separate fetches behind two separate states, so a row that
-    /// stands for one kind refreshes only the fetch its kind comes from. Partitions ride with the
-    /// tables, because a partition row is drawn as a child of the table it belongs to.
+    /// Tables, routines and triggers are three separate fetches behind three separate states, so a
+    /// row that stands for one kind refreshes only the fetch its kind comes from. Partitions ride
+    /// with the tables, because a partition row is drawn as a child of the table it belongs to.
     func refreshTableObjects(connectionId: UUID, database: String, schema: String?) async {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
         await tablesDedup.cancel(key: key)
@@ -304,6 +347,12 @@ final class DatabaseTreeMetadataService {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
         await routinesDedup.cancel(key: key)
         await refreshRoutines(key)
+    }
+
+    func refreshTriggerObjects(connectionId: UUID, database: String, schema: String?) async {
+        let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        await triggersDedup.cancel(key: key)
+        await refreshTriggers(key)
     }
 
     private func refreshTables(_ key: ObjectsKey) async {
@@ -336,6 +385,23 @@ final class DatabaseTreeMetadataService {
         } catch {
             Self.logger.warning(
                 "routines refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    private func refreshTriggers(_ key: ObjectsKey) async {
+        guard case .loaded = triggersState[key] ?? .idle else {
+            triggersState.removeValue(forKey: key)
+            await loadTriggers(connectionId: key.connectionId, database: key.database, schema: key.schema)
+            return
+        }
+        guard isConnected(key.connectionId) else { return }
+        do {
+            triggersState[key] = .loaded(try await fetchTriggerList(key))
+        } catch is CancellationError {
+        } catch {
+            Self.logger.warning(
+                "triggers refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
         }
     }
@@ -425,13 +491,17 @@ final class DatabaseTreeMetadataService {
         SchemaForeignKeyStore.shared.invalidate(connectionId: connectionId)
         let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }
         let objectKeys = Self.connectionObjectKeys(
-            tableKeys: tablesState.keys, routineKeys: routinesState.keys, connectionId: connectionId
+            tableKeys: tablesState.keys,
+            routineKeys: routinesState.keys,
+            triggerKeys: triggersState.keys,
+            connectionId: connectionId
         )
         await databaseDedup.cancel(key: connectionId)
         for key in schemaKeys { await schemaDedup.cancel(key: key) }
         for key in objectKeys {
             await tablesDedup.cancel(key: key)
             await routinesDedup.cancel(key: key)
+            await triggersDedup.cancel(key: key)
         }
         for key in connectionPartitionKeys(connectionId) {
             await partitionsDedup.cancel(key: key)
@@ -440,6 +510,7 @@ final class DatabaseTreeMetadataService {
         schemaList = schemaList.filter { $0.key.connectionId != connectionId }
         tablesState = tablesState.filter { $0.key.connectionId != connectionId }
         routinesState = routinesState.filter { $0.key.connectionId != connectionId }
+        triggersState = triggersState.filter { $0.key.connectionId != connectionId }
         partitionsState = partitionsState.filter { $0.key.connectionId != connectionId }
     }
 
@@ -448,7 +519,10 @@ final class DatabaseTreeMetadataService {
     private func resetPending(connectionId: UUID) async {
         let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }
         let objectKeys = Self.connectionObjectKeys(
-            tableKeys: tablesState.keys, routineKeys: routinesState.keys, connectionId: connectionId
+            tableKeys: tablesState.keys,
+            routineKeys: routinesState.keys,
+            triggerKeys: triggersState.keys,
+            connectionId: connectionId
         )
 
         if isPending(databaseList[connectionId]) {
@@ -460,6 +534,7 @@ final class DatabaseTreeMetadataService {
         for key in objectKeys {
             if isPending(tablesState[key]) { await tablesDedup.cancel(key: key) }
             if isPending(routinesState[key]) { await routinesDedup.cancel(key: key) }
+            if isPending(triggersState[key]) { await triggersDedup.cancel(key: key) }
         }
         let partitionKeys = connectionPartitionKeys(connectionId)
         for key in partitionKeys where isPending(partitionsState[key]) {
@@ -471,6 +546,7 @@ final class DatabaseTreeMetadataService {
         for key in objectKeys {
             if isPending(tablesState[key]) { tablesState[key] = .idle }
             if isPending(routinesState[key]) { routinesState[key] = .idle }
+            if isPending(triggersState[key]) { triggersState[key] = .idle }
         }
         for key in partitionKeys where isPending(partitionsState[key]) { partitionsState[key] = .idle }
     }
@@ -484,6 +560,14 @@ final class DatabaseTreeMetadataService {
 
     private func isConnected(_ connectionId: UUID) -> Bool {
         DatabaseManager.shared.session(for: connectionId)?.status == .connected
+    }
+
+    /// The capability gates the QUERY, never the display. An engine with no triggers should not
+    /// pay a catalog read that can only answer empty, and a driver that returns triggers anyway
+    /// still gets its section: `SidebarObjectKind.visible` lists any kind that has rows.
+    private func browsesTriggers(_ connectionId: UUID) -> Bool {
+        DatabaseManager.shared.session(for: connectionId)?
+            .connection.type.supportsDatabaseTriggerBrowse ?? false
     }
 
     /// Always routes through a scoped driver. Reusing the session driver when the target
@@ -533,8 +617,9 @@ final class DatabaseTreeMetadataService {
     nonisolated static func connectionObjectKeys(
         tableKeys: some Sequence<ObjectsKey>,
         routineKeys: some Sequence<ObjectsKey>,
+        triggerKeys: some Sequence<ObjectsKey>,
         connectionId: UUID
     ) -> [ObjectsKey] {
-        Array(Set(tableKeys).union(routineKeys)).filter { $0.connectionId == connectionId }
+        Array(Set(tableKeys).union(routineKeys).union(triggerKeys)).filter { $0.connectionId == connectionId }
     }
 }

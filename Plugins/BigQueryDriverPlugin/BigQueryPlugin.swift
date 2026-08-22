@@ -32,6 +32,7 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let queryLanguageName = "SQL"
     static let editorLanguage: EditorLanguage = .sql
     static let supportsForeignKeys = false
+    static let supportsRoutines = true
     static let supportsSchemaEditing = false
     static let supportsDatabaseSwitching = false
     static let supportsSchemaSwitching = true

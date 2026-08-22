@@ -15,6 +15,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var _serverVersion: String?
     private var _activeDatabase: String
 
+    /// The database a metadata read is scoped to. MySQL has no schema level, so this is what a
+    /// caller means by "schema" everywhere in the catalog queries.
+    var activeDatabaseName: String { _activeDatabase }
+
     internal var cachedPrivilegeCatalog: PluginPrivilegeCatalog?
 
     /// Detected server type from version string after connecting
@@ -410,42 +414,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return foreignKeys
     }
 
+    /// The same builder the schema-wide list uses, with one more predicate.
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        let dbName = _activeDatabase
-        let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-
-        let query = """
-            SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT
-            FROM information_schema.TRIGGERS
-            WHERE EVENT_OBJECT_SCHEMA = '\(escapedDb)'
-                AND EVENT_OBJECT_TABLE = '\(escapedTable)'
-            ORDER BY TRIGGER_NAME
-            """
-
-        let result = try await execute(query: query)
-
-        let triggers: [PluginTriggerInfo] = result.rows.compactMap { row in
-            guard let name = row[safe: 0]?.asText,
-                  let timing = row[safe: 1]?.asText,
-                  let event = row[safe: 2]?.asText,
-                  let body = row[safe: 3]?.asText
-            else { return nil }
-
-            let statement = """
-                CREATE TRIGGER \(quoteIdentifier(name)) \(timing) \(event)
-                ON \(quoteIdentifier(table)) FOR EACH ROW
-                \(body)
-                """
-
-            return PluginTriggerInfo(
-                name: name,
-                timing: timing,
-                event: event,
-                statement: statement
-            )
-        }
-        Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(triggers.count)")
+        let dbName = schema?.isEmpty == false ? (schema ?? _activeDatabase) : _activeDatabase
+        let triggers = try await triggerList(schema: dbName, table: table)
+        Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .public) table=\(table, privacy: .public) parsed=\(triggers.count)")
         return triggers
     }
 

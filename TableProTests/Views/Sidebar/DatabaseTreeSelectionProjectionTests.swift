@@ -25,7 +25,7 @@ struct DatabaseTreeSelectionProjectionTests {
         DatabaseTreeRoutineRef(
             database: "app",
             schema: "public",
-            routine: RoutineInfo(name: name, schema: "public", kind: .function, signature: nil)
+            routine: RoutineInfo(name: name, kind: .function, schema: "public")
         )
     }
 

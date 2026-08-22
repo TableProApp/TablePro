@@ -11,10 +11,15 @@ internal enum DatabaseTreeObjectGroupResolver {
     internal static func groups(
         database: String,
         schema: String?,
-        itemCounts: [SidebarObjectKind: Int]
+        itemCounts: [SidebarObjectKind: Int],
+        declaredKinds: Set<SidebarObjectKind> = []
     ) -> [DatabaseTreeObjectGroup] {
-        SidebarObjectKind.visible(itemCounts: itemCounts, includingEmptyTables: false)
-            .map { DatabaseTreeObjectGroup(database: database, schema: schema, kind: $0) }
+        SidebarObjectKind.visible(
+            itemCounts: itemCounts,
+            declaredKinds: declaredKinds,
+            includingEmptyTables: false
+        )
+        .map { DatabaseTreeObjectGroup(database: database, schema: schema, kind: $0) }
     }
 }
 
@@ -34,6 +39,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
         case schema(database: String, schema: String)
         case table(DatabaseTreeTableRef)
         case routine(DatabaseTreeRoutineRef)
+        case trigger(DatabaseTreeTriggerRef)
         case status(Status)
 
         /// Flat shape: one collapsible section per object kind.
@@ -65,7 +71,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
         case .redisNode(let node):
             guard case .namespace = node else { return false }
             return true
-        case .recentTable, .routine, .status:
+        case .recentTable, .routine, .trigger, .status:
             return false
         }
     }
@@ -92,7 +98,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
             return true
         case .database, .schema, .containerObjectKindSection,
              .hierarchicalSchemaSection, .recentTable, .table,
-             .routine, .status, .redisNode:
+             .routine, .trigger, .status, .redisNode:
             return false
         }
     }
@@ -101,7 +107,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
         switch kind {
         case .database, .schema:
             return true
-        case .recentSection, .recentTable, .table, .routine, .status,
+        case .recentSection, .recentTable, .table, .routine, .trigger, .status,
              .objectKindSection, .containerObjectKindSection,
              .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
             return false
@@ -114,7 +120,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
             return .database(metadata.name, isSystem: metadata.isSystemDatabase)
         case .schema(let database, let schema):
             return .schema(database: database, schema: schema, isSystem: systemSchemas.contains(schema))
-        case .recentSection, .recentTable, .table, .routine, .status,
+        case .recentSection, .recentTable, .table, .routine, .trigger, .status,
              .objectKindSection, .containerObjectKindSection,
              .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
             return nil
@@ -127,6 +133,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
     static func tableId(_ ref: DatabaseTreeTableRef) -> String { "table\u{1}\(ref.id)" }
     static func recentTableId(_ ref: DatabaseTreeTableRef) -> String { "recent\u{1}table\u{1}\(ref.id)" }
     static func routineId(_ ref: DatabaseTreeRoutineRef) -> String { "routine\u{1}\(ref.id)" }
+    static func triggerId(_ ref: DatabaseTreeTriggerRef) -> String { "trigger\u{1}\(ref.id)" }
     static func statusId(parentId: String, status: Status) -> String {
         switch status {
         case .loading: return "\(parentId)\u{1}status.loading"

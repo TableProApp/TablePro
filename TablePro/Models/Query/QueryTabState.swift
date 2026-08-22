@@ -20,6 +20,7 @@ enum TabType: Equatable, Codable, Hashable {
     case serverDashboard
     case usersRoles
     case insights
+    case objectSource
 }
 
 /// Minimal representation of a tab for persistence
@@ -34,6 +35,7 @@ struct PersistedTab: Codable {
     var schemaName: String?
     var sourceFileURL: URL?
     var erDiagramSchemaKey: String?
+    var objectRef: DatabaseObjectRef?
     var queryParameters: [QueryParameter]?
     var sortColumns: [PersistedSortColumn]?
     var restoredPage: Int?
@@ -59,6 +61,7 @@ struct PersistedTab: Codable {
         schemaName: String? = nil,
         sourceFileURL: URL? = nil,
         erDiagramSchemaKey: String? = nil,
+        objectRef: DatabaseObjectRef? = nil,
         queryParameters: [QueryParameter]? = nil,
         sortColumns: [PersistedSortColumn]? = nil,
         restoredPage: Int? = nil,
@@ -80,6 +83,7 @@ struct PersistedTab: Codable {
         self.schemaName = schemaName
         self.sourceFileURL = sourceFileURL
         self.erDiagramSchemaKey = erDiagramSchemaKey
+        self.objectRef = objectRef
         self.queryParameters = queryParameters
         self.sortColumns = sortColumns
         self.restoredPage = restoredPage
@@ -94,7 +98,7 @@ struct PersistedTab: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case id, title, query, tabType, tableName, isView, databaseName, schemaName
-        case sourceFileURL, erDiagramSchemaKey, queryParameters
+        case sourceFileURL, erDiagramSchemaKey, objectRef, queryParameters
         case sortColumns, restoredPage, restoredPageSize, cursorOffset, cursorLength, collapsedFoldRanges
         case columnWidths, columnContentWidths, windowGroupIndex
         case overflowFileName
@@ -112,6 +116,7 @@ struct PersistedTab: Codable {
         schemaName = try container.decodeIfPresent(String.self, forKey: .schemaName)
         sourceFileURL = try container.decodeIfPresent(URL.self, forKey: .sourceFileURL)
         erDiagramSchemaKey = try container.decodeIfPresent(String.self, forKey: .erDiagramSchemaKey)
+        objectRef = try container.decodeIfPresent(DatabaseObjectRef.self, forKey: .objectRef)
         queryParameters = try container.decodeIfPresent([QueryParameter].self, forKey: .queryParameters)
         sortColumns = try container.decodeIfPresent([PersistedSortColumn].self, forKey: .sortColumns)
         restoredPage = try container.decodeIfPresent(Int.self, forKey: .restoredPage)
@@ -612,6 +617,7 @@ struct TabQueryContent: Equatable {
 struct TabDisplayState: Equatable {
     var resultsViewMode: ResultsViewMode = .data
     var erDiagramSchemaKey: String?
+    var objectRef: DatabaseObjectRef?
     var isResultsCollapsed: Bool = false
     var resultSets: [ResultSet] = []
     var activeResultSetId: UUID?

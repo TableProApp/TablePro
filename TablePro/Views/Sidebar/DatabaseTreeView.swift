@@ -36,6 +36,24 @@ struct DatabaseTreeRoutineRef: Identifiable, Equatable {
     var id: String {
         "\(database ?? "")|\(schema ?? "")|\(routine.id)"
     }
+
+    var objectRef: DatabaseObjectRef {
+        DatabaseObjectRef(routine: routine, database: database ?? "")
+    }
+}
+
+struct DatabaseTreeTriggerRef: Identifiable, Equatable {
+    let database: String?
+    let schema: String?
+    let trigger: TriggerInfo
+
+    var id: String {
+        "\(database ?? "")|\(schema ?? "")|\(trigger.id)"
+    }
+
+    var objectRef: DatabaseObjectRef {
+        DatabaseObjectRef(trigger: trigger, database: database ?? "")
+    }
 }
 
 struct DatabaseTreeView: View {

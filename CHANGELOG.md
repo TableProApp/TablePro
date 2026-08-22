@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Triggers as a sidebar section, listed per database and schema alongside Procedures and Functions. (#2383)
+- Read-only source viewer for procedures, functions and triggers, with Copy, Export and Open in Editor. (#2383)
+- Procedures, functions and triggers on MSSQL, Oracle, SQLite, ClickHouse, DuckDB, Snowflake, BigQuery, Cassandra, LibSQL, Cloudflare D1, Teradata and Dameng. (#2383)
+- Procedures, functions and triggers in the quick switcher.
+- Argument signatures on routine rows, shown when two routines in a section share a name.
+- Schema-wide `list_triggers` for MCP clients, and `return_type` and `language` on `list_routines`.
+
 ### Fixed
 
 - Flickering columns, blank columns, and an unpainted gap while scrolling a result with about 100 columns sideways. (#2381)
@@ -14,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Return opening no editor on a row selected with the arrow keys.
 - Tab out of a row's last cell and Shift+Tab out of its first doing nothing.
 - Size All Columns to Fit leaving the far columns of a wide result unreachable.
+- One of two PostgreSQL function overloads missing from the sidebar, and Show DDL opening an arbitrary one. (#2383)
+- MySQL Show DDL reading the session database instead of the one being browsed. (#2383)
+- Routine tooltips, VoiceOver labels and Copy with Signature showing a return type in place of the argument list. (#2383)
+- Duplicate routine rows in the flat sidebar taking the selection back to the first of them. (#2383)
+- MySQL triggers losing their definer, `WHEN` clause and ordering in the Structure tab.
+- Oracle triggers showing a header with no body in the Structure tab.
 
 ## [0.67.1] - 2026-08-22
 

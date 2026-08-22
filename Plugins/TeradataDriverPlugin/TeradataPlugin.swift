@@ -53,6 +53,8 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseGroupingStrategy: GroupingStrategy = .byDatabase
     static let containerEntityName = "Database"
     static let supportsForeignKeys = true
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsSchemaEditing = true
     static let supportsSSL = true
     static let systemDatabaseNames: [String] = [

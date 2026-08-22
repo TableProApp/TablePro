@@ -183,7 +183,10 @@ struct QueryTab: Identifiable, Equatable {
             isEditable: persisted.tabType == .table && !persisted.isView,
             isView: persisted.isView
         )
-        self.display = TabDisplayState(erDiagramSchemaKey: persisted.erDiagramSchemaKey)
+        self.display = TabDisplayState(
+            erDiagramSchemaKey: persisted.erDiagramSchemaKey,
+            objectRef: persisted.objectRef
+        )
         self.pendingChanges = TabChangeSnapshot()
         self.selectedRowIndices = []
         self.sortState = SortState()
@@ -336,6 +339,7 @@ struct QueryTab: Identifiable, Equatable {
             schemaName: tableContext.schemaName,
             sourceFileURL: content.sourceFileURL,
             erDiagramSchemaKey: display.erDiagramSchemaKey,
+            objectRef: display.objectRef,
             queryParameters: content.queryParameters.isEmpty ? nil : content.queryParameters,
             sortColumns: persistedSort,
             restoredPage: restoredPage,
