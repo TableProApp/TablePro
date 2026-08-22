@@ -88,11 +88,50 @@ struct DataGridBodyChromeTests {
     }
 
     /// Clearing the mask is the fix, so a test that only checked the drawing would pass with the
-    /// separator views still attached and the cost still there.
-    @Test("The grid asks AppKit for no grid lines of its own")
-    func gridStyleMaskIsCleared() {
-        let grid = makeGrid(columns: ["id", "name"])
-        #expect(grid.tableView.gridStyleMask == [])
+    /// separator views back and the cost with them. The fixture sets the mask itself, so asserting
+    /// on the fixture proves nothing; this reads the one line in the app that decides it.
+    @Test("The grid never asks AppKit for vertical grid lines")
+    func gridStyleMaskIsClearedInTheAppItself() throws {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("TablePro/Views/Results/DataGridView.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+
+        #expect(text.contains("gridStyleMask = []"))
+        #expect(
+            !text.contains("solidVerticalGridLineMask"),
+            "one separator view per column costs 518ms of layout per pass on a 500-column result"
+        )
+    }
+
+    /// A partial repaint invalidates one cell's rect, and `rect(ofColumn:)` includes the intercell
+    /// spacing, so the next column's separator lives inside the rect being repainted. It has to be
+    /// redrawn there or every visited cell loses its right-hand rule until a full-row repaint.
+    @Test("Repainting one cell redraws the separator standing inside its rect")
+    func partialRepaintRedrawsTheSeparatorInsideIt() throws {
+        let grid = makeGrid(columns: ["id", "name", "total"])
+        let view = NSView(frame: grid.tableView.bounds)
+        let first = try #require(grid.coordinator.firstPresentedColumnIndex())
+        let next = try #require(grid.coordinator.nextPresentedColumnIndex(after: first))
+        let cellRect = grid.tableView.rect(ofColumn: first)
+        let neighbourSeparator = grid.tableView.rect(ofColumn: next).minX - DataGridBodyChrome.separatorThickness
+
+        #expect(
+            neighbourSeparator >= cellRect.minX && neighbourSeparator < cellRect.maxX,
+            "the neighbour's separator sits inside the repainted cell's rect, so the repaint erases it"
+        )
+
+        let separators = DataGridBodyChrome.separatorRects(
+            in: cellRect,
+            of: view,
+            tableView: grid.tableView,
+            presentsColumn: { grid.coordinator.presentsColumn(atTableColumnIndex: $0) }
+        )
+
+        #expect(separators.map(\.minX).contains(neighbourSeparator))
     }
 
     /// AppKit put its separator at the leading edge of every column, which is the boundary the
@@ -128,6 +167,36 @@ struct DataGridBodyChromeTests {
         #expect(!grid.coordinator.presentsColumn(atTableColumnIndex: rowNumber))
     }
 
+    /// The colour has to come from `tableView.gridColor`, which is the dynamic catalog colour AppKit
+    /// was filling with, so an appearance change carries the separator with it and there is no
+    /// second spelling to keep in sync. A hardcoded colour would pass a geometry test and be wrong
+    /// in dark mode.
+    @Test("The separator is drawn in the table view's own grid colour")
+    func separatorUsesTheTableViewGridColor() throws {
+        let grid = makeGrid(columns: ["id", "name"])
+        grid.tableView.gridColor = .systemRed
+        let rowView = try #require(grid.tableView.rowView(atRow: 0, makeIfNecessary: true) as? DataGridRowView)
+        rowView.layoutSubtreeIfNeeded()
+
+        let rep = try #require(rowView.bitmapImageRepForCachingDisplay(in: rowView.bounds))
+        rowView.cacheDisplay(in: rowView.bounds, to: rep)
+
+        let firstData = try #require(grid.coordinator.firstPresentedColumnIndex())
+        let boundary = grid.tableView.rect(ofColumn: firstData).minX
+        let scale = CGFloat(rep.pixelsWide) / rowView.bounds.width
+        let sampled = rep.colorAt(
+            x: Int((boundary - 0.5) * scale),
+            y: Int(rowView.bounds.height * scale / 2)
+        )?.usingColorSpace(.deviceRGB)
+        let expected = NSColor.systemRed.usingColorSpace(.deviceRGB)
+
+        let sampledRed = try #require(sampled?.redComponent)
+        let sampledGreen = try #require(sampled?.greenComponent)
+        let expectedRed = try #require(expected?.redComponent)
+        #expect(abs(sampledRed - expectedRed) < 0.15)
+        #expect(sampledRed > sampledGreen + 0.3, "the separator has to carry the grid colour, not a fixed grey")
+    }
+
     /// Every data cell is drawn, so the row is what paints the separators crossing it; a separator
     /// drawn by the table view underneath would be covered by the row's own background.
     @Test("A row paints the separators crossing it")
@@ -142,11 +211,13 @@ struct DataGridBodyChromeTests {
         let firstData = try #require(grid.coordinator.firstPresentedColumnIndex())
         let boundary = grid.tableView.rect(ofColumn: firstData).minX
         let scale = CGFloat(rep.pixelsWide) / rowView.bounds.width
-        let onBoundary = rep.colorAt(x: Int((boundary - 0.5) * scale), y: Int(rowView.bounds.height * scale / 2))
-        let insideCell = rep.colorAt(x: Int((boundary + 30) * scale), y: Int(rowView.bounds.height * scale / 2))
+        let onBoundary = try #require(
+            rep.colorAt(x: Int((boundary - 0.5) * scale), y: Int(rowView.bounds.height * scale / 2))
+        ).usingColorSpace(.deviceRGB)
+        let expected = grid.tableView.gridColor.usingColorSpace(.deviceRGB)
 
-        #expect(onBoundary != nil)
-        #expect(insideCell != nil)
-        #expect(onBoundary != insideCell, "the separator has to differ from the cell beside it")
+        let drawn = try #require(onBoundary?.brightnessComponent)
+        let wanted = try #require(expected?.brightnessComponent)
+        #expect(abs(drawn - wanted) < 0.2, "the boundary pixel has to carry the grid colour")
     }
 }

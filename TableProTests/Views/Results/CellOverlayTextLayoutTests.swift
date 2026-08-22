@@ -33,20 +33,23 @@ struct CellOverlayTextLayoutTests {
     /// leaving it alone clips the long line at the cell's width instead of scrolling it. Measured:
     /// a 64,000-character value produced a 140pt document view without this and 344,166pt with it.
     @Test("A long line makes the editor scrollable rather than clipping it")
-    func longLineScrollsRatherThanClipping() {
+    func longLineScrollsRatherThanClipping() throws {
         let textView = makeTextView()
+        let layoutManager = try #require(textView.textLayoutManager, "the overlay has to be on TextKit 2")
         textView.string = String(repeating: "some cell value ", count: 4_000)
-        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        layoutManager.ensureLayout(for: layoutManager.documentRange)
+        textView.layout()
 
         #expect(textView.maxSize.width == CGFloat.greatestFiniteMagnitude)
         #expect(textView.frame.width > 1_000, "the document has to outgrow the cell for scrolling to reach the text")
     }
 
     @Test("A short value still lays out inside the cell")
-    func shortValueStillLaysOut() {
+    func shortValueStillLaysOut() throws {
         let textView = makeTextView()
+        let layoutManager = try #require(textView.textLayoutManager)
         textView.string = "42"
-        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        layoutManager.ensureLayout(for: layoutManager.documentRange)
 
         #expect(textView.string == "42")
     }

@@ -24,7 +24,14 @@ private final class ReachabilityLayoutPersister: ColumnLayoutPersisting {
 @Suite("Drawn cell reachability")
 @MainActor
 struct DrawnCellReachabilityTests {
-    private func makeCoordinator(columns: [String], rows: Int = 3) -> TableViewCoordinator {
+    /// Holds the window: `TableViewCoordinator.tableView` is weak both ways, so a suite that
+    /// dropped the hierarchy would only survive on `NSApplication` incidentally retaining it.
+    private struct Grid {
+        let window: NSWindow
+        let coordinator: TableViewCoordinator
+    }
+
+    private func makeGrid(columns: [String], rows: Int = 3) -> Grid {
         let coordinator = TableViewCoordinator(
             changeManager: AnyChangeManager(DataChangeManager()),
             isEditable: true,
@@ -71,14 +78,14 @@ struct DrawnCellReachabilityTests {
         tableView.reloadData()
         tableView.layoutSubtreeIfNeeded()
         window.layoutIfNeeded()
-        return coordinator
+        return Grid(window: window, coordinator: coordinator)
     }
 
     /// The regression itself: the question the guards used to ask now answers nil for every data
     /// cell, so anything still asking it is dead code.
     @Test("No data cell mounts a view any more")
     func dataCellsMountNoView() throws {
-        let coordinator = makeCoordinator(columns: ["id", "name"])
+        let coordinator = makeGrid(columns: ["id", "name"]).coordinator
         let tableView = try #require(coordinator.tableView)
         let dataColumn = try #require(coordinator.firstPresentedColumnIndex())
 
@@ -88,7 +95,7 @@ struct DrawnCellReachabilityTests {
 
     @Test("An on-screen data cell is reachable")
     func onScreenCellIsReachable() throws {
-        let coordinator = makeCoordinator(columns: ["id", "name"])
+        let coordinator = makeGrid(columns: ["id", "name"]).coordinator
         let dataColumn = try #require(coordinator.firstPresentedColumnIndex())
 
         #expect(coordinator.presentsCell(row: 0, tableColumnIndex: dataColumn))
@@ -96,7 +103,7 @@ struct DrawnCellReachabilityTests {
 
     @Test("A row outside the result is not reachable")
     func rowOutOfRangeIsNotReachable() throws {
-        let coordinator = makeCoordinator(columns: ["id", "name"])
+        let coordinator = makeGrid(columns: ["id", "name"]).coordinator
         let dataColumn = try #require(coordinator.firstPresentedColumnIndex())
 
         #expect(!coordinator.presentsCell(row: -1, tableColumnIndex: dataColumn))
@@ -105,7 +112,7 @@ struct DrawnCellReachabilityTests {
 
     @Test("The row-number column is not a cell anything opens on")
     func rowNumberColumnIsNotReachable() throws {
-        let coordinator = makeCoordinator(columns: ["id", "name"])
+        let coordinator = makeGrid(columns: ["id", "name"]).coordinator
         let tableView = try #require(coordinator.tableView)
         let rowNumber = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
 
@@ -113,19 +120,48 @@ struct DrawnCellReachabilityTests {
         #expect(!coordinator.presentsCell(row: 0, tableColumnIndex: rowNumber))
     }
 
-    /// `reloadData(forRowIndexes:columnIndexes:)` rebuilds a cell view, and the row-number column is
-    /// the only one that still has one. Seven callers reloaded a row's whole column range and so
-    /// repainted nothing, which is how a committed cell edit and an undo stopped showing (#2381).
-    @Test("Repainting a row reaches the row's drawn cells")
-    func repaintingARowReachesItsDrawnCells() throws {
-        let coordinator = makeCoordinator(columns: ["id", "name"])
+    /// `reloadData(forRowIndexes:columnIndexes:)` raises `NSRangeException` for a row past the end,
+    /// and a row view can outlive a result that shrank under it, so undoing a delete on a stale row
+    /// used to crash rather than no-op.
+    @Test("Repainting a row past the end of the result is a no-op")
+    func repaintingAnOutOfRangeRowIsANoOp() throws {
+        let coordinator = makeGrid(columns: ["id", "name"], rows: 2).coordinator
+
+        coordinator.repaintRows(IndexSet(integer: 99))
+        coordinator.repaintRows(IndexSet(integer: -1))
+    }
+
+    /// A drawn cell has no view of its own, so the row vends the accessibility element that carries
+    /// the value. Repainting one cell has to stand that element down as well, or VoiceOver keeps
+    /// reading what the cell said before the edit. A committed cell edit takes this exact path.
+    @Test("Repainting one cell refreshes the value VoiceOver reads")
+    func repaintingOneCellRefreshesItsAccessibilityValue() throws {
+        let columns = ["id", "name"]
+        var current = TableRows.from(
+            queryRows: [columns.map { PluginCellValue.text("before-\($0)") }],
+            columns: columns,
+            columnTypes: Array(repeating: ColumnType.text(rawType: "TEXT"), count: columns.count)
+        )
+        let coordinator = makeGrid(columns: columns, rows: 1).coordinator
+        coordinator.tableRowsProvider = { current }
+        coordinator.updateCache()
+
         let tableView = try #require(coordinator.tableView)
+        tableView.reloadData()
         let rowView = try #require(tableView.rowView(atRow: 0, makeIfNecessary: true) as? DataGridRowView)
-        rowView.layoutSubtreeIfNeeded()
-        rowView.displayIfNeeded()
+        let before = (rowView.accessibilityChildren()?.first as? NSAccessibilityElement)?.accessibilityValue() as? String
+        #expect(before?.contains("before") == true)
 
-        coordinator.repaintRows(IndexSet(integer: 0))
+        current = TableRows.from(
+            queryRows: [columns.map { _ in PluginCellValue.text("after") }],
+            columns: columns,
+            columnTypes: Array(repeating: ColumnType.text(rawType: "TEXT"), count: columns.count)
+        )
+        coordinator.invalidateDisplayCache()
+        let dataColumn = try #require(coordinator.firstPresentedColumnIndex())
+        rowView.redrawCell(atTableColumnIndex: dataColumn)
 
-        #expect(rowView.needsToDrawCells, "the row's drawn cells must be marked for redisplay")
+        let after = (rowView.accessibilityChildren()?.first as? NSAccessibilityElement)?.accessibilityValue() as? String
+        #expect(after == "after", "the element still held the pre-edit value")
     }
 }

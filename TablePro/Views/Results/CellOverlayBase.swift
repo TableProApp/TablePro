@@ -114,6 +114,10 @@ class CellOverlayBase: NSObject {
     /// rather than wrapping it. Wrapping made TextKit 2 lay the whole value out before the overlay
     /// could appear: measured at 206ms for a 256KB value and 816ms for 1MB, against 7ms unwrapped,
     /// and the wrapped result was thousands of visual lines in a box 120pt tall (#2381).
+    ///
+    /// `maxSize` is raised with the container because a text view grows only as far as `maxSize`,
+    /// which `init(frame:)` leaves at the frame: without it the long line is clipped at the cell's
+    /// width instead of scrolled, measured as a 140pt document against 344,166pt with it raised.
     static func applyCellTextLayout(to textView: NSTextView) {
         let unbounded = NSSize(
             width: CGFloat.greatestFiniteMagnitude,
@@ -121,9 +125,6 @@ class CellOverlayBase: NSObject {
         )
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = true
-        // A text view grows only as far as `maxSize`, which `init(frame:)` leaves at the frame, so
-        // without this the long line is clipped at the cell's width rather than scrolled: measured
-        // at a 140pt document for a 64,000-character value, against 344,166pt with it raised.
         textView.maxSize = unbounded
         textView.textContainer?.widthTracksTextView = false
         textView.textContainer?.containerSize = unbounded
@@ -133,7 +134,7 @@ class CellOverlayBase: NSObject {
         let scrollView = NSScrollView(frame: container.bounds)
         scrollView.autoresizingMask = [.width, .height]
         scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = true
+        scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true

@@ -403,8 +403,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// `reloadData(forRowIndexes:columnIndexes:)` rebuilds a cell view, and the row-number column is
     /// the only one that still mounts one, so on its own it repaints a row's number and nothing
     /// else. Every caller that used to reload a row's full column range goes through here (#2381).
+    ///
+    /// A row past the end is dropped rather than passed on: `reloadData(forRowIndexes:)` raises
+    /// `NSRangeException` for one, and a row view can outlive the result that shrank under it.
     func repaintRows(_ rows: IndexSet) {
-        guard let tableView, !rows.isEmpty else { return }
+        guard let tableView else { return }
+        let rows = rows.filteredIndexSet { $0 >= 0 && $0 < tableView.numberOfRows }
+        guard !rows.isEmpty else { return }
         let rowNumberColumn = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
         if rowNumberColumn >= 0 {
             tableView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: rowNumberColumn))
@@ -1004,13 +1009,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         reloadVisibleRowsAndStates()
     }
 
-    /// Repaint visible rows in two layers Apple's NSTableView contract requires:
-    /// `reloadData(forRowIndexes:columnIndexes:)` re-fetches cells via
-    /// `tableView(_:viewFor:row:)` but does not touch row views, so per-row
-    /// decoration (deleted/inserted tint, deleted-row context menu state) goes
-    /// stale. `enumerateAvailableRowViews` then visits each live `NSTableRowView`
-    /// so `applyVisualState` can mutate row-level state without recreating views.
-    /// Both delegates call this after model mutations that don't change row count.
+    /// Repaints visible rows in the two layers a row needs: `repaintRows` covers the row-number
+    /// column and the drawn cells, and `refreshVisibleRowVisualStates` then visits each live
+    /// `NSTableRowView` so `applyVisualState` can carry the per-row decoration (deleted or inserted
+    /// tint, deleted-row context menu state) without recreating a view. Both delegates call this
+    /// after a model mutation that leaves the row count alone.
     func reloadVisibleRowsAndStates() {
         guard let tableView else { return }
         let visibleRange = tableView.rows(in: tableView.visibleRect)

@@ -38,7 +38,12 @@ class DataGridRowView: NSTableRowView {
     }
 
     /// Repaints one cell, the way a mounted cell view repainted itself.
+    ///
+    /// The accessibility elements carry the cell's value, so a repaint has to stand them down too,
+    /// or VoiceOver keeps reading what the cell said before the edit. A committed cell edit takes
+    /// this path, so it is the ordinary case rather than a rare one.
     func redrawCell(atTableColumnIndex tableColumnIndex: Int) {
+        accessibilityCellsAreStale = true
         guard let tableView = coordinator?.tableView else {
             contentView.needsDisplay = true
             return
@@ -53,9 +58,6 @@ class DataGridRowView: NSTableRowView {
         contentView.needsDisplay = true
         accessibilityCellsAreStale = true
     }
-
-    /// Whether this row's drawn cells are waiting to be repainted.
-    var needsToDrawCells: Bool { contentView.needsDisplay }
 
     // MARK: - Accessibility
 
