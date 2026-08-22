@@ -48,30 +48,47 @@ ValidateDriverDescriptorTests/rejectsDuplicatePrimaryTypeId()
 
 # --- Asserts a string the app no longer produces. The behaviour changed on purpose; the expected
 #     value did not follow.
-ConnectionURLFormatterSSHProfileTests/inlineSSHConfigInURL()
-ConnectionURLFormatterSSHProfileTests/noProfileFallbackUsesInlineConfig()
-ConnectionURLFormatterSSHProfileTests/profileSSHConfigInURL()
-DatabaseTypeCassandraTests/scylladbIconName()
+#
+#     The four that were here shared one shape with several other groups in this file: the test held
+#     a handle that used to steer the code and no longer does. The URL cases set sshConfig.enabled,
+#     but resolvedSSHConfig reads sshTunnelMode, so they formatted a plain mysql:// URL and asserted
+#     it contained ssh://. ScyllaDB stopped borrowing Cassandra's icon when it got its own registry
+#     entry and its own asset.
+#
+#     Two SaveCompletionTests read-only cases are gone as well. saveChanges carries no read-only
+#     guard, correctly: the block lives in DefaultExecutionGate, which denies a write with the
+#     "Safe Mode is set to read-only" reason, and the toolbar disables Save through
+#     MainWindowToolbar+Validation. ExecutionGateTests.readOnlyBlocksWrites already asserts it at
+#     that layer and is not quarantined.
+#
+#     The three left below fail for a different reason: saveChanges returns at
+#     `guard let scope = parent.selectedTabScope` long before it clears the inout parameters, so
+#     they need a connected scope the current harness does not build.
 SaveCompletionTests/alertLevel_pendingTruncates_clearsParams()
-SaveCompletionTests/pendingTruncatesReadOnly_setsError()
-SaveCompletionTests/readOnly_setsErrorMessage()
 SaveCompletionTests/safeModeLevel_pendingDeletes_clearsParams()
 SaveCompletionTests/silentLevel_pendingTruncates_clearsViaNormalPath()
 
-# --- Change-tracking semantics drifted: reloadVersion no longer increments where these expect it
-#     to, and undo restores a different working set. Needs deciding case by case whether the manager
-#     or the expectation is wrong.
-ChangeReapplyVersionTests/dataChangeManagerVersionIncrements()
-DataChangeManagerTests/reloadVersionIncrementsOnChange()
+# --- Change-tracking semantics drifted: undo restores a different working set than these expect.
+#     Needs deciding case by case whether the manager or the expectation is wrong.
+#
+#     The four reloadVersion cases are gone. reloadVersion is the grid's "throw away what you are
+#     showing and fetch again" signal, and it increments on clearChanges, discardChanges and
+#     configureForTable but deliberately not on recording an edit, because a reload there would
+#     discard the edit the user just made. Each now pins that from both sides.
+#
+#     The three StructureChangeManagerUndoTests cases below are an undo-grouping artifact rather
+#     than drift: NSUndoManager leaves groupsByEvent on, so operations called without a run loop
+#     turn between them land in one group and one undo reverts them all. The app gets a turn
+#     between user actions and the test does not. Spinning the run loop with
+#     RunLoop.current.run(until: Date()) does not close the group, so a working fix needs either a
+#     real interval or a seam on the manager.
 DataChangeManagerExtendedTests/discardChangesPreservesUndoRedoUnlikeClearChanges()
 DataChangeManagerExtendedTests/insertThenEditThenUndoRevertsCell()
-DataChangeManagerExtendedTests/recordRowInsertionIncrementsReloadVersion()
-RowOperationsManagerTests/addNewRowIncrementsReloadVersion()
 RowOperationsManagerTests/addNewRowUsesNilForNoDefaults()
+StructureGridDelegateAddRowTests/sqliteIndexes_deleteIsNoOp()
 StructureChangeManagerUndoTests/multipleUndos()
 StructureChangeManagerUndoTests/undoDeleteNewColumnReAdds()
 StructureChangeManagerUndoTests/undoTwoDeletesNoDuplicates()
-StructureGridDelegateAddRowTests/sqliteIndexes_deleteIsNoOp()
 StructureGridDelegateAddRowTests/sqliteIndexes_isNoOp()
 
 # --- Environment-coupled: reads the login keychain or an app installed on the machine.

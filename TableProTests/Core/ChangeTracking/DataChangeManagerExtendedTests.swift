@@ -66,10 +66,21 @@ struct DataChangeManagerExtendedTests {
     }
 
     @Test("Record row insertion increments reloadVersion by 1")
-    func recordRowInsertionIncrementsReloadVersion() {
+    /// `reloadVersion` is the signal that tells the grid to throw away what it is showing and fetch
+    /// again. It increments on `clearChanges`, `discardChanges` and `configureForTable`, and
+    /// deliberately not on recording an edit: a reload there would discard the very edit the user
+    /// just made. These asserted the opposite, which is why they sat in the quarantine file, so
+    /// each now pins the real contract from both sides.
+    func recordRowInsertionDoesNotAskTheGridToReload() {
         let manager = makeManager()
         let before = manager.reloadVersion
+
         manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
+
+        #expect(manager.reloadVersion == before)
+
+        manager.discardChanges()
+
         #expect(manager.reloadVersion == before + 1)
     }
 

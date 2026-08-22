@@ -399,7 +399,12 @@ struct ChangeReapplyVersionTests {
 
     @Test("DataChangeManager reloadVersion increments on cell change")
     @MainActor
-    func dataChangeManagerVersionIncrements() {
+    /// `reloadVersion` is the signal that tells the grid to throw away what it is showing and fetch
+    /// again. It increments on `clearChanges`, `discardChanges` and `configureForTable`, and
+    /// deliberately not on recording an edit: a reload there would discard the very edit the user
+    /// just made. These asserted the opposite, which is why they sat in the quarantine file, so
+    /// each now pins the real contract from both sides.
+    func recordingAnEditDoesNotAskTheGridToReload() {
         let manager = DataChangeManager()
         let initialVersion = manager.reloadVersion
 
@@ -411,6 +416,10 @@ struct ChangeReapplyVersionTests {
             newValue: "new"
         )
 
-        #expect(manager.reloadVersion > initialVersion)
+        #expect(manager.reloadVersion == initialVersion)
+
+        manager.discardChanges()
+
+        #expect(manager.reloadVersion == initialVersion + 1)
     }
 }
