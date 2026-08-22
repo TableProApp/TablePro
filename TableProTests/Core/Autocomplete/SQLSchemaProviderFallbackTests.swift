@@ -422,8 +422,8 @@ struct SQLSchemaProviderFallbackTests {
         #expect(cachedColumns.count == 2)
     }
 
-    @Test("Eager load respects maxCachedTables limit")
-    func eagerLoadRespectsMaxCachedTables() async throws {
+    @Test("Eager load caches a schema that fits the table limit")
+    func eagerLoadCachesASchemaThatFits() async {
         let driver = MockFallbackDriver()
         var tables: [TableInfo] = []
         for i in 0..<60 {
@@ -437,13 +437,32 @@ struct SQLSchemaProviderFallbackTests {
 
         let provider = SQLSchemaProvider()
         await provider.resetForDatabase("testdb", tables: tables, driver: driver)
+        await provider.waitForEagerColumnLoad()
 
-        // Wait for the eager load task
-        try await Task.sleep(nanoseconds: 300_000_000)
-
-        // allColumnsFromCachedTables should return at most 50 tables worth of columns
         let items = await provider.allColumnsFromCachedTables()
-        #expect(items.count <= 50)
+        #expect(items.count == 60)
+        #expect(Set(items.map(\.label)) == Set((0..<60).map { "col_\($0)" }))
+    }
+
+    @Test("Eager load caps the cache when the fetch returns more tables than the schema listed")
+    func eagerLoadCapsCacheWhenFetchOverruns() async {
+        let cap = SQLSchemaProvider.maxCachedTables
+        let driver = MockFallbackDriver()
+        for i in 0..<(cap + 25) {
+            driver.columnsPerTable["table_\(i)"] = [
+                TestFixtures.makeColumnInfo(name: "col_\(i)", isPrimaryKey: false)
+            ]
+        }
+        let listed = (0..<10).map { TestFixtures.makeTableInfo(name: "table_\($0)") }
+        driver.tablesToReturn = listed
+
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase("testdb", tables: listed, driver: driver)
+        await provider.waitForEagerColumnLoad()
+
+        let items = await provider.allColumnsFromCachedTables()
+        #expect(items.count == cap)
+        #expect(Set(items.map(\.label)).isSuperset(of: (0..<10).map { "col_\($0)" }))
     }
 
     @Test("allColumnsFromCachedTables uses canonical table names from tables list")

@@ -568,15 +568,13 @@ final class MainContentCoordinator {
         }
     }()
 
-    /// Evict row data for background tabs in this coordinator to free memory.
-    /// Called when the coordinator's native window-tab becomes inactive.
-    /// The currently selected tab is kept in memory so the user sees no
-    /// refresh flicker when switching back — matching native macOS behavior.
-    /// Background tabs are re-fetched automatically when selected.
+    /// Frees the row data of every background tab that can fetch it again, called when this
+    /// coordinator's window stops being key. The selected tab keeps its rows so returning to the
+    /// window costs no refresh, and `canEvictReloadableTableRows` decides the rest: a query tab, a
+    /// tab holding a pinned result, a failed tab and a tab with work in flight all stay resident,
+    /// because none of them would come back on their own.
     func evictInactiveRowData() {
-        let selectedId = tabManager.selectedTabId
-        for tab in tabManager.tabs
-        where tab.id != selectedId && !tab.pendingChanges.hasChanges {
+        for tab in tabManager.tabs {
             evictReloadableTableRows(for: tab.id)
         }
     }

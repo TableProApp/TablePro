@@ -15,7 +15,10 @@ final class RowDisplayBox {
 
 @MainActor
 final class RowDisplayCache {
-    /// Cost is captured separately because callers mutate a cached box before updating it.
+    /// A box is a reference and callers mutate one in place before handing it back, so the cost
+    /// recorded at insertion is the only number that still describes what was added. Recomputing it
+    /// from the box on removal subtracts a different figure than was added and drifts `totalCost`
+    /// away from the budget it is there to enforce.
     private struct Entry {
         let box: RowDisplayBox
         let cost: Int
@@ -37,7 +40,8 @@ final class RowDisplayCache {
         storage[id]?.box
     }
 
-    func setBox(_ box: RowDisplayBox, forID id: RowID, cost: Int) {
+    func setBox(_ box: RowDisplayBox, forID id: RowID) {
+        let cost = Self.rowCost(box.values)
         if let existing = storage[id] {
             totalCost -= existing.cost
         } else {
@@ -81,5 +85,13 @@ final class RowDisplayCache {
             insertionOrder.removeFirst(insertionHead)
             insertionHead = 0
         }
+    }
+
+    private static func rowCost(_ values: ContiguousArray<String?>) -> Int {
+        var total = 0
+        for value in values {
+            if let value { total &+= value.utf8.count }
+        }
+        return total
     }
 }

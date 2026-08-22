@@ -246,4 +246,119 @@ struct EvictionTests {
         let (coordinator, _) = makeCoordinator()
         coordinator.evictInactiveRowData()
     }
+
+    @Test("eviction skips a table tab whose query is blank")
+    func skipsTableTabWithBlankQuery() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "users")
+        let backgroundTabId = tabManager.tabs[0].id
+        tabManager.mutate(at: 0) { $0.content.query = "   \n\t " }
+        try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "orders")
+
+        coordinator.evictInactiveRowData()
+
+        #expect(coordinator.tabSessionRegistry.isEvicted(backgroundTabId) == false)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: backgroundTabId).rows.count == 10)
+    }
+
+    @Test("eviction skips a table tab running work that took no execution claim")
+    func skipsTableTabWithUnclaimedWork() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "users")
+        let backgroundTabId = tabManager.tabs[0].id
+        let token = coordinator.tabExecution.beginUnclaimedWork(for: backgroundTabId)
+        defer { coordinator.tabExecution.endUnclaimedWork(token, for: backgroundTabId) }
+        try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "orders")
+
+        coordinator.evictInactiveRowData()
+
+        #expect(coordinator.tabSessionRegistry.isEvicted(backgroundTabId) == false)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: backgroundTabId).rows.count == 10)
+    }
+
+    @Test("metadata landing after eviction does not resurrect an empty tab")
+    func lateMetadataKeepsTabEvicted() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "users")
+        let backgroundTabId = tabManager.tabs[0].id
+        try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "orders")
+
+        coordinator.evictInactiveRowData()
+        #expect(coordinator.tabSessionRegistry.isEvicted(backgroundTabId) == true)
+
+        coordinator.mutateActiveTableRows(for: backgroundTabId) { rows in
+            rows.columnEnumValues["status"] = ["active", "archived"]
+            return .columnsReplaced
+        }
+
+        #expect(coordinator.tabSessionRegistry.isEvicted(backgroundTabId) == true)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: backgroundTabId).rows.isEmpty)
+    }
+
+    @Test("rows arriving after eviction clear the evicted flag")
+    func reloadedRowsClearTheEvictedFlag() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "users")
+        let backgroundTabId = tabManager.tabs[0].id
+        try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "orders")
+
+        coordinator.evictInactiveRowData()
+        let reloaded = TableRows.from(
+            queryRows: [[.text("1")]],
+            columns: ["id"],
+            columnTypes: [.integer(rawType: nil)]
+        )
+        coordinator.setActiveTableRows(reloaded, for: backgroundTabId)
+
+        #expect(coordinator.tabSessionRegistry.isEvicted(backgroundTabId) == false)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: backgroundTabId).rows.count == 1)
+    }
+
+    @Test("evictInactiveTabs keeps the newest tabs within the memory budget")
+    func budgetKeepsNewestTabs() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let budget = MemoryPressureAdvisor.budgetForInactiveTabs()
+        let total = budget + 3
+        var executedAt: [UUID: Date] = [:]
+        for index in 0..<total {
+            try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "table_\(index)")
+            let tabIndex = try #require(tabManager.selectedTabIndex)
+            let stamp = Date(timeIntervalSince1970: TimeInterval(1_000 + index))
+            tabManager.mutate(at: tabIndex) { $0.execution.lastExecutedAt = stamp }
+            executedAt[tabManager.tabs[tabIndex].id] = stamp
+        }
+        let selectedId = try #require(tabManager.selectedTabId)
+
+        coordinator.evictInactiveTabs(excluding: [selectedId])
+
+        let evictable = tabManager.tabs
+            .filter { $0.id != selectedId }
+            .sorted { executedAt[$0.id] ?? .distantPast < executedAt[$1.id] ?? .distantPast }
+        let expectedEvicted = evictable.count - budget
+        #expect(expectedEvicted > 0)
+        for (position, tab) in evictable.enumerated() {
+            #expect(coordinator.tabSessionRegistry.isEvicted(tab.id) == (position < expectedEvicted))
+        }
+        #expect(coordinator.tabSessionRegistry.isEvicted(selectedId) == false)
+    }
+
+    @Test("evictInactiveTabs never evicts a tab it was told is active")
+    func budgetSkipsActiveTabs() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let budget = MemoryPressureAdvisor.budgetForInactiveTabs()
+        for index in 0..<(budget + 3) {
+            try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "table_\(index)")
+            let tabIndex = try #require(tabManager.selectedTabIndex)
+            tabManager.mutate(at: tabIndex) {
+                $0.execution.lastExecutedAt = Date(timeIntervalSince1970: TimeInterval(1_000 + index))
+            }
+        }
+        let selectedId = try #require(tabManager.selectedTabId)
+        let oldestId = tabManager.tabs[0].id
+
+        coordinator.evictInactiveTabs(excluding: [selectedId, oldestId])
+
+        #expect(coordinator.tabSessionRegistry.isEvicted(oldestId) == false)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: oldestId).rows.count == 10)
+    }
 }

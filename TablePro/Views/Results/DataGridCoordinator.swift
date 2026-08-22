@@ -438,6 +438,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                     columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
                 )
             }
+            startBackgroundPrewarm()
         }
     }
 
@@ -649,7 +650,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         if column >= 0, column < box.values.count {
             box.values[column] = formatted
         }
-        displayCache.setBox(box, forID: id, cost: displayCacheCost(box.values))
+        displayCache.setBox(box, forID: id)
         return formatted
     }
 
@@ -887,15 +888,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             ) ?? row.values[col].asText
         }
         let box = RowDisplayBox(values)
-        displayCache.setBox(box, forID: row.id, cost: displayCacheCost(values))
-    }
-
-    private func displayCacheCost(_ values: ContiguousArray<String?>) -> Int {
-        var total = 0
-        for value in values {
-            if let s = value { total &+= s.utf8.count }
-        }
-        return total
+        displayCache.setBox(box, forID: row.id)
     }
 
     private func invalidateDisplayCache(forDisplayRow displayIndex: Int) {
@@ -908,7 +901,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard let box = displayCache.box(forID: row.id),
               column >= 0, column < box.values.count else { return }
         box.values[column] = nil
-        displayCache.setBox(box, forID: row.id, cost: displayCacheCost(box.values))
+        displayCache.setBox(box, forID: row.id)
     }
 
     func applyDelta(_ delta: Delta) {
@@ -984,6 +977,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
         )
         refreshVisibleRowVisualStates()
+        startBackgroundPrewarm()
     }
 
     /// Single-row equivalent of `reloadVisibleRowsAndStates` for cases where

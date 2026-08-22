@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Background table-tab eviction now releases unpinned row data without dropping query, pinned, edited or in-flight results.
 - The result display cache now enforces its memory budget when a cached row's formatted values grow.
-- Autocomplete no longer loads columns for an entire large schema only to discard most of them.
+- Undo, redo, a theme change and a display-format change no longer leave the data grid reformatting every cell as you scroll.
+- Autocomplete no longer bulk-loads every column of a schema too big to cache, so on those databases column suggestions arrive per table as you reference one.
+- A background tab whose column metadata arrived after its rows were freed now reloads on return instead of showing an empty grid.
 - A saved connection whose SSH settings were written before the agent socket field existed now loads instead of disappearing.
 - Switch Connection and Open Database now open on a narrow window, and after you remove their toolbar button, instead of doing nothing at all.
 - A large text value in the row inspector now scrolls in a resizable text view instead of being clipped, and stays selectable and copyable when the row is read-only.
