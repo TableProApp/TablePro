@@ -75,7 +75,6 @@ struct DataGridSettingsDefaultSortDecoderTests {
     func missingKeyFallsBackToNone() throws {
         let legacyJSON = """
         {
-            "rowHeight": "normal",
             "dateFormat": "yyyy-MM-dd HH:mm:ss",
             "nullDisplay": "NULL",
             "defaultPageSize": 1000,

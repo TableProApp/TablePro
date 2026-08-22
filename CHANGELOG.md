@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A saved connection whose SSH settings were written before the agent socket field existed now loads instead of disappearing.
 - Switch Connection and Open Database now open on a narrow window, and after you remove their toolbar button, instead of doing nothing at all.
 
 ## [0.67.1] - 2026-08-22
