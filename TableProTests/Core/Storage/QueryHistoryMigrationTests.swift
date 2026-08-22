@@ -106,6 +106,18 @@ struct QueryHistoryMigrationTests {
         return names
     }
 
+    private func scalarInt(in url: URL, sql: String) -> Int {
+        var db: OpaquePointer?
+        guard sqlite3_open(url.path(percentEncoded: false), &db) == SQLITE_OK else { return -1 }
+        defer { sqlite3_close_v2(db) }
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return -1 }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { return -1 }
+        return Int(sqlite3_column_int64(statement, 0))
+    }
+
     @Test("migration keeps every existing row")
     func migrationPreservesRows() async {
         let connId = UUID()
@@ -263,5 +275,56 @@ struct QueryHistoryMigrationTests {
         #expect(await second.count(scope: .all) == 1)
         let entries = await second.fetch(QueryHistoryFilter(scope: .connection(connId)), after: nil, limit: 10).entries
         #expect(entries.first?.query == "SELECT * FROM once")
+    }
+
+    @Test("plan snapshot schema is added after legacy migration and is idempotent")
+    func planSnapshotSchemaMigratesLegacyDatabaseIdempotently() async {
+        let connectionId = UUID()
+        let url = makeLegacyDatabase(rows: [
+            (UUID(), "SELECT * FROM legacy_plan", connectionId, Date(), nil)
+        ])
+
+        let first = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: false)
+        #expect(await first.count(scope: .all) == 1)
+        #expect(columnNames(in: url, table: "query_plan_snapshots") == [
+            "history_id", "subject_query", "subject_fingerprint_hash", "variant_id",
+            "format", "raw_text", "raw_byte_count", "parser_schema_version"
+        ])
+        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 4)
+
+        let second = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+        #expect(await second.count(scope: .all) == 1)
+        #expect(
+            scalarInt(
+                in: url,
+                sql: "SELECT COUNT(*) FROM sqlite_master WHERE name = 'query_plan_snapshots';"
+            ) == 1
+        )
+        #expect(
+            scalarInt(
+                in: url,
+                sql: "SELECT COUNT(*) FROM sqlite_master WHERE name = 'history_plan_snapshots_ad';"
+            ) == 1
+        )
+    }
+
+    @Test("fresh plan snapshot schema is idempotent without changing schema version")
+    func freshPlanSnapshotSchemaIsIdempotent() async {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent("fresh_plan_history_\(UUID().uuidString).db")
+        let first = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: false)
+        #expect(await first.count(scope: .all) == 0)
+        let second = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+        #expect(await second.count(scope: .all) == 0)
+
+        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 4)
+        #expect(
+            scalarInt(
+                in: url,
+                sql: "SELECT COUNT(*) FROM sqlite_master WHERE name IN ("
+                    + "'query_plan_snapshots', 'idx_query_plan_snapshots_subject', 'history_plan_snapshots_ad');"
+            ) == 3
+        )
     }
 }

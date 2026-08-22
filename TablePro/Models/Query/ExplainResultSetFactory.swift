@@ -15,7 +15,8 @@ enum ExplainResultSetFactory {
         plan: QueryPlan?,
         sql: String,
         executionTime: TimeInterval?,
-        anchor: StatementAnchor? = nil
+        anchor: StatementAnchor? = nil,
+        historyContext: ExplainPlanHistoryContext? = nil
     ) -> ResultSet {
         let resultSet = ResultSet(label: String(localized: "Plan"))
         resultSet.explainRawText = rawText
@@ -23,6 +24,7 @@ enum ExplainResultSetFactory {
         resultSet.baseQuery = sql
         resultSet.executionTime = executionTime
         resultSet.statementAnchor = anchor
+        resultSet.explainHistoryContext = historyContext
         return resultSet
     }
 }

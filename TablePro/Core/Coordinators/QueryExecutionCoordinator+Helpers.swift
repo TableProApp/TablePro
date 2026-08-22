@@ -129,6 +129,7 @@ extension QueryExecutionCoordinator {
                 executionTime: executionTime,
                 rowCount: rows.count,
                 sql: sql,
+                historySQL: historySQL ?? sql,
                 connection: conn,
                 queryParameterValues: queryParameterValues,
                 anchor: anchor
@@ -290,10 +291,29 @@ extension QueryExecutionCoordinator {
         executionTime: TimeInterval,
         rowCount: Int,
         sql: String,
+        historySQL: String,
         connection conn: DatabaseConnection,
         queryParameterValues: [QueryParameter]?,
         anchor: StatementAnchor? = nil
     ) {
+        let databaseName = historyDatabaseName(tabId: tabId)
+        let schemaName = historySchemaName(tabId: tabId)
+        let captureContext = ExplainPlanHistoryContext(
+            historyId: UUID(),
+            subjectQuery: routed.subjectSQL,
+            connectionId: conn.id,
+            databaseName: databaseName,
+            databaseType: conn.type,
+            schemaName: schemaName,
+            variantId: routed.variantId,
+            formatRawValue: routed.format.rawValue,
+            capturedAt: Date()
+        )
+        let historyCapture = ExplainPlanHistoryCapture.make(
+            context: captureContext,
+            rawText: routed.rawText,
+            queryParameters: queryParameterValues
+        )
         parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
         parent.tabManager.mutate(tabId: tabId) { tab in
             tab.execution.executionTime = executionTime
@@ -307,7 +327,8 @@ extension QueryExecutionCoordinator {
                     plan: routed.plan,
                     sql: sql,
                     executionTime: executionTime,
-                    anchor: anchor
+                    anchor: anchor,
+                    historyContext: historyCapture?.context
                 )]
             )
             if tab.display.isResultsCollapsed {
@@ -319,15 +340,16 @@ extension QueryExecutionCoordinator {
 
         recordHistory(
             QueryHistoryRecordRequest(
-                query: sql,
+                query: historySQL,
                 connectionId: conn.id,
-                databaseName: historyDatabaseName(tabId: tabId),
+                databaseName: databaseName,
                 databaseType: conn.type,
-                schemaName: historySchemaName(tabId: tabId),
+                schemaName: schemaName,
                 source: .explain,
                 executionTime: executionTime,
                 rowCount: rowCount,
-                wasSuccessful: true
+                wasSuccessful: true,
+                explainPlan: historyCapture?.record
             )
         )
     }

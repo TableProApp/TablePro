@@ -78,4 +78,91 @@ struct QueryPlanPresentationTests {
         let ordinary = ResultSet(label: "Result")
         #expect(!ordinary.isExplainResult)
     }
+
+    @Test("History compares nodes only when both plans parsed")
+    func historyRequiresTwoParsedPlans() {
+        let structured = QueryPlanHistoryComparisonPresentation.resolve(
+            previousPlan: samplePlan,
+            previousRawText: "older",
+            currentPlan: samplePlan,
+            currentRawText: "current"
+        )
+        #expect(structured.kind == .structured)
+
+        let unparsedBaseline = QueryPlanHistoryComparisonPresentation.resolve(
+            previousPlan: nil,
+            previousRawText: "older raw",
+            currentPlan: samplePlan,
+            currentRawText: "current"
+        )
+        #expect(unparsedBaseline.kind == .rawOnly)
+
+        let unparsedCurrent = QueryPlanHistoryComparisonPresentation.resolve(
+            previousPlan: samplePlan,
+            previousRawText: "older",
+            currentPlan: nil,
+            currentRawText: "current raw"
+        )
+        #expect(unparsedCurrent.kind == .rawOnly)
+    }
+
+    @Test("History skips baseline parsing when current plan is unavailable")
+    func historySkipsUnneededBaselineParsing() {
+        #expect(!QueryPlanHistoryComparisonDecision.requiresBaselineParsing(currentPlan: nil))
+        #expect(QueryPlanHistoryComparisonDecision.requiresBaselineParsing(currentPlan: samplePlan))
+    }
+
+    @Test("Node change accessibility includes value changes")
+    func nodeChangeAccessibilityValue() {
+        let change = QueryPlanNodeChange(
+            kind: .modified,
+            semanticPathID: "root",
+            operation: "Seq Scan",
+            relation: "Track",
+            schema: nil,
+            alias: nil,
+            valueChanges: [
+                QueryPlanNodeValueChange(
+                    category: .metric,
+                    name: "Estimated rows",
+                    previousValue: "10",
+                    currentValue: "20"
+                ),
+                QueryPlanNodeValueChange(
+                    category: .property,
+                    name: "Filter",
+                    previousValue: nil,
+                    currentValue: "active"
+                ),
+            ]
+        )
+
+        #expect(
+            QueryPlanHistoryNodeChangeAccessibility.value(change) ==
+                "Estimated rows: 10 → 20, Filter: – → active"
+        )
+    }
+
+    @Test("Raw history comparison bounds text rendered in the sheet")
+    func boundsHistoryRawText() {
+        let limit = QueryPlanHistoryRawText.maximumDisplayedUTF16Length
+        let truncationMarker = "\n\n… " + String(localized: "Output truncated for display")
+        let oversized = String(repeating: "x", count: limit * 2)
+        let displayed = QueryPlanHistoryRawText.bounded(oversized)
+
+        #expect((displayed as NSString).substring(to: limit) == String(repeating: "x", count: limit))
+        #expect(displayed.hasSuffix(truncationMarker))
+        #expect(displayed.count < oversized.count)
+        #expect(QueryPlanHistoryRawText.bounded("short plan") == "short plan")
+
+        let emoji = String(repeating: "😀", count: (limit / 2) + 1)
+        let emojiDisplay = QueryPlanHistoryRawText.bounded(emoji)
+        #expect(emojiDisplay != emoji)
+        #expect(emojiDisplay.hasSuffix(truncationMarker))
+
+        let combining = String(repeating: "e\u{301}", count: (limit / 2) + 1)
+        let combiningDisplay = QueryPlanHistoryRawText.bounded(combining)
+        #expect(combiningDisplay != combining)
+        #expect(combiningDisplay.hasSuffix(truncationMarker))
+    }
 }

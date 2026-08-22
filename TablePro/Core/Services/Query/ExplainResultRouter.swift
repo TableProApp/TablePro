@@ -12,6 +12,9 @@ enum ExplainResultRouter {
     struct RoutedPlan {
         let rawText: String
         let plan: QueryPlan?
+        let format: ExplainPlanFormat
+        let variantId: String?
+        let subjectSQL: String
     }
 
     /// A plan either arrives in one column, or is multi-column output the app can actually read
@@ -30,12 +33,74 @@ enum ExplainResultRouter {
         let text = ExplainPlanTextFlattener.flatten(rows: rows)
         guard !text.isEmpty else { return nil }
 
+        let explainSQL = QueryClassifier.strippingLeadingComments(sql)
+        let variant = ExplainFormatResolver.matchingVariant(
+            sql: explainSQL, declaredVariants: declaredVariants
+        )
         let format = ExplainFormatResolver.resolve(
-            sql: sql, databaseType: databaseType, declaredVariants: declaredVariants
+            declared: variant?.format ?? .plainText, databaseType: databaseType
         )
         let plan = ExplainPlanParserRegistry.plan(from: text, format: format)
 
         guard columns.count == 1 || plan != nil else { return nil }
-        return RoutedPlan(rawText: text, plan: plan)
+        let subjectSQL = QueryClassifier.explainedStatement(in: explainSQL) ?? sql
+        return RoutedPlan(
+            rawText: text,
+            plan: plan,
+            format: format,
+            variantId: historyVariantIdentifier(
+                explainSQL: explainSQL,
+                subjectSQL: subjectSQL,
+                declaredVariants: declaredVariants,
+                fallback: variant?.id
+            ),
+            subjectSQL: subjectSQL
+        )
+    }
+
+    private static func historyVariantIdentifier(
+        explainSQL: String,
+        subjectSQL: String,
+        declaredVariants: [ExplainVariant],
+        fallback: String?
+    ) -> String? {
+        guard let subjectRange = explainSQL.range(
+            of: subjectSQL,
+            options: [.literal, .backwards]
+        ) else { return fallback }
+
+        let preamble = normalizePreamble(String(explainSQL[..<subjectRange.lowerBound]))
+        guard !preamble.isEmpty else { return fallback }
+
+        if let declared = declaredVariants.first(where: {
+            normalizePreamble($0.sqlPrefix) == preamble
+        }) {
+            return declared.id
+        }
+        return "__typed_explain__:\(preamble.sha256)"
+    }
+
+    private static func normalizePreamble(_ sql: String) -> String {
+        var components: [String] = []
+        var token = ""
+
+        func appendToken() {
+            guard !token.isEmpty else { return }
+            components.append(token.uppercased())
+            token.removeAll(keepingCapacity: true)
+        }
+
+        for character in sql {
+            if character.isLetter || character.isNumber || character == "_" {
+                token.append(character)
+            } else {
+                appendToken()
+                if !character.isWhitespace {
+                    components.append(String(character))
+                }
+            }
+        }
+        appendToken()
+        return components.joined(separator: " ")
     }
 }

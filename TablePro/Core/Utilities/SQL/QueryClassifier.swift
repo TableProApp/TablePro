@@ -86,6 +86,13 @@ enum QueryClassifier {
         }
     }
 
+    static func explainedStatement(in sql: String) -> String? {
+        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
+        let keyword = leadingKeyword(of: trimmed)
+        guard explainPrefixes.contains(keyword) else { return nil }
+        return explainInnerStatement(trimmed, keyword: keyword)?.statement
+    }
+
     static func leadingKeyword(of sql: String) -> String {
         let stripped = strippingLeadingComments(sql)
         return stripped.prefix { $0.isLetter || $0.isNumber || $0 == "_" }.uppercased()
@@ -320,10 +327,24 @@ private extension QueryClassifier {
     ) -> (statement: String, executesStatement: Bool)? {
         var remainder = Substring(trimmed).dropFirst(keyword.count)
         var options = keyword == "ANALYZE" ? "ANALYZE" : ""
+        var statementTriviaStart: String.Index?
         while true {
             remainder = remainder.drop { $0.isWhitespace }
             guard let first = remainder.first else { return nil }
+            if remainder.hasPrefix("--") {
+                statementTriviaStart = statementTriviaStart ?? remainder.startIndex
+                guard let newline = remainder.firstIndex(where: { $0 == "\n" || $0 == "\r" }) else { return nil }
+                remainder = remainder[remainder.index(after: newline)...]
+                continue
+            }
+            if remainder.hasPrefix("/*") {
+                statementTriviaStart = statementTriviaStart ?? remainder.startIndex
+                guard let afterComment = remainderAfterBlockComment(in: remainder) else { return nil }
+                remainder = afterComment
+                continue
+            }
             if first == "(" {
+                statementTriviaStart = nil
                 var depth = 0
                 var index = remainder.startIndex
                 while index < remainder.endIndex {
@@ -344,6 +365,7 @@ private extension QueryClassifier {
             let token = remainder.prefix { $0.isLetter || $0.isNumber || $0 == "_" }
             guard !token.isEmpty else {
                 if first == "=" || first == "," {
+                    statementTriviaStart = nil
                     remainder = remainder.dropFirst()
                     continue
                 }
@@ -351,11 +373,35 @@ private extension QueryClassifier {
             }
             let upperToken = token.uppercased()
             if statementStartKeywords.contains(upperToken) {
-                return (String(remainder), options.contains("ANALYZE"))
+                let statement = statementTriviaStart.map { trimmed[$0...] } ?? remainder
+                return (String(statement), options.contains("ANALYZE"))
             }
             options += " " + upperToken
+            statementTriviaStart = nil
             remainder = remainder.dropFirst(token.count)
         }
+    }
+
+    static func remainderAfterBlockComment(in sql: Substring) -> Substring? {
+        var depth = 1
+        var index = sql.index(sql.startIndex, offsetBy: 2)
+        while index < sql.endIndex {
+            let next = sql.index(after: index)
+            guard next < sql.endIndex else { return nil }
+            let pair = sql[index...next]
+            if pair == "/*" {
+                depth += 1
+                index = sql.index(after: next)
+            } else if pair == "*/" {
+                depth -= 1
+                let afterClose = sql.index(after: next)
+                if depth == 0 { return sql[afterClose...] }
+                index = afterClose
+            } else {
+                index = next
+            }
+        }
+        return nil
     }
 
     static func containsWord(_ body: String, _ word: String) -> Bool {

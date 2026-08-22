@@ -19,19 +19,25 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Sen
 
     @discardableResult
     func record(_ request: QueryHistoryRecordRequest) async -> Bool {
+        guard !isCapturePaused() else { return false }
+
+        let planContext = request.explainPlan?.context
         let entry = QueryHistoryEntry(
+            id: planContext?.historyId ?? UUID(),
             query: request.query,
             connectionId: request.connectionId,
             databaseName: request.databaseName,
             databaseType: request.databaseType,
             schemaName: request.schemaName,
             source: request.source,
+            executedAt: planContext?.capturedAt ?? Date(),
             executionTime: request.executionTime,
             rowCount: request.rowCount,
             wasSuccessful: request.wasSuccessful,
             errorMessage: request.errorMessage
         )
-        return await record(entry)
+        let explainPlan = request.explainPlan.flatMap { $0.isWithinStorageLimit ? $0 : nil }
+        return await storeAndPublish(entry, explainPlan: explainPlan)
     }
 
     /// The single writer, so pausing here covers every source: the editor, the grid, structure
@@ -40,10 +46,18 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Sen
     func record(_ entry: QueryHistoryEntry) async -> Bool {
         guard !isCapturePaused() else { return false }
 
-        let success = await storage.record(entry)
+        return await storeAndPublish(entry, explainPlan: nil)
+    }
+
+    private func storeAndPublish(
+        _ entry: QueryHistoryEntry,
+        explainPlan: ExplainPlanHistoryRecord?
+    ) async -> Bool {
+        let success = await storage.record(entry, explainPlan: explainPlan)
         if success {
+            let updatedConnectionId: UUID? = explainPlan == nil ? entry.connectionId : nil
             await MainActor.run {
-                AppEvents.shared.queryHistoryDidUpdate.send(entry.connectionId)
+                AppEvents.shared.queryHistoryDidUpdate.send(updatedConnectionId)
             }
         }
         return success
@@ -61,6 +75,17 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Sen
 
     func count(scope: QueryHistoryScope) async -> Int {
         await storage.count(scope: scope)
+    }
+
+    func explainPlanHistory(
+        matching context: ExplainPlanHistoryContext,
+        limit: Int
+    ) async -> [ExplainPlanHistorySnapshot] {
+        await storage.explainPlanHistory(matching: context, limit: limit)
+    }
+
+    func explainPlanRawText(historyId: UUID) async -> String? {
+        await storage.explainPlanRawText(historyId: historyId)
     }
 
     func insights(

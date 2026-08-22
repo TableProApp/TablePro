@@ -77,6 +77,16 @@ An expandable outline with **Operation**, **Cost**, **Rows**, and **Actual Time*
 
 The original EXPLAIN output as text, with a copy button and a font size stepper. Planning and execution times, where the plan reports them, sit beside the view switcher in every mode.
 
+## Compare earlier plans
+
+Every successful EXPLAIN result is captured automatically. Click **History** in the plan toolbar, then choose an earlier run to compare it with the current plan.
+
+The sheet compares cost, estimated rows, planning time, execution time and node count, followed by steps that were added, removed or modified. If either result cannot be read as a tree, it shows the two raw outputs side by side instead.
+
+Only older successful captures with the exact same explained statement, connection, database, database type, schema, EXPLAIN variant and output format appear as baselines. Even a different schema or EXPLAIN variant starts a separate history.
+
+Plan captures use [Query History](/features/query-history) storage and lifecycle. Pausing history stops them; retention, clearing or deleting history, and deleting a connection remove the attached captures too. Raw output over 2 MB is skipped while the normal history entry remains. TablePro also keeps at most 1,000 plan payloads and 100 MB of plan output; it removes the oldest payloads first without removing their normal history entries. For a parameterized EXPLAIN, the history entry can still be recorded, but its raw plan output is never persisted.
+
 ## Node details
 
 Selecting a node in either view fills the detail panel:

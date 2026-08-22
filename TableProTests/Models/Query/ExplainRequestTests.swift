@@ -36,7 +36,9 @@ struct ExplainRequestTests {
         )
 
         #expect(request.sql == "EXPLAIN (FORMAT JSON) SELECT 1")
+        #expect(request.subjectSQL == "SELECT 1")
         #expect(request.format == .postgresJson)
+        #expect(request.variantId == "explain")
     }
 
     @Test("An explicit variant overrides the default")
@@ -51,6 +53,8 @@ struct ExplainRequestTests {
         )
 
         #expect(request.sql == "EXPLAIN (ANALYZE, FORMAT JSON) SELECT 1")
+        #expect(request.subjectSQL == "SELECT 1")
+        #expect(request.variantId == "analyze")
     }
 
     @Test("A driver that declares no variants has no request to build")
@@ -82,7 +86,20 @@ struct ExplainRequestTests {
         let request = ExplainRequest.driverBuilt(sql: "EXPLAIN SELECT 1", databaseType: .duckdb)
 
         #expect(request.sql == "EXPLAIN SELECT 1")
+        #expect(request.subjectSQL == "EXPLAIN SELECT 1")
         #expect(request.format == .indentedText)
+        #expect(request.variantId == nil)
+    }
+
+    @Test("A driver-built statement retains a separately known subject")
+    func driverBuiltRetainsSubject() {
+        let request = ExplainRequest.driverBuilt(
+            sql: "EXPLAIN SELECT 1",
+            databaseType: .duckdb,
+            subjectSQL: "SELECT 1"
+        )
+
+        #expect(request.subjectSQL == "SELECT 1")
     }
 
     @Test("A driver-built statement is marked so it keeps the ordinary result grid")
@@ -107,5 +124,82 @@ struct ExplainRequestTests {
     func driverBuiltOnUnknownEngineStaysPlainText() {
         let request = ExplainRequest.driverBuilt(sql: "DEBUG OBJECT key", databaseType: .redis)
         #expect(request.format == .plainText)
+    }
+
+    @Test("The result factory retains its history provenance")
+    @MainActor
+    func resultFactoryRetainsHistoryContext() {
+        let context = ExplainPlanHistoryContext(
+            historyId: UUID(),
+            subjectQuery: "SELECT * FROM users",
+            connectionId: UUID(),
+            databaseName: "app",
+            databaseType: .postgresql,
+            schemaName: "public",
+            variantId: "analyze",
+            formatRawValue: ExplainPlanFormat.postgresJson.rawValue,
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let result = ExplainResultSetFactory.make(
+            rawText: "[]",
+            plan: nil,
+            sql: "EXPLAIN (ANALYZE, FORMAT JSON) SELECT * FROM users",
+            executionTime: 0.25,
+            historyContext: context
+        )
+
+        #expect(result.explainHistoryContext == context)
+        #expect(result.baseQuery == "EXPLAIN (ANALYZE, FORMAT JSON) SELECT * FROM users")
+    }
+
+    @Test("Parameterized plans never persist raw output")
+    func parameterizedPlansDoNotPersistRawOutput() {
+        let context = ExplainPlanHistoryContext(
+            historyId: UUID(),
+            subjectQuery: "EXPLAIN SELECT * FROM users WHERE token = :secret",
+            connectionId: UUID(),
+            databaseName: "app",
+            databaseType: .postgresql,
+            schemaName: "public",
+            variantId: "explain",
+            formatRawValue: ExplainPlanFormat.postgresJson.rawValue,
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let rawText = #"[{"Plan":{"Filter":"token = 'must-not-reach-history'"}}]"#
+
+        #expect(ExplainPlanHistoryCapture.make(context: context, rawText: rawText).record.rawText == rawText)
+        #expect(
+            ExplainPlanHistoryCapture.make(
+                context: context,
+                rawText: rawText,
+                queryParameters: [QueryParameter(name: "secret", value: "must-not-reach-history")]
+            ) == nil
+        )
+    }
+
+    @Test("Typed EXPLAIN forwards parameters through the raw-output privacy gate")
+    func typedExplainUsesParameterizedCapturePath() throws {
+        let sourceURL = repositoryRoot()
+            .appendingPathComponent("TablePro/Core/Coordinators/QueryExecutionCoordinator+Helpers.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let parameterizedCaptureCall =
+            #"ExplainPlanHistoryCapture\.make\s*\(\s*context:\s*captureContext,"#
+            + #"\s*rawText:\s*routed\.rawText,"#
+            + #"\s*queryParameters:\s*queryParameterValues\s*\)"#
+
+        #expect(source.range(of: parameterizedCaptureCall, options: .regularExpression) != nil)
+    }
+
+    private func repositoryRoot() -> URL {
+        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while directory.path != "/" {
+            if FileManager.default.fileExists(
+                atPath: directory.appendingPathComponent("TablePro.xcodeproj").path
+            ) {
+                return directory
+            }
+            directory.deleteLastPathComponent()
+        }
+        return directory
     }
 }

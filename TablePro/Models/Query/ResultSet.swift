@@ -54,6 +54,7 @@ final class ResultSet: Identifiable {
     /// and history. It carries a plan instead of rows.
     var queryPlan: QueryPlan?
     var explainRawText: String?
+    var explainHistoryContext: ExplainPlanHistoryContext?
 
     var isExplainResult: Bool { explainRawText != nil }
 

@@ -7,6 +7,15 @@
 
 import SwiftUI
 
+private struct QueryPlanHistorySheetInput: Identifiable {
+    var id: UUID { context.historyId }
+
+    let context: ExplainPlanHistoryContext
+    let rawText: String
+    let executionTime: TimeInterval?
+    let plan: QueryPlan?
+}
+
 enum QueryPlanViewMode: String, CaseIterable, Identifiable {
     case diagram
     case tree
@@ -65,10 +74,12 @@ struct QueryPlanResultView: View {
     let rawText: String
     let executionTime: TimeInterval?
     let plan: QueryPlan?
+    let historyContext: ExplainPlanHistoryContext?
 
     @AppStorage(PreferenceKeys.queryPlanRawFontSize.name) private var fontSize: Double = 13
     @State private var showCopyConfirmation = false
     @State private var copyResetTask: Task<Void, Never>?
+    @State private var historySheetInput: QueryPlanHistorySheetInput?
     @State private var viewMode: QueryPlanViewMode = .diagram
 
     /// Shared by the diagram and the outline, so switching view mode keeps the selected step.
@@ -78,11 +89,31 @@ struct QueryPlanResultView: View {
         QueryPlanPresentation.resolve(plan: plan, rawText: rawText)
     }
 
+    init(
+        rawText: String,
+        executionTime: TimeInterval?,
+        plan: QueryPlan?,
+        historyContext: ExplainPlanHistoryContext? = nil
+    ) {
+        self.rawText = rawText
+        self.executionTime = executionTime
+        self.plan = plan
+        self.historyContext = historyContext
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
             Divider()
             content
+        }
+        .sheet(item: $historySheetInput) { input in
+            QueryPlanHistoryView(
+                context: input.context,
+                currentRawText: input.rawText,
+                currentExecutionTime: input.executionTime,
+                currentPlan: input.plan
+            )
         }
     }
 
@@ -163,6 +194,18 @@ struct QueryPlanResultView: View {
                 .transition(.opacity)
             }
 
+            if historyContext != nil {
+                Button {
+                    showHistory()
+                } label: {
+                    Label(String(localized: "History"), systemImage: "clock.arrow.circlepath")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help(String(localized: "Compare this plan with an earlier run"))
+                .accessibilityIdentifier("query-plan-history-button")
+            }
+
             Button(action: copyText) {
                 Label(String(localized: "Copy"), systemImage: "doc.on.doc")
             }
@@ -224,6 +267,16 @@ struct QueryPlanResultView: View {
             guard !Task.isCancelled else { return }
             withAnimation { showCopyConfirmation = false }
         }
+    }
+
+    private func showHistory() {
+        guard let historyContext else { return }
+        historySheetInput = QueryPlanHistorySheetInput(
+            context: historyContext,
+            rawText: rawText,
+            executionTime: executionTime,
+            plan: plan
+        )
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {

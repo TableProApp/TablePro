@@ -11,6 +11,7 @@ struct QueryHistoryRecordRequest: Sendable {
     let rowCount: Int
     let wasSuccessful: Bool
     var errorMessage: String?
+    var explainPlan: ExplainPlanHistoryRecord?
 
     init(
         query: String,
@@ -22,7 +23,8 @@ struct QueryHistoryRecordRequest: Sendable {
         executionTime: TimeInterval,
         rowCount: Int,
         wasSuccessful: Bool,
-        errorMessage: String? = nil
+        errorMessage: String? = nil,
+        explainPlan: ExplainPlanHistoryRecord? = nil
     ) {
         self.query = query
         self.connectionId = connectionId
@@ -34,5 +36,6 @@ struct QueryHistoryRecordRequest: Sendable {
         self.rowCount = rowCount
         self.wasSuccessful = wasSuccessful
         self.errorMessage = errorMessage
+        self.explainPlan = explainPlan
     }
 }

@@ -69,6 +69,92 @@ final class QueryPlanResultUITests: UITestCase {
         app.typeKey(.escape, modifierFlags: [])
     }
 
+    func testPlanHistoryComparesAgainstAnEarlierRun() throws {
+        let app = try launchWithSampleDatabase()
+        let subjectSQL = "SELECT * FROM Track WHERE Name = 'For Those About To Rock';"
+
+        runExplainAction(subjectSQL, in: app)
+        let firstPlan = app.radioGroups["query-plan-mode-picker"].firstMatch
+        XCTAssertTrue(firstPlan.waitToExist(timeout: 20), "The first plan must finish before history is checked")
+
+        createPlanChangingIndex(in: app)
+
+        runQuery("EXPLAIN QUERY PLAN \(subjectSQL)", in: app)
+        let historyButton = app.buttons["query-plan-history-button"].firstMatch
+        XCTAssertTrue(
+            waitUntilHittable(historyButton, timeout: 20),
+            "The second plan must expose its history action"
+        )
+        historyButton.click()
+
+        let sheet = app.descendants(matching: .any)
+            .matching(identifier: "query-plan-history-sheet").firstMatch
+        XCTAssertTrue(sheet.waitToExist(timeout: 10), "History must open as a comparison sheet")
+
+        let baselines = app.descendants(matching: .any)
+            .matching(identifier: "query-plan-history-baseline-list").firstMatch
+        XCTAssertTrue(baselines.waitToExist(timeout: 10), "The earlier identical run must be listed")
+
+        let baseline = baselines.tableRows.firstMatch
+        XCTAssertTrue(waitUntilHittable(baseline, timeout: 10), "The earlier run must be selectable")
+        baseline.click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { baseline.isSelected },
+            "Clicking the earlier run must select it as the comparison baseline"
+        )
+
+        let comparison = app.descendants(matching: .any)
+            .matching(identifier: "query-plan-history-change-list").firstMatch
+        XCTAssertTrue(
+            comparison.waitToExist(timeout: 10),
+            "Selecting a baseline must produce a structured plan comparison"
+        )
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) {
+                ["added", "removed", "modified"].contains { kind in
+                    app.descendants(matching: .any)
+                        .matching(identifier: "query-plan-history-change-\(kind)").firstMatch.exists
+                }
+            },
+            "Creating the index must produce a visible plan-node change"
+        )
+
+        let evidence = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        evidence.name = "explain-plan-history-comparison"
+        evidence.lifetime = .keepAlways
+        add(evidence)
+
+        let closeButton = app.buttons["Close"].firstMatch
+        XCTAssertTrue(waitUntilHittable(closeButton, timeout: 5))
+        closeButton.click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { !sheet.exists },
+            "The history sheet must close before the next query tab opens"
+        )
+
+        runExplainAction(subjectSQL, in: app)
+        let nextHistoryButton = app.buttons["query-plan-history-button"].firstMatch
+        XCTAssertTrue(
+            waitUntilHittable(nextHistoryButton, timeout: 20),
+            "A later explicit plan must expose its history action"
+        )
+        nextHistoryButton.click()
+
+        let persistedBaselines = app.descendants(matching: .any)
+            .matching(identifier: "query-plan-history-baseline-list").firstMatch
+        XCTAssertTrue(persistedBaselines.waitToExist(timeout: 10))
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { persistedBaselines.tableRows.count >= 2 },
+            "Both the earlier explicit plan and typed plan must persist as baselines"
+        )
+        let persistedComparison = app.descendants(matching: .any)
+            .matching(identifier: "query-plan-history-change-list").firstMatch
+        XCTAssertTrue(
+            persistedComparison.waitToExist(timeout: 10),
+            "The persisted typed plan must produce a structured comparison"
+        )
+    }
+
     // MARK: - Helpers
 
     private func runQuery(_ sql: String, in app: XCUIApplication) {
@@ -78,5 +164,41 @@ final class QueryPlanResultUITests: UITestCase {
         queryEditor.click()
         app.typeText(sql)
         app.typeKey(.return, modifierFlags: .command)
+    }
+
+    private func runExplainAction(_ sql: String, in app: XCUIApplication) {
+        app.typeKey("t", modifierFlags: .command)
+        let queryEditor = editorTextView(in: app)
+        XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
+        queryEditor.click()
+        app.typeText(sql)
+
+        let explainButton = app.buttons["Explain"].firstMatch
+        XCTAssertTrue(waitUntilHittable(explainButton, timeout: 10))
+        explainButton.click()
+    }
+
+    private func createPlanChangingIndex(in app: XCUIApplication) {
+        app.typeKey("t", modifierFlags: .command)
+        let queryEditor = editorTextView(in: app)
+        XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
+        queryEditor.click()
+        app.typeText(
+            "CREATE INDEX plan_history_track_name ON Track(Name);\n"
+                + "SELECT name FROM sqlite_master WHERE name = 'plan_history_track_name';"
+        )
+        let menuBar = app.menuBars.firstMatch
+        menuBar.menuBarItems["Query"].click()
+        menuBar.menuItems["Execute All Statements"].click()
+
+        let verificationResult = app.staticTexts["result-status-readout"].firstMatch
+        XCTAssertTrue(
+            verificationResult.waitToExist(timeout: 20),
+            "The test index must exist before the second plan runs"
+        )
+        XCTAssertTrue(
+            app.staticTexts["plan_history_track_name"].firstMatch.waitToExist(timeout: 10),
+            "The verification query must find the test index"
+        )
     }
 }

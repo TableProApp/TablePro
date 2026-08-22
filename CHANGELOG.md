@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- EXPLAIN plans now keep history and compare against earlier compatible runs to show cost, row-estimate and operation changes.
 - Database favorites can be tagged by environment, filtered in the Favorites sidebar, opened directly, and synced through iCloud. (#1553)
 - Open in Window on a row inspector text field, for reading or editing a long value on a bigger surface.
 
