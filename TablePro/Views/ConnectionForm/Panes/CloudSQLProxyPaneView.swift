@@ -135,7 +135,7 @@ struct CloudSQLProxyPaneView: View {
                 prompt: Text("Automatic")
             )
             HStack {
-                Button("Choose...") {
+                Button("Choose…") {
                     chooseBinary()
                 }
                 .controlSize(.small)
@@ -143,7 +143,7 @@ struct CloudSQLProxyPaneView: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Button("Download cloud-sql-proxy...") {
+                    Button("Download cloud-sql-proxy…") {
                         viewModel.downloadBinary()
                     }
                     .controlSize(.small)

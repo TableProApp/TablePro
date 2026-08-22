@@ -241,10 +241,23 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
     }
 
+    /// Dropping the reference does not close the socket, and `disconnect()` refuses to act once the
+    /// connection is marked dead, so a channel abandoned here would stay open on the server for the life
+    /// of the process. Extracted in the same single `withLock` `disconnect()` uses, so two racing closers
+    /// cannot both reach `close()`.
     private func markConnectionDead() {
-        state.withLock { current in
+        let connection = state.withLock { current -> OracleNIO.OracleConnection? in
             current.isConnected = false
+            let connection = current.nioConnection
             current.nioConnection = nil
+            return connection
+        }
+
+        guard let connection else { return }
+
+        Task {
+            try? await connection.close()
+            osLogger.debug("Closed the Oracle connection after it was marked dead")
         }
     }
 
@@ -329,8 +342,12 @@ public final class OracleCoreConnection: @unchecked Sendable {
             await queryGate.release()
             return result
         } catch {
+            /// Classified before the gate is released, because releasing it resumes a queued caller that
+            /// can redial and install a new connection. Marking the failure dead after that would tear
+            /// down the connection the next query is already running on.
+            let mapped = mapExecutionError(error)
             await queryGate.release()
-            throw mapExecutionError(error)
+            throw mapped
         }
     }
 
@@ -393,8 +410,9 @@ public final class OracleCoreConnection: @unchecked Sendable {
             await queryGate.release()
             continuation.finish()
         } catch {
+            let mapped = mapExecutionError(error)
             await queryGate.release()
-            throw mapExecutionError(error)
+            throw mapped
         }
     }
 

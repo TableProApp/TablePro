@@ -11,7 +11,7 @@ import TableProAnalytics
 final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
     static let shared = MacAnalyticsProvider()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MacAnalyticsProvider")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MacAnalyticsProvider")
 
     private let defaults: UserDefaults
 

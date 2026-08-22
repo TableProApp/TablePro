@@ -40,7 +40,7 @@ final class ConnectionCloseUITests: UITestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             let item = closeConnectionItem(in: app)
-            guard item.waitForExistence(timeout: 5) else { continue }
+            guard item.waitToExist(timeout: 5) else { continue }
             let isEnabled = item.isEnabled
             app.typeKey(.escape, modifierFlags: [])
             if isEnabled == expected { return true }

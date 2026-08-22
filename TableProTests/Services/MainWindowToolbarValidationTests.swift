@@ -51,7 +51,9 @@ struct MainWindowToolbarValidationTests {
         fileBased: Bool = false,
         supportsContainerSwitching: Bool = true,
         supportsImport: Bool = true,
-        supportsServerDashboard: Bool = true
+        supportsServerDashboard: Bool = true,
+        canNavigateBack: Bool = false,
+        canNavigateForward: Bool = false
     ) -> MainWindowToolbar.ValidationContext {
         MainWindowToolbar.ValidationContext(
             connected: connected,
@@ -63,7 +65,9 @@ struct MainWindowToolbarValidationTests {
             fileBased: fileBased,
             supportsContainerSwitching: supportsContainerSwitching,
             supportsImport: supportsImport,
-            supportsServerDashboard: supportsServerDashboard
+            supportsServerDashboard: supportsServerDashboard,
+            canNavigateBack: canNavigateBack,
+            canNavigateForward: canNavigateForward
         )
     }
 
@@ -194,32 +198,44 @@ struct MainWindowToolbarValidationTests {
         #expect(MainWindowToolbar.isEnabled(itemIdentifier: unknown, context: context) == true)
     }
 
-    @Test("A running query still counts as a live session")
-    func executingCountsAsLiveSession() {
+    /// The health monitor writes `.connecting` on every reconnect attempt while the window keeps
+    /// showing the session's tabs and rows, so a backoff must not gray the toolbar out.
+    @Test("A session that is up or reconnecting counts as live")
+    func connectedAndReconnectingCountAsLiveSession() {
         #expect(MainWindowToolbar.hasLiveSession(.connected) == true)
-        #expect(MainWindowToolbar.hasLiveSession(.executing) == true)
+        #expect(MainWindowToolbar.hasLiveSession(.connecting) == true)
         #expect(MainWindowToolbar.hasLiveSession(.disconnected) == false)
-        #expect(MainWindowToolbar.hasLiveSession(.connecting) == false)
         #expect(MainWindowToolbar.hasLiveSession(.error("boom")) == false)
     }
 
-    @Test("Toolbar state entering and leaving execution keeps a live session")
-    func toolbarStateStaysLiveWhileExecuting() {
+    /// The connection's state and whether a query is running are two axes. They shared one case
+    /// until #2342, which is how a connection that was merely dialing painted the query indicator.
+    @Test("A running query does not change what the connection state says")
+    func runningQueryDoesNotChangeConnectionState() {
         let state = ConnectionToolbarState()
-        state.connectionState = .connected
-        state.setExecuting(true)
-        #expect(state.connectionState == .executing)
-        #expect(MainWindowToolbar.hasLiveSession(state.connectionState) == true)
-
-        state.setExecuting(false)
+        state.updateConnectionState(from: .connected)
         #expect(state.connectionState == .connected)
-        #expect(MainWindowToolbar.hasLiveSession(state.connectionState) == true)
+
+        state.updateConnectionState(from: .connecting)
+        #expect(state.connectionState == .connecting)
+
+        state.updateConnectionState(from: .disconnected)
+        #expect(MainWindowToolbar.hasLiveSession(state.connectionState) == false)
+    }
+
+    /// A failure's message is part of the state, so the same failure has to compare equal to itself.
+    @Test("A connection error keeps its message through the mapping")
+    func connectionErrorKeepsItsMessage() {
+        #expect(ToolbarConnectionState(status: .error("boom")) == .error("boom"))
+        #expect(ToolbarConnectionState(status: .connecting) == .connecting)
+        #expect(ToolbarConnectionState(status: .connected) == .connected)
+        #expect(ToolbarConnectionState(status: .disconnected) == .disconnected)
     }
 
     @Test("Session-scoped items stay enabled while a query runs")
     func sessionScopedItemsStayEnabledWhileExecuting() {
         let context = makeContext(
-            connected: MainWindowToolbar.hasLiveSession(.executing),
+            connected: MainWindowToolbar.hasLiveSession(.connected),
             hasPendingChanges: true,
             hasDataPendingChanges: true
         )
@@ -230,7 +246,7 @@ struct MainWindowToolbarValidationTests {
 
     @Test("Session-scoped items stay disabled when the session is gone")
     func sessionScopedItemsDisabledWhenNotLive() {
-        for state: ToolbarConnectionState in [.disconnected, .connecting, .error("boom")] {
+        for state: ToolbarConnectionState in [.disconnected, .error("boom")] {
             let context = makeContext(
                 connected: MainWindowToolbar.hasLiveSession(state),
                 hasPendingChanges: true,
@@ -253,8 +269,8 @@ struct MainWindowToolbarValidationTests {
         coordinator.toolbarState.connectionState = .connected
         #expect(owner.validateToolbarItem(refresh) == true)
 
-        coordinator.toolbarState.setExecuting(true)
-        #expect(coordinator.toolbarState.connectionState == .executing)
+        _ = coordinator.tabExecution.claim(UUID())
+        #expect(coordinator.toolbarState.connectionState == .connected)
         #expect(owner.validateToolbarItem(refresh) == true)
 
         coordinator.toolbarState.connectionState = .disconnected
@@ -525,6 +541,86 @@ struct MainWindowToolbarRepointTests {
     }
 }
 
+@Suite("MainWindowToolbar back and forward validation")
+@MainActor
+struct MainWindowToolbarNavigationValidationTests {
+    private func context(
+        connected: Bool = true,
+        canNavigateBack: Bool = false,
+        canNavigateForward: Bool = false
+    ) -> MainWindowToolbar.ValidationContext {
+        MainWindowToolbar.ValidationContext(
+            connected: connected,
+            isTableTab: true,
+            canAddRow: false,
+            hasPendingChanges: false,
+            hasDataPendingChanges: false,
+            blocksAllWrites: false,
+            fileBased: false,
+            supportsContainerSwitching: true,
+            supportsImport: true,
+            supportsServerDashboard: true,
+            canNavigateBack: canNavigateBack,
+            canNavigateForward: canNavigateForward
+        )
+    }
+
+    @Test("Back is disabled with an empty history rather than hidden")
+    func backDisabledWithoutHistory() {
+        #expect(
+            MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.navigateBack,
+                context: context()
+            ) == false
+        )
+    }
+
+    @Test("Back is enabled once the tab has somewhere to go back to")
+    func backEnabledWithHistory() {
+        #expect(
+            MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.navigateBack,
+                context: context(canNavigateBack: true)
+            )
+        )
+    }
+
+    @Test("Back and Forward run out independently")
+    func backAndForwardAreSeparate() {
+        let onlyBack = context(canNavigateBack: true)
+        #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.navigateBack, context: onlyBack))
+        #expect(
+            MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.navigateForward,
+                context: onlyBack
+            ) == false
+        )
+    }
+
+    @Test("Neither is offered without a connection")
+    func bothNeedAConnection() {
+        let disconnected = context(connected: false, canNavigateBack: true, canNavigateForward: true)
+        #expect(
+            MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.navigateBack,
+                context: disconnected
+            ) == false
+        )
+        #expect(
+            MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.navigateForward,
+                context: disconnected
+            ) == false
+        )
+    }
+
+    @Test("The group is offered by default so it reaches an existing toolbar")
+    func groupIsADefaultItem() {
+        #expect(MainWindowToolbar.defaultItemIdentifiers.contains(MainWindowToolbar.backForwardGroup))
+        #expect(MainWindowToolbar.allowedItemIdentifiers.contains(MainWindowToolbar.backForwardGroup))
+    }
+}
+
 @Suite("MainWindowToolbar Add Row validation")
 @MainActor
 struct MainWindowToolbarAddRowValidationTests {
@@ -539,7 +635,9 @@ struct MainWindowToolbarAddRowValidationTests {
             fileBased: false,
             supportsContainerSwitching: true,
             supportsImport: true,
-            supportsServerDashboard: true
+            supportsServerDashboard: true,
+            canNavigateBack: false,
+            canNavigateForward: false
         )
     }
 

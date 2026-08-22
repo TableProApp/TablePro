@@ -1,0 +1,84 @@
+---
+title: iPhone and iPad
+description: Browse tables, run queries, and edit rows on eight database engines from a synced connection list
+---
+
+You need iOS 18 or later. Builds ship on their own schedule, so a feature in a Mac release note may not be on your phone yet. Your version and build are under **Settings > About**. Connections saved on a Mac come over iCloud; the rest of your Mac setup stays on the Mac.
+
+<Frame caption="The connection list on iPhone">
+  <img className="block dark:hidden" src="/images/ios-connection-list.png" alt="TablePro connection list on iPhone" />
+  <img className="hidden dark:block" src="/images/ios-connection-list-dark.png" alt="TablePro connection list on iPhone" />
+</Frame>
+
+## Supported databases
+
+Every driver is compiled in, so there is no plugin system and nothing to install. The type picker offers these eight:
+
+| Type | Notes |
+| --- | --- |
+| **MySQL** / **MariaDB** | Port 3306 by default |
+| **PostgreSQL** | Port 5432 by default |
+| **SQL Server** | TDS, including Microsoft Entra ID sign-in on a connection synced from the Mac |
+| **Oracle** | Service name or SID |
+| **Redis** | Port 6379 by default |
+| **SQLite** | Copies the file you pick into the app |
+| **DuckDB** | A file on the device, or in-memory |
+
+<Info>
+Redshift is not in the picker, but the driver is present: a Redshift connection created on the Mac connects once it syncs over.
+</Info>
+
+MongoDB, ClickHouse, Cassandra, BigQuery, Snowflake and the rest have no iOS driver. Those connections still sync and still appear in the list, but opening one fails.
+
+## What syncs over
+
+The same CloudKit container as the Mac, with iCloud Sync on by default here and off by default there. Three record types cross: connections (host, port, SSH tunnel and SSL settings, color, safe mode level), groups with their nesting, and tags. SSH profiles, table favorites, saved queries, and app settings are skipped, and query history on the phone is only what you ran on the phone.
+
+Three things a connection depends on are per device and never sync:
+
+| Per device | What you see | What to do |
+| --- | --- | --- |
+| CA and client certificates | The SSL section reads **Not set** | Import them here. One PKCS#12 file covers the client certificate and its key |
+| An SSH private key | It arrived as a path on the Mac, so the tunnel cannot find it | Pick the key on this device, or paste it into **Private Key** |
+| SQLite and DuckDB file paths | The path points at the Mac's disk | Pick the file again here |
+
+Passwords are a separate opt-in, off by default, at **Settings > Sync > Sync Passwords**. They ride iCloud Keychain and only new saves are affected, so re-save a password on the Mac to push it across. **Sync Now** sits in the same section, and a background refresh runs about every 30 minutes.
+
+<Warning>
+Picking a SQLite file copies it into the app, and edits go to that copy, so the original never changes and the two drift apart. DuckDB writes back to the file you picked.
+</Warning>
+
+## What works
+
+An open connection has four tabs: **Tables**, **Query**, **History**, **Info**. `Cmd+1` through `Cmd+4` switch between them on a keyboard, and a toolbar menu switches database and schema when the engine has more than one.
+
+### Browsing
+
+Page a table at 50, 100, 200, or 500 rows, jump to a page number, sort by a column, search text columns, and stack filters with AND or OR. A foreign key value previews the row it points at. **Table Structure** lists columns, indexes, and foreign keys, read only.
+
+### Editing
+
+Tap a row to open it full screen, page between rows, edit values, toggle one to `NULL`, and save. Inserting and deleting rows, and truncating or dropping a table, are here too. Editing needs a primary key.
+
+### Querying
+
+The editor highlights SQL, runs a statement, and stops one mid-flight. Results copy or export as JSON, CSV, or SQL `INSERT`. A running query appears in a Live Activity on the lock screen and Dynamic Island; **Settings > Privacy** hides the SQL text there.
+
+## What is missing
+
+- **Schema changes.** Truncating and dropping a table is the whole list; creating or altering tables, columns, indexes, triggers, and views is Mac only.
+- **AI.** No chat, no inline suggestions, no MCP server.
+
+## Security
+
+Turn on Face ID, Touch ID, or Optic ID under **Settings > Security**. A cold launch always asks; after that **Auto-Lock** relocks immediately or after 1, 5, 15, or 60 minutes idle, starting at 5.
+
+Each connection carries its own [safe mode](/features/safe-mode) level, synced from the Mac and settable here. iOS has three: **Off**, **Confirm Writes**, and **Read-Only**, which refuses writes outright. **Settings > New Connections** sets the level a new connection starts at.
+
+SSH tunnels authenticate with a password or a private key, and an unknown host key prompts with its fingerprint first.
+
+## Shortcuts and widgets
+
+Three App Intents put the app in Shortcuts, the Share Sheet, and Siri: **Open Connection**, **Add Row to Table**, **Add Rows to Table**. See [iOS Shortcuts](/external-api/ios-shortcuts) for pickers, data formats, and limits.
+
+A **Quick Connect** home screen widget opens a saved connection directly, `tablepro://connect/<uuid>` deep links work as on the Mac, Handoff carries an open connection between devices, and a `.tablepro` file from Files or AirDrop imports connections.

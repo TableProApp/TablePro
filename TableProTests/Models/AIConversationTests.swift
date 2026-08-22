@@ -21,7 +21,7 @@ struct AIConversationTests {
             messages: [makeUserTurn(String(repeating: "a", count: 60))]
         )
         conv.updateTitle()
-        #expect(conv.title.hasSuffix("..."))
+        #expect(conv.title.hasSuffix("…"))
     }
 
     @Test("updateTitle keeps short content")

@@ -1,0 +1,32 @@
+---
+title: SQL Files
+description: Open .sql files as query tabs, save back to them, and resolve edits made outside TablePro
+---
+
+Three ways in: double-click in Finder, **File > Open File…** (`Cmd+O`), or drag onto the Dock icon. `.sql`, `.psql` and `.pgsql` all work, and what you get is an ordinary query tab with a file behind it.
+
+## Opening
+
+Each file opens in a new tab. Opening one that is already open focuses its existing tab instead of making a second, and files opened before any connection exists wait in a queue until you connect.
+
+The title bar carries the filename, and the close button gets the standard macOS unsaved-changes dot.
+
+## Saving
+
+`Cmd+S` saves back to the source file, and does a Save As when the tab has no file yet. `Cmd+Shift+S` always opens Save As.
+
+`Cmd+click` the title bar for the standard path menu, then pick a folder to open it in Finder.
+
+When a tab has both unsaved file changes and pending data grid edits, `Cmd+S` saves the grid changes first. Press it again once that finishes to save the file.
+
+Closing a query tab keeps its SQL either way. Reopen it with `Cmd+Shift+T` or **File > Reopen Closed Tab**. See [Tabs](/features/tabs).
+
+## When the file changes underneath you
+
+A `git pull` or an edit in another editor puts a yellow banner across the top of the tab saying the file was modified on disk, with a **Reload** button that replaces your tab's contents with what is now on disk.
+
+Saving over a file that changed since you opened it opens a diff sheet instead of overwriting. **Your Changes** and **On Disk** sit side by side, and three buttons resolve it: **Keep My Changes**, **Reload from Disk**, or **Cancel**.
+
+## A folder at a time
+
+To watch a whole directory of `.sql` files rather than opening them one by one, use [Linked SQL Folders](/features/favorites#linked-sql-folders).

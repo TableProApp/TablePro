@@ -40,17 +40,17 @@ enum VimKeyEventScopeResolver {
 final class VimKeyInterceptor {
     private let engine: VimEngine
     private weak var inlineSuggestionManager: InlineSuggestionManager?
-    private let _monitor = OSAllocatedUnfairLock<Any?>(initialState: nil)
+    private let _monitor = OSAllocatedUnfairLock<Any?>(uncheckedState: nil)
     private weak var controller: TextViewController?
-    private let _popupCloseObserver = OSAllocatedUnfairLock<Any?>(initialState: nil)
-    private let _keyWindowObservers = OSAllocatedUnfairLock<[Any]>(initialState: [])
+    private let _popupCloseObserver = OSAllocatedUnfairLock<Any?>(uncheckedState: nil)
+    private let _keyWindowObservers = OSAllocatedUnfairLock<[Any]>(uncheckedState: [])
     private var isEditorFirstResponder = false
     private(set) var isEditorFocused = false
 
     deinit {
-        if let monitor = _monitor.withLock({ $0 }) { NSEvent.removeMonitor(monitor) }
-        if let observer = _popupCloseObserver.withLock({ $0 }) { NotificationCenter.default.removeObserver(observer) }
-        for observer in _keyWindowObservers.withLock({ $0 }) { NotificationCenter.default.removeObserver(observer) }
+        if let monitor = _monitor.withLockUnchecked({ $0 }) { NSEvent.removeMonitor(monitor) }
+        if let observer = _popupCloseObserver.withLockUnchecked({ $0 }) { NotificationCenter.default.removeObserver(observer) }
+        for observer in _keyWindowObservers.withLockUnchecked({ $0 }) { NotificationCenter.default.removeObserver(observer) }
     }
 
     init(engine: VimEngine, inlineSuggestionManager: InlineSuggestionManager?) {
@@ -63,7 +63,7 @@ final class VimKeyInterceptor {
         self.controller = controller
         uninstall()
 
-        _popupCloseObserver.withLock { $0 = NotificationCenter.default.addObserver(
+        _popupCloseObserver.withLockUnchecked { $0 = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: nil,
             queue: .main
@@ -122,11 +122,11 @@ final class VimKeyInterceptor {
         isEditorFirstResponder = false
         isEditorFocused = false
         removeMonitor()
-        _popupCloseObserver.withLock {
+        _popupCloseObserver.withLockUnchecked {
             if let observer = $0 { NotificationCenter.default.removeObserver(observer) }
             $0 = nil
         }
-        _keyWindowObservers.withLock {
+        _keyWindowObservers.withLockUnchecked {
             for observer in $0 { NotificationCenter.default.removeObserver(observer) }
             $0 = []
         }
@@ -143,7 +143,7 @@ final class VimKeyInterceptor {
                 }
             }
         }
-        _keyWindowObservers.withLock { $0 = observers }
+        _keyWindowObservers.withLockUnchecked { $0 = observers }
     }
 
     private func refreshFocusState() {
@@ -176,19 +176,19 @@ final class VimKeyInterceptor {
     }
 
     private func installMonitor() {
-        _monitor.withLock {
-            $0 = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
-                nonisolated(unsafe) let event = nsEvent
-                return MainActor.assumeIsolated {
-                    guard let self, self.isEditorFocused else { return event }
-                    return self.handleKeyEvent(event)
-                }
+        let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
+            nonisolated(unsafe) let event = nsEvent
+            let consumed = MainActor.assumeIsolated { () -> Bool in
+                guard let self, self.isEditorFocused else { return false }
+                return self.handleKeyEvent(event) == nil
             }
+            return consumed ? nil : nsEvent
         }
+        _monitor.withLockUnchecked { $0 = monitor }
     }
 
     private func removeMonitor() {
-        _monitor.withLock {
+        _monitor.withLockUnchecked {
             if let monitor = $0 { NSEvent.removeMonitor(monitor) }
             $0 = nil
         }

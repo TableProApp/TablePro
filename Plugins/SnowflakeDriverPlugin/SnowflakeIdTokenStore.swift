@@ -13,30 +13,29 @@ import os
 import Security
 
 enum SnowflakeIdTokenStore {
-    private static let lock = NSLock()
-    private static var cache: [String: String] = [:]
+    private static let cache = OSAllocatedUnfairLock(initialState: [String: String]())
     private static let service = "com.TablePro.SnowflakeDriverPlugin.idToken"
     private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakeIdTokenStore")
 
     static func token(account: String, user: String) -> String? {
         let key = cacheKey(account: account, user: user)
-        if let cached = lock.withLock({ cache[key] }) {
+        if let cached = cache.withLock({ $0[key] }) {
             return cached
         }
         guard let stored = readKeychain(key: key) else { return nil }
-        lock.withLock { cache[key] = stored }
+        cache.withLock { $0[key] = stored }
         return stored
     }
 
     static func store(_ token: String, account: String, user: String) {
         let key = cacheKey(account: account, user: user)
-        lock.withLock { cache[key] = token }
+        cache.withLock { $0[key] = token }
         writeKeychain(token, key: key)
     }
 
     static func clear(account: String, user: String) {
         let key = cacheKey(account: account, user: user)
-        _ = lock.withLock { cache.removeValue(forKey: key) }
+        cache.withLock { $0[key] = nil }
         deleteKeychain(key: key)
     }
 

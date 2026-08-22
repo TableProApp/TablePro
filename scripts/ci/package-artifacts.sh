@@ -9,7 +9,12 @@ if [[ "$ARCH" != "arm64" && "$ARCH" != "x86_64" ]]; then
   exit 1
 fi
 
-VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//') || VERSION="dev"
+# Read from the bundle being packaged rather than inferred from git. `git describe --tags` picks
+# up whatever tag is nearest, which on a release commit that also carries a plugin tag is the
+# wrong one, and its "dev" fallback shipped that name to a public release rather than failing.
+# Taken from the artifact, the DMG name cannot disagree with the app inside it.
+APP_BUNDLE="build/Release/TablePro-${ARCH}.app"
+VERSION=$(plutil -extract CFBundleShortVersionString raw -o - "$APP_BUNDLE/Contents/Info.plist")
 
 # --- Create DMG ---
 echo "Creating DMG installer..."
@@ -23,25 +28,17 @@ fi
 chmod +x scripts/create-dmg.sh
 
 echo "📌 Using version: $VERSION"
-NOTARIZE="${NOTARIZE:-false}" scripts/create-dmg.sh "$VERSION" "$ARCH" "build/Release/TablePro-${ARCH}.app"
+NOTARIZE="${NOTARIZE:-false}" scripts/create-dmg.sh "$VERSION" "$ARCH" "$APP_BUNDLE"
 
-# Verify DMG was created
+# Verify DMG was created. A DMG under any other name is not the one the release will upload, so
+# accepting it here only moved the failure to somewhere it was harder to read.
 DMG_FILE="build/Release/TablePro-${VERSION}-${ARCH}.dmg"
-if [ -f "$DMG_FILE" ]; then
-  echo "✅ DMG installer created successfully: $DMG_FILE"
-else
-  echo "⚠️  Expected DMG not found at: $DMG_FILE"
-  echo "📂 Checking for any DMG files in build/Release/:"
-  ls -la build/Release/*.dmg 2>/dev/null || echo "   No DMG files found"
-
-  if ls build/Release/*-${ARCH}.dmg 1>/dev/null 2>&1; then
-    echo "✅ Found ${ARCH} DMG file(s):"
-    ls -lh build/Release/*-${ARCH}.dmg
-  else
-    echo "❌ ERROR: No ${ARCH} DMG file was created"
-    exit 1
-  fi
+if [ ! -f "$DMG_FILE" ]; then
+  echo "❌ ERROR: expected DMG not found at: $DMG_FILE" >&2
+  ls -la build/Release/*.dmg 2>/dev/null || true
+  exit 1
 fi
+echo "✅ DMG installer created successfully: $DMG_FILE"
 
 ls -lh build/Release/*.dmg
 

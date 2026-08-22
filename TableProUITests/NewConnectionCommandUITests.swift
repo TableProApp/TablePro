@@ -3,7 +3,7 @@ import XCTest
 final class NewConnectionCommandUITests: UITestCase {
     func testNewConnectionOpensTheChooserAfterTheWelcomeWindowIsClosed() throws {
         let app = try launchApp()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.windows.firstMatch.waitToExist(timeout: 10))
 
         app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(
@@ -11,13 +11,13 @@ final class NewConnectionCommandUITests: UITestCase {
             "The welcome window should close, which is the state that broke New Connection"
         )
 
-        let newConnection = app.menuBars.menuItems["New Connection..."]
-        XCTAssertTrue(newConnection.waitForExistence(timeout: 5))
+        let newConnection = app.menuBars.menuItems["New Connection…"]
+        XCTAssertTrue(newConnection.waitToExist(timeout: 5))
         XCTAssertTrue(newConnection.isEnabled)
         newConnection.click()
 
         XCTAssertTrue(
-            app.staticTexts["Choose a Database"].waitForExistence(timeout: 10),
+            app.staticTexts["Choose a Database"].waitToExist(timeout: 10),
             "New Connection must present the database chooser with no welcome window open"
         )
     }

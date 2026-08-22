@@ -51,7 +51,7 @@ internal final class RecentlyClosedTabStore {
     internal static let maxEntries = 20
     internal static let maxAge: TimeInterval = 60 * 60 * 24 * 30
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "RecentlyClosedTabStore")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RecentlyClosedTabStore")
 
     internal private(set) var entries: [RecentlyClosedTabEntry] = []
 

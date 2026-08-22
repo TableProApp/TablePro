@@ -56,7 +56,7 @@ final class MainContentCommandActions {
     /// crosses that boundary; `NSWindow.firstResponder` publishes no change.
     var focusOwnsTextInput = false
 
-    @ObservationIgnored var textInputFocusObserver: NSObjectProtocol?
+    @ObservationIgnored let textInputFocusObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
 
     @ObservationIgnored var isTextInputFocusCheckScheduled = false
 
@@ -95,8 +95,8 @@ final class MainContentCommandActions {
         for task in notificationTasks {
             task.cancel()
         }
-        if let textInputFocusObserver {
-            NotificationCenter.default.removeObserver(textInputFocusObserver)
+        if let observer = textInputFocusObserver.withLockUnchecked({ $0 }) {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
@@ -293,7 +293,7 @@ final class MainContentCommandActions {
     /// existing proves nothing: it is kept alive across a lost session so a reconnect can restore
     /// the user's tabs.
     var isConnected: Bool { coordinator?.splitViewController?.isConnected ?? false }
-    var isQueryExecuting: Bool { coordinator?.toolbarState.isExecuting ?? false }
+    var isQueryExecuting: Bool { coordinator?.tabExecution.isAnyExecuting ?? false }
 
     var safeModeLevel: SafeModeLevel { coordinator?.toolbarState.safeModeLevel ?? connection.safeModeLevel }
 
@@ -364,8 +364,8 @@ final class MainContentCommandActions {
 
     var openContainerSwitcherTitle: String {
         containerSwitchTitle(
-            schema: String(localized: "Open Schema..."),
-            database: String(localized: "Open Database...")
+            schema: String(localized: "Open Schema…"),
+            database: String(localized: "Open Database…")
         )
     }
 
@@ -1338,7 +1338,7 @@ final class MainContentCommandActions {
         guard PluginManager.shared.connectionMode(for: type) != .fileBased else { return }
         coordinator.contentWindow?.makeFirstResponder(nil)
         coordinator.presentedScopeSwitcher = nil
-        coordinator.isDatabaseSwitcherShown = true
+        presentDatabaseSwitcher(on: coordinator, target: nil)
     }
 
     /// The same chooser, opened from the toolbar chip so it appears against the scope it switches.
@@ -1349,7 +1349,7 @@ final class MainContentCommandActions {
         let type = coordinator.connection.type
         guard PluginManager.shared.switchableContainers(for: type).contains(target) else { return }
         coordinator.contentWindow?.makeFirstResponder(nil)
-        coordinator.isDatabaseSwitcherShown = false
+        coordinator.switcherPresenter.dismiss()
         coordinator.presentedScopeSwitcher = target
     }
 
@@ -1358,8 +1358,29 @@ final class MainContentCommandActions {
     }
 
     func openConnectionSwitcher() {
-        coordinator?.contentWindow?.makeFirstResponder(nil)
-        coordinator?.isConnectionSwitcherShown = true
+        guard let coordinator else { return }
+        coordinator.contentWindow?.makeFirstResponder(nil)
+        coordinator.presentedScopeSwitcher = nil
+        coordinator.switcherPresenter.present(
+            from: coordinator.contentWindow,
+            anchoredTo: MainWindowToolbar.connectionGroup,
+            contentSize: ConnectionSwitcherPopover.contentSize
+        ) { dismiss in
+            ConnectionSwitcherPopover(dismiss: dismiss)
+        }
+    }
+
+    /// Anchored to the connection group rather than to the Database button inside it, because the
+    /// group is the only item AppKit draws a frame for: its subitems exist to populate the overflow
+    /// menu and carry no frame of their own.
+    private func presentDatabaseSwitcher(on coordinator: MainContentCoordinator, target: ContainerSwitchTarget?) {
+        coordinator.switcherPresenter.present(
+            from: coordinator.contentWindow,
+            anchoredTo: MainWindowToolbar.connectionGroup,
+            contentSize: DatabaseSwitcherPopover.contentSize
+        ) { dismiss in
+            DatabaseSwitcherPopoverHost(coordinator: coordinator, target: target, dismiss: dismiss)
+        }
     }
 
     // MARK: - Undo/Redo (Group A — Called Directly)

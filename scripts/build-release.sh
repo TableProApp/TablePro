@@ -1,5 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
+
+# shellcheck source=lib/macos.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/notarize.sh"
 
 # Build script for creating architecture-specific releases
 # Usage: ./build-release.sh [arm64|x86_64|both]
@@ -12,174 +16,8 @@ BUILD_DIR="build/Release"
 SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Dat Ngo Quoc (D7HJ5TFYCU)}"
 TEAM_ID="D7HJ5TFYCU"
 NOTARIZE="${NOTARIZE:-false}"
-APPLE_ID="${APPLE_ID:-datngoquoc@icloud.com}"
 
 echo "🏗️  Building TablePro for: $ARCH"
-
-# Ensure libmariadb.a has correct architecture
-prepare_mariadb() {
-    local target_arch=$1
-    echo "📦 Preparing libmariadb.a for $target_arch..."
-
-    # If libmariadb.a already exists with the correct architecture, skip preparation.
-    # CI pre-copies the architecture-specific slice from Libs via scripts/ci/prepare-libs.sh.
-    # Homebrew is not involved: the whole library is vendored by download-libs.sh.
-    if [ -f "Libs/libmariadb.a" ] && lipo -info "Libs/libmariadb.a" 2>/dev/null | grep -q "$target_arch"; then
-        local size
-        size=$(ls -lh Libs/libmariadb.a 2>/dev/null | awk '{print $5}')
-        echo "✅ libmariadb.a already present for $target_arch ($size), skipping"
-        return 0
-    fi
-
-    # Change to Libs directory
-    cd Libs || {
-        echo "❌ FATAL: Cannot access Libs directory"
-        exit 1
-    }
-
-    # Check if universal library exists
-    if [ ! -f "libmariadb_universal.a" ]; then
-        echo "❌ ERROR: libmariadb_universal.a not found!"
-        echo "Run this first to create universal library:"
-        echo "  lipo -create libmariadb_arm64.a libmariadb_x86_64.a -output libmariadb_universal.a"
-        cd - > /dev/null
-        exit 1
-    fi
-
-    # Extract thin slice for target architecture
-    if ! lipo libmariadb_universal.a -thin "$target_arch" -output libmariadb.a; then
-        echo "❌ FATAL: Failed to extract $target_arch slice from universal library"
-        echo "Ensure the universal library contains $target_arch architecture"
-        cd - > /dev/null
-        exit 1
-    fi
-
-    # Verify the output file was created
-    if [ ! -f "libmariadb.a" ]; then
-        echo "❌ FATAL: libmariadb.a was not created successfully"
-        cd - > /dev/null
-        exit 1
-    fi
-
-    # Get and display size
-    local size
-    size=$(ls -lh libmariadb.a 2>/dev/null | awk '{print $5}')
-    if [ -z "$size" ]; then
-        size="unknown"
-    fi
-
-    echo "✅ libmariadb.a is now $target_arch-only ($size)"
-
-    cd - > /dev/null || exit 1
-}
-
-# Ensure libpq + OpenSSL static libraries have correct architecture
-prepare_libpq() {
-    local target_arch=$1
-    echo "📦 Preparing libpq + OpenSSL static libraries for $target_arch..."
-
-    local all_ok=1
-    for lib in libpq libpgcommon libpgport libssl libcrypto; do
-        # If already present with the correct architecture, skip
-        if [ -f "Libs/${lib}.a" ] && lipo -info "Libs/${lib}.a" 2>/dev/null | grep -q "$target_arch"; then
-            continue
-        fi
-
-        if [ ! -f "Libs/${lib}_universal.a" ]; then
-            echo "❌ ERROR: Libs/${lib}_universal.a not found!"
-            echo "Run this first: ./scripts/build-libpq.sh both"
-            all_ok=0
-            continue
-        fi
-
-        if ! lipo "Libs/${lib}_universal.a" -thin "$target_arch" -output "Libs/${lib}.a"; then
-            echo "❌ FATAL: Failed to extract $target_arch slice from ${lib}_universal.a"
-            exit 1
-        fi
-    done
-
-    if [ "$all_ok" -eq 0 ]; then
-        exit 1
-    fi
-
-    echo "✅ libpq + OpenSSL libraries ready for $target_arch"
-}
-
-prepare_libmongoc() {
-    local target_arch=$1
-    echo "📦 Preparing libmongoc + libbson static libraries for $target_arch..."
-
-    local all_ok=1
-    for lib in libmongoc libbson; do
-        # If already present with the correct architecture, skip
-        if [ -f "Libs/${lib}.a" ] && lipo -info "Libs/${lib}.a" 2>/dev/null | grep -q "$target_arch"; then
-            continue
-        fi
-
-        # Try arch-specific file first (libmongoc_arm64.a)
-        if [ -f "Libs/${lib}_${target_arch}.a" ]; then
-            cp "Libs/${lib}_${target_arch}.a" "Libs/${lib}.a"
-            continue
-        fi
-
-        # Fall back to universal
-        if [ ! -f "Libs/${lib}_universal.a" ]; then
-            echo "❌ ERROR: Libs/${lib}_${target_arch}.a and Libs/${lib}_universal.a not found!"
-            echo "Run this first: ./scripts/build-libmongoc.sh both"
-            all_ok=0
-            continue
-        fi
-
-        if ! lipo "Libs/${lib}_universal.a" -thin "$target_arch" -output "Libs/${lib}.a"; then
-            echo "❌ FATAL: Failed to extract $target_arch slice from ${lib}_universal.a"
-            exit 1
-        fi
-    done
-
-    if [ "$all_ok" -eq 0 ]; then
-        exit 1
-    fi
-
-    echo "✅ libmongoc + libbson libraries ready for $target_arch"
-}
-
-prepare_hiredis() {
-    local target_arch=$1
-    echo "📦 Preparing hiredis static libraries for $target_arch..."
-
-    local all_ok=1
-    for lib in libhiredis libhiredis_ssl; do
-        # If already present with the correct architecture, skip
-        if [ -f "Libs/${lib}.a" ] && lipo -info "Libs/${lib}.a" 2>/dev/null | grep -q "$target_arch"; then
-            continue
-        fi
-
-        # Try arch-specific file first
-        if [ -f "Libs/${lib}_${target_arch}.a" ]; then
-            cp "Libs/${lib}_${target_arch}.a" "Libs/${lib}.a"
-            continue
-        fi
-
-        # Fall back to universal
-        if [ ! -f "Libs/${lib}_universal.a" ]; then
-            echo "❌ ERROR: Libs/${lib}_${target_arch}.a and Libs/${lib}_universal.a not found!"
-            echo "Run this first: ./scripts/build-hiredis.sh both"
-            all_ok=0
-            continue
-        fi
-
-        if ! lipo "Libs/${lib}_universal.a" -thin "$target_arch" -output "Libs/${lib}.a"; then
-            echo "❌ FATAL: Failed to extract $target_arch slice from ${lib}_universal.a"
-            exit 1
-        fi
-    done
-
-    if [ "$all_ok" -eq 0 ]; then
-        exit 1
-    fi
-
-    echo "✅ hiredis libraries ready for $target_arch"
-}
 
 # Bundle non-system dynamic libraries into the app bundle
 # so the app runs without Homebrew on end-user machines.
@@ -313,10 +151,8 @@ build_for_arch() {
     echo "🔨 Building for $arch..."
 
     # Prepare architecture-specific libraries
-    prepare_mariadb "$arch"
-    prepare_libpq "$arch"
-    prepare_libmongoc "$arch"
-    prepare_hiredis "$arch"
+    echo "📦 Preparing static libraries for $arch..."
+    prepare_arch_libs "$arch" libmariadb libpq libpgcommon libpgport libssl libcrypto libmongoc libbson libhiredis libhiredis_ssl
 
     # Create OpenSSL shared dylibs for this architecture
     echo "📦 Creating OpenSSL shared dylibs for $arch..."
@@ -360,7 +196,6 @@ build_for_arch() {
         CLANG_COVERAGE_MAPPING=NO \
         ENABLE_CODE_COVERAGE=NO \
         ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} \
-        ${ANALYTICS_HMAC_SECRET:+ANALYTICS_HMAC_SECRET="$ANALYTICS_HMAC_SECRET"} \
         -skipPackagePluginValidation \
         -clonedSourcePackagesDirPath "$SPM_CACHE_DIR" \
         -derivedDataPath build/DerivedData \
@@ -390,8 +225,10 @@ build_for_arch() {
         exit 1
     }
 
-    # Copy and rename app
+    # Copy and rename app. Removed first: cp -R onto an existing bundle merges into it, so a
+    # rebuild carried the previous build's files into the one being signed and shipped.
     OUTPUT_NAME="TablePro-${arch}.app"
+    rm -rf "${BUILD_DIR:?}/$OUTPUT_NAME"
     echo "Copying app bundle to release directory..."
     if ! cp -R "$APP_PATH" "$BUILD_DIR/$OUTPUT_NAME"; then
         echo "❌ FATAL: Failed to copy app bundle"
@@ -405,11 +242,6 @@ build_for_arch() {
         echo "❌ FATAL: App bundle was not copied successfully"
         exit 1
     fi
-
-    # Remove any stale nested .app bundles in the bundle root (breaks codesign)
-    for nested in "$BUILD_DIR/$OUTPUT_NAME"/*.app; do
-        [ -d "$nested" ] && rm -rf "$nested"
-    done
 
     # Strip plugin binaries — removes debug symbols, code coverage (__LLVM_COV),
     # and dead LINKEDIT metadata that bloat the bundle (e.g., OracleDriver 43MB → ~15MB)
@@ -661,35 +493,9 @@ fi
 if [ "$NOTARIZE" = "true" ]; then
     echo ""
     echo "📮 Notarizing..."
-
-    # Requires: xcrun notarytool store-credentials "TablePro" --apple-id ... --team-id ... --password ...
     for app in "$BUILD_DIR"/TablePro-*.app; do
         [ -d "$app" ] || continue
-        name=$(basename "$app")
-        zip_path="$BUILD_DIR/${name%.app}.zip"
-        echo "   Zipping $name..."
-        ditto -c -k --keepParent "$app" "$zip_path"
-
-        echo "   Submitting $name for notarization..."
-        submit_output=$(xcrun notarytool submit "$zip_path" --keychain-profile "TablePro" --wait 2>&1)
-        submit_status=$?
-        echo "$submit_output"
-
-        submission_id=$(echo "$submit_output" | grep "id:" | head -1 | awk '{print $2}')
-
-        if [ $submit_status -eq 0 ] && echo "$submit_output" | grep -q "status: Accepted"; then
-            echo "   Stapling $name..."
-            xcrun stapler staple "$app"
-            echo "   ✅ $name notarized and stapled"
-        else
-            echo "   ❌ Notarization failed for $name"
-            if [ -n "$submission_id" ]; then
-                echo "   📋 Fetching notarization log for $submission_id..."
-                xcrun notarytool log "$submission_id" --keychain-profile "TablePro" 2>&1 || true
-            fi
-            exit 1
-        fi
-        rm -f "$zip_path"
+        notarize_and_staple "$app" exec
     done
     echo "✅ Notarization complete"
 fi

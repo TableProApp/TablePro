@@ -9,7 +9,7 @@ import SwiftUI
 private let fallbackScreenFrame = NSRect(x: 0, y: 0, width: 1_280, height: 800)
 
 internal final class QuickSwitcherPanel: NSPanel {
-    init<Content: View>(hostingController: NSHostingController<Content>) {
+    init<Content: View>(hostingController: NSHostingController<Content>, surfaceCornerRadius: CGFloat) {
         hostingController.sizingOptions = []
         let proposal = NSScreen.main?.visibleFrame.size ?? fallbackScreenFrame.size
         let contentSize = hostingController.sizeThatFits(in: proposal)
@@ -35,6 +35,25 @@ internal final class QuickSwitcherPanel: NSPanel {
         animationBehavior = .utilityWindow
         contentViewController = hostingController
         setContentSize(contentSize)
+        maskContentToSurfaceShape(cornerRadius: surfaceCornerRadius)
+    }
+
+    /// Liquid Glass paints a faint wash across the hosting view's whole bounds, outside the shape
+    /// handed to `glassEffect`, and SwiftUI cannot reach it: the glass backdrop is a layer beneath
+    /// the SwiftUI render tree, so a `clipShape` over the surface leaves the wash exactly as it is.
+    /// Measured on macOS 27 by capturing the panel window without its shadow: the corners outside
+    /// the rounded surface carry alpha 5 to 11 unmasked and 0 masked, a `clipShape` on the surface
+    /// changes nothing, and removing the `GlassEffectContainer` changes nothing either. That wash
+    /// over the square window bounds is the outline this masks away. Below macOS 26 the surface
+    /// clips itself and its corners already measure 0, so the mask would buy nothing there and only
+    /// cost the offscreen pass that rounding a layer with sublayers forces.
+    private func maskContentToSurfaceShape(cornerRadius: CGFloat) {
+        guard #available(macOS 26.0, *), let contentView = contentViewController?.view else { return }
+        contentView.wantsLayer = true
+        guard let layer = contentView.layer else { return }
+        layer.cornerRadius = cornerRadius
+        layer.cornerCurve = .continuous
+        layer.masksToBounds = true
     }
 
     override var canBecomeKey: Bool { true }
@@ -74,7 +93,10 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
         }
         let hostingController = NSHostingController(rootView: sizeReportingContent)
 
-        let panel = QuickSwitcherPanel(hostingController: hostingController)
+        let panel = QuickSwitcherPanel(
+            hostingController: hostingController,
+            surfaceCornerRadius: QuickSwitcherMetrics.cornerRadius
+        )
         panel.delegate = self
         self.panel = panel
 

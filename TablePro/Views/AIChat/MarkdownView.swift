@@ -9,6 +9,7 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 
 struct MarkdownView: View, Equatable {
@@ -244,11 +245,11 @@ private struct MarkdownTableView: View {
 // MARK: - Inline parsing
 
 enum MarkdownInline {
-    private static let cache: NSCache<NSString, NSAttributedString> = {
-        let c = NSCache<NSString, NSAttributedString>()
-        c.countLimit = 4_000
-        c.totalCostLimit = 8 * 1_024 * 1_024
-        return c
+    private static let cache: OSAllocatedUnfairLock<NSCache<NSString, NSAttributedString>> = {
+        let cache = NSCache<NSString, NSAttributedString>()
+        cache.countLimit = 4_000
+        cache.totalCostLimit = 8 * 1_024 * 1_024
+        return OSAllocatedUnfairLock(uncheckedState: cache)
     }()
 
     private static let options = AttributedString.MarkdownParsingOptions(
@@ -260,11 +261,11 @@ enum MarkdownInline {
             return attributedString(from: MarkdownInlineRepair.repairingDanglingSyntax(source))
         }
         let key = source as NSString
-        if let cached = cache.object(forKey: key) {
+        if let cached = cache.withLockUnchecked({ $0.object(forKey: key) }) {
             return AttributedString(cached)
         }
         let attributed = attributedString(from: source)
-        cache.setObject(NSAttributedString(attributed), forKey: key, cost: key.length)
+        cache.withLockUnchecked { $0.setObject(NSAttributedString(attributed), forKey: key, cost: key.length) }
         return attributed
     }
 

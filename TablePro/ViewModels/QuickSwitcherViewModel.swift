@@ -47,7 +47,7 @@ internal final class QuickSwitcherViewModel {
         let items: [QuickSwitcherItem]
     }
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "QuickSwitcherViewModel")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QuickSwitcherViewModel")
     private static let recentLimit = 10
     private static let filterDebounceNanoseconds: UInt64 = 40_000_000
 

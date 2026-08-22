@@ -268,10 +268,9 @@ extension DatabaseManager {
                 }
             case .selectSchemaFromLastSession:
                 if let schemaDriver = driver as? SchemaSwitchable,
-                   let savedSchema = appSettingsStorage.loadLastSchema(for: connection.id),
-                   savedSchema != schemaDriver.currentSchema {
+                   let savedSchema = appSettingsStorage.loadLastSchema(for: connection.id) {
                     do {
-                        try await schemaDriver.switchSchema(to: savedSchema)
+                        try await schemaDriver.switchSchemaIfNeeded(to: savedSchema)
                         activeSessions[connection.id]?.browseSchema = savedSchema
                     } catch {
                         Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .public)': \(error.localizedDescription, privacy: .public)")
@@ -373,9 +372,8 @@ extension DatabaseManager {
     /// (driver schema) and table queries (session schema) on different schemas.
     private func resetSchema(on driver: any SchemaSwitchable, to defaultSchemaName: String?) async {
         guard let defaultSchemaName, !defaultSchemaName.isEmpty else { return }
-        guard driver.currentSchema != defaultSchemaName else { return }
         do {
-            try await driver.switchSchema(to: defaultSchemaName)
+            try await driver.switchSchemaIfNeeded(to: defaultSchemaName)
         } catch {
             Self.logger.warning(
                 "Failed to reset schema to '\(defaultSchemaName, privacy: .public)' after a database switch: \(error.localizedDescription, privacy: .public)"

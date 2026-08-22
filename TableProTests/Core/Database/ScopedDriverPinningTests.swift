@@ -129,9 +129,7 @@ private final class CallRecordingPluginDriver: PluginDatabaseDriver, @unchecked 
     }
 
     func switchDatabase(to database: String) async throws {
-        lock.lock()
-        self.database = database
-        lock.unlock()
+        lock.withLock { self.database = database }
         record("switch:\(database)")
     }
 

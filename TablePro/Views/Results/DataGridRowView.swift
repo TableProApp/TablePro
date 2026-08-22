@@ -321,7 +321,7 @@ class DataGridRowView: NSTableRowView {
         menu.addItem(NSMenuItem.separator())
 
         let exportItem = NSMenuItem(
-            title: String(localized: "Export Results..."),
+            title: String(localized: "Export Results…"),
             action: #selector(exportResults),
             keyEquivalent: ""
         )

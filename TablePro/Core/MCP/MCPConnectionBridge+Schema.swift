@@ -1,4 +1,5 @@
 import Foundation
+import os
 import TableProPluginKit
 
 extension MCPConnectionBridge {
@@ -256,8 +257,8 @@ extension MCPConnectionBridge {
         if let value = metadata.comment { fields["comment"] = .string(value) }
         if let value = metadata.engine { fields["engine"] = .string(value) }
         if let value = metadata.collation { fields["collation"] = .string(value) }
-        if let value = metadata.createTime { fields["created_at"] = .string(Self.iso8601.string(from: value)) }
-        if let value = metadata.updateTime { fields["updated_at"] = .string(Self.iso8601.string(from: value)) }
+        if let value = metadata.createTime { fields["created_at"] = .string(Self.iso8601.withLockUnchecked { $0.string(from: value) }) }
+        if let value = metadata.updateTime { fields["updated_at"] = .string(Self.iso8601.withLockUnchecked { $0.string(from: value) }) }
         return .object(fields)
     }
 

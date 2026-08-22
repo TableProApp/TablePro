@@ -72,7 +72,7 @@ public struct OpenTableTabTool: MCPToolImplementation {
                 intent: .openContent
             )
             WindowManager.shared.openTab(payload: payload, autoConnect: true)
-            NSApp.activate(ignoringOtherApps: true)
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         }
 
         guard let snapshot = await MCPTabSnapshotProvider.awaitTab(

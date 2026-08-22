@@ -94,11 +94,11 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let versionResult = try await localBackend.executeQuery("SELECT sqlite_version()")
         let version = versionResult.rows.first?.first?.asText ?? "SQLite"
 
-        lock.lock()
-        _dbHandleForInterrupt = rawHandle != 0 ? OpaquePointer(bitPattern: rawHandle) : nil
-        _serverVersion = version
-        backend = .local(localBackend)
-        lock.unlock()
+        lock.withLock {
+            _dbHandleForInterrupt = rawHandle != 0 ? OpaquePointer(bitPattern: rawHandle) : nil
+            _serverVersion = version
+            backend = .local(localBackend)
+        }
 
         Self.logger.debug("Connected to local libSQL database file")
     }
@@ -126,18 +126,14 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 ?? sqliteVersion.rows.first?.first?.stringValue
                 ?? "libSQL"
 
-            lock.lock()
-            _serverVersion = version
-            lock.unlock()
+            lock.withLock { _serverVersion = version }
         } catch {
             client.invalidateSession()
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
             throw LibSQLError(message: String(localized: "Failed to connect to libSQL database"))
         }
 
-        lock.lock()
-        backend = .remote(client)
-        lock.unlock()
+        lock.withLock { backend = .remote(client) }
 
         Self.logger.debug("Connected to libSQL database: \(normalized)")
     }

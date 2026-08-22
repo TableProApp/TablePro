@@ -371,28 +371,28 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             delegate = nil
         }
 
-        lock.lock()
-        if let delegate {
-            session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
-        } else {
-            session = URLSession(configuration: urlConfig)
+        lock.withLock {
+            if let delegate {
+                session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
+            } else {
+                session = URLSession(configuration: urlConfig)
+            }
         }
-        lock.unlock()
 
         do {
             try await detectApiPrefix()
         } catch let etcdError as EtcdError {
-            lock.lock()
-            session?.invalidateAndCancel()
-            session = nil
-            lock.unlock()
+            lock.withLock {
+                session?.invalidateAndCancel()
+                session = nil
+            }
             Self.logger.error("Connection test failed: \(etcdError.localizedDescription)")
             throw etcdError
         } catch {
-            lock.lock()
-            session?.invalidateAndCancel()
-            session = nil
-            lock.unlock()
+            lock.withLock {
+                session?.invalidateAndCancel()
+                session = nil
+            }
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
             throw EtcdError.connectionFailed(error.localizedDescription)
         }
@@ -401,10 +401,10 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             do {
                 try await authenticate()
             } catch {
-                lock.lock()
-                session?.invalidateAndCancel()
-                session = nil
-                lock.unlock()
+                lock.withLock {
+                    session?.invalidateAndCancel()
+                    session = nil
+                }
                 throw error
             }
         }
@@ -438,12 +438,10 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     private func detectApiPrefix() async throws {
         let candidates = ["v3", "v3beta", "v3alpha"]
 
-        lock.lock()
-        guard let session else {
-            lock.unlock()
-            throw EtcdError.notConnected
+        let session = try lock.withLock { () -> URLSession in
+            guard let currentSession = self.session else { throw EtcdError.notConnected }
+            return currentSession
         }
-        lock.unlock()
 
         for candidate in candidates {
             guard let url = URL(string: "\(baseUrl)/\(candidate)/maintenance/status") else {
@@ -471,17 +469,13 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             case 404:
                 continue
             case 200:
-                lock.lock()
-                apiPrefix = candidate
-                lock.unlock()
+                lock.withLock { apiPrefix = candidate }
                 Self.logger.debug("Detected etcd API prefix: \(candidate)")
                 return
             case 401 where !config.username.isEmpty:
                 // Auth required but credentials are configured — prefix is valid,
                 // authenticate() will run after detection
-                lock.lock()
-                apiPrefix = candidate
-                lock.unlock()
+                lock.withLock { apiPrefix = candidate }
                 Self.logger.debug("Detected etcd API prefix: \(candidate) (auth required)")
                 return
             case 401:
@@ -545,14 +539,10 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     // MARK: - Watch
 
     func watch(key: String, prefix: Bool, timeout: TimeInterval) async throws -> [EtcdWatchEvent] {
-        lock.lock()
-        guard session != nil else {
-            lock.unlock()
-            throw EtcdError.notConnected
+        let (token, generation) = try lock.withLock { () -> (String?, UInt64) in
+            guard session != nil else { throw EtcdError.notConnected }
+            return (authToken, sessionGeneration)
         }
-        let token = authToken
-        let generation = sessionGeneration
-        lock.unlock()
 
         let b64Key = Self.base64Encode(key)
         var createReq = EtcdWatchCreateRequest(key: b64Key)
@@ -573,6 +563,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             request.setValue(token, forHTTPHeaderField: "Authorization")
         }
         request.httpBody = try JSONEncoder().encode(watchReq)
+        let watchRequest = request
 
         return try await withThrowingTaskGroup(of: [EtcdWatchEvent].self) { group in
             let collectedData = DataCollector()
@@ -583,7 +574,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
                         guard self.sessionGeneration == generation, let currentSession = self.session else {
                             return nil
                         }
-                        let dataTask = currentSession.dataTask(with: request) { data, _, error in
+                        let dataTask = currentSession.dataTask(with: watchRequest) { data, _, error in
                             if let error {
                                 // URLError.cancelled is expected when we cancel after timeout
                                 if (error as? URLError)?.code == .cancelled {
@@ -708,14 +699,10 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     }
 
     private func performRequest<Req: Encodable>(path: String, body: Req, allowReauth: Bool = true) async throws -> Data {
-        lock.lock()
-        guard let session else {
-            lock.unlock()
-            throw EtcdError.notConnected
+        let (token, generation) = try lock.withLock { () -> (String?, UInt64) in
+            guard session != nil else { throw EtcdError.notConnected }
+            return (authToken, sessionGeneration)
         }
-        let token = authToken
-        let generation = sessionGeneration
-        lock.unlock()
 
         guard let url = URL(string: "\(baseUrl)/\(path)") else {
             throw EtcdError.serverError("Invalid URL: \(baseUrl)/\(path)")
@@ -761,9 +748,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             self.lock.unlock()
         }
 
-        lock.lock()
-        currentTask = nil
-        lock.unlock()
+        lock.withLock { currentTask = nil }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw EtcdError.serverError("Invalid response type")
@@ -771,9 +756,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
         if httpResponse.statusCode == 401 {
             // Attempt token refresh if not already authenticating and credentials are available
-            lock.lock()
-            let alreadyAuthenticating = _isAuthenticating
-            lock.unlock()
+            let alreadyAuthenticating = lock.withLock { _isAuthenticating }
 
             if allowReauth, !alreadyAuthenticating, !config.username.isEmpty {
                 try await authenticate()
@@ -798,22 +781,16 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     // MARK: - Authentication
 
     private func authenticate() async throws {
-        lock.lock()
-        guard session != nil else {
-            lock.unlock()
-            throw EtcdError.notConnected
+        let startedAuthenticating = try lock.withLock { () -> Bool in
+            guard session != nil else { throw EtcdError.notConnected }
+            guard !_isAuthenticating else { return false }
+            _isAuthenticating = true
+            return true
         }
-        if _isAuthenticating {
-            lock.unlock()
-            return
-        }
-        _isAuthenticating = true
-        lock.unlock()
+        guard startedAuthenticating else { return }
 
         defer {
-            lock.lock()
-            _isAuthenticating = false
-            lock.unlock()
+            lock.withLock { _isAuthenticating = false }
         }
 
         let authReq = EtcdAuthRequest(name: config.username, password: config.password)
@@ -827,13 +804,10 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(authReq)
 
-        lock.lock()
-        guard session != nil else {
-            lock.unlock()
-            throw EtcdError.notConnected
+        let generation = try lock.withLock { () -> UInt64 in
+            guard session != nil else { throw EtcdError.notConnected }
+            return sessionGeneration
         }
-        let generation = sessionGeneration
-        lock.unlock()
 
         let (data, response) = try await withCheckedThrowingContinuation {
             (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
@@ -872,9 +846,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             throw EtcdError.authFailed("No token in response")
         }
 
-        lock.lock()
-        authToken = token
-        lock.unlock()
+        lock.withLock { authToken = token }
 
         Self.logger.debug("Authenticated with etcd successfully")
     }
@@ -958,7 +930,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     // MARK: - TLS Delegates
 
-    private class InsecureTlsDelegate: NSObject, URLSessionDelegate {
+    private final class InsecureTlsDelegate: NSObject, URLSessionDelegate {
         func urlSession(
             _ session: URLSession,
             didReceive challenge: URLAuthenticationChallenge,
@@ -973,7 +945,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         }
     }
 
-    private class EtcdTlsDelegate: NSObject, URLSessionDelegate {
+    private final class EtcdTlsDelegate: NSObject, URLSessionDelegate {
         private let caCertPath: String?
         private let clientCertPath: String?
         private let clientKeyPath: String?

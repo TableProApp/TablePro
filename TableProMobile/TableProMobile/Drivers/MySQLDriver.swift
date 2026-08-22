@@ -3,7 +3,7 @@ import Foundation
 import TableProDatabase
 import TableProModels
 
-final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = MySQLActor()
     private let host: String
     private let port: Int
@@ -500,7 +500,7 @@ private actor MySQLActor {
     }
 }
 
-enum MySQLBeginStreamResult: Sendable {
+nonisolated enum MySQLBeginStreamResult: Sendable {
     case rowSet([ColumnInfo])
     case noResult(affectedRows: Int)
 }
@@ -538,7 +538,7 @@ nonisolated private func mysqlFieldTypeName(_ typeValue: UInt32) -> String {
     }
 }
 
-private struct RawMySQLResult: Sendable {
+nonisolated private struct RawMySQLResult: Sendable {
     let columns: [String]
     let columnTypes: [String]
     let rows: [[String?]]
@@ -549,7 +549,7 @@ private struct RawMySQLResult: Sendable {
 
 // MARK: - Errors
 
-enum MySQLError: Error, LocalizedError {
+nonisolated enum MySQLError: Error, LocalizedError {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)

@@ -15,51 +15,57 @@ import Foundation
 import os
 import TableProMSSQLCore
 
-private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
+nonisolated private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
 
-private let freetdsErrorLock = NSLock()
-private var freetdsConnectionErrors: [UnsafeRawPointer: String] = [:]
-private var freetdsGlobalError = ""
-
-private func freetdsGetError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) -> String {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    if let dbproc {
-        return freetdsConnectionErrors[UnsafeRawPointer(dbproc)] ?? freetdsGlobalError
-    }
-    return freetdsGlobalError
+private struct FreeTDSErrorState {
+    var perConnection: [UInt: String] = [:]
+    var global = ""
 }
 
-private func freetdsClearError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    if let dbproc {
-        freetdsConnectionErrors[UnsafeRawPointer(dbproc)] = nil
-    } else {
-        freetdsGlobalError = ""
+nonisolated private let freetdsErrors = OSAllocatedUnfairLock(initialState: FreeTDSErrorState())
+
+nonisolated private func freetdsConnectionKey(_ dbproc: UnsafeMutablePointer<DBPROCESS>) -> UInt {
+    UInt(bitPattern: UnsafeRawPointer(dbproc))
+}
+
+nonisolated private func freetdsGetError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) -> String {
+    let key = dbproc.map(freetdsConnectionKey)
+    return freetdsErrors.withLock { state in
+        guard let key else { return state.global }
+        return state.perConnection[key] ?? state.global
     }
 }
 
-private func freetdsSetError(_ msg: String, for dbproc: UnsafeMutablePointer<DBPROCESS>?, overwrite: Bool = false) {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    if let dbproc {
-        let key = UnsafeRawPointer(dbproc)
-        if overwrite || (freetdsConnectionErrors[key]?.isEmpty ?? true) {
-            freetdsConnectionErrors[key] = msg
+nonisolated private func freetdsClearError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) {
+    let key = dbproc.map(freetdsConnectionKey)
+    freetdsErrors.withLock { state in
+        guard let key else {
+            state.global = ""
+            return
         }
-    } else if overwrite || freetdsGlobalError.isEmpty {
-        freetdsGlobalError = msg
+        state.perConnection[key] = nil
     }
 }
 
-private func freetdsUnregister(_ dbproc: UnsafeMutablePointer<DBPROCESS>) {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    freetdsConnectionErrors.removeValue(forKey: UnsafeRawPointer(dbproc))
+nonisolated private func freetdsSetError(_ msg: String, for dbproc: UnsafeMutablePointer<DBPROCESS>?, overwrite: Bool = false) {
+    let key = dbproc.map(freetdsConnectionKey)
+    freetdsErrors.withLock { state in
+        guard let key else {
+            if overwrite || state.global.isEmpty { state.global = msg }
+            return
+        }
+        if overwrite || (state.perConnection[key]?.isEmpty ?? true) {
+            state.perConnection[key] = msg
+        }
+    }
 }
 
-private let freetdsInitOnce: Void = {
+nonisolated private func freetdsUnregister(_ dbproc: UnsafeMutablePointer<DBPROCESS>) {
+    let key = freetdsConnectionKey(dbproc)
+    freetdsErrors.withLock { $0.perConnection[key] = nil }
+}
+
+nonisolated private let freetdsInitOnce: Void = {
     _ = dbinit()
     _ = dberrhandle { dbproc, _, dberr, _, dberrstr, oserrstr in
         var msg = "db-lib error \(dberr)"
@@ -82,7 +88,7 @@ private let freetdsInitOnce: Void = {
     }
 }()
 
-private func freetdsDispatchAsync<T: Sendable>(
+nonisolated private func freetdsDispatchAsync<T: Sendable>(
     on queue: DispatchQueue,
     execute work: @escaping @Sendable () throws -> T
 ) async throws -> T {
@@ -98,7 +104,7 @@ private func freetdsDispatchAsync<T: Sendable>(
     }
 }
 
-private func freetdsDispatchAsync(
+nonisolated private func freetdsDispatchAsync(
     on queue: DispatchQueue,
     execute work: @escaping @Sendable () throws -> Void
 ) async throws {
@@ -667,7 +673,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     }
 }
 
-private extension MSSQLLoginField {
+nonisolated private extension MSSQLLoginField {
     var dbsetName: Int32 {
         switch self {
         case .user: return Int32(DBSETUSER)

@@ -30,10 +30,14 @@ internal enum ConnectionWindowIdentity {
 }
 
 internal enum WelcomeVisibilityPolicy {
+    /// A machine-started session answers the close of its last window by going back to the
+    /// background, not by opening the connection list. Nobody asked for the window that just closed,
+    /// so replacing it with another one the person did not request is the wrong answer.
     internal static func shouldPresentWelcome(
         closingWindowWasPrimary: Bool,
-        remainingVisiblePrimaryWindows: Int
+        remainingVisiblePrimaryWindows: Int,
+        sessionOrigin: AppSessionOrigin
     ) -> Bool {
-        closingWindowWasPrimary && remainingVisiblePrimaryWindows == 0
+        sessionOrigin == .user && closingWindowWasPrimary && remainingVisiblePrimaryWindows == 0
     }
 }

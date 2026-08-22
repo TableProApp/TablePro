@@ -143,7 +143,7 @@ struct AISchemaContext {
 
         if tables.count > maxTables {
             lines.append(
-                "\n... and \(tables.count - maxTables) more tables (not shown)"
+                "\n… and \(tables.count - maxTables) more tables (not shown)"
             )
         }
 

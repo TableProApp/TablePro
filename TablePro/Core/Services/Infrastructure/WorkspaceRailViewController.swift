@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import Observation
+import os
 import OSLog
 
 /// The window a rail belongs to. A window hosts several connections and shows one at a time, so
@@ -42,7 +43,7 @@ internal final class WorkspaceRailTableView: NSTableView {
 
 @MainActor
 internal final class WorkspaceRailViewController: NSViewController {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "WorkspaceRail")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WorkspaceRail")
     private static let reorderType = NSPasteboard.PasteboardType("com.TablePro.workspaceRailEntry")
 
     internal var onLayoutChange: ((WorkspaceRailMetrics.Layout) -> Void)?
@@ -62,7 +63,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     private var entries: [WorkspaceRailEntry] = []
     private var layout: WorkspaceRailMetrics.Layout = WorkspaceRailMetrics.medium
     private var changeCancellable: AnyCancellable?
-    private var activationObserver: (any NSObjectProtocol)?
+    private let activationObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private var contentTopConstraint: NSLayoutConstraint?
 
     /// What the rail last put on screen as selected, which after every `applySelection` is the
@@ -145,11 +146,12 @@ internal final class WorkspaceRailViewController: NSViewController {
         /// Changing the Appearance setting means leaving TablePro and coming back, and AppKit
         /// publishes that. `effectiveRowSizeStyle` is then re-read, which is the documented way to
         /// ask what the system resolved. The undocumented defaults key this used to observe is gone.
-        activationObserver = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshLayoutIfNeeded() }
         }
+        activationObserver.withLockUnchecked { $0 = observer }
         observeRowSizePreference()
         reload()
     }
@@ -161,8 +163,8 @@ internal final class WorkspaceRailViewController: NSViewController {
     }
 
     deinit {
-        if let activationObserver {
-            NotificationCenter.default.removeObserver(activationObserver)
+        if let observer = activationObserver.withLockUnchecked({ $0 }) {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
@@ -376,7 +378,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             group.selectedWindow = window
         }
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        AppActivationPolicyController.shared.activate()
         moveBrowseCursor(of: window, to: workspace)
         applySelection()
     }

@@ -8,7 +8,7 @@ import Foundation
 import Testing
 
 @MainActor
-final class StubConfirming: OperationConfirming {
+final class StubConfirming: OperationConfirming, @unchecked Sendable {
     private(set) var callCount = 0
     private(set) var lastDestructive = false
     private let answer: Bool

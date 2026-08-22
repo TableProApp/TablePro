@@ -22,7 +22,7 @@ internal struct RestoreResult {
 
 @MainActor @Observable
 internal final class TabPersistenceCoordinator {
-    internal static let logger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated internal static let logger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
     let connectionId: UUID
 
     @ObservationIgnored private var saveTask: Task<Void, Never>?

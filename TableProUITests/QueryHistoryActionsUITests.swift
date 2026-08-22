@@ -19,7 +19,7 @@ final class QueryHistoryActionsUITests: UITestCase {
         let tabsBefore = tabCount(in: app)
 
         let load = app.buttons["query-history-load-in-editor"]
-        XCTAssertTrue(load.waitForExistence(timeout: 10), "The detail pane must offer Load in Editor")
+        XCTAssertTrue(load.waitToExist(timeout: 10), "The detail pane must offer Load in Editor")
         load.click()
 
         XCTAssertTrue(
@@ -60,7 +60,7 @@ final class QueryHistoryActionsUITests: UITestCase {
         let tabsBefore = tabCount(in: app)
 
         let run = app.buttons["query-history-run-in-new-tab"]
-        XCTAssertTrue(run.waitForExistence(timeout: 10), "The detail pane must offer Run in New Tab")
+        XCTAssertTrue(run.waitToExist(timeout: 10), "The detail pane must offer Run in New Tab")
         run.click()
 
         XCTAssertTrue(
@@ -93,19 +93,19 @@ final class QueryHistoryActionsUITests: UITestCase {
         app.typeKey("y", modifierFlags: .command)
         let detail = app.windows.firstMatch.descendants(matching: .any)
             .matching(identifier: "query-history-detail").firstMatch
-        XCTAssertTrue(detail.waitForExistence(timeout: 10), "Cmd+Y must show the query history drawer")
+        XCTAssertTrue(detail.waitToExist(timeout: 10), "Cmd+Y must show the query history drawer")
     }
 
     /// Row 0 is the day section header, so the first entry is row 1.
     private func selectFirstEntry(in app: XCUIApplication) {
         let list = app.windows.firstMatch.tables.matching(identifier: "query-history-list").firstMatch
-        XCTAssertTrue(list.waitForExistence(timeout: 10))
+        XCTAssertTrue(list.waitToExist(timeout: 10))
         let row = list.tableRows.element(boundBy: 1)
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "The drawer must list the query just run")
+        XCTAssertTrue(row.waitToExist(timeout: 10), "The drawer must list the query just run")
         row.click()
 
         let preview = app.textViews["query-history-detail-query"]
-        XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        XCTAssertTrue(preview.waitToExist(timeout: 10))
         XCTAssertTrue(
             waitForPredicate(timeout: 5) { ((preview.value as? String) ?? "").contains(marker) },
             "Selecting a row must show that row in the preview"
@@ -115,7 +115,7 @@ final class QueryHistoryActionsUITests: UITestCase {
     private func openEmptyTab(in app: XCUIApplication) {
         app.typeKey("t", modifierFlags: .command)
         let editor = app.windows.firstMatch.textViews.firstMatch
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         XCTAssertTrue(
             waitForPredicate(timeout: 5) { editorsShowingMarker(in: app) == 0 },
             "A tab opened with Cmd+T starts empty"
@@ -125,11 +125,11 @@ final class QueryHistoryActionsUITests: UITestCase {
     private func runProbeQuery(in app: XCUIApplication) {
         app.typeKey("t", modifierFlags: .command)
         let editor = app.windows.firstMatch.textViews.firstMatch
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         app.typeText(probeQuery)
         app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: .command)
 
         let results = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-        XCTAssertTrue(results.waitForExistence(timeout: 15), "The query must produce a result grid")
+        XCTAssertTrue(results.waitToExist(timeout: 15), "The query must produce a result grid")
     }
 }

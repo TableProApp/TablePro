@@ -160,7 +160,7 @@ struct ConnectionExportOptionsSheet: View {
         DialogFooter {
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            Button("Export...") { performExport() }
+            Button("Export…") { performExport() }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canExport)

@@ -5,7 +5,7 @@ import TableProPluginKit
 
 @MainActor
 final class RowOperationsManager {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "RowOperationsManager")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RowOperationsManager")
 
     private static let maxClipboardRows = 50_000
 

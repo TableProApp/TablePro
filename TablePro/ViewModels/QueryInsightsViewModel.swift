@@ -6,7 +6,7 @@ import os
 @MainActor
 @Observable
 final class QueryInsightsViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "QueryInsights")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QueryInsights")
 
     /// Recording a grid full of edits broadcasts once per statement, and every panel on this screen
     /// is a full aggregate. Collapsing the burst keeps one user action to one recomputation.

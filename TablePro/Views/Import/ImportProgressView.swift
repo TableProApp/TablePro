@@ -13,7 +13,7 @@ struct ImportProgressView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Importing...")
+            Text("Importing…")
                 .font(.title3.weight(.semibold))
 
             VStack(spacing: 8) {

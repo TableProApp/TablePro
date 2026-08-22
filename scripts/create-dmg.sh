@@ -1,17 +1,45 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Create a DMG installer with drag-and-drop installation window
 # Uses create-dmg tool for reliable CI builds
 
 set -e
 
+# shellcheck source=lib/notarize.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/notarize.sh"
+
 # Configuration
 APP_NAME="TablePro"
-VERSION="${1:-0.1.13}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION="${1:-}"
+if [ -z "$VERSION" ]; then
+    # Configs/Version.xcconfig is the single declaration of the app version. The literal that
+    # used to sit here as a default was 0.1.13, 66 releases behind, so a run without an explicit
+    # version produced a correctly built DMG under a badly wrong name.
+    VERSION=$(sed -n 's/^MARKETING_VERSION[[:space:]]*=[[:space:]]*//p' \
+        "$REPO_ROOT/Configs/Version.xcconfig" | tr -d ' ')
+fi
+if [ -z "$VERSION" ]; then
+    # sed exits 0 when it matches nothing, so set -e does not cover this.
+    echo "❌ ERROR: MARKETING_VERSION missing from Configs/Version.xcconfig" >&2
+    exit 1
+fi
 ARCH="${2:-universal}"
 SOURCE_APP="${3:-build/Release/${APP_NAME}.app}"
 DMG_NAME="${APP_NAME}-${VERSION}-${ARCH}.dmg"
 VOLUME_NAME="${APP_NAME} ${VERSION}"
 FINAL_DMG="build/Release/$DMG_NAME"
+
+# The hdiutil fallback below attaches a volume and writes a temp image. Without this, a failure
+# anywhere between the attach and the detach leaves both behind, and the next run then fails on a
+# volume name that is already mounted.
+TEMP_DMG=""
+MOUNT_DIR=""
+cleanup_dmg() {
+    [ -n "$MOUNT_DIR" ] && [ -d "$MOUNT_DIR" ] && hdiutil detach "$MOUNT_DIR" -quiet 2> /dev/null || true
+    [ -n "$TEMP_DMG" ] && rm -f "$TEMP_DMG" || true
+}
+trap cleanup_dmg EXIT
+
 SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Dat Ngo Quoc (D7HJ5TFYCU)}"
 NOTARIZE="${NOTARIZE:-false}"
 
@@ -231,14 +259,8 @@ echo "✅ DMG signed"
 
 # Notarize the DMG (opt-in via NOTARIZE=true)
 if [ "$NOTARIZE" = "true" ]; then
-    echo "📮 Notarizing DMG..."
-    if xcrun notarytool submit "$FINAL_DMG" --keychain-profile "TablePro" --wait; then
-        xcrun stapler staple "$FINAL_DMG"
-        echo "✅ DMG notarized and stapled"
-    else
-        echo "❌ DMG notarization failed"
-        exit 1
-    fi
+    # "open", not "exec": a user opens a disk image, they do not launch it.
+    notarize_and_staple "$FINAL_DMG" open
 fi
 
 # Get final size

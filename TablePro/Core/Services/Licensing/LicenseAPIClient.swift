@@ -9,7 +9,7 @@ import Foundation
 import os
 
 /// HTTP client for the TablePro license API
-final class LicenseAPIClient {
+final class LicenseAPIClient: Sendable {
     static let shared = LicenseAPIClient()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseAPIClient")

@@ -41,13 +41,32 @@ struct URLClassifierTests {
         #expect(routed == csvURL)
     }
 
-    @Test("CSV returns nil when no inspector plugin registers the extension")
-    func returnsNilWhenExtensionMissing() {
+    @Test("CSV falls back to a DuckDB connection when no inspector plugin registers the extension")
+    func routesCSVToDuckDBWhenExtensionMissing() {
         let csvURL = URL(fileURLWithPath: "/tmp/sample.csv")
         let intent = withInspectorState(lazy: [:]) {
             URLClassifier.classify(csvURL)
         }
-        #expect(intent == nil)
+        guard case .some(.success(.openDatabaseFile(let routed, let dbType))) = intent else {
+            Issue.record("Expected .openDatabaseFile, got \(String(describing: intent))")
+            return
+        }
+        #expect(routed == csvURL)
+        #expect(dbType == .duckdb)
+    }
+
+    @Test("Analytics files with no inspector route to DuckDB", arguments: ["parquet", "json", "ndjson"])
+    func routesDuckDBFileKinds(ext: String) {
+        let fileURL = URL(fileURLWithPath: "/tmp/export.\(ext)")
+        let intent = withInspectorState(lazy: [:]) {
+            URLClassifier.classify(fileURL)
+        }
+        guard case .some(.success(.openDatabaseFile(let routed, let dbType))) = intent else {
+            Issue.record("Expected .openDatabaseFile, got \(String(describing: intent))")
+            return
+        }
+        #expect(routed == fileURL)
+        #expect(dbType == .duckdb)
     }
 
     @Test("SQL file routes to openSQLFile", arguments: ["sql", "psql", "pgsql", "PSQL"])

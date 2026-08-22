@@ -20,7 +20,7 @@ final class SchemaRefreshService {
         let database: String?
     }
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaRefreshService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaRefreshService")
 
     private let schemaService: SchemaService
     private let treeMetadataService: DatabaseTreeMetadataService
@@ -85,8 +85,9 @@ final class SchemaRefreshService {
     func loadBrowseCatalogs(connectionIds: [UUID]) async -> Set<UUID> {
         await withTaskGroup(of: (UUID, Bool).self) { group in
             for connectionId in connectionIds {
-                group.addTask { @MainActor in
-                    (connectionId, await self.loadBrowseCatalog(connectionId: connectionId))
+                group.addTask {
+                    let didLoad = await self.loadBrowseCatalog(connectionId: connectionId)
+                    return (connectionId, didLoad)
                 }
             }
             var loaded: Set<UUID> = []

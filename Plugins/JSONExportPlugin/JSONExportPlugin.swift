@@ -8,7 +8,7 @@ import SwiftUI
 import TableProPluginKit
 
 @Observable
-final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
+final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "JSON Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to JSON format"
@@ -26,6 +26,7 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
 
     required init() { loadSettings() }
 
+    @MainActor
     func settingsView() -> AnyView? {
         AnyView(JSONExportOptionsView(plugin: self))
     }

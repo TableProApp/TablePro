@@ -14,7 +14,7 @@ import os
 final class LastOpenConnectionsStorage {
     static let shared = LastOpenConnectionsStorage()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LastOpenConnections")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LastOpenConnections")
 
     private let fileURL: URL
 

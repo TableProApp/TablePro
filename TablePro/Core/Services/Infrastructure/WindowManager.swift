@@ -9,7 +9,7 @@ import SwiftUI
 
 @MainActor
 internal final class WindowManager {
-    private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     internal static let shared = WindowManager()
 
@@ -23,6 +23,10 @@ internal final class WindowManager {
     /// One window hosts every connection, so an open reuses the window that already exists and
     /// only adds a workspace to it. A second window is created solely when there is none.
     internal func openTab(payload: EditorTabPayload, activate: Bool = true, autoConnect: Bool = false) {
+        /// Before the window exists, and whether or not the caller wants it in front: a window on
+        /// screen is user-facing work, and a process serving MCP in the background has no menu bar
+        /// to give it until it stops being one.
+        AppActivationPolicyController.shared.enterForeground()
         if let host = host(for: payload.connectionId) {
             /// A connection the window already hosts still has to honour the payload, because a
             /// payload names a tab to open, not just a connection to show. Adopting the
@@ -35,7 +39,7 @@ internal final class WindowManager {
             }
             if activate {
                 host.view.window?.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
+                AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             }
             Self.lifecycleLogger.info(
                 "[open] WindowManager adopted into existing window connId=\(payload.connectionId, privacy: .public)"
@@ -148,7 +152,7 @@ internal final class WindowManager {
         /// out by hand is still entitled to be merged back by hand.
         window.tabbingMode = .disallowed
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         window.tabbingMode = .automatic
         return true
     }
@@ -171,7 +175,12 @@ internal final class WindowManager {
             payload: payload,
             sessionState: preCreatedSessionState,
             autoConnect: autoConnect
-        ) else { return }
+        ) else {
+            /// The window this promoted for never arrived, and nothing else will recount: only a
+            /// window closing does, and there is no window to close.
+            AppActivationPolicyController.shared.reevaluate()
+            return
+        }
 
         // orderFront before addTabbedWindow avoids a synchronous full-tree
         // SwiftUI layout pass that adds 700-900ms per open.
@@ -189,7 +198,7 @@ internal final class WindowManager {
         } else {
             if activate {
                 window.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
+                AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             } else {
                 window.orderFront(nil)
             }

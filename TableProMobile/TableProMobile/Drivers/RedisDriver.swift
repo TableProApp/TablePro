@@ -4,7 +4,7 @@ import os
 import TableProDatabase
 import TableProModels
 
-final class RedisDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class RedisDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = RedisActor()
     private let host: String
     private let port: Int
@@ -333,7 +333,7 @@ final class RedisDriver: DatabaseDriver, @unchecked Sendable {
 
 // MARK: - Redis Reply Value
 
-private enum RedisReplyValue: Sendable {
+nonisolated private enum RedisReplyValue: Sendable {
     case string(String)
     case integer(Int64)
     case array([RedisReplyValue])
@@ -353,7 +353,7 @@ private enum RedisReplyValue: Sendable {
     }
 }
 
-private func withOptionalCString<R>(_ string: String?, _ body: (UnsafePointer<CChar>?) throws -> R) rethrows -> R {
+nonisolated private func withOptionalCString<R>(_ string: String?, _ body: (UnsafePointer<CChar>?) throws -> R) rethrows -> R {
     guard let string else { return try body(nil) }
     return try string.withCString { try body($0) }
 }
@@ -578,7 +578,7 @@ private actor RedisActor {
 
 // MARK: - Errors
 
-enum RedisError: Error, LocalizedError {
+nonisolated enum RedisError: Error, LocalizedError {
     case connectionFailed(String)
     case authenticationFailed(serverMessage: String, failure: RedisAuthCommand.Failure)
     case notConnected

@@ -8,6 +8,12 @@ import Foundation
 import os
 import TableProPluginKit
 
+/// Hands the open connection pointer out of the actor so a cancel can interrupt the query that is
+/// running on it. libduckdb documents `duckdb_interrupt` as the one call safe from another thread.
+struct InterruptHandle: @unchecked Sendable {
+    let connection: duckdb_connection?
+}
+
 actor DuckDBConnectionActor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DuckDBConnectionActor")
 
@@ -16,7 +22,7 @@ actor DuckDBConnectionActor {
 
     var isConnected: Bool { connection != nil }
 
-    var connectionHandleForInterrupt: duckdb_connection? { connection }
+    var connectionHandleForInterrupt: InterruptHandle { InterruptHandle(connection: connection) }
 
     func open(path: String) throws {
         var db: duckdb_database?

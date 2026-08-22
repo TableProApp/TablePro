@@ -55,7 +55,7 @@ internal enum TransferResultAlert {
         alert.addButton(withTitle: String(localized: "Done"))
 
         if let errors = result?.errors, !errors.isEmpty {
-            alert.accessoryView = scrollingText(failureReport(for: errors))
+            alert.accessoryView = TransferReportView(report: failureReport(for: errors))
             alert.layout()
         }
 
@@ -79,13 +79,33 @@ internal enum TransferResultAlert {
                 Int64(line),
                 underlyingError.localizedDescription
             )
-            alert.accessoryView = scrollingText(statement)
+            alert.accessoryView = TransferReportView(
+                shown: statement,
+                copied: failureReport(for: error) ?? statement
+            )
             alert.layout()
         } else {
             alert.informativeText = error?.localizedDescription ?? String(localized: "Unknown error")
         }
 
         AlertHelper.present(alert, in: window) { _ in completion() }
+    }
+
+    /// The report a failed import puts in its accessory, so the line, the reason and the failing
+    /// statement can be selected and copied together. Returns nil for an error that carries no
+    /// statement, where the alert's own text already says everything there is to say.
+    internal static func failureReport(for error: (any Error)?) -> String? {
+        guard let pluginError = error as? PluginImportError,
+              case .statementFailed(let statement, let line, let underlyingError) = pluginError else {
+            return nil
+        }
+        return failureReport(for: [
+            PluginImportResult.ImportStatementError(
+                statement: statement,
+                line: line,
+                errorMessage: underlyingError.localizedDescription
+            )
+        ])
     }
 
     /// A row import names its failing entry `row 12`, which the line number already says, so only
@@ -126,7 +146,7 @@ internal enum TransferResultAlert {
     /// A text view laid inside a scroll view by hand has to be told it may grow and that its text
     /// container tracks its width. Left at its default zero-sized container it lays out no text at
     /// all, so the accessory reads as an empty box.
-    private static func scrollingText(_ text: String) -> NSView {
+    fileprivate static func scrollingText(_ text: String) -> NSScrollView {
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 380, height: 140))
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
@@ -148,5 +168,63 @@ internal enum TransferResultAlert {
 
         scroll.documentView = textView
         return scroll
+    }
+}
+
+/// The failure report is what a user has to act on, so it is selectable text with a copy button
+/// of its own. An `NSAlert` button cannot serve here because any of them dismisses the alert, so
+/// the control belongs to the accessory view instead.
+///
+/// What is copied can say more than what is shown. A single failure shows the statement, because
+/// the alert's own text already names the line and the reason, but copying carries all three so
+/// the pasted text stands on its own.
+internal final class TransferReportView: NSView {
+    private static let width: CGFloat = 380
+    private static let textHeight: CGFloat = 140
+    private static let spacing: CGFloat = 8
+
+    private let report: String
+
+    internal convenience init(report: String) {
+        self.init(shown: report, copied: report)
+    }
+
+    internal init(shown: String, copied: String) {
+        report = copied
+        let button = NSButton(title: String(localized: "Copy Details"), target: nil, action: nil)
+        button.bezelStyle = .rounded
+        button.sizeToFit()
+        super.init(frame: NSRect(
+            x: 0,
+            y: 0,
+            width: Self.width,
+            height: Self.textHeight + Self.spacing + button.frame.height
+        ))
+
+        let scroll = TransferResultAlert.scrollingText(shown)
+        scroll.frame = NSRect(
+            x: 0,
+            y: button.frame.height + Self.spacing,
+            width: Self.width,
+            height: Self.textHeight
+        )
+        scroll.autoresizingMask = [.width]
+        addSubview(scroll)
+
+        button.target = self
+        button.action = #selector(copyReport)
+        button.frame.origin = NSPoint(x: Self.width - button.frame.width, y: 0)
+        button.autoresizingMask = [.minXMargin]
+        addSubview(button)
+    }
+
+    internal required init?(coder: NSCoder) {
+        report = ""
+        super.init(coder: coder)
+    }
+
+    @objc
+    internal func copyReport() {
+        ClipboardService.shared.writeText(report)
     }
 }

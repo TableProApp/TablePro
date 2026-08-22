@@ -13,7 +13,7 @@ import Testing
 struct ExecuteToolUsesTests {
     /// Stub tool that returns a fixed response when invoked. Tracks invocation
     /// count and the input it received so tests can assert dispatch behaviour.
-    private final class StubTool: ChatTool {
+    private final class StubTool: ChatTool, @unchecked Sendable {
         let name: String
         let description: String
         let inputSchema: JsonValue

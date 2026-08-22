@@ -1,0 +1,89 @@
+---
+title: Cloudflare Tunnel
+description: Reach a database behind Cloudflare Access by letting TablePro manage the cloudflared process
+---
+
+import HelperPort from "/snippets/helper-port.mdx";
+
+The Access application is yours to create, in the Cloudflare dashboard. This pane takes the hostname of one that already fronts the database, and runs `cloudflared` against it for the life of the connection.
+
+<Frame caption="The Cloudflare Tunnel pane in the connection form">
+  <img className="block dark:hidden" src="/images/cloudflare-tunnel-pane.png" alt="Cloudflare Tunnel pane" />
+  <img className="hidden dark:block" src="/images/cloudflare-tunnel-pane-dark.png" alt="Cloudflare Tunnel pane" />
+</Frame>
+
+## Before you start
+
+Create a self-hosted application in the [Zero Trust dashboard](https://developers.cloudflare.com/cloudflare-one/applications/non-http/) routed to the database, with a policy that admits you. Its public hostname is the only Cloudflare value this pane needs.
+
+```bash
+brew install cloudflared
+```
+
+The pane looks on your `PATH` and in `/opt/homebrew/bin` and `/usr/local/bin`, and shows what it found. Installed elsewhere, set **Path** by hand: a GUI app never sees the `PATH` your shell profile exports.
+
+## Setting up
+
+<Steps>
+  <Step title="Enable the pane">
+    Select **Cloudflare Tunnel** and turn **Enable Cloudflare Tunnel** on. One method per connection: any other tunnel or proxy already enabled gets a button to disable it.
+  </Step>
+  <Step title="Enter the hostname and sign in">
+    **Hostname** is the Access application's public hostname, `db.example.com` in the example. With **Browser Sign-In** chosen, click **Sign In with Browser…** so the first connect does not stop to ask.
+  </Step>
+  <Step title="Test it">
+    On **General**, click **Test Connection**. **Host** and **Port** there are never dialed while the tunnel is on: the Access application decides where it lands.
+  </Step>
+</Steps>
+
+## How it works
+
+A free port is picked, `cloudflared` starts listening on it, and the driver gets it once it accepts. Run the same command yourself to see the client's own output:
+
+```bash
+cloudflared access tcp --hostname db.example.com --url 127.0.0.1:54321
+```
+
+Disconnecting or quitting stops the process. One orphaned by a crash is reaped at the next launch.
+
+## Options
+
+| Option | What it does | Default |
+|--------|--------------|---------|
+| **Hostname** | The Access application hostname `cloudflared` connects to. | - |
+| **Expose to local network** | Binds `0.0.0.0` rather than `127.0.0.1`. | Off |
+
+<Warning>
+With **Expose to local network** on, anything that reaches the port is past Cloudflare Access on your session and faces only the database's own login.
+</Warning>
+
+### Authentication
+
+<Tabs>
+  <Tab title="Browser Sign-In">
+    **Sign In with Browser…** runs `cloudflared access login` and caches the token under `~/.cloudflared`; later connects reuse it silently. A connect with no cached token asks you to sign in rather than appearing to hang.
+  </Tab>
+  <Tab title="Service Token">
+    For unattended connections, enter a service token as **Client ID** and **Client Secret**. Both stay in the macOS Keychain and reach `cloudflared` as environment variables, never on the command line.
+
+    <Warning>
+    The policy must use a **Service Auth** rule. Against an identity-provider-only policy, Cloudflare prompts for a browser sign-in even with a token set.
+    </Warning>
+  </Tab>
+</Tabs>
+
+<HelperPort />
+
+## Troubleshooting
+
+### cloudflared was not found
+
+Install it with `brew install cloudflared`, or set **Path** to the binary.
+
+### A browser opens every time you connect
+
+The cached Access token expired, or a service token is running against a policy that is not **Service Auth**. Sign in again, or change the policy.
+
+### The tunnel did not become ready in time
+
+An unknown hostname, a policy that is not **Service Auth**, or a fixed port already taken.

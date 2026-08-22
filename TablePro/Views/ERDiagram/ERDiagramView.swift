@@ -18,7 +18,7 @@ struct ERDiagramView: View {
         ZStack(alignment: .bottomTrailing) {
             switch viewModel.loadState {
             case .loading:
-                ProgressView(String(localized: "Loading schema..."))
+                ProgressView(String(localized: "Loading schema…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             case .failed(let message):

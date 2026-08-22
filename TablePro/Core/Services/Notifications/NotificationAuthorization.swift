@@ -20,7 +20,7 @@ internal final class NotificationAuthorization {
 
     internal static let options: UNAuthorizationOptions = [.alert, .sound]
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "Notifications")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "Notifications")
 
     private let presenter: any UserNotificationPresenting
     private var didRequest = false

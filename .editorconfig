@@ -12,6 +12,12 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
 
+# String catalogs. Xcode writes these with no trailing newline, and scripts/localization.py
+# reproduces that byte for byte so a translation merge does not reformat a 109,000-line file.
+# The [*] rule above would add one back on every save and break `localization.py verify`.
+[*.xcstrings]
+insert_final_newline = false
+
 # Swift files
 [*.swift]
 indent_size = 4
@@ -35,8 +41,10 @@ indent_size = 2
 indent_size = 4
 
 # Shell scripts
+# CLAUDE.md sets 4 spaces for the codebase, and 34 of the 43 shell scripts already use it.
+# This file said 2, so it disagreed with both.
 [*.sh]
-indent_size = 2
+indent_size = 4
 
 # Makefile
 [Makefile]

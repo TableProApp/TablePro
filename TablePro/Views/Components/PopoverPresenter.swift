@@ -26,6 +26,29 @@ enum PopoverPresenter {
         return popover
     }
 
+    /// Shows a SwiftUI view in an NSPopover anchored to a toolbar item.
+    ///
+    /// AppKit resolves the anchor itself: "When the item is in the overflow menu, the popover will
+    /// be presented from another appropriate affordance in the window." That is the whole reason
+    /// this overload exists, because a popover declared inside the item's own hosted view cannot
+    /// present at all once the item is clipped, and a clipped item survives only as its
+    /// `menuFormRepresentation`.
+    ///
+    /// The caller must have resolved `toolbarItem` out of a visible toolbar. AppKit throws
+    /// `NSInvalidArgumentException` when it cannot locate the item, which Swift cannot catch, so
+    /// the check belongs at the call site as a precondition rather than here as error handling.
+    @discardableResult
+    static func show<Content: View>(
+        relativeTo toolbarItem: NSToolbarItem,
+        contentSize: NSSize? = nil,
+        behavior: NSPopover.Behavior = .semitransient,
+        @ViewBuilder content: (_ dismiss: @escaping () -> Void) -> Content
+    ) -> NSPopover {
+        let popover = make(contentSize: contentSize, behavior: behavior, content: content)
+        popover.show(relativeTo: toolbarItem)
+        return popover
+    }
+
     /// Builds the popover without presenting it, so its sizing can be asserted in tests.
     ///
     /// `NSPopover` computes where to put itself from `contentSize` at `show` time, and its header's

@@ -1,6 +1,6 @@
 import Foundation
 
-enum PostgreSQLConnectionString {
+nonisolated enum PostgreSQLConnectionString {
     static let connectTimeoutSeconds = 10
 
     static func build(

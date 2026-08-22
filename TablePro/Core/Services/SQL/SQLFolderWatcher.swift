@@ -12,7 +12,7 @@ import os
 @Observable
 internal final class SQLFolderWatcher {
     static let shared = SQLFolderWatcher()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFolderWatcher")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFolderWatcher")
 
     private(set) var lastScanCompletedAt: Date?
 

@@ -4,7 +4,7 @@ import os
 
 @MainActor
 public final class MCPSubscriptionEventSource {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Subscriptions")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Subscriptions")
 
     private weak var registry: MCPSubscriptionRegistry?
     private var cancellables: Set<AnyCancellable> = []

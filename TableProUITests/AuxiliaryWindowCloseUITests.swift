@@ -10,16 +10,16 @@ import XCTest
 final class AuxiliaryWindowCloseUITests: UITestCase {
     private func launchShowingWelcome() throws -> XCUIApplication {
         let app = try launchApp()
-        XCTAssertTrue(app.windows["welcome"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.windows["welcome"].waitToExist(timeout: 10))
         return app
     }
 
     private func openWindow(_ identifier: String, from menuItem: String, in app: XCUIApplication) -> XCUIElement {
         let item = app.menuBars.menuItems[menuItem]
-        XCTAssertTrue(item.waitForExistence(timeout: 10), "\(menuItem) must be in the menu bar")
+        XCTAssertTrue(item.waitToExist(timeout: 10), "\(menuItem) must be in the menu bar")
         item.click()
         let window = app.windows[identifier]
-        XCTAssertTrue(window.waitForExistence(timeout: 10), "\(menuItem) must open the \(identifier) window")
+        XCTAssertTrue(window.waitToExist(timeout: 10), "\(menuItem) must open the \(identifier) window")
         return window
     }
 
@@ -36,12 +36,12 @@ final class AuxiliaryWindowCloseUITests: UITestCase {
 
     func testCommandWClosesTheSettingsWindow() throws {
         let app = try launchShowingWelcome()
-        assertCommandWCloses(openWindow("settings", from: "Settings...", in: app), in: app)
+        assertCommandWCloses(openWindow("settings", from: "Settings…", in: app), in: app)
     }
 
     func testCommandWClosesTheIntegrationsActivityWindow() throws {
         let app = try launchShowingWelcome()
-        assertCommandWCloses(openWindow("integrations-activity", from: "Integrations...", in: app), in: app)
+        assertCommandWCloses(openWindow("integrations-activity", from: "Integrations…", in: app), in: app)
     }
 
     /// The welcome window used to answer the editor's own close command to get Command W back.

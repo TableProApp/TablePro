@@ -34,7 +34,7 @@ internal final class SampleDatabaseService {
         connectionInspector: DatabaseManagerSampleConnectionInspector()
     )
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SampleDatabaseService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SampleDatabaseService")
 
     private let bundledFileResolver: () -> URL?
     private let fileManager: FileManager

@@ -20,7 +20,7 @@ import TableProPluginKit
 
 /// Main content view - thin presentation layer
 struct MainContentView: View {
-    static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     // MARK: - Properties
 

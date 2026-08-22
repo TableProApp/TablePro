@@ -54,7 +54,7 @@ final class InspectorToolbarPlacementUITests: UITestCase {
         )
 
         let grid = window.tables.matching(identifier: "data-grid").firstMatch
-        XCTAssertTrue(grid.waitForExistence(timeout: 30), "The sample database produced no data grid")
+        XCTAssertTrue(grid.waitToExist(timeout: 30), "The sample database produced no data grid")
 
         for transition in 1 ... 2 {
             let widthBefore = grid.frame.width
@@ -103,7 +103,7 @@ final class InspectorToolbarPlacementUITests: UITestCase {
 
     private func mainWindow(of app: XCUIApplication) throws -> XCUIElement {
         let window = app.windows.matching(NSPredicate(format: "identifier != %@", "welcome")).firstMatch
-        XCTAssertTrue(window.waitForExistence(timeout: 60), "The sample database produced no window")
+        XCTAssertTrue(window.waitToExist(timeout: 60), "The sample database produced no window")
         return window
     }
 
@@ -111,7 +111,7 @@ final class InspectorToolbarPlacementUITests: UITestCase {
     /// is no accessibility identifier of ours to match on.
     private func inspectorToggle(in window: XCUIElement) throws -> XCUIElement {
         let toggle = window.toolbars.buttons["Inspector"].firstMatch
-        XCTAssertTrue(toggle.waitForExistence(timeout: 20), "No inspector toggle in the toolbar")
+        XCTAssertTrue(toggle.waitToExist(timeout: 20), "No inspector toggle in the toolbar")
         return toggle
     }
 }

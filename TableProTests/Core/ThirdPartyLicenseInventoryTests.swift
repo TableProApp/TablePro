@@ -38,13 +38,20 @@ struct ThirdPartyLicenseInventoryTests {
     /// static libraries are actually built from.
     private static func shellVersionPins() throws -> [String: String] {
         let scripts = repositoryRoot.appendingPathComponent("scripts")
-        let names = try FileManager.default.contentsOfDirectory(atPath: scripts.path)
-            .filter { $0.hasPrefix("build-") && $0.hasSuffix(".sh") } + ["openssl-version.sh"]
+        /// `scripts/lib` as well as the build scripts. A pin shared by several builds lives in the
+        /// library rather than in any one script, and naming a single file here meant the test
+        /// stopped seeing `OPENSSL_VERSION` the moment it moved there.
+        let buildScripts = try FileManager.default.contentsOfDirectory(atPath: scripts.path)
+            .filter { $0.hasPrefix("build-") && $0.hasSuffix(".sh") }
+            .map { scripts.appendingPathComponent($0) }
+        let libraryDirectory = scripts.appendingPathComponent("lib")
+        let libraryScripts = ((try? FileManager.default.contentsOfDirectory(atPath: libraryDirectory.path)) ?? [])
+            .filter { $0.hasSuffix(".sh") }
+            .map { libraryDirectory.appendingPathComponent($0) }
 
         let pattern = try NSRegularExpression(pattern: #"^([A-Z0-9_]+_VERSION)="(v?[0-9][^"$]*)""#, options: [.anchorsMatchLines])
         var pins: [String: String] = [:]
-        for name in names {
-            let path = scripts.appendingPathComponent(name)
+        for path in buildScripts + libraryScripts {
             guard let source = try? String(contentsOf: path, encoding: .utf8) else { continue }
             let range = NSRange(source.startIndex ..< source.endIndex, in: source)
             for match in pattern.matches(in: source, range: range) {

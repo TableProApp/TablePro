@@ -3,7 +3,7 @@ import TableProDatabase
 import TableProModels
 import TableProOracleCore
 
-private extension OracleRawResult {
+nonisolated private extension OracleRawResult {
     nonisolated func toQueryResult(executionTime: TimeInterval) -> QueryResult {
         QueryResult(
             columns: columns.enumerated().map { index, column in
@@ -17,7 +17,7 @@ private extension OracleRawResult {
     }
 }
 
-final class OracleDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
     private let core: OracleCoreConnection
     private let host: String
     private let fallbackSchema: String

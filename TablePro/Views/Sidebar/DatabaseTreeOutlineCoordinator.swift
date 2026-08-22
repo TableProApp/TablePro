@@ -5,6 +5,7 @@
 
 import AppKit
 import Observation
+import os
 import SwiftUI
 import TableProPluginKit
 
@@ -56,8 +57,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal let schemaService = SchemaService.shared
     private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
     private var favoriteDatabases: Set<FavoriteDatabaseEntry> = []
-    private var tableFavoritesObserver: (any NSObjectProtocol)?
-    private var databaseFavoritesObserver: (any NSObjectProtocol)?
+    private let favoritesObservers = OSAllocatedUnfairLock<[any NSObjectProtocol]>(uncheckedState: [])
 
     init(
         favoriteTablesStorage: FavoriteTablesStorage = .shared,
@@ -80,7 +80,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     func attach(outlineView: NSOutlineView) {
         self.outlineView = outlineView
-        tableFavoritesObserver = NotificationCenter.default.addObserver(
+        let tableObserver = NotificationCenter.default.addObserver(
             forName: .favoriteTablesDidChange, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -89,7 +89,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 self.refreshVisibleRows()
             }
         }
-        databaseFavoritesObserver = NotificationCenter.default.addObserver(
+        favoritesObservers.withLockUnchecked { $0.append(tableObserver) }
+
+        let databaseObserver = NotificationCenter.default.addObserver(
             forName: .favoriteDatabasesDidChange, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -98,15 +100,11 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 self.refreshVisibleRows()
             }
         }
+        favoritesObservers.withLockUnchecked { $0.append(databaseObserver) }
     }
 
     deinit {
-        if let tableFavoritesObserver {
-            NotificationCenter.default.removeObserver(tableFavoritesObserver)
-        }
-        if let databaseFavoritesObserver {
-            NotificationCenter.default.removeObserver(databaseFavoritesObserver)
-        }
+        favoritesObservers.withLockUnchecked { $0.forEach(NotificationCenter.default.removeObserver) }
     }
 
     func update(from view: DatabaseTreeOutlineView) {

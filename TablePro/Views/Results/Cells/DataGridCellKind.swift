@@ -113,11 +113,12 @@ struct DataGridColumnPresentation: Equatable {
         isEditable: Bool
     ) -> DataGridColumnPresentation {
         let configuredPicker = isDropdown || isTypePicker
+        let picksFromList = configuredPicker || isEnumOrSet || columnType?.isEnumOrSetType == true
         let kind: DataGridCellKind
 
         if isForeignKey && !configuredPicker {
             kind = .foreignKey
-        } else if isEditable && (configuredPicker || isEnumOrSet) {
+        } else if isEditable && picksFromList {
             kind = .dropdown
         } else if columnType?.isBooleanType == true {
             kind = .boolean

@@ -13,7 +13,7 @@ internal protocol OperationConfirming: Sendable {
 internal struct AlertOperationConfirming: OperationConfirming {
     @MainActor
     func confirm(sql: String, operationDescription: String, connectionId: UUID, isDestructive: Bool) async -> Bool {
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         let window = WindowLifecycleMonitor.shared.activeWindow(for: connectionId, preferring: NSApp.keyWindow)
         let preview = Self.preview(of: sql)
 
@@ -45,7 +45,7 @@ internal struct AlertOperationConfirming: OperationConfirming {
     private static func preview(of sql: String) -> String {
         let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
         if (trimmed as NSString).length > 200 {
-            return String(trimmed.prefix(200)) + "..."
+            return String(trimmed.prefix(200)) + "…"
         }
         return trimmed
     }

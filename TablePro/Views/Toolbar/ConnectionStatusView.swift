@@ -86,8 +86,17 @@ struct ConnectionStatusView: View {
             .buttonStyle(.plain)
             .help(switchableTooltip(component))
             .accessibilityLabel(accessibilityLabel(component))
+            /// This chip keeps a SwiftUI popover, and correctly so: it lives in the centred status
+            /// item, has no menu command and no shortcut, so there is no route that can fire it
+            /// while its own view is off screen. Dismissal clears the state that presents it,
+            /// which is what `@Environment(\.dismiss)` used to do before the switcher content
+            /// started taking an explicit closure.
             .popover(isPresented: presentation(of: component.kind), arrowEdge: .bottom) {
-                DatabaseSwitcherPopoverHost(coordinator: coordinator, target: component.kind)
+                DatabaseSwitcherPopoverHost(
+                    coordinator: coordinator,
+                    target: component.kind,
+                    dismiss: { [weak coordinator] in coordinator?.presentedScopeSwitcher = nil }
+                )
             }
         } else {
             scopeLabel(component)

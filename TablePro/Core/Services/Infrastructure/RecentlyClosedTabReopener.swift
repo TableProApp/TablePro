@@ -28,7 +28,7 @@ internal enum RecentlyClosedTabReopener {
         }
 
         openWindowTab(for: entry)
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
     }
 
     private static func emptyWindowCoordinator(for connectionId: UUID) -> MainContentCoordinator? {
@@ -49,7 +49,7 @@ internal enum RecentlyClosedTabReopener {
         }
 
         coordinator.contentWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
     }
 
     private static func makeTab(for entry: RecentlyClosedTabEntry) -> QueryTab {

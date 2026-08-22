@@ -61,7 +61,7 @@ struct SyncStatusIndicator: View {
         case .idle:
             return String(localized: "Synced")
         case .syncing:
-            return String(localized: "Syncing...")
+            return String(localized: "Syncing…")
         case .error:
             return String(localized: "Sync Error")
         case .disabled(.noAccount):
@@ -97,7 +97,7 @@ struct SyncStatusIndicator: View {
             }
             return String(localized: "iCloud Sync is active")
         case .syncing:
-            return String(localized: "Syncing with iCloud...")
+            return String(localized: "Syncing with iCloud…")
         case .error(let error):
             return error.localizedDescription
         case .disabled(.noAccount):

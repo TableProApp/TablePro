@@ -195,6 +195,15 @@ struct SortState: Equatable {
 
     var isSorting: Bool { !columns.isEmpty }
 
+    /// The sort in the name-keyed shape both persistence and navigation history store it in. A
+    /// column with no name cannot be resolved back against a re-fetched result, so it is dropped.
+    var persistedColumns: [PersistedSortColumn] {
+        columns.compactMap { column in
+            guard let name = column.columnName else { return nil }
+            return PersistedSortColumn(columnName: name, direction: column.direction)
+        }
+    }
+
     // Backward-compatible computed properties for single-column access
     var columnIndex: Int? { columns.first?.columnIndex }
     var direction: SortDirection { columns.first?.direction ?? .ascending }
@@ -612,17 +621,20 @@ struct TabDisplayState: Equatable {
         return resultSets.first { $0.id == id }
     }
 
+    @MainActor
     var hasPinnedResults: Bool {
-        resultSets.contains(where: \.isPinned)
+        resultSets.contains { $0.isPinned }
     }
 
+    @MainActor
     mutating func replaceUnpinnedResults(with newResults: [ResultSet]) {
-        resultSets = resultSets.filter(\.isPinned) + newResults
+        resultSets = resultSets.filter { $0.isPinned } + newResults
         activeResultSetId = newResults.last?.id ?? resultSets.last?.id
     }
 
+    @MainActor
     mutating func removeUnpinnedResults() {
-        resultSets = resultSets.filter(\.isPinned)
+        resultSets = resultSets.filter { $0.isPinned }
         activeResultSetId = resultSets.last?.id
     }
 

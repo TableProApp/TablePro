@@ -29,12 +29,14 @@ struct SQLEditorView: View {
     /// here rather than on its own `onAppear`, which fires before this subtree renders.
     var onFocusClaimed: (() -> Void)?
     var restoredCursorRange: NSRange?
+    var pendingStatementJump: StatementAnchor?
+    var onStatementJumpHandled: (() -> Void)?
     var restoredFoldRanges: [Range<Int>]?
     var onFoldRangesChanged: (([Range<Int>]) -> Void)?
     @Binding var vimMode: VimMode
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
-    var onRunStatement: ((String) -> Bool)?
+    var onRunStatement: ((String, Int) -> Bool)?
     /// A tab runs one thing at a time, so the gutter's run controls go dim for the length of a query.
     var isExecuting: Bool = false
     var onAIExplain: ((String) -> Void)?
@@ -85,6 +87,14 @@ struct SQLEditorView: View {
         )
         .accessibilityLabel(String(localized: "SQL query editor"))
         .accessibilityIdentifier("sql-editor-textview")
+        /// Applied on change rather than while building the view: this is an event, and an editor that is already
+        /// mounted never rebuilds from scratch to notice a new value. Cleared whether or not the statement was still
+        /// there, so a request that cannot be honoured does not sit pending and block the next one.
+        .onChange(of: pendingStatementJump) { _, newValue in
+            guard let newValue else { return }
+            coordinator.jumpToStatement(newValue)
+            onStatementJumpHandled?()
+        }
         .onChange(of: editorState.cursorPositions) { _, newValue in
             guard let positions = newValue else { return }
             // Skip cursor propagation when the editor doesn't have focus

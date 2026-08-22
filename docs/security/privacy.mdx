@@ -1,0 +1,178 @@
+---
+title: Privacy
+description: "Every outbound request the app can make, what each one carries, and where its off switch is"
+---
+
+Three requests leave a stock install without you asking: one anonymous heartbeat a day, an update check, and a fetch of the plugin catalog. None of the three carries a query, a row, a hostname, or a password. Every other channel in this table is one you switch on yourself.
+
+| Channel | Goes to | On by default | Off switch |
+| --- | --- | --- | --- |
+| [Usage heartbeat](#usage-heartbeat) | `api.tablepro.app` | Yes | **Settings > General**, under Privacy |
+| [Update check](#update-checks) | `raw.githubusercontent.com` | Yes | **Settings > General**, under Software Update |
+| [Plugin catalog](#the-plugin-catalog) | `raw.githubusercontent.com` | Yes | None |
+| [AI provider](#ai-providers) | whichever provider you add | No provider is configured on a fresh install | Delete the provider, or turn off **Enable AI Features** |
+| [iCloud sync](#icloud-sync) | your own iCloud account | No | **Settings > Account** |
+| [MCP clients](#the-mcp-server) | nowhere: it listens on `127.0.0.1` | Off, but starts on demand | **Settings > Integrations** |
+| [License and team library](#license-checks-and-the-team-library) | `api.tablepro.app` | Only after you activate a license | Do not activate one |
+| [Your databases](#your-database-connections) | the hosts you type into the connection form | Only what you connect to | Do not connect |
+| Crash reports | Nowhere. The app has no crash reporter. | - | - |
+
+## Usage heartbeat
+
+One `POST` to `https://api.tablepro.app/v1/analytics`, ten seconds after the app first becomes active and every 24 hours it keeps running. A 20-hour cooldown is stamped in preferences, so quitting and reopening does not send a second one.
+
+The JSON body holds these fields and no others:
+
+| Field | What it is |
+| --- | --- |
+| `machine_id` | SHA-256 of the Mac's hardware UUID, read from IOKit |
+| `platform` | always `macos` |
+| `app_version`, `os_version`, `architecture` | for example `0.67.0`, `macOS 15.1.0`, `arm64` |
+| `locale` | the language setting: `system`, `en`, `vi`, `zh-Hans`, `zh-Hant`, `ko`, or `tr` |
+| `database_types` | the types of the connections open at that moment, such as `MySQL` |
+| `connection_count` | how many connections are open |
+| `has_license` | whether a license key is stored |
+| `connection_attempted_at`, `connection_succeeded_at` | when you first tried to connect on this Mac, and when a connection first succeeded |
+
+No query text. No hostnames, ports, database names, or usernames. No email address, no file paths, no connection names.
+
+An `X-Signature` header carries an HMAC-SHA256 of the body. It proves the payload arrived unaltered; it is not encryption, and it carries nothing about you.
+
+`machine_id` hashes a hardware identifier, never anything you typed, so two heartbeats from one Mac count as one Mac. Where that identifier cannot be read, a random one is stored instead and does not survive a reset.
+
+**Share anonymous usage data** in **Settings > General** is on by default. With it off, the send returns before the payload is built, and nothing queues for later.
+
+## AI providers
+
+Nothing reaches a model until you add a provider, and a fresh install has none: with none configured, every AI path returns before it builds a request. **Enable AI Features** in **Settings > AI** is on out of the box, but it gates an empty tab.
+
+One provider is marked active and answers inline suggestions and the editor actions; the chat panel's own model picker can send a turn to any other provider you configured. Requests go to that provider's endpoint. The presets are `api.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com`, `api.x.ai`, `openrouter.ai`, `api.cursor.com` and `opencode.ai`, plus `http://localhost:11434` for Ollama and `http://localhost:8080` for llama.cpp and MLX, which keeps their traffic on the machine. Every endpoint field is editable, and a custom provider goes wherever you point it.
+
+A chat turn carries:
+
+- The database type and the name of the database you are connected to.
+- The schema, while **Include database schema** is on (the default): table names, estimated row counts, column names and types, primary key and NOT NULL flags, DEFAULT values, and foreign keys, for up to **Max schema tables** tables (20 by default).
+- The query in the current tab, while **Include current query** is on (the default), truncated at 2,000 characters.
+- Result rows, only if you turn on **Include query results**, which is off by default. It attaches the first 10 rows of the current result, each value cut at 200 characters.
+- The connection's [AI Rules](/features/ai-assistant#per-connection-ai-rules) text, if you wrote any.
+- Any images you paste into the composer, and the conversation so far.
+
+In Edit and Agent modes the model calls `execute_query` itself, and the rows it gets back become part of the conversation, so they go to the provider on the next turn. Those results are capped by the row limits in **Settings > Integrations**: 500 rows by default, 10,000 at most.
+
+Per connection, the **AI Policy** picker in the connection form's Advanced pane takes **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. The app-wide default is **Ask Each Time**, which asks once per connection per chat session before the first send. **Never** blocks the chat panel and external AI tool calls against that connection.
+
+<Warning>
+**Ask Each Time** gates the chat panel only. Inline suggestions check the policy for **Never** and nothing else, so with **Enable inline suggestions while typing** on, the text before your cursor, the whole query, and the schema go to the provider after every typing pause with no prompt. That toggle is off by default.
+</Warning>
+
+Provider API keys live in the keychain, never in `connections.json` and never in a CloudKit record. The provider list itself (type, name, endpoint, model) rides along with the Settings category of iCloud sync when sync is on.
+
+Signing in to ChatGPT opens a second local listener on port 1455 for the OAuth redirect. It runs only during that sign-in and closes after it.
+
+Two provider paths run a program rather than call an endpoint. **Claude Agent** runs the `claude` command line tool, which talks to Anthropic under your own subscription. **GitHub Copilot** downloads its language server from `registry.npmjs.org` on first use, and its provider sheet has **Send telemetry to GitHub**, which is on when you add the provider. Turning it off sets the language server's telemetry level to `off`.
+
+## iCloud sync
+
+Off by default, and it needs a Starter or Team license. When it is on, records go to the CloudKit container `iCloud.com.TablePro`, into the private database of your own iCloud account, in the Production environment.
+
+Eight record types sync: `Connection`, `ConnectionGroup`, `ConnectionTag`, `AppSettings`, `SQLFavorite`, `SQLFavoriteFolder`, `FavoriteTable`, and `SSHProfile`. A connection record carries host, port, username, database, and SSH and SSL settings. Sync runs on launch, when you switch back to the app, and about two seconds after you change something synced.
+
+Passwords are not one of those record types. The **Passwords** toggle nested under Connections instead marks keychain items as synchronizable, so Apple's iCloud Keychain carries them end to end encrypted. It is off by default, and it applies to items written after you turn it on.
+
+<Warning>
+That flag is set on every keychain item the app writes, not only connection passwords: AI provider keys and the license key go through the same helper. MCP tokens do not; their store always writes device-only items.
+</Warning>
+
+With password sync off, secrets are written `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, which keeps them on that one Mac. Query history, the activity log, the execution log, tab state, MCP settings, and the sync settings themselves are never synced. Individual connections can be marked **Local only**. Full detail in [iCloud Sync](/features/icloud-sync).
+
+## The MCP server
+
+The server listens on `127.0.0.1` and nothing else. Its listener sets `requiredLocalEndpoint` to the IPv4 loopback address, so there is no remote mode and no setting that opens it to your network. Default port 23508.
+
+It is off by default, but it starts on demand: the bundled bridge and the pairing flow both start it. What a paired client can reach is real data, so four gates stack:
+
+1. **Require authentication**, on by default. With it on, a request that arrives without an `Authorization` header is refused. Turn it off and a loopback caller with no header is allowed instead, capped at `tools:read` and `resources:read` however much it asks for.
+2. The token's scope and its connection allowlist.
+3. The connection's **External Clients** level: **Blocked**, **Read Only** (the default for a new connection), or **Read & Write**. The effective permission is the lower of that and the token's scope.
+4. The connection's **AI Policy** and its [Safe Mode](/features/safe-mode) level, which still apply to statements a client sends.
+
+Loopback-only describes where the server binds, not everything that can reach it. The server returns CORS headers for two remote origins, `claude.ai` and `app.cursor.com`, so a page you have open there can call your local server from your own browser. The four gates above are what stands between such a call and your data, which is the reason to leave **Require authentication** on.
+
+Every call is written to the local activity log with the token behind it, statements as SHA-256 digests. See [Tokens](/external-api/tokens) for the whole model.
+
+## Update checks
+
+Sparkle fetches `https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml`, one day apart by default. It is a plain `GET` with no query parameters: system profiling is off, so nothing about your Mac rides along. The user agent names the app and its version, and GitHub sees your IP address as it would for any web request.
+
+Updates download from the GitHub release named in the feed, and Sparkle checks each build's EdDSA signature against the public key inside the app before it installs anything.
+
+**Automatically check for updates** in **Settings > General** is on by default. With it off, **Check for Updates…** in the same section is the only thing that reaches the feed.
+
+## The plugin catalog
+
+At launch the app fetches `https://raw.githubusercontent.com/TableProApp/plugins/main/plugins.json` when its cached copy is more than five minutes old, and again when it reconciles a plugin that a newer app version rejected. The request adds no header of its own; GitHub sees the IP address and the user agent URLSession sends. The response is cached on disk.
+
+Installing a plugin or a theme downloads its ZIP over HTTPS from the URL in that catalog and checks it against the SHA-256 the catalog declares. The plugin browser also calls `https://api.github.com/repos/TableProApp/TablePro/releases?per_page=100` for download counts, at most once every five minutes, and only while that pane is open.
+
+There is no setting that turns the catalog fetch off.
+
+## License checks and the team library
+
+With no license activated, the app never calls the license API. Activation sends the license key or invite code, the hashed machine ID, the Mac's name, the app version, and the OS version to `https://api.tablepro.app/v1/license`. The same fields go out on re-validation, which runs every 7 days, and on deactivation.
+
+<Info>
+The Mac's name is the only field in any request that tends to hold a person's name, because macOS builds it from the account name. It goes to the license API, never to the analytics endpoint.
+</Info>
+
+Team Library is a Team-tier feature and it publishes only when you ask. **Share > Publish to Team Library…** uploads the connection definitions and the saved query text to `https://api.tablepro.app/v1/license/library`; the publish path builds the export envelope without credentials, so passwords, key passphrases, and TOTP secrets are not in it. A member's app pulls the library on its own weekly timer, and again straight after anyone publishes.
+
+## Crash reports
+
+There are none. The app links no crash reporting SDK, its only remote packages being Sparkle, swift-certificates, and Yams, so nothing uploads a crash log, a stack trace, or a diagnostic file. Logging goes through OSLog and stays in the system log store on your Mac.
+
+## Your database connections
+
+The largest thing leaving your Mac is the traffic you asked for: the connection to your own server, plus whatever hops you configured, such as an SSH tunnel, a Cloudflare tunnel, a SOCKS proxy, or Cloud SQL Proxy. Cloud drivers reach their vendor's endpoint by design, so BigQuery talks to `bigquery.googleapis.com`, DynamoDB to AWS, and Microsoft Entra authentication to `login.microsoftonline.com`.
+
+Two helpers download on first use, and each is verified before it runs: the Cloud SQL Proxy binary from `storage.googleapis.com` against a pinned SHA-256, and the Copilot language server tarball against the integrity hash npm publishes with it.
+
+## What stays local
+
+The execution log records every authorization decision the app makes, from the UI, an MCP client, the AI assistant, the import pipeline, or background maintenance. Each record holds a sequence number, a timestamp, the connection ID, the operation kind, which of those five callers asked, allowed or denied, whether it counted as a write, a SHA-256 digest of the statement, and the previous record's hash. The statement text is never stored, and neither is a caller-supplied label such as an MCP client name or an AI session ID, only the channel it came through.
+
+The hash chain is tamper evident, not tamper proof: anyone who can write the file can recompute every hash after the record they changed. It is a JSON file in Application Support, no sync record type covers it, and no code path uploads it.
+
+### Where it lives on disk
+
+Every path here is under `~/Library/Application Support/TablePro/` unless it says otherwise.
+
+| Path | What it holds |
+| --- | --- |
+| `connections.json` | Connection definitions: host, port, username, database, SSH and SSL settings. No passwords. |
+| `connections.json.hmac` | The integrity tag for `connections.json`. |
+| `known_hosts` | SSH host keys you accepted. |
+| `query_history.db` | The statements you ran, as text, with a full-text index. Parameter values are never recorded. |
+| `sql_favorites.db` | Saved queries and their folders. |
+| `ai_chats/` | One JSON file per AI conversation, including the context attached to each turn. |
+| `AIChatImages/` | Images pasted into chat. |
+| `ExecutionAudit.json` | The execution log described in this section. |
+| `mcp-audit.db` | The MCP activity log, 90 days, statements as digests. Mode `0600` inside a `0700` directory. |
+| `mcp-handshake.json` | The bound port and the bridge token, mode `0600`. |
+| `TabState/`, `RecentlyClosedTabs/` | Open and recently closed tabs, including their query text. |
+| `FilterState/`, `ColumnLayout/` | Per-table filters and column widths. |
+| `LastOpenConnections.json` | What to reopen for **Reopen Last Session**. |
+| `Plugins/` | Plugins you installed yourself. |
+| `Registry/registry-manifest.json`, `Registry/URLCache/` | The cached plugin catalog. |
+| `team_library.json` | The cached team library. |
+| `linked_sql_index.db` | File metadata for linked SQL folders. |
+| `~/Library/Preferences/com.TablePro.plist` | Settings, and the signed license blob, which carries the email on the license. |
+
+## Passwords and secrets
+
+Secrets live in the macOS keychain, under the `com.TablePro` service and in the data protection keychain: connection passwords, SSH passwords, key passphrases, SSL client key passphrases, TOTP secrets, plugin secure fields, AI provider keys, and the license key. MCP tokens are the exception, stored as a salted SHA-256 hash; the plaintext is shown once at creation and never written down.
+
+A connection can name a [password source](/features/connection-sharing#password-sources) instead of using the keychain: a file, an environment variable, a shell command, 1Password, HashiCorp Vault, or AWS Secrets Manager. Those resolve at connect time, on your machine, and are never synced, since a path or a command belongs to one Mac.
+
+<Warning>
+The `command`, `onePassword`, `vault`, and `awsSecretsManager` kinds run a program on your Mac. The app keeps a signature over `connections.json` for that reason: if the file changed outside the app, password sources do not run and the connection reports why. Open the connection and save it from TablePro to accept the change.
+</Warning>

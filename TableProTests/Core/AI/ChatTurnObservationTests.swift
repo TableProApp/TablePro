@@ -5,6 +5,7 @@
 
 import Foundation
 import Observation
+import os
 @testable import TablePro
 import Testing
 
@@ -22,16 +23,16 @@ struct ChatTurnObservationTests {
         let (turn, _) = makeStreamingTurn()
         viewModel.messages.append(turn)
 
-        var messagesInvalidated = false
+        let messagesInvalidated = OSAllocatedUnfairLock(initialState: false)
         withObservationTracking {
             _ = viewModel.messages.count
         } onChange: {
-            messagesInvalidated = true
+            messagesInvalidated.withLock { $0 = true }
         }
 
         turn.appendStreamingToken("hello")
 
-        #expect(messagesInvalidated == false)
+        #expect(messagesInvalidated.withLock { $0 } == false)
         #expect(turn.plainText == "hello")
     }
 
@@ -39,32 +40,32 @@ struct ChatTurnObservationTests {
     func tokenAppendDoesNotInvalidateBlockList() {
         let (turn, _) = makeStreamingTurn()
 
-        var blockListInvalidated = false
+        let blockListInvalidated = OSAllocatedUnfairLock(initialState: false)
         withObservationTracking {
             _ = turn.blocks.count
         } onChange: {
-            blockListInvalidated = true
+            blockListInvalidated.withLock { $0 = true }
         }
 
         turn.appendStreamingToken("hello")
 
-        #expect(blockListInvalidated == false)
+        #expect(blockListInvalidated.withLock { $0 } == false)
     }
 
     @Test("Appending a streaming token invalidates only the block that grew")
     func tokenAppendInvalidatesGrowingBlock() {
         let (turn, block) = makeStreamingTurn()
 
-        var blockInvalidated = false
+        let blockInvalidated = OSAllocatedUnfairLock(initialState: false)
         withObservationTracking {
             _ = block.kind
         } onChange: {
-            blockInvalidated = true
+            blockInvalidated.withLock { $0 = true }
         }
 
         turn.appendStreamingToken("hello")
 
-        #expect(blockInvalidated)
+        #expect(blockInvalidated.withLock { $0 })
     }
 
     @Test("The message list's own reads survive a streaming token without invalidation")
@@ -74,7 +75,7 @@ struct ChatTurnObservationTests {
         viewModel.messages.append(turn)
         viewModel.streamingState = .streaming(assistantID: turn.id)
 
-        var panelInvalidated = false
+        let panelInvalidated = OSAllocatedUnfairLock(initialState: false)
         withObservationTracking {
             for message in viewModel.messages {
                 _ = message.id
@@ -84,12 +85,12 @@ struct ChatTurnObservationTests {
                 }
             }
         } onChange: {
-            panelInvalidated = true
+            panelInvalidated.withLock { $0 = true }
         }
 
         turn.appendStreamingToken("hello")
 
-        #expect(panelInvalidated == false)
+        #expect(panelInvalidated.withLock { $0 } == false)
     }
 
     @Test("Starting a new block invalidates the owning turn but not the messages array")
@@ -98,24 +99,24 @@ struct ChatTurnObservationTests {
         let (turn, _) = makeStreamingTurn()
         viewModel.messages.append(turn)
 
-        var messagesInvalidated = false
+        let messagesInvalidated = OSAllocatedUnfairLock(initialState: false)
         withObservationTracking {
             _ = viewModel.messages.count
         } onChange: {
-            messagesInvalidated = true
+            messagesInvalidated.withLock { $0 = true }
         }
 
-        var blockListInvalidated = false
+        let blockListInvalidated = OSAllocatedUnfairLock(initialState: false)
         withObservationTracking {
             _ = turn.blocks.count
         } onChange: {
-            blockListInvalidated = true
+            blockListInvalidated.withLock { $0 = true }
         }
 
         turn.appendBlock(.toolUse(ToolUseBlock(id: "t1", name: "noop", input: .object([:]))))
 
-        #expect(messagesInvalidated == false)
-        #expect(blockListInvalidated)
+        #expect(messagesInvalidated.withLock { $0 } == false)
+        #expect(blockListInvalidated.withLock { $0 })
     }
 
     @Test("Setting usage on one turn does not invalidate a sibling turn")
@@ -123,15 +124,15 @@ struct ChatTurnObservationTests {
         let first = ChatTurn(role: .assistant, blocks: [ChatContentBlock.text("done")])
         let (second, _) = makeStreamingTurn()
 
-        var siblingInvalidated = false
+        let siblingInvalidated = OSAllocatedUnfairLock(initialState: false)
         withObservationTracking {
             _ = first.usage
         } onChange: {
-            siblingInvalidated = true
+            siblingInvalidated.withLock { $0 = true }
         }
 
         second.usage = AITokenUsage(inputTokens: 10, outputTokens: 20)
 
-        #expect(siblingInvalidated == false)
+        #expect(siblingInvalidated.withLock { $0 } == false)
     }
 }

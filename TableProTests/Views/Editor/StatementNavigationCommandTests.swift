@@ -206,7 +206,7 @@ struct StatementNavigationCommandTests {
         subject.install(on: controller)
 
         controller.setCursorPositions([CursorPosition(range: NSRange(location: 13, length: 0))])
-        #expect(subject.statementAtCursor(in: controller) == "SELECT 2;")
+        #expect(subject.statementAtCursor(in: controller)?.sql == "SELECT 2;")
     }
 
     /// `Cmd+Enter` runs a selection verbatim and the band deliberately paints nothing while one exists, so running

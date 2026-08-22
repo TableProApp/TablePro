@@ -32,6 +32,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var cancelQueryCallCount = 0
     var connectDelaySeconds: Double = 0
     var switchSchemaDelaySeconds: Double = 0
+    var executeDelaySeconds: Double = 0
     var hangsUntilDisconnect = false
     var schemasToReturn: [String] = []
     var fetchSchemasError: Error?
@@ -72,7 +73,10 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     }
 
     func execute(query: String) async throws -> QueryResult {
-        QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
+        if executeDelaySeconds > 0 {
+            try await Task.sleep(nanoseconds: UInt64(executeDelaySeconds * 1_000_000_000))
+        }
+        return QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
     }
 
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {

@@ -58,7 +58,7 @@ private final class BeancountProjectionWriter {
     }
 }
 
-struct BeancountProjectionRows {
+struct BeancountProjectionRows: @unchecked Sendable {
     var transactions: [[String: Any]] = []
     var postings: [[String: Any]] = []
     var accounts: [[String: Any]] = []

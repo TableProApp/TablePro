@@ -11,7 +11,7 @@ import os
 import TableProPluginKit
 
 /// A parameterized SQL statement with placeholders and bound values
-struct ParameterizedStatement {
+struct ParameterizedStatement: @unchecked Sendable {
     let sql: String
     let parameters: [Any?]
 }

@@ -43,7 +43,7 @@ actor OnceTask<Key: Hashable & Sendable, Value: Sendable> {
         inFlight.removeValue(forKey: key)
     }
 
-    func cancel(where predicate: (Key) -> Bool) {
+    func cancel(where predicate: @Sendable (Key) -> Bool) {
         for key in inFlight.keys where predicate(key) {
             inFlight[key]?.task.cancel()
             inFlight.removeValue(forKey: key)

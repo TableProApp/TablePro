@@ -14,7 +14,7 @@ import TableProSyncTransport
 @MainActor
 final class ConnectionStorage {
     static let shared = ConnectionStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionStorage")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionStorage")
 
     private let connectionsKey = "com.TablePro.connections"
     private let migratedToFileKey = "com.TablePro.connectionsMigratedToFile"
@@ -263,12 +263,13 @@ final class ConnectionStorage {
     }
 
     /// Delete a connection
-    func deleteConnection(_ connection: DatabaseConnection) {
+    @discardableResult
+    func deleteConnection(_ connection: DatabaseConnection) -> Bool {
         var connections = loadConnections()
         connections.removeAll { $0.id == connection.id }
         guard saveConnections(connections) else {
             Self.logger.error("Aborted deleteConnection: persistence failed for \(connection.id, privacy: .public)")
-            return
+            return false
         }
         if !connection.localOnly && !connection.isSample {
             syncTracker.markDeleted(.connection, id: connection.id.uuidString)
@@ -297,16 +298,18 @@ final class ConnectionStorage {
                 matching: QueryHistoryFilter(scope: .connection(connection.id))
             )
         }
+        return true
     }
 
     /// Batch-delete multiple connections and clean up their Keychain entries
-    func deleteConnections(_ connectionsToDelete: [DatabaseConnection]) {
+    @discardableResult
+    func deleteConnections(_ connectionsToDelete: [DatabaseConnection]) -> Bool {
         let idsToDelete = Set(connectionsToDelete.map(\.id))
         var all = loadConnections()
         all.removeAll { idsToDelete.contains($0.id) }
         guard saveConnections(all) else {
             Self.logger.error("Aborted deleteConnections: persistence failed for \(idsToDelete.count, privacy: .public) connection(s)")
-            return
+            return false
         }
         for conn in connectionsToDelete where !conn.localOnly && !conn.isSample {
             syncTracker.markDeleted(.connection, id: conn.id.uuidString)
@@ -337,6 +340,7 @@ final class ConnectionStorage {
                 )
             }
         }
+        return true
     }
 
     /// Duplicate a connection with a new UUID and "(Copy)" suffix

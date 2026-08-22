@@ -100,7 +100,7 @@ struct ConnectionTagEditor: View {
             Button {
                 showingCreateSheet = true
             } label: {
-                Label("Create New Tag...", systemImage: "plus.circle")
+                Label("Create New Tag…", systemImage: "plus.circle")
             }
 
             if allTags.contains(where: { !$0.isPreset }) {

@@ -8,7 +8,7 @@ import TableProPluginKit
 @MainActor
 @Observable
 final class ERDiagramViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ERDiagram")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ERDiagram")
 
     // MARK: - Configuration
 
@@ -181,7 +181,7 @@ final class ERDiagramViewModel {
     private func waitForConnection() async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let resumed = OSAllocatedUnfairLock(initialState: false)
-            let cancellableBox = OSAllocatedUnfairLock<AnyCancellable?>(initialState: nil)
+            let cancellableBox = OSAllocatedUnfairLock<AnyCancellable?>(uncheckedState: nil)
             let timeoutTaskBox = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
             @Sendable func resumeOnce() {
@@ -192,7 +192,7 @@ final class ERDiagramViewModel {
                 }
                 guard !alreadyResumed else { return }
                 timeoutTaskBox.withLock { $0?.cancel(); $0 = nil }
-                cancellableBox.withLock { $0 = nil }
+                cancellableBox.withLockUnchecked { $0 = nil }
                 continuation.resume()
             }
 
@@ -203,7 +203,7 @@ final class ERDiagramViewModel {
                     guard payload.connectionId == targetId else { return }
                     resumeOnce()
                 }
-            cancellableBox.withLock { $0 = cancellable }
+            cancellableBox.withLockUnchecked { $0 = cancellable }
 
             let timeoutTask = Task {
                 try? await Task.sleep(for: .seconds(10))

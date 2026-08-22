@@ -1,6 +1,6 @@
 import Foundation
 
-enum RedisAuthCommand {
+nonisolated enum RedisAuthCommand {
     enum Failure: Equatable, Sendable {
         case rejectedCredentials
         case rejectedWithoutUsername

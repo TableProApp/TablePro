@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading {
+final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Sendable {
     static let shared = QueryHistoryManager()
 
     private let storage: QueryHistoryStorage

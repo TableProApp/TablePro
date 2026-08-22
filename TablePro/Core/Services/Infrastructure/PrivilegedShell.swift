@@ -27,7 +27,7 @@ internal protocol PrivilegedShellRunning {
 
 @MainActor
 internal struct OSAScriptPrivilegedShell: PrivilegedShellRunning {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "PrivilegedShell")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "PrivilegedShell")
 
     internal static func quote(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"

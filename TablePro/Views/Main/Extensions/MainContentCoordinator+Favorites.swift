@@ -48,7 +48,7 @@ extension MainContentCoordinator {
                 /// raising the window was the whole of showing the tab; now a window holds every tab
                 /// and the command did nothing whenever the file's tab is not the one in front.
                 hosting.selectTabAndFocusWindow(match.id)
-                NSApp.activate(ignoringOtherApps: true)
+                AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
                 return
             }
             WindowLifecycleMonitor.shared.unregisterSourceFile(favorite.fileURL)

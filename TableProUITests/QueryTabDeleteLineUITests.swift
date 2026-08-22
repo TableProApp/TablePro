@@ -28,9 +28,9 @@ final class QueryTabDeleteLineUITests: UITestCase {
         executeQuery(in: app)
 
         let grid = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-        XCTAssertTrue(grid.waitForExistence(timeout: 10))
+        XCTAssertTrue(grid.waitToExist(timeout: 10))
         let firstRow = grid.tableRows.element(boundBy: 0)
-        XCTAssertTrue(firstRow.waitForExistence(timeout: 10))
+        XCTAssertTrue(firstRow.waitToExist(timeout: 10))
         firstRow.click()
 
         editor.click()
@@ -47,7 +47,7 @@ final class QueryTabDeleteLineUITests: UITestCase {
     private func openQueryTab(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("t", modifierFlags: .command)
         let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         XCTAssertTrue(waitForValue("", in: editor, timeout: 5), "A new tab starts with an empty editor")
         return editor
     }
@@ -55,16 +55,7 @@ final class QueryTabDeleteLineUITests: UITestCase {
     private func executeQuery(in app: XCUIApplication) {
         app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: .command)
         let results = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-        XCTAssertTrue(results.waitForExistence(timeout: 15), "The query must produce a result grid")
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
+        XCTAssertTrue(results.waitToExist(timeout: 15), "The query must produce a result grid")
     }
 
     private func waitForValue(_ expected: String, in element: XCUIElement, timeout: TimeInterval) -> Bool {

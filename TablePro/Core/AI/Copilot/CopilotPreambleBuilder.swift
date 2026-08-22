@@ -9,7 +9,7 @@ import TableProPluginKit
 
 @MainActor
 final class CopilotPreambleBuilder {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotPreambleBuilder")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotPreambleBuilder")
 
     static let contextDirectory: URL = {
         let appSupport = AppStorageEnvironment.shared.applicationSupportRoot

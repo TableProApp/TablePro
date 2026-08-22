@@ -204,21 +204,21 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         urlConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
         urlConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
-        lock.lock()
-        if let delegate = ClickHouseTLSDelegate.make(for: config.ssl) {
-            session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
-        } else {
-            session = URLSession(configuration: urlConfig)
+        lock.withLock {
+            if let delegate = ClickHouseTLSDelegate.make(for: config.ssl) {
+                session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
+            } else {
+                session = URLSession(configuration: urlConfig)
+            }
         }
-        lock.unlock()
 
         do {
             _ = try await executeRaw("SELECT 1")
         } catch {
-            lock.lock()
-            session?.invalidateAndCancel()
-            session = nil
-            lock.unlock()
+            lock.withLock {
+                session?.invalidateAndCancel()
+                session = nil
+            }
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
             if let sslError = ClickHouseSSLClassifier.classifySSLError(error) {
                 throw sslError
@@ -433,9 +433,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Database Switching
 
     func switchDatabase(to database: String) async throws {
-        lock.lock()
-        _currentDatabase = database
-        lock.unlock()
+        lock.withLock { _currentDatabase = database }
     }
 
     // MARK: - EXPLAIN
@@ -503,13 +501,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        lock.lock()
-        guard let session = self.session else {
-            lock.unlock()
-            throw ClickHouseError.notConnected
+        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
+            guard let session = self.session else { throw ClickHouseError.notConnected }
+            return (session, _currentDatabase)
         }
-        let database = _currentDatabase
-        lock.unlock()
 
         var trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         while trimmedQuery.hasSuffix(";") {

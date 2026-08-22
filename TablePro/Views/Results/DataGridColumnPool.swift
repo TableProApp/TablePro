@@ -141,6 +141,12 @@ final class DataGridColumnPool {
         applyColumnWindow(in: tableView)
     }
 
+    /// The window is resolved from the column widths, so a width changed outside `reconcile` has to
+    /// drop it or the spacers keep standing in at the old total and the scroll extent is short.
+    func invalidateColumnWindow() {
+        windowedRange = nil
+    }
+
     /// Unmounts the columns the viewport cannot reach and gives their width to the spacers.
     ///
     /// `NSTableView` builds a cell view per non-hidden column for every prepared row, so a 500

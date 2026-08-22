@@ -53,16 +53,19 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
         return parser.parseFile(url: fileURL, encoding: encoding, dialect: dialect)
     }
 
+    /// `ownsDecompressedFile` answers only whether the caller handed over a file to delete. A file
+    /// this source decompressed itself is always its own to remove, and gating that on the same
+    /// flag leaked the whole expanded dump every time an import of a `.gz` was retried, because a
+    /// retry arrives with no caller-supplied file and therefore with the flag off.
     func cleanup() {
-        guard ownsDecompressedFile else { return }
-
         let tempURL = _decompressedURL.withLock {
             let url = $0
             $0 = nil
             return url
         }
+        let external = ownsDecompressedFile ? externalDecompressedURL : nil
 
-        for fileURL in [tempURL, externalDecompressedURL].compactMap({ $0 }) {
+        for fileURL in [tempURL, external].compactMap({ $0 }) {
             do {
                 try FileManager.default.removeItem(at: fileURL)
             } catch {
@@ -72,9 +75,9 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     }
 
     deinit {
-        guard ownsDecompressedFile else { return }
         let tempURL = _decompressedURL.withLock { $0 }
-        for fileURL in [tempURL, externalDecompressedURL].compactMap({ $0 }) {
+        let external = ownsDecompressedFile ? externalDecompressedURL : nil
+        for fileURL in [tempURL, external].compactMap({ $0 }) {
             try? FileManager.default.removeItem(at: fileURL)
         }
     }

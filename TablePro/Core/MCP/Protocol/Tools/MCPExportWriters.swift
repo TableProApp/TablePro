@@ -56,6 +56,7 @@ struct MCPSqlExportDialect: Sendable {
         switch booleanStyle {
         case .truefalse: return value ? "TRUE" : "FALSE"
         case .numeric: return value ? "1" : "0"
+        @unknown default: return value ? "TRUE" : "FALSE"
         }
     }
 }

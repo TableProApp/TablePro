@@ -134,6 +134,11 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
+    /// True from the result set alone, before the allowed values arrive on the metadata round trip.
+    var isEnumOrSetType: Bool {
+        isEnumType || isSetType
+    }
+
     var isBooleanType: Bool {
         switch self {
         case .boolean: return true

@@ -14,13 +14,13 @@ enum DatabaseMenuBuilder {
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.menu(String(localized: "Database"), items: [
             MenuItemFactory.item(
-                String(localized: "Switch Connection..."),
+                String(localized: "Switch Connection…"),
                 action: #selector(MainSplitViewController.switchConnection(_:)),
                 shortcut: .switchConnection,
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
-                String(localized: "Open Database..."),
+                String(localized: "Open Database…"),
                 action: #selector(MainSplitViewController.openContainerSwitcher(_:)),
                 shortcut: .openDatabase,
                 keyboard: keyboard
@@ -34,15 +34,15 @@ enum DatabaseMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "New Database..."),
+                String(localized: "New Database…"),
                 action: #selector(MainSplitViewController.createNewDatabase(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "New Table..."),
+                String(localized: "New Table…"),
                 action: #selector(MainSplitViewController.createNewTable(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "New View..."),
+                String(localized: "New View…"),
                 action: #selector(MainSplitViewController.createNewView(_:))
             ),
             MenuItemFactory.separator,
@@ -51,7 +51,7 @@ enum DatabaseMenuBuilder {
                 action: #selector(MainSplitViewController.showTableStructure(_:))
             ),
             MenuItemFactory.item(
-                String(localized: "Edit View Definition..."),
+                String(localized: "Edit View Definition…"),
                 action: #selector(MainSplitViewController.editViewDefinition(_:))
             ),
             schemaSubmenu(),

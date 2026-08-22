@@ -62,6 +62,8 @@ extension DatabaseConnection {
             return String(format: String(localized: "db %d"), index)
         case .filePath:
             return nil
+        @unknown default:
+            return nil
         }
     }
 

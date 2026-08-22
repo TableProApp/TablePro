@@ -40,7 +40,12 @@ extension MainContentCoordinator {
         if !openInNewTab,
            let current = tabManager.selectedTab,
            matchesFKTarget(current, table: referencedTable, database: currentDatabase, schema: targetSchema) {
+            /// Re-filtering the tab in place is a jump like any other, so it goes on the history.
+            /// Clicking the reference the tab is already showing is not, and recording it would
+            /// stack identical entries a reader has to press Back through.
+            let departing = showsOnlyFKPredicate(current, filter: filter) ? nil : captureNavigationEntry()
             applyFKFilter(filter, for: referencedTable)
+            commitNavigationEntry(departing)
             return
         }
 
@@ -104,17 +109,26 @@ extension MainContentCoordinator {
 
     /// Toggle FK preview for the currently focused cell in the data grid.
     /// Called from the menu command system (Settings > Keyboard rebindable).
+    /// `focusedColumn` is a position in `tableView.tableColumns`, which carries the row-number
+    /// column and a hidden spacer before the data, and which the reader can reorder. Subtracting a
+    /// fixed offset from it named a different column than the one they were on, or none at all, so
+    /// this resolves it by column identity the way the key-equivalent path already does.
     func toggleFKPreviewForFocusedCell() {
         guard let tableView = NSApp.keyWindow?.firstResponder as? KeyHandlingTableView,
               let coordinator = tableView.coordinator,
               tableView.selectedRow >= 0,
-              tableView.focusedColumn >= 1
+              DataGridView.isDataTableColumn(tableView.focusedColumn),
+              let columnIndex = DataGridView.dataColumnIndex(
+                  for: tableView.focusedColumn,
+                  in: tableView,
+                  schema: coordinator.identitySchema
+              )
         else { return }
         coordinator.toggleForeignKeyPreview(
             tableView: tableView,
             row: tableView.selectedRow,
             column: tableView.focusedColumn,
-            columnIndex: tableView.focusedColumn - 1
+            columnIndex: columnIndex
         )
     }
 
@@ -131,6 +145,14 @@ extension MainContentCoordinator {
             && lhs.value == rhs.value
     }
 
+    /// Whether this tab is already showing exactly this reference and nothing else. One definition,
+    /// because the reuse search and the history both have to agree on what "already here" means.
+    private func showsOnlyFKPredicate(_ tab: QueryTab, filter: TableFilter) -> Bool {
+        let applied = tab.filterState.appliedFilters
+        guard applied.count == 1 else { return false }
+        return isSameFKPredicate(applied[0], filter)
+    }
+
     /// A tab already showing exactly this reference. Matching the filter too keeps a click on a
     /// different row from re-filtering a tab the user opened for another one.
     private func openFKTargetTab(
@@ -140,10 +162,8 @@ extension MainContentCoordinator {
         filter: TableFilter
     ) -> (coordinator: MainContentCoordinator, tabId: UUID)? {
         func matches(_ tab: QueryTab) -> Bool {
-            guard matchesFKTarget(tab, table: table, database: database, schema: schema) else { return false }
-            let applied = tab.filterState.appliedFilters
-            guard applied.count == 1 else { return false }
-            return isSameFKPredicate(applied[0], filter)
+            matchesFKTarget(tab, table: table, database: database, schema: schema)
+                && showsOnlyFKPredicate(tab, filter: filter)
         }
 
         if let match = tabManager.tabs.first(where: matches) {
@@ -164,6 +184,7 @@ extension MainContentCoordinator {
         databaseName: String,
         schemaName: String?
     ) {
+        let departing = captureNavigationEntry()
         if let outgoingTable = tabManager.selectedTab?.tableContext.tableName {
             saveLastFilters(for: outgoingTable)
         }
@@ -182,6 +203,7 @@ extension MainContentCoordinator {
             return
         }
 
+        commitNavigationEntry(departing)
         guard replaced, let (replacedTab, tabIndex) = tabManager.selectedTabAndIndex else {
             applyFKFilter(filter, for: referencedTable)
             return

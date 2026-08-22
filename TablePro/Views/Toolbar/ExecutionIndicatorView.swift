@@ -22,12 +22,13 @@ struct ExecutionIndicatorView: View {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityLabel(String(localized: "Query executing"))
+                    .accessibilityIdentifier("execution-indicator")
                 if let progress = clickHouseProgress {
                     Text(progress.formattedLive)
                         .font(.system(.subheadline, design: .monospaced).weight(.regular))
                         .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
                 } else {
-                    Text("Executing...")
+                    Text("Executing…")
                         .font(.system(.subheadline, design: .monospaced).weight(.regular))
                         .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
                 }
@@ -39,6 +40,7 @@ struct ExecutionIndicatorView: View {
                 }
                 .buttonStyle(.plain)
                 .controlSize(.small)
+                .accessibilityIdentifier("execution-stop")
                 .help(String(localized: "Cancel Query (⌘.)"))
             } else if let chProgress = lastClickHouseProgress {
                 Text(chProgress.formattedSummary)

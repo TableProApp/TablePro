@@ -4,7 +4,7 @@ import TableProModels
 import TableProPluginKit
 import TableProQuery
 
-enum SQLBuilder {
+nonisolated enum SQLBuilder {
     static func quoteIdentifier(_ name: String, for type: DatabaseType) -> String {
         switch type {
         case .mysql, .mariadb:

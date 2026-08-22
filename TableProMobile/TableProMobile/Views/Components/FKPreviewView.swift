@@ -21,6 +21,7 @@ struct FKPreviewView: View {
     @State private var columns: [ColumnInfo] = []
     @State private var row: [String?]?
     @State private var isLoading = true
+    @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -41,6 +42,12 @@ struct FKPreviewView: View {
                         }
                     }
                     .listStyle(.insetGrouped)
+                } else if let errorMessage {
+                    ContentUnavailableView(
+                        "Could Not Load the Referenced Row",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text(verbatim: errorMessage)
+                    )
                 } else {
                     ContentUnavailableView(
                         "No Referenced Row",
@@ -70,13 +77,18 @@ struct FKPreviewView: View {
             let quoted = SQLBuilder.quoteIdentifier(fk.referencedTable, for: databaseType)
             let quotedCol = SQLBuilder.quoteIdentifier(fk.referencedColumn, for: databaseType)
             let escapedValue = value.replacingOccurrences(of: "'", with: "''")
-            let query = "SELECT * FROM \(quoted) WHERE \(quotedCol) = '\(escapedValue)' LIMIT 1"
+            /// SQL Server and Oracle reject `LIMIT`, so the clause comes from the shared builder
+            /// rather than being written out here. Hardcoding it made every preview on those two
+            /// engines fail, and the failure looked exactly like a key with no matching row.
+            let pagination = SQLBuilder.paginationClause(orderBy: "", limit: 1, offset: 0, for: databaseType)
+            let query = "SELECT * FROM \(quoted) WHERE \(quotedCol) = '\(escapedValue)' \(pagination)"
             let result = try await session.driver.execute(query: query)
             columns = result.columns
             row = result.rows.first
         } catch {
             Self.logger.warning("FK preview failed: \(error.localizedDescription, privacy: .public)")
             row = nil
+            errorMessage = error.localizedDescription
         }
         isLoading = false
     }

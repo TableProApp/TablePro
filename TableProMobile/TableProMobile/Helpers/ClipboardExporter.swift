@@ -3,14 +3,14 @@ import TableProModels
 import UIKit
 import UniformTypeIdentifiers
 
-enum ExportFormat: String, CaseIterable, Identifiable {
+nonisolated enum ExportFormat: String, CaseIterable, Identifiable {
     case json = "JSON"
     case csv = "CSV"
     case sqlInsert = "SQL INSERT"
     var id: String { rawValue }
 }
 
-enum ClipboardExporter {
+nonisolated enum ClipboardExporter {
     static func exportRow(columns: [ColumnInfo], row: [String?], format: ExportFormat, tableName: String? = nil) -> String {
         switch format {
         case .json:

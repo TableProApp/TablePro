@@ -9,7 +9,7 @@
 import Foundation
 import os
 
-final class AIKeyStorage {
+final class AIKeyStorage: Sendable {
     static let shared = AIKeyStorage()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "AIKeyStorage")

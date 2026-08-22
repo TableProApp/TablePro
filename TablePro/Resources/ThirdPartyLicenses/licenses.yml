@@ -112,24 +112,22 @@
     pinned OpenSSL.'
 - id: duckdb
   name: DuckDB
-  version: v1.5.3
+  version: v1.5.2
   spdx: MIT
   copyrights:
   - Copyright 2018-2025 Stichting DuckDB Foundation
   homepageURL: https://duckdb.org
-  licenseTextURL: https://raw.githubusercontent.com/duckdb/duckdb/v1.5.3/LICENSE
+  licenseTextURL: https://raw.githubusercontent.com/duckdb/duckdb/v1.5.2/LICENSE
   textFile: texts/duckdb.txt
   source: sh:DUCKDB_VERSION
   patched: false
-  notes: 'Built from the libduckdb-src.zip amalgamation attached to the v1.5.3 GitHub release (build-duckdb.sh:24).
-    The amalgamation compiles the whole tree including third_party/, which at v1.5.3 holds 30 vendored
-    projects (brotli, catch, concurrentqueue, fast_float, fastpforlib, fmt, fsst, httplib, hyperloglog,
-    imdb, jaro_winkler, jemalloc, libpg_query, lz4, mbedtls, miniz, parquet, pcg, pdqsort, re2, ska_sort,
-    skiplist, snappy, snowball, tdigest, thrift, utf8proc, vergesort, yyjson, zstd), each under its own
-    licence. Those sub-licences are NOT enumerated here: UNVERIFIED. Build-script defect worth flagging:
-    DUCKDB_SHA256 at scripts/build-duckdb.sh:11 is still the literal placeholder "REPLACE_WITH_libduckdb-src.zip_SHA256_FOR_v1.5.3",
-    so the checksum gate at line 25 cannot pass as committed. scripts/build-duckdb-ios.sh:37 defaults
-    to the same v1.5.3 for the iOS xcframework.'
+  notes: 'Built from the v1.5.2 git tag with CMake (build-duckdb.sh:25), linking core_functions, json,
+    parquet, icu and autocomplete statically (scripts/duckdb-macos-extensions.cmake). The build compiles
+    the whole tree including third_party/, which holds 30 vendored projects (brotli, catch, concurrentqueue,
+    fast_float, fastpforlib, fmt, fsst, httplib, hyperloglog, imdb, jaro_winkler, jemalloc, libpg_query,
+    lz4, mbedtls, miniz, parquet, pcg, pdqsort, re2, ska_sort, skiplist, snappy, snowball, tdigest, thrift,
+    utf8proc, vergesort, yyjson, zstd), each under its own licence. Those sub-licences are NOT enumerated
+    here: UNVERIFIED. scripts/build-duckdb-ios.sh pins the same tag for the iOS xcframework.'
 - id: freetds
   name: FreeTDS
   version: 1.4.22

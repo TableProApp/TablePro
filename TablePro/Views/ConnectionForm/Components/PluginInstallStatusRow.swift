@@ -51,7 +51,7 @@ struct PluginInstallStatusRow: View {
                 .frame(width: 160)
                 .accessibilityLabel(Text("Downloading plugin"))
         case .installing:
-            labelledSpinner(String(localized: "Installing..."))
+            labelledSpinner(String(localized: "Installing…"))
         case .stagedPendingActivation:
             Text("Ready after restart")
                 .foregroundStyle(.secondary)
@@ -63,7 +63,7 @@ struct PluginInstallStatusRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         case .none:
-            labelledSpinner(String(localized: "Installing..."))
+            labelledSpinner(String(localized: "Installing…"))
         }
     }
 

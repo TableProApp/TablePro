@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import TableProNumberFormatting
 import TableProPluginKit
 
@@ -148,7 +149,7 @@ struct BsonDocumentFlattener {
         case let num as NSNumber:
             return displayString(for: num)
         case let date as Date:
-            return iso8601Formatter.string(from: date)
+            return iso8601Text(for: date)
         case let objectId as MongoDBObjectId:
             return objectId.hex
         case let decimal as MongoDBDecimal128:
@@ -218,7 +219,7 @@ struct BsonDocumentFlattener {
         case let data as Data:
             return MongoDBUuidCodec.binaryText(for: MongoDBBinaryValue(data: data, subtype: 0))
         case let date as Date:
-            return iso8601Formatter.string(from: date)
+            return iso8601Text(for: date)
         case is NSNull:
             return value
         case let str as String:
@@ -230,7 +231,11 @@ struct BsonDocumentFlattener {
         }
     }
 
-    private static let iso8601Formatter = ISO8601DateFormatter()
+    private static let iso8601Formatter = OSAllocatedUnfairLock(uncheckedState: ISO8601DateFormatter())
+
+    private static func iso8601Text(for date: Date) -> String {
+        iso8601Formatter.withLockUnchecked { $0.string(from: date) }
+    }
 
     private static func displayString(for num: NSNumber) -> String {
         if isBoolean(num) {
@@ -267,50 +272,99 @@ struct BsonDocumentFlattener {
     /// Dotted paths across the sampled documents, including paths inside nested objects and
     /// inside the objects an array holds. This is deliberately separate from `unionColumns`,
     /// which stays flat because the grid renders a nested object as one JSON column.
+    ///
+    /// A key that holds a literal `.` or opens with `$` is skipped along with everything beneath
+    /// it: the server reads the dot as a path separator, so a query naming such a key addresses
+    /// a different field, and no prefix built through it can be trusted either.
     static func fieldPaths(
         from documents: [[String: Any]],
         representation: MongoDBUuidRepresentation,
         maxDepth: Int = 4
     ) -> [PluginFieldPath] {
+        sampledPaths(from: documents, representation: representation, maxDepth: maxDepth)
+            .map { sampled in
+                PluginFieldPath(
+                    path: sampled.path,
+                    typeName: typeName(for: sampled.kind, representation: representation),
+                    depth: sampled.depth,
+                    arrayPrefixes: sampled.arrayPrefixes
+                )
+            }
+    }
+
+    /// Dominant BSON kind per dotted path, for the value coercion a filter on that path needs.
+    /// Derived from the same walk `fieldPaths` uses, so the kind a path reports and the type name
+    /// it displays can never disagree. Call one or the other; calling both walks twice.
+    static func fieldPathKinds(
+        from documents: [[String: Any]],
+        representation: MongoDBUuidRepresentation,
+        maxDepth: Int = 4
+    ) -> [String: BsonValueKind] {
+        sampledPaths(from: documents, representation: representation, maxDepth: maxDepth)
+            .reduce(into: [:]) { result, sampled in result[sampled.path] = sampled.kind }
+    }
+
+    /// MongoDB reads a `.` as a path separator and reserves a leading `$`, so a key spelled with
+    /// either cannot be addressed by an ordinary query document.
+    static func isAddressableSegment(_ key: String) -> Bool {
+        !key.contains(".") && !key.hasPrefix("$") && !key.isEmpty
+    }
+
+    struct SampledPath {
+        let path: String
+        let kind: BsonValueKind
+        let depth: Int
+        let arrayPrefixes: [String]
+    }
+
+    private static func sampledPaths(
+        from documents: [[String: Any]],
+        representation: MongoDBUuidRepresentation,
+        maxDepth: Int
+    ) -> [SampledPath] {
         var kinds: [String: [BsonValueKind: Int]] = [:]
         var depths: [String: Int] = [:]
+        var arrayPrefixes: [String: [String]] = [:]
         var order: [String] = []
 
-        func visit(_ document: [String: Any], prefix: String, depth: Int) {
+        func visit(_ document: [String: Any], prefix: String, depth: Int, arrays: [String]) {
             guard depth <= maxDepth else { return }
 
             for key in document.keys.sorted() {
+                guard isAddressableSegment(key) else { continue }
                 guard let value = document[key], !(value is NSNull) else { continue }
                 let path = prefix.isEmpty ? key : "\(prefix).\(key)"
 
                 if depths[path] == nil {
                     depths[path] = depth
+                    arrayPrefixes[path] = arrays
                     order.append(path)
                 }
                 kinds[path, default: [:]][valueKind(for: value, representation: representation), default: 0] += 1
 
                 if let nested = value as? [String: Any] {
-                    visit(nested, prefix: path, depth: depth + 1)
+                    visit(nested, prefix: path, depth: depth + 1, arrays: arrays)
                 } else if let array = value as? [Any] {
                     for element in array.prefix(20) {
                         guard let nested = element as? [String: Any] else { continue }
-                        visit(nested, prefix: path, depth: depth + 1)
+                        visit(nested, prefix: path, depth: depth + 1, arrays: arrays + [path])
                     }
                 }
             }
         }
 
         for document in documents {
-            visit(document, prefix: "", depth: 1)
+            visit(document, prefix: "", depth: 1, arrays: [])
         }
 
         return order.compactMap { path in
             guard let winner = kinds[path]?.max(by: { $0.value < $1.value })?.key,
                   let depth = depths[path] else { return nil }
-            return PluginFieldPath(
+            return SampledPath(
                 path: path,
-                typeName: typeName(for: winner, representation: representation),
-                depth: depth
+                kind: winner,
+                depth: depth,
+                arrayPrefixes: arrayPrefixes[path] ?? []
             )
         }
     }

@@ -7,7 +7,7 @@ import XCTest
 final class SingleWindowMenuContractUITests: UITestCase {
     private func launchAppShowingAWindow() throws -> XCUIApplication {
         let app = try launchApp()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.windows.firstMatch.waitToExist(timeout: 10))
         return app
     }
 
@@ -18,7 +18,7 @@ final class SingleWindowMenuContractUITests: UITestCase {
 
         let mergeAll = app.menuBars.menuItems["Merge All Windows"]
         XCTAssertTrue(
-            mergeAll.waitForExistence(timeout: 5),
+            mergeAll.waitToExist(timeout: 5),
             "Window menu must offer Merge All Windows once app windows share a tabbing identifier"
         )
     }
@@ -28,7 +28,7 @@ final class SingleWindowMenuContractUITests: UITestCase {
 
         for title in ["Show Previous Tab", "Show Next Tab", "Move Tab to New Window"] {
             XCTAssertTrue(
-                app.menuBars.menuItems[title].waitForExistence(timeout: 5),
+                app.menuBars.menuItems[title].waitToExist(timeout: 5),
                 "Window menu must keep the standard tab command \(title)"
             )
         }
@@ -38,7 +38,7 @@ final class SingleWindowMenuContractUITests: UITestCase {
         let app = try launchAppShowingAWindow()
 
         XCTAssertTrue(
-            app.menuBars.menuItems["New Tab"].waitForExistence(timeout: 5),
+            app.menuBars.menuItems["New Tab"].waitToExist(timeout: 5),
             "File menu must offer New Tab, which now acts on the editor tab list"
         )
     }
@@ -49,7 +49,7 @@ final class SingleWindowMenuContractUITests: UITestCase {
         let app = try launchAppShowingAWindow()
 
         XCTAssertTrue(
-            app.menuBars.menuItems["Close Window"].waitForExistence(timeout: 5),
+            app.menuBars.menuItems["Close Window"].waitToExist(timeout: 5),
             "A window with no tabs must name the close command Close Window"
         )
     }
@@ -61,12 +61,24 @@ final class SingleWindowMenuContractUITests: UITestCase {
         app.typeKey("t", modifierFlags: .command)
 
         XCTAssertTrue(
-            app.menuBars.menuItems["Close Tab"].waitForExistence(timeout: 15),
+            app.menuBars.menuItems["Close Tab"].waitToExist(timeout: 15),
             "A window with a tab open must name the close command Close Tab"
         )
         XCTAssertFalse(
             app.menuBars.menuItems["Close Window"].exists,
             "The close command is one item, so the built title must be gone once it resolves"
+        )
+    }
+
+    /// The only test that reaches the sample database the way a person does. Every other suite asks
+    /// for it at launch, because the menu route costs XCUITest a ten second failed traversal on
+    /// every call, so the menu item itself would otherwise lose its coverage entirely.
+    func testHelpMenuOpensTheSampleDatabase() throws {
+        let app = try launchAndOpenSampleDatabaseFromHelpMenu()
+
+        XCTAssertTrue(
+            waitForSampleDatabaseWindow(in: app),
+            "Help > Open Sample Database must open a connected window"
         )
     }
 
@@ -76,7 +88,7 @@ final class SingleWindowMenuContractUITests: UITestCase {
         let app = try launchAppShowingAWindow()
 
         XCTAssertTrue(
-            app.menuBars.menuItems["Close Connection"].waitForExistence(timeout: 5),
+            app.menuBars.menuItems["Close Connection"].waitToExist(timeout: 5),
             "File menu must mirror the connections strip's Close command"
         )
     }
@@ -91,7 +103,7 @@ final class SingleWindowMenuContractUITests: UITestCase {
         let menuItems = app.menuBars.menuItems
 
         XCTAssertTrue(
-            menuItems["Show Connections"].waitForExistence(timeout: 5)
+            menuItems["Show Connections"].waitToExist(timeout: 5)
                 || menuItems["Hide Connections"].exists,
             "View menu must name the strip after what it lists"
         )

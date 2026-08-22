@@ -11,8 +11,8 @@ final class WindowOpenerTests: XCTestCase {
     private var openedRequests: [ConnectionFormRequest] = []
     private var openedSettingsPanes: [SettingsPane?] = []
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         _ = WelcomeRouter.shared.consumePendingRequest()
         openedRequests = []
         openedSettingsPanes = []
@@ -26,9 +26,9 @@ final class WindowOpenerTests: XCTestCase {
         }
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         _ = WelcomeRouter.shared.consumePendingRequest()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testNewConnectionRoutesTheChooserInsteadOfOpeningAWindow() {

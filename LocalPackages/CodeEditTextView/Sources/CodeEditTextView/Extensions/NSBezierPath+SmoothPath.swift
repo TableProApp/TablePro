@@ -26,17 +26,20 @@ extension NSBezierPath {
     }
 
     // swiftlint:disable:next function_body_length
-    static func smoothPath(_ points: [NSPoint], radius cornerRadius: CGFloat) -> NSBezierPath {
+    static func smoothPath(_ points: [NSPoint], radius cornerRadius: CGFloat) -> NSBezierPath? {
         // Normalizing radius to compensate for the quadraticCurve
         let radius = cornerRadius * 1.15
 
-        let path = NSBezierPath()
-
-        guard points.count > 1 else { return path }
+        guard points.count > 1 else { return nil }
 
         // Calculate the initial corner start based on the first two points
         let initialVector = NSPoint(x: points[1].x - points[0].x, y: points[1].y - points[0].y)
         let initialDistance = sqrt(initialVector.x * initialVector.x + initialVector.y * initialVector.y)
+
+        // Dividing by 0 would make every point that follows `NaN`, which raises when the path is drawn or measured.
+        guard !initialDistance.isZero else { return nil }
+
+        let path = NSBezierPath()
 
         let initialUnitVector = NSPoint(x: initialVector.x / initialDistance, y: initialVector.y / initialDistance)
         let initialCornerStart = NSPoint(

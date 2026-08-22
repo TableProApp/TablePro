@@ -106,8 +106,8 @@ struct ColumnTypeClassifier {
 
     // MARK: - Type Lookup Table
 
-    private static let typeLookup: [String: (String) -> ColumnType] = {
-        var map: [String: (String) -> ColumnType] = [:]
+    private static let typeLookup: [String: @Sendable (String) -> ColumnType] = {
+        var map: [String: @Sendable (String) -> ColumnType] = [:]
 
         for key in ["BOOL", "BOOLEAN", "BIT"] {
             map[key] = { .boolean(rawType: $0) }

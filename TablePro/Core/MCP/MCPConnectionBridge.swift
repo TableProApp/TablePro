@@ -143,8 +143,8 @@ public actor MCPConnectionBridge {
             "status": .string(statusString),
             "connection_id": .string(connectionId.uuidString),
             "current_database": .string(snapshot.database),
-            "connected_at": .string(Self.iso8601.string(from: snapshot.connectedAt)),
-            "last_active_at": .string(Self.iso8601.string(from: snapshot.lastActiveAt))
+            "connected_at": .string(Self.iso8601.withLockUnchecked { $0.string(from: snapshot.connectedAt) }),
+            "last_active_at": .string(Self.iso8601.withLockUnchecked { $0.string(from: snapshot.lastActiveAt) })
         ]
         if let schema = snapshot.schema {
             result["current_schema"] = .string(schema)
@@ -308,7 +308,7 @@ public actor MCPConnectionBridge {
         }
     }
 
-    static let iso8601 = ISO8601DateFormatter()
+    static let iso8601 = OSAllocatedUnfairLock(uncheckedState: ISO8601DateFormatter())
 
     func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
         let pending: DatabaseConnection? = await MainActor.run {

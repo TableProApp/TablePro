@@ -37,7 +37,7 @@ private class StructureSessionBaseDriver {
     }
 }
 
-private final class StructureSessionDriver: StructureSessionBaseDriver, PluginDatabaseDriver {
+private final class StructureSessionDriver: StructureSessionBaseDriver, PluginDatabaseDriver, @unchecked Sendable {
     private(set) var executedQueries: [String] = []
 
     func execute(query: String) async throws -> PluginQueryResult {

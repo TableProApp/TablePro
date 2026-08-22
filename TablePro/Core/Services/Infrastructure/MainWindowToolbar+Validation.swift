@@ -21,14 +21,20 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         let supportsContainerSwitching: Bool
         let supportsImport: Bool
         let supportsServerDashboard: Bool
+        let canNavigateBack: Bool
+        let canNavigateForward: Bool
     }
 
     /// Listed exhaustively so a new state has to choose a side instead of inheriting "alive".
+    ///
+    /// `.connecting` counts because the health monitor writes it on every reconnect attempt, and
+    /// the window keeps showing the session's tabs and rows throughout. Graying the whole toolbar
+    /// out for the length of a backoff would take Sidebar Toggle with it.
     static func hasLiveSession(_ state: ToolbarConnectionState) -> Bool {
         switch state {
-        case .connected, .executing:
+        case .connected, .connecting:
             return true
-        case .disconnected, .connecting, .error:
+        case .disconnected, .error:
             return false
         }
     }
@@ -43,6 +49,10 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             return context.connected
         case Self.addRow:
             return context.connected && context.canAddRow
+        case Self.navigateBack:
+            return context.connected && context.canNavigateBack
+        case Self.navigateForward:
+            return context.connected && context.canNavigateForward
         case Self.saveChanges:
             return context.hasPendingChanges && context.connected && !context.blocksAllWrites
         case Self.previewSQL:
@@ -70,7 +80,9 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             fileBased: PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased,
             supportsContainerSwitching: PluginManager.shared.supportsContainerSwitching(for: state.databaseType),
             supportsImport: PluginManager.shared.supportsImport(for: state.databaseType),
-            supportsServerDashboard: coordinator?.commandActions?.supportsServerDashboard ?? false
+            supportsServerDashboard: coordinator?.commandActions?.supportsServerDashboard ?? false,
+            canNavigateBack: coordinator?.canNavigateBack ?? false,
+            canNavigateForward: coordinator?.canNavigateForward ?? false
         )
     }
 

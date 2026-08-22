@@ -46,7 +46,10 @@ final class JSONWriterEquivalenceTests: XCTestCase {
     }
 
     /// The writer replaced JSONEncoder to control number spelling. Everything else it emits,
-    /// especially string escaping, must stay byte for byte what the platform encoder produced.
+    /// especially string escaping, must stay byte for byte what the platform encoder produced,
+    /// with one deliberate exception: escaping `/` is optional in JSON and the writer does not do
+    /// it, so the reference encoder is asked not to either. A path, URL or MQTT topic reads and
+    /// copies as it was stored instead of arriving as `device\/state\/up`.
     func testWriterMatchesJSONEncoderByteForByte() throws {
         var g = Seeded(seed: 0x5EED_1501_0000_0001)
         var compared = 0
@@ -63,7 +66,7 @@ final class JSONWriterEquivalenceTests: XCTestCase {
     private func referenceJSON(_ value: Any) -> String? {
         guard let node = ReferenceNode(value) else { return nil }
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         guard let data = try? encoder.encode(node) else { return nil }
         return String(data: data, encoding: .utf8)
     }

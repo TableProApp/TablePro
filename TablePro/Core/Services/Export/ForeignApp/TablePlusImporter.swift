@@ -26,8 +26,8 @@ struct TablePlusImporter: ForeignAppImporter {
     ]
 
     var readKeychain: ForeignKeychainRead = ForeignKeychainReader.readPassword
-    var keyFileExists: (_ path: String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
-    var resolveAppURL: (_ bundleIdentifier: String) -> URL? = {
+    var keyFileExists: @Sendable (_ path: String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    var resolveAppURL: @Sendable (_ bundleIdentifier: String) -> URL? = {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
     }
 

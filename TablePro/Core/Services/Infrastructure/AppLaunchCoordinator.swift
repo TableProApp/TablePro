@@ -13,7 +13,7 @@ import os
 internal final class AppLaunchCoordinator {
     internal static let shared = AppLaunchCoordinator()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AppLaunchCoordinator")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AppLaunchCoordinator")
     internal static let collectionWindow: Duration = .milliseconds(150)
 
     private(set) var phase: LaunchPhase = .launching
@@ -28,6 +28,7 @@ internal final class AppLaunchCoordinator {
 
     internal func didFinishLaunching() {
         hasFinishedLaunching = true
+        deliver(UITestLaunchEnvironment.launchIntents)
         let deadline = Date().addingTimeInterval(0.150)
         phase = .collectingIntents(deadline: deadline)
         deadlineTask = Task { [weak self] in
@@ -51,6 +52,10 @@ internal final class AppLaunchCoordinator {
                 return intent
             }
         }
+        /// Unconditional, even when nothing parsed: LaunchServices treats every `open` request as a
+        /// launch and puts a running background process back in the Dock, so the role has to be
+        /// re-applied on arrival rather than only when the URL turns out to mean something.
+        AppActivationPolicyController.shared.adoptIntents(intents, isLaunching: !hasFinishedLaunching)
         deliver(intents)
     }
 
@@ -58,6 +63,7 @@ internal final class AppLaunchCoordinator {
         guard let connectionIdString = activity.userInfo?["connectionId"] as? String,
               let connectionId = UUID(uuidString: connectionIdString) else { return }
         let table = activity.userInfo?["tableName"] as? String
+        AppActivationPolicyController.shared.adoptUserSession()
 
         if let table {
             deliver([.openTable(
@@ -72,7 +78,10 @@ internal final class AppLaunchCoordinator {
         }
     }
 
+    /// Reaching for the app itself is the gesture that makes a machine-started process the person's
+    /// own, so it keeps its Dock icon and menu bar from here on however it started.
     internal func handleReopen(hasVisibleWindows: Bool) -> Bool {
+        AppActivationPolicyController.shared.adoptUserSession()
         if hasVisibleWindows { return true }
         showWelcomeWindow()
         return false
@@ -119,7 +128,11 @@ internal final class AppLaunchCoordinator {
         WindowOpener.shared.closeWelcome()
     }
 
+    /// A launch nobody asked for opens nothing, whatever the startup behaviour says. Reopening the
+    /// last session, or falling back to the welcome window, would put the person's connections on
+    /// screen because a client asked a question.
     private func runStartupBehaviorIfNeeded(skipping intents: [LaunchIntent]) {
+        guard AppActivationPolicyController.shared.origin == .user else { return }
         guard intents.isEmpty else { return }
 
         let general = AppSettingsStorage.shared.loadGeneral()
@@ -157,10 +170,11 @@ internal final class AppLaunchCoordinator {
         guard let frontWindow else { return }
         WindowOpener.shared.closeWelcome()
         frontWindow.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        AppActivationPolicyController.shared.activate()
     }
 
     private func finalizeWindowsIfNoVisibleMain(intents: [LaunchIntent]) {
+        guard AppActivationPolicyController.shared.origin == .user else { return }
         guard intents.isEmpty else { return }
         guard !NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) else { return }
         showWelcomeWindow()

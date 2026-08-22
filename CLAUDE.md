@@ -18,7 +18,7 @@ These govern every decision about code, architecture, tooling and process:
 
 ## Project Overview
 
-TablePro is a native macOS database client (SwiftUI + AppKit), a fast, lightweight alternative to TablePlus. macOS 14.0+, `SWIFT_VERSION = 5.0` (`Configs/Base.xcconfig`), Universal Binary (arm64 + x86_64).
+TablePro is a native macOS database client (SwiftUI + AppKit), a fast, lightweight alternative to TablePlus. macOS 14.0+, `SWIFT_VERSION = 6.0` (`Configs/Base.xcconfig`), Universal Binary (arm64 + x86_64).
 
 - **Source**: `TablePro/` holds `Core/` (business logic, services), `Views/` (UI), `Models/` (data structures), `ViewModels/`, `Extensions/` and `Theme/`
 - **Plugins**: `Plugins/` holds the `.tableplugin` bundles plus the `TableProPluginKit` shared framework.
@@ -27,15 +27,16 @@ TablePro is a native macOS database client (SwiftUI + AppKit), a fast, lightweig
 - **C bridges**: Each plugin contains its own C bridge module (e.g., `Plugins/MySQLDriverPlugin/CMariaDB/`, `Plugins/PostgreSQLDriverPlugin/CLibPQ/`)
 - **Static libs**: `Libs/` holds pre-built `.a` files and `Libs/ios/` holds the iOS xcframeworks. Both are downloaded by `scripts/download-libs.sh` and are not in git.
 - **SPM deps**: declared in `project.yml`. Vendored local packages under `LocalPackages/` (CodeEditSourceEditor, CodeEditTextView, CodeEditLanguages) and `Packages/` (TableProCore, TableProOracle); remote packages are Sparkle, swift-certificates and Yams. Revisions are pinned by the tracked `Package.resolved` inside each generated `.xcodeproj`.
+    - `SWIFT_VERSION` in `Configs/Base.xcconfig` sets the language mode for the Xcode-native targets only. A SwiftPM package takes its mode from its own manifest, so `Packages/TableProCore` and `Packages/TableProOracle` carry `swift-tools-version: 6.0` of their own. The vendored `LocalPackages/` forks stay on 5.9 so they can still take upstream changes, and a remote dependency keeps whatever its own manifest says. Never pass `SWIFT_VERSION=` on an `xcodebuild` command line to test a language-mode change: the override reaches the package targets too and reports their errors as yours.
 
 ## Build & Development Commands
 
 ```bash
 # First-time setup (and after any project.yml / Configs change, or adding a source file)
 scripts/download-libs.sh          # static libraries, not in git
-scripts/generate-project.sh       # generates both .xcodeproj bundles from project.yml
+scripts/generate-project.sh       # generates both .xcodeproj bundles from project.yml (or pass macos|ios)
 
-# Build (development), -skipPackagePluginValidation required for SwiftLint plugin in CodeEditSourceEditor
+# Build (development). Every script and CI job passes -skipPackagePluginValidation; keep passing it
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
 
 # Clean build
@@ -80,11 +81,13 @@ git add Libs/checksums.sha256 && git commit -m "build: update static library che
 
 Never run `shasum -a 256 Libs/*.a > Libs/checksums.sha256` by hand: regenerating from a stale `Libs/` reverts other libraries silently (this shipped a broken libmongoc and rolled back DuckDB once). `publish-libs.sh` exists to make that impossible.
 
+The same applies to the iOS xcframeworks. `download-libs.sh` verifies `Libs/ios` against `Libs/ios/checksums.sha256` on every run, so the archive and its baseline have to move together; `publish-ios-libs.sh` does both and refuses a publish that changes nothing. It takes `--dry-run`.
+
 ```bash
 
 # iOS xcframeworks (Libs/ios/*.xcframework)
-tar czf /tmp/tablepro-libs-ios-v1.tar.gz -C Libs/ios .
-gh release upload libs-v1 /tmp/tablepro-libs-ios-v1.tar.gz --clobber --repo TableProApp/TablePro
+scripts/publish-ios-libs.sh
+git add Libs/ios/checksums.sha256 && git commit -m "build: update iOS xcframework checksums"
 ```
 
 ## Architecture
@@ -112,7 +115,7 @@ All database drivers are `.tableplugin` bundles loaded at runtime by `PluginMana
 - **DatabaseManager** (`Core/Database/DatabaseManager.swift`), connection pool, lifecycle, primary interface for views/coordinators
 - **ConnectionHealthMonitor**: 30s ping, auto-reconnect with exponential backoff
 
-When adding a new driver: create a new plugin bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver`, add the target to `project.yml`, add `DatabaseType` static constant, add a `case` arm to the `case "$PLUGIN_NAME"` block in the `Resolve plugin info` step of `.github/workflows/build-plugin.yml`, add row to `docs/index.mdx` supported databases table, and add CHANGELOG entry. See `docs/development/plugin-development.mdx` and `docs/development/plugin-registry.mdx` for details.
+When adding a new driver: create a new plugin bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver`, add the target to `project.yml`, add `DatabaseType` static constant, add an entry to `.github/plugin-registry.json`, add row to `docs/index.mdx` supported databases table, and add CHANGELOG entry. See `docs/development/plugin-development.mdx` and `docs/development/plugin-registry.mdx` for details.
 
 When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (with default implementation), then update `PluginDriverAdapter` to bridge it to `DatabaseDriver`. This is an additive, ABI-safe change (see below) and needs no version bump.
 
@@ -150,8 +153,8 @@ When adding a new method to the driver protocol: add to `PluginDatabaseDriver` (
 
 ### Editor Architecture (CodeEditSourceEditor)
 
-- **`SQLEditorTheme`**: single source of truth for editor colors/fonts
-- **`TableProEditorTheme`**: adapter to CodeEdit's `EditorTheme` protocol
+- **`ThemeEngine`**: the `@Observable` singleton that owns the active theme, and the single source of truth for editor colors and fonts
+- **`TableProEditorTheme`**: adapter to CodeEdit's `EditorTheme` protocol; `ThemeEngine.makeEditorTheme()` builds it
 - **`CompletionEngine`**: framework-agnostic; **`QueryCompletionAdapter`** bridges to CodeEdit's `CodeSuggestionDelegate`
 - Editor tabs are drawn by `EditorTabStrip`, not by native window tabs. A window belongs to exactly one `NSWindow` tab group and that group's bar shows every window in it, so a window hosting several connections could only ever show all of their tabs interleaved. Window tabbing itself stays on AppKit's terms: `TabWindowController` leaves `tabbingMode` at `.automatic`, which is the user's own System Settings preference, and never forces `.preferred`.
 - Cursor model: `cursorPositions: [CursorPosition]` (multi-cursor via CodeEditSourceEditor)
@@ -280,7 +283,9 @@ When approaching limits: extract into `TypeName+Category.swift` extension files 
 
 These are **non-negotiable**, never skip them:
 
-1. **CHANGELOG.md**: Follow [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). Update under `[Unreleased]` using the canonical sections: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`. Do **not** add a "Fixed" entry for fixing something that is itself still unreleased; fold the fix into the Added or Changed entry instead. Documentation-only changes (`docs/`, `CLAUDE.md`, `CHANGELOG.md` formatting) do **not** need a CHANGELOG entry. Each entry is one line, user-facing, with no file paths, class names, or method signatures; reference IDs go in parens at the end: `(#1234)`.
+1. **CHANGELOG.md**: Follow [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). Update under `[Unreleased]` using the canonical sections: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`. Each section appears **at most once per version, in that order**; a second `### Security` under one version is a defect, not a second topic. Do **not** add a "Fixed" entry for fixing something that is itself still unreleased; fold the fix into the Added or Changed entry instead. Documentation-only changes (`docs/`, `CLAUDE.md`, `CHANGELOG.md` formatting) do **not** need a CHANGELOG entry.
+
+    **Entry shape**: a changelog is a curated list of notable changes, not the explanation of them. One entry is **one sentence, two at the outside, and under 200 characters**. State what changed and, where it is not obvious, what it does now instead. No file paths, class names, or method signatures; reference IDs go in parens at the end: `(#1234)`. The reasoning, the mechanism and the before-and-after belong in the PR body, which is where a reader who wants them can find them. Two entries describing one change get merged, not listed twice. 0.67.0 arrived with 211 entries averaging 300 characters, one of them 1,685, and had to be rewritten wholesale at release time.
 
 2. **Localization**: Use `String(localized:)` for new user-facing strings in computed properties, AppKit code, alerts, and error descriptions. SwiftUI view literals (`Text("literal")`, `Button("literal")`) auto-localize. Do NOT localize technical terms (font names, database types, SQL keywords, encoding names). Never use `String(localized:)` with string interpolation, `String(localized: "Preview \(name)")` creates a dynamic key that never matches the strings catalog. Use `String(format: String(localized: "Preview %@"), name)`.
 
@@ -340,8 +345,10 @@ If anything matches, rewrite before committing.
 
 ## CI/CD
 
-GitHub Actions (`.github/workflows/build.yml`) triggered by `v*` tags. The `release` job needs all five of `lint`, `test`, `build-arm64`, `build-x86_64` and `registry-readiness`, so a red test suite or a registry missing a compatible plugin binary blocks the tag. It produces the DMG and ZIP plus Sparkle signatures, and release notes are auto-extracted from `CHANGELOG.md`.
+GitHub Actions (`.github/workflows/build.yml`) triggered by `v*` tags. The `release` job needs all four of `lint`, `test`, `build` (a matrix over arm64 and x86_64) and `registry-readiness`, so a red test suite or a registry missing a compatible plugin binary blocks the tag. It produces the DMG and ZIP plus Sparkle signatures, and release notes are auto-extracted from `CHANGELOG.md`.
+
+**Repo hygiene** (`.github/workflows/repo-hygiene.yml`): runs `actionlint` over every workflow (which shells out to `shellcheck` for each inline `run:` block, the only way those get checked), `shellcheck --severity=warning` over every script, and the plugin manifest check. Ubuntu, under a minute, free on a public repo. The scripts hold at zero warning-level findings; the remaining informational ones are almost all `SC2012`.
 
 **Plugin CI** (`.github/workflows/build-plugin.yml`): triggered by `plugin-*-v*` tags or `workflow_dispatch`. The dispatch input accepts comma-separated `tag:pluginKitVersion` pairs; if `:pluginKitVersion` is omitted, the workflow reads `currentPluginKitVersion` from `PluginManager.swift`. Registry update logic lives in `.github/scripts/update-registry.py` (atomic write, per-binary `pluginKitVersion`, prune-old policy). Use `scripts/release-all-plugins.sh <version>` for bulk re-release after an ABI bump.
 
-**Plugin tag naming**: Tag names must match the `case "$PLUGIN_NAME"` mapping in the CI workflow's `Resolve plugin info` step. Notable non-obvious mappings: `CloudflareD1DriverPlugin` → `plugin-cloudflare-d1-v*`, `EtcdDriverPlugin` → `plugin-etcd-v*`. Check existing tags with `git tag -l "plugin-*"` before creating new ones.
+**Plugin tag naming**: The slug in a tag must be a key in `.github/plugin-registry.json`, which maps it to the target and the release metadata. Notable non-obvious mappings: `CloudflareD1DriverPlugin` → `plugin-cloudflare-d1-v*`, `EtcdDriverPlugin` → `plugin-etcd-v*`. Check existing tags with `git tag -l "plugin-*"` before creating new ones.

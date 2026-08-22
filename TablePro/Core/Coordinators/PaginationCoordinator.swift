@@ -140,7 +140,6 @@ final class PaginationCoordinator {
         parent.cancelAllRowCountTasks()
         parent.releaseAllExactCounts()
         parent.reportEndedExecutions(parent.tabExecution.invalidateAll(reason: .cancelledByUser))
-        parent.toolbarState.setExecuting(false)
         for idx in parent.tabManager.tabs.indices where parent.tabManager.tabs[idx].pagination.isBusy {
             parent.tabManager.mutate(at: idx) { tab in
                 tab.pagination.isLoadingMore = false
@@ -288,18 +287,23 @@ final class PaginationCoordinator {
         let storedParamValues = parent.tabManager.tabs[idx].pagination.baseQueryParameterValues
 
         parent.tabManager.mutate(at: idx) { $0.pagination.isLoadingMore = true }
-        parent.toolbarState.setExecuting(true)
+
+        /// Fetch All extends the result already on screen instead of replacing it, so it validates
+        /// against the tab's content epoch and cannot claim the tab: claiming mints a new epoch and
+        /// would discard its own rows. It registers as unclaimed work instead, which is what keeps
+        /// the titlebar reporting it, and releases that on every exit including cancellation.
+        let workToken = parent.tabExecution.beginUnclaimedWork(for: tabId)
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
 
         let startedAt = ContinuousClock.Instant.now
         let fetchAllTask = Task { [weak self, parent] in
+            defer { parent.tabExecution.endUnclaimedWork(workToken, for: tabId) }
             guard let self, !parent.isTearingDown else { return }
 
             do {
                 let start = CFAbsoluteTimeGetCurrent()
                 progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .public)")
-                let anyParams: [Any?]? = storedParamValues.map { $0.map { $0 as Any? } }
                 let result = try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: route,
@@ -308,7 +312,7 @@ final class PaginationCoordinator {
                     try await driver.executeUserQuery(
                         query: baseQuery,
                         rowCap: nil,
-                        parameters: anyParams
+                        parameters: storedParamValues.map { $0.map { $0 as Any? } }
                     )
                 }
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
@@ -317,7 +321,7 @@ final class PaginationCoordinator {
                 guard !Task.isCancelled else {
                     /// Every other exit from this function clears the flag, and this one used to
                     /// bare return, so a fetch-all cancelled after its rows had already arrived
-                    /// left the tab showing "Loading..." for good with Fetch All hidden, healed
+                    /// left the tab showing "Loading…" for good with Fetch All hidden, healed
                     /// only by re-running the query. Deterministic on any driver whose
                     /// `cancelQuery()` is the PluginKit no-op default, because the fetch always
                     /// runs to completion there and returns straight into this guard.

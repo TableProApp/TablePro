@@ -50,6 +50,11 @@ internal struct EndedExecution: Equatable, Sendable {
 /// handles that a tab retarget participated in none of. Busy state is derived from membership here,
 /// never stored on the tab, because a stored flag is exactly what let a retargeted tab stay busy
 /// forever and silently swallow every later navigation.
+///
+/// The window's chrome derives from it too. A second copy of the same fact lived on
+/// `ConnectionToolbarState`, raised and lowered by hand beside each execution and released only
+/// behind two ownership checks, so any path that ended an execution without satisfying both left
+/// the titlebar, Stop, `Cmd+.` and the disconnect warning describing work that was over (#2342).
 internal struct TabExecutionRegistry {
     private struct Entry {
         let epoch: Int
@@ -58,6 +63,7 @@ internal struct TabExecutionRegistry {
 
     private var entries: [UUID: Entry] = [:]
     private var contentEpochs: [UUID: Int] = [:]
+    private var unclaimedWork: [UUID: Set<UUID>] = [:]
     private var lastEpoch: Int = 0
 
     internal init() {}
@@ -102,6 +108,7 @@ internal struct TabExecutionRegistry {
         let ended = entries.removeValue(forKey: tabId).map {
             EndedExecution(tabId: tabId, startedAt: $0.startedAt, reason: reason)
         }
+        unclaimedWork.removeValue(forKey: tabId)
         lastEpoch += 1
         contentEpochs[tabId] = lastEpoch
         return ended
@@ -113,11 +120,38 @@ internal struct TabExecutionRegistry {
             EndedExecution(tabId: $0.key, startedAt: $0.value.startedAt, reason: reason)
         }
         entries.removeAll()
+        unclaimedWork.removeAll()
         for tabId in tabIds {
             lastEpoch += 1
             contentEpochs[tabId] = lastEpoch
         }
         return ended
+    }
+
+    /// Work that runs against a tab without owning its result.
+    ///
+    /// Fetch All is why this exists. `claim` mints a new content epoch, which is the very value the
+    /// fetch validates against before writing its rows back, so claiming would discard the result it
+    /// runs to extend. It still has to count as busy, or the window reports idle while it works.
+    ///
+    /// Keyed by tab like everything else here, so `invalidate` and `invalidateAll` release it on the
+    /// same terms as a claim. A token tied to nothing could only ever be released by the one
+    /// function that minted it, which is the shape this file exists to get rid of.
+    internal mutating func beginUnclaimedWork(for tabId: UUID) -> UUID {
+        let token = UUID()
+        unclaimedWork[tabId, default: []].insert(token)
+        return token
+    }
+
+    /// Takes no `ExecutionEndReason` because there is nothing to report: this is the completion
+    /// path, the counterpart of `settle`, not one of the ways an execution is ended from outside.
+    /// Ending a token the registry no longer holds is a no-op, so work unwinding after Stop has
+    /// already cleared everything cannot put the window back to busy.
+    internal mutating func endUnclaimedWork(_ token: UUID, for tabId: UUID) {
+        unclaimedWork[tabId]?.remove(token)
+        if unclaimedWork[tabId]?.isEmpty == true {
+            unclaimedWork.removeValue(forKey: tabId)
+        }
     }
 
     /// Ends a claim that ran to completion and reports whether it still owned the tab. A claim that
@@ -142,7 +176,12 @@ internal struct TabExecutionRegistry {
         entries[tabId] != nil
     }
 
+    /// The window's whole answer to "is anything running here", and the only one.
+    ///
+    /// The toolbar's indicator, Stop, `Cmd+.` and the disconnect warning all read this rather than
+    /// a flag raised and lowered by hand beside each execution. A stored copy is what let the
+    /// titlebar report a query that had already ended, recoverable only by pressing Stop (#2342).
     internal var isAnyExecuting: Bool {
-        !entries.isEmpty
+        !entries.isEmpty || !unclaimedWork.isEmpty
     }
 }

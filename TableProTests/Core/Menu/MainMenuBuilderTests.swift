@@ -148,6 +148,23 @@ struct MainMenuValidationTests {
         #expect(!enabled(#selector(MainSplitViewController.exportTables(_:)), context))
     }
 
+    @Test("Back and Forward need a connection and a history of their own")
+    func backAndForwardNeedTheirOwnHistory() {
+        var context = MenuValidationContext()
+        context.canNavigateBack = true
+        context.canNavigateForward = true
+        #expect(!enabled(#selector(MainSplitViewController.navigateBack(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.navigateForward(_:)), context))
+
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.navigateBack(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.navigateForward(_:)), context))
+
+        context.canNavigateBack = false
+        #expect(!enabled(#selector(MainSplitViewController.navigateBack(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.navigateForward(_:)), context))
+    }
+
     @Test("Execute needs both a connection and query text")
     func executeNeedsQueryText() {
         var context = MenuValidationContext()
@@ -475,9 +492,9 @@ struct DatabaseMenuCommandTests {
     func deferredCommandsArePresent() {
         let titles = (databaseMenu()?.items ?? []).map(\.title)
         for expected in [
-            String(localized: "New Database..."),
+            String(localized: "New Database…"),
             String(localized: "Show Table Structure"),
-            String(localized: "Edit View Definition..."),
+            String(localized: "Edit View Definition…"),
             String(localized: "Table Maintenance"),
             String(localized: "Favorite Database"),
             String(localized: "Disconnect"),

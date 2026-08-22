@@ -14,35 +14,44 @@ final class StructureTabIdentityUITests: UITestCase {
         let app = try launchWithSampleDatabase()
         let window = app.windows.firstMatch
 
-        let row = window.outlines.firstMatch.staticTexts["Album"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 20), "The object browser must list Album")
-        row.click()
+        let row = objectBrowserRow("Album", in: window)
+        XCTAssertTrue(row.waitToExist(timeout: 20), "The object browser must list Album")
+        clickAtCenter(row)
 
         showStructure(in: window)
         let indexes = subTab(named: "Indexes", in: window)
-        XCTAssertTrue(indexes.waitForExistence(timeout: 20), "The structure editor must offer Indexes")
+        XCTAssertTrue(indexes.waitToExist(timeout: 20), "The structure editor must offer Indexes")
         indexes.click()
-        XCTAssertTrue(indexes.isSelected, "The first tab is on Indexes")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { isSelected(indexes) },
+            "The first tab is on Indexes"
+        )
 
         row.rightClick()
         let openInNewTab = app.menuItems["Open in New Tab"].firstMatch
-        XCTAssertTrue(openInNewTab.waitForExistence(timeout: 15), "The sidebar must offer Open in New Tab")
+        XCTAssertTrue(openInNewTab.waitToExist(timeout: 15), "The sidebar must offer Open in New Tab")
         openInNewTab.click()
 
         showStructure(in: window)
         let columns = subTab(named: "Columns", in: window)
-        XCTAssertTrue(columns.waitForExistence(timeout: 20), "The second tab must have its own structure editor")
+        XCTAssertTrue(columns.waitToExist(timeout: 20), "The second tab must have its own structure editor")
         XCTAssertTrue(
-            columns.isSelected,
+            waitForPredicate(timeout: 10) { isSelected(columns) },
             "The second tab opens on Columns rather than inheriting the first tab's Indexes"
         )
     }
 
+    /// A radio button in a hosted picker reports `AXSelected` as nil and answers with `AXValue`
+    /// instead, so `isSelected` reads as false however the picker is set.
+    private func isSelected(_ segment: XCUIElement) -> Bool {
+        (segment.value as? NSNumber)?.intValue == 1
+    }
+
     private func showStructure(in window: XCUIElement) {
         let modePicker = window.radioGroups["results-view-mode-picker"].firstMatch
-        XCTAssertTrue(modePicker.waitForExistence(timeout: 20), "The result must expose its view modes")
+        XCTAssertTrue(modePicker.waitToExist(timeout: 20), "The result must expose its view modes")
         let structure = modePicker.radioButtons["Structure"].firstMatch
-        XCTAssertTrue(structure.waitForExistence(timeout: 20), "Structure must be one of them")
+        XCTAssertTrue(structure.waitToExist(timeout: 20), "Structure must be one of them")
         structure.click()
     }
 

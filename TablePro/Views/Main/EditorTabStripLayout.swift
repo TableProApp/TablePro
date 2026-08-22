@@ -44,6 +44,10 @@ internal enum EditorTabStripLayout {
         return max(usable / divisor, minimumTabWidth)
     }
 
+    /// How far a tab fades while it is the one being dragged. Enough to read as lifted out of the
+    /// strip, not so far that its title stops being legible on the way past its neighbours.
+    internal static let draggingOpacity: CGFloat = 0.45
+
     /// A separator is drawn at the leading edge of a tab only when both it and its leading
     /// neighbour are plain and untouched. A line against the raised capsule reads as a seam in
     /// it, and one against a hovered tab fights that tab's fill. Two tabs therefore never show

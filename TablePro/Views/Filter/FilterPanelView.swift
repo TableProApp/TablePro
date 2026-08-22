@@ -22,6 +22,7 @@ struct FilterPanelView: View {
     @State private var newPresetName = ""
     @State private var focusedFilterId: UUID?
     @State private var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
+    @State private var fieldPaths: [PluginFieldPath] = []
 
     private let maxFilterListHeight: CGFloat = 200
     @State private var filterRowsHeight: CGFloat = 0
@@ -65,6 +66,9 @@ struct FilterPanelView: View {
         }
         .onChange(of: coordinator.currentTableName) { _, _ in
             refreshRawSQLCompletionProvider()
+        }
+        .task(id: coordinator.currentTableName) {
+            await loadFieldPaths()
         }
         .sheet(isPresented: $showSQLSheet) {
             SQLPreviewSheet(sql: generatedSQL)
@@ -177,7 +181,7 @@ struct FilterPanelView: View {
                 Divider()
             }
 
-            Button("Save as Preset...") {
+            Button("Save as Preset…") {
                 newPresetName = ""
                 showSavePresetAlert = true
             }
@@ -209,7 +213,7 @@ struct FilterPanelView: View {
             Button {
                 showSettingsPopover.toggle()
             } label: {
-                Label(String(localized: "Filter Settings..."), systemImage: "gearshape")
+                Label(String(localized: "Filter Settings…"), systemImage: "gearshape")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -233,6 +237,9 @@ struct FilterPanelView: View {
                     caseSensitivityStyle: caseSensitivityStyle,
                     enumValuesByColumn: enumValuesByColumn,
                     rawSQLCompletionProvider: rawSQLCompletionProvider,
+                    columnMenu: columnMenu,
+                    fieldPaths: fieldPaths,
+                    rawFilterLabel: rawFilterLabel,
                     onAdd: {
                         coordinator.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
                         focusedFilterId = filterState.filters.last?.id
@@ -292,7 +299,8 @@ struct FilterPanelView: View {
 
     private func presetColumnsMatch(_ preset: FilterPreset) -> Bool {
         let presetColumns = preset.filters.map(\.columnName).filter { $0 != TableFilter.rawSQLColumn }
-        return presetColumns.allSatisfy { columns.contains($0) }
+        let knownPaths = Set(fieldPaths.map(\.path))
+        return presetColumns.allSatisfy { columns.contains($0) || knownPaths.contains($0) }
     }
 
     private func applyAllValidFilters() {
@@ -323,6 +331,29 @@ struct FilterPanelView: View {
             "CASE", "WHEN", "THEN", "ELSE", "END",
         ]
         return isSQLDialect ? columns + sqlKeywords : columns
+    }
+
+    private var columnMenu: FilterColumnMenu {
+        FilterColumnMenu.build(columns: columns, fieldPaths: fieldPaths)
+    }
+
+    /// A relational driver reports no field paths, so this settles to an empty list without a
+    /// round trip. `SQLSchemaProvider` caches per collection and folds concurrent callers into
+    /// one sample, so reopening the panel does not resample.
+    private func loadFieldPaths() async {
+        guard let tableName = coordinator.currentTableName, !tableName.isEmpty else {
+            fieldPaths = []
+            return
+        }
+        let provider = SchemaProviderRegistry.shared.getOrCreate(for: coordinator.connection.id)
+        let paths = await provider.fieldPaths(for: tableName)
+        guard !Task.isCancelled else { return }
+        fieldPaths = paths
+    }
+
+    /// "Raw SQL" is the wrong name on a store that takes a filter document rather than SQL.
+    private var rawFilterLabel: String {
+        isSQLDialect ? String(localized: "Raw SQL") : String(localized: "Raw Filter")
     }
 
     private func refreshRawSQLCompletionProvider() {

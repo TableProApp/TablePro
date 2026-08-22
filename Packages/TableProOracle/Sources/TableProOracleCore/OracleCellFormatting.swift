@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public enum OracleCellFormatting {
     public static let maxHexBytes = 4_096
@@ -17,18 +18,18 @@ public enum OracleCellFormatting {
         return formatter
     }()
 
-    private static let utcFormatter: ISO8601DateFormatter = {
+    private static let utcFormatter: OSAllocatedUnfairLock<ISO8601DateFormatter> = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        return formatter
+        return OSAllocatedUnfairLock(uncheckedState: formatter)
     }()
 
-    private static let localFormatter: ISO8601DateFormatter = {
+    private static let localFormatter: OSAllocatedUnfairLock<ISO8601DateFormatter> = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         formatter.timeZone = .current
-        return formatter
+        return OSAllocatedUnfairLock(uncheckedState: formatter)
     }()
 
     private static let zonedFormatter: DateFormatter = {
@@ -46,9 +47,9 @@ public enum OracleCellFormatting {
     public static func formatTimestamp(_ date: Date, style: TimestampStyle) -> String {
         switch style {
         case .utc:
-            return utcFormatter.string(from: date)
+            return utcFormatter.withLockUnchecked { $0.string(from: date) }
         case .local:
-            return localFormatter.string(from: date)
+            return localFormatter.withLockUnchecked { $0.string(from: date) }
         case .zoned:
             return zonedFormatter.string(from: date)
         }

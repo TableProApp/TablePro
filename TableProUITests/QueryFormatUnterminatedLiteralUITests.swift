@@ -16,11 +16,11 @@ final class QueryFormatUnterminatedLiteralUITests: UITestCase {
         app.typeKey("l", modifierFlags: [.command, .shift])
 
         XCTAssertTrue(
-            app.windows.firstMatch.waitForExistence(timeout: 5),
+            app.windows.firstMatch.waitToExist(timeout: 5),
             "Formatting an unterminated literal must not bring the app down"
         )
         XCTAssertTrue(
-            editor.waitForExistence(timeout: 5),
+            editor.waitToExist(timeout: 5),
             "The editor must survive formatting an unterminated literal"
         )
         let value = editor.value as? String ?? ""
@@ -39,18 +39,9 @@ final class QueryFormatUnterminatedLiteralUITests: UITestCase {
     private func openQueryTab(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("t", modifierFlags: .command)
         let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         XCTAssertTrue(waitForValue("", in: editor, timeout: 5), "A new tab starts with an empty editor")
         return editor
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
     }
 
     private func waitForValue(_ expected: String, in element: XCUIElement, timeout: TimeInterval) -> Bool {

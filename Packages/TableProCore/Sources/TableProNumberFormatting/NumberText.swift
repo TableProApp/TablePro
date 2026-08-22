@@ -209,7 +209,6 @@ private struct JSONWriter {
             switch scalar {
             case "\"": output += "\\\""
             case "\\": output += "\\\\"
-            case "/": output += "\\/"
             case "\n": output += "\\n"
             case "\r": output += "\\r"
             case "\t": output += "\\t"

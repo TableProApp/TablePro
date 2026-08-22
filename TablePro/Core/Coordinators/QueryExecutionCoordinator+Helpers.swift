@@ -111,7 +111,8 @@ extension QueryExecutionCoordinator {
         connection conn: DatabaseConnection,
         isTruncated: Bool = false,
         queryParameterValues: [QueryParameter]? = nil,
-        historySQL: String? = nil
+        historySQL: String? = nil,
+        anchor: StatementAnchor? = nil
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -129,7 +130,8 @@ extension QueryExecutionCoordinator {
                 rowCount: rows.count,
                 sql: sql,
                 connection: conn,
-                queryParameterValues: queryParameterValues
+                queryParameterValues: queryParameterValues,
+                anchor: anchor
             )
             return
         }
@@ -206,7 +208,11 @@ extension QueryExecutionCoordinator {
                 tab.metadataVersion += 1
             }
 
-            let rs = ResultSet(label: tableName ?? "Result", tableRows: newTableRows)
+            let rs = ResultSet(
+                label: ResultSet.label(tableName: tableName, anchor: anchor, index: 0),
+                tableRows: newTableRows
+            )
+            rs.statementAnchor = anchor
             rs.executionTime = tab.execution.executionTime
             rs.rowsAffected = tab.execution.rowsAffected
             rs.statusMessage = tab.execution.statusMessage
@@ -285,7 +291,8 @@ extension QueryExecutionCoordinator {
         rowCount: Int,
         sql: String,
         connection conn: DatabaseConnection,
-        queryParameterValues: [QueryParameter]?
+        queryParameterValues: [QueryParameter]?,
+        anchor: StatementAnchor? = nil
     ) {
         parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
         parent.tabManager.mutate(tabId: tabId) { tab in
@@ -296,7 +303,11 @@ extension QueryExecutionCoordinator {
             tab.pagination.resetLoadMore()
             tab.display.replaceUnpinnedResults(
                 with: [ExplainResultSetFactory.make(
-                    rawText: routed.rawText, plan: routed.plan, sql: sql, executionTime: executionTime
+                    rawText: routed.rawText,
+                    plan: routed.plan,
+                    sql: sql,
+                    executionTime: executionTime,
+                    anchor: anchor
                 )]
             )
             if tab.display.isResultsCollapsed {

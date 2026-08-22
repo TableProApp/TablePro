@@ -2,7 +2,7 @@ import Foundation
 import TableProDatabase
 import TableProModels
 
-enum RowInsertPlanner {
+nonisolated enum RowInsertPlanner {
     static func statements(
         table: String,
         schema: String?,
@@ -40,7 +40,7 @@ enum RowInsertPlanner {
     }
 }
 
-enum RowInserter {
+nonisolated enum RowInserter {
     static func insert(
         driver: any DatabaseDriver,
         table: String,

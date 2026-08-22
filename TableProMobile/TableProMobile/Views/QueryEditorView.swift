@@ -494,8 +494,9 @@ struct QueryEditorView: View {
         activity: Activity<QueryActivityAttributes>?,
         startedAt: Date
     ) -> Task<Void, Never> {
-        Task { [weak viewModel] in
+        return Task { [weak viewModel] in
             guard let activity else { return }
+            nonisolated(unsafe) let liveActivity = activity
             var lastReportedCount = 0
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
@@ -508,7 +509,7 @@ struct QueryEditorView: View {
                     endedAt: nil,
                     rowsStreamed: count
                 )
-                await activity.update(.init(
+                await liveActivity.update(.init(
                     state: state,
                     staleDate: startedAt.addingTimeInterval(5 * 60)
                 ))
@@ -523,8 +524,9 @@ struct QueryEditorView: View {
             endedAt: Date(),
             rowsStreamed: viewModel.legacyRows.count
         )
+        nonisolated(unsafe) let liveActivity = activity
         Task {
-            await activity.end(.init(state: final, staleDate: nil), dismissalPolicy: .immediate)
+            await liveActivity.end(.init(state: final, staleDate: nil), dismissalPolicy: .immediate)
         }
     }
 }

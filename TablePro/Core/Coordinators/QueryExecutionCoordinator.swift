@@ -23,11 +23,11 @@ final class QueryExecutionCoordinator {
         let fullQuery = tab.content.query
         guard !fullQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
-        let statements = SQLStatementScanner.allStatements(in: fullQuery, dialect: parent.sqlDialect)
+        let statements = SQLStatementScanner.executableStatements(in: fullQuery, dialect: parent.sqlDialect)
         guard !statements.isEmpty else { return }
 
         if AppSettingsManager.shared.editor.queryParametersEnabled {
-            let combinedSQL = statements.joined(separator: "; ")
+            let combinedSQL = statements.map(\.sql).joined(separator: "; ")
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
 
             if !detectedNames.isEmpty {
@@ -56,7 +56,7 @@ final class QueryExecutionCoordinator {
     }
 
     func dispatchStatements(
-        _ statements: [String],
+        _ statements: [SQLStatementScanner.ExecutableStatement],
         tabIndex index: Int,
         bypassRowLimit: Bool = false,
         extraCapabilities: CallerCapabilities = []
@@ -68,8 +68,12 @@ final class QueryExecutionCoordinator {
             defer { parent.isShowingSafeModePrompt = false }
             switch await ExecutionGateProvider.shared.authorize(request) {
             case .authorized:
-                if statements.count == 1 {
-                    parent.executeQueryInternal(statements[0], bypassRowLimit: bypassRowLimit)
+                if let only = statements.first, statements.count == 1 {
+                    parent.executeQueryInternal(
+                        only.sql,
+                        bypassRowLimit: bypassRowLimit,
+                        anchor: StatementAnchor(only)
+                    )
                 } else {
                     executeMultipleStatements(statements, bypassRowLimit: bypassRowLimit)
                 }
@@ -80,14 +84,15 @@ final class QueryExecutionCoordinator {
     }
 
     private func makeExecuteRequest(
-        statements: [String],
+        statements: [SQLStatementScanner.ExecutableStatement],
         extraCapabilities: CallerCapabilities = []
     ) -> OperationRequest {
-        OperationRequest(
+        let sql = statements.map(\.sql)
+        return OperationRequest(
             connectionId: parent.connectionId,
             databaseType: parent.connection.type,
-            sql: statements.joined(separator: "\n"),
-            kind: OperationKind.worst(of: statements, databaseType: parent.connection.type),
+            sql: sql.joined(separator: "\n"),
+            kind: OperationKind.worst(of: sql, databaseType: parent.connection.type),
             caller: .userInterface,
             capabilities: CallerCapabilities.interactiveUser.union(extraCapabilities),
             operationDescription: String(localized: "Execute Query")
@@ -95,7 +100,7 @@ final class QueryExecutionCoordinator {
     }
 
     func dispatchParameterizedStatements(
-        _ statements: [String],
+        _ statements: [SQLStatementScanner.ExecutableStatement],
         parameters: [QueryParameter],
         tabIndex index: Int,
         bypassRowLimit: Bool = false,
@@ -117,12 +122,17 @@ final class QueryExecutionCoordinator {
     }
 
     private func executeParameterizedAfterSafeMode(
-        _ statements: [String],
+        _ statements: [SQLStatementScanner.ExecutableStatement],
         parameters: [QueryParameter],
         bypassRowLimit: Bool
     ) {
-        if statements.count == 1 {
-            executeQueryWithParameters(statements[0], parameters: parameters, bypassRowLimit: bypassRowLimit)
+        if let only = statements.first, statements.count == 1 {
+            executeQueryWithParameters(
+                only.sql,
+                parameters: parameters,
+                bypassRowLimit: bypassRowLimit,
+                anchor: StatementAnchor(only)
+            )
         } else {
             executeMultipleStatementsWithParameters(statements, parameters: parameters, bypassRowLimit: bypassRowLimit)
         }

@@ -149,7 +149,7 @@ enum PasswordSourceResolver {
     }
 
     static func resolveCommand(shell: String, timeoutSeconds: UInt64) async throws -> String {
-        let output = try await Task.detached(priority: .userInitiated) { () throws -> String in
+        let output = try await Task.detached(priority: .userInitiated) { () async throws -> String in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
             process.arguments = ["-c", shell]
@@ -195,7 +195,9 @@ enum PasswordSourceResolver {
 
             process.waitUntilExit()
             timeoutTask.cancel()
-            drainGroup.wait()
+            await withCheckedContinuation { continuation in
+                drainGroup.notify(queue: drainQueue) { continuation.resume() }
+            }
 
             if stdoutCollector.overflowed {
                 throw ResolutionError.outputTooLarge

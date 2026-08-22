@@ -16,7 +16,7 @@ final class PluginNotificationService {
     static let openPluginSettingsActionId = "openPluginSettings"
     private static let updateFailedCategoryId = "com.TablePro.pluginUpdateFailed"
     private static let failedIdentifierPrefix = identifierPrefix + "failed."
-    private static let logger = Logger(subsystem: "com.TablePro", category: "PluginNotifications")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "PluginNotifications")
 
     private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
 

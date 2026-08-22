@@ -29,7 +29,7 @@ struct PreparedConnectionImport {
 
 @MainActor
 enum ConnectionExportService {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionExportService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionExportService")
     private static let currentFormatVersion = 1
 
     // MARK: - Export

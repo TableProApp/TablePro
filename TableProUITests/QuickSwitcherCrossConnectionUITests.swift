@@ -9,7 +9,7 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         /// This test passed locally and lost the keystroke on the slower CI runner without it.
         XCTAssertTrue(
             app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-                .waitForExistence(timeout: 30)
+                .waitToExist(timeout: 30)
         )
 
         /// The switcher is a floating panel, and on the CI runner the shortcut produced nothing
@@ -19,20 +19,20 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         app.typeKey("o", modifierFlags: [.command, .shift])
         let panel = switcherPanel(in: app)
         let searchField = panel.textFields["quick-switcher-search-field"]
-        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+        XCTAssertTrue(searchField.waitToExist(timeout: 15))
 
         /// The scope chips are present in every scope now, so a chip's existence no longer says the
         /// key press landed. The grouped connection header below is what proves the scope changed.
         app.typeKey("5", modifierFlags: .command)
-        XCTAssertTrue(panel.staticTexts["Chinook (Sample)"].waitForExistence(timeout: 15))
-        XCTAssertTrue(panel.buttons["Track"].waitForExistence(timeout: 5))
+        XCTAssertTrue(panel.staticTexts["Chinook (Sample)"].waitToExist(timeout: 15))
+        XCTAssertTrue(panel.buttons["Track"].waitToExist(timeout: 5))
 
         searchField.typeText("track")
-        XCTAssertTrue(panel.buttons["Track"].waitForExistence(timeout: 5))
+        XCTAssertTrue(panel.buttons["Track"].waitToExist(timeout: 5))
 
         searchField.typeKey("a", modifierFlags: .command)
         searchField.typeText("missing-object-name")
-        XCTAssertTrue(panel.staticTexts["No results for \"missing-object-name\""].waitForExistence(timeout: 5))
+        XCTAssertTrue(panel.staticTexts["No results for \"missing-object-name\""].waitToExist(timeout: 5))
 
         searchField.typeKey("a", modifierFlags: .command)
         searchField.typeText("track")
@@ -43,31 +43,31 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         /// connection holds a single tab, so the title is all there is to assert on here.
         let trackWindow = app.children(matching: .window)
             .matching(NSPredicate(format: "title BEGINSWITH %@", "Track")).firstMatch
-        XCTAssertTrue(trackWindow.waitForExistence(timeout: 10))
+        XCTAssertTrue(trackWindow.waitToExist(timeout: 10))
         XCTAssertEqual(app.children(matching: .window).count, 1)
 
         app.typeKey("o", modifierFlags: [.command, .shift])
-        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
+        XCTAssertTrue(searchField.waitToExist(timeout: 5))
         app.typeKey("5", modifierFlags: .command)
         searchField.typeText("invoice")
         /// The panel has to have ranked Invoice before Return is sent. A new query used to leave the
         /// previously highlighted row selected whenever it still matched, and in this scope every
         /// subtitle carries the connection path, so Return committed the row typed before it.
-        XCTAssertTrue(panel.buttons["Invoice"].waitForExistence(timeout: 10))
+        XCTAssertTrue(panel.buttons["Invoice"].waitToExist(timeout: 10))
         searchField.typeKey(.return, modifierFlags: .option)
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
         /// Option+Return opens beside the tab you were on instead of replacing it, which is the one
         /// thing that separates it from a plain Return. The second tab is also what brings the strip
         /// out of hiding, so both tabs are assertable from here and neither was before.
-        XCTAssertTrue(tab(in: app, named: "Invoice").waitForExistence(timeout: 10))
+        XCTAssertTrue(tab(in: app, named: "Invoice").waitToExist(timeout: 10))
         XCTAssertTrue(tab(in: app, named: "Track").exists)
         XCTAssertEqual(app.children(matching: .window).count, 1)
 
         app.typeKey("o", modifierFlags: [.command, .shift])
-        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
+        XCTAssertTrue(searchField.waitToExist(timeout: 5))
         searchField.typeText("dismiss-me")
         searchField.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(searchField.waitForExistence(timeout: 5), "The first Escape clears the query, it does not dismiss")
+        XCTAssertTrue(searchField.waitToExist(timeout: 5), "The first Escape clears the query, it does not dismiss")
         XCTAssertEqual(searchField.value as? String, "")
         searchField.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
@@ -78,14 +78,14 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
 
         app.typeKey("t", modifierFlags: .command)
         let queryEditor = editorTextView(in: app)
-        XCTAssertTrue(queryEditor.waitForExistence(timeout: 10))
+        XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
         let query = "SELECT 42 AS cross_connection_probe;"
         queryEditor.click()
         app.typeText(query)
         app.typeKey(.return, modifierFlags: .command)
         XCTAssertTrue(
             app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
-                .waitForExistence(timeout: 15)
+                .waitToExist(timeout: 15)
         )
         queryEditor.click()
         queryEditor.typeKey("a", modifierFlags: .command)
@@ -94,7 +94,7 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         app.typeKey("o", modifierFlags: [.command, .shift])
         let panel = switcherPanel(in: app)
         let searchField = panel.textFields["quick-switcher-search-field"]
-        XCTAssertTrue(searchField.waitForExistence(timeout: 10))
+        XCTAssertTrue(searchField.waitToExist(timeout: 10))
         /// The history result below is what proves Cmd+4 landed; the chip is always present now.
         app.typeKey("4", modifierFlags: .command)
 
@@ -102,7 +102,7 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         let historyResult = panel.buttons.matching(
             NSPredicate(format: "label CONTAINS %@", "cross_connection_probe")
         ).firstMatch
-        XCTAssertTrue(historyResult.waitForExistence(timeout: 10))
+        XCTAssertTrue(historyResult.waitToExist(timeout: 10))
 
         searchField.typeKey(.return, modifierFlags: .option)
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
@@ -111,7 +111,7 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         let openedEditor = app.textViews
             .matching(NSPredicate(format: "value CONTAINS %@", "cross_connection_probe"))
             .firstMatch
-        XCTAssertTrue(openedEditor.waitForExistence(timeout: 10))
+        XCTAssertTrue(openedEditor.waitToExist(timeout: 10))
     }
 
     /// Every lookup inside the switcher goes through here. Rooted at the application the same
@@ -131,14 +131,5 @@ final class QuickSwitcherCrossConnectionUITests: UITestCase {
         app.buttons.matching(
             NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", "editor-tab", name)
         ).firstMatch
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
     }
 }

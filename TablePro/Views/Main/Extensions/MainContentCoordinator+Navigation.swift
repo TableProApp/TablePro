@@ -105,6 +105,9 @@ extension MainContentCoordinator {
 
         // In-place navigation: replace current tab content rather than
         // opening new native window tabs (e.g. Redis database switching).
+        /// Deliberately records no history entry. This retarget also moves the driver's selected
+        /// database (`selectRedisDatabaseAndQuery`), which a restore does not do, so a Back would
+        /// put the table back while leaving the connection on another database index.
         if navigationModel == .inPlace {
             if let oldTab = tabManager.selectedTab, let oldTableName = oldTab.tableContext.tableName {
                 saveLastFilters(for: oldTableName)
@@ -272,6 +275,7 @@ extension MainContentCoordinator {
         createAsPreview: Bool
     ) -> Bool {
         let previousTableName = tabManager.selectedTab?.tableContext.tableName
+        let departing = captureNavigationEntry()
         if let previousTableName {
             saveLastFilters(for: previousTableName)
         }
@@ -306,6 +310,7 @@ extension MainContentCoordinator {
             return false
         }
         if let token { TableLoadTracer.shared.stage(.replaceTabContent, token: token) }
+        commitNavigationEntry(departing)
         clearFilterState()
         discardRowsForRetarget(resultsViewMode: showStructure ? .structure : .data)
         restoreLastHiddenColumnsForTable()
@@ -325,7 +330,7 @@ extension MainContentCoordinator {
     /// the bar collapses and then refills as the fetch lands. The execution claim cannot stand in
     /// for the flag: retargeting only schedules the load, so the claim arrives a main-actor turn
     /// later and leaves a renderable frame in between.
-    private func discardRowsForRetarget(resultsViewMode: ResultsViewMode? = nil) {
+    func discardRowsForRetarget(resultsViewMode: ResultsViewMode? = nil) {
         guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
         setActiveTableRows(TableRows(), for: tab.id)
         tabManager.mutate(at: tabIndex) { tab in

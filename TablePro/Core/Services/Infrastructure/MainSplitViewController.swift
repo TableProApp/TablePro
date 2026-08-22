@@ -15,7 +15,7 @@ import SwiftUI
 
 @MainActor
 internal final class MainSplitViewController: NSSplitViewController, InspectorVisibilityProxy {
-    private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     // MARK: - Payload & Session
 

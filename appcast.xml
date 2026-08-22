@@ -3,6 +3,455 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.67.0</title>
+            <pubDate>Fri, 21 Aug 2026 13:40:28 +0000</pubDate>
+            <sparkle:version>120</sparkle:version>
+            <sparkle:shortVersionString>0.67.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>MongoDB filters on nested and array-element fields, with any-element and same-element matching and type-aware values. (#2315)</li>
+<li>Back and Forward through a tab's browse history, on `Ctrl+Cmd+[` and `Ctrl+Cmd+]`. (#2316)</li>
+<li>Drag to reorder editor tabs, with Move Tab Left and Move Tab Right on the tab's menu.</li>
+<li>Result tabs named after the statement that produced them; picking one moves the editor cursor to it. (#2280)</li>
+<li>Statement navigation on `Ctrl+Cmd+Left`, `Ctrl+Cmd+Right`, `Ctrl+Cmd+Enter`, `Option+Shift+Up` and `Option+Shift+Down`. (#2279)</li>
+<li>Swipe left on a saved connection in the welcome window for Edit and Delete. (#2310)</li>
+<li>Current-statement highlight and a per-statement run button in the editor gutter. (#2278)</li>
+<li>Notifications when a long-running query, import, export, backup or save finishes in the background. (#2265)</li>
+<li>Code folding in the SQL editor, the DDL and trigger views, the import preview, the AI review sheet, chat code blocks and the JSON viewer.</li>
+<li>`Cmd+F` find bar over table results, with Search All Rows for a server-side match.</li>
+<li>Native bar, line, area and scatter charts over query results. Starter feature.</li>
+<li>Redis Sentinel and Redis Cluster connection modes. (#1021)</li>
+<li>DuckDB connections can open a Parquet, CSV, TSV, JSON or NDJSON file read-only.</li>
+<li>Korean localization for macOS, iPhone and iPad. (#2219, #2264)</li>
+<li>Help > Acknowledgements, listing the 38 bundled open source libraries with their licenses.</li>
+<li>Plugins signed by a third-party Apple Developer ID install after you trust the developer by name.</li>
+<li>Local hash-chained execution log of every authorized database operation, with statements stored as digests.</li>
+<li>A minimum Safe Mode level enforceable through a macOS configuration profile.</li>
+<li>Execute All Statements in the Execute button's menu. (#2230)</li>
+<li>Double-click or `Return` on a table keeps its tab instead of reusing the preview tab. (#2235)</li>
+<li>View > Result View switches the results pane between Data, Structure, JSON and Chart.</li>
+<li>MCP: the 2026-07-28 protocol revision, with the two previous revisions still supported.</li>
+<li>MCP: server discovery in one call, naming protocol versions and capabilities.</li>
+<li>MCP: cache lifetimes on tool, prompt and resource listings.</li>
+<li>MCP: 27 new tools, covering schema metadata, query plans, row counts and statistics, users and grants, sessions, paginated browsing, inserts, transactions and DDL.</li>
+<li>MCP: prompt templates built from the live schema, for explaining a schema, writing SQL, reviewing a query, proposing indexes, writing a migration, auditing data quality and summarizing a period.</li>
+<li>MCP: argument completion from a connection's real tables, databases, schemas and columns.</li>
+<li>MCP: change notifications over a single long-lived stream.</li>
+<li>MCP: destructive statements can be confirmed in the client.</li>
+<li>MCP: progress updates from a long-running tool call reach the client.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The results status bar was rebuilt: one fixed height, the row count on the left, controls that keep their place while a table loads, and Add Row moved to the toolbar.</li>
+<li>Row counts and number grouping read correctly in every language.</li>
+<li>The row count reflects what the grid is showing, and stays on screen for an empty result.</li>
+<li>The rows-per-page menu accepts a locale-formatted number and states the range it takes.</li>
+<li>An estimated row total is marked as an estimate, and Last and All rows wait for Count Exactly.</li>
+<li>`Cmd+F` on a table tab opens the find bar; the filter panel keeps `Cmd+Option+F`.</li>
+<li>Find Next and Find Previous work on the data grid.</li>
+<li>The JSON and PHP tree filters ignore accents, so `cafe` finds `café`. (#2204)</li>
+<li>Picking a database in the connections strip returns you to the tab you last used in it. (#2217)</li>
+<li>Tabs showing same-named objects from different databases carry the database in their name. (#2217)</li>
+<li>Save in the unsaved-changes prompt closes what you asked to close once the save lands.</li>
+<li>A column value filter survives switching result mode and switching tabs. (#2251)</li>
+<li>The connection form's Browse button offers only the file kinds the driver opens.</li>
+<li>The iOS Shortcuts documentation states which app build each action needs.</li>
+<li>TablePro is built in the Swift 6 language mode, across the app, both mobile apps, all 31 plugins and the shared packages.</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>MCP remote access. The server binds to this Mac only.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Forward slashes inside a nested object or array value are no longer escaped as `\/` in the JSON view and the right sidebar. (#2322)</li>
+<li>A MongoDB filter TablePro cannot translate matches nothing instead of the whole collection. (#2315)</li>
+<li>The raw filter row works on MongoDB, and reads Raw Filter on databases that do not speak SQL. (#2315)</li>
+<li>Match Case applies to text fields only, so turning it off no longer breaks a MongoDB number, date or ObjectId filter. (#2315)</li>
+<li>Preview Referenced Row from the Query menu reads the cell you focused instead of counting columns from the left.</li>
+<li>Preview Referenced Row works on SQL Server, and on iPhone and iPad on SQL Server and Oracle.</li>
+<li>Open Quickly no longer draws a rectangular outline around its Liquid Glass surface on macOS 26 and later. (#2321)</li>
+<li>Skip and Continue keeps going after an unreadable line in a JSON import.</li>
+<li>An import no longer counts rows it dropped because they matched no mapped column.</li>
+<li>Retrying an import of a compressed `.sql` file no longer leaves the expanded copy behind.</li>
+<li>Importing into a new table can be retried, reusing and clearing the table the failed attempt created.</li>
+<li>The SQL import dialog no longer offers CSV and JSON in its format picker.</li>
+<li>Import and export result alerts stay on screen instead of closing with the progress sheet. (#2314)</li>
+<li>A failed import reports its line number, statement and server message instead of only the rollback error. (#2314)</li>
+<li>The failed statement list is copyable again, with Copy Details on both alerts.</li>
+<li>TablePro stays out of the Dock and the app switcher when an MCP client starts it.</li>
+<li>A confirmation TablePro cannot attach to a window comes to the front instead of waiting behind other apps.</li>
+<li>Settings > Integrations reports a running MCP server even when Enable MCP Server is off.</li>
+<li>Deleting a connection with saved queries always warns that they go with it. (#2310)</li>
+<li>Deleting a connection you published to the Team Library no longer deletes your local copy instead.</li>
+<li>Connections in a linked folder or the Team Library open on double-click and on `Return`.</li>
+<li>A connection whose deletion could not be saved no longer vanishes until the next launch.</li>
+<li>Select All, `Ctrl+J` and `Ctrl+K` no longer skip favorited connections outside a group.</li>
+<li>A column whose cells carry an action button no longer cuts its value short, and late-arriving enum, set and foreign key metadata widens it. (#2303)</li>
+<li>Size to Fit and double-clicking a column edge measure the loaded page instead of about 30 rows of it. (#2303)</li>
+<li>235 Turkish strings that were marked as translated but still held English now read in Turkish.</li>
+<li>A transaction that failed on commit says so instead of blaming the last statement that worked. (#2280)</li>
+<li>Opening an Oracle connection for the first time no longer leaves the object list spinning forever. (#2294)</li>
+<li>An object list that cannot load says so and offers Retry instead of retrying silently every 15 seconds. (#2294)</li>
+<li>A metadata connection whose startup commands stall gives up after a minute and reports it.</li>
+<li>Oracle reports a connection that dropped during setup as failed, and closes a connection it gave up on. Needs the updated Oracle plugin.</li>
+<li>iOS: a DuckDB contains filter matches case-insensitively, and offers the case sensitivity control.</li>
+<li>Deleting a connection removes its saved queries and their folders from iCloud too.</li>
+<li>A database type is drawn in the colour its own plugin declares everywhere, instead of two tables that disagreed on 12 of 23 types.</li>
+<li>Save on the unsaved-changes prompt applies staged structure edits from any view, and leaves the tab open when the save is refused, cancelled or rejected.</li>
+<li>Opening one table in two tabs gives each tab its own structure editor, sub-tab, filter and sort.</li>
+<li>Clicking another table in the object browser no longer silently discards staged structure edits.</li>
+<li>Switching between two structure or Create Table tabs no longer leaves the incoming tab's buttons dead.</li>
+<li>Twelve commands spell their trailing ellipsis the way macOS does, in the menu bar and the context menu alike.</li>
+<li>A `BEGIN ... END` body runs whole from the editor instead of being split at every semicolon inside it. (#2278)</li>
+<li>A semicolon inside a MySQL `#` comment is no longer read as a statement boundary. (#2278)</li>
+<li>A failed refresh no longer empties the stored procedure and function lists.</li>
+<li>Switching to a PostgreSQL database you cannot open reports the failure and leaves the connection where it was.</li>
+<li>Plugins from the registry are notarized, so Gatekeeper stops blocking them. Every plugin needs to be published again to pick this up.</li>
+<li>Installing a plugin from a ZIP clears the quarantine flag from the whole bundle, not only its top level.</li>
+<li>DuckDB lists its databases, schemas, tables and columns on a Mac that cannot reach the internet. (#2285)</li>
+<li>A DuckDB UUID, ENUM, list, struct, map or time zone aware timestamp column no longer crashes TablePro.</li>
+<li>A DuckDB view opens as `CREATE OR REPLACE VIEW` instead of two statements spliced together.</li>
+<li>Switching DuckDB database by a name differing only in capitalisation lists that database's objects.</li>
+<li>A DuckDB connection that fails after opening the file releases it instead of locking it until quit.</li>
+<li>A DuckDB connection that opens a file but reports no catalog fails with that reason.</li>
+<li>A mistyped Parquet or CSV path says the file is missing instead of creating an empty database.</li>
+<li>A new DuckDB connection can be saved; the form no longer requires a database name it offered no field for.</li>
+<li>Opening a table on Dameng, Oracle, BigQuery, Elasticsearch and etcd no longer puts up a Switch Failed alert. (#2262)</li>
+<li>Switching schema on Dameng, Oracle, BigQuery, Snowflake and Trino re-reads only the routines instead of the whole object list. (#2262)</li>
+<li>Open Quickly lists each schema once on Dameng, Oracle and BigQuery.</li>
+<li>The Settings window is titled after the pane you are on, and refuses to be resized smaller than a pane can draw.</li>
+<li>Redis Sentinel and Cluster connections show their nodes in the connection list instead of the word Redis alone.</li>
+<li>Redis Cluster routes `OBJECT`, `MEMORY`, `SORT`, `GEORADIUS`, `ZUNIONSTORE` and `ZINTERSTORE` to the right shard on Redis 6, where the fallback routing table disagreed with the server on 32 counts.</li>
+<li>Redis reports what the server actually answered instead of clearing a refused write from the grid.</li>
+<li>`SET key value KEEPTTL` keeps the expiry, and SET options TablePro does not model are sent to the server untouched.</li>
+<li>A Redis command whose reply timed out is re-sent only when it provably never reached the server.</li>
+<li>A Redis `SCAN` that returns an error reports it instead of showing an empty keyspace.</li>
+<li>Floating point values show the shortest digits that identify the stored number exactly, on MongoDB, Elasticsearch, ClickHouse, Snowflake, DynamoDB, Beancount and JSON import.</li>
+<li>A 32-bit float bound as a query parameter keeps its own precision, and a value that is not a real number binds as null.</li>
+<li>Editing a MongoDB row keeps each field's stored type, decimals and 64-bit integers included, at any nesting depth.</li>
+<li>MQL export writes very large and very small numbers as numbers instead of quoted strings.</li>
+<li>A nested value too long to show in full is no longer written back or exported as a fragment.</li>
+<li>Dameng results are complete instead of stopping at the server's first 32KB batch. (#2262)</li>
+<li>Dameng tables with a `CLOB` or `BLOB` column read the right columns, rows and values. (#2262)</li>
+<li>Creating a Dameng table works when it has an index or a column comment, and so does changing a column's name and type at once. (#2262)</li>
+<li>Column comments show up on Dameng tables in a schema not named after its owner. (#2262)</li>
+<li>Dameng connections recover after a query is stopped instead of failing every statement for up to 30 seconds. (#2262)</li>
+<li>Query Insights keeps each aggregate's query text and error inside the selected connection, source and date range. (#2268)</li>
+<li>A plugin's own connection fields reach the connection form, so Redis gets its Key Separator field and its ElastiCache IAM section. (#1021)</li>
+<li>A connection that lists its servers in a host list works over an SSH tunnel, MongoDB replica sets included.</li>
+<li>A rows-per-page value large enough to overflow no longer crashes TablePro.</li>
+<li>Changing rows-per-page on any page but the first no longer strands you on a mislabelled page.</li>
+<li>Rows past a driver's row-count estimate are reachable.</li>
+<li>All rows loads all of them instead of the estimated number.</li>
+<li>Turning a page while Count Exactly is running no longer leaves a spinner that never stops.</li>
+<li>A page number typed for one tab is no longer applied to another.</li>
+<li>A table shows the range it actually loaded rather than its estimate.</li>
+<li>A fresh query tab no longer shows a sliver of a status bar that jumps to full height on the first run.</li>
+<li>VoiceOver reads the applied filter count on the Filters button and skips the status bar's separator dots.</li>
+<li>JSON result mode shows the rows the grid is showing, in the same order, and resolves a selection to that same row. (#2251)</li>
+<li>Rows marked for deletion no longer appear in JSON result mode, and the count line says how many are held back. (#2251)</li>
+<li>Editing a cell in a result you clicked back to writes to that result's own table.</li>
+<li>A result whose table TablePro cannot identify no longer looks editable.</li>
+<li>Running several statements no longer carries the previous run's primary key over to the new table.</li>
+<li>Column details that arrive after a query land on the result that asked for them.</li>
+<li>Editing a field in the row inspector obeys the same rules as the grid.</li>
+<li>Rows loaded by Fetch All stay with the result they were loaded for.</li>
+<li>Switching between results asks before discarding unsaved edits.</li>
+<li>Every restored tab hides the columns you hid for its table, not just the tab that was in front.</li>
+<li>A query tab reopens with the caret where you left it, on every tab rather than the front one.</li>
+<li>Restored tabs keep their sort and page number, not just the tab that was in front.</li>
+<li>A restored tab reopens on the rows it was showing, because the page number is saved with its page size.</li>
+<li>Scrolling a result with hundreds of columns is no longer slow; only the columns near the viewport are built. (#1219)</li>
+<li>A column you hid keeps its place in the column order.</li>
+<li>A row you are inserting shows empty values in JSON mode instead of TablePro's internal marker.</li>
+<li>`Cmd+F` no longer opens a find bar in JSON result mode, where it could never match. (#2244)</li>
+<li>The Filters button and `Cmd+Option+F` open the filter panel in JSON result mode. (#2244)</li>
+<li>Add Row, Duplicate Row, Paste and Delete no longer collapse the JSON view to the row they touched. (#2244)</li>
+<li>The date picker on an empty date or timestamp cell starts at your own clock and writes your own time. (#2241)</li>
+<li>A time value carrying a UTC offset follows your chosen date format instead of showing as raw text. (#2241)</li>
+<li>Open in New Tab opens a second tab for a table that is already open. (#2235)</li>
+<li>Following a foreign key into a new tab no longer overwrites the filters on a tab already showing that table.</li>
+<li>Opening a table from the sidebar while the object list is still loading opens it.</li>
+<li>Opening a table from Favorites gives it a tab of its own.</li>
+<li>A Cloud SQL Auth Proxy or Cloudflare tunnel that fails to start reports the last thing it said.</li>
+<li>The Cloud SQL Auth Proxy and the Copilot language server are checked against their pinned version and digest on every start, and reinstalled when either no longer matches.</li>
+<li>Editing a connection keeps its favorite mark, its place in the list, and its always-allowed AI tools.</li>
+<li>MongoDB, Cassandra and Trino connections can name a database, keyspace or catalog in the connection form. (#2234)</li>
+<li>Sorting a column keeps working after you hide or show columns. (#2234)</li>
+<li>Hide All hides every column of a MongoDB collection, fields that appear only in later documents included. (#2234)</li>
+<li>Opening a `.sql` file that is already open shows its tab instead of replacing what you typed in it.</li>
+<li>A `.sql` tab reopened from Recently Closed knows it has unsaved edits.</li>
+<li>Table maintenance from the object browser runs against the database the table you picked lives in.</li>
+<li>A table that exists in two databases can be opened in both. (#2217)</li>
+<li>Server Dashboard, Users & Roles, Query Insights, ER Diagram and a linked SQL file select the tab they already opened. (#2217)</li>
+<li>The empty Favorites sidebar fits its width on macOS 15 instead of running past both edges.</li>
+<li>Table favorites and saved queries sync through iCloud; their record types had never been created in the schema.</li>
+<li>An SSH profile that uses a jump host syncs.</li>
+<li>A connection carries its favorite mark, every tag, and its AI rules and always-allowed tools to your other Macs.</li>
+<li>iOS: a connection's query timeout syncs instead of being dropped on upload.</li>
+<li>The inspector button stays at the right end of the toolbar when the inspector is open.</li>
+<li>The Tables and Favorites switch keeps following the sidebar after you open Customize Toolbar.</li>
+<li>Refresh, New Tab, Open Quickly, Export, Database, Results and Dashboard are dimmed in the toolbar's overflow menu when they cannot run.</li>
+<li>iOS: a value containing a backslash, a newline or a carriage return is stored as you typed it on PostgreSQL, Redshift, SQL Server, SQLite, DuckDB and Oracle.</li>
+<li>iOS: PostgreSQL sessions set `standard_conforming_strings` on.</li>
+<li>iOS: Add Row to Table and Add Rows to Table write to the database or schema you picked in Shortcuts.</li>
+<li>iOS: all three Shortcuts actions are found by searching TablePro, and are grouped under Database.</li>
+<li>`Cmd+W` closes the Settings and Integrations windows, the JSON and PHP viewers, the connection form and the column inspector.</li>
+<li>The File menu names the close command after what it will close.</li>
+<li>A JSON or PHP tree filter reveals nested matches, searches the whole of a long value, keeps rows expanded, and says when it finds nothing. (#2204)</li>
+<li>Copy Value on a JSON object or array copies that part of the document instead of a summary. (#2204)</li>
+<li>Closing a tab holding unsaved cell edits, `.sql` changes, staged structure changes or staged user and role changes asks before discarding them.</li>
+<li>A tab with unsaved cell edits shows the unsaved dot.</li>
+<li>Closing a tab no longer leaves its unsaved cell edits loaded behind it.</li>
+<li>A `.sql` file opened from a linked favorite can be opened again after its tab is closed.</li>
+<li>Staged structure changes and a table definition in progress survive switching tabs, and switching a table tab between Data and Structure.</li>
+<li>Timestamps written with a space before the offset, or with fractional seconds, follow your chosen date format.</li>
+<li>Switching connection no longer empties the SQL editor or kills its undo, highlighting, shortcuts and Vim mode. (#2236)</li>
+</ul>
+<h3>Security</h3>
+<ul>
+<li>A read-only MCP token can no longer run a statement that writes; an unrecognized statement is treated as a write, and statements that reach the filesystem or run a program are refused.</li>
+<li>Safe Mode confirms MCP writes instead of pre-clearing them.</li>
+<li>A token limited to some connections no longer sees the names, hosts, ports and usernames of the others.</li>
+<li>With authentication off, a local caller is read-only and cannot administer anything.</li>
+<li>The activity log records the calling token, stores statements as digests, is hash chained, and is no longer readable by other accounts on the Mac.</li>
+<li>Repeated bad tokens are rate limited, requests with no credentials included.</li>
+<li>A pairing link is verified and its destination shown before you approve it, a failed exchange burns its code, and approving no longer revokes an unrelated token of the same name.</li>
+<li>A malformed cancellation message no longer crashes the app.</li>
+<li>An MCP session identifier is no longer usable as a credential.</li>
+<li>Secrets belonging to separately distributed drivers are stored in the Keychain and stripped from exported connections. Existing values move to the Keychain on the next save.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.67.0/TablePro-0.67.0-arm64.zip" length="24340358" type="application/octet-stream" sparkle:edSignature="cjQy/YkXH0cXOd4OivSDN8w74+yjSgf279A4h2+fLyJiZkIu3sAXOM5NSuz0UpjiMLQi5a/S2eYsYix4tqe6Aw=="/>
+        </item>
+        <item>
+            <title>0.67.0</title>
+            <pubDate>Fri, 21 Aug 2026 13:40:29 +0000</pubDate>
+            <sparkle:version>120</sparkle:version>
+            <sparkle:shortVersionString>0.67.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>MongoDB filters on nested and array-element fields, with any-element and same-element matching and type-aware values. (#2315)</li>
+<li>Back and Forward through a tab's browse history, on `Ctrl+Cmd+[` and `Ctrl+Cmd+]`. (#2316)</li>
+<li>Drag to reorder editor tabs, with Move Tab Left and Move Tab Right on the tab's menu.</li>
+<li>Result tabs named after the statement that produced them; picking one moves the editor cursor to it. (#2280)</li>
+<li>Statement navigation on `Ctrl+Cmd+Left`, `Ctrl+Cmd+Right`, `Ctrl+Cmd+Enter`, `Option+Shift+Up` and `Option+Shift+Down`. (#2279)</li>
+<li>Swipe left on a saved connection in the welcome window for Edit and Delete. (#2310)</li>
+<li>Current-statement highlight and a per-statement run button in the editor gutter. (#2278)</li>
+<li>Notifications when a long-running query, import, export, backup or save finishes in the background. (#2265)</li>
+<li>Code folding in the SQL editor, the DDL and trigger views, the import preview, the AI review sheet, chat code blocks and the JSON viewer.</li>
+<li>`Cmd+F` find bar over table results, with Search All Rows for a server-side match.</li>
+<li>Native bar, line, area and scatter charts over query results. Starter feature.</li>
+<li>Redis Sentinel and Redis Cluster connection modes. (#1021)</li>
+<li>DuckDB connections can open a Parquet, CSV, TSV, JSON or NDJSON file read-only.</li>
+<li>Korean localization for macOS, iPhone and iPad. (#2219, #2264)</li>
+<li>Help > Acknowledgements, listing the 38 bundled open source libraries with their licenses.</li>
+<li>Plugins signed by a third-party Apple Developer ID install after you trust the developer by name.</li>
+<li>Local hash-chained execution log of every authorized database operation, with statements stored as digests.</li>
+<li>A minimum Safe Mode level enforceable through a macOS configuration profile.</li>
+<li>Execute All Statements in the Execute button's menu. (#2230)</li>
+<li>Double-click or `Return` on a table keeps its tab instead of reusing the preview tab. (#2235)</li>
+<li>View > Result View switches the results pane between Data, Structure, JSON and Chart.</li>
+<li>MCP: the 2026-07-28 protocol revision, with the two previous revisions still supported.</li>
+<li>MCP: server discovery in one call, naming protocol versions and capabilities.</li>
+<li>MCP: cache lifetimes on tool, prompt and resource listings.</li>
+<li>MCP: 27 new tools, covering schema metadata, query plans, row counts and statistics, users and grants, sessions, paginated browsing, inserts, transactions and DDL.</li>
+<li>MCP: prompt templates built from the live schema, for explaining a schema, writing SQL, reviewing a query, proposing indexes, writing a migration, auditing data quality and summarizing a period.</li>
+<li>MCP: argument completion from a connection's real tables, databases, schemas and columns.</li>
+<li>MCP: change notifications over a single long-lived stream.</li>
+<li>MCP: destructive statements can be confirmed in the client.</li>
+<li>MCP: progress updates from a long-running tool call reach the client.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>The results status bar was rebuilt: one fixed height, the row count on the left, controls that keep their place while a table loads, and Add Row moved to the toolbar.</li>
+<li>Row counts and number grouping read correctly in every language.</li>
+<li>The row count reflects what the grid is showing, and stays on screen for an empty result.</li>
+<li>The rows-per-page menu accepts a locale-formatted number and states the range it takes.</li>
+<li>An estimated row total is marked as an estimate, and Last and All rows wait for Count Exactly.</li>
+<li>`Cmd+F` on a table tab opens the find bar; the filter panel keeps `Cmd+Option+F`.</li>
+<li>Find Next and Find Previous work on the data grid.</li>
+<li>The JSON and PHP tree filters ignore accents, so `cafe` finds `café`. (#2204)</li>
+<li>Picking a database in the connections strip returns you to the tab you last used in it. (#2217)</li>
+<li>Tabs showing same-named objects from different databases carry the database in their name. (#2217)</li>
+<li>Save in the unsaved-changes prompt closes what you asked to close once the save lands.</li>
+<li>A column value filter survives switching result mode and switching tabs. (#2251)</li>
+<li>The connection form's Browse button offers only the file kinds the driver opens.</li>
+<li>The iOS Shortcuts documentation states which app build each action needs.</li>
+<li>TablePro is built in the Swift 6 language mode, across the app, both mobile apps, all 31 plugins and the shared packages.</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li>MCP remote access. The server binds to this Mac only.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Forward slashes inside a nested object or array value are no longer escaped as `\/` in the JSON view and the right sidebar. (#2322)</li>
+<li>A MongoDB filter TablePro cannot translate matches nothing instead of the whole collection. (#2315)</li>
+<li>The raw filter row works on MongoDB, and reads Raw Filter on databases that do not speak SQL. (#2315)</li>
+<li>Match Case applies to text fields only, so turning it off no longer breaks a MongoDB number, date or ObjectId filter. (#2315)</li>
+<li>Preview Referenced Row from the Query menu reads the cell you focused instead of counting columns from the left.</li>
+<li>Preview Referenced Row works on SQL Server, and on iPhone and iPad on SQL Server and Oracle.</li>
+<li>Open Quickly no longer draws a rectangular outline around its Liquid Glass surface on macOS 26 and later. (#2321)</li>
+<li>Skip and Continue keeps going after an unreadable line in a JSON import.</li>
+<li>An import no longer counts rows it dropped because they matched no mapped column.</li>
+<li>Retrying an import of a compressed `.sql` file no longer leaves the expanded copy behind.</li>
+<li>Importing into a new table can be retried, reusing and clearing the table the failed attempt created.</li>
+<li>The SQL import dialog no longer offers CSV and JSON in its format picker.</li>
+<li>Import and export result alerts stay on screen instead of closing with the progress sheet. (#2314)</li>
+<li>A failed import reports its line number, statement and server message instead of only the rollback error. (#2314)</li>
+<li>The failed statement list is copyable again, with Copy Details on both alerts.</li>
+<li>TablePro stays out of the Dock and the app switcher when an MCP client starts it.</li>
+<li>A confirmation TablePro cannot attach to a window comes to the front instead of waiting behind other apps.</li>
+<li>Settings > Integrations reports a running MCP server even when Enable MCP Server is off.</li>
+<li>Deleting a connection with saved queries always warns that they go with it. (#2310)</li>
+<li>Deleting a connection you published to the Team Library no longer deletes your local copy instead.</li>
+<li>Connections in a linked folder or the Team Library open on double-click and on `Return`.</li>
+<li>A connection whose deletion could not be saved no longer vanishes until the next launch.</li>
+<li>Select All, `Ctrl+J` and `Ctrl+K` no longer skip favorited connections outside a group.</li>
+<li>A column whose cells carry an action button no longer cuts its value short, and late-arriving enum, set and foreign key metadata widens it. (#2303)</li>
+<li>Size to Fit and double-clicking a column edge measure the loaded page instead of about 30 rows of it. (#2303)</li>
+<li>235 Turkish strings that were marked as translated but still held English now read in Turkish.</li>
+<li>A transaction that failed on commit says so instead of blaming the last statement that worked. (#2280)</li>
+<li>Opening an Oracle connection for the first time no longer leaves the object list spinning forever. (#2294)</li>
+<li>An object list that cannot load says so and offers Retry instead of retrying silently every 15 seconds. (#2294)</li>
+<li>A metadata connection whose startup commands stall gives up after a minute and reports it.</li>
+<li>Oracle reports a connection that dropped during setup as failed, and closes a connection it gave up on. Needs the updated Oracle plugin.</li>
+<li>iOS: a DuckDB contains filter matches case-insensitively, and offers the case sensitivity control.</li>
+<li>Deleting a connection removes its saved queries and their folders from iCloud too.</li>
+<li>A database type is drawn in the colour its own plugin declares everywhere, instead of two tables that disagreed on 12 of 23 types.</li>
+<li>Save on the unsaved-changes prompt applies staged structure edits from any view, and leaves the tab open when the save is refused, cancelled or rejected.</li>
+<li>Opening one table in two tabs gives each tab its own structure editor, sub-tab, filter and sort.</li>
+<li>Clicking another table in the object browser no longer silently discards staged structure edits.</li>
+<li>Switching between two structure or Create Table tabs no longer leaves the incoming tab's buttons dead.</li>
+<li>Twelve commands spell their trailing ellipsis the way macOS does, in the menu bar and the context menu alike.</li>
+<li>A `BEGIN ... END` body runs whole from the editor instead of being split at every semicolon inside it. (#2278)</li>
+<li>A semicolon inside a MySQL `#` comment is no longer read as a statement boundary. (#2278)</li>
+<li>A failed refresh no longer empties the stored procedure and function lists.</li>
+<li>Switching to a PostgreSQL database you cannot open reports the failure and leaves the connection where it was.</li>
+<li>Plugins from the registry are notarized, so Gatekeeper stops blocking them. Every plugin needs to be published again to pick this up.</li>
+<li>Installing a plugin from a ZIP clears the quarantine flag from the whole bundle, not only its top level.</li>
+<li>DuckDB lists its databases, schemas, tables and columns on a Mac that cannot reach the internet. (#2285)</li>
+<li>A DuckDB UUID, ENUM, list, struct, map or time zone aware timestamp column no longer crashes TablePro.</li>
+<li>A DuckDB view opens as `CREATE OR REPLACE VIEW` instead of two statements spliced together.</li>
+<li>Switching DuckDB database by a name differing only in capitalisation lists that database's objects.</li>
+<li>A DuckDB connection that fails after opening the file releases it instead of locking it until quit.</li>
+<li>A DuckDB connection that opens a file but reports no catalog fails with that reason.</li>
+<li>A mistyped Parquet or CSV path says the file is missing instead of creating an empty database.</li>
+<li>A new DuckDB connection can be saved; the form no longer requires a database name it offered no field for.</li>
+<li>Opening a table on Dameng, Oracle, BigQuery, Elasticsearch and etcd no longer puts up a Switch Failed alert. (#2262)</li>
+<li>Switching schema on Dameng, Oracle, BigQuery, Snowflake and Trino re-reads only the routines instead of the whole object list. (#2262)</li>
+<li>Open Quickly lists each schema once on Dameng, Oracle and BigQuery.</li>
+<li>The Settings window is titled after the pane you are on, and refuses to be resized smaller than a pane can draw.</li>
+<li>Redis Sentinel and Cluster connections show their nodes in the connection list instead of the word Redis alone.</li>
+<li>Redis Cluster routes `OBJECT`, `MEMORY`, `SORT`, `GEORADIUS`, `ZUNIONSTORE` and `ZINTERSTORE` to the right shard on Redis 6, where the fallback routing table disagreed with the server on 32 counts.</li>
+<li>Redis reports what the server actually answered instead of clearing a refused write from the grid.</li>
+<li>`SET key value KEEPTTL` keeps the expiry, and SET options TablePro does not model are sent to the server untouched.</li>
+<li>A Redis command whose reply timed out is re-sent only when it provably never reached the server.</li>
+<li>A Redis `SCAN` that returns an error reports it instead of showing an empty keyspace.</li>
+<li>Floating point values show the shortest digits that identify the stored number exactly, on MongoDB, Elasticsearch, ClickHouse, Snowflake, DynamoDB, Beancount and JSON import.</li>
+<li>A 32-bit float bound as a query parameter keeps its own precision, and a value that is not a real number binds as null.</li>
+<li>Editing a MongoDB row keeps each field's stored type, decimals and 64-bit integers included, at any nesting depth.</li>
+<li>MQL export writes very large and very small numbers as numbers instead of quoted strings.</li>
+<li>A nested value too long to show in full is no longer written back or exported as a fragment.</li>
+<li>Dameng results are complete instead of stopping at the server's first 32KB batch. (#2262)</li>
+<li>Dameng tables with a `CLOB` or `BLOB` column read the right columns, rows and values. (#2262)</li>
+<li>Creating a Dameng table works when it has an index or a column comment, and so does changing a column's name and type at once. (#2262)</li>
+<li>Column comments show up on Dameng tables in a schema not named after its owner. (#2262)</li>
+<li>Dameng connections recover after a query is stopped instead of failing every statement for up to 30 seconds. (#2262)</li>
+<li>Query Insights keeps each aggregate's query text and error inside the selected connection, source and date range. (#2268)</li>
+<li>A plugin's own connection fields reach the connection form, so Redis gets its Key Separator field and its ElastiCache IAM section. (#1021)</li>
+<li>A connection that lists its servers in a host list works over an SSH tunnel, MongoDB replica sets included.</li>
+<li>A rows-per-page value large enough to overflow no longer crashes TablePro.</li>
+<li>Changing rows-per-page on any page but the first no longer strands you on a mislabelled page.</li>
+<li>Rows past a driver's row-count estimate are reachable.</li>
+<li>All rows loads all of them instead of the estimated number.</li>
+<li>Turning a page while Count Exactly is running no longer leaves a spinner that never stops.</li>
+<li>A page number typed for one tab is no longer applied to another.</li>
+<li>A table shows the range it actually loaded rather than its estimate.</li>
+<li>A fresh query tab no longer shows a sliver of a status bar that jumps to full height on the first run.</li>
+<li>VoiceOver reads the applied filter count on the Filters button and skips the status bar's separator dots.</li>
+<li>JSON result mode shows the rows the grid is showing, in the same order, and resolves a selection to that same row. (#2251)</li>
+<li>Rows marked for deletion no longer appear in JSON result mode, and the count line says how many are held back. (#2251)</li>
+<li>Editing a cell in a result you clicked back to writes to that result's own table.</li>
+<li>A result whose table TablePro cannot identify no longer looks editable.</li>
+<li>Running several statements no longer carries the previous run's primary key over to the new table.</li>
+<li>Column details that arrive after a query land on the result that asked for them.</li>
+<li>Editing a field in the row inspector obeys the same rules as the grid.</li>
+<li>Rows loaded by Fetch All stay with the result they were loaded for.</li>
+<li>Switching between results asks before discarding unsaved edits.</li>
+<li>Every restored tab hides the columns you hid for its table, not just the tab that was in front.</li>
+<li>A query tab reopens with the caret where you left it, on every tab rather than the front one.</li>
+<li>Restored tabs keep their sort and page number, not just the tab that was in front.</li>
+<li>A restored tab reopens on the rows it was showing, because the page number is saved with its page size.</li>
+<li>Scrolling a result with hundreds of columns is no longer slow; only the columns near the viewport are built. (#1219)</li>
+<li>A column you hid keeps its place in the column order.</li>
+<li>A row you are inserting shows empty values in JSON mode instead of TablePro's internal marker.</li>
+<li>`Cmd+F` no longer opens a find bar in JSON result mode, where it could never match. (#2244)</li>
+<li>The Filters button and `Cmd+Option+F` open the filter panel in JSON result mode. (#2244)</li>
+<li>Add Row, Duplicate Row, Paste and Delete no longer collapse the JSON view to the row they touched. (#2244)</li>
+<li>The date picker on an empty date or timestamp cell starts at your own clock and writes your own time. (#2241)</li>
+<li>A time value carrying a UTC offset follows your chosen date format instead of showing as raw text. (#2241)</li>
+<li>Open in New Tab opens a second tab for a table that is already open. (#2235)</li>
+<li>Following a foreign key into a new tab no longer overwrites the filters on a tab already showing that table.</li>
+<li>Opening a table from the sidebar while the object list is still loading opens it.</li>
+<li>Opening a table from Favorites gives it a tab of its own.</li>
+<li>A Cloud SQL Auth Proxy or Cloudflare tunnel that fails to start reports the last thing it said.</li>
+<li>The Cloud SQL Auth Proxy and the Copilot language server are checked against their pinned version and digest on every start, and reinstalled when either no longer matches.</li>
+<li>Editing a connection keeps its favorite mark, its place in the list, and its always-allowed AI tools.</li>
+<li>MongoDB, Cassandra and Trino connections can name a database, keyspace or catalog in the connection form. (#2234)</li>
+<li>Sorting a column keeps working after you hide or show columns. (#2234)</li>
+<li>Hide All hides every column of a MongoDB collection, fields that appear only in later documents included. (#2234)</li>
+<li>Opening a `.sql` file that is already open shows its tab instead of replacing what you typed in it.</li>
+<li>A `.sql` tab reopened from Recently Closed knows it has unsaved edits.</li>
+<li>Table maintenance from the object browser runs against the database the table you picked lives in.</li>
+<li>A table that exists in two databases can be opened in both. (#2217)</li>
+<li>Server Dashboard, Users & Roles, Query Insights, ER Diagram and a linked SQL file select the tab they already opened. (#2217)</li>
+<li>The empty Favorites sidebar fits its width on macOS 15 instead of running past both edges.</li>
+<li>Table favorites and saved queries sync through iCloud; their record types had never been created in the schema.</li>
+<li>An SSH profile that uses a jump host syncs.</li>
+<li>A connection carries its favorite mark, every tag, and its AI rules and always-allowed tools to your other Macs.</li>
+<li>iOS: a connection's query timeout syncs instead of being dropped on upload.</li>
+<li>The inspector button stays at the right end of the toolbar when the inspector is open.</li>
+<li>The Tables and Favorites switch keeps following the sidebar after you open Customize Toolbar.</li>
+<li>Refresh, New Tab, Open Quickly, Export, Database, Results and Dashboard are dimmed in the toolbar's overflow menu when they cannot run.</li>
+<li>iOS: a value containing a backslash, a newline or a carriage return is stored as you typed it on PostgreSQL, Redshift, SQL Server, SQLite, DuckDB and Oracle.</li>
+<li>iOS: PostgreSQL sessions set `standard_conforming_strings` on.</li>
+<li>iOS: Add Row to Table and Add Rows to Table write to the database or schema you picked in Shortcuts.</li>
+<li>iOS: all three Shortcuts actions are found by searching TablePro, and are grouped under Database.</li>
+<li>`Cmd+W` closes the Settings and Integrations windows, the JSON and PHP viewers, the connection form and the column inspector.</li>
+<li>The File menu names the close command after what it will close.</li>
+<li>A JSON or PHP tree filter reveals nested matches, searches the whole of a long value, keeps rows expanded, and says when it finds nothing. (#2204)</li>
+<li>Copy Value on a JSON object or array copies that part of the document instead of a summary. (#2204)</li>
+<li>Closing a tab holding unsaved cell edits, `.sql` changes, staged structure changes or staged user and role changes asks before discarding them.</li>
+<li>A tab with unsaved cell edits shows the unsaved dot.</li>
+<li>Closing a tab no longer leaves its unsaved cell edits loaded behind it.</li>
+<li>A `.sql` file opened from a linked favorite can be opened again after its tab is closed.</li>
+<li>Staged structure changes and a table definition in progress survive switching tabs, and switching a table tab between Data and Structure.</li>
+<li>Timestamps written with a space before the offset, or with fractional seconds, follow your chosen date format.</li>
+<li>Switching connection no longer empties the SQL editor or kills its undo, highlighting, shortcuts and Vim mode. (#2236)</li>
+</ul>
+<h3>Security</h3>
+<ul>
+<li>A read-only MCP token can no longer run a statement that writes; an unrecognized statement is treated as a write, and statements that reach the filesystem or run a program are refused.</li>
+<li>Safe Mode confirms MCP writes instead of pre-clearing them.</li>
+<li>A token limited to some connections no longer sees the names, hosts, ports and usernames of the others.</li>
+<li>With authentication off, a local caller is read-only and cannot administer anything.</li>
+<li>The activity log records the calling token, stores statements as digests, is hash chained, and is no longer readable by other accounts on the Mac.</li>
+<li>Repeated bad tokens are rate limited, requests with no credentials included.</li>
+<li>A pairing link is verified and its destination shown before you approve it, a failed exchange burns its code, and approving no longer revokes an unrelated token of the same name.</li>
+<li>A malformed cancellation message no longer crashes the app.</li>
+<li>An MCP session identifier is no longer usable as a credential.</li>
+<li>Secrets belonging to separately distributed drivers are stored in the Keychain and stripped from exported connections. Existing values move to the Keychain on the next save.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.67.0/TablePro-0.67.0-x86_64.zip" length="25877204" type="application/octet-stream" sparkle:edSignature="GVJfDHqq9y/elXSgIM+qpeiO1ykGuP/v1mKGqf7kP+7EUPY+nD3S6Ssssuzg6U1nqrNOlap9kOEKujlY2T7sCA=="/>
+        </item>
+        <item>
             <title>0.66.0</title>
             <pubDate>Tue, 18 Aug 2026 18:46:16 +0000</pubDate>
             <sparkle:version>119</sparkle:version>

@@ -26,7 +26,7 @@ internal final class MCPServerManager {
         let expiresAt: Date
     }
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MCPServerManager")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MCPServerManager")
     private static let bridgeTokenLifetime: TimeInterval = 60 * 60
     private static let bridgeTokenRenewalLead: TimeInterval = 15 * 60
     private static let clientRefreshInterval: Duration = .seconds(5)
