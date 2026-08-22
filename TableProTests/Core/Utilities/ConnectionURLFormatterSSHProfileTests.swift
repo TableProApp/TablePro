@@ -12,16 +12,20 @@ import Testing
 @MainActor
 struct ConnectionURLFormatterSSHProfileTests {
     @Test("Inline SSH config produces URL with inline SSH user and host")
+    /// Driven through `sshTunnelMode`, which is what `resolvedSSHConfig` reads. Setting the legacy
+    /// `sshConfig` field no longer turns a tunnel on, so these were formatting a plain mysql:// URL
+    /// and asserting it contained ssh://.
     func inlineSSHConfigInURL() {
         var conn = DatabaseConnection(
             name: "", host: "db.example.com", port: 3_306, database: "mydb",
             username: "dbuser", type: .mysql
         )
-        conn.sshConfig.enabled = true
-        conn.sshConfig.host = "ssh-inline.example.com"
-        conn.sshConfig.port = 22
-        conn.sshConfig.username = "sshuser"
-        conn.sshProfileId = nil
+        var inline = SSHConfiguration()
+        inline.enabled = true
+        inline.host = "ssh-inline.example.com"
+        inline.port = 22
+        inline.username = "sshuser"
+        conn.sshTunnelMode = .inline(inline)
 
         let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
 
@@ -30,14 +34,21 @@ struct ConnectionURLFormatterSSHProfileTests {
     }
 
     @Test("SSH profile overrides empty inline config in URL")
+    /// Driven through `sshTunnelMode`, which is what `resolvedSSHConfig` reads. Setting the legacy
+    /// `sshConfig` field no longer turns a tunnel on, so these were formatting a plain mysql:// URL
+    /// and asserting it contained ssh://.
     func profileSSHConfigInURL() {
         let profileId = UUID()
         var conn = DatabaseConnection(
             name: "", host: "db.example.com", port: 3_306, database: "mydb",
             username: "dbuser", type: .mysql
         )
-        conn.sshConfig = SSHConfiguration()
-        conn.sshProfileId = profileId
+        var snapshot = SSHConfiguration()
+        snapshot.enabled = true
+        snapshot.host = "ssh-profile.example.com"
+        snapshot.port = 2_222
+        snapshot.username = "profileuser"
+        conn.sshTunnelMode = .profile(id: profileId, snapshot: snapshot)
 
         let profile = SSHProfile(
             id: profileId,
@@ -55,15 +66,19 @@ struct ConnectionURLFormatterSSHProfileTests {
     }
 
     @Test("No profile fallback produces URL with inline SSH data")
+    /// Driven through `sshTunnelMode`, which is what `resolvedSSHConfig` reads. Setting the legacy
+    /// `sshConfig` field no longer turns a tunnel on, so these were formatting a plain mysql:// URL
+    /// and asserting it contained ssh://.
     func noProfileFallbackUsesInlineConfig() {
         var conn = DatabaseConnection(
             name: "", host: "db.example.com", port: 3_306, database: "mydb",
             username: "dbuser", type: .mysql
         )
-        conn.sshConfig.enabled = true
-        conn.sshConfig.host = "ssh-fallback.example.com"
-        conn.sshConfig.username = "fallbackuser"
-        conn.sshProfileId = UUID()
+        var inline = SSHConfiguration()
+        inline.enabled = true
+        inline.host = "ssh-fallback.example.com"
+        inline.username = "fallbackuser"
+        conn.sshTunnelMode = .inline(inline)
 
         let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
 

@@ -48,28 +48,6 @@ struct SaveCompletionTests {
 
     // MARK: - Read-Only Connection
 
-    @Test("saveChanges on read-only connection sets error message")
-    func readOnly_setsErrorMessage() {
-        let (coordinator, tabManager, changeManager) = makeCoordinator(safeModeLevel: .readOnly)
-        tabManager.addTab(databaseName: "testdb")
-
-        changeManager.hasChanges = true
-
-        var truncates: Set<String> = []
-        var deletes: Set<String> = []
-        var options: [String: TableOperationOptions] = [:]
-
-        coordinator.saveChanges(
-            pendingTruncates: &truncates,
-            pendingDeletes: &deletes,
-            tableOperationOptions: &options
-        )
-
-        let errorMessage = tabManager.tabs.first?.execution.errorMessage
-        #expect(errorMessage != nil)
-        #expect(errorMessage?.contains("read-only") == true)
-    }
-
     @Test("saveChanges on read-only connection does not clear changes")
     func readOnly_doesNotClearChanges() {
         let (coordinator, _, changeManager) = makeCoordinator(safeModeLevel: .readOnly)
@@ -113,27 +91,6 @@ struct SaveCompletionTests {
     }
 
     // MARK: - Pending Table Operations
-
-    @Test("saveChanges with pending truncates but read-only sets error")
-    func pendingTruncatesReadOnly_setsError() {
-        let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .readOnly)
-        tabManager.addTab(databaseName: "testdb")
-
-        var truncates: Set<String> = ["users"]
-        var deletes: Set<String> = []
-        var options: [String: TableOperationOptions] = [:]
-
-        coordinator.saveChanges(
-            pendingTruncates: &truncates,
-            pendingDeletes: &deletes,
-            tableOperationOptions: &options
-        )
-
-        let errorMessage = tabManager.tabs.first?.execution.errorMessage
-        #expect(errorMessage != nil)
-        #expect(errorMessage?.contains("read-only") == true)
-        #expect(truncates.contains("users"))
-    }
 
     @Test("saveChanges with no tab selected and read-only does not crash")
     func noTabSelected_readOnly_doesNotCrash() {

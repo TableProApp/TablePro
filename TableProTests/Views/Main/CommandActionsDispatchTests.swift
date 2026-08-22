@@ -91,7 +91,7 @@ struct CommandActionsDispatchTests {
         #expect(tab?.content.query == "SELECT 2")
     }
 
-    @Test("insertQueryFromAI appends to existing query")
+    @Test("insertQueryFromAI leaves a tab the user has typed into alone")
     func insertQueryFromAI_appendsToExisting() {
         let (actions, coordinator) = makeSUT()
         coordinator.tabManager.addTab(databaseName: "testdb")
@@ -103,8 +103,22 @@ struct CommandActionsDispatchTests {
 
         actions.insertQueryFromAI("SELECT 2")
 
-        let tab = coordinator.tabManager.selectedTab
-        #expect(tab?.content.query == "SELECT 1\n\nSELECT 2")
+        /// Left alone. Appending was removed on purpose in #1257, and `aiInsertReusesSelectedQueryTab`
+        /// is true only for a query tab that is empty, so generated SQL takes over a blank tab and
+        /// otherwise opens its own. A tab the user has typed into is never rewritten, which is the
+        /// property worth holding; this case asserted the concatenation that fix removed.
+        #expect(coordinator.tabManager.selectedTab?.content.query == "SELECT 1")
+    }
+
+    @Test("insertQueryFromAI reuses the selected query tab when it is empty")
+    @MainActor
+    func insertQueryFromAI_reusesAnEmptyTab() {
+        let (actions, coordinator) = makeSUT()
+        coordinator.tabManager.addTab(databaseName: "testdb")
+
+        actions.insertQueryFromAI("SELECT 2")
+
+        #expect(coordinator.tabManager.selectedTab?.content.query == "SELECT 2")
     }
 
     // MARK: - copySelectedRows (structure mode)

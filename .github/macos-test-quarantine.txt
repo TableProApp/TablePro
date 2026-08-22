@@ -13,6 +13,14 @@
 # Burn this list down: fix a case, delete its line, and it rejoins the gate.
 
 # --- Asserts a fallback that no longer exists.
+#
+#     The one case left here is not a fallback problem. Comma-separated FROM is supported on
+#     purpose: SQLContextAnalyzer.fromListRegex captures the list and its comment says every listed
+#     table stays in scope for column completion. The provider also caps a result set at
+#     defaultMaxSuggestions, 20, and an unfiltered WHERE fills that with keywords before a column
+#     reaches it, so the case now asks for each column behind its own prefix and still fails. What
+#     is left to check is the test's own schema setup, MockDatabaseDriver through
+#     SQLSchemaProvider.loadSchema, not the analyzer.
 #     TableOperationSQLBuilder delegates every statement to the connected plugin adapter and returns
 #     nothing when there is none: `adapterProvider()?.foreignKeyDisableStatements() ?? []`. The
 #     built-in DatabaseType switches these expect were deleted, so the empty result is correct and
@@ -27,10 +35,12 @@
 #     the plain form for every engine. Asserted at the layer that owns them in
 #     TableProTests/Core/ClickHouse/ClickHouseDMLStatementTests.swift.
 SQLCompletionProviderTests/testCommaFromScopesColumnsToAllTables()
-SQLCompletionProviderTests/testMySQLProviderTypes()
-SQLCompletionProviderTests/testProviderAcceptsDatabaseType()
 
 # --- Needs a driver actually registered in the host.
+#     Confirmed: validateDriverDescriptor checks `driverPlugins[typeId] != nil`, and that table is
+#     filled when a plugin loads rather than when it is discovered. Calling PluginManager.loadPlugins()
+#     from the test does not fill it either, so the bundles do not register in the xctest host and
+#     the duplicate check has nothing to collide with. A stub registration seam is what these need.
 #     Both duplicate-ID checks report "an error was expected but none was thrown", which is what an
 #     empty registry produces: with nothing registered there is no duplicate to reject.
 ValidateDriverDescriptorTests/rejectsDuplicateAdditionalTypeId()
@@ -48,31 +58,49 @@ ValidateDriverDescriptorTests/rejectsDuplicatePrimaryTypeId()
 
 # --- Asserts a string the app no longer produces. The behaviour changed on purpose; the expected
 #     value did not follow.
-ConnectionURLFormatterSSHProfileTests/inlineSSHConfigInURL()
-ConnectionURLFormatterSSHProfileTests/noProfileFallbackUsesInlineConfig()
-ConnectionURLFormatterSSHProfileTests/profileSSHConfigInURL()
-DatabaseTypeCassandraTests/scylladbIconName()
+#
+#     The four that were here shared one shape with several other groups in this file: the test held
+#     a handle that used to steer the code and no longer does. The URL cases set sshConfig.enabled,
+#     but resolvedSSHConfig reads sshTunnelMode, so they formatted a plain mysql:// URL and asserted
+#     it contained ssh://. ScyllaDB stopped borrowing Cassandra's icon when it got its own registry
+#     entry and its own asset.
+#
+#     Two SaveCompletionTests read-only cases are gone as well. saveChanges carries no read-only
+#     guard, correctly: the block lives in DefaultExecutionGate, which denies a write with the
+#     "Safe Mode is set to read-only" reason, and the toolbar disables Save through
+#     MainWindowToolbar+Validation. ExecutionGateTests.readOnlyBlocksWrites already asserts it at
+#     that layer and is not quarantined.
+#
+#     The three left below fail for a different reason: saveChanges returns at
+#     `guard let scope = parent.selectedTabScope` long before it clears the inout parameters, so
+#     they need a connected scope the current harness does not build.
 SaveCompletionTests/alertLevel_pendingTruncates_clearsParams()
-SaveCompletionTests/pendingTruncatesReadOnly_setsError()
-SaveCompletionTests/readOnly_setsErrorMessage()
 SaveCompletionTests/safeModeLevel_pendingDeletes_clearsParams()
 SaveCompletionTests/silentLevel_pendingTruncates_clearsViaNormalPath()
 
-# --- Change-tracking semantics drifted: reloadVersion no longer increments where these expect it
-#     to, and undo restores a different working set. Needs deciding case by case whether the manager
-#     or the expectation is wrong.
-ChangeReapplyVersionTests/dataChangeManagerVersionIncrements()
-DataChangeManagerTests/reloadVersionIncrementsOnChange()
+# --- Undo grouping, not drift. The cases left here call undo directly after two or more
+#     operations, and NSUndoManager leaves groupsByEvent on, so those land in one group and a single
+#     undo reverts all of them. The app gets a run loop turn between user actions and a test does
+#     not. Neither RunLoop.current.run(until: Date()) nor a 20ms interval closes the group, so what
+#     these need is a seam on the manager rather than another run loop guess.
+#     Needs deciding case by case whether the manager or the expectation is wrong.
+#
+#     The four reloadVersion cases are gone. reloadVersion is the grid's "throw away what you are
+#     showing and fetch again" signal, and it increments on clearChanges, discardChanges and
+#     configureForTable but deliberately not on recording an edit, because a reload there would
+#     discard the edit the user just made. Each now pins that from both sides.
+#
+#     The three StructureChangeManagerUndoTests cases below are an undo-grouping artifact rather
+#     than drift: NSUndoManager leaves groupsByEvent on, so operations called without a run loop
+#     turn between them land in one group and one undo reverts them all. The app gets a turn
+#     between user actions and the test does not. Spinning the run loop with
+#     RunLoop.current.run(until: Date()) does not close the group, so a working fix needs either a
+#     real interval or a seam on the manager.
 DataChangeManagerExtendedTests/discardChangesPreservesUndoRedoUnlikeClearChanges()
 DataChangeManagerExtendedTests/insertThenEditThenUndoRevertsCell()
-DataChangeManagerExtendedTests/recordRowInsertionIncrementsReloadVersion()
-RowOperationsManagerTests/addNewRowIncrementsReloadVersion()
-RowOperationsManagerTests/addNewRowUsesNilForNoDefaults()
 StructureChangeManagerUndoTests/multipleUndos()
 StructureChangeManagerUndoTests/undoDeleteNewColumnReAdds()
 StructureChangeManagerUndoTests/undoTwoDeletesNoDuplicates()
-StructureGridDelegateAddRowTests/sqliteIndexes_deleteIsNoOp()
-StructureGridDelegateAddRowTests/sqliteIndexes_isNoOp()
 
 # --- Environment-coupled: reads the login keychain or an app installed on the machine.
 KeychainHelperTests/writeOverwritesExistingValue()
@@ -81,6 +109,3 @@ TablePlusImporterTests/testImportConnections_mapsDriverCorrectly()
 
 # --- Genuine behaviour difference, needs investigation.
 #     allMaxBytes: an all-0xFF prefix returns the replacement characters rather than "\0".
-ChatToolSpecCopilotTests/addsRequiredWhenMissing()
-CommandActionsDispatchTests/insertQueryFromAI_appendsToExisting()
-EtcdPrefixRangeEndTests/allMaxBytes()
