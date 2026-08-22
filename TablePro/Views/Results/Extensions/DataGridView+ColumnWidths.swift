@@ -77,8 +77,7 @@ extension TableViewCoordinator {
         tableRows: TableRows
     ) {
         guard widenAutomaticColumns(forPresentationChanges: changes, tableRows: tableRows) else { return }
-        columnPool.invalidateColumnWindow()
-        updateColumnWindow()
+        redrawVisibleCells()
     }
 
     private func widenAutomaticColumns(

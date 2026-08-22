@@ -33,21 +33,6 @@ final class DataGridCellRegistry {
             }
     }
 
-    func dequeueCell(in tableView: NSTableView) -> DataGridCellView {
-        if let reused = tableView.makeView(
-            withIdentifier: DataGridCellView.reuseIdentifier,
-            owner: nil
-        ) as? DataGridCellView {
-            reused.nullDisplayString = nullDisplayString
-            return reused
-        }
-
-        let cell = DataGridCellView(frame: .zero)
-        cell.identifier = DataGridCellView.reuseIdentifier
-        cell.accessoryDelegate = accessoryDelegate
-        cell.nullDisplayString = nullDisplayString
-        return cell
-    }
 
     func makeRowNumberCell(
         in tableView: NSTableView,

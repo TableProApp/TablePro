@@ -52,13 +52,15 @@ class CellOverlayBase: NSObject {
         self.columnIndex = columnIndex
         tableView.addSubview(container)
         self.container = container
-        underlyingCell(in: tableView, row: row, column: column)?.applyOverlayActive(true)
+        setOverlayCell(CellPosition(row: row, column: columnIndex), in: tableView)
         selectionOverlay(in: tableView)?.needsDisplay = true
         installDismissObservers()
     }
 
-    private func underlyingCell(in tableView: NSTableView, row: Int, column: Int) -> DataGridCellView? {
-        tableView.view(atColumn: column, row: row, makeIfNecessary: false) as? DataGridCellView
+    /// The cell under the overlay draws no text of its own behind it. A drawn cell has no view to
+    /// carry that, so the coordinator holds it and repaints the cell either side of the change.
+    private func setOverlayCell(_ position: CellPosition?, in tableView: NSTableView) {
+        (tableView as? KeyHandlingTableView)?.coordinator?.overlayCell = position
     }
 
     private func selectionOverlay(in tableView: NSTableView) -> GridSelectionOverlay? {
@@ -73,7 +75,7 @@ class CellOverlayBase: NSObject {
         guard let activeContainer = container else { return }
         removeDismissObservers()
         if let hostTableView {
-            underlyingCell(in: hostTableView, row: row, column: column)?.applyOverlayActive(false)
+            setOverlayCell(nil, in: hostTableView)
             selectionOverlay(in: hostTableView)?.needsDisplay = true
         }
         activeContainer.removeFromSuperview()
