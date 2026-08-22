@@ -4,7 +4,6 @@
 //
 
 import AppKit
-import CoreText
 
 @MainActor
 final class DataGridCellView: NSView {
@@ -32,90 +31,6 @@ final class DataGridCellView: NSView {
     private var onEmphasizedSelection: Bool = false
     private var hasOverlay: Bool = false
     private var findMatchTint: NSColor?
-
-    private var cachedLine: CTLine?
-
-    private enum AccessoryRole: Hashable {
-        case foreignKeyNormal
-        case foreignKeyEmphasized
-        case chevronNormal
-        case chevronEmphasized
-        case chevronDisabled
-
-        var symbolName: String {
-            switch self {
-            case .foreignKeyNormal, .foreignKeyEmphasized:
-                return "arrow.forward"
-            case .chevronNormal, .chevronEmphasized, .chevronDisabled:
-                return "chevron.up.chevron.down"
-            }
-        }
-
-        /// The bare arrow spends its whole point size on the arrow itself, where the circled variant
-        /// spent most of it on the ring, so 14 here would draw an arrow half again as large as the
-        /// one it replaced. 12 keeps the ink at 11 x 9 in the 16 x 16 accessory rect, close to the
-        /// dropdown chevron's weight and to the 13pt cell text.
-        var pointSize: CGFloat {
-            switch self {
-            case .foreignKeyNormal, .foreignKeyEmphasized:
-                return 12
-            case .chevronNormal, .chevronEmphasized, .chevronDisabled:
-                return 10
-            }
-        }
-
-        var color: NSColor {
-            switch self {
-            case .foreignKeyNormal, .chevronNormal:
-                return .secondaryLabelColor
-            case .foreignKeyEmphasized, .chevronEmphasized:
-                return .alternateSelectedControlTextColor
-            case .chevronDisabled:
-                return .tertiaryLabelColor
-            }
-        }
-    }
-
-    private struct AccessoryGlyphKey: Hashable {
-        let role: AccessoryRole
-        let appearance: NSAppearance.Name
-        let increasedContrast: Bool
-    }
-
-    private struct AccessoryGlyph {
-        let image: CGImage
-        let pointSize: NSSize
-    }
-
-    private static var accessoryGlyphs: [AccessoryGlyphKey: AccessoryGlyph] = [:]
-
-    /// Rasterizing resolves the dynamic symbol color, so a cached bitmap belongs to exactly one
-    /// appearance. Keying on the appearance is what keeps a dark window from being served the
-    /// light bitmap, and `NSAppearance.currentDrawing()` only reports the cell's own appearance
-    /// while AppKit is inside `draw(_:)`, `updateLayer` or `layout`.
-    private static func accessoryGlyph(for role: AccessoryRole) -> AccessoryGlyph? {
-        let key = AccessoryGlyphKey(
-            role: role,
-            appearance: NSAppearance.currentDrawing().name,
-            increasedContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-        )
-        if let cached = accessoryGlyphs[key] {
-            return cached
-        }
-        guard let glyph = makeAccessoryGlyph(role) else { return nil }
-        accessoryGlyphs[key] = glyph
-        return glyph
-    }
-
-    private static func makeAccessoryGlyph(_ role: AccessoryRole) -> AccessoryGlyph? {
-        let config = NSImage.SymbolConfiguration(pointSize: role.pointSize, weight: .regular)
-            .applying(.init(hierarchicalColor: role.color))
-        guard let image = NSImage(systemSymbolName: role.symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config) else { return nil }
-        var rect = CGRect(origin: .zero, size: image.size)
-        guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return nil }
-        return AccessoryGlyph(image: cgImage, pointSize: image.size)
-    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -187,7 +102,6 @@ final class DataGridCellView: NSView {
             displayText = nextDisplayText
             textFont = nextFont
             textColor = nextColor
-            cachedLine = nil
             needsRedraw = true
         }
 
@@ -218,7 +132,6 @@ final class DataGridCellView: NSView {
         let nextFindTint: NSColor? = state.isCurrentFindMatch ? palette.findMatchTint : nil
         if !colorsEqual(findMatchTint, nextFindTint) {
             findMatchTint = nextFindTint
-            cachedLine = nil
             needsRedraw = true
         }
 
@@ -268,7 +181,6 @@ final class DataGridCellView: NSView {
     func applyEmphasizedSelection(_ value: Bool) {
         guard onEmphasizedSelection != value else { return }
         onEmphasizedSelection = value
-        cachedLine = nil
         updateFocusPresentation()
     }
 
@@ -300,91 +212,45 @@ final class DataGridCellView: NSView {
         needsDisplay = true
     }
 
+    /// Drawn through the same renderer the row view uses, so a mounted cell and a drawn one cannot
+    /// diverge. AppKit still draws this view's focus ring, so the appearance's own ring stands down.
     override func draw(_ dirtyRect: NSRect) {
-        if let tint = findMatchTint {
-            tint.setFill()
-            bounds.fill()
-        } else if let tint = modifiedColumnTint, !onEmphasizedSelection {
-            tint.setFill()
-            bounds.fill()
-        }
-
-        let accessory = currentAccessory
-        let accessoryRect = accessory.frame(in: bounds)
-
-        NSGraphicsContext.current?.saveGraphicsState()
-        NSBezierPath(rect: bounds).addClip()
-        drawText(availableWidth: accessory.availableTextWidth(in: bounds))
-        drawAccessory(accessory, in: accessoryRect)
-        NSGraphicsContext.current?.restoreGraphicsState()
-
-        if isFocusedCell && onEmphasizedSelection && !hasOverlay {
-            drawFocusBorder()
-        }
+        var appearance = currentAppearance()
+        appearance = DataGridCellAppearance(
+            text: appearance.text,
+            font: appearance.font,
+            textColor: appearance.textColor,
+            backgroundTint: appearance.backgroundTint,
+            accessory: appearance.accessory,
+            accessoryRole: appearance.accessoryRole,
+            drawsFocusBorder: appearance.drawsFocusBorder,
+            drawsFocusRing: false
+        )
+        Self.renderer.draw(appearance, in: bounds)
     }
 
-    private func drawText(availableWidth: CGFloat) {
-        guard !displayText.isEmpty else { return }
-        guard availableWidth > 0 else { return }
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
+    private static let renderer = DataGridCellRenderer()
 
-        let fullLine = cachedCTLine()
-        let typographicWidth = CTLineGetTypographicBounds(fullLine, nil, nil, nil)
-        let ellipsisLine = makeEllipsisLine()
-        let ellipsisWidth = CTLineGetTypographicBounds(ellipsisLine, nil, nil, nil)
-        guard Double(availableWidth) >= ellipsisWidth else { return }
-
-        let lineToDraw: CTLine
-        if typographicWidth > Double(availableWidth) {
-            lineToDraw = CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsisLine) ?? ellipsisLine
-        } else {
-            lineToDraw = fullLine
-        }
-
-        let baselineY = (bounds.height - textFont.ascender + textFont.descender - textFont.leading) / 2 + textFont.ascender
-
-        context.saveGState()
-        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-        context.textPosition = CGPoint(x: DataGridMetrics.cellHorizontalInset, y: baselineY)
-        CTLineDraw(lineToDraw, context)
-        context.restoreGState()
+    private func currentAppearance() -> DataGridCellAppearance {
+        DataGridCellAppearance(
+            text: displayText,
+            font: textFont,
+            textColor: resolvedTextColor(),
+            backgroundTint: findMatchTint ?? (onEmphasizedSelection ? nil : modifiedColumnTint),
+            accessory: currentAccessory,
+            accessoryRole: DataGridCellAccessoryGlyph.Role(
+                accessory: currentAccessory,
+                isEmphasized: onEmphasizedSelection,
+                isDisabled: visualState.isDeleted
+            ),
+            drawsFocusBorder: isFocusedCell && onEmphasizedSelection && !hasOverlay,
+            drawsFocusRing: false
+        )
     }
 
     private func resolvedTextColor() -> NSColor {
         if findMatchTint != nil { return .black }
         return onEmphasizedSelection ? .alternateSelectedControlTextColor : textColor
-    }
-
-    private func cachedCTLine() -> CTLine {
-        if let cached = cachedLine { return cached }
-        let textNS = displayText as NSString
-        let truncated: String
-        if textNS.length > 300 {
-            truncated = textNS.substring(to: 300) + "\u{2026}"
-        } else {
-            truncated = displayText
-        }
-        let attr = NSAttributedString(
-            string: truncated,
-            attributes: [
-                .font: textFont,
-                .foregroundColor: resolvedTextColor()
-            ]
-        )
-        let line = CTLineCreateWithAttributedString(attr as CFAttributedString)
-        cachedLine = line
-        return line
-    }
-
-    private func makeEllipsisLine() -> CTLine {
-        let attr = NSAttributedString(
-            string: "\u{2026}",
-            attributes: [
-                .font: textFont,
-                .foregroundColor: resolvedTextColor()
-            ]
-        )
-        return CTLineCreateWithAttributedString(attr as CFAttributedString)
     }
 
     private var currentAccessory: DataGridCellAccessory {
@@ -393,59 +259,6 @@ final class DataGridCellView: NSView {
             isEditable: isEditableCell,
             rawValue: rawValue
         )
-    }
-
-    private func drawAccessory(_ accessory: DataGridCellAccessory, in rect: NSRect) {
-        guard !rect.isEmpty else { return }
-        let role: AccessoryRole
-        switch accessory {
-        case .foreignKey:
-            role = onEmphasizedSelection ? .foreignKeyEmphasized : .foreignKeyNormal
-        case .chevron:
-            if visualState.isDeleted {
-                role = .chevronDisabled
-            } else if onEmphasizedSelection {
-                role = .chevronEmphasized
-            } else {
-                role = .chevronNormal
-            }
-        case .none:
-            return
-        }
-        guard let glyph = Self.accessoryGlyph(for: role),
-              let context = NSGraphicsContext.current?.cgContext else { return }
-        let drawRect = Self.centeredGlyphRect(pointSize: glyph.pointSize, in: rect)
-        context.saveGState()
-        context.translateBy(x: drawRect.minX, y: drawRect.maxY)
-        context.scaleBy(x: 1, y: -1)
-        context.draw(glyph.image, in: CGRect(origin: .zero, size: drawRect.size))
-        context.restoreGState()
-    }
-
-    /// A symbol stretched to fill the accessory rect stops looking like a system symbol, so the
-    /// glyph draws at its own point size and the rect only ever clamps it. The clamp is one factor
-    /// across both axes, because clamping each axis on its own would distort the glyph exactly the
-    /// way filling the rect did. The origin rounds to whole points so a glyph narrower than its rect
-    /// by an odd number of points does not land on a half point and blur at 1x.
-    private static func centeredGlyphRect(pointSize: NSSize, in rect: NSRect) -> NSRect {
-        let scale = min(1, rect.width / pointSize.width, rect.height / pointSize.height)
-        let size = NSSize(
-            width: pointSize.width * scale,
-            height: pointSize.height * scale
-        )
-        return NSRect(
-            x: (rect.midX - size.width / 2).rounded(),
-            y: (rect.midY - size.height / 2).rounded(),
-            width: size.width,
-            height: size.height
-        )
-    }
-
-    private func drawFocusBorder() {
-        let path = NSBezierPath(rect: bounds.insetBy(dx: 1, dy: 1))
-        path.lineWidth = 2
-        NSColor.alternateSelectedControlTextColor.setStroke()
-        path.stroke()
     }
 
     override func mouseDown(with event: NSEvent) {
