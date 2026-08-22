@@ -117,32 +117,14 @@ extension TableViewCoordinator {
     }
 
     func handleOverlayTabNavigation(row: Int, column: Int, forward: Bool) {
-        guard let tableView = tableView else { return }
+        guard let tableView = tableView,
+              let target = tabNavigationTarget(from: (row, column), forward: forward, in: tableView)
+        else { return }
 
-        var nextColumn = forward ? column + 1 : column - 1
-        var nextRow = row
-
-        if forward {
-            if nextColumn >= tableView.numberOfColumns {
-                nextColumn = DataGridView.firstDataTableColumnIndex
-                nextRow += 1
-            }
-            if nextRow >= tableView.numberOfRows {
-                nextRow = tableView.numberOfRows - 1
-                nextColumn = tableView.numberOfColumns - 1
-            }
-        } else {
-            if !DataGridView.isDataTableColumn(nextColumn) {
-                nextColumn = tableView.numberOfColumns - 1
-                nextRow -= 1
-            }
-            if nextRow < 0 {
-                nextRow = 0
-                nextColumn = DataGridView.firstDataTableColumnIndex
-            }
-        }
-
+        let nextRow = target.row
+        let nextColumn = target.column
         tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
+        scrollColumnToVisible(tableColumnIndex: nextColumn)
 
         guard let nextColumnIndex = DataGridView.dataColumnIndex(
                 for: nextColumn,
@@ -160,5 +142,28 @@ extension TableViewCoordinator {
             columnIndex: nextColumnIndex,
             value: value
         )
+    }
+
+    /// Tab walks the presented columns and wraps onto the next row's first, Shift+Tab onto the
+    /// previous row's last. Both ends are resolved rather than assumed: the window's spacers and
+    /// the pool's surplus slots are attached columns too, so neither end of `tableColumns` holds a
+    /// data column and a fixed position lands on a spacer that swallows the keystroke.
+    private func tabNavigationTarget(
+        from cell: (row: Int, column: Int),
+        forward: Bool,
+        in tableView: NSTableView
+    ) -> (row: Int, column: Int)? {
+        if forward {
+            if let next = nextPresentedColumnIndex(after: cell.column) {
+                return (cell.row, next)
+            }
+            guard cell.row + 1 < tableView.numberOfRows, let first = firstPresentedColumnIndex() else { return nil }
+            return (cell.row + 1, first)
+        }
+        if let previous = previousPresentedColumnIndex(before: cell.column) {
+            return (cell.row, previous)
+        }
+        guard cell.row > 0, let last = lastPresentedColumnIndex() else { return nil }
+        return (cell.row - 1, last)
     }
 }

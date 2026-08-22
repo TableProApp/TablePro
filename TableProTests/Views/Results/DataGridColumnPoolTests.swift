@@ -15,8 +15,12 @@ struct DataGridColumnPoolTests {
     private func makeTableView() -> NSTableView {
         let tableView = NSTableView()
         // Mirrors DataGridView. The default style redistributes column widths on resize, which
-        // would silently rewrite the widths these tests assert on.
+        // would silently rewrite the widths these tests assert on, and the default style and
+        // intercell spacing put the columns at different document positions than the grid's, which
+        // is the geometry the window is resolved against.
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
+        tableView.style = .plain
+        tableView.intercellSpacing = NSSize(width: 1, height: 0)
         let rowNumberColumn = NSTableColumn(identifier: ColumnIdentitySchema.rowNumberIdentifier)
         rowNumberColumn.width = 40
         tableView.addTableColumn(rowNumberColumn)
@@ -808,5 +812,277 @@ struct DataGridColumnPoolTests {
 
         let hasSpacer = tableView.tableColumns.contains(where: { ColumnIdentitySchema.isSpacer($0.identifier) })
         #expect(!hasSpacer)
+    }
+
+    // MARK: - Window geometry while scrolling
+
+    private func scroll(_ scrollView: NSScrollView, to offsetX: CGFloat, tableView: NSTableView) {
+        scrollView.contentView.scroll(to: NSPoint(x: offsetX, y: scrollView.contentView.bounds.origin.y))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        tableView.layoutSubtreeIfNeeded()
+    }
+
+    private func documentWidth(of tableView: NSTableView) -> CGFloat {
+        tableView.layoutSubtreeIfNeeded()
+        return tableView.frame.width
+    }
+
+    /// How much of the viewport, past the row-number column, no mounted data column paints into.
+    ///
+    /// Measured through `rect(ofColumn:)`, which is `NSTableView`'s own answer for where a column
+    /// sits and is `NSZeroRect` for an unmounted one. Asking the resolver instead would only prove
+    /// the resolver agrees with itself, which is exactly how #2381 shipped.
+    private func unpaintedViewportWidth(in scrollView: NSScrollView, tableView: NSTableView) -> CGFloat {
+        let viewport = scrollView.contentView.bounds
+        let rowNumber = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
+        let contentStart = rowNumber >= 0
+            ? max(viewport.minX, tableView.rect(ofColumn: rowNumber).maxX)
+            : viewport.minX
+
+        var painted: CGFloat = 0
+        for column in dataColumns(in: tableView) where !column.isHidden {
+            let index = tableView.column(withIdentifier: column.identifier)
+            guard index >= 0 else { continue }
+            let rect = tableView.rect(ofColumn: index)
+            painted += max(0, min(rect.maxX, viewport.maxX) - max(rect.minX, contentStart))
+        }
+        return max(0, (viewport.maxX - contentStart) - painted)
+    }
+
+    private func mountedIdentifiers(in tableView: NSTableView) -> Set<NSUserInterfaceItemIdentifier> {
+        Set(dataColumns(in: tableView).filter { !$0.isHidden }.map(\.identifier))
+    }
+
+    private func scrollOffsets(in scrollView: NSScrollView, tableView: NSTableView) -> [CGFloat] {
+        let maximum = documentWidth(of: tableView) - scrollView.contentView.bounds.width
+        guard maximum > 0 else { return [0] }
+        let forward = Array(stride(from: 0, through: maximum, by: 150)) + [maximum]
+        return forward + forward.reversed()
+    }
+
+    /// The reported bug. The window is resolved against a model of the whole column run, so the
+    /// viewport has to be rebased into that model before it can pick a range. Counting the leading
+    /// spacer as chrome subtracted the columns it stands in for a second time, and the window
+    /// walked left while the reader scrolled right until it painted nothing at all.
+    @Test("The mounted columns cover the viewport at every horizontal scroll offset")
+    func windowCoversTheViewportWhileScrolling() {
+        let pool = DataGridColumnPool()
+        let (scrollView, tableView) = makeScrolledTableView(viewportWidth: 800)
+        reconcileWide(pool, tableView: tableView, count: 100)
+
+        var worstGap: CGFloat = 0
+        for offset in scrollOffsets(in: scrollView, tableView: tableView) {
+            scroll(scrollView, to: offset, tableView: tableView)
+            pool.applyColumnWindow(in: tableView)
+            tableView.layoutSubtreeIfNeeded()
+            worstGap = max(worstGap, unpaintedViewportWidth(in: scrollView, tableView: tableView))
+        }
+
+        #expect(worstGap == 0)
+    }
+
+    /// A window that alternates between two ranges re-mounts columns on every scroll event, which
+    /// is what the reader sees as flicker.
+    @Test("Resolving again at the same scroll offset settles rather than alternating")
+    func windowSettlesAtOneOffset() {
+        let pool = DataGridColumnPool()
+        let (scrollView, tableView) = makeScrolledTableView(viewportWidth: 800)
+        reconcileWide(pool, tableView: tableView, count: 100)
+
+        scroll(scrollView, to: documentWidth(of: tableView) / 2, tableView: tableView)
+        pool.applyColumnWindow(in: tableView)
+        tableView.layoutSubtreeIfNeeded()
+        let settled = mountedIdentifiers(in: tableView)
+
+        for _ in 0..<5 {
+            pool.applyColumnWindow(in: tableView)
+            tableView.layoutSubtreeIfNeeded()
+        }
+
+        #expect(mountedIdentifiers(in: tableView) == settled)
+    }
+
+    /// The spacers exist to keep the scroll extent, so no window position may change it.
+    @Test("The document keeps its width at every window position")
+    func documentWidthSurvivesEveryWindowPosition() {
+        let pool = DataGridColumnPool()
+        let (scrollView, tableView) = makeScrolledTableView(viewportWidth: 800)
+        reconcileWide(pool, tableView: tableView, count: 100)
+        let expected = documentWidth(of: tableView)
+
+        for offset in scrollOffsets(in: scrollView, tableView: tableView) {
+            scroll(scrollView, to: offset, tableView: tableView)
+            pool.applyColumnWindow(in: tableView)
+            #expect(documentWidth(of: tableView) == expected)
+        }
+    }
+
+    @Test("Scrolled to the end, the last column is mounted")
+    func lastColumnIsMountedAtTheEnd() throws {
+        let pool = DataGridColumnPool()
+        let (scrollView, tableView) = makeScrolledTableView(viewportWidth: 800)
+        reconcileWide(pool, tableView: tableView, count: 100)
+
+        scroll(
+            scrollView,
+            to: documentWidth(of: tableView) - scrollView.contentView.bounds.width,
+            tableView: tableView
+        )
+        pool.applyColumnWindow(in: tableView)
+
+        let last = try #require(dataColumns(in: tableView).last)
+        #expect(!last.isHidden)
+    }
+
+    // MARK: - Reaching a column the window left out
+
+    /// `rect(ofColumn:)` and `frameOfCell(atColumn:row:)` are both empty for an unmounted column,
+    /// so Find scrolled to the document origin instead of the match and the inline editor opened
+    /// nothing at all.
+    @Test("A column the window left out can be mounted on demand")
+    func mountColumnReachesAnUnmountedColumn() throws {
+        let pool = DataGridColumnPool()
+        let (scrollView, tableView) = makeScrolledTableView(viewportWidth: 800)
+        reconcileWide(pool, tableView: tableView, count: 100)
+        scroll(scrollView, to: 0, tableView: tableView)
+        pool.applyColumnWindow(in: tableView)
+
+        let last = try #require(dataColumns(in: tableView).last)
+        #expect(last.isHidden)
+
+        pool.mountColumn(last, in: tableView)
+        tableView.layoutSubtreeIfNeeded()
+
+        #expect(!last.isHidden)
+        #expect(tableView.rect(ofColumn: tableView.column(withIdentifier: last.identifier)).width > 0)
+    }
+
+    /// Stretching the window out to reach a far column mounts every column in between, which is the
+    /// cost the window exists to avoid: measured at 848ms and 3,081 cell views for one match 90
+    /// columns away, and 4.8s at 500 columns.
+    @Test("Mounting a far column does not mount everything in between")
+    func mountColumnStaysBounded() throws {
+        let pool = DataGridColumnPool()
+        let (scrollView, tableView) = makeScrolledTableView(viewportWidth: 800)
+        reconcileWide(pool, tableView: tableView, count: 100)
+        scroll(scrollView, to: 0, tableView: tableView)
+        pool.applyColumnWindow(in: tableView)
+        let mountedBefore = mountedIdentifiers(in: tableView).count
+
+        let last = try #require(dataColumns(in: tableView).last)
+        pool.mountColumn(last, in: tableView)
+        tableView.layoutSubtreeIfNeeded()
+
+        #expect(!last.isHidden)
+        #expect(mountedIdentifiers(in: tableView).count <= mountedBefore)
+    }
+
+    @Test("Mounting a far column keeps the document width")
+    func mountColumnKeepsTheDocumentWidth() throws {
+        let pool = DataGridColumnPool()
+        let (scrollView, tableView) = makeScrolledTableView(viewportWidth: 800)
+        reconcileWide(pool, tableView: tableView, count: 100)
+        scroll(scrollView, to: 0, tableView: tableView)
+        pool.applyColumnWindow(in: tableView)
+        let expected = documentWidth(of: tableView)
+
+        let last = try #require(dataColumns(in: tableView).last)
+        pool.mountColumn(last, in: tableView)
+
+        #expect(documentWidth(of: tableView) == expected)
+    }
+
+    @Test("A column the user hid is never mounted on demand")
+    func mountColumnRefusesAUserHiddenColumn() throws {
+        let pool = DataGridColumnPool()
+        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
+        reconcileWide(pool, tableView: tableView, count: 100, hidden: ["c99"])
+
+        let hidden = try #require(dataColumns(in: tableView).last)
+        pool.mountColumn(hidden, in: tableView)
+
+        #expect(hidden.isHidden)
+    }
+
+    // MARK: - Naming the ends of the data run
+
+    /// The window's spacers are attached columns too, and the leading one sits immediately before
+    /// the first data column, so a fixed position names a spacer rather than data.
+    @Test("The first and last presented columns are data columns, not spacers")
+    func presentedEndsSkipTheSpacers() throws {
+        let pool = DataGridColumnPool()
+        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
+        reconcileWide(pool, tableView: tableView, count: 100)
+
+        let first = try #require(pool.firstPresentedColumnIndex(in: tableView))
+        let last = try #require(pool.lastPresentedColumnIndex(in: tableView))
+
+        #expect(!ColumnIdentitySchema.isSpacer(tableView.tableColumns[first].identifier))
+        #expect(!ColumnIdentitySchema.isSpacer(tableView.tableColumns[last].identifier))
+        #expect(tableView.tableColumns[first].identifier == dataColumns(in: tableView).first?.identifier)
+        #expect(tableView.tableColumns[last].identifier == dataColumns(in: tableView).last?.identifier)
+    }
+
+    @Test("Walking forward and back from an end stays inside the data run")
+    func presentedNeighboursStayInsideTheDataRun() throws {
+        let pool = DataGridColumnPool()
+        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
+        reconcileWide(pool, tableView: tableView, count: 20)
+
+        let first = try #require(pool.firstPresentedColumnIndex(in: tableView))
+        let last = try #require(pool.lastPresentedColumnIndex(in: tableView))
+
+        #expect(pool.previousPresentedColumnIndex(before: first, in: tableView) == nil)
+        #expect(pool.nextPresentedColumnIndex(after: last, in: tableView) == nil)
+        #expect(pool.nextPresentedColumnIndex(after: first, in: tableView) != nil)
+        #expect(pool.previousPresentedColumnIndex(before: last, in: tableView) != nil)
+    }
+
+    /// The create-table grid opens with no columns at all, where every attached column is chrome.
+    @Test("A result with no columns presents no column at either end")
+    func emptyResultHasNoPresentedEnds() {
+        let pool = DataGridColumnPool()
+        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
+
+        reconcileWide(pool, tableView: tableView, count: 0)
+
+        #expect(pool.firstPresentedColumnIndex(in: tableView) == nil)
+        #expect(pool.lastPresentedColumnIndex(in: tableView) == nil)
+    }
+
+    @Test("A single-column result presents that column at both ends")
+    func singleColumnResultHasOneEnd() {
+        let pool = DataGridColumnPool()
+        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
+
+        reconcileWide(pool, tableView: tableView, count: 1)
+
+        #expect(pool.firstPresentedColumnIndex(in: tableView) == pool.lastPresentedColumnIndex(in: tableView))
+        #expect(pool.firstPresentedColumnIndex(in: tableView) != nil)
+    }
+
+    /// Size All Columns to Fit reaches the columns the window unmounted as well, so the spacers
+    /// stand in at the width those columns used to have and the document ends up short.
+    @Test("Resizing unmounted columns restores the full document width")
+    func widthChangeOutsideTheWindowRestoresDocumentWidth() {
+        let pool = DataGridColumnPool()
+        let (scrollView, tableView) = makeScrolledTableView(viewportWidth: 800)
+        reconcileWide(pool, tableView: tableView, count: 100)
+        scroll(scrollView, to: 0, tableView: tableView)
+        pool.applyColumnWindow(in: tableView)
+
+        for column in dataColumns(in: tableView) {
+            column.width = 300
+        }
+        pool.invalidateColumnWindow()
+        pool.applyColumnWindow(in: tableView)
+
+        let gap = tableView.intercellSpacing.width
+        let everyColumnSlot = dataColumns(in: tableView).reduce(0) { $0 + $1.width + gap }
+        let occupied = tableView.tableColumns
+            .filter { !$0.isHidden && $0.identifier != ColumnIdentitySchema.rowNumberIdentifier }
+            .reduce(0) { $0 + $1.width + gap }
+
+        #expect(occupied == everyColumnSlot)
     }
 }

@@ -462,7 +462,7 @@ class DataGridRowView: NSTableRowView {
     private func focusedDataColumnIndex(in coordinator: TableViewCoordinator) -> Int? {
         guard let tableView = coordinator.tableView as? KeyHandlingTableView,
               tableView.focusedRow == rowIndex,
-              DataGridView.isDataTableColumn(tableView.focusedColumn) else { return nil }
+              tableView.presentsDataColumn(at: tableView.focusedColumn) else { return nil }
         return DataGridView.dataColumnIndex(
             for: tableView.focusedColumn,
             in: tableView,

@@ -427,12 +427,6 @@ struct DataGridView: NSViewRepresentable {
         tableView.selectionOverlay = overlay
     }
 
-    static let firstDataTableColumnIndex: Int = 1
-
-    static func isDataTableColumn(_ tableColumnIndex: Int) -> Bool {
-        tableColumnIndex >= firstDataTableColumnIndex
-    }
-
     static func dataColumnIndex(
         for tableColumnIndex: Int,
         in tableView: NSTableView,

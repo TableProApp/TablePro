@@ -371,6 +371,11 @@ extension TableViewCoordinator {
                 fittedColumnCount: fittedColumns.count
             )
         }
+        // Sizing reaches the columns the window unmounted as well, and the spacers stand in for
+        // those at the width they had before, so the document is short by the whole delta until
+        // the window is resolved again.
+        columnPool.invalidateColumnWindow()
+        updateColumnWindow()
         scheduleLayoutPersist()
     }
 

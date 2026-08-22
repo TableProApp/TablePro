@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Flickering columns, blank columns, and an unpainted gap while scrolling a result with about 100 columns sideways. (#2381)
+- Find, arrow keys, and the inline editor unable to reach a column scrolled off the side of a wide result.
+- Return opening no editor on a row selected with the arrow keys.
+- Tab out of a row's last cell and Shift+Tab out of its first doing nothing.
+- Size All Columns to Fit leaving the far columns of a wide result unreachable.
+
 ## [0.67.1] - 2026-08-22
 
 ### Added

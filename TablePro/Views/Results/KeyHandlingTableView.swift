@@ -214,7 +214,7 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     private func clampDataColumn(_ value: Int, schema: ColumnIdentitySchema) -> Int {
-        let firstData = DataGridView.firstDataTableColumnIndex
+        let firstData = firstVisibleDataColumn()
         let candidate = value < firstData ? firstData : value
         guard candidate >= 0, candidate < numberOfColumns else { return -1 }
         return DataGridView.dataColumnIndex(for: candidate, in: self, schema: schema) ?? -1
@@ -258,7 +258,7 @@ final class KeyHandlingTableView: NSTableView {
     private func focusedDataCell() -> (row: Int, columnIndex: Int)? {
         guard selectedRowIndexes.count == 1,
               focusedRow >= 0,
-              DataGridView.isDataTableColumn(focusedColumn),
+              presentsDataColumn(at: focusedColumn),
               let schema = coordinator?.identitySchema,
               let dataColumn = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
             return nil
@@ -279,7 +279,7 @@ final class KeyHandlingTableView: NSTableView {
     /// requires a single selected row: a paste anchors on the focused cell alone.
     private func pasteAnchorCell() -> (row: Int, column: Int)? {
         guard focusedRow >= 0,
-              DataGridView.isDataTableColumn(focusedColumn),
+              presentsDataColumn(at: focusedColumn),
               let schema = coordinator?.identitySchema,
               let dataCol = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
             return nil
@@ -312,7 +312,7 @@ final class KeyHandlingTableView: NSTableView {
         case #selector(paste(_:)):
             return canPaste
         case #selector(insertNewline(_:)):
-            return selectedRow >= 0 && DataGridView.isDataTableColumn(focusedColumn)
+            return selectedRow >= 0 && presentsDataColumn(at: focusedColumn)
         case #selector(selectAll(_:)):
             return numberOfRows > 0
         default:
@@ -358,7 +358,7 @@ final class KeyHandlingTableView: NSTableView {
            !fkCombo.isCleared,
            fkCombo.matches(event),
            selectedRow >= 0,
-           DataGridView.isDataTableColumn(focusedColumn),
+           presentsDataColumn(at: focusedColumn),
            let schema = coordinator?.identitySchema,
            let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) {
             coordinator?.toggleForeignKeyPreview(
@@ -418,12 +418,16 @@ final class KeyHandlingTableView: NSTableView {
     @objc override func insertNewline(_ sender: Any?) {
         let row = selectedRow
         guard row >= 0,
-              DataGridView.isDataTableColumn(focusedColumn),
+              presentsDataColumn(at: focusedColumn),
               let schema = coordinator?.identitySchema,
               let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
               let coordinator else {
             return
         }
+        // The cell cursor can sit on a column the window left out, and a cell with no view behind
+        // it opens nothing at all. Reaching it first also puts it on screen, where the editor the
+        // keystroke is about to open belongs.
+        coordinator.scrollColumnToVisible(tableColumnIndex: focusedColumn)
         coordinator.handleCellInteraction(row: row, tableColumn: focusedColumn, columnIndex: columnIndex, tableView: self)
     }
 
@@ -445,64 +449,46 @@ final class KeyHandlingTableView: NSTableView {
         let target = focusedColumn < 0
             ? lastVisibleDataColumn()
             : previousVisibleDataColumn(before: focusedColumn)
-        guard DataGridView.isDataTableColumn(target) else { return }
+        guard presentsDataColumn(at: target) else { return }
         focusedColumn = target
         coordinator?.dismissFKPreviewOnColumnChange()
-        if currentRow >= 0 { scrollColumnToVisible(target) }
+        if currentRow >= 0 { coordinator?.scrollColumnToVisible(tableColumnIndex: target) }
     }
 
     private func handleRightArrow(currentRow: Int) {
-        let target = DataGridView.isDataTableColumn(focusedColumn)
+        let target = presentsDataColumn(at: focusedColumn)
             ? nextVisibleDataColumn(after: focusedColumn)
             : firstVisibleDataColumn()
-        guard DataGridView.isDataTableColumn(target) else { return }
+        guard presentsDataColumn(at: target) else { return }
         focusedColumn = target
         coordinator?.dismissFKPreviewOnColumnChange()
-        if currentRow >= 0 { scrollColumnToVisible(target) }
+        if currentRow >= 0 { coordinator?.scrollColumnToVisible(tableColumnIndex: target) }
     }
 
     private func firstVisibleDataColumn() -> Int {
-        for index in DataGridView.firstDataTableColumnIndex..<numberOfColumns where isVisibleDataColumn(at: index) {
-            return index
-        }
-        return -1
+        coordinator?.firstPresentedColumnIndex() ?? -1
     }
 
     private func lastVisibleDataColumn() -> Int {
-        for index in stride(
-            from: numberOfColumns - 1,
-            through: DataGridView.firstDataTableColumnIndex,
-            by: -1
-        ) where isVisibleDataColumn(at: index) {
-            return index
-        }
-        return -1
+        coordinator?.lastPresentedColumnIndex() ?? -1
     }
 
     private func nextVisibleDataColumn(after current: Int) -> Int {
-        guard current + 1 < numberOfColumns else { return -1 }
-        for index in (current + 1)..<numberOfColumns where isVisibleDataColumn(at: index) {
-            return index
-        }
-        return -1
+        coordinator?.nextPresentedColumnIndex(after: current) ?? -1
     }
 
     private func previousVisibleDataColumn(before current: Int) -> Int {
-        guard current > DataGridView.firstDataTableColumnIndex else { return -1 }
-        for index in stride(
-            from: current - 1,
-            through: DataGridView.firstDataTableColumnIndex,
-            by: -1
-        ) where isVisibleDataColumn(at: index) {
-            return index
-        }
-        return -1
+        coordinator?.previousPresentedColumnIndex(before: current) ?? -1
     }
 
-    private func isVisibleDataColumn(at index: Int) -> Bool {
+    /// Whether this position in `tableColumns` holds one of the columns the result presents.
+    ///
+    /// The row-number column and the window's two spacers are attached columns as well, and one
+    /// spacer sits immediately before the first data column, so no fixed position answers this.
+    func presentsDataColumn(at index: Int) -> Bool {
         guard index >= 0, index < numberOfColumns else { return false }
-        let column = tableColumns[index]
-        return coordinator?.presentsColumn(column) ?? !column.isHidden
+        guard let coordinator else { return !tableColumns[index].isHidden }
+        return coordinator.presentsColumn(atTableColumnIndex: index)
     }
 
     /// `NSResponder` declares these two but does not implement them, so calling `super` raises
@@ -516,7 +502,7 @@ final class KeyHandlingTableView: NSTableView {
     /// element itself stays the table: `NSTableView`'s own focused-element resolution already
     /// walks to the cell, and overriding it in Swift is not available on this type.
     internal func postCellCursorMoved() {
-        guard selectedRow >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
+        guard selectedRow >= 0, presentsDataColumn(at: focusedColumn) else { return }
         guard let cell = view(atColumn: focusedColumn, row: selectedRow, makeIfNecessary: false) else { return }
         NSAccessibility.post(element: cell, notification: .focusedUIElementChanged)
     }
@@ -551,7 +537,7 @@ final class KeyHandlingTableView: NSTableView {
 
     private func moveFocusToNextCell() -> Bool {
         let row = selectedRow
-        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return false }
+        guard row >= 0, presentsDataColumn(at: focusedColumn) else { return false }
 
         var nextColumn = nextVisibleDataColumn(after: focusedColumn)
         var nextRow = row
@@ -567,7 +553,7 @@ final class KeyHandlingTableView: NSTableView {
 
     private func moveFocusToPreviousCell() -> Bool {
         let row = selectedRow
-        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return false }
+        guard row >= 0, presentsDataColumn(at: focusedColumn) else { return false }
 
         var previousColumn = previousVisibleDataColumn(before: focusedColumn)
         var previousRow = row
@@ -586,7 +572,7 @@ final class KeyHandlingTableView: NSTableView {
         focusedRow = row
         focusedColumn = column
         scrollRowToVisible(row)
-        scrollColumnToVisible(column)
+        coordinator?.scrollColumnToVisible(tableColumnIndex: column)
         postCellCursorMoved()
     }
 

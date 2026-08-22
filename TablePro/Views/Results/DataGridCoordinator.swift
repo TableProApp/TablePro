@@ -132,6 +132,52 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         columnPool.presentsColumn(column)
     }
 
+    /// Whether this position in `tableColumns` holds one of the columns the result presents.
+    ///
+    /// The row-number column and the window's two spacers are attached columns as well, and one
+    /// spacer sits immediately before the first data column, so no fixed position answers this.
+    func presentsColumn(atTableColumnIndex index: Int) -> Bool {
+        guard let tableView else { return false }
+        return columnPool.presentsColumn(atTableColumnIndex: index, in: tableView)
+    }
+
+    func firstPresentedColumnIndex() -> Int? {
+        guard let tableView else { return nil }
+        return columnPool.firstPresentedColumnIndex(in: tableView)
+    }
+
+    func lastPresentedColumnIndex() -> Int? {
+        guard let tableView else { return nil }
+        return columnPool.lastPresentedColumnIndex(in: tableView)
+    }
+
+    func nextPresentedColumnIndex(after index: Int) -> Int? {
+        guard let tableView else { return nil }
+        return columnPool.nextPresentedColumnIndex(after: index, in: tableView)
+    }
+
+    func previousPresentedColumnIndex(before index: Int) -> Int? {
+        guard let tableView else { return nil }
+        return columnPool.previousPresentedColumnIndex(before: index, in: tableView)
+    }
+
+    /// The single way to reach a column, for Find, cell navigation and the inline editor alike.
+    ///
+    /// A column the window left out has no frame at all, so `scrollColumnToVisible` scrolls to the
+    /// document origin instead of the column and the editor's own empty-frame guard opens nothing.
+    /// Mounting first gives it one. Only a mount that had to widen the window drops it afterwards,
+    /// so stepping column by column keeps the resolver's hysteresis instead of re-windowing on
+    /// every keystroke.
+    func scrollColumnToVisible(tableColumnIndex index: Int) {
+        guard let tableView, index >= 0, index < tableView.numberOfColumns else { return }
+        let widened = columnPool.mountColumn(tableView.tableColumns[index], in: tableView)
+        tableView.scrollColumnToVisible(index)
+        if widened {
+            columnPool.invalidateColumnWindow()
+        }
+        updateColumnWindow()
+    }
+
     /// The columns the user is looking at, which is every presented column and not merely the
     /// mounted ones. Copy, find and size-all all read this, so narrowing it to the window would
     /// silently drop the columns off screen from a copied row or a search.
@@ -1080,9 +1126,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         guard let match, match.displayRow >= 0, match.displayRow < tableView.numberOfRows else { return }
         tableView.scrollRowToVisible(match.displayRow)
-        if let displayColumn = tableColumnIndex(for: match.columnIndex),
-           displayColumn < tableView.numberOfColumns {
-            tableView.scrollColumnToVisible(displayColumn)
+        if let displayColumn = tableColumnIndex(for: match.columnIndex) {
+            scrollColumnToVisible(tableColumnIndex: displayColumn)
         }
         tableView.selectRowIndexes(IndexSet(integer: match.displayRow), byExtendingSelection: false)
     }
@@ -1094,6 +1139,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard displayRow >= 0, displayRow < tableView.numberOfRows else { return }
         tableView.scrollRowToVisible(displayRow)
         tableView.selectRowIndexes(IndexSet(integer: displayRow), byExtendingSelection: false)
+        scrollColumnToVisible(tableColumnIndex: displayCol)
         beginCellEdit(row: displayRow, tableColumnIndex: displayCol)
     }
 

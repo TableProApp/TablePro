@@ -20,6 +20,41 @@ struct ColumnWindowResolverTests {
         return window.leadingWidth + mounted + window.trailingWidth
     }
 
+    @Test("A range that already covers the column needs no widening")
+    func containingIsNilWhenAlreadyMounted() {
+        #expect(ColumnWindowResolver.window(containing: 20, columnWidths: wide, current: 10..<40) == nil)
+    }
+
+    @Test("An out-of-bounds column widens nothing")
+    func containingIsNilOutOfBounds() {
+        #expect(ColumnWindowResolver.window(containing: 500, columnWidths: wide, current: nil) == nil)
+    }
+
+    /// Stretching the mounted range out to reach a far column would mount every column in between,
+    /// which is the cost the window exists to avoid. The caller scrolls in the same turn, so the
+    /// columns it leaves behind are never drawn again.
+    @Test("Reaching a far column mounts a window around it, not everything in between")
+    func containingRecentresRatherThanStretches() throws {
+        let window = try #require(
+            ColumnWindowResolver.window(containing: 400, columnWidths: wide, current: 0..<30)
+        )
+
+        #expect(window.range.contains(400))
+        #expect(window.range.count <= ColumnWindowResolver.overscan * 2 + 1)
+        #expect(totalWidth(window, widths: wide) == wide.reduce(0, +))
+    }
+
+    @Test("Reaching a column with no window yet mounts a window around it")
+    func containingFromNoWindow() throws {
+        let window = try #require(
+            ColumnWindowResolver.window(containing: 250, columnWidths: wide, current: nil)
+        )
+
+        #expect(window.range.contains(250))
+        #expect(window.range.count < 50)
+        #expect(totalWidth(window, widths: wide) == wide.reduce(0, +))
+    }
+
     @Test("No columns resolves to an empty window")
     func emptyColumns() {
         let window = ColumnWindowResolver.resolve(

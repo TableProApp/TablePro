@@ -154,9 +154,7 @@ final class DataGridColumnPool {
     /// Hiding the far ones is measurably close to free; the spacers keep the document width and
     /// therefore the scroll extent identical to mounting everything.
     func applyColumnWindow(in tableView: NSTableView) {
-        let candidates = tableView.tableColumns.filter {
-            activeIdentifiers.contains($0.identifier) && !userHiddenIdentifiers.contains($0.identifier)
-        }
+        let candidates = presentedColumns(in: tableView)
         guard !candidates.isEmpty else {
             hideSpacers()
             return
@@ -168,34 +166,104 @@ final class DataGridColumnPool {
             return
         }
 
-        // The document starts at the row-number column, but the resolver measures from the first
-        // data column, so the viewport has to be rebased before it can index into these widths.
-        let leadingChrome = tableView.tableColumns
-            .prefix { $0.identifier != candidates[0].identifier }
-            .filter { !$0.isHidden }
-            .reduce(0) { $0 + $1.width + tableView.intercellSpacing.width }
-
         // A mounted column contributes its width plus one intercell gap; a hidden one contributes
         // nothing. A spacer standing in for N columns has to carry their gaps too, or the document
         // ends up short and the last columns cannot be reached.
         let spacing = tableView.intercellSpacing.width
         let window = ColumnWindowResolver.resolve(
             columnWidths: candidates.map { $0.width + spacing },
-            viewportMinX: viewport.minX - leadingChrome,
+            viewportMinX: viewport.minX - leadingChromeWidth(in: tableView, before: candidates[0]),
             viewportWidth: viewport.width,
             current: windowedRange
         )
         guard window.range != windowedRange else { return }
-        windowedRange = window.range
+        mount(window, over: candidates, in: tableView)
+    }
 
+    /// Mounts a column the window left out, so anything that reads its frame gets a real rect.
+    ///
+    /// `rect(ofColumn:)` and `frameOfCell(atColumn:row:)` are both empty for a hidden column, so
+    /// `scrollColumnToVisible` scrolls to the document origin instead of the column, and the inline
+    /// editor's own empty-frame guard makes it open nothing at all (#2381).
+    /// - Returns: whether the window had to widen, so the caller can drop it and let the next
+    ///   resolve pick a tight one instead of leaving the widened range mounted.
+    @discardableResult
+    func mountColumn(_ column: NSTableColumn, in tableView: NSTableView) -> Bool {
+        guard presentsColumn(column) else { return false }
+        let candidates = presentedColumns(in: tableView)
+        guard let position = candidates.firstIndex(of: column) else { return false }
+
+        let spacing = tableView.intercellSpacing.width
+        guard let window = ColumnWindowResolver.window(
+            containing: position,
+            columnWidths: candidates.map { $0.width + spacing },
+            current: windowedRange
+        ) else { return false }
+        mount(window, over: candidates, in: tableView)
+        return true
+    }
+
+    /// The first and last columns the result presents, in display order. The pool owns these
+    /// because the spacers are attached columns too and one of them sits immediately before the
+    /// first data column, so no fixed position can name either end.
+    func firstPresentedColumnIndex(in tableView: NSTableView) -> Int? {
+        tableView.tableColumns.firstIndex { presentsColumn($0) }
+    }
+
+    func lastPresentedColumnIndex(in tableView: NSTableView) -> Int? {
+        tableView.tableColumns.lastIndex { presentsColumn($0) }
+    }
+
+    func nextPresentedColumnIndex(after index: Int, in tableView: NSTableView) -> Int? {
+        let start = max(0, index + 1)
+        guard start < tableView.tableColumns.count else { return nil }
+        return tableView.tableColumns[start...].firstIndex { presentsColumn($0) }
+    }
+
+    func previousPresentedColumnIndex(before index: Int, in tableView: NSTableView) -> Int? {
+        let end = min(max(0, index), tableView.tableColumns.count)
+        guard end > 0 else { return nil }
+        return tableView.tableColumns[..<end].lastIndex { presentsColumn($0) }
+    }
+
+    func presentsColumn(atTableColumnIndex index: Int, in tableView: NSTableView) -> Bool {
+        guard index >= 0, index < tableView.tableColumns.count else { return false }
+        return presentsColumn(tableView.tableColumns[index])
+    }
+
+    private func presentedColumns(in tableView: NSTableView) -> [NSTableColumn] {
+        tableView.tableColumns.filter { presentsColumn($0) }
+    }
+
+    private func mount(
+        _ window: ColumnWindowResolver.Window,
+        over candidates: [NSTableColumn],
+        in tableView: NSTableView
+    ) {
+        windowedRange = window.range
         for (index, column) in candidates.enumerated() {
             let mounted = window.range.contains(index)
             if column.isHidden == mounted {
                 column.isHidden = !mounted
             }
         }
+        let spacing = tableView.intercellSpacing.width
         applySpacer(leadingSpacer, width: spacerWidth(window.leadingWidth, spacing: spacing), in: tableView)
         applySpacer(trailingSpacer, width: spacerWidth(window.trailingWidth, spacing: spacing), in: tableView)
+    }
+
+    /// The document starts at the row-number column, but the resolver measures from the first data
+    /// column, so the viewport has to be rebased before it can index into those widths.
+    ///
+    /// Only chrome counts. The leading spacer sits ahead of the first data column and holds exactly
+    /// the width of the columns the window left out, which the resolver's own model already carries,
+    /// so counting it here subtracts that width twice and walks the window left while the reader
+    /// scrolls right, until it parks off screen and the grid paints nothing (#2381).
+    private func leadingChromeWidth(in tableView: NSTableView, before firstColumn: NSTableColumn) -> CGFloat {
+        tableView.tableColumns
+            .prefix { $0.identifier != firstColumn.identifier }
+            .filter { !$0.isHidden && !ColumnIdentitySchema.isSpacer($0.identifier) }
+            .reduce(0) { $0 + $1.width + tableView.intercellSpacing.width }
     }
 
     /// The resolver works in per-column slots that already include one gap each. A spacer is a

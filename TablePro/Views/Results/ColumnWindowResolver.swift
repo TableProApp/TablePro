@@ -68,6 +68,26 @@ internal enum ColumnWindowResolver {
         return window(for: desired, columnWidths: columnWidths)
     }
 
+    /// A window over `index`, for a caller that needs a column's frame before the viewport has
+    /// reached it.
+    ///
+    /// Re-centres rather than stretching the mounted range out to reach the target. Spanning from
+    /// the current range to a far column mounts every column in between, which is the whole cost
+    /// the window exists to avoid: measured at 848ms and 3,081 cell views for one Find match 90
+    /// columns away, and 4.8s at 500 columns. The caller scrolls in the same turn, so the columns
+    /// this drops were never drawn again anyway.
+    ///
+    /// - Returns: `nil` when the range already covers `index` and there is nothing to mount.
+    internal static func window(
+        containing index: Int,
+        columnWidths: [CGFloat],
+        current: Range<Int>?
+    ) -> Window? {
+        guard columnWidths.indices.contains(index) else { return nil }
+        if let current, current.contains(index) { return nil }
+        return window(for: padded(index..<(index + 1), count: columnWidths.count), columnWidths: columnWidths)
+    }
+
     /// The columns the viewport actually intersects. Always at least one column, so a viewport
     /// narrower than a single column still mounts the one under it.
     private static func visibleRange(
