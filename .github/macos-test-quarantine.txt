@@ -78,7 +78,11 @@ SaveCompletionTests/alertLevel_pendingTruncates_clearsParams()
 SaveCompletionTests/safeModeLevel_pendingDeletes_clearsParams()
 SaveCompletionTests/silentLevel_pendingTruncates_clearsViaNormalPath()
 
-# --- Change-tracking semantics drifted: undo restores a different working set than these expect.
+# --- Undo grouping, not drift. The cases left here call undo directly after two or more
+#     operations, and NSUndoManager leaves groupsByEvent on, so those land in one group and a single
+#     undo reverts all of them. The app gets a run loop turn between user actions and a test does
+#     not. Neither RunLoop.current.run(until: Date()) nor a 20ms interval closes the group, so what
+#     these need is a seam on the manager rather than another run loop guess.
 #     Needs deciding case by case whether the manager or the expectation is wrong.
 #
 #     The four reloadVersion cases are gone. reloadVersion is the grid's "throw away what you are
@@ -94,7 +98,6 @@ SaveCompletionTests/silentLevel_pendingTruncates_clearsViaNormalPath()
 #     real interval or a seam on the manager.
 DataChangeManagerExtendedTests/discardChangesPreservesUndoRedoUnlikeClearChanges()
 DataChangeManagerExtendedTests/insertThenEditThenUndoRevertsCell()
-RowOperationsManagerTests/addNewRowUsesNilForNoDefaults()
 StructureChangeManagerUndoTests/multipleUndos()
 StructureChangeManagerUndoTests/undoDeleteNewColumnReAdds()
 StructureChangeManagerUndoTests/undoTwoDeletesNoDuplicates()
@@ -106,6 +109,3 @@ TablePlusImporterTests/testImportConnections_mapsDriverCorrectly()
 
 # --- Genuine behaviour difference, needs investigation.
 #     allMaxBytes: an all-0xFF prefix returns the replacement characters rather than "\0".
-ChatToolSpecCopilotTests/addsRequiredWhenMissing()
-CommandActionsDispatchTests/insertQueryFromAI_appendsToExisting()
-EtcdPrefixRangeEndTests/allMaxBytes()

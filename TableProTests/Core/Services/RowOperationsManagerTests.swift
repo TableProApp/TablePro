@@ -128,9 +128,12 @@ struct RowOperationsManagerTests {
             tableRows: &tableRows
         )
 
+        /// `.null`, not a Swift nil. A column with no default gets an explicit SQL NULL, which is
+        /// what `addNewRow` appends; an absent value and a NULL are different things to the
+        /// statement generator, and only one of them round-trips to the server.
         #expect(result != nil)
-        #expect(result?.values[1] == nil)
-        #expect(result?.values[2] == nil)
+        #expect(result?.values[1] == .null)
+        #expect(result?.values[2] == .null)
     }
 
     @Test("addNewRow records insertion in change manager")
