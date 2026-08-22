@@ -166,6 +166,10 @@ This is not a convenience. A raw `xcodebuild` failure returns roughly 10,000 cha
 
 Non-obvious rules that decide whether the result means anything: run only the suites you touched and their neighbours, never the whole target; run the steps serially; and build the `plugins` aggregate yourself if the change touched a registry-only plugin, because PR CI never compiles those.
 
+**"The suites you touched" means the suites that own the types you changed, not the suites you edited.** Grep for the type before you pick the list: a shared model has tests you never opened. Editing `PersistedTab.init(from:)` broke `TabDiskStateDecodingTests`, a suite that exists to pin exactly the behaviour the edit changed, and the branch went green locally and red on CI. `grep -rl "TypeName" TableProTests` takes a second and names the suites that will judge you.
+
+**When CI fails and local passed, do not reach for the whole target.** A local full run of `TableProTests` reports around 60 failures that have nothing to do with the change: quarantined suites, locale, pasteboard, network and timer-dependent cases. Compare against a baseline instead. Read the CI log for the count of real failures, then run the suspect suites on a worktree at the merge base; a suite that fails in both is not yours.
+
 Where the fix rests on how a dependency behaves, finish with the before-and-after probe from "Measure, do not assume". A probe that reproduces the bug on the old path and shows every case correct on the new one is the strongest evidence a PR can carry.
 
 UI tests have their own trap list, including an accessibility tree that differs between this machine and the CI runner, and a SwiftUI container identifier that silently erases every child's. Read `references/verification.md` before writing one.
