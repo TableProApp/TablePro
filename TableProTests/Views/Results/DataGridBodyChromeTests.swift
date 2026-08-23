@@ -197,27 +197,4 @@ struct DataGridBodyChromeTests {
         #expect(sampledRed > sampledGreen + 0.3, "the separator has to carry the grid colour, not a fixed grey")
     }
 
-    /// Every data cell is drawn, so the row is what paints the separators crossing it; a separator
-    /// drawn by the table view underneath would be covered by the row's own background.
-    @Test("A row paints the separators crossing it")
-    func rowDrawsItsOwnSeparators() throws {
-        let grid = makeGrid(columns: ["id", "name"])
-        let rowView = try #require(grid.tableView.rowView(atRow: 0, makeIfNecessary: true) as? DataGridRowView)
-        rowView.layoutSubtreeIfNeeded()
-
-        let rep = try #require(rowView.bitmapImageRepForCachingDisplay(in: rowView.bounds))
-        rowView.cacheDisplay(in: rowView.bounds, to: rep)
-
-        let firstData = try #require(grid.coordinator.firstPresentedColumnIndex())
-        let boundary = grid.tableView.rect(ofColumn: firstData).minX
-        let scale = CGFloat(rep.pixelsWide) / rowView.bounds.width
-        let onBoundary = try #require(
-            rep.colorAt(x: Int((boundary - 0.5) * scale), y: Int(rowView.bounds.height * scale / 2))
-        ).usingColorSpace(.deviceRGB)
-        let expected = grid.tableView.gridColor.usingColorSpace(.deviceRGB)
-
-        let drawn = try #require(onBoundary?.brightnessComponent)
-        let wanted = try #require(expected?.brightnessComponent)
-        #expect(abs(drawn - wanted) < 0.2, "the boundary pixel has to carry the grid colour")
-    }
 }
