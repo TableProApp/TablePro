@@ -16,7 +16,7 @@
 import Foundation
 import TableProPluginKit
 
-internal struct DataRow: Hashable {
+internal struct DataRow: Hashable, Sendable {
     internal let values: [String: PluginCellValue]
 
     internal func value(for column: String) -> PluginCellValue {
@@ -38,14 +38,14 @@ internal enum RowDiffKind: String, Codable, Hashable, Sendable {
     case identical
 }
 
-internal struct CellDifference: Hashable {
+internal struct CellDifference: Hashable, Sendable {
     internal let column: String
     internal let rule: ComparisonRule
     internal let sourceValue: PluginCellValue
     internal let targetValue: PluginCellValue
 }
 
-internal struct RowDiffEntry: Identifiable, Hashable {
+internal struct RowDiffEntry: Identifiable, Hashable, Sendable {
     internal let id: UUID
     internal let kind: RowDiffKind
     internal let keyDescription: String
@@ -70,7 +70,7 @@ internal struct RowDiffEntry: Identifiable, Hashable {
     }
 }
 
-internal struct DataDiffSummary {
+internal struct DataDiffSummary: Hashable, Sendable {
     internal let insertCount: Int
     internal let updateCount: Int
     internal let deleteCount: Int
@@ -111,18 +111,27 @@ internal struct DataDiffEngine {
     private let comparisonColumns: [String]
     private let ordering: KeyOrdering
 
-    internal init(options: DataCompareOptions, columns: [String], columnTypes: [String: String] = [:]) {
+    internal init(
+        options: DataCompareOptions,
+        columns: [String],
+        keyDescriptors: [KeyColumnDescriptor] = []
+    ) {
         self.options = options
         self.comparator = CellValueComparator(options: options)
         self.comparisonColumns = options.comparisonColumns(from: columns)
         self.ordering = KeyOrdering(
-            orders: KeyOrdering.orders(for: options.keyColumns, columnTypes: columnTypes)
+            orders: KeyOrdering.orders(for: options.keyColumns, descriptors: keyDescriptors)
         )
     }
 
+    /// `onEntry` sees every entry the walk produces, before the accumulator's retention cap.
+    /// Script generation runs the walk a second time with a sink rather than reading the capped
+    /// entry list, because that list is a preview: building the script from it emitted 5,000
+    /// statements for a 12,000-row difference and reported success.
     internal func compare(
         source: DataRowProviding,
-        target: DataRowProviding
+        target: DataRowProviding,
+        onEntry: ((RowDiffEntry) throws -> Void)? = nil
     ) async throws -> DataDiffSummary {
         guard options.hasKey else {
             throw CompareSyncError.noComparisonKey(String(localized: "Choose a key column before comparing data."))
@@ -139,30 +148,35 @@ internal struct DataDiffEngine {
         var left = try await sourceReader.next(&accumulator)
         var right = try await targetReader.next(&accumulator)
 
+        func record(_ entry: RowDiffEntry) throws {
+            accumulator.add(entry)
+            try onEntry?(entry)
+        }
+
         while left != nil || right != nil {
             try Task.checkCancellation()
 
             guard let sourceEntry = left else {
-                accumulator.add(deleteEntry(for: right))
+                try record(deleteEntry(for: right))
                 right = try await targetReader.next(&accumulator)
                 continue
             }
             guard let targetEntry = right else {
-                accumulator.add(insertEntry(for: sourceEntry))
+                try record(insertEntry(for: sourceEntry))
                 left = try await sourceReader.next(&accumulator)
                 continue
             }
 
             switch ordering.compare(sourceEntry.key, targetEntry.key) {
             case .orderedSame:
-                accumulator.add(matchedEntry(source: sourceEntry, target: targetEntry))
+                try record(matchedEntry(source: sourceEntry, target: targetEntry))
                 left = try await sourceReader.next(&accumulator)
                 right = try await targetReader.next(&accumulator)
             case .orderedAscending:
-                accumulator.add(insertEntry(for: sourceEntry))
+                try record(insertEntry(for: sourceEntry))
                 left = try await sourceReader.next(&accumulator)
             case .orderedDescending:
-                accumulator.add(deleteEntry(for: targetEntry))
+                try record(deleteEntry(for: targetEntry))
                 right = try await targetReader.next(&accumulator)
             }
         }
@@ -287,8 +301,11 @@ private final class KeyedRowReader {
         return nil
     }
 
+    /// Runs for every order kind, not just text. A numeric key that will not parse falls back to
+    /// byte order, and a collation this build does not recognise stays byte-ordered, so the check
+    /// is the only thing standing between a disagreeing server order and a wrong diff.
     private func checkOrder(of key: [PluginCellValue]) throws {
-        guard ordering.requiresStreamOrderCheck, let previousKey else { return }
+        guard let previousKey else { return }
         guard ordering.compare(previousKey, key) == .orderedDescending else { return }
         let explanation = String(
             localized: "The %1$@ sorted rows differently than the comparison expects, near key %2$@. Pick a numeric key, or one that sorts by byte value."

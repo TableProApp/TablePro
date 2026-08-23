@@ -60,17 +60,18 @@ internal struct SchemaSyncScriptBuilder {
         for operation in operations {
             byIdentifier[operation.tableIdentifier, default: []].append(operation)
         }
-        let ordered = ForeignKeyTopologicalSort.orderedNames(
-            operations.map { $0.tableIdentifier },
-            foreignKeysByTable: foreignKeysByTable
+        let ordered = ForeignKeyTopologicalSort.ordered(
+            operations.map { ForeignKeyTopologicalSort.Table(name: $0.tableName, schema: $0.schema) },
+            foreignKeysByTable: foreignKeysByTable,
+            childrenFirst: childrenFirst
         )
         var emitted: Set<String> = []
         var resolved: [SchemaSyncOperation] = []
-        for identifier in ordered where !emitted.contains(identifier) {
-            emitted.insert(identifier)
-            resolved.append(contentsOf: byIdentifier[identifier] ?? [])
+        for node in ordered where !emitted.contains(node.identifier) {
+            emitted.insert(node.identifier)
+            resolved.append(contentsOf: byIdentifier[node.identifier] ?? [])
         }
-        return childrenFirst ? resolved.reversed() : resolved
+        return resolved
     }
 
     private func build(operation: SchemaSyncOperation) throws -> [SyncStatement] {

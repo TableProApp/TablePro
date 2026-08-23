@@ -35,8 +35,14 @@ internal struct CompareSyncExecutionSettings {
         return allowedHazardStatementIds.contains(statement.id)
     }
 
-    internal func usesTransaction(supportsTransactions: Bool) -> Bool {
-        wrapInTransaction && supportsTransactions && errorHandling != .skipAndContinue
+    /// A structure sync asks a different question from a data sync. Every engine here supports a
+    /// transaction over DML, but MySQL, MariaDB and Oracle commit implicitly on every DDL
+    /// statement, so wrapping a structure script in one produces a ROLLBACK that undoes nothing
+    /// while the run reports "The target is unchanged." `supportsTransactionalDDL` is the flag
+    /// that distinguishes them, and the driver already publishes it.
+    internal func usesTransaction(for mode: CompareSyncMode, driver: any PluginDatabaseDriver) -> Bool {
+        let supported = mode == .structure ? driver.supportsTransactionalDDL : driver.supportsTransactions
+        return wrapInTransaction && supported && errorHandling != .skipAndContinue
     }
 }
 
@@ -106,7 +112,7 @@ internal actor CompareSyncExecutor {
             capabilities: [.mayWrite, .mayRunDestructive, .mayRunMultiStatement, .confirmationPreCleared],
             operationDescription: String(
                 format: String(localized: "Apply %@ sync to %@"),
-                mode.displayName, target.displayName
+                mode.displayName, target.qualifiedDescription
             )
         )
 
@@ -124,6 +130,7 @@ internal actor CompareSyncExecutor {
             try await self.run(
                 runnable: runnable,
                 heldBack: heldBack,
+                mode: mode,
                 settings: settings,
                 driver: driver,
                 progress: progress
@@ -134,11 +141,12 @@ internal actor CompareSyncExecutor {
     private func run(
         runnable: [SyncStatement],
         heldBack: [SyncStatement],
+        mode: CompareSyncMode,
         settings: CompareSyncExecutionSettings,
         driver: any PluginDatabaseDriver,
         progress: Progress
     ) async throws -> CompareSyncRunResult {
-        let usesTransaction = settings.usesTransaction(supportsTransactions: driver.supportsTransactions)
+        let usesTransaction = settings.usesTransaction(for: mode, driver: driver)
         if usesTransaction {
             try await driver.beginTransaction()
         }

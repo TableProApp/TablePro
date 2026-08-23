@@ -24,6 +24,8 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .cancelQuery,
             .batchExecute,
             .materializedViews,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 

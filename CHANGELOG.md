@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Compare & Sync for structure or data between two connections, with an editable script. Starter license. (#721)
+- Compare & Sync between two databases, comparing tables, views, procedures, functions and triggers, or row data. Starter license. (#721)
 - Triggers as a sidebar section, listed per database and schema alongside Procedures and Functions. (#2383)
 - Read-only source viewer for procedures, functions and triggers, with Copy, Export and Open in Editor. (#2383)
 - Procedures, functions and triggers on MSSQL, Oracle, SQLite, ClickHouse, DuckDB, Snowflake, BigQuery, Cassandra, LibSQL, Cloudflare D1, Teradata and Dameng. (#2383)
@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Duplicate routine rows in the flat sidebar taking the selection back to the first of them. (#2383)
 - MySQL triggers losing their definer, `WHEN` clause and ordering in the Structure tab.
 - Oracle triggers showing a header with no body in the Structure tab.
+- Crash exporting two same-named tables from different schemas to SQL. (#1968)
+- SQL export writing one schema's rows into another schema's table of the same name. (#1968)
+- SQL export leaving out columns and foreign keys for every schema after the first. (#1968)
 
 ## [0.67.1] - 2026-08-22
 

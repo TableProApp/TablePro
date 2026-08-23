@@ -33,7 +33,7 @@ internal struct StructureDefinitionDiffView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 140)
+                .fixedSize()
             }
             .padding(.bottom, 6)
 
@@ -128,9 +128,9 @@ internal struct StructureDefinitionDiffView: View {
         guard !isEmpty else { return Color.secondary.opacity(0.05) }
         switch kind {
         case .unchanged: return .clear
-        case .changed: return Color.orange.opacity(0.12)
-        case .added: return isBefore ? .clear : Color.green.opacity(0.12)
-        case .removed: return isBefore ? Color.red.opacity(0.12) : .clear
+        case .changed: return CompareStatusStyle.rowTint(for: .update)
+        case .added: return isBefore ? .clear : CompareStatusStyle.rowTint(for: .insert)
+        case .removed: return isBefore ? CompareStatusStyle.rowTint(for: .delete) : .clear
         }
     }
 
@@ -138,8 +138,8 @@ internal struct StructureDefinitionDiffView: View {
         guard !differentiateWithoutColor else { return .clear }
         switch kind {
         case .context: return .clear
-        case .added: return Color.green.opacity(0.12)
-        case .removed: return Color.red.opacity(0.12)
+        case .added: return CompareStatusStyle.rowTint(for: .insert)
+        case .removed: return CompareStatusStyle.rowTint(for: .delete)
         }
     }
 }

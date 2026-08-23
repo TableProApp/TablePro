@@ -11,7 +11,7 @@ import XCTest
 
 final class KeyOrderingPolicyTests: XCTestCase {
     private func numeric() -> KeyOrdering { KeyOrdering(orders: [.numeric]) }
-    private func text() -> KeyOrdering { KeyOrdering(orders: [.binaryText]) }
+    private func text() -> KeyOrdering { KeyOrdering(orders: [.caseSensitiveText]) }
 
     func testNumericKeysOrderNumerically() {
         XCTAssertEqual(numeric().compare([.text("9")], [.text("10")]), .orderedAscending)
@@ -45,7 +45,7 @@ final class KeyOrderingPolicyTests: XCTestCase {
     }
 
     func testCompositeKeyFallsThroughToSecondColumn() {
-        let ordering = KeyOrdering(orders: [.binaryText, .numeric])
+        let ordering = KeyOrdering(orders: [.caseSensitiveText, .numeric])
 
         XCTAssertEqual(
             ordering.compare([.text("a"), .text("2")], [.text("a"), .text("10")]),
@@ -70,24 +70,76 @@ final class KeyOrderingPolicyTests: XCTestCase {
     func testOrdersDerivedFromDeclaredColumnTypes() {
         let orders = KeyOrdering.orders(
             for: ["id", "name"],
-            columnTypes: ["id": "bigint", "name": "varchar(50)"]
+            descriptors: [
+                KeyColumnDescriptor(name: "id", dataType: "bigint"),
+                KeyColumnDescriptor(name: "name", dataType: "varchar(50)")
+            ]
         )
 
-        XCTAssertEqual(orders, [.numeric, .binaryText])
+        XCTAssertEqual(orders, [.numeric, .caseSensitiveText])
     }
 
-    func testUnknownColumnTypeFallsBackToBinaryText() {
-        XCTAssertEqual(KeyOrdering.orders(for: ["mystery"], columnTypes: [:]), [.binaryText])
+    func testUnknownColumnTypeFallsBackToCaseSensitiveText() {
+        XCTAssertEqual(KeyOrdering.orders(for: ["mystery"], descriptors: []), [.caseSensitiveText])
     }
 
-    // MARK: - Stream order check
+    // MARK: - Exact numeric ordering
 
-    func testNumericOnlyKeysNeedNoStreamCheck() {
-        XCTAssertFalse(KeyOrdering(orders: [.numeric]).requiresStreamOrderCheck)
+    /// Going through Double collapsed every pair of integers sharing the first 53 bits, so two
+    /// Snowflake ids one apart matched as the same row and the engine emitted an UPDATE that
+    /// overwrote a different row.
+    func testTwoBigIntegersAboveTwoToTheFiftyThreeAreNotEqual() {
+        let ordering = numeric()
+        let lower: [PluginCellValue] = [.text("1234567890123456789")]
+        let higher: [PluginCellValue] = [.text("1234567890123456790")]
+
+        XCTAssertEqual(ordering.compare(lower, higher), .orderedAscending)
+        XCTAssertEqual(ordering.compare(higher, lower), .orderedDescending)
+        XCTAssertEqual(ordering.compare(lower, lower), .orderedSame)
     }
 
-    func testTextKeysRequireStreamCheck() {
-        XCTAssertTrue(KeyOrdering(orders: [.numeric, .binaryText]).requiresStreamOrderCheck)
+    func testNumericOrderingIsNotLexicographic() {
+        XCTAssertEqual(numeric().compare([.text("9")], [.text("10")]), .orderedAscending)
+    }
+
+    /// An unparsable numeric key used to collapse onto a shared zero, which made every one of them
+    /// compare equal to every other.
+    func testUnparsableNumericKeysStayDistinct() {
+        XCTAssertNotEqual(numeric().compare([.text("n/a")], [.text("unknown")]), .orderedSame)
+    }
+
+    // MARK: - Collation
+
+    func testCaseInsensitiveCollationIsDetectedPerEngine() {
+        for collation in ["utf8mb4_general_ci", "NOCASE", "SQL_Latin1_General_CP1_CI_AS"] {
+            XCTAssertTrue(KeyOrdering.isCaseInsensitive(collation), "\(collation) is case-insensitive")
+        }
+        for collation in ["utf8mb4_bin", "SQL_Latin1_General_CP1_CS_AS", "C", nil] {
+            XCTAssertFalse(KeyOrdering.isCaseInsensitive(collation), "\(collation ?? "nil") is case-sensitive")
+        }
+    }
+
+    /// The server's own key constraint treats these as one row, so a byte comparator reported an
+    /// orphan insert for a row the target already had.
+    func testCaseInsensitiveKeyMatchesRegardlessOfCase() {
+        let ordering = KeyOrdering(orders: [.caseInsensitiveText])
+
+        XCTAssertEqual(ordering.compare([.text("Alice")], [.text("ALICE")]), .orderedSame)
+        XCTAssertEqual(KeyOrdering(orders: [.caseSensitiveText]).compare(
+            [.text("Alice")], [.text("ALICE")]
+        ), .orderedDescending)
+    }
+
+    func testCollationDecidesTheTextOrder() {
+        let orders = KeyOrdering.orders(
+            for: ["name", "code"],
+            descriptors: [
+                KeyColumnDescriptor(name: "name", dataType: "varchar(50)", collation: "utf8mb4_general_ci"),
+                KeyColumnDescriptor(name: "code", dataType: "varchar(50)", collation: "utf8mb4_bin")
+            ]
+        )
+
+        XCTAssertEqual(orders, [.caseInsensitiveText, .caseSensitiveText])
     }
 
     // MARK: - NULL keys
@@ -109,7 +161,9 @@ final class DataDiffOrderingSafetyTests: XCTestCase {
         return DataDiffEngine(
             options: options,
             columns: ["id", "name"],
-            columnTypes: ["id": numericKey ? "int" : "varchar(20)"]
+            keyDescriptors: [
+                KeyColumnDescriptor(name: "id", dataType: numericKey ? "int" : "varchar(20)")
+            ]
         )
     }
 

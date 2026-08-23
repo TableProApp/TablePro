@@ -42,6 +42,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .storedProcedures,
             .userFunctions,
             .userManagement,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 

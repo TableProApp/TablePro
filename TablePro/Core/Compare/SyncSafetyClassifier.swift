@@ -54,6 +54,50 @@ internal struct SyncSafetyClassifier {
         )]
     }
 
+    /// A view or a routine holds no rows, so dropping one is recoverable from the source and only
+    /// warns. A materialized view does hold rows, so it is refused like a table. Either way a drop
+    /// can break something that depends on it, which is what the second hazard says.
+    internal func hazards(forDropping identity: CompareObjectIdentity, isReplacement: Bool) -> [SyncHazard] {
+        var hazards: [SyncHazard] = []
+
+        if identity.kind == .materializedView {
+            hazards.append(SyncHazard(
+                kind: .dataLoss,
+                severity: .refusedByDefault,
+                explanation: String(
+                    format: String(
+                        localized: "Dropping materialized view %@ discards its stored rows, which have to be rebuilt."
+                    ),
+                    identity.displayName
+                )
+            ))
+        }
+
+        guard !isReplacement else {
+            hazards.append(SyncHazard(
+                kind: .notSupportedByTarget,
+                severity: .warning,
+                explanation: String(
+                    format: String(
+                        localized: "%1$@ %2$@ is dropped and recreated, so anything depending on it fails until it exists again."
+                    ),
+                    identity.kind.displayName, identity.displayName
+                )
+            ))
+            return hazards
+        }
+
+        hazards.append(SyncHazard(
+            kind: .dataLoss,
+            severity: .refusedByDefault,
+            explanation: String(
+                format: String(localized: "Dropping %1$@ %2$@ removes it from the target."),
+                identity.kind.displayName.lowercased(), identity.displayName
+            )
+        ))
+        return hazards
+    }
+
     private func modifyColumnHazards(
         old: EditableColumnDefinition,
         new: EditableColumnDefinition

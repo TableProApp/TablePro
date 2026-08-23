@@ -2,36 +2,18 @@
 //  CompareSyncSession.swift
 //  TablePro
 //
-//  Drives the compare and sync flow. Owns no cache: every comparison is a fresh
-//  read that replaces the previous result only once it has finished, so a re-run
-//  never blanks what is on screen before it has something to show.
+//  The state of one comparison. It holds no driver and performs no I/O: that is
+//  `CompareRunner`'s job, the way `QueryExecutionCoordinator` holds a query tab's
+//  state and `QueryExecutor` does the talking.
+//
+//  There are no steps. The window shows the setup, the results and the script at
+//  once, and an action is available when its preconditions hold, so re-running a
+//  comparison is one click rather than walking backwards through a wizard.
 //
 
 import Foundation
 import Observation
 import os
-import SwiftUI
-import TableProPluginKit
-
-internal enum CompareSyncStep: Int, CaseIterable, Comparable {
-    case setup
-    case review
-    case script
-    case apply
-
-    internal static func < (lhs: CompareSyncStep, rhs: CompareSyncStep) -> Bool {
-        lhs.rawValue < rhs.rawValue
-    }
-
-    internal var title: String {
-        switch self {
-        case .setup: return String(localized: "Setup")
-        case .review: return String(localized: "Review")
-        case .script: return String(localized: "Script")
-        case .apply: return String(localized: "Apply")
-        }
-    }
-}
 
 internal enum CompareSyncActivity: Equatable {
     case idle
@@ -46,38 +28,64 @@ internal enum CompareSyncLastAction: Equatable {
     case applied(Date, target: String, statements: Int)
 }
 
+internal enum CompareDetailPane: String, CaseIterable, Hashable {
+    case definitions
+    case rows
+    case script
+
+    internal var title: String {
+        switch self {
+        case .definitions: return String(localized: "Definitions")
+        case .rows: return String(localized: "Rows")
+        case .script: return String(localized: "Script")
+        }
+    }
+}
+
 @MainActor
 @Observable
 internal final class CompareSyncSession {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CompareSyncSession")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CompareSyncSession")
 
-    internal var step: CompareSyncStep = .setup
+    // MARK: - Setup
+
     internal var mode: CompareSyncMode = .structure
     internal var source: CompareSyncEndpoint?
     internal var target: CompareSyncEndpoint?
     internal var structureOptions = StructureCompareOptions.default
     internal var dataOptions = DataCompareOptions.default
     internal var executionSettings = CompareSyncExecutionSettings()
+    internal var includedKinds: Set<CompareObjectKind> = [.table]
+
+    // MARK: - Results
+
+    internal var report: CompareReport?
+    internal var dataPlans: [DataComparePlan] = []
+    internal var actions: [String: TableSyncAction] = [:]
+    internal var statements: [SyncStatement] = []
+    internal var runResult: CompareSyncRunResult?
+    internal var sourceSnapshots: [String: TableStructureSnapshot] = [:]
+    internal var targetSnapshots: [String: TableStructureSnapshot] = [:]
+
+    // MARK: - Presentation
+
+    internal var selectedObjectId: String?
+    internal var selectedPlanId: String?
+    internal var detailPane: CompareDetailPane = .definitions
+    internal var searchText = ""
+    internal var showsIdentical = false
+    internal var grouping: CompareGrouping = .byDifference
+
+    // MARK: - Activity
 
     internal var activity: CompareSyncActivity = .idle
     internal var errorMessage: String?
     internal var informationalMessage: String?
     internal var lastAction: CompareSyncLastAction = .none
-
-    internal var structureReport: StructureDiffReport?
-    internal var dataPlans: [DataComparePlan] = []
-    internal var tableActions: [String: TableSyncAction] = [:]
-    internal var statements: [SyncStatement] = []
-    internal var editedScript: String?
-    internal var runResult: CompareSyncRunResult?
     internal var progress: Progress?
-
     internal var hasWrittenToTarget = false
-    internal var sourceSnapshotCache: [String: TableStructureSnapshot] = [:]
-    internal var targetSnapshotCache: [String: TableStructureSnapshot] = [:]
-    internal var pendingSelectedTables: Set<String> = []
-
     internal var runTask: Task<Void, Never>?
+    internal var pendingSelection: Set<String> = []
 
     internal init() {}
 
@@ -105,7 +113,8 @@ internal final class CompareSyncSession {
     internal var canCompare: Bool {
         guard let source, let target else { return false }
         guard target.canBeWrittenTo else { return false }
-        return source.id != target.id && activity == .idle
+        guard activity == .idle else { return false }
+        return source.id != target.id
     }
 
     internal var canGenerateStructureScript: Bool {
@@ -121,13 +130,12 @@ internal final class CompareSyncSession {
         return CompareSyncEngineFamily.crossEngineDataWarning(from: source.databaseType, to: target.databaseType)
     }
 
+    // MARK: - Banner
+
     internal var bannerText: String {
         switch activity {
         case .applying:
-            return String(
-                format: String(localized: "Applying to %@…"),
-                target?.qualifiedDescription ?? ""
-            )
+            return String(format: String(localized: "Applying to %@…"), target?.qualifiedDescription ?? "")
         case .comparing, .connecting:
             return String(localized: "Comparing only. Nothing has been written.")
         case .idle:
@@ -154,62 +162,116 @@ internal final class CompareSyncSession {
 
     // MARK: - Selection
 
-    internal func action(for result: TableDiffResult) -> TableSyncAction {
-        tableActions[result.id] ?? .skip
+    internal func action(for result: CompareObjectResult) -> TableSyncAction {
+        actions[result.id] ?? .skip
     }
 
-    internal func setAction(_ action: TableSyncAction, for result: TableDiffResult) {
-        tableActions[result.id] = action
-        statements = []
-        editedScript = nil
+    internal func isIncluded(_ result: CompareObjectResult) -> Bool {
+        action(for: result) != .skip
     }
 
-    internal var selectedTableCount: Int {
+    internal func setAction(_ action: TableSyncAction, for result: CompareObjectResult) {
+        actions[result.id] = action
+        invalidateScript()
+    }
+
+    internal func setIncluded(_ included: Bool, for result: CompareObjectResult) {
+        setAction(included ? result.suggestedAction : .skip, for: result)
+    }
+
+    internal func setIncluded(_ included: Bool, forIds ids: [String]) {
+        guard let report else { return }
+        let byId = Dictionary(report.comparable.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for id in ids {
+            guard let result = byId[id] else { continue }
+            actions[result.id] = included ? result.suggestedAction : .skip
+        }
+        invalidateScript()
+    }
+
+    internal var selectedObjectCount: Int {
         switch mode {
         case .structure:
-            return tableActions.values.filter { $0 != .skip }.count
+            return actions.values.filter { $0 != .skip }.count
         case .data:
             return dataPlans.filter { $0.isEnabled && $0.isComparable && ($0.summary?.differenceCount ?? 0) > 0 }.count
         }
     }
 
-    internal func runComparison() {
-        switch mode {
-        case .structure: compare()
-        case .data: compareData()
-        }
-    }
-
-    internal func buildScript() {
-        switch mode {
-        case .structure: generateScript()
-        case .data: generateDataScript()
-        }
-    }
-
     internal var canBuildScript: Bool {
+        guard activity == .idle else { return false }
         switch mode {
         case .structure:
-            return selectedTableCount > 0 && canGenerateStructureScript
+            return selectedObjectCount > 0 && canGenerateStructureScript
         case .data:
-            return selectedTableCount > 0
+            return selectedObjectCount > 0
         }
     }
 
-    internal func resetComparison() {
-        structureReport = nil
-        sourceSnapshotCache = [:]
-        targetSnapshotCache = [:]
-        dataPlans = []
-        tableActions = [:]
-        statements = []
-        editedScript = nil
-        runResult = nil
-        errorMessage = nil
-        step = .setup
+    internal var canApply: Bool {
+        activity == .idle && !statements.isEmpty && target?.canBeWrittenTo == true
+    }
+
+    /// A statement carrying an unacknowledged hazard is why Apply stays disabled rather than
+    /// silently dropping it: the count the user is about to run has to be the count they saw.
+    internal var unacknowledgedHazardCount: Int {
+        statements.filter { $0.isRefusedByDefault && !executionSettings.canRun($0) }.count
+    }
+
+    internal var runnableStatementCount: Int {
+        statements.filter { executionSettings.canRun($0) }.count
+    }
+
+    // MARK: - Results view
+
+    internal var visibleResults: [CompareObjectResult] {
+        guard let report else { return [] }
+        var results = report.comparable.filter { includedKinds.contains($0.identity.kind) }
+        if !showsIdentical {
+            results = results.filter { $0.status != .identical }
+        }
+        let query = searchText.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return results }
+        return results.filter { $0.identity.displayName.localizedCaseInsensitiveContains(query) }
+    }
+
+    internal var selectedResult: CompareObjectResult? {
+        guard let selectedObjectId else { return nil }
+        return report?.results.first { $0.id == selectedObjectId }
+    }
+
+    internal var selectedPlan: DataComparePlan? {
+        guard let selectedPlanId else { return nil }
+        return dataPlans.first { $0.id == selectedPlanId }
+    }
+
+    internal var truncatedPlanNames: [String] {
+        dataPlans.filter { $0.summary?.truncatedEntries == true }.map { $0.id }
+    }
+
+    internal var dataDifferenceTotal: Int {
+        dataPlans.compactMap { $0.summary?.differenceCount }.reduce(0, +)
     }
 
     // MARK: - Lifecycle
+
+    internal func resetComparison() {
+        report = nil
+        sourceSnapshots = [:]
+        targetSnapshots = [:]
+        dataPlans = []
+        actions = [:]
+        selectedObjectId = nil
+        selectedPlanId = nil
+        runResult = nil
+        errorMessage = nil
+        invalidateScript()
+    }
+
+    internal func invalidateScript() {
+        statements = []
+        runResult = nil
+    }
 
     internal func cancelRunningWork() {
         progress?.cancel()
@@ -226,4 +288,18 @@ internal final class CompareSyncSession {
         formatter.dateStyle = .none
         return formatter
     }()
+}
+
+internal enum CompareGrouping: String, CaseIterable, Hashable {
+    case byDifference
+    case byObjectType
+    case none
+
+    internal var title: String {
+        switch self {
+        case .byDifference: return String(localized: "Difference")
+        case .byObjectType: return String(localized: "Object Type")
+        case .none: return String(localized: "None")
+        }
+    }
 }

@@ -163,6 +163,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .alterTableDDL,
             .cancelQuery,
             .materializedViews,
+            .dataCompare,
         ]
     }
 

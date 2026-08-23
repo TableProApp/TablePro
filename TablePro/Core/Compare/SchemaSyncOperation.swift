@@ -49,7 +49,7 @@ internal enum SchemaSyncOperation: Identifiable {
     }
 }
 
-internal struct SyncStatement: Identifiable, Hashable {
+internal struct SyncStatement: Identifiable, Hashable, Sendable {
     internal let id: UUID
     internal let sql: String
     internal let objectName: String

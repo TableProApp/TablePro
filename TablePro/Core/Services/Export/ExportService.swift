@@ -148,7 +148,8 @@ final class ExportService {
                 name: table.name,
                 databaseName: table.databaseName,
                 tableType: table.type.rawValue.lowercased(),
-                optionValues: table.optionValues
+                optionValues: table.optionValues,
+                schema: dataSource.exportSchema(for: table.databaseName)
             )
         }
 
@@ -249,7 +250,8 @@ final class ExportService {
             name: config.fileName,
             databaseName: "",
             tableType: "query",
-            optionValues: plugin.defaultTableOptionValues()
+            optionValues: plugin.defaultTableOptionValues(),
+            schema: nil
         )
 
         let result: ExportFormatResult
@@ -317,7 +319,8 @@ final class ExportService {
             name: config.fileName,
             databaseName: "",
             tableType: "query",
-            optionValues: plugin.defaultTableOptionValues()
+            optionValues: plugin.defaultTableOptionValues(),
+            schema: nil
         )
 
         await suppressStatementTimeout(on: driver)

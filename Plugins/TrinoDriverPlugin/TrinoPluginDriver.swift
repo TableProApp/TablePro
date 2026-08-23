@@ -24,7 +24,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [.multiSchema, .cancelQuery, .materializedViews]
+        [.multiSchema, .cancelQuery, .materializedViews, .dataCompare]
     }
 
     func cacheColumnTypes(_ types: [String: String], key: String) {

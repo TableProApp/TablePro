@@ -93,6 +93,7 @@ final class TableDefinitionRendererTests: XCTestCase {
     }
 }
 
+@MainActor
 final class CompareSyncProfileStorageTests: XCTestCase {
     private var defaults: UserDefaults!
     private var storage: CompareSyncProfileStorage!
@@ -112,38 +113,42 @@ final class CompareSyncProfileStorageTests: XCTestCase {
         super.tearDown()
     }
 
+    private func scope(_ connectionId: UUID, database: String = "app", schema: String? = nil) -> DatabaseScope {
+        DatabaseScope(connectionId: connectionId, database: database, schema: schema)
+    }
+
     private func profile(
         name: String,
-        source: UUID,
-        target: UUID,
+        source: DatabaseScope,
+        target: DatabaseScope,
         mode: CompareSyncMode = .structure
     ) -> CompareSyncProfile {
         CompareSyncProfile(
             name: name,
-            sourceConnectionId: source,
-            targetConnectionId: target,
+            source: source,
+            target: target,
             mode: mode,
             structureOptions: .default,
             dataOptions: .default,
-            selectedTables: ["users"]
+            selectedObjects: ["users"]
         )
     }
 
     func testSavedProfileRoundTrips() {
-        let source = UUID()
-        let target = UUID()
+        let source = scope(UUID())
+        let target = scope(UUID())
         storage.save(profile(name: "nightly", source: source, target: target))
 
         let loaded = storage.profiles(source: source, target: target, mode: .structure)
 
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded[0].name, "nightly")
-        XCTAssertEqual(loaded[0].selectedTables, ["users"])
+        XCTAssertEqual(loaded[0].selectedObjects, ["users"])
     }
 
     func testProfilesAreScopedToSourceTargetAndMode() {
-        let source = UUID()
-        let target = UUID()
+        let source = scope(UUID())
+        let target = scope(UUID())
         storage.save(profile(name: "structure", source: source, target: target, mode: .structure))
         storage.save(profile(name: "data", source: source, target: target, mode: .data))
 
@@ -152,9 +157,37 @@ final class CompareSyncProfileStorageTests: XCTestCase {
         XCTAssertTrue(storage.profiles(source: target, target: source, mode: .structure).isEmpty)
     }
 
+    /// Keying on the connection pair alone could not tell two databases on one server apart, so a
+    /// comparison saved against staging came back for production.
+    func testTwoDatabasesOnOneConnectionKeepSeparateProfiles() {
+        let connectionId = UUID()
+        let staging = scope(connectionId, database: "app_staging")
+        let production = scope(connectionId, database: "app_prod")
+        let target = scope(UUID())
+        storage.save(profile(name: "staging", source: staging, target: target))
+        storage.save(profile(name: "production", source: production, target: target))
+
+        XCTAssertEqual(storage.profiles(source: staging, target: target, mode: .structure).map(\.name), ["staging"])
+        XCTAssertEqual(
+            storage.profiles(source: production, target: target, mode: .structure).map(\.name), ["production"]
+        )
+    }
+
+    func testTwoSchemasInOneDatabaseKeepSeparateProfiles() {
+        let connectionId = UUID()
+        let publicSchema = scope(connectionId, schema: "public")
+        let salesSchema = scope(connectionId, schema: "sales")
+        let target = scope(UUID())
+        storage.save(profile(name: "public", source: publicSchema, target: target))
+        storage.save(profile(name: "sales", source: salesSchema, target: target))
+
+        XCTAssertEqual(storage.profiles(source: publicSchema, target: target, mode: .structure).map(\.name), ["public"])
+        XCTAssertEqual(storage.profiles(source: salesSchema, target: target, mode: .structure).map(\.name), ["sales"])
+    }
+
     func testSavingSameProfileIdUpdatesRatherThanDuplicates() {
-        let source = UUID()
-        let target = UUID()
+        let source = scope(UUID())
+        let target = scope(UUID())
         var existing = profile(name: "first", source: source, target: target)
         storage.save(existing)
         existing.name = "renamed"
@@ -166,9 +199,9 @@ final class CompareSyncProfileStorageTests: XCTestCase {
         XCTAssertEqual(loaded[0].name, "renamed")
     }
 
-    func testDeleteRemovesOnlyThatProfile()  {
-        let source = UUID()
-        let target = UUID()
+    func testDeleteRemovesOnlyThatProfile() {
+        let source = scope(UUID())
+        let target = scope(UUID())
         let keep = profile(name: "keep", source: source, target: target)
         let drop = profile(name: "drop", source: source, target: target)
         storage.save(keep)

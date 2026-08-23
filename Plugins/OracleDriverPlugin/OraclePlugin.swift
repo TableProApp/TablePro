@@ -278,6 +278,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .transactions,
             .alterTableDDL,
             .multiSchema,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 

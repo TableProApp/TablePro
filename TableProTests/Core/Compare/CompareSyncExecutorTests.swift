@@ -14,10 +14,12 @@ private final class RecordingDriver: PluginDatabaseDriver, @unchecked Sendable {
     var transactionEvents: [String] = []
     var failingStatements: Set<String> = []
     var transactionsSupported = true
+    var transactionalDDLSupported = true
     var declaredCapabilities: PluginCapabilities = []
 
     var capabilities: PluginCapabilities { declaredCapabilities }
     var supportsTransactions: Bool { transactionsSupported }
+    var supportsTransactionalDDL: Bool { transactionalDDLSupported }
 
     func connect() async throws {}
 
@@ -71,11 +73,9 @@ private struct AlwaysDenyGate: ExecutionGate {
 final class CompareSyncExecutorTests: XCTestCase {
     private func endpoint() -> CompareSyncEndpoint {
         CompareSyncEndpoint(
-            connectionId: UUID(),
-            displayName: "staging",
+            scope: DatabaseScope(connectionId: UUID(), database: "app", schema: nil),
+            connectionName: "staging",
             databaseType: .mysql,
-            database: "app",
-            schema: nil,
             safeModeLevel: .silent,
             color: .blue
         )
@@ -207,8 +207,22 @@ final class CompareSyncExecutorTests: XCTestCase {
     func testNoTransactionWhenDriverDoesNotSupportOne() async throws {
         let driver = RecordingDriver()
         driver.transactionsSupported = false
+        driver.transactionalDDLSupported = false
 
         _ = try await run(statements: [statement("A;")], driver: driver)
+
+        XCTAssertTrue(driver.transactionEvents.isEmpty)
+    }
+
+    /// A structure sync on MySQL, MariaDB or Oracle must not open a transaction it cannot roll
+    /// back: DDL commits implicitly there, so the ROLLBACK undid nothing while the run reported
+    /// "The target is unchanged."
+    func testStructureSyncOpensNoTransactionWhenDDLCommitsImplicitly() async throws {
+        let driver = RecordingDriver()
+        driver.transactionsSupported = true
+        driver.transactionalDDLSupported = false
+
+        _ = try await run(statements: [statement("ALTER TABLE users DROP COLUMN legacy_id;")], driver: driver)
 
         XCTAssertTrue(driver.transactionEvents.isEmpty)
     }
@@ -247,12 +261,21 @@ final class CompareSyncExecutorTests: XCTestCase {
 }
 
 final class CompareSyncExecutionSettingsTests: XCTestCase {
+    private func driver(transactions: Bool, transactionalDDL: Bool) -> RecordingDriver {
+        let driver = RecordingDriver()
+        driver.transactionsSupported = transactions
+        driver.transactionalDDLSupported = transactionalDDL
+        return driver
+    }
+
     func testTransactionIsDisabledForSkipAndContinue() {
         var settings = CompareSyncExecutionSettings()
         settings.wrapInTransaction = true
         settings.errorHandling = .skipAndContinue
 
-        XCTAssertFalse(settings.usesTransaction(supportsTransactions: true))
+        XCTAssertFalse(settings.usesTransaction(
+            for: .data, driver: driver(transactions: true, transactionalDDL: true)
+        ))
     }
 
     func testTransactionRequiresDriverSupport() {
@@ -260,8 +283,35 @@ final class CompareSyncExecutionSettingsTests: XCTestCase {
         settings.wrapInTransaction = true
         settings.errorHandling = .stopAndRollback
 
-        XCTAssertTrue(settings.usesTransaction(supportsTransactions: true))
-        XCTAssertFalse(settings.usesTransaction(supportsTransactions: false))
+        XCTAssertTrue(settings.usesTransaction(
+            for: .data, driver: driver(transactions: true, transactionalDDL: true)
+        ))
+        XCTAssertFalse(settings.usesTransaction(
+            for: .data, driver: driver(transactions: false, transactionalDDL: true)
+        ))
+    }
+
+    /// MySQL, MariaDB and Oracle commit implicitly on every DDL statement, so a structure sync
+    /// wrapped in a transaction reported "The target is unchanged" after a ROLLBACK that undid
+    /// nothing. Structure asks `supportsTransactionalDDL`, data asks `supportsTransactions`.
+    func testStructureSyncAsksForTransactionalDDLRatherThanTransactions() {
+        var settings = CompareSyncExecutionSettings()
+        settings.wrapInTransaction = true
+        settings.errorHandling = .stopAndRollback
+        let mysqlLike = driver(transactions: true, transactionalDDL: false)
+
+        XCTAssertFalse(settings.usesTransaction(for: .structure, driver: mysqlLike))
+        XCTAssertTrue(settings.usesTransaction(for: .data, driver: mysqlLike))
+    }
+
+    func testStructureSyncUsesATransactionWhenTheEngineSupportsTransactionalDDL() {
+        var settings = CompareSyncExecutionSettings()
+        settings.wrapInTransaction = true
+        settings.errorHandling = .stopAndRollback
+
+        XCTAssertTrue(settings.usesTransaction(
+            for: .structure, driver: driver(transactions: true, transactionalDDL: true)
+        ))
     }
 }
 
@@ -292,11 +342,9 @@ final class CompareSyncEligibilityTests: XCTestCase {
 final class CompareSyncEndpointTests: XCTestCase {
     private func endpoint(_ level: SafeModeLevel) -> CompareSyncEndpoint {
         CompareSyncEndpoint(
-            connectionId: UUID(),
-            displayName: "prod",
+            scope: DatabaseScope(connectionId: UUID(), database: "prod", schema: nil),
+            connectionName: "prod",
             databaseType: .postgresql,
-            database: nil,
-            schema: nil,
             safeModeLevel: level,
             color: .red
         )

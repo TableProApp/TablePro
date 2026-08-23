@@ -62,7 +62,9 @@ final class DataSyncScriptBuilderTests: XCTestCase {
         columns: [String] = ["id", "name"],
         schema: String? = nil
     ) -> [SyncStatement] {
-        DataSyncScriptBuilder(targetDriver: driver, options: overrides ?? options())
+        DataSyncScriptBuilder(
+            targetDriver: driver, targetDatabaseType: .mysql, options: overrides ?? options()
+        )
             .build(table: "users", schema: schema, writeColumns: columns, entries: entries)
     }
 
@@ -243,5 +245,94 @@ final class DataSyncScriptBuilderTests: XCTestCase {
             statements[0].sql.contains("`updated_at`") && statements[0].sql.contains("'2026-01-01'"),
             "a column excluded from matching must still be written: \(statements[0].sql)"
         )
+    }
+}
+
+final class DataSyncScriptBuilderColumnTests: XCTestCase {
+    private func builder(
+        _ databaseType: DatabaseType = .postgresql,
+        options: DataCompareOptions
+    ) -> DataSyncScriptBuilder {
+        DataSyncScriptBuilder(
+            targetDriver: QuotingDriver(),
+            targetDatabaseType: databaseType,
+            options: options
+        )
+    }
+
+    private func options() -> DataCompareOptions {
+        var options = DataCompareOptions()
+        options.keyColumns = ["id"]
+        options.insertMissingRows = true
+        options.updateDifferingRows = true
+        options.deleteExtraRows = true
+        return options
+    }
+
+    private func insertEntry() -> RowDiffEntry {
+        RowDiffEntry(
+            kind: .insert,
+            keyDescription: "1",
+            sourceRow: DataRow(values: [
+                "id": .text("1"),
+                "blob": .bytes(Data([0x89, 0x50])),
+                "total": .text("9")
+            ]),
+            targetRow: nil
+        )
+    }
+
+    /// PostgreSQL rejects `X'8950'` with "column is of type bytea but expression is of type bit".
+    func testBinaryValuesUseTheTargetEnginesSpelling() {
+        let statements = builder(.postgresql, options: options()).build(
+            table: "files", schema: "public", writeColumns: ["id", "blob"], entries: [insertEntry()]
+        )
+
+        XCTAssertEqual(statements.count, 1)
+        XCTAssertTrue(statements[0].sql.contains("'\\x8950'::bytea"), statements[0].sql)
+        XCTAssertFalse(statements[0].sql.contains("X'"), statements[0].sql)
+    }
+
+    func testBitStringEnginesKeepTheirOwnSpelling() {
+        let statements = builder(.mysql, options: options()).build(
+            table: "files", schema: nil, writeColumns: ["id", "blob"], entries: [insertEntry()]
+        )
+
+        XCTAssertTrue(statements[0].sql.contains("X'8950'"), statements[0].sql)
+    }
+
+    /// The three buckets exist so a caller can interleave several tables in dependency order. A
+    /// flat per-table inserts+updates+deletes is only correct for one table.
+    func testStatementsAreBucketedByKind() {
+        var statements = DataSyncStatements()
+        let entries = [
+            insertEntry(),
+            RowDiffEntry(
+                kind: .delete, keyDescription: "2",
+                sourceRow: nil, targetRow: DataRow(values: ["id": .text("2")])
+            )
+        ]
+        let builder = builder(.mysql, options: options())
+        for entry in entries {
+            builder.append(entry, table: "files", schema: nil, writeColumns: ["id", "blob"], into: &statements)
+        }
+
+        XCTAssertEqual(statements.inserts.count, 1)
+        XCTAssertEqual(statements.deletes.count, 1)
+        XCTAssertTrue(statements.updates.isEmpty)
+        XCTAssertFalse(statements.isEmpty)
+    }
+
+    func testDeleteStatementsCarryARefusedHazard() {
+        var statements = DataSyncStatements()
+        builder(.mysql, options: options()).append(
+            RowDiffEntry(
+                kind: .delete, keyDescription: "2",
+                sourceRow: nil, targetRow: DataRow(values: ["id": .text("2")])
+            ),
+            table: "files", schema: nil, writeColumns: ["id"], into: &statements
+        )
+
+        XCTAssertTrue(statements.deletes[0].isRefusedByDefault)
     }
 }

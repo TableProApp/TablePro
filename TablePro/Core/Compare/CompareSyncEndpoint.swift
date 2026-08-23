@@ -4,22 +4,43 @@
 //
 //  One side of a comparison. The source never changes; the target is written to.
 //
+//  An endpoint is a `DatabaseScope`, not a connection id. A connection reaches
+//  many databases, so identifying a side by connection alone made two databases
+//  on one server impossible to compare and left the schema unset, which is how
+//  the reads went out unqualified while the writes went out qualified.
+//
 
 import Foundation
 import TableProPluginKit
 
-internal struct CompareSyncEndpoint: Hashable, Identifiable {
-    internal let connectionId: UUID
-    internal let displayName: String
+internal struct CompareSyncEndpoint: Hashable, Identifiable, Sendable {
+    internal let scope: DatabaseScope
+    internal let connectionName: String
     internal let databaseType: DatabaseType
-    internal let database: String?
-    internal let schema: String?
     internal let safeModeLevel: SafeModeLevel
     internal let color: ConnectionColor
 
-    internal var id: String {
-        "\(connectionId.uuidString)-\(database ?? "")-\(schema ?? "")"
+    internal init(
+        scope: DatabaseScope,
+        connectionName: String,
+        databaseType: DatabaseType,
+        safeModeLevel: SafeModeLevel,
+        color: ConnectionColor
+    ) {
+        self.scope = scope
+        self.connectionName = connectionName
+        self.databaseType = databaseType
+        self.safeModeLevel = safeModeLevel
+        self.color = color
     }
+
+    internal var id: String {
+        "\(scope.connectionId.uuidString)|\(scope.database)|\(scope.schema ?? "")"
+    }
+
+    internal var connectionId: UUID { scope.connectionId }
+    internal var database: String { scope.database }
+    internal var schema: String? { scope.schema }
 
     internal var canBeWrittenTo: Bool {
         safeModeLevel != .readOnly
@@ -31,26 +52,56 @@ internal struct CompareSyncEndpoint: Hashable, Identifiable {
     }
 
     internal var qualifiedDescription: String {
-        var parts = [displayName]
-        if let database, !database.isEmpty { parts.append(database) }
-        if let schema, !schema.isEmpty { parts.append(schema) }
+        var parts = [connectionName]
+        if !scope.database.isEmpty { parts.append(scope.database) }
+        if let schema = scope.schema, !schema.isEmpty { parts.append(schema) }
         return parts.joined(separator: " / ")
+    }
+
+    /// The name shown once the connection is already named elsewhere, so a picker does not repeat it.
+    internal var scopeDescription: String {
+        guard !scope.database.isEmpty else { return String(localized: "Server") }
+        return scope.qualifiedDescription
+    }
+
+    internal func withDatabase(_ database: String) -> CompareSyncEndpoint {
+        CompareSyncEndpoint(
+            scope: DatabaseScope(connectionId: scope.connectionId, database: database, schema: nil),
+            connectionName: connectionName,
+            databaseType: databaseType,
+            safeModeLevel: safeModeLevel,
+            color: color
+        )
+    }
+
+    internal func withSchema(_ schema: String?) -> CompareSyncEndpoint {
+        CompareSyncEndpoint(
+            scope: DatabaseScope(connectionId: scope.connectionId, database: scope.database, schema: schema),
+            connectionName: connectionName,
+            databaseType: databaseType,
+            safeModeLevel: safeModeLevel,
+            color: color
+        )
     }
 }
 
 internal extension CompareSyncEndpoint {
-    static func candidates(from connections: [DatabaseConnection]) -> [CompareSyncEndpoint] {
-        connections.map { connection in
-            CompareSyncEndpoint(
+    static func from(connection: DatabaseConnection, database: String? = nil, schema: String? = nil) -> CompareSyncEndpoint {
+        CompareSyncEndpoint(
+            scope: DatabaseScope(
                 connectionId: connection.id,
-                displayName: connection.name,
-                databaseType: connection.type,
-                database: connection.database,
-                schema: nil,
-                safeModeLevel: connection.safeModeLevel,
-                color: connection.color
-            )
-        }
+                database: database ?? connection.database ?? "",
+                schema: schema
+            ),
+            connectionName: connection.name,
+            databaseType: connection.type,
+            safeModeLevel: connection.safeModeLevel,
+            color: connection.color
+        )
+    }
+
+    static func candidates(from connections: [DatabaseConnection]) -> [CompareSyncEndpoint] {
+        connections.map { from(connection: $0) }
     }
 }
 

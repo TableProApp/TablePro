@@ -92,9 +92,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
 
         do {
             try writeHeader(to: fileHandle, dataSource: dataSource)
-            let databaseName = tables.first?.databaseName ?? ""
-            let columnsByTable = await prefetchColumns(databaseName: databaseName, dataSource: dataSource)
-            let fkMap = await prefetchForeignKeys(databaseName: databaseName, dataSource: dataSource)
+            let columnsByTable = await prefetchColumns(tables: tables, dataSource: dataSource)
+            let fkMap = await prefetchForeignKeys(tables: tables, dataSource: dataSource)
             let sortedTables = topologicallySort(tables, fkMap: fkMap)
 
             try writeDropPhase(sortedTables: sortedTables, dataSource: dataSource, to: fileHandle)
@@ -153,41 +152,83 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         try fileHandle.write(contentsOf: "-- Database Type: \(dataSource.databaseTypeId)\n\n".toUTF8Data())
     }
 
+    private struct ExportGroup {
+        let databaseName: String
+        let container: String?
+    }
+
+    private func exportGroups(in tables: [PluginExportTable]) -> [ExportGroup] {
+        var seen: Set<String> = []
+        return tables
+            .filter { seen.insert($0.databaseName).inserted }
+            .map { ExportGroup(databaseName: $0.databaseName, container: $0.containerName) }
+    }
+
+    private func node(for table: PluginExportTable) -> ForeignKeyTopologicalSort.Table {
+        ForeignKeyTopologicalSort.Table(name: table.name, schema: table.containerName)
+    }
+
+    private func metadataKey(_ tableName: String, in group: ExportGroup) -> String {
+        ForeignKeyTopologicalSort.Table(name: tableName, schema: group.container).identifier
+    }
+
     private func prefetchForeignKeys(
-        databaseName: String,
+        tables: [PluginExportTable],
         dataSource: any PluginExportDataSource
     ) async -> [String: [PluginForeignKeyInfo]] {
-        do {
-            return try await dataSource.fetchAllForeignKeys(databaseName: databaseName)
-        } catch {
-            Self.logger.warning("Failed to fetch foreign keys: \(error.localizedDescription)")
+        var merged: [String: [PluginForeignKeyInfo]] = [:]
+        var anyGroupFailed = false
+        for group in exportGroups(in: tables) {
+            do {
+                let fetched = try await dataSource.fetchAllForeignKeys(databaseName: group.databaseName)
+                for (tableName, foreignKeys) in fetched {
+                    merged[metadataKey(tableName, in: group)] = foreignKeys
+                }
+            } catch {
+                Self.logger.warning("Failed to fetch foreign keys: \(error.localizedDescription)")
+                anyGroupFailed = true
+            }
+        }
+        if anyGroupFailed {
             metadataWarnings.append(
                 "Could not fetch foreign keys; FK constraints may be missing from the export.")
-            return [:]
         }
+        return merged
     }
 
     private func prefetchColumns(
-        databaseName: String,
+        tables: [PluginExportTable],
         dataSource: any PluginExportDataSource
     ) async -> [String: [PluginColumnInfo]] {
-        do {
-            return try await dataSource.fetchAllColumns(databaseName: databaseName)
-        } catch {
-            Self.logger.warning("Failed to fetch columns: \(error.localizedDescription)")
+        var merged: [String: [PluginColumnInfo]] = [:]
+        var anyGroupFailed = false
+        for group in exportGroups(in: tables) {
+            do {
+                let fetched = try await dataSource.fetchAllColumns(databaseName: group.databaseName)
+                for (tableName, columns) in fetched {
+                    merged[metadataKey(tableName, in: group)] = columns
+                }
+            } catch {
+                Self.logger.warning("Failed to fetch columns: \(error.localizedDescription)")
+                anyGroupFailed = true
+            }
+        }
+        if anyGroupFailed {
             metadataWarnings.append(
                 "Could not fetch column metadata; identity columns and generated columns may not round-trip correctly.")
-            return [:]
         }
+        return merged
     }
 
     private func topologicallySort(
         _ tables: [PluginExportTable],
         fkMap: [String: [PluginForeignKeyInfo]]
     ) -> [PluginExportTable] {
-        let byName = Dictionary(tables.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-        let ordered = ForeignKeyTopologicalSort.orderedNames(tables.map { $0.name }, foreignKeysByTable: fkMap)
-        return ordered.compactMap { byName[$0] }
+        let byIdentifier = Dictionary(
+            tables.map { (node(for: $0).identifier, $0) },
+            uniquingKeysWith: { first, _ in first })
+        let ordered = ForeignKeyTopologicalSort.ordered(tables.map { node(for: $0) }, foreignKeysByTable: fkMap)
+        return ordered.compactMap { byIdentifier[$0.identifier] }
     }
 
     private func writeDropPhase(
@@ -198,7 +239,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         let dropTargets = sortedTables.reversed().filter { optionValue($0, at: 1) }
         guard !dropTargets.isEmpty else { return }
         for table in dropTargets {
-            let tableRef = dataSource.quoteIdentifier(table.name)
+            let tableRef = qualifiedRef(
+                schema: table.databaseName, table: table.name, dataSource: dataSource)
             let keyword = dropStatementKeyword(for: table.tableType)
             try fileHandle.write(contentsOf: "\(keyword) IF EXISTS \(tableRef) CASCADE;\n".toUTF8Data())
         }
@@ -294,7 +336,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             try progress.checkCancellation()
             try await writeTableData(
                 table: table,
-                columnInfo: columnsByTable[table.name] ?? [],
+                columnInfo: columnsByTable[node(for: table).identifier] ?? [],
                 dataSource: dataSource,
                 to: fileHandle,
                 progress: progress)
@@ -310,7 +352,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     ) throws {
         var emittedAnything = false
         for table in sortedTables where optionValue(table, at: 0) {
-            let fks = fkMap[table.name] ?? []
+            let fks = fkMap[node(for: table).identifier] ?? []
             let grouped = groupForeignKeysByConstraint(fks)
             for group in grouped {
                 let alter = renderAddConstraintFK(table: table, group: group, dataSource: dataSource)
@@ -320,7 +362,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         }
 
         for table in sortedTables where optionValue(table, at: 2) && table.tableType != "view" {
-            let columns = columnsByTable[table.name] ?? []
+            let columns = columnsByTable[node(for: table).identifier] ?? []
             for column in columns where column.isIdentity {
                 let setval = renderIdentitySetval(
                     table: table, columnName: column.name, dataSource: dataSource)
@@ -417,6 +459,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
 
         let generatedColumnNames = Set(columnInfo.filter { $0.isGenerated }.map { $0.name })
         let usesOverridingSystemValue = columnInfo.contains { $0.identityKind == .always }
+        let tableRef = qualifiedRef(
+            schema: table.databaseName, table: table.name, dataSource: dataSource)
 
         let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
         for try await element in stream {
@@ -431,7 +475,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                     rowBatch.append(row)
                     if rowBatch.count >= batchSize {
                         try writeInsertStatements(
-                            tableName: table.name,
+                            tableRef: tableRef,
                             columns: columns,
                             columnTypeNames: columnTypeNames,
                             rows: rowBatch,
@@ -451,7 +495,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
 
         if !rowBatch.isEmpty {
             try writeInsertStatements(
-                tableName: table.name,
+                tableRef: tableRef,
                 columns: columns,
                 columnTypeNames: columnTypeNames,
                 rows: rowBatch,
@@ -471,7 +515,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     }
 
     private func writeInsertStatements(
-        tableName: String,
+        tableRef: String,
         columns: [String],
         columnTypeNames: [String],
         rows: [[PluginCellValue]],
@@ -487,7 +531,6 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         }
         guard !includedColumnIndices.isEmpty else { return }
 
-        let tableRef = dataSource.quoteIdentifier(tableName)
         let quotedColumns = includedColumnIndices
             .map { dataSource.quoteIdentifier(columns[$0]) }
             .joined(separator: ", ")

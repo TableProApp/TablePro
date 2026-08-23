@@ -37,7 +37,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .foreignTables,
             .storedProcedures,
             .userFunctions,
-            .userManagement
+            .userManagement,
+            .schemaCompare,
+            .dataCompare
         ]
     }
 

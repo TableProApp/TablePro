@@ -45,6 +45,8 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             .foreignKeyToggle,
             .truncateTable,
             .cancelQuery,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 

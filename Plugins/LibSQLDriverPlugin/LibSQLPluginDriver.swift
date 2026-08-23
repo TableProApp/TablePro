@@ -51,6 +51,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .foreignKeyToggle,
             .truncateTable,
             .cancelQuery,
+            .schemaCompare,
+            .dataCompare,
         ]
         if isLocalMode {
             base.insert(.transactions)

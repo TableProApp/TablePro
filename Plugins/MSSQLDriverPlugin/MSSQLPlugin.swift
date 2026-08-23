@@ -239,6 +239,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .multiSchema,
             .cancelQuery,
             .batchExecute,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 

@@ -9,12 +9,35 @@
 import Foundation
 import TableProPluginKit
 
+/// One table's DML, kept in three buckets so the caller can interleave several tables in
+/// dependency order. A flat `inserts + updates + deletes` per table is only correct for one
+/// table: across tables it puts a child's insert before its parent's, which the server refuses.
+internal struct DataSyncStatements {
+    internal var inserts: [SyncStatement] = []
+    internal var updates: [SyncStatement] = []
+    internal var deletes: [SyncStatement] = []
+
+    internal var isEmpty: Bool {
+        inserts.isEmpty && updates.isEmpty && deletes.isEmpty
+    }
+
+    internal var flattened: [SyncStatement] {
+        inserts + updates + deletes
+    }
+}
+
 internal struct DataSyncScriptBuilder {
     private let targetDriver: any PluginDatabaseDriver
+    private let targetDatabaseType: DatabaseType
     private let options: DataCompareOptions
 
-    internal init(targetDriver: any PluginDatabaseDriver, options: DataCompareOptions) {
+    internal init(
+        targetDriver: any PluginDatabaseDriver,
+        targetDatabaseType: DatabaseType,
+        options: DataCompareOptions
+    ) {
         self.targetDriver = targetDriver
+        self.targetDatabaseType = targetDatabaseType
         self.options = options
     }
 
@@ -24,30 +47,43 @@ internal struct DataSyncScriptBuilder {
         writeColumns: [String],
         entries: [RowDiffEntry]
     ) -> [SyncStatement] {
-        var inserts: [SyncStatement] = []
-        var updates: [SyncStatement] = []
-        var deletes: [SyncStatement] = []
-
+        var statements = DataSyncStatements()
         for entry in entries {
-            switch entry.kind {
-            case .insert:
-                guard options.insertMissingRows, let row = entry.sourceRow else { continue }
-                inserts.append(insertStatement(table: table, schema: schema, columns: writeColumns, row: row, entry: entry))
-            case .update:
-                guard options.updateDifferingRows, let row = entry.sourceRow else { continue }
-                guard let statement = updateStatement(
-                    table: table, schema: schema, columns: writeColumns, row: row, entry: entry
-                ) else { continue }
-                updates.append(statement)
-            case .delete:
-                guard options.deleteExtraRows, let row = entry.targetRow else { continue }
-                guard let statement = deleteStatement(table: table, schema: schema, row: row, entry: entry) else { continue }
-                deletes.append(statement)
-            case .identical:
-                continue
-            }
+            append(entry, table: table, schema: schema, writeColumns: writeColumns, into: &statements)
         }
-        return inserts + updates + deletes
+        return statements.flattened
+    }
+
+    internal func append(
+        _ entry: RowDiffEntry,
+        table: String,
+        schema: String?,
+        writeColumns: [String],
+        into statements: inout DataSyncStatements
+    ) {
+        switch entry.kind {
+        case .insert:
+            guard options.insertMissingRows, let row = entry.sourceRow else { return }
+            statements.inserts.append(
+                insertStatement(table: table, schema: schema, columns: writeColumns, row: row, entry: entry)
+            )
+        case .update:
+            guard options.updateDifferingRows, let row = entry.sourceRow else { return }
+            guard let statement = updateStatement(
+                table: table, schema: schema, columns: writeColumns, row: row, entry: entry
+            ) else { return }
+            statements.updates.append(statement)
+        case .delete:
+            guard options.deleteExtraRows, let row = entry.targetRow else { return }
+            guard let statement = deleteStatement(table: table, schema: schema, row: row, entry: entry) else { return }
+            statements.deletes.append(statement)
+        case .identical:
+            return
+        }
+    }
+
+    private func literal(for value: PluginCellValue) -> String {
+        CompareSQLLiteral.literal(for: value, databaseType: targetDatabaseType, driver: targetDriver)
     }
 
     private func qualified(_ table: String, _ schema: String?) -> String {
@@ -63,7 +99,7 @@ internal struct DataSyncScriptBuilder {
         entry: RowDiffEntry
     ) -> SyncStatement {
         let columnList = columns.map { targetDriver.quoteIdentifier($0) }.joined(separator: ", ")
-        let valueList = columns.map { targetDriver.sqlLiteral(for: row.value(for: $0)) }.joined(separator: ", ")
+        let valueList = columns.map { literal(for: row.value(for: $0)) }.joined(separator: ", ")
         return SyncStatement(
             sql: "INSERT INTO \(qualified(table, schema)) (\(columnList)) VALUES (\(valueList));",
             objectName: table,
@@ -82,7 +118,7 @@ internal struct DataSyncScriptBuilder {
         let assignable = columns.filter { !keySet.contains($0.lowercased()) }
         guard !assignable.isEmpty else { return nil }
         let assignments = assignable
-            .map { "\(targetDriver.quoteIdentifier($0)) = \(targetDriver.sqlLiteral(for: row.value(for: $0)))" }
+            .map { "\(targetDriver.quoteIdentifier($0)) = \(literal(for: row.value(for: $0)))" }
             .joined(separator: ", ")
         guard let predicate = keyPredicate(row: row) else { return nil }
         return SyncStatement(
@@ -121,7 +157,7 @@ internal struct DataSyncScriptBuilder {
                 let quoted = targetDriver.quoteIdentifier(column)
                 let value = row.value(for: column)
                 if case .null = value { return "\(quoted) IS NULL" }
-                return "\(quoted) = \(targetDriver.sqlLiteral(for: value))"
+                return "\(quoted) = \(literal(for: value))"
             }
             .joined(separator: " AND ")
     }

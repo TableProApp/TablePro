@@ -42,6 +42,54 @@ final class DataDiffEngineTests: XCTestCase {
 
     // MARK: - Merge join classification
 
+    /// The retained entry list is a preview, capped at `maxRetainedEntries`. Script generation used
+    /// to build DML from that list, so a table with 12,000 differences produced 5,000 statements and
+    /// the run reported success. The sink sees every entry the walk produces, before the cap.
+    func testTheEntrySinkSeesEveryDifferenceEvenPastTheRetentionCap() async throws {
+        var options = DataCompareOptions()
+        options.keyColumns = ["id"]
+        options.maxRetainedEntries = 10
+
+        let source = ArrayRowProvider(rows: (1 ... 50).map {
+            DataRow(values: ["id": .text(String(format: "%04d", $0)), "name": .text("n")])
+        })
+        let engine = DataDiffEngine(
+            options: options,
+            columns: ["id", "name"],
+            keyDescriptors: [KeyColumnDescriptor(name: "id", dataType: "int")]
+        )
+
+        var seen = 0
+        let summary = try await engine.compare(source: source, target: ArrayRowProvider(rows: [])) { _ in
+            seen += 1
+        }
+
+        XCTAssertEqual(summary.insertCount, 50, "counts stay exact")
+        XCTAssertEqual(summary.entries.count, 10, "the retained preview stays capped")
+        XCTAssertTrue(summary.truncatedEntries)
+        XCTAssertEqual(seen, 50, "the sink must see every difference, not the capped preview")
+    }
+
+    func testTheSinkIsOptionalAndTheCapStillAppliesWithoutIt() async throws {
+        var options = DataCompareOptions()
+        options.keyColumns = ["id"]
+        options.maxRetainedEntries = 2
+
+        let source = ArrayRowProvider(rows: (1 ... 5).map {
+            DataRow(values: ["id": .text("\($0)"), "name": .text("n")])
+        })
+        let engine = DataDiffEngine(
+            options: options,
+            columns: ["id", "name"],
+            keyDescriptors: [KeyColumnDescriptor(name: "id", dataType: "int")]
+        )
+
+        let summary = try await engine.compare(source: source, target: ArrayRowProvider(rows: []))
+
+        XCTAssertEqual(summary.insertCount, 5)
+        XCTAssertEqual(summary.entries.count, 2)
+    }
+
     func testRowMissingFromTargetIsAnInsert() async throws {
         let summary = try await diff(
             source: [row(["id": "1", "name": "a"]), row(["id": "2", "name": "b"])],

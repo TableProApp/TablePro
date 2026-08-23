@@ -551,6 +551,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .truncateTable,
             .cancelQuery,
             .batchExecute,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 

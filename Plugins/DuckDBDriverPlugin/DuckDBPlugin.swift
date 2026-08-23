@@ -199,6 +199,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .alterTableDDL,
             .multiSchema,
             .cancelQuery,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 
