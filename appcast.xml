@@ -3,6 +3,73 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.67.1</title>
+            <pubDate>Sat, 22 Aug 2026 10:44:28 +0000</pubDate>
+            <sparkle:version>122</sparkle:version>
+            <sparkle:shortVersionString>0.67.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Environment tags for database favorites, with sidebar filtering, direct open, and iCloud sync. (#1553)</li>
+<li>Open in Window for row inspector text fields.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Background tab eviction dropping query, pinned, edited, and in-flight results.</li>
+<li>Result display cache exceeding its memory budget when a cached row's values grew.</li>
+<li>Data grid reformatting every cell while scrolling after undo, redo, a theme change, or a display-format change.</li>
+<li>Autocomplete bulk-loading every column of a schema too large to cache.</li>
+<li>Empty grid on a background tab whose column metadata arrived after its rows were freed.</li>
+<li>Saved connections failing to load when their SSH settings predated the agent socket field.</li>
+<li>Switch Connection and Open Database doing nothing on a narrow window or without their toolbar button.</li>
+<li>Large text values clipped in the row inspector, and unselectable when the row is read-only.</li>
+<li>Large `VARCHAR(MAX)`, `NCLOB`, and `Nullable(String)` values stuck on one line in the inspector.</li>
+<li>Empty context menu when right-clicking a read-only inspector field.</li>
+<li>Editor crashes reading text a newer edit had removed. (#2338, #2339, #2340)</li>
+<li>Search highlights and diagnostic underlines moving when their text was deleted. (#2341)</li>
+<li>Toolbar stuck on "Executing…" after a query ended, and session context buttons emptying mid-query. (#2342)</li>
+<li>SQLite queries showing an empty table instead of reporting a lock or volume error. (#2355)</li>
+<li>Stop not ending a SQLite query waiting on a database locked by another program. (#2363)</li>
+<li>Broken documentation links in the XLSX, MQL, and SQL Import plugins.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.67.1/TablePro-0.67.1-arm64.zip" length="24418655" type="application/octet-stream" sparkle:edSignature="Blg+oRy7sM8whtLzBG1H2I7b4gYqU8asx6diNtujlxp10/eYbKOwmydFOKYT9ljXy2Btc1RZ06s1KUvn6aWCAg=="/>
+        </item>
+        <item>
+            <title>0.67.1</title>
+            <pubDate>Sat, 22 Aug 2026 10:44:29 +0000</pubDate>
+            <sparkle:version>122</sparkle:version>
+            <sparkle:shortVersionString>0.67.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Environment tags for database favorites, with sidebar filtering, direct open, and iCloud sync. (#1553)</li>
+<li>Open in Window for row inspector text fields.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Background tab eviction dropping query, pinned, edited, and in-flight results.</li>
+<li>Result display cache exceeding its memory budget when a cached row's values grew.</li>
+<li>Data grid reformatting every cell while scrolling after undo, redo, a theme change, or a display-format change.</li>
+<li>Autocomplete bulk-loading every column of a schema too large to cache.</li>
+<li>Empty grid on a background tab whose column metadata arrived after its rows were freed.</li>
+<li>Saved connections failing to load when their SSH settings predated the agent socket field.</li>
+<li>Switch Connection and Open Database doing nothing on a narrow window or without their toolbar button.</li>
+<li>Large text values clipped in the row inspector, and unselectable when the row is read-only.</li>
+<li>Large `VARCHAR(MAX)`, `NCLOB`, and `Nullable(String)` values stuck on one line in the inspector.</li>
+<li>Empty context menu when right-clicking a read-only inspector field.</li>
+<li>Editor crashes reading text a newer edit had removed. (#2338, #2339, #2340)</li>
+<li>Search highlights and diagnostic underlines moving when their text was deleted. (#2341)</li>
+<li>Toolbar stuck on "Executing…" after a query ended, and session context buttons emptying mid-query. (#2342)</li>
+<li>SQLite queries showing an empty table instead of reporting a lock or volume error. (#2355)</li>
+<li>Stop not ending a SQLite query waiting on a database locked by another program. (#2363)</li>
+<li>Broken documentation links in the XLSX, MQL, and SQL Import plugins.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.67.1/TablePro-0.67.1-x86_64.zip" length="25966268" type="application/octet-stream" sparkle:edSignature="fcD0SjG5lZTaIj2Y3yhRW4QPcgAFkQP4TkdS4Ro7y/Q9bV+Ca54IsOjfZSfXszbrnJhAvo+4Baj237SedZJLBg=="/>
+        </item>
+        <item>
             <title>0.67.0</title>
             <pubDate>Fri, 21 Aug 2026 13:40:28 +0000</pubDate>
             <sparkle:version>120</sparkle:version>

@@ -5,8 +5,26 @@ rss: true
 ---
 
 <Update label="v0.67.1" description="August 22, 2026">
+  ### New Features
+
+  - **Favorite databases**: Tag a favorite database with the environment it belongs to, filter the Favorites sidebar by that tag, open one directly, and keep the whole set in sync across your Macs through iCloud ([#1553](https://github.com/TableProApp/TablePro/issues/1553))
+  - **Open in Window**: Any text field in the row inspector can be opened in its own window, for reading or editing a long value on a bigger surface
+
+  ### Improvements
+
+  - A large text value in the row inspector now scrolls in a resizable text view instead of being clipped, and stays selectable and copyable when the row is read-only
+  - The inspector picks its multi-line editor from the value itself, so a large `VARCHAR(MAX)`, `NCLOB` or ClickHouse `Nullable(String)` value is no longer stuck on one line
+  - Right-clicking a read-only inspector field now offers Copy Value instead of an empty menu
+  - Background tabs release their row data more carefully, keeping query results, pinned results, unsaved edits and anything still loading
+
   ### Bug Fixes
 
+  - A background tab whose column metadata arrived after its rows were released showed an empty grid and never reloaded. It now reloads when you return to it
+  - The result display cache could exceed its memory budget when a cached row's formatted values grew
+  - Undo, redo, a theme change and a display-format change left the data grid reformatting every cell as you scrolled
+  - Autocomplete no longer bulk-loads every column of a schema too large to cache. On those databases column suggestions arrive per table as you reference one
+  - A saved connection whose SSH settings were written before the agent socket field existed failed to load and disappeared from the list
+  - Switch Connection and Open Database did nothing on a narrow window, or once you removed their toolbar button. They now open either way
   - **Editor crashes on stale text**: The editor no longer crashes when layout, syntax highlighting, accessibility, an input method, dictation or Look Up reads text that a newer edit had already removed ([#2338](https://github.com/TableProApp/TablePro/issues/2338), [#2339](https://github.com/TableProApp/TablePro/issues/2339), [#2340](https://github.com/TableProApp/TablePro/issues/2340))
   - A search highlight or diagnostic underline now disappears with the text it marks, instead of staying put or jumping elsewhere in the editor ([#2341](https://github.com/TableProApp/TablePro/issues/2341))
   - The toolbar no longer sits on "Executing…" after a query ends, so Stop is not the only way back, and the session context buttons no longer empty out for the length of every query ([#2342](https://github.com/TableProApp/TablePro/issues/2342))

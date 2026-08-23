@@ -15,8 +15,12 @@ struct DataGridColumnPoolTests {
     private func makeTableView() -> NSTableView {
         let tableView = NSTableView()
         // Mirrors DataGridView. The default style redistributes column widths on resize, which
-        // would silently rewrite the widths these tests assert on.
+        // would silently rewrite the widths these tests assert on, and the default style and
+        // intercell spacing put the columns at different document positions than the grid's, which
+        // is the geometry the window is resolved against.
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
+        tableView.style = .plain
+        tableView.intercellSpacing = NSSize(width: 1, height: 0)
         let rowNumberColumn = NSTableColumn(identifier: ColumnIdentitySchema.rowNumberIdentifier)
         rowNumberColumn.width = 40
         tableView.addTableColumn(rowNumberColumn)
@@ -32,10 +36,7 @@ struct DataGridColumnPoolTests {
     }
 
     private func dataColumns(in tableView: NSTableView) -> [NSTableColumn] {
-        tableView.tableColumns.filter {
-            $0.identifier != ColumnIdentitySchema.rowNumberIdentifier
-                && !ColumnIdentitySchema.isSpacer($0.identifier)
-        }
+        tableView.tableColumns.filter { $0.identifier != ColumnIdentitySchema.rowNumberIdentifier }
     }
 
     @Test("reconcile grows pool when column count exceeds capacity")
@@ -645,15 +646,6 @@ struct DataGridColumnPoolTests {
 
     // MARK: - Column windowing (#1219)
 
-    private func makeScrolledTableView(viewportWidth: CGFloat) -> (NSScrollView, NSTableView) {
-        let tableView = makeTableView()
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: viewportWidth, height: 600))
-        scrollView.documentView = tableView
-        scrollView.hasHorizontalScroller = true
-        scrollView.layoutSubtreeIfNeeded()
-        return (scrollView, tableView)
-    }
-
     private func reconcileWide(
         _ pool: DataGridColumnPool,
         tableView: NSTableView,
@@ -672,112 +664,10 @@ struct DataGridColumnPoolTests {
         )
     }
 
-    private func spacerWidth(in tableView: NSTableView) -> CGFloat {
-        tableView.tableColumns
-            .filter { ColumnIdentitySchema.isSpacer($0.identifier) }
-            .reduce(0) { $0 + $1.width }
-    }
-
-    /// NSTableView builds a cell view per non-hidden column for every prepared row, so the whole
-    /// point is that a wide result leaves most columns unmounted.
-    @Test("A wide result mounts far fewer columns than it has")
-    func wideResultMountsAWindow() {
-        let pool = DataGridColumnPool()
-        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
-
-        reconcileWide(pool, tableView: tableView, count: 500)
-
-        let mounted = dataColumns(in: tableView).filter { !$0.isHidden }
-        #expect(mounted.count < 60)
-        #expect(!mounted.isEmpty)
-    }
-
-    /// The spacers exist so the horizontal scroller still spans the whole result. Lose this and the
-    /// user cannot reach the columns the window left out.
-    @Test("The spacers restore the width the window left out")
-    func spacersPreserveDocumentWidth() {
-        let pool = DataGridColumnPool()
-        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
-
-        reconcileWide(pool, tableView: tableView, count: 500)
-
-        // A visible column occupies its width plus one intercell gap; a hidden one occupies
-        // nothing. The spacers stand in for the unmounted columns, gaps included, so the two
-        // layouts have to come to the same total.
-        let gap = tableView.intercellSpacing.width
-        let columns = dataColumns(in: tableView)
-        let everyColumnSlot = columns.reduce(0) { $0 + $1.width + gap }
-        let occupied = tableView.tableColumns
-            .filter { !$0.isHidden && $0.identifier != ColumnIdentitySchema.rowNumberIdentifier }
-            .reduce(0) { $0 + $1.width + gap }
-
-        #expect(columns.count == 500)
-        #expect(spacerWidth(in: tableView) > 0)
-        #expect(columns.filter { !$0.isHidden }.count < columns.count)
-        #expect(occupied == everyColumnSlot)
-    }
-
-    @Test("A narrow result mounts every column and needs no spacer")
-    func narrowResultMountsEverything() {
-        let pool = DataGridColumnPool()
-        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
-
-        reconcileWide(pool, tableView: tableView, count: 4)
-
-        let allMounted = dataColumns(in: tableView).allSatisfy { !$0.isHidden }
-        #expect(allMounted)
-        #expect(spacerWidth(in: tableView) == 0)
-    }
-
-    /// A window slide must never bring back a column the user hid, which is the one way windowing
-    /// could corrupt the visible column set.
-    @Test("Windowing never un-hides a column the user hid")
-    func windowNeverUnhidesUserHiddenColumn() {
-        let pool = DataGridColumnPool()
-        let (scrollView, tableView) = makeScrolledTableView(viewportWidth: 800)
-
-        reconcileWide(pool, tableView: tableView, count: 500, hidden: ["c0", "c1", "c2"])
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: 0))
-        pool.applyColumnWindow(in: tableView)
-
-        let hiddenByUser = dataColumns(in: tableView).prefix(3)
-        let allStillHidden = hiddenByUser.allSatisfy { $0.isHidden }
-        #expect(allStillHidden)
-    }
-
-    @Test("A table with no laid-out viewport mounts everything rather than hiding it all")
-    func noViewportMountsEverything() {
-        let pool = DataGridColumnPool()
-        let tableView = makeTableView()
-
-        reconcileWide(pool, tableView: tableView, count: 120)
-
-        let allMounted = dataColumns(in: tableView).allSatisfy { !$0.isHidden }
-        #expect(allMounted)
-    }
-
-    /// Copy, Find, cell navigation and Size All Columns to Fit all ask "which columns is the user
-    /// looking at". Answering that with isHidden narrows them to the mounted window, which silently
-    /// drops the off-screen columns from a copied row and makes Find miss them entirely.
-    @Test("Every column the result shows is presented, even when the window unmounts it")
-    func unmountedColumnsAreStillPresented() {
-        let pool = DataGridColumnPool()
-        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
-
-        reconcileWide(pool, tableView: tableView, count: 500)
-
-        let columns = dataColumns(in: tableView)
-        let presented = columns.filter { pool.presentsColumn($0) }
-        let mounted = columns.filter { !$0.isHidden }
-
-        #expect(presented.count == 500)
-        #expect(mounted.count < presented.count)
-    }
-
     @Test("A column the user hid is not presented")
     func userHiddenColumnIsNotPresented() {
         let pool = DataGridColumnPool()
-        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
+        let tableView = makeTableView()
 
         reconcileWide(pool, tableView: tableView, count: 20, hidden: ["c3"])
 
@@ -789,7 +679,7 @@ struct DataGridColumnPoolTests {
     @Test("A surplus slot from a wider result is not presented")
     func surplusSlotIsNotPresented() {
         let pool = DataGridColumnPool()
-        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
+        let tableView = makeTableView()
 
         reconcileWide(pool, tableView: tableView, count: 40)
         reconcileWide(pool, tableView: tableView, count: 5)
@@ -798,15 +688,14 @@ struct DataGridColumnPoolTests {
         #expect(presented.count == 5)
     }
 
-    @Test("Detaching removes the spacers along with the pooled columns")
-    func detachRemovesSpacers() {
+    @Test("Detaching removes the pooled columns")
+    func detachRemovesPooledColumns() {
         let pool = DataGridColumnPool()
-        let (_, tableView) = makeScrolledTableView(viewportWidth: 800)
+        let tableView = makeTableView()
 
         reconcileWide(pool, tableView: tableView, count: 60)
         pool.detachFromTableView()
 
-        let hasSpacer = tableView.tableColumns.contains(where: { ColumnIdentitySchema.isSpacer($0.identifier) })
-        #expect(!hasSpacer)
+        #expect(dataColumns(in: tableView).isEmpty)
     }
 }

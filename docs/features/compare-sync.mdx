@@ -1,0 +1,112 @@
+---
+title: Compare & Sync
+description: Compare two databases and generate the SQL script that brings one in line with the other
+---
+
+Pick a source and a target, press **Compare**, and every object that differs lists in one window. Include the ones to change, generate the script, and read it before anything runs. Requires a Starter license.
+
+<Frame caption="A structure comparison grouped by difference, with the source and target definitions side by side">
+  <img className="block dark:hidden" src="/images/compare-sync-window.png" alt="Compare and Sync window with a results table on the left and a two-up definition diff on the right" />
+  <img className="hidden dark:block" src="/images/compare-sync-window-dark.png" alt="Compare and Sync window with a results table on the left and a two-up definition diff on the right" />
+</Frame>
+
+## Opening it
+
+- **Database > Compare > Compare & Sync Databases…**
+- Right-click a connection in the connection list and choose **Compare/Sync with…**. The connection clicked becomes the source.
+
+Every toolbar control also sits under **Database > Compare**, so the whole flow is reachable from the keyboard.
+
+## Choosing the two sides
+
+**Source** and **Target** are database pickers, not connection pickers: each one walks connection, then database, then schema. Two databases on one server are a valid pair, and so are two schemas in one database.
+
+The **source** never changes. The **target** is written to. A connection whose safe mode level is **Read-Only** is disabled in the target picker with the reason shown, so the refusal arrives at selection time rather than after comparing. **Swap** reverses the direction.
+
+Nothing is written until **Apply**. Until then the strip along the top reads **Comparing only. Nothing has been written.**
+
+## What takes part
+
+**Options** chooses the object kinds. Tables are always compared; views, materialized views, procedures, functions and triggers are opt-in.
+
+| Kind | Compared as |
+|---|---|
+| Tables | Parsed columns, indexes, foreign keys, storage engine and collation |
+| Views, materialized views | Normalized definition text |
+| Procedures, functions | Normalized definition text, matched on name and argument list |
+| Triggers | Normalized definition text, per table |
+
+Tables are never compared as DDL text. Driver-rendered DDL varies by formatting and by system-generated constraint names, which reports identical tables as different. A routine has no parsed form to compare instead, so its body is the definition, and the normalizer folds line endings, trailing semicolons and, when the options say so, whitespace and identifier case.
+
+### What is ignored
+
+These drift between environments by design, so they are ignored by default. Turn one off to have the difference reported.
+
+| Option | What it ignores |
+|---|---|
+| Identifier case | `Orders` against `orders` |
+| Column order | The same columns in a different order |
+| Whitespace in text | Indentation inside default values, comments and routine bodies |
+| Auto-increment seed | The counter's current value |
+| Collation and character set | A table-level or column-level collation difference |
+| Comments, owners, definers | Descriptive metadata with no runtime effect |
+
+## Reading the results
+
+Each object lands in one of four states: **only in source**, **only in target**, **different**, or **identical**. **Group By** sections the table by difference or by object kind, and the search field filters by name. Identical objects stay hidden until **Show Identical Objects**.
+
+Every row carries an **Include** checkbox, and a group header carries one for everything under it. Nothing is included until it is checked.
+
+An object whose metadata could not be read keeps its own **Could Not Compare** section with the driver's reason. One unreadable object never stops the rest of the comparison.
+
+The detail pane on the right has three tabs. **Definitions** shows the source and target side by side, split or unified, rendered from the same function so a formatting difference cannot appear as a real one. **Rows** is the data comparison. **Script** is the generated SQL.
+
+## Comparing rows
+
+Switch the mode control to **Data**. The left pane lists the tables present on both sides.
+
+Tables start unchecked. Choose the ones to compare, then press **Compare**: a data comparison reads every row of every checked table on both sides, so comparing a whole database by accident is expensive.
+
+Rows are matched by key, read in key order from both sides and walked in lockstep, so neither side is ever held in memory in full.
+
+- Key columns default to the primary key and are editable per table. Composite keys work. A table with no usable key lists as not comparable rather than being matched on a guess.
+- The compare set and the write set are separate. Exclude `updated_at` from the comparison and it is still written on insert and update.
+- A generated column is read and compared but never written, because engines reject an explicit value for one.
+- NULL equals only NULL. Numeric tolerance and timestamp precision are set in **Options**, and two spellings of the same instant at different offsets are equal.
+- When a value is flagged, the row names the rule that fired.
+
+Filter the rows six ways: **All**, **Difference**, **Insert**, **Update**, **Delete**, **Same**. Each row has its own **Include** checkbox.
+
+The row list is a capped preview. Past the cap the pane says so, and **Apply** still covers every difference: the script is built from a fresh pass over both sides, not from the rows on screen.
+
+### One connection, two databases
+
+A data comparison needs both sides open at once. On an engine that pools connections, two databases on one connection is fine. On an engine that cannot pool, both sides share one driver and one database position, so the comparison refuses that pair by name and asks for a second connection for the target.
+
+## The script
+
+**Generate Script** builds the SQL. It is read-only: each statement carries the hazards its operation plan computed, and those cannot be recovered from edited text. **Copy** and **Save…** take it elsewhere, and the query editor runs a hand-edited version through the normal path.
+
+Statements are ordered by foreign key dependency, not alphabetically. Tables are created parent-first and dropped child-first; row inserts run parent-first and row deletes child-first.
+
+Script generation needs matching database types, with MySQL and MariaDB counting as one family. A cross-engine pair still compares, read-only: column data types are engine-specific strings, so generating DDL for one engine from another's metadata is not sound.
+
+## Applying
+
+Anything that would destroy data is generated, listed, and held back. Dropping a table, dropping a column, narrowing a type, adding NOT NULL, changing a primary key and deleting a row each need an explicit allowance, and that allowance covers one run and is never saved.
+
+**Apply…** opens a sheet with the script, a summary, and the warnings. **Cancel** is the default button and **Apply** is marked destructive. Apply stays disabled while any included statement still has an unacknowledged hazard.
+
+<Warning>
+  Applying runs the script against the target. Statements that already ran stay applied unless the whole run is inside a transaction that rolls back.
+</Warning>
+
+**On error** chooses between stopping and rolling back, stopping and keeping what ran, and skipping and continuing. A transaction cannot be combined with skip and continue, because together they leave the target half-applied.
+
+Whether a transaction covers the run depends on the engine. MySQL, MariaDB and Oracle commit implicitly on every DDL statement, so a structure sync on those engines runs without one rather than implying a rollback that will not happen.
+
+Closing the window mid-run asks first, and says that statements which already ran stay applied.
+
+## Saving a comparison
+
+A named comparison remembers the source, the target, the mode, the object kinds, the options and the included objects. Load it from **Options** to run the same comparison again.

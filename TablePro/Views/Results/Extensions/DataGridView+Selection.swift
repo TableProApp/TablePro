@@ -102,7 +102,9 @@ extension TableViewCoordinator {
             return (-1, -1)
         }
 
-        let column = existingFocusedColumn >= 1 ? existingFocusedColumn : 1
+        let column = presentsColumn(atTableColumnIndex: existingFocusedColumn)
+            ? existingFocusedColumn
+            : (firstPresentedColumnIndex() ?? -1)
         let added = current.subtracting(previous)
 
         if let tip = added.max() {

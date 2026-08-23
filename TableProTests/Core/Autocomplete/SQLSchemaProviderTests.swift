@@ -27,6 +27,8 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var fetchTablesCallCount = 0
     var fetchColumnsCallCount = 0
     var fetchColumnsCalls: [String] = []
+    var fetchAllColumnsCallCount = 0
+    var allColumnsToReturn: [String: [ColumnInfo]] = [:]
     var fetchSchemaTablesCalls: [String] = []
     var applyQueryTimeoutValues: [Int] = []
     var cancelQueryCallCount = 0
@@ -111,7 +113,8 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     }
 
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
-        [:]
+        fetchAllColumnsCallCount += 1
+        return allColumnsToReturn
     }
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
@@ -224,9 +227,10 @@ struct SQLSchemaProviderTests {
 
     @Test("evicts oldest columns when cache exceeds limit")
     func lruEvictionOnExceedingMax() async {
+        let total = SQLSchemaProvider.maxCachedTables + 2
         let driver = MockDatabaseDriver()
         var allTables: [TableInfo] = []
-        for i in 0..<52 {
+        for i in 0..<total {
             let name = "table_\(i)"
             allTables.append(TestFixtures.makeTableInfo(name: name))
             driver.columnsToReturn[name] = [
@@ -237,22 +241,23 @@ struct SQLSchemaProviderTests {
 
         let provider = SQLSchemaProvider()
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
+        await provider.waitForEagerColumnLoad()
 
-        for i in 0..<52 {
+        for i in 0..<total {
             _ = await provider.getColumns(for: "table_\(i)")
         }
 
-        #expect(driver.fetchColumnsCallCount == 52)
+        #expect(driver.fetchColumnsCallCount == total)
 
         // table_0 and table_1 should have been evicted (oldest entries)
         // Fetching them again should trigger new driver calls
         _ = await provider.getColumns(for: "table_0")
         _ = await provider.getColumns(for: "table_1")
-        #expect(driver.fetchColumnsCallCount == 54)
+        #expect(driver.fetchColumnsCallCount == total + 2)
 
-        // table_51 should still be cached (no additional call)
+        // The newest table should still be cached (no additional call)
         let countBefore = driver.fetchColumnsCallCount
-        _ = await provider.getColumns(for: "table_51")
+        _ = await provider.getColumns(for: "table_\(total - 1)")
         #expect(driver.fetchColumnsCallCount == countBefore)
     }
 
@@ -265,7 +270,8 @@ struct SQLSchemaProviderTests {
                 TestFixtures.makeColumnInfo(name: "\(name)_col", isPrimaryKey: false)
             ]
         }
-        for i in 0..<49 {
+        let fillCount = SQLSchemaProvider.maxCachedTables - 1
+        for i in 0..<fillCount {
             let name = "fill_\(i)"
             driver.columnsToReturn[name] = [
                 TestFixtures.makeColumnInfo(name: "col", isPrimaryKey: false)
@@ -273,11 +279,12 @@ struct SQLSchemaProviderTests {
         }
 
         var allTables = tableNames.map { TestFixtures.makeTableInfo(name: $0) }
-        allTables += (0..<49).map { TestFixtures.makeTableInfo(name: "fill_\($0)") }
+        allTables += (0..<fillCount).map { TestFixtures.makeTableInfo(name: "fill_\($0)") }
         driver.tablesToReturn = allTables
 
         let provider = SQLSchemaProvider()
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
+        await provider.waitForEagerColumnLoad()
 
         // Fetch columns for A, B, C (in that order)
         _ = await provider.getColumns(for: "a")
@@ -289,8 +296,8 @@ struct SQLSchemaProviderTests {
         _ = await provider.getColumns(for: "a")
         #expect(driver.fetchColumnsCallCount == 3)
 
-        // Fill cache with 49 more tables (total becomes 52, evicting 2 oldest: b then c)
-        for i in 0..<49 {
+        // Fill the cache to two over capacity, evicting the two oldest: b then c
+        for i in 0..<fillCount {
             _ = await provider.getColumns(for: "fill_\(i)")
         }
 
@@ -419,7 +426,7 @@ struct SQLSchemaProviderTests {
     }
 
     @Test("eager column load uses injected metadata source instead of cached driver")
-    func eagerLoadUsesMetadataSource() async throws {
+    func eagerLoadUsesMetadataSource() async {
         let driver = MockDatabaseDriver()
         driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "from_driver")]]
         let source = SQLSchemaProvider.ColumnMetadataSource(
@@ -428,12 +435,134 @@ struct SQLSchemaProviderTests {
         )
         let provider = SQLSchemaProvider(metadataSource: source)
         await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
-
-        try await Task.sleep(nanoseconds: 300_000_000)
+        await provider.waitForEagerColumnLoad()
 
         let columns = await provider.getColumns(for: "users")
         #expect(columns.first?.name == "eager_source")
         #expect(driver.fetchColumnsCallCount == 0)
+    }
+
+    @Test("eager column load runs when the schema fits in the cache")
+    func eagerLoadRunsForBoundedSchema() async {
+        let driver = MockDatabaseDriver()
+        let fits = SQLSchemaProvider.maxCachedTables
+        driver.tablesToReturn = (0..<fits).map { TestFixtures.makeTableInfo(name: "table_\($0)") }
+        driver.allColumnsToReturn = [
+            "table_\(fits - 1)": [TestFixtures.makeColumnInfo(name: "eager_column")]
+        ]
+
+        let provider = SQLSchemaProvider()
+        await provider.loadSchema(using: driver)
+        await provider.waitForEagerColumnLoad()
+
+        let columns = await provider.getColumns(for: "table_\(fits - 1)")
+        #expect(driver.fetchAllColumnsCallCount == 1)
+        #expect(driver.fetchColumnsCallCount == 0)
+        #expect(columns.first?.name == "eager_column")
+    }
+
+    @Test("large schemas skip eager column loading and fetch columns lazily")
+    func largeSchemaSkipsEagerLoad() async {
+        let driver = MockDatabaseDriver()
+        let overflows = SQLSchemaProvider.maxCachedTables + 1
+        driver.tablesToReturn = (0..<overflows).map { TestFixtures.makeTableInfo(name: "table_\($0)") }
+        driver.columnsToReturn = [
+            "table_\(overflows - 1)": [TestFixtures.makeColumnInfo(name: "lazy_column")]
+        ]
+
+        let provider = SQLSchemaProvider()
+        await provider.loadSchema(using: driver)
+        await provider.waitForEagerColumnLoad()
+
+        let columns = await provider.getColumns(for: "table_\(overflows - 1)")
+        #expect(driver.fetchAllColumnsCallCount == 0)
+        #expect(driver.fetchColumnsCalls == ["table_\(overflows - 1)"])
+        #expect(columns.first?.name == "lazy_column")
+    }
+
+    @Test("eager column load counts the schema it fetches, not every expanded schema")
+    func eagerLoadCountsOnlyTheFetchedSchema() async {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "public"
+        let ownSchema = (0..<10).map { TestFixtures.makeTableInfo(name: "public_\($0)", schema: "public") }
+        let otherSchemas = (0..<(SQLSchemaProvider.maxCachedTables + 100)).map {
+            TestFixtures.makeTableInfo(name: "other_\($0)", schema: "audit_\($0 % 8)")
+        }
+        driver.allColumnsToReturn = [
+            "public_0": [TestFixtures.makeColumnInfo(name: "eager_column")]
+        ]
+
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase("db", tables: ownSchema + otherSchemas, driver: driver)
+        await provider.waitForEagerColumnLoad()
+
+        let columns = await provider.getColumns(for: "public_0")
+        #expect(driver.fetchAllColumnsCallCount == 1)
+        #expect(driver.fetchColumnsCallCount == 0)
+        #expect(columns.first?.name == "eager_column")
+    }
+
+    @Test("eager column load still skips when the fetched schema is itself too large")
+    func eagerLoadSkipsLargeCurrentSchema() async {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "public"
+        driver.tablesToReturn = []
+        driver.columnsToReturn = [
+            "public_0": [TestFixtures.makeColumnInfo(name: "lazy_column")]
+        ]
+        let ownSchema = (0..<(SQLSchemaProvider.maxCachedTables + 1)).map {
+            TestFixtures.makeTableInfo(name: "public_\($0)", schema: "public")
+        }
+
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase("db", tables: ownSchema, driver: driver)
+        await provider.waitForEagerColumnLoad()
+
+        let columns = await provider.getColumns(for: "public_0")
+        #expect(driver.fetchAllColumnsCallCount == 0)
+        #expect(columns.first?.name == "lazy_column")
+    }
+
+    @Test("clearing the column cache empties it without sending a second bulk fetch")
+    func clearColumnCacheDoesNotRefetch() async {
+        let driver = MockDatabaseDriver()
+        driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "eager_source")]]
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase(
+            "db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver
+        )
+        await provider.waitForEagerColumnLoad()
+        #expect(driver.fetchAllColumnsCallCount == 1)
+
+        await provider.clearColumnCache()
+        await provider.waitForEagerColumnLoad()
+
+        #expect(driver.fetchAllColumnsCallCount == 1)
+        let values = await provider.allColumnsFromCachedTables()
+        #expect(values.isEmpty)
+    }
+
+    @Test("eager column load caches every table the fetch returned")
+    func eagerLoadCachesEveryFetchedTable() async {
+        let names = (0..<40).map { "table_\($0)" }
+        let allColumns: [String: [ColumnInfo]] = names.reduce(into: [:]) { result, name in
+            result[name] = [TestFixtures.makeColumnInfo(name: "col_of_\(name)")]
+        }
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _, _ in [] },
+            fetchAllColumns: { allColumns }
+        )
+        let provider = SQLSchemaProvider(metadataSource: source)
+
+        await provider.resetForDatabase(
+            "db",
+            tables: names.map { TestFixtures.makeTableInfo(name: $0) },
+            driver: MockDatabaseDriver()
+        )
+        await provider.waitForEagerColumnLoad()
+
+        let items = await provider.allColumnsFromCachedTables()
+        #expect(Set(items.map(\.label)) == Set(names.map { "col_of_\($0)" }))
     }
 
     // MARK: - Namespaces (database/schema segments)

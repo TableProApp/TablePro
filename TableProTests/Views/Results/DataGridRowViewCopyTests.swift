@@ -66,15 +66,31 @@ struct DataGridRowViewCopyTests {
         return coordinator
     }
 
+    /// Built through the column pool rather than by attaching columns by hand, so the positions
+    /// these tests focus are the ones the grid really has: the pool also attaches the window's two
+    /// spacers, one of them ahead of the first data column.
     private func makeTableView(for coordinator: TableViewCoordinator) -> KeyHandlingTableView {
         let tableView = KeyHandlingTableView()
         tableView.coordinator = coordinator
         tableView.addTableColumn(DataGridView.makeRowNumberColumn())
-        for identifier in coordinator.identitySchema.identifiers {
-            tableView.addTableColumn(NSTableColumn(identifier: identifier))
-        }
         coordinator.tableView = tableView
+        coordinator.columnPool.reconcile(
+            tableView: tableView,
+            schema: coordinator.identitySchema,
+            columnTypes: [],
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: { _, _ in 100 }
+        )
         return tableView
+    }
+
+    private func tableColumnIndex(of dataIndex: Int, in tableView: KeyHandlingTableView) -> Int {
+        guard let coordinator = tableView.coordinator,
+              let identifier = coordinator.identitySchema.identifier(for: dataIndex)
+        else { return -1 }
+        return tableView.column(withIdentifier: identifier)
     }
 
     private func invokeCopy(
@@ -243,7 +259,7 @@ struct DataGridRowViewCopyTests {
         )
         let tableView = makeTableView(for: coordinator)
         tableView.focusedRow = 0
-        tableView.focusedColumn = 2
+        tableView.focusedColumn = tableColumnIndex(of: 1, in: tableView)
 
         let rowView = DataGridRowView()
         rowView.coordinator = coordinator
@@ -266,7 +282,7 @@ struct DataGridRowViewCopyTests {
         )
         let tableView = makeTableView(for: coordinator)
         tableView.focusedRow = 0
-        tableView.focusedColumn = 2
+        tableView.focusedColumn = tableColumnIndex(of: 1, in: tableView)
 
         let rowView = DataGridRowView()
         rowView.coordinator = coordinator

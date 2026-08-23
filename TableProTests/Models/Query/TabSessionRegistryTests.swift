@@ -152,5 +152,6 @@ struct TabSessionRegistryTests {
 
         #expect(afterEvict > before)
         #expect(session.dataRevision == afterEvict)
+        #expect(session.tableRows.index(of: .existing(0)) == nil)
     }
 }

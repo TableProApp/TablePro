@@ -96,7 +96,7 @@ internal final class FavoriteDatabasesStorage {
     /// The composite id never includes the environment. A record keyed on a mutable payload is
     /// orphaned the moment that payload changes, so re-tagging a database would leave the old
     /// record behind and push a second one beside it.
-    internal nonisolated static func syncId(for entry: FavoriteDatabaseEntry) -> String {
+    nonisolated internal static func syncId(for entry: FavoriteDatabaseEntry) -> String {
         (entry.connectionId.uuidString + "|" + entry.database).sha256
     }
 

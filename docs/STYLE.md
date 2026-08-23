@@ -294,8 +294,17 @@ Three claims rot faster than anything else and are checked in CI against the sou
 them: menu paths, keyboard shortcuts, and the PluginKit ABI. All three were wrong at once in
 August 2026.
 
-**Verify before you write.** A rewrite pass that trades a prose problem for an accuracy problem is
-strictly worse than doing nothing. One turned "A filled yellow star marks a favorite" into "Starred
+**Verify before you write, and verify again before you commit.** A rewrite pass that trades a prose
+problem for an accuracy problem is strictly worse than doing nothing.
+
+The second half of that rule is about *ordering*, and it is the half that gets skipped. A page
+written early in a task states what the code did that morning. A review later in the same branch
+changes the code. Nobody re-reads the page, and the branch ships a table that was true when it was
+typed. That is how a capability table claimed Redshift, CockroachDB and PGlite had stored
+procedures: they are separate driver subclasses, a later commit removed their capability flags, and
+the page still carried the row. **Write the page last, or re-check every claim against the source
+immediately before you commit.** Capability tables, supported-engine lists and default values rot
+fastest. One turned "A filled yellow star marks a favorite" into "Starred
 tables turn yellow"; the star turns yellow, not the table. Another asserted the MCP server grants
 anonymous read access on stock defaults, which is the exact opposite of what
 `MCPCompositeAuthenticator.swift` does, on the page whose entire job is to be trusted.

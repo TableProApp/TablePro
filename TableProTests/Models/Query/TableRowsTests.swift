@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("TableRows - construction")
@@ -175,6 +175,23 @@ struct TableRowsIDLookupTests {
         _ = table.appendInsertedRow(values: ["v"])
         let insertedID = table.rows[0].id
         #expect(table.row(withID: insertedID)?.values == ["v"])
+    }
+
+    @Test("discardRowsKeepingMetadata releases rows and their ID index")
+    func discardRowsKeepingMetadataClearsIndex() {
+        var table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+
+        table.discardRowsKeepingMetadata()
+
+        #expect(table.rows.isEmpty)
+        #expect(table.index(of: .existing(0)) == nil)
+        #expect(table.row(withID: .existing(0)) == nil)
+        #expect(table.columns == ["c1"])
+        #expect(table.columnTypes == [.text(rawType: nil)])
     }
 }
 

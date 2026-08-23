@@ -30,6 +30,10 @@ struct SidebarView: View {
         schemaService.routines(for: connectionId)
     }
 
+    private var triggers: [TriggerInfo] {
+        schemaService.triggers(for: connectionId)
+    }
+
     private var hasAnyMatch: Bool {
         SidebarObjectKind.allCases.contains { kind in
             countFor(kind: kind) > 0
@@ -228,7 +232,8 @@ struct SidebarView: View {
             state: schemaService.state(for: connectionId),
             hasActiveFilter: !viewModel.filterQuery.isEmpty,
             hasAnyMatch: hasAnyMatch,
-            hasRoutines: !routines.isEmpty
+            hasRoutines: !routines.isEmpty,
+            hasTriggers: !triggers.isEmpty
         ) {
         case .loading:
             loadingState
@@ -320,10 +325,11 @@ struct SidebarView: View {
     }
 
     private func countFor(kind: SidebarObjectKind) -> Int {
-        if kind.isRoutine {
-            return viewModel.filteredRoutines(of: kind, from: routines).count
+        switch kind.category {
+        case .table:   return viewModel.filteredTables(of: kind, from: tables).count
+        case .routine: return viewModel.filteredRoutines(of: kind, from: routines).count
+        case .trigger: return viewModel.filteredTriggers(from: triggers).count
         }
-        return viewModel.filteredTables(of: kind, from: tables).count
     }
 }
 

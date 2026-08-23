@@ -17,6 +17,8 @@ final class DamengPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsSSL = false
     static let supportsDatabaseSwitching = false
     static let supportsSchemaSwitching = true
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let defaultSchemaName = ""
     static let containerEntityName = "Schema"
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
@@ -148,7 +150,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [.parameterizedQueries, .transactions, .alterTableDDL, .multiSchema]
+        [.parameterizedQueries, .transactions, .alterTableDDL, .multiSchema, .schemaCompare, .dataCompare]
     }
 
     var supportsSchemas: Bool { true }

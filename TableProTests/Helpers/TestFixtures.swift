@@ -101,12 +101,14 @@ enum TestFixtures {
 
     static func makeTableInfo(
         name: String = "test_table",
-        type: TableInfo.TableType = .table
+        type: TableInfo.TableType = .table,
+        schema: String? = nil
     ) -> TableInfo {
         return TableInfo(
             name: name,
             type: type,
-            rowCount: 0
+            rowCount: 0,
+            schema: schema
         )
     }
 

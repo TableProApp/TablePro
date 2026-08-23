@@ -29,16 +29,22 @@ def nav_pages(node, out, collecting=False):
 
 
 IMPORT = re.compile(r'^import\s+(\w+)\s+from\s+"(/snippets/[^"]+)"', re.M)
-CONTINUES = re.compile(r"^[,;:)]|^(and|or|but|so|then|which|while|with)\b")
 
 
 def check_snippets(path, raw, failures):
-    """A snippet may end a line, but the sentence may not carry on past it.
+    """A snippet has to be the only thing on its line.
 
-    Snippets are block content: several sentences, sometimes a markdown link that wraps. Starting a
-    new sentence after one on the same line renders fine. Continuing the same sentence does not:
-    `features/query-results.mdx` shipped `<RowCap />, and ...`, which built green under
-    `mint validate` and returned HTTP 500 in production.
+    A snippet is block content: several sentences, sometimes a table, sometimes a markdown link
+    that wraps. Mintlify renders it as a block, and any prose sharing the line with it returns
+    HTTP 500 in production while `mint validate` and the Mintlify deploy both report success.
+
+    An earlier version of this check only rejected text that carried the SAME sentence past the
+    snippet, on the premise that "starting a new sentence after one on the same line renders fine".
+    That premise was wrong. `features/table-structure.mdx` was edited to start a new sentence and
+    kept returning 500, and six other pages were down for the same reason: four with a new sentence
+    after the snippet, one with a markdown link after it, and `features/plugins.mdx` with prose
+    BEFORE it, which the old check never looked at. All 24 pages that render put the snippet alone
+    on its line; all 7 that returned 500 did not.
     """
     rel = path.relative_to(DOCS)
     declared = {}
@@ -58,12 +64,15 @@ def check_snippets(path, raw, failures):
         if in_fence:
             continue
         for match in re.finditer(rf"<({used})\b[^>]*/>", line):
-            trailing = line[match.end():].strip()
-            if trailing and CONTINUES.match(trailing):
-                failures.append(
-                    f"{rel}:{line_no} carries the sentence on past <{match.group(1)} />; "
-                    f"a snippet is block content, so start a new sentence or a new line"
-                )
+            before = line[: match.start()].strip()
+            after = line[match.end() :].strip()
+            if not before and not after:
+                continue
+            where = "before and after" if before and after else ("before" if before else "after")
+            failures.append(
+                f"{rel}:{line_no} puts prose {where} <{match.group(1)} /> on the same line; "
+                f"a snippet is block content and returns HTTP 500 unless it is alone on its line"
+            )
 
 
 def main() -> int:

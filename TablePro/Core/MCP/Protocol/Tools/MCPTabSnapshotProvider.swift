@@ -137,6 +137,7 @@ private extension TabType {
         case .serverDashboard: "serverDashboard"
         case .insights: "insights"
         case .usersRoles: "usersRoles"
+        case .objectSource: "objectSource"
         }
     }
 }

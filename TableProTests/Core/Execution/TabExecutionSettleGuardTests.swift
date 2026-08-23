@@ -45,6 +45,28 @@ struct TabExecutionSettleGuardTests {
         )
     }
 
+    /// `invalidate(_ tabId:reason:)` releases whatever the tab is running now, which is right for a
+    /// retarget, a close or a teardown and wrong for anything holding a claim: a cancelled execution
+    /// unwinding after its successor had claimed the tab deleted the successor's entry, and the
+    /// successor's own `settle` then refused the rows it had already fetched (#2342). A claim holder
+    /// releases through `settle`, which answers and releases in one step.
+    ///
+    /// Keyed on the enclosing function declaring a `TabExecutionClaim` parameter rather than on the
+    /// argument text: `TableLoadTraceToken` also carries a `tabId`, so a textual suffix would both
+    /// miss `let id = claim.tabId` and flag `token.tabId`.
+    @Test("No function holding a claim releases the tab by id")
+    func claimHoldersDoNotInvalidateByTabId() throws {
+        let offenders = try Self.invalidateCallSitesInsideClaimHolders()
+        #expect(
+            offenders.isEmpty,
+            """
+            A function that holds a TabExecutionClaim must release through \
+            `guard tabExecution.settle(claim) else { return }`, not `tabExecution.invalidate(tabId:)`, \
+            which releases the tab from whoever owns it now: \(offenders.map(\.description).sorted())
+            """
+        )
+    }
+
     private struct CallSite {
         let file: String
         let line: Int
@@ -68,6 +90,43 @@ struct TabExecutionSettleGuardTests {
 
     private static func settleCallSites() throws -> [CallSite] {
         try sourceLines(containing: "tabExecution.settle(")
+    }
+
+    /// Walks back from each `tabExecution.invalidate(` to the `func` that encloses it and reads the
+    /// signature between them, so the test asks "does this function hold a claim" rather than
+    /// pattern-matching the argument.
+    private static func invalidateCallSitesInsideClaimHolders() throws -> [CallSite] {
+        let sourceRoot = try repoRoot().appendingPathComponent("TablePro")
+        guard let enumerator = FileManager.default.enumerator(
+            at: sourceRoot,
+            includingPropertiesForKeys: [.isRegularFileKey]
+        ) else { return [] }
+
+        var offenders: [CallSite] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: .newlines)
+            for (offset, line) in lines.enumerated() where line.contains("tabExecution.invalidate(") {
+                guard let signature = enclosingSignature(of: offset, in: lines),
+                      signature.contains("TabExecutionClaim") else { continue }
+                offenders.append(CallSite(file: url.lastPathComponent, line: offset + 1, text: line))
+            }
+        }
+        return offenders
+    }
+
+    /// The declaration text from the nearest `func` above `index` up to the brace that opens its
+    /// body, which is where a parameter list ends however many lines it spans.
+    private static func enclosingSignature(of index: Int, in lines: [String]) -> String? {
+        guard let start = (0 ... index).reversed().first(where: {
+            lines[$0].trimmingCharacters(in: .whitespaces).contains("func ")
+        }) else { return nil }
+
+        var signature = ""
+        for line in lines[start ... index] {
+            signature += line
+            if line.contains("{") { break }
+        }
+        return signature
     }
 
     private static func registryReferences() throws -> [CallSite] {

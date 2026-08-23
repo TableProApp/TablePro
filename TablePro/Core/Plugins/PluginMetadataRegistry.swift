@@ -58,6 +58,8 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsModifyPrimaryKey: Bool = true
         var supportsTriggers: Bool = false
         var supportsTriggerEditing: Bool = false
+        var supportsRoutines: Bool = false
+        var supportsDatabaseTriggerBrowse: Bool = false
         var defaultSSLMode: SSLMode = .disabled
         var supportsOpportunisticTLS: Bool = true
         var supportsCloudflareTunnel: Bool = true
@@ -542,6 +544,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsRoutines: true,
+                    supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -597,6 +601,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsRoutines: true,
+                    supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -654,6 +660,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsRoutines: true,
+                    supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -884,6 +892,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsModifyPrimaryKey: false,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsDatabaseTriggerBrowse: true,
                     supportsCloudflareTunnel: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -1135,6 +1144,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey,
                 supportsTriggers: driverType.supportsTriggers,
                 supportsTriggerEditing: driverType.supportsTriggerEditing,
+                supportsRoutines: driverType.supportsRoutines,
+                supportsDatabaseTriggerBrowse: driverType.supportsDatabaseTriggerBrowse,
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
                 supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
                 supportsCloudflareTunnel: driverType.supportsSSH,

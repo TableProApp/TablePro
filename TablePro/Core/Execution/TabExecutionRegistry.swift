@@ -176,6 +176,15 @@ internal struct TabExecutionRegistry {
         entries[tabId] != nil
     }
 
+    /// One tab's whole answer to "is anything running here", the per-tab counterpart of
+    /// `isAnyExecuting`. Work that cannot claim the tab still runs on it: Fetch All extends the
+    /// result already on screen, so it registers unclaimed work rather than minting a content epoch
+    /// that would discard its own rows. Anything deciding whether a tab is idle asks this;
+    /// `isExecuting` answers the narrower question of whether a claim is outstanding.
+    internal func isBusy(_ tabId: UUID) -> Bool {
+        entries[tabId] != nil || unclaimedWork[tabId] != nil
+    }
+
     /// The window's whole answer to "is anything running here", and the only one.
     ///
     /// The toolbar's indicator, Stop, `Cmd+.` and the disconnect warning all read this rather than

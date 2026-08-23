@@ -75,7 +75,7 @@ struct DataGridView: NSViewRepresentable {
         tableView.allowsColumnReordering = true
         tableView.allowsColumnResizing = true
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
-        tableView.gridStyleMask = [.solidVerticalGridLineMask]
+        tableView.gridStyleMask = []
         tableView.intercellSpacing = NSSize(width: 1, height: 0)
         tableView.rowHeight = CGFloat(settings.rowHeight.rawValue)
         tableView.usesAutomaticRowHeights = false
@@ -425,12 +425,6 @@ struct DataGridView: NSViewRepresentable {
         coordinator.selectionController.overlay = overlay
         coordinator.selectionController.coordinator = coordinator
         tableView.selectionOverlay = overlay
-    }
-
-    static let firstDataTableColumnIndex: Int = 1
-
-    static func isDataTableColumn(_ tableColumnIndex: Int) -> Bool {
-        tableColumnIndex >= firstDataTableColumnIndex
     }
 
     static func dataColumnIndex(

@@ -88,6 +88,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
+    func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo]
+    func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo]
+    func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String
     func fetchTableDDL(table: String, schema: String?) async throws -> String
     func fetchViewDefinition(view: String, schema: String?) async throws -> String
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata
@@ -225,6 +229,46 @@ public extension PluginDatabaseDriver {
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
+
+    func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] { [] }
+
+    func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String {
+        if let definition = trigger.definition, !definition.isEmpty { return definition }
+        guard let table = trigger.table else {
+            throw PluginObjectSourceError.unsupported(trigger.name)
+        }
+        guard let existing = try await fetchTriggerDefinition(
+            name: trigger.name,
+            table: table,
+            schema: trigger.schema
+        ) else {
+            throw PluginObjectSourceError.unsupported(trigger.name)
+        }
+        return existing
+    }
+
+    /// A driver written against `PluginProcedureFunctionSupport` keeps working untouched: the
+    /// runtime fills this requirement from here, and here adopts that conformance. The app only
+    /// ever calls this one, so nothing above PluginKit has to know the older protocol exists.
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
+        guard let legacy = self as? PluginProcedureFunctionSupport else { return [] }
+        let procedures = try await legacy.fetchProcedures(schema: schema)
+        let functions = try await legacy.fetchFunctions(schema: schema)
+        return procedures.map { $0.adopting(kind: .procedure, schema: schema) }
+            + functions.map { $0.adopting(kind: .function, schema: schema) }
+    }
+
+    func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String {
+        guard let legacy = self as? PluginProcedureFunctionSupport else {
+            throw PluginObjectSourceError.unsupported(routine.name)
+        }
+        switch routine.kind {
+        case .procedure:
+            return try await legacy.fetchProcedureDDL(name: routine.name, schema: routine.schema)
+        case .function:
+            return try await legacy.fetchFunctionDDL(name: routine.name, schema: routine.schema)
+        }
+    }
 
     /// Engines whose partitions are metadata on one table object, rather than
     /// separate relations, have nothing to nest and keep the empty default.

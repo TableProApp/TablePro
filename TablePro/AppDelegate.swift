@@ -79,6 +79,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowOpener.shared.setConnectionFormPresenter { ConnectionFormWindowController.present($0) }
         WindowOpener.shared.setIntegrationsActivityPresenter { IntegrationsActivityWindowController.present() }
         WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present(pane: $0) }
+        WindowOpener.shared.setCompareSyncPresenter { CompareSyncWindowController.present(prefillSource: $0) }
         KeyRepeatFilter.shared.install()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
@@ -151,6 +152,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if CompareSyncRunRegistry.shared.isApplying {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "A sync is still running")
+            alert.informativeText = String(
+                format: String(localized: "Quitting stops the run against %@. Statements that already ran stay applied."),
+                CompareSyncRunRegistry.shared.applyingTargetNames.joined(separator: ", ")
+            )
+            alert.alertStyle = .critical
+            alert.addButton(withTitle: String(localized: "Keep Running"))
+            alert.addButton(withTitle: String(localized: "Stop and Quit"))
+            alert.buttons[1].hasDestructiveAction = true
+            guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
+        }
+
         let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
         if hasUnsaved {
             /// Quitting can be asked for from outside the app, so this alert has to come forward on

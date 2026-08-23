@@ -9,23 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- EXPLAIN plans now keep history and compare against earlier compatible runs to show cost, row-estimate and operation changes.
-- Database favorites can be tagged by environment, filtered in the Favorites sidebar, opened directly, and synced through iCloud. (#1553)
-- Open in Window on a row inspector text field, for reading or editing a long value on a bigger surface.
+- Compare & Sync between two databases, comparing tables, views, procedures, functions and triggers, or row data. Starter license. (#721)
+- Triggers as a sidebar section, listed per database and schema alongside Procedures and Functions. (#2383)
+- Read-only source viewer for procedures, functions and triggers, with Copy, Export and Open in Editor. (#2383)
+- Procedures, functions and triggers on MSSQL, Oracle, SQLite, ClickHouse, DuckDB, Snowflake, BigQuery, Cassandra, LibSQL, Cloudflare D1, Teradata and Dameng. (#2383)
+- Procedures, functions and triggers in the quick switcher.
+- Argument signatures on routine rows, shown when two routines in a section share a name.
+- Schema-wide `list_triggers` for MCP clients, and `return_type` and `language` on `list_routines`.
+- Plan history for EXPLAIN, comparing cost, row estimates and node changes against an earlier compatible run. (#2380)
+
+### Changed
+
+- The data grid draws its cells instead of building a view for each one, so a result with hundreds of columns opens at once and holds a fraction of the memory. (#2381)
+- The data grid draws its own column separators. (#2381)
+- The inline cell editor scrolls a long line instead of wrapping it. (#2381)
 
 ### Fixed
 
-- A saved connection whose SSH settings were written before the agent socket field existed now loads instead of disappearing.
-- Switch Connection and Open Database now open on a narrow window, and after you remove their toolbar button, instead of doing nothing at all.
-- A large text value in the row inspector now scrolls in a resizable text view instead of being clipped, and stays selectable and copyable when the row is read-only.
-- The inspector picks its multi-line editor from the value, so a large value in `VARCHAR(MAX)`, `NCLOB` or ClickHouse's `Nullable(String)` is no longer stuck on one line.
-- Right-clicking a read-only inspector field now offers Copy Value instead of an empty menu.
-- Editor crashes when layout, highlighting, accessibility, input methods, dictation or Look Up read text a newer edit had removed. (#2338, #2339, #2340)
-- A search highlight or diagnostic underline whose text you delete now disappears instead of moving elsewhere. (#2341)
-- The toolbar no longer sits on "Executing…" after a query ends, and the session context buttons no longer empty out while one runs. (#2342)
-- A SQLite query that stops early on a locked database or a volume error now says so instead of showing an empty table. (#2355)
-- Stop now ends a SQLite query waiting on a database another program has locked. (#2363)
-- The XLSX, MQL and SQL Import plugins now link to Import & Export instead of a page that does not exist.
+- A second of delay opening the inline editor on a result with hundreds of columns. (#2381)
+- Flickering columns, blank columns, and an unpainted gap while scrolling a result with about 100 columns sideways. (#2381)
+- Find, arrow keys, and the inline editor unable to reach a column scrolled off the side of a wide result.
+- Return opening no editor on a row selected with the arrow keys.
+- Tab out of a row's last cell and Shift+Tab out of its first doing nothing.
+- Size All Columns to Fit leaving the far columns of a wide result unreachable.
+- A table with 500 columns pinning a core for 20 seconds and taking a gigabyte to open. (#2381)
+- An empty grid the first time a table is opened in a window with no tabs. (#2342)
+- One table click running its query twice. (#2342)
+- A closed tab leaving its query counted as running. (#2342)
+- One of two PostgreSQL function overloads missing from the sidebar, and Show DDL opening an arbitrary one. (#2383)
+- MySQL Show DDL reading the session database instead of the one being browsed. (#2383)
+- Routine tooltips, VoiceOver labels and Copy with Signature showing a return type in place of the argument list. (#2383)
+- Duplicate routine rows in the flat sidebar taking the selection back to the first of them. (#2383)
+- MySQL triggers losing their definer, `WHEN` clause and ordering in the Structure tab.
+- Oracle triggers showing a header with no body in the Structure tab.
+- Crash exporting two same-named tables from different schemas to SQL. (#1968)
+- SQL export writing one schema's rows into another schema's table of the same name. (#1968)
+- SQL export leaving out columns and foreign keys for every schema after the first. (#1968)
+
+## [0.67.1] - 2026-08-22
+
+### Added
+
+- Environment tags for database favorites, with sidebar filtering, direct open, and iCloud sync. (#1553)
+- Open in Window for row inspector text fields.
+
+### Fixed
+
+- Background tab eviction dropping query, pinned, edited, and in-flight results.
+- Result display cache exceeding its memory budget when a cached row's values grew.
+- Data grid reformatting every cell while scrolling after undo, redo, a theme change, or a display-format change.
+- Autocomplete bulk-loading every column of a schema too large to cache.
+- Empty grid on a background tab whose column metadata arrived after its rows were freed.
+- Saved connections failing to load when their SSH settings predated the agent socket field.
+- Switch Connection and Open Database doing nothing on a narrow window or without their toolbar button.
+- Large text values clipped in the row inspector, and unselectable when the row is read-only.
+- Large `VARCHAR(MAX)`, `NCLOB`, and `Nullable(String)` values stuck on one line in the inspector.
+- Empty context menu when right-clicking a read-only inspector field.
+- Editor crashes reading text a newer edit had removed. (#2338, #2339, #2340)
+- Search highlights and diagnostic underlines moving when their text was deleted. (#2341)
+- Toolbar stuck on "Executing…" after a query ended, and session context buttons emptying mid-query. (#2342)
+- SQLite queries showing an empty table instead of reporting a lock or volume error. (#2355)
+- Stop not ending a SQLite query waiting on a database locked by another program. (#2363)
+- Broken documentation links in the XLSX, MQL, and SQL Import plugins.
 
 ## [0.67.0] - 2026-08-21
 

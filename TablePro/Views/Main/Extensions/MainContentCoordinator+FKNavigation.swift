@@ -117,7 +117,7 @@ extension MainContentCoordinator {
         guard let tableView = NSApp.keyWindow?.firstResponder as? KeyHandlingTableView,
               let coordinator = tableView.coordinator,
               tableView.selectedRow >= 0,
-              DataGridView.isDataTableColumn(tableView.focusedColumn),
+              tableView.presentsDataColumn(at: tableView.focusedColumn),
               let columnIndex = DataGridView.dataColumnIndex(
                   for: tableView.focusedColumn,
                   in: tableView,

@@ -441,6 +441,16 @@
         }
       }
     },
+    "%1$@ %2$@ is dropped and recreated, so anything depending on it fails until it exists again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%1$@ %2$@을(를) 삭제한 뒤 다시 만들기 때문에, 이에 의존하는 항목은 다시 만들어질 때까지 실패합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "%1$@ (%2$@)" : {
       "localizations" : {
         "ko" : {
@@ -661,6 +671,16 @@
         }
       }
     },
+    "%1$@ → %2$@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%1$@ → %2$@",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "%1$@ → %2$@ · %3$@ runs before, %4$@ now" : {
       "comment" : "Regression detail: prior duration, recent duration, prior count, recent count",
       "localizations" : {
@@ -771,6 +791,26 @@
         }
       }
     },
+    "%1$d of %2$d allowed for this run" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%2$d개 중 %1$d개를 이번 실행에서 허용함",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "%1$d of %2$d included" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%2$d개 중 %1$d개 포함됨",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "%1$d of %2$d rows, %3$d marked for deletion" : {
       "localizations" : {
         "ko" : {
@@ -801,6 +841,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%2$d 列中的 %1$d 列，%3$d 列已標記刪除"
+          }
+        }
+      }
+    },
+    "%1$d of %2$d tables will be compared." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%2$d개 테이블 중 %1$d개를 비교합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "%1$d statements stay out of this run and %2$@ keeps what it has for them." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구문 %1$d개는 이번 실행에서 제외되며, %2$@은(는) 해당 항목을 그대로 유지합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "%1$d statements, %2$d will run." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구문 %1$d개 중 %2$d개를 실행합니다.",
+            "state" : "translated"
           }
         }
       }
@@ -1240,6 +1310,16 @@
         }
       }
     },
+    "%@ cannot be compared, because its driver does not expose metadata." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@은(는) 드라이버가 메타데이터를 제공하지 않아 비교할 수 없습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "%@ cannot be empty" : {
       "localizations" : {
         "ko" : {
@@ -1308,6 +1388,16 @@
         }
       }
     },
+    "%@ cannot compare two of its own databases at once, because it reads both through one connection. Use a second connection for the target." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@은(는) 하나의 연결로 양쪽을 읽기 때문에 자체 데이터베이스 두 개를 동시에 비교할 수 없습니다. 대상에는 다른 연결을 사용하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "%@ completed" : {
       "localizations" : {
         "ko" : {
@@ -1372,6 +1462,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法載入 %@"
+          }
+        }
+      }
+    },
+    "%@ does not report structure metadata that can be compared." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@은(는) 비교할 수 있는 구조 메타데이터를 제공하지 않습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "%@ does not support reading rows in key order, which data compare needs." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@은(는) 데이터 비교에 필요한 키 순서 행 읽기를 지원하지 않습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -1626,6 +1736,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ 已被 %2$@ 中的「%3$@」使用。重新指派會將它從該動作中移除。"
+          }
+        }
+      }
+    },
+    "%@ is no longer a saved connection." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@은(는) 더 이상 저장된 연결이 아닙니다.",
+            "state" : "translated"
           }
         }
       }
@@ -2935,6 +3055,34 @@
         }
       }
     },
+    "%d bytes" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%d byte"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%d bytes"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%d바이트",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "%d cells selected, rows %d to %d, columns %d to %d" : {
       "localizations" : {
         "en" : {
@@ -2971,6 +3119,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已選取 %1$d 個儲存格,第 %2$d 列到第 %3$d 列,第 %4$d 欄到第 %5$d 欄"
+          }
+        }
+      }
+    },
+    "%d changes" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%d change"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%d changes"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "변경 %d개",
+            "state" : "translated"
           }
         }
       }
@@ -3249,6 +3425,26 @@
         }
       }
     },
+    "%d included" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%d개 포함됨",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "%d left out" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%d개 제외됨",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "%d more" : {
       "localizations" : {
         "ko" : {
@@ -3443,6 +3639,16 @@
         }
       }
     },
+    "%d of 1 table will be compared." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "테이블 1개 중 %d개를 비교합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "%d plugin(s) could not be loaded" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3580,6 +3786,62 @@
         }
       }
     },
+    "%d rows hold NULL in a key column and were left out. Choose a key with no NULLs to compare them." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%d row holds NULL in a key column and was left out. Choose a key with no NULLs to compare it."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%d rows hold NULL in a key column and were left out. Choose a key with no NULLs to compare them."
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%d개 행은 키 열이 NULL이라 제외되었습니다. 비교하려면 NULL이 없는 키를 선택하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "%d rows match. Matching rows are counted, not listed, so a difference is never crowded out of this list." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%d row matches. Matching rows are counted, not listed, so a difference is never crowded out of this list."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%d rows match. Matching rows are counted, not listed, so a difference is never crowded out of this list."
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%d개 행이 일치합니다. 일치하는 행은 목록에 넣지 않고 개수만 세므로, 차이점이 목록에서 밀려나지 않습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "%d selected" : {
       "localizations" : {
         "ko" : {
@@ -3643,6 +3905,16 @@
         "zh-Hant" : {
           "stringUnit" : {
             "value" : "已略過 %d 列",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "%d statements would destroy data and are not allowed yet." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구문 %d개가 데이터를 파괴하며 아직 허용되지 않았습니다.",
             "state" : "translated"
           }
         }
@@ -6606,6 +6878,36 @@
         }
       }
     },
+    "1 statement stays out of this run and %@ keeps what it has for it." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구문 1개는 이번 실행에서 제외되며, %@은(는) 해당 항목을 그대로 유지합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "1 statement would destroy data and is not allowed yet." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구문 1개가 데이터를 파괴하며 아직 허용되지 않았습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "1 statement, %d will run." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구문 1개 중 %d개를 실행합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "1 year" : {
       "localizations" : {
         "ko" : {
@@ -7837,6 +8139,16 @@
         }
       }
     },
+    "A column left out of the comparison is still written on insert and update. Changing either list needs another comparison." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교에서 제외한 열도 삽입과 업데이트에는 그대로 기록됩니다. 두 목록 중 하나를 바꾸면 다시 비교해야 합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "A command named \"/%@\" already exists." : {
       "localizations" : {
         "ko" : {
@@ -7867,6 +8179,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "名為「/%@」的指令已存在。"
+          }
+        }
+      }
+    },
+    "A comparison is already running." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교가 이미 실행 중입니다.",
+            "state" : "translated"
           }
         }
       }
@@ -8281,6 +8603,16 @@
         }
       }
     },
+    "A run is already in progress." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "실행이 이미 진행 중입니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "A service account key is required" : {
       "localizations" : {
         "ko" : {
@@ -8413,6 +8745,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "偵測到同步衝突，需要解決。"
+          }
+        }
+      }
+    },
+    "A sync is still running" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "동기화가 아직 실행 중입니다",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "A transaction cannot be combined with skip and continue: together they would leave the target half applied." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "트랜잭션은 건너뛰고 계속하기와 함께 쓸 수 없습니다. 두 가지를 함께 쓰면 대상이 절반만 적용된 상태로 남습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -13069,6 +13421,16 @@
         }
       }
     },
+    "All Rows" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "모든 행",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "All Time" : {
       "localizations" : {
         "ko" : {
@@ -13580,6 +13942,16 @@
         }
       }
     },
+    "Allow every held-back statement on the Warnings tab, or exclude the objects that produced them, before applying." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "적용하기 전에 경고 탭에서 보류된 구문을 모두 허용하거나, 해당 구문을 만든 객체를 제외하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Allow remote connections" : {
       "localizations" : {
         "ko" : {
@@ -13644,6 +14016,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "允許的連線"
+          }
+        }
+      }
+    },
+    "Allowing a statement applies to this run only. It is never saved." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구문 허용은 이번 실행에만 적용되며 저장되지 않습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -14699,6 +15081,38 @@
         }
       }
     },
+    "Applied to %@ at %@. %d statements." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Applied to %1$@ at %2$@. %3$d statements."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%2$@에 %1$@(으)로 적용했습니다. 구문 %3$d개.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Applied to %@ at %@. 1 statement." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Applied to %1$@ at %2$@. 1 statement."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%2$@에 %1$@(으)로 적용했습니다. 구문 1개.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Applied when opening a table. Click a column header to override." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -14764,6 +15178,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "套用"
+          }
+        }
+      }
+    },
+    "Apply %1$d statements to %2$@?" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구문 %1$d개를 %2$@에 적용하시겠습니까?",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Apply %@ sync to %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Apply %1$@ sync to %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@ 동기화를 %@에 적용",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Apply 1 statement to %@?" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구문 1개를 %@에 적용하시겠습니까?",
+            "state" : "translated"
           }
         }
       }
@@ -15249,6 +15699,16 @@
         }
       }
     },
+    "Apply to %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@에 적용",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Apply to Editor" : {
       "localizations" : {
         "ko" : {
@@ -15283,6 +15743,16 @@
         }
       }
     },
+    "Apply to Target…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상에 적용…",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Applying or clearing filters will reload data and discard all unsaved changes." : {
       "localizations" : {
         "ko" : {
@@ -15313,6 +15783,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "套用或清除篩選條件將重新載入資料並捨棄所有未儲存的變更。"
+          }
+        }
+      }
+    },
+    "Applying to %@…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@에 적용하는 중…",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Apply…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "적용…",
+            "state" : "translated"
           }
         }
       }
@@ -16998,6 +17488,16 @@
         }
       }
     },
+    "Auto-increment seed" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "자동 증가 시작값",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Auto-indent" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -17865,6 +18365,16 @@
         }
       }
     },
+    "Binary content" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이진 콘텐츠",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Block" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18374,6 +18884,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "瀏覽…"
+          }
+        }
+      }
+    },
+    "Build the SQL that brings the target in line" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상을 맞추는 SQL 생성",
+            "state" : "translated"
           }
         }
       }
@@ -19059,6 +19579,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "COMMENT"
+          }
+        }
+      }
+    },
+    "CREATE statement" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "CREATE 구문",
+            "state" : "translated"
           }
         }
       }
@@ -19853,6 +20383,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已取消"
+          }
+        }
+      }
+    },
+    "Cancelled before the script finished." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "스크립트가 끝나기 전에 취소되었습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -21236,6 +21776,16 @@
         }
       }
     },
+    "Change the filter to see the other rows." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "다른 행을 보려면 필터를 변경하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Changed" : {
       "comment" : "Text for a split diff marker that indicates a change in a split diff.",
       "isCommentAutoGenerated" : true,
@@ -21268,6 +21818,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已變更"
+          }
+        }
+      }
+    },
+    "Changes" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "변경 사항",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Changing %@ from %@ to %@ can truncate existing values." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Changing %1$@ from %2$@ to %3$@ can truncate existing values."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@을(를) %@에서 %@(으)로 변경하면 기존 값이 잘릴 수 있습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Changing the collation of %@ can change sort order and uniqueness." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@의 콜레이션을 변경하면 정렬 순서와 고유성이 달라질 수 있습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Changing the primary key rebuilds the table and can fail on duplicate values." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "기본 키를 변경하면 테이블을 다시 만들며, 값이 중복되면 실패할 수 있습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -21963,6 +22559,16 @@
         }
       }
     },
+    "Choose %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@ 선택",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Choose AI provider and model" : {
       "localizations" : {
         "ko" : {
@@ -22406,6 +23012,16 @@
         }
       }
     },
+    "Choose a key column before comparing data." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "데이터를 비교하기 전에 키 열을 선택하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Choose a location to save the diagram as PNG." : {
       "localizations" : {
         "ko" : {
@@ -22607,6 +23223,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "為團隊的連線目錄選擇一個共用資料夾。隊友在「設定 > 連結資料夾」中加入此資料夾即可看到已發佈的連線。"
+          }
+        }
+      }
+    },
+    "Choose a source and a target first." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "먼저 원본과 대상을 선택하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Choose a source and a target, then compare them." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "원본과 대상을 선택한 다음 비교하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Choose a source or a target first." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "먼저 원본 또는 대상을 선택하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Choose a source to compare from." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교할 원본을 선택하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Choose a target to compare against." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교 대상을 선택하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Choose a target to write to." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "기록할 대상을 선택하십시오.",
+            "state" : "translated"
           }
         }
       }
@@ -25229,6 +25905,16 @@
         }
       }
     },
+    "Closing now stops the run between statements. Statements that already ran stay applied." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "지금 닫으면 구문 사이에서 실행이 중단됩니다. 이미 실행된 구문은 적용된 상태로 남습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Closing this tab will discard all unsaved changes." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -25842,6 +26528,26 @@
         }
       }
     },
+    "Collation and character set" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "콜레이션 및 문자 집합",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Collation or character set change" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "콜레이션 또는 문자 집합 변경",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Collation:" : {
       "localizations" : {
         "ko" : {
@@ -26295,6 +27001,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "欄位名稱必須是唯一的。"
+          }
+        }
+      }
+    },
+    "Column order" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "열 순서",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Column order differs. No statement is generated for reordering columns." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "열 순서가 다릅니다. 열 순서를 바꾸는 구문은 생성되지 않습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -26777,6 +27503,16 @@
         }
       }
     },
+    "Comments and owners" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "주석 및 소유자",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Compact" : {
       "localizations" : {
         "ko" : {
@@ -26845,6 +27581,122 @@
         }
       }
     },
+    "Compare" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compare %@ and write changes to %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Compare %1$@ and write changes to %2$@."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@을(를) 비교하고 변경 사항을 %@에 기록합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compare & Sync" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교 및 동기화",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compare & Sync Databases…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "데이터베이스 비교 및 동기화…",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compare & Sync requires a license" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교 및 동기화에는 라이선스가 필요합니다",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compare Now" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "지금 비교",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compare lists the tables both sides share. Choose the tables to compare, then press Compare." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교는 양쪽이 공유하는 테이블을 나열합니다. 비교할 테이블을 선택한 다음 비교를 누르십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compare structure or data" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구조 또는 데이터 비교",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compare structure or data between two connections and generate the sync script." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "두 연결 사이의 구조 또는 데이터를 비교하고 동기화 스크립트를 생성합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compare the two databases" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "두 데이터베이스 비교",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compare the two databases first." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "먼저 두 데이터베이스를 비교하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Compare this plan with an earlier run" : {
       "localizations" : {
         "ko" : {
@@ -26875,6 +27727,82 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "將此執行計畫與先前的執行結果進行比較"
+          }
+        }
+      }
+    },
+    "Compare/Sync with…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "다음과 비교/동기화…",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compared %@. %d differences. Nothing has been written." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Compared %1$@. %2$d differences. Nothing has been written."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%1$@을(를) 비교했습니다. 차이점 %2$d개. 아무것도 기록되지 않았습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compared %@. 1 difference. Nothing has been written." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@을(를) 비교했습니다. 차이점 1개. 아무것도 기록되지 않았습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Compared columns" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교한 열",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Comparing only. Nothing has been written." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교만 했습니다. 아무것도 기록되지 않았습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Comparison Options…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교 옵션…",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Comparison cancelled." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교가 취소되었습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -31354,6 +32282,16 @@
         }
       }
     },
+    "Could Not Compare" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교할 수 없음",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Could Not Open File" : {
       "localizations" : {
         "ko" : {
@@ -32846,6 +33784,16 @@
         }
       }
     },
+    "Create %1$@ %2$@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%1$@ %2$@ 생성",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Create %@" : {
       "localizations" : {
         "ko" : {
@@ -33535,6 +34483,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "建立新資料庫"
+          }
+        }
+      }
+    },
+    "Create table %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "테이블 %@ 생성",
+            "state" : "translated"
           }
         }
       }
@@ -35048,6 +36006,16 @@
         }
       }
     },
+    "Data Comparison" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "데이터 비교",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Data Grid" : {
       "localizations" : {
         "ko" : {
@@ -35215,6 +36183,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "資料格"
+          }
+        }
+      }
+    },
+    "Data loss" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "데이터 손실",
+            "state" : "translated"
           }
         }
       }
@@ -37206,6 +38184,36 @@
         }
       }
     },
+    "Definition" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "정의",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Definitions" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "정의",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Definitions Compare Structure" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "정의는 구조를 비교합니다",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Delete" : {
       "localizations" : {
         "ko" : {
@@ -38157,6 +39165,42 @@
         }
       }
     },
+    "Delete is off by default, so a first run cannot remove a row from the target." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "삭제는 기본적으로 꺼져 있으므로, 첫 실행에서는 대상의 행을 제거할 수 없습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Delete row %@ from %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete row %1$@ from %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%2$@에서 행 %1$@ 삭제",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Delete rows the source does not have" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "원본에 없는 행 삭제",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Delete this column?" : {
       "localizations" : {
         "ko" : {
@@ -38425,6 +39469,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "刪除…"
+          }
+        }
+      }
+    },
+    "Deleting row %@ from %@ permanently removes it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Deleting row %1$@ from %2$@ permanently removes it."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%2$@에서 행 %1$@을(를) 삭제하면 영구적으로 제거됩니다.",
+            "state" : "translated"
           }
         }
       }
@@ -38905,6 +39965,16 @@
         }
       }
     },
+    "Detail" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "세부사항",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Details" : {
       "localizations" : {
         "ko" : {
@@ -39139,6 +40209,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "差異版面"
+          }
+        }
+      }
+    },
+    "Difference" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "차이점",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Differs" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "다름",
+            "state" : "translated"
           }
         }
       }
@@ -40717,6 +41807,16 @@
         }
       }
     },
+    "Drop %1$@ %2$@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%1$@ %2$@ 삭제",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Drop %1$@ “%2$@”?" : {
       "localizations" : {
         "ko" : {
@@ -41651,6 +42751,16 @@
         }
       }
     },
+    "Drop table %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "테이블 %@ 삭제",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Drop table '%@'" : {
       "localizations" : {
         "ko" : {
@@ -41715,6 +42825,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要刪除觸發器「%@」嗎？"
+          }
+        }
+      }
+    },
+    "Dropping %1$@ %2$@ removes it from the target." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%1$@ %2$@을(를) 삭제하면 대상에서 제거됩니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Dropping column %@ permanently removes its data." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "열 %@을(를) 삭제하면 해당 데이터가 영구적으로 제거됩니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Dropping index %@ can slow existing queries." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "인덱스 %@을(를) 삭제하면 기존 쿼리가 느려질 수 있습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Dropping materialized view %@ discards its stored rows, which have to be rebuilt." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구체화 뷰 %@을(를) 삭제하면 저장된 행이 버려지며, 다시 만들어야 합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Dropping table %@ permanently removes the table and all of its rows." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "테이블 %@을(를) 삭제하면 테이블과 모든 행이 영구적으로 제거됩니다.",
+            "state" : "translated"
           }
         }
       }
@@ -45466,6 +46626,40 @@
         }
       }
     },
+    "Error %d" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "오류 %d"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hata %d"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lỗi %d"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "错误 %d"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "錯誤 %d"
+          }
+        }
+      }
+    },
     "Error Applying Changes" : {
       "localizations" : {
         "ko" : {
@@ -45705,244 +46899,6 @@
         }
       }
     },
-    "Event" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이벤트"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Olay"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sự kiện"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "事件"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "事件"
-          }
-        }
-      }
-    },
-    "Every included column needs a name." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "포함된 모든 열에 이름이 필요합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dahil edilen her sütunun bir adı olmalıdır."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mỗi cột được bao gồm cần có tên."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每个包含的列都需要名称。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每個納入的欄位都需要名稱。"
-          }
-        }
-      }
-    },
-    "Every table needs at least one column. Click + to get started" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "모든 테이블에는 열이 하나 이상 있어야 합니다. +를 클릭하여 시작하십시오"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Her tablonun en az bir sütuna ihtiyacı vardır. Başlamak için + tıklayın"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mỗi bảng cần ít nhất một cột. Nhấn + để bắt đầu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每个表至少需要一列。点击 + 开始添加"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每個資料表至少需要一個欄位。點按 + 開始新增"
-          }
-        }
-      }
-    },
-    "Everything" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "모두"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Her Şey"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tất cả"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全部"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全部"
-          }
-        }
-      }
-    },
-    "Examples" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "예시"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Örnekler"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ví dụ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "示例"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "範例"
-          }
-        }
-      }
-    },
-    "Excel spreadsheet with formatting support." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "서식을 지원하는 Excel 스프레드시트입니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Biçimlendirme destekli Excel elektronik tablosu."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bảng tính Excel có hỗ trợ định dạng."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "支持格式化的 Excel 电子表格。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "支援格式設定的 Excel 試算表。"
-          }
-        }
-      }
-    },
-    "Exclude from iCloud Sync" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud 동기화에서 제외"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud Eşitlemesinden Hariç Tut"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Loại khỏi đồng bộ iCloud"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "排除 iCloud 同步"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "排除於 iCloud 同步"
-          }
-        }
-      }
-    },
     "Estimated Rows" : {
       "localizations" : {
         "ko" : {
@@ -46109,6 +47065,294 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "估算列數"
+          }
+        }
+      }
+    },
+    "Event" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이벤트"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Olay"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sự kiện"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "事件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "事件"
+          }
+        }
+      }
+    },
+    "Every included column needs a name." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "포함된 모든 열에 이름이 필요합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dahil edilen her sütunun bir adı olmalıdır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mỗi cột được bao gồm cần có tên."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个包含的列都需要名称。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每個納入的欄位都需要名稱。"
+          }
+        }
+      }
+    },
+    "Every object that was compared matches." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교한 모든 객체가 일치합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Every shared column is generated, so there is nothing to write." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "공유하는 모든 열이 생성 열이므로 기록할 내용이 없습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Every table needs at least one column. Click + to get started" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모든 테이블에는 열이 하나 이상 있어야 합니다. +를 클릭하여 시작하십시오"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her tablonun en az bir sütuna ihtiyacı vardır. Başlamak için + tıklayın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mỗi bảng cần ít nhất một cột. Nhấn + để bắt đầu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个表至少需要一列。点击 + 开始添加"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每個資料表至少需要一個欄位。點按 + 開始新增"
+          }
+        }
+      }
+    },
+    "Everything" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모두"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her Şey"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tất cả"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部"
+          }
+        }
+      }
+    },
+    "Exact value" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "정확한 값",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Examples" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "예시"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Örnekler"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ví dụ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "示例"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "範例"
+          }
+        }
+      }
+    },
+    "Excel spreadsheet with formatting support." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서식을 지원하는 Excel 스프레드시트입니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biçimlendirme destekli Excel elektronik tablosu."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bảng tính Excel có hỗ trợ định dạng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "支持格式化的 Excel 电子表格。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "支援格式設定的 Excel 試算表。"
+          }
+        }
+      }
+    },
+    "Exclude" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "제외",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Exclude Every Table" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "모든 테이블 제외",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Exclude from iCloud Sync" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 동기화에서 제외"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud Eşitlemesinden Hariç Tut"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loại khỏi đồng bộ iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除 iCloud 同步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除於 iCloud 同步"
           }
         }
       }
@@ -46690,6 +47934,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在執行…"
+          }
+        }
+      }
+    },
+    "Execution" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "실행",
+            "state" : "translated"
           }
         }
       }
@@ -52171,6 +53425,16 @@
         }
       }
     },
+    "Filter by name" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이름으로 필터링",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Filter by only this row" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -53140,6 +54404,16 @@
         }
       }
     },
+    "Finished" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "완료됨",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "First Page" : {
       "localizations" : {
         "ko" : {
@@ -53550,6 +54824,16 @@
         }
       }
     },
+    "Fold" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "접기",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Folder" : {
       "localizations" : {
         "ko" : {
@@ -53934,6 +55218,22 @@
         }
       }
     },
+    "Foreign key %@ matches %@ on the target but the names differ." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Foreign key %1$@ matches %2$@ on the target but the names differ."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "외래 키 %@은(는) 대상의 %@과(와) 일치하지만 이름이 다릅니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Forever" : {
       "localizations" : {
         "ko" : {
@@ -54067,40 +55367,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "格式化 JSON"
-          }
-        }
-      }
-    },
-    "Forward" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "앞으로"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "İleri"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tiến tới"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "前进"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "前進"
           }
         }
       }
@@ -54341,6 +55607,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不支援 %@ 的格式化"
+          }
+        }
+      }
+    },
+    "Forward" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앞으로"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İleri"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tiến tới"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前进"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前進"
           }
         }
       }
@@ -54617,6 +55917,16 @@
         }
       }
     },
+    "Generate Script" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "스크립트 생성",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Generate Token" : {
       "localizations" : {
         "ko" : {
@@ -54681,6 +55991,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "產生權杖,讓外部用戶端可使用自己的憑證連線。"
+          }
+        }
+      }
+    },
+    "Generate the script first." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "먼저 스크립트를 생성하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Generate the script to see exactly what would run." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "무엇이 실행될지 정확히 보려면 스크립트를 생성하십시오.",
+            "state" : "translated"
           }
         }
       }
@@ -55708,6 +57038,16 @@
         }
       }
     },
+    "Group By" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "그룹화 기준",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Group name" : {
       "localizations" : {
         "ko" : {
@@ -55738,6 +57078,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "群組名稱"
+          }
+        }
+      }
+    },
+    "Group results by difference or object type" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "차이점 또는 객체 유형으로 결과 그룹화",
+            "state" : "translated"
           }
         }
       }
@@ -55810,6 +57160,16 @@
         }
       }
     },
+    "Has Differences" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "차이 있음",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Has unsaved changes" : {
       "localizations" : {
         "ko" : {
@@ -55840,6 +57200,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "有未儲存的變更"
+          }
+        }
+      }
+    },
+    "Held Back" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "보류됨",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Held back" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "보류됨",
+            "state" : "translated"
           }
         }
       }
@@ -57210,6 +58590,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "圖像"
+          }
+        }
+      }
+    },
+    "Identical" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "동일",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Identifier case" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "식별자 대소문자",
+            "state" : "translated"
           }
         }
       }
@@ -58764,6 +60164,16 @@
         }
       }
     },
+    "Include" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "포함",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Include Credentials" : {
       "localizations" : {
         "ko" : {
@@ -58794,6 +60204,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "包含認證資訊"
+          }
+        }
+      }
+    },
+    "Include Every Table" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "모든 테이블 포함",
+            "state" : "translated"
           }
         }
       }
@@ -58863,6 +60283,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "包含近似列數（預設為 false）"
+          }
+        }
+      }
+    },
+    "Include at least one object to generate a script for it." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "스크립트를 생성하려면 객체를 하나 이상 포함하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Include at least one table to generate a script for it." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "스크립트를 생성하려면 테이블을 하나 이상 포함하십시오.",
+            "state" : "translated"
           }
         }
       }
@@ -59005,6 +60445,26 @@
         }
       }
     },
+    "Include every object in this group" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이 그룹의 모든 객체 포함",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Include every table in this group" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이 그룹의 모든 테이블 포함",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Include in iCloud Sync" : {
       "localizations" : {
         "ko" : {
@@ -59137,6 +60597,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "套用時包含這個篩選條件"
+          }
+        }
+      }
+    },
+    "Include this object" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이 객체 포함",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Include this row" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이 행 포함",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Include this table and compare again to see its rows." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "행을 보려면 이 테이블을 포함하고 다시 비교하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Include this table in the comparison" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이 테이블을 비교에 포함",
+            "state" : "translated"
           }
         }
       }
@@ -59308,6 +60808,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "縮排"
+          }
+        }
+      }
+    },
+    "Index %@ matches %@ on the target but the names differ." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Index %1$@ matches %2$@ on the target but the names differ."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "인덱스 %@은(는) 대상의 %@과(와) 일치하지만 이름이 다릅니다.",
+            "state" : "translated"
           }
         }
       }
@@ -60031,6 +61547,32 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "插入到編輯器"
+          }
+        }
+      }
+    },
+    "Insert row %@ into %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Insert row %1$@ into %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%2$@에 행 %1$@ 삽입",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Insert rows the target is missing" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상에 없는 행 삽입",
+            "state" : "translated"
           }
         }
       }
@@ -62471,6 +64013,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "索引鍵前綴根目錄"
+          }
+        }
+      }
+    },
+    "Key column %@ is not present on both sides. Choose a different key." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "키 열 %@이(가) 양쪽에 모두 있지는 않습니다. 다른 키를 선택하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Key columns" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "키 열",
+            "state" : "translated"
           }
         }
       }
@@ -66916,6 +68478,16 @@
         }
       }
     },
+    "Lossy type change" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "손실이 있는 타입 변경",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Low" : {
       "localizations" : {
         "ko" : {
@@ -67571,6 +69143,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Majority"
+          }
+        }
+      }
+    },
+    "Make the target the source and the source the target" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상을 원본으로, 원본을 대상으로 바꿉니다",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Making %@ NOT NULL fails if any existing row holds NULL." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "기존 행에 NULL이 있으면 %@을(를) NOT NULL로 만드는 작업은 실패합니다.",
+            "state" : "translated"
           }
         }
       }
@@ -70862,6 +72454,40 @@
         }
       }
     },
+    "Moves the editor cursor to the statement that produced this result" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 결과를 생성한 문으로 편집기 커서를 이동합니다"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Düzenleyici imlecini bu sonucu üreten ifadeye taşır"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di chuyển con trỏ trình soạn thảo tới câu lệnh đã tạo ra kết quả này"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将编辑器光标移到生成此结果的语句"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將編輯器游標移到產生此結果的陳述式"
+          }
+        }
+      }
+    },
     "Multi-model database with SurrealQL" : {
       "localizations" : {
         "ko" : {
@@ -71445,6 +73071,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "NULL 顯示："
+          }
+        }
+      }
+    },
+    "NULL only equals NULL" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "NULL은 NULL과만 같음",
+            "state" : "translated"
           }
         }
       }
@@ -73827,6 +75463,16 @@
         }
       }
     },
+    "No Comparison Yet" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "아직 비교하지 않음",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "No Connections" : {
       "localizations" : {
         "ko" : {
@@ -74095,6 +75741,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有資料集"
+          }
+        }
+      }
+    },
+    "No Differences" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "차이 없음",
+            "state" : "translated"
           }
         }
       }
@@ -74418,6 +76074,16 @@
         }
       }
     },
+    "No Object" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "객체 없음",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "No Object Selected" : {
       "localizations" : {
         "ko" : {
@@ -74737,6 +76403,16 @@
         }
       }
     },
+    "No Rows Match" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "일치하는 행 없음",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "No SSL encryption" : {
       "localizations" : {
         "ko" : {
@@ -74807,6 +76483,16 @@
         }
       }
     },
+    "No Script Yet" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "아직 스크립트 없음",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "No Selection" : {
       "localizations" : {
         "ko" : {
@@ -74837,6 +76523,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未選取"
+          }
+        }
+      }
+    },
+    "No Table Selected" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "선택된 테이블 없음",
+            "state" : "translated"
           }
         }
       }
@@ -74872,6 +76568,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有資料表"
+          }
+        }
+      }
+    },
+    "No Tables Yet" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "아직 테이블 없음",
+            "state" : "translated"
           }
         }
       }
@@ -74940,6 +76646,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有使用者或角色"
+          }
+        }
+      }
+    },
+    "No Warnings" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "경고 없음",
+            "state" : "translated"
           }
         }
       }
@@ -75287,6 +77003,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有已連線的用戶端"
+          }
+        }
+      }
+    },
+    "No columns in common." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "공통된 열이 없습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "No comparison yet." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "아직 비교하지 않았습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -76761,6 +78497,16 @@
         }
       }
     },
+    "No primary key. Choose key columns to compare this table." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "기본 키가 없습니다. 이 테이블을 비교하려면 키 열을 선택하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "No privileges" : {
       "localizations" : {
         "ko" : {
@@ -77376,6 +79122,16 @@
         }
       }
     },
+    "No saved setups for this source and target." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이 원본과 대상에 저장된 설정이 없습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "No saved templates" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -77721,6 +79477,16 @@
         }
       }
     },
+    "No tables were compared. Choose the tables to compare, then press Compare." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교한 테이블이 없습니다. 비교할 테이블을 선택한 다음 비교를 누르십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "No tabs open" : {
       "localizations" : {
         "ko" : {
@@ -77892,40 +79658,6 @@
         }
       }
     },
-    "Non-UTF-8 file (%@). Saving may change the encoding." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "UTF-8이 아닌 파일(%@)입니다. 저장하면 인코딩이 변경될 수 있습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "UTF-8 olmayan dosya (%@). Kaydetmek kodlamayı değiştirebilir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tệp không phải UTF-8 (%@). Lưu có thể làm thay đổi bảng mã."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "非 UTF-8 文件（%@）。保存可能会改变编码。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "非 UTF-8 檔案（%@）。儲存可能會改變編碼。"
-          }
-        }
-      }
-    },
     "Node Changes" : {
       "localizations" : {
         "ko" : {
@@ -77990,6 +79722,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "節點數"
+          }
+        }
+      }
+    },
+    "Non-UTF-8 file (%@). Saving may change the encoding." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UTF-8이 아닌 파일(%@)입니다. 저장하면 인코딩이 변경될 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UTF-8 olmayan dosya (%@). Kaydetmek kodlamayı değiştirebilir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp không phải UTF-8 (%@). Lưu có thể làm thay đổi bảng mã."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非 UTF-8 文件（%@）。保存可能会改变编码。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非 UTF-8 檔案（%@）。儲存可能會改變編碼。"
           }
         }
       }
@@ -78062,6 +79828,16 @@
         }
       }
     },
+    "None chosen" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "선택 없음",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Normal" : {
       "localizations" : {
         "ko" : {
@@ -78130,6 +79906,26 @@
         }
       }
     },
+    "Not Compared" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교하지 않음",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Not Compared Yet" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "아직 비교하지 않음",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Not Installed" : {
       "localizations" : {
         "ko" : {
@@ -78194,6 +79990,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在此連線上無法瀏覽"
+          }
+        }
+      }
+    },
+    "Not compared" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교하지 않음",
+            "state" : "translated"
           }
         }
       }
@@ -78695,6 +80501,16 @@
         }
       }
     },
+    "Not supported by the target" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상에서 지원하지 않음",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Not supported by this database" : {
       "localizations" : {
         "ko" : {
@@ -78865,6 +80681,16 @@
         }
       }
     },
+    "Notes" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "참고",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Nothing got at least %1$lld%% slower than the period before. A query needs %2$lld runs in both periods, and has to have grown by at least %3$@." : {
       "comment" : "Empty state for regressions: %1$lld is a percentage, %2$lld a run count, %3$@ a duration",
       "localizations" : {
@@ -78896,6 +80722,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有任何查詢比上一時段慢了至少 %1$lld%%。一個查詢需要在兩個時段各執行 %2$lld 次，並且至少增加了 %3$@。"
+          }
+        }
+      }
+    },
+    "Nothing in this script destroys data in %@." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이 스크립트에는 %@의 데이터를 파괴하는 내용이 없습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Nothing is running." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "실행 중인 작업이 없습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Nothing is selected to apply." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "적용할 항목이 선택되지 않았습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Nothing is written until Apply." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "적용하기 전에는 아무것도 기록되지 않습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Nothing to Show" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "표시할 내용 없음",
+            "state" : "translated"
           }
         }
       }
@@ -79034,6 +80910,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每個 insertMany 陳述式的文件數量。值越大產生的陳述式越少。"
+          }
+        }
+      }
+    },
+    "Numeric tolerance" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "숫자 허용 오차",
+            "state" : "translated"
           }
         }
       }
@@ -79243,6 +81129,16 @@
         }
       }
     },
+    "Object Type" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "객체 유형",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Objects that depend on them will be dropped too." : {
       "comment" : "Message in a confirmation alert when the user has selected to drop all objects that depend on the dropped objects.",
       "isCommentAutoGenerated" : true,
@@ -79275,6 +81171,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "依賴它們的物件也會被刪除。"
+          }
+        }
+      }
+    },
+    "Objects to Compare" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교할 객체",
+            "state" : "translated"
           }
         }
       }
@@ -79552,6 +81458,16 @@
         }
       }
     },
+    "On error" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "오류 발생 시",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Only affects new saves. Re-save a password to update its sync." : {
       "localizations" : {
         "ko" : {
@@ -79582,6 +81498,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "僅影響新儲存的內容。重新儲存密碼以更新其同步狀態。"
+          }
+        }
+      }
+    },
+    "Only in Source" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "원본에만 있음",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Only in Target" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상에만 있음",
+            "state" : "translated"
           }
         }
       }
@@ -87599,6 +89535,16 @@
         }
       }
     },
+    "Primary key change" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "기본 키 변경",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Priority %d" : {
       "localizations" : {
         "ko" : {
@@ -90447,6 +92393,16 @@
         }
       }
     },
+    "Quitting stops the run against %@. Statements that already ran stay applied." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "종료하면 %@에 대한 실행이 중단됩니다. 이미 실행된 구문은 적용된 상태로 남습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Quote" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -91299,6 +93255,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "唯讀連線"
+          }
+        }
+      }
+    },
+    "Read-Only. Choose a different connection to write changes to." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "읽기 전용입니다. 변경 사항을 기록하려면 다른 연결을 선택하십시오.",
+            "state" : "translated"
           }
         }
       }
@@ -94713,6 +96679,16 @@
         }
       }
     },
+    "Replace %1$@ %2$@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%1$@ %2$@ 교체",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Replace the estimate with an exact row count." : {
       "localizations" : {
         "ko" : {
@@ -96367,6 +98343,40 @@
         }
       }
     },
+    "Result %d" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "결과 %d"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonuç %d"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết quả %d"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结果 %d"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結果 %d"
+          }
+        }
+      }
+    },
     "Result Charts" : {
       "localizations" : {
         "ko" : {
@@ -97824,6 +99834,16 @@
         }
       }
     },
+    "Rows Compare Data" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "행은 데이터를 비교합니다",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Rows per INSERT" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -98234,6 +100254,16 @@
         }
       }
     },
+    "Run in a transaction" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "트랜잭션으로 실행",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Run some queries and this tab will show which you run most, which run slowest, and which got slower." : {
       "localizations" : {
         "ko" : {
@@ -98332,6 +100362,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在終端機中執行以下指令"
+          }
+        }
+      }
+    },
+    "Run the script against the target" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상에 대해 스크립트 실행",
+            "state" : "translated"
           }
         }
       }
@@ -100812,6 +102852,16 @@
         }
       }
     },
+    "Same" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "동일",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Same options will be applied to all selected tables." : {
       "localizations" : {
         "ko" : {
@@ -101751,6 +103801,16 @@
         }
       }
     },
+    "Saved Comparisons" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "저장된 비교",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Saved Connections" : {
       "localizations" : {
         "ko" : {
@@ -101952,6 +104012,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "匯入時會解密已儲存的密碼"
+          }
+        }
+      }
+    },
+    "Save…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "저장…",
+            "state" : "translated"
           }
         }
       }
@@ -102500,6 +104570,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "範圍"
+          }
+        }
+      }
+    },
+    "Script" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "스크립트",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Script generation cancelled." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "스크립트 생성이 취소되었습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -103685,6 +105775,16 @@
         }
       }
     },
+    "Select" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "선택",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Select %@" : {
       "localizations" : {
         "ko" : {
@@ -104303,6 +106403,16 @@
         }
       }
     },
+    "Select a table to see its row differences." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "행 차이를 보려면 테이블을 선택하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Select a table…" : {
       "localizations" : {
         "ko" : {
@@ -104435,6 +106545,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在左側選擇一個物件以編輯其權限。"
+          }
+        }
+      }
+    },
+    "Select an object to see its definition on both sides." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "양쪽 정의를 보려면 객체를 선택하십시오.",
+            "state" : "translated"
           }
         }
       }
@@ -105056,6 +107176,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分隔符號或模式"
+          }
+        }
+      }
+    },
+    "Sequence" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "시퀀스",
+            "state" : "translated"
           }
         }
       }
@@ -106547,6 +108677,16 @@
         }
       }
     },
+    "Show" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "표시",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Show All" : {
       "localizations" : {
         "ko" : {
@@ -106990,6 +109130,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示篩選列"
+          }
+        }
+      }
+    },
+    "Show Identical Objects" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "동일한 객체 표시",
+            "state" : "translated"
           }
         }
       }
@@ -107955,6 +110105,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示物件圖像"
+          }
+        }
+      }
+    },
+    "Show only the objects whose name contains this text" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이 텍스트가 이름에 포함된 객체만 표시합니다",
+            "state" : "translated"
           }
         }
       }
@@ -109812,6 +111972,16 @@
         }
       }
     },
+    "Skip and continue" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "건너뛰고 계속하기",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Skips foreign key constraint checks for this operation" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -110253,6 +112423,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "部分密碼未能讀取。你可以在匯入後於連線編輯器中輸入。"
+          }
+        }
+      }
+    },
+    "Some tables have not been compared with the columns now chosen." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "지금 선택한 열로 아직 비교하지 않은 테이블이 있습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -111353,6 +113533,40 @@
         }
       }
     },
+    "Statement %1$d/%2$d failed: %3$@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$d개 중 %1$d번째 문 실패: %3$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$d/%2$d numaralı ifade başarısız oldu: %3$@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Câu lệnh %1$d/%2$d thất bại: %3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %1$d/%2$d 条语句失败：%3$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %1$d/%2$d 條陳述式失敗：%3$@"
+          }
+        }
+      }
+    },
     "Statement %lld" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -111460,6 +113674,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "陳述式："
+          }
+        }
+      }
+    },
+    "Statements that already ran stay applied to %@. Compare again to see where it stands." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이미 실행된 구문은 %@에 적용된 상태로 남습니다. 현재 상태를 보려면 다시 비교하십시오.",
+            "state" : "translated"
           }
         }
       }
@@ -112050,6 +114274,16 @@
         }
       }
     },
+    "Stop Comparison" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교 중지",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Stop Export?" : {
       "localizations" : {
         "ko" : {
@@ -112124,6 +114358,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "신뢰 해제"
+          }
+        }
+      }
+    },
+    "Stop and Close" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "중지하고 닫기",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Stop and Quit" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "중지하고 종료",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Stop and keep what ran" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "중지하고 실행된 내용 유지",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Stop and roll back" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "중지하고 롤백",
+            "state" : "translated"
           }
         }
       }
@@ -112212,6 +114486,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已停止"
+          }
+        }
+      }
+    },
+    "Storage engine" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "스토리지 엔진",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Storage engine change" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "스토리지 엔진 변경",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Storage engine differs: %@ on source, %@ on target." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Storage engine differs: %1$@ on source, %2$@ on target."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "스토리지 엔진이 다릅니다. 원본은 %@, 대상은 %@입니다.",
+            "state" : "translated"
           }
         }
       }
@@ -112382,6 +114692,32 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "結構變更"
+          }
+        }
+      }
+    },
+    "Structure Comparison" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구조 비교",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Structure sync needs matching database types. %@ and %@ can be compared, but no script is generated." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Structure sync needs matching database types. %1$@ and %2$@ can be compared, but no script is generated."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구조 동기화에는 같은 데이터베이스 타입이 필요합니다. %@과(와) %@은(는) 비교할 수 있지만 스크립트는 생성되지 않습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -112696,6 +115032,16 @@
         }
       }
     },
+    "Summary" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "요약",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Suspended" : {
       "localizations" : {
         "ko" : {
@@ -112726,6 +115072,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已暫停"
+          }
+        }
+      }
+    },
+    "Swap" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "바꾸기",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Swap Source and Target" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "원본과 대상 바꾸기",
+            "state" : "translated"
           }
         }
       }
@@ -113205,6 +115571,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "切換連線上使用中的綱要"
+          }
+        }
+      }
+    },
+    "Switch the comparison to Data to see row differences." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "행 차이를 보려면 비교를 데이터로 전환하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Switch the comparison to Structure to see definitions." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "정의를 보려면 비교를 구조로 전환하십시오.",
+            "state" : "translated"
           }
         }
       }
@@ -113908,6 +116294,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已同步"
+          }
+        }
+      }
+    },
+    "Syncing data from %@ to %@. Value formatting can differ between engines; review the script before applying." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Syncing data from %1$@ to %2$@. Value formatting can differ between engines; review the script before applying."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@에서 %@(으)로 데이터를 동기화합니다. 값 형식은 엔진마다 다를 수 있으므로, 적용하기 전에 스크립트를 확인하십시오.",
+            "state" : "translated"
           }
         }
       }
@@ -114991,6 +117393,22 @@
         }
       }
     },
+    "Table collation differs: %@ on source, %@ on target." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Table collation differs: %1$@ on source, %2$@ on target."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "테이블 콜레이션이 다릅니다. 원본은 %@, 대상은 %@입니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Table creation options not available" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -115124,6 +117542,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要匯出的資料表名稱（可代替查詢）"
+          }
+        }
+      }
+    },
+    "Table rebuild" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "테이블 재생성",
+            "state" : "translated"
           }
         }
       }
@@ -115468,6 +117896,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "資料表"
+          }
+        }
+      }
+    },
+    "Tables always take part." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "테이블은 항상 포함됩니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Tables start out of the comparison so a first run cannot stream every row." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "첫 실행에서 모든 행을 읽지 않도록, 테이블은 비교에서 빠진 상태로 시작합니다.",
+            "state" : "translated"
           }
         }
       }
@@ -115844,6 +118292,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "標籤：%@"
+          }
+        }
+      }
+    },
+    "Target" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Target: %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상: %@",
+            "state" : "translated"
           }
         }
       }
@@ -116701,6 +119169,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法解析該正規表達式。請檢查語法後再試一次。"
+          }
+        }
+      }
+    },
+    "The %1$@ sorted rows differently than the comparison expects, near key %2$@. Pick a numeric key, or one that sorts by byte value." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%1$@이(가) 키 %2$@ 부근에서 비교가 예상한 것과 다른 순서로 행을 정렬했습니다. 숫자 키나 바이트 값으로 정렬되는 키를 선택하십시오.",
+            "state" : "translated"
           }
         }
       }
@@ -118065,6 +120543,16 @@
         }
       }
     },
+    "The driver did not return this object's definition, so only its name was compared." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "드라이버가 이 객체의 정의를 반환하지 않아 이름만 비교했습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "The encrypted file is corrupt or incomplete" : {
       "localizations" : {
         "ko" : {
@@ -118095,6 +120583,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "加密的檔案已損毀或不完整"
+          }
+        }
+      }
+    },
+    "The filter field is not in the toolbar." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "필터 필드가 도구 막대에 없습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -118491,6 +120989,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "리스너가 요청한 서비스에 대한 새 연결을 차단하고 있습니다"
+          }
+        }
+      }
+    },
+    "The object types taking part in the comparison are set in Options." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교에 포함할 객체 유형은 옵션에서 설정합니다.",
+            "state" : "translated"
           }
         }
       }
@@ -118984,6 +121492,26 @@
         }
       }
     },
+    "The run was rolled back. %@ is unchanged." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "실행이 롤백되었습니다. %@은(는) 변경되지 않았습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "The script already ran. Compare again to see where the target stands." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "스크립트가 이미 실행되었습니다. 대상의 현재 상태를 보려면 다시 비교하십시오.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "The secret manager did not return valid JSON." : {
       "localizations" : {
         "ko" : {
@@ -119130,6 +121658,36 @@
         }
       }
     },
+    "The source and the target are the same database." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "원본과 대상이 같은 데이터베이스입니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "The source driver cannot stream rows for a comparison." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "원본 드라이버는 비교를 위해 행을 스트리밍할 수 없습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "The statements ran but the transaction could not be committed: %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "구문은 실행되었지만 트랜잭션을 커밋할 수 없었습니다: %@",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "The target connection is no longer open." : {
       "localizations" : {
         "ko" : {
@@ -119232,6 +121790,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "目標資料庫可能會處於不完整的狀態。"
+          }
+        }
+      }
+    },
+    "The target does not support creating table %@." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상은 테이블 %@ 생성을 지원하지 않습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "The target driver cannot generate a sync script." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상 드라이버는 동기화 스크립트를 생성할 수 없습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "The target driver cannot run a sync script." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상 드라이버는 동기화 스크립트를 실행할 수 없습니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "The target driver cannot stream rows for a comparison." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상 드라이버는 비교를 위해 행을 스트리밍할 수 없습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -119368,6 +121966,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文字並非有效的 JSON。仍要儲存嗎？"
+          }
+        }
+      }
+    },
+    "The transaction could not be committed: %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "트랜잭션을 커밋할 수 없습니다: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İşlem kaydedilemedi: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể commit giao dịch: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "事务无法提交：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交易無法提交：%@"
           }
         }
       }
@@ -119712,6 +122344,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這些變更會撤銷 %@ 的所有權限，也就是此連線使用的帳號。"
+          }
+        }
+      }
+    },
+    "These two engines cannot share a script." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이 두 엔진은 스크립트를 공유할 수 없습니다.",
+            "state" : "translated"
           }
         }
       }
@@ -121324,6 +123966,16 @@
         }
       }
     },
+    "This list is a capped preview. Apply covers every difference, not only the rows listed here." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이 목록은 개수가 제한된 미리 보기입니다. 적용은 여기 나열된 행뿐 아니라 모든 차이점을 포함합니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "This machine is not activated for this license." : {
       "localizations" : {
         "ko" : {
@@ -122820,6 +125472,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Oracle 로그인 핸드셰이크 중 시간이 초과되었습니다. 서버가 네트워크 연결을 수락했지만 로그인을 완료하지 않았습니다."
+          }
+        }
+      }
+    },
+    "Timestamp digits compared" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교할 타임스탬프 자릿수",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Timestamp precision" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "타임스탬프 정밀도",
+            "state" : "translated"
           }
         }
       }
@@ -124378,6 +127050,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "樹狀"
+          }
+        }
+      }
+    },
+    "Trigger" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "트리거",
+            "state" : "translated"
           }
         }
       }
@@ -127315,6 +129997,32 @@
         }
       }
     },
+    "Update row %@ in %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Update row %1$@ in %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%2$@의 행 %1$@ 업데이트",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Update rows that differ" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "다른 행 업데이트",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Update to v%@" : {
       "localizations" : {
         "ko" : {
@@ -128850,6 +131558,16 @@
         }
       }
     },
+    "Value kind differs" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "값 종류가 다름",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Value too large to parse" : {
       "localizations" : {
         "ko" : {
@@ -129439,6 +132157,16 @@
         }
       }
     },
+    "View Account" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "계정 보기",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "View Activity…" : {
       "localizations" : {
         "ko" : {
@@ -129959,6 +132687,16 @@
         }
       }
     },
+    "Warnings" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "경고",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Watch shared folders for connection files." : {
       "localizations" : {
         "ko" : {
@@ -130127,6 +132865,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "歡迎使用 TablePro"
+          }
+        }
+      }
+    },
+    "What is switched on here is ignored when two structures are compared. These drift between environments by design." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "여기서 켠 항목은 두 구조를 비교할 때 무시됩니다. 이 항목들은 환경마다 다른 것이 정상입니다.",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "What ran against %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@에 대해 실행된 내용",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "What to Compare" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "비교할 대상",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "What to compare, and how" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "무엇을 어떻게 비교할지",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "What will run against %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%@에 대해 실행될 내용",
+            "state" : "translated"
           }
         }
       }
@@ -130304,6 +133092,16 @@
         }
       }
     },
+    "Whitespace in text" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "텍스트의 공백",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Wide-Column" : {
       "localizations" : {
         "ko" : {
@@ -130374,6 +133172,16 @@
         }
       }
     },
+    "Will be changed" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "변경됩니다",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Will be created when you apply changes" : {
       "localizations" : {
         "ko" : {
@@ -130438,6 +133246,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "套用變更時將會刪除"
+          }
+        }
+      }
+    },
+    "Will not change" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "변경되지 않습니다",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Will run" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "실행됨",
+            "state" : "translated"
           }
         }
       }
@@ -131745,6 +134573,16 @@
         }
       }
     },
+    "a query" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "쿼리",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "admin" : {
       "localizations" : {
         "ko" : {
@@ -131775,6 +134613,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "admin"
+          }
+        }
+      }
+    },
+    "an export" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "내보내기",
+            "state" : "translated"
           }
         }
       }
@@ -134407,6 +137255,16 @@
         }
       }
     },
+    "source" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "원본",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "sqlite3 is included with macOS" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -134751,6 +137609,16 @@
         }
       }
     },
+    "target" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "the SOCKS proxy" : {
       "localizations" : {
         "ko" : {
@@ -134781,6 +137649,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SOCKS 代理"
+          }
+        }
+      }
+    },
+    "the target" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "대상",
+            "state" : "translated"
           }
         }
       }
@@ -135882,176 +138760,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⌘T"
-          }
-        }
-      }
-    },
-    "Result %d" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "결과 %d"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sonuç %d"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kết quả %d"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "结果 %d"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "結果 %d"
-          }
-        }
-      }
-    },
-    "Error %d" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "오류 %d"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hata %d"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lỗi %d"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "错误 %d"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "錯誤 %d"
-          }
-        }
-      }
-    },
-    "Statement %1$d/%2$d failed: %3$@" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%2$d개 중 %1$d번째 문 실패: %3$@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$d/%2$d numaralı ifade başarısız oldu: %3$@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Câu lệnh %1$d/%2$d thất bại: %3$@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "第 %1$d/%2$d 条语句失败：%3$@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "第 %1$d/%2$d 條陳述式失敗：%3$@"
-          }
-        }
-      }
-    },
-    "The transaction could not be committed: %@" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "트랜잭션을 커밋할 수 없습니다: %@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "İşlem kaydedilemedi: %@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không thể commit giao dịch: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "事务无法提交：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "交易無法提交：%@"
-          }
-        }
-      }
-    },
-    "Moves the editor cursor to the statement that produced this result" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 결과를 생성한 문으로 편집기 커서를 이동합니다"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Düzenleyici imlecini bu sonucu üreten ifadeye taşır"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Di chuyển con trỏ trình soạn thảo tới câu lệnh đã tạo ra kết quả này"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将编辑器光标移到生成此结果的语句"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "將編輯器游標移到產生此結果的陳述式"
           }
         }
       }

@@ -88,6 +88,47 @@ enum DatabaseMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "Reconnect"),
                 action: #selector(MainSplitViewController.retryConnection)
+            ),
+            MenuItemFactory.separator,
+            compareSubmenu()
+        ])
+    }
+
+    /// The HIG asks that every toolbar item also be a menu-bar command. These are the Compare &
+    /// Sync window's toolbar, mirrored here; they route by nil target, so they reach
+    /// `CompareSyncWindowController` only while that window is key and validate to disabled
+    /// everywhere else.
+    private static func compareSubmenu() -> NSMenuItem {
+        MenuItemFactory.submenu(String(localized: "Compare"), items: [
+            MenuItemFactory.item(
+                String(localized: "Compare & Sync Databases…"),
+                action: #selector(AppDelegate.compareAndSyncDatabases(_:))
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Compare Now"),
+                action: #selector(CompareSyncWindowController.runComparison(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Swap Source and Target"),
+                action: #selector(CompareSyncWindowController.swapEndpoints(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Comparison Options…"),
+                action: #selector(CompareSyncWindowController.showOptions(_:))
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Generate Script"),
+                action: #selector(CompareSyncWindowController.generateScript(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Apply to Target…"),
+                action: #selector(CompareSyncWindowController.applyToTarget(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Stop Comparison"),
+                action: #selector(CompareSyncWindowController.stopComparison(_:))
             )
         ])
     }

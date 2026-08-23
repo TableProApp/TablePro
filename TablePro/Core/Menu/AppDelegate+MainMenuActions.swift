@@ -37,6 +37,10 @@ extension AppDelegate: NSMenuItemValidation {
         WindowOpener.shared.openWelcome()
     }
 
+    @objc func compareAndSyncDatabases(_ sender: Any?) {
+        CompareSyncLauncher.open()
+    }
+
     @objc func reopenClosedTab(_ sender: Any?) {
         RecentlyClosedTabReopener.reopenMostRecent()
     }

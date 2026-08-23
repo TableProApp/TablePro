@@ -106,8 +106,8 @@ extension DatabaseTreeOutlineCoordinator {
             reloadHierarchicalSchemaTables(schema)
         case .copyText(let text):
             ClipboardService.shared.writeText(text)
-        case .showRoutineDDL(let ref):
-            mainCoordinator?.showRoutineDDL(ref.routine)
+        case .showObjectSource(let ref):
+            mainCoordinator?.showObjectSource(ref)
         case .copyRedisNamespacePrefix(let prefix):
             ClipboardService.shared.writeText(prefix)
         case .copyRedisKey(let key):

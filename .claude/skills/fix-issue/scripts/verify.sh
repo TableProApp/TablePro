@@ -15,6 +15,7 @@
 #   verify.sh [options] uitest <Suite> [Suite…]
 #   verify.sh [options] abi   <merge-base>
 #   verify.sh [options] lint  <path> [path…]
+#   verify.sh [options] docs                    # docs/ house style + claims against source
 #   verify.sh          tail   <log> [lines]     # re-read a stored log without rerunning
 #   verify.sh          parse  <log>             # re-read the verdict for a stored log
 #
@@ -404,19 +405,59 @@ case "$STEP" in
         # Lint the agent-facing docs in the same pass. They are instructions the next run acts on,
         # so a stale symbol there is a defect the same way a lint violation is, and it is the one
         # class of defect nothing else in this repo catches.
+        #
+        # This covers CLAUDE.md and .claude/ ONLY. It never reads docs/. The line it prints is
+        # labelled "agent docs:" for that reason: an earlier "docs: clean" was read as validation of
+        # the user-facing docs and a page shipped with a wrong capability table on a green run.
+        # For docs/, run `verify.sh docs`.
         doc_check="$REPO_ROOT/scripts/check-doc-symbols.sh"
         if [ -x "$doc_check" ]; then
             doc_out="$("$doc_check" 2>&1)"
             doc_code=$?
             if [ "$doc_code" -ne 0 ]; then
                 [ "$STATUS" = "PASS" ] && STATUS=FAIL
-                note "docs: $(printf '%s' "$doc_out" | tail -3 | head -1)"
+                note "agent docs: $(printf '%s' "$doc_out" | tail -3 | head -1)"
                 note "$(printf '%s' "$doc_out" | grep -E '^(CLAUDE|\.claude)' | sed 's/^/  /' | head -10)"
                 note "  run scripts/check-doc-symbols.sh for the full list"
             else
-                note "docs: $(printf '%s' "$doc_out" | tail -1)"
+                note "agent docs: $(printf '%s' "$doc_out" | tail -1)"
             fi
         fi
+        emit "$log" $code
+        ;;
+
+    docs)
+        # The two checks that actually read docs/. Neither runs anywhere else in this script, and
+        # CI runs them in the "Validate docs" job, so a local run is the only way to see a failure
+        # before the push.
+        log="$(new_log docs)"
+        : > "$log"
+        code=0
+        for check in "check-writing-style.sh" "check-docs-against-source.py"; do
+            script="$REPO_ROOT/docs/scripts/$check"
+            if [ ! -f "$script" ]; then
+                note "missing: docs/scripts/$check"
+                STATUS=INCONCLUSIVE
+                continue
+            fi
+            case "$check" in
+                *.sh) (cd "$REPO_ROOT/docs" && bash "scripts/$check") >> "$log" 2>&1 || code=1 ;;
+                *.py) (cd "$REPO_ROOT/docs" && python3 "scripts/$check") >> "$log" 2>&1 || code=1 ;;
+            esac
+        done
+        if [ "$STATUS" != "INCONCLUSIVE" ]; then
+            if [ $code -eq 0 ]; then
+                STATUS=PASS
+                note "docs/: house style and source claims both agree"
+            else
+                STATUS=FAIL
+                # The scripts print one line per check, most of them "ok". Show the failing check
+                # and the file:line under it, not the twenty passes above it.
+                note "$(grep -A 2 -E '^FAIL' "$log" 2> /dev/null | sed 's/^/  /' | head -15)"
+                note "$(grep -E 'contradict|house style' "$log" 2> /dev/null | sed 's/^/  /' | head -3)"
+            fi
+        fi
+        note "STYLE.md rules no script enforces: see .claude/rules/docs-authoring.md"
         emit "$log" $code
         ;;
 

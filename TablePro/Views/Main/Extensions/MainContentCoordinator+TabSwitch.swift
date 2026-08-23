@@ -126,15 +126,54 @@ extension MainContentCoordinator {
         }
     }
 
-    private func evictInactiveTabs(excluding activeTabIds: Set<UUID>) {
+    /// Whether dropping this tab's rows is safe, which is exactly whether `canAutoLoadTableTab`
+    /// will bring them back. The two answers have to agree: a tab evicted without a route back to
+    /// its rows shows an empty grid until the user refreshes it by hand.
+    ///
+    /// Table tabs qualify because their rows follow from their generated query. Query tabs do not,
+    /// a pinned result shares the buffer it would lose, and a tab with an execution, a load task or
+    /// a page fetch in flight would have the result land on a buffer that moved out from under it.
+    func canEvictReloadableTableRows(_ tab: QueryTab) -> Bool {
+        guard tab.id != tabManager.selectedTabId,
+              tab.tabType == .table,
+              tab.execution.errorMessage == nil,
+              tab.content.query.contains(where: { !$0.isWhitespace }),
+              !tab.pendingChanges.hasChanges,
+              !tab.display.hasPinnedResults,
+              !tab.pagination.isLoading,
+              !tab.pagination.isLoadingMore,
+              !tabExecution.isBusy(tab.id),
+              tableLoadTasks[tab.id] == nil,
+              !tabSessionRegistry.isEvicted(tab.id),
+              let rows = tabSessionRegistry.existingTableRows(for: tab.id),
+              !rows.rows.isEmpty
+        else { return false }
+        return true
+    }
+
+    @discardableResult
+    func evictReloadableTableRows(for tabId: UUID) -> Bool {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              canEvictReloadableTableRows(tabManager.tabs[index])
+        else { return false }
+
+        tabManager.mutate(at: index) { tab in
+            for resultSet in tab.display.resultSets where !resultSet.isPinned {
+                resultSet.tableRows.discardRowsKeepingMetadata()
+            }
+            tab.loadEpoch &+= 1
+        }
+        tabSessionRegistry.evict(for: tabId)
+        return true
+    }
+
+    func evictInactiveTabs(excluding activeTabIds: Set<UUID>) {
         let start = Date()
         let candidates: [(tab: QueryTab, rows: TableRows)] = tabManager.tabs.compactMap { tab in
             guard !activeTabIds.contains(tab.id),
                   tab.execution.lastExecutedAt != nil,
-                  !tab.pendingChanges.hasChanges,
-                  let rows = tabSessionRegistry.existingTableRows(for: tab.id),
-                  !tabSessionRegistry.isEvicted(tab.id),
-                  !rows.rows.isEmpty
+                  canEvictReloadableTableRows(tab),
+                  let rows = tabSessionRegistry.existingTableRows(for: tab.id)
             else { return nil }
             return (tab, rows)
         }
@@ -163,12 +202,12 @@ extension MainContentCoordinator {
         }
         let toEvict = sorted.dropLast(maxInactiveLoaded)
 
+        var evicted = 0
         for entry in toEvict {
-            tabSessionRegistry.evict(for: entry.tab.id)
-            tabManager.mutate(tabId: entry.tab.id) { $0.loadEpoch &+= 1 }
+            if evictReloadableTableRows(for: entry.tab.id) { evicted += 1 }
         }
         Self.lifecycleLogger.debug(
-            "[switch] evictInactiveTabs evicted=\(toEvict.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
+            "[switch] evictInactiveTabs evicted=\(evicted) attempted=\(toEvict.count) candidates=\(sorted.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
     }
 }

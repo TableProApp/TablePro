@@ -14,14 +14,6 @@ struct RowDisplayCacheTests {
         RowDisplayBox(ContiguousArray(values))
     }
 
-    private func cost(of values: [String?]) -> Int {
-        var total = 0
-        for v in values {
-            if let s = v { total &+= s.utf8.count }
-        }
-        return total
-    }
-
     @Test("Empty cache returns nil for any lookup")
     func emptyLookup() {
         let cache = RowDisplayCache()
@@ -33,9 +25,8 @@ struct RowDisplayCacheTests {
     func basicSetGet() {
         let cache = RowDisplayCache()
         let id = RowID.existing(42)
-        let values = ["a", "b", "c"]
-        let box = makeBox(values)
-        cache.setBox(box, forID: id, cost: cost(of: values))
+        let box = makeBox(["a", "b", "c"])
+        cache.setBox(box, forID: id)
 
         #expect(cache.box(forID: id) === box)
     }
@@ -44,12 +35,12 @@ struct RowDisplayCacheTests {
     func countLimitEvictsFIFO() {
         let cache = RowDisplayCache(countLimit: 3, costLimit: 1_000_000)
         for index in 1...3 {
-            cache.setBox(makeBox(["row\(index)"]), forID: .existing(index), cost: 4)
+            cache.setBox(makeBox(["row\(index)"]), forID: .existing(index))
         }
         #expect(cache.box(forID: .existing(1)) != nil)
 
         // Fourth insertion should evict the first.
-        cache.setBox(makeBox(["row4"]), forID: .existing(4), cost: 4)
+        cache.setBox(makeBox(["row4"]), forID: .existing(4))
         #expect(cache.box(forID: .existing(1)) == nil)
         #expect(cache.box(forID: .existing(2)) != nil)
         #expect(cache.box(forID: .existing(3)) != nil)
@@ -60,28 +51,43 @@ struct RowDisplayCacheTests {
     func costLimitEvicts() {
         let cache = RowDisplayCache(countLimit: 1_000, costLimit: 10)
         // First insert costs 6; under cap.
-        cache.setBox(makeBox(["abcdef"]), forID: .existing(1), cost: 6)
+        cache.setBox(makeBox(["abcdef"]), forID: .existing(1))
         // Second insert costs 6 more; total 12 > 10, evicts first.
-        cache.setBox(makeBox(["123456"]), forID: .existing(2), cost: 6)
+        cache.setBox(makeBox(["123456"]), forID: .existing(2))
 
         #expect(cache.box(forID: .existing(1)) == nil)
+        #expect(cache.box(forID: .existing(2)) != nil)
+    }
+
+    @Test("Updating the same mutable box uses its previously recorded cost")
+    func mutableBoxCostUpdateEvicts() {
+        let cache = RowDisplayCache(countLimit: 1_000, costLimit: 10)
+        let firstID = RowID.existing(1)
+        let box = makeBox(["a"])
+        cache.setBox(box, forID: firstID)
+
+        box.values[0] = "123456789"
+        cache.setBox(box, forID: firstID)
+        cache.setBox(makeBox(["xy"]), forID: .existing(2))
+
+        #expect(cache.box(forID: firstID) == nil)
         #expect(cache.box(forID: .existing(2)) != nil)
     }
 
     @Test("Replacing an existing key does not consume queue slot")
     func replaceExistingKey() {
         let cache = RowDisplayCache(countLimit: 2, costLimit: 1_000_000)
-        cache.setBox(makeBox(["v1"]), forID: .existing(1), cost: 2)
-        cache.setBox(makeBox(["v2"]), forID: .existing(2), cost: 2)
+        cache.setBox(makeBox(["v1"]), forID: .existing(1))
+        cache.setBox(makeBox(["v2"]), forID: .existing(2))
 
         // Replace id=1 without expanding the cache.
-        cache.setBox(makeBox(["v1-updated"]), forID: .existing(1), cost: 10)
+        cache.setBox(makeBox(["v1-updated"]), forID: .existing(1))
         #expect(cache.box(forID: .existing(1))?.values.first == "v1-updated")
         #expect(cache.box(forID: .existing(2))?.values.first == "v2")
 
         // Adding a new entry now evicts the oldest in insertion order (still id=1
         // because replacing did not re-add it to the order).
-        cache.setBox(makeBox(["v3"]), forID: .existing(3), cost: 2)
+        cache.setBox(makeBox(["v3"]), forID: .existing(3))
         #expect(cache.box(forID: .existing(1)) == nil)
         #expect(cache.box(forID: .existing(2)) != nil)
         #expect(cache.box(forID: .existing(3)) != nil)
@@ -91,7 +97,7 @@ struct RowDisplayCacheTests {
     func removeAllResetsState() {
         let cache = RowDisplayCache()
         for index in 1...10 {
-            cache.setBox(makeBox(["x"]), forID: .existing(index), cost: 1)
+            cache.setBox(makeBox(["x"]), forID: .existing(index))
         }
         cache.removeAll()
         for index in 1...10 {
@@ -99,7 +105,7 @@ struct RowDisplayCacheTests {
         }
 
         // Cache continues to work after removeAll.
-        cache.setBox(makeBox(["fresh"]), forID: .existing(100), cost: 5)
+        cache.setBox(makeBox(["fresh"]), forID: .existing(100))
         #expect(cache.box(forID: .existing(100))?.values.first == "fresh")
     }
 
@@ -108,7 +114,7 @@ struct RowDisplayCacheTests {
         let cache = RowDisplayCache()
         let id = RowID.existing(1)
         let box = makeBox(["old", "VARCHAR(255)", "YES"])
-        cache.setBox(box, forID: id, cost: cost(of: ["old", "VARCHAR(255)", "YES"]))
+        cache.setBox(box, forID: id)
 
         cache.clearValues(forID: id)
 
@@ -121,8 +127,8 @@ struct RowDisplayCacheTests {
     @Test("Clearing one row leaves the others formatted")
     func clearValuesLeavesOtherRows() throws {
         let cache = RowDisplayCache()
-        cache.setBox(makeBox(["a"]), forID: .existing(0), cost: 1)
-        cache.setBox(makeBox(["b"]), forID: .existing(1), cost: 1)
+        cache.setBox(makeBox(["a"]), forID: .existing(0))
+        cache.setBox(makeBox(["b"]), forID: .existing(1))
 
         cache.clearValues(forID: .existing(1))
 
@@ -135,7 +141,7 @@ struct RowDisplayCacheTests {
     @Test("Clearing an uncached row does nothing")
     func clearValuesForUnknownRow() {
         let cache = RowDisplayCache()
-        cache.setBox(makeBox(["a"]), forID: .existing(0), cost: 1)
+        cache.setBox(makeBox(["a"]), forID: .existing(0))
 
         cache.clearValues(forID: .existing(9))
 
@@ -148,13 +154,41 @@ struct RowDisplayCacheTests {
         let cache = RowDisplayCache()
         let id = RowID.existing(2)
         let box = makeBox(["old"])
-        cache.setBox(box, forID: id, cost: 3)
+        cache.setBox(box, forID: id)
         cache.clearValues(forID: id)
 
         box.values[0] = "new"
-        cache.setBox(box, forID: id, cost: 3)
+        cache.setBox(box, forID: id)
 
         #expect(cache.box(forID: id)?.values.first == "new")
+    }
+
+    @Test("Refilling a cleared mutable box restores its recorded cost")
+    func clearedRowRefillRestoresCost() {
+        let cache = RowDisplayCache(countLimit: 1_000, costLimit: 10)
+        let firstID = RowID.existing(1)
+        let box = makeBox(["123456789"])
+        cache.setBox(box, forID: firstID)
+        cache.clearValues(forID: firstID)
+        cache.setBox(makeBox(["abcdefghij"]), forID: .existing(2))
+
+        box.values[0] = "123456789"
+        cache.setBox(box, forID: firstID)
+
+        #expect(cache.box(forID: firstID) == nil)
+        #expect(cache.box(forID: .existing(2)) != nil)
+    }
+
+    @Test("Cost comes from the box, so a grown row is charged what it now holds")
+    func costIsDerivedFromTheBox() {
+        let cache = RowDisplayCache(countLimit: 1_000, costLimit: 10)
+        let grown = makeBox(["a"])
+        cache.setBox(grown, forID: .existing(1))
+
+        grown.values[0] = "12345678901234567890"
+        cache.setBox(grown, forID: .existing(1))
+
+        #expect(cache.box(forID: .existing(1)) == nil)
     }
 
     @Test("Inserted row IDs of both kinds round-trip")
@@ -162,8 +196,8 @@ struct RowDisplayCacheTests {
         let cache = RowDisplayCache()
         let existingID = RowID.existing(5)
         let insertedID = RowID.inserted(UUID())
-        cache.setBox(makeBox(["existing"]), forID: existingID, cost: 8)
-        cache.setBox(makeBox(["inserted"]), forID: insertedID, cost: 8)
+        cache.setBox(makeBox(["existing"]), forID: existingID)
+        cache.setBox(makeBox(["inserted"]), forID: insertedID)
         #expect(cache.box(forID: existingID)?.values.first == "existing")
         #expect(cache.box(forID: insertedID)?.values.first == "inserted")
     }

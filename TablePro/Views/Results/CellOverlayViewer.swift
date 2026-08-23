@@ -31,13 +31,7 @@ final class CellOverlayViewer: CellOverlayBase, NSTextViewDelegate {
         textView.font = ThemeEngine.shared.dataGridFonts.regular
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(
-            width: scrollView.bounds.width,
-            height: CGFloat.greatestFiniteMagnitude
-        )
+        Self.applyCellTextLayout(to: textView)
         textView.delegate = self
         textView.string = value
         textView.selectAll(nil)

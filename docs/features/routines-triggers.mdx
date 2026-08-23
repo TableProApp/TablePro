@@ -1,0 +1,69 @@
+---
+title: Procedures, Functions, and Triggers
+description: Browse stored procedures, functions, and triggers per schema and read their source
+---
+
+Expand a schema and **Procedures**, **Functions**, and **Triggers** sit beside **Tables**. Select one, press Return, and its source opens in a read-only tab.
+
+<Frame caption="Sections under a PostgreSQL schema, with one overloaded function open">
+  <img className="block dark:hidden" src="/images/routines-triggers-sidebar.png" alt="Sidebar tree with Procedures, Functions, and Triggers expanded, and a function's source in a tab beside it" />
+  <img className="hidden dark:block" src="/images/routines-triggers-sidebar-dark.png" alt="Sidebar tree with Procedures, Functions, and Triggers expanded, and a function's source in a tab beside it" />
+</Frame>
+
+## Engine support
+
+| Engine | Procedures | Functions | Triggers |
+|---|---|---|---|
+| PostgreSQL | Yes | Yes | Yes |
+| MySQL, MariaDB | Yes | Yes | Yes |
+| MSSQL | Yes | Yes | Yes |
+| Oracle | Yes | Yes | Yes |
+| Dameng | Yes | Yes | Yes |
+| Teradata | Yes | Yes | Yes |
+| Snowflake | Yes | Yes | No |
+| BigQuery | Yes | Yes | No |
+| Cassandra | No | Yes, and aggregates | Yes |
+| ClickHouse | No | Yes | No |
+| DuckDB | No | Macros | No |
+| SQLite, LibSQL, Cloudflare D1 | No | No | Yes |
+| Redshift, CockroachDB, PGlite | No | No | No |
+| MongoDB, Redis, Elasticsearch, DynamoDB, etcd, SurrealDB, Trino, Beancount | No | No | No |
+
+A section appears only where the engine has that kind of object. An engine that has them and currently holds none keeps the section and shows **No procedures** inside it.
+
+## Finding a routine or trigger
+
+A trigger row carries the table it fires for beside its name. The sidebar filter matches a trigger by its own name or by that table; type-select matches the name only. Triggers also appear on their table's **Structure** tab.
+
+`Cmd+P` indexes all three kinds alongside tables and views. Choosing one opens its source.
+
+### Overloaded names
+
+PostgreSQL lets several functions share a name with different argument lists. Where a name repeats inside a section, every row in that group gains its arguments: `transform(geometry, integer)` and `transform(geometry, text)`. A unique name stays bare. Each row opens its own definition.
+
+## Reading the source
+
+Return or a double-click opens the selected row. Right-click offers **Show DDL** for the same thing, plus **Copy Name** and **Copy with Signature**.
+
+| Action | What it does |
+|---|---|
+| **Copy** | Puts the whole definition on the pasteboard |
+| **Export…** | Saves it as a `.sql` file named after the object |
+| **Open in Editor** | Opens the same text in a query tab, editable and runnable |
+| **Reload** | Fetches the current definition from the server |
+
+Beside the source sit the properties the engine reports: language, return type, volatility, security, and owner for a routine; timing, events, orientation, and enabled state for a trigger. The labels are the engine's own, so they differ between engines.
+
+A viewer tab survives a relaunch and refetches when it reopens.
+
+<Note>
+A DuckDB macro shows the expression DuckDB stored, not the `CREATE MACRO` text as typed.
+</Note>
+
+## When the source is missing
+
+| Message | What it means | What to do |
+|---|---|---|
+| Your account is not allowed to read the source of … | MySQL without `SHOW_ROUTINE`, MSSQL with `WITH ENCRYPTION` or without `VIEW DEFINITION`, Oracle without `SELECT_CATALOG_ROLE`, or a Teradata procedure created without SPL retention | Grant the privilege, or ask an account that holds it |
+| … no longer exists | The object was dropped after the section was listed | Right-click the section and choose **Refresh** |
+| This database cannot show the source of … | A Cassandra trigger is a Java class name with no body | Read the class name from the properties beside the empty source |

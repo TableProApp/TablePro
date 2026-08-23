@@ -10,7 +10,8 @@ import Testing
 @Suite("SidebarObjectKind visibility")
 struct SidebarObjectKindTests {
     private let everyKind: [SidebarObjectKind: Int] = [
-        .table: 2, .view: 1, .materializedView: 1, .foreignTable: 1, .procedure: 1, .function: 1,
+        .table: 2, .view: 1, .materializedView: 1, .foreignTable: 1,
+        .procedure: 1, .function: 1, .trigger: 1,
     ]
 
     /// The bug: a driver can return materialized views, foreign tables, procedures or functions that
@@ -23,7 +24,9 @@ struct SidebarObjectKindTests {
                 itemCounts: everyKind,
                 includingEmptyTables: includingEmptyTables
             )
-            #expect(visible == [.table, .view, .materializedView, .foreignTable, .procedure, .function])
+            #expect(
+                visible == [.table, .view, .materializedView, .foreignTable, .procedure, .function, .trigger]
+            )
         }
     }
 
@@ -67,7 +70,8 @@ struct SidebarObjectKindTests {
     @Test("A kind counted as zero reads the same as a kind with no count at all")
     func explicitZeroCounts() {
         let counted: [SidebarObjectKind: Int] = [
-            .table: 0, .view: 0, .materializedView: 0, .foreignTable: 0, .procedure: 0, .function: 1,
+            .table: 0, .view: 0, .materializedView: 0, .foreignTable: 0,
+            .procedure: 0, .function: 1, .trigger: 0,
         ]
 
         for includingEmptyTables in [true, false] {
@@ -79,5 +83,54 @@ struct SidebarObjectKindTests {
             )
         }
         #expect(SidebarObjectKind.visible(itemCounts: counted, includingEmptyTables: false) == [.function])
+    }
+
+    /// The declared set only ever adds a section. A kind whose driver returned rows is listed
+    /// whatever the flag says, which is the invariant this type's own doc comment records.
+    @Test("A declared kind with no items still gets a section")
+    func declaredKindShowsEmptySection() {
+        let counts: [SidebarObjectKind: Int] = [.table: 3]
+        let visible = SidebarObjectKind.visible(
+            itemCounts: counts,
+            declaredKinds: [.procedure, .function, .trigger],
+            includingEmptyTables: false
+        )
+        #expect(visible == [.table, .procedure, .function, .trigger])
+    }
+
+    @Test("An undeclared kind that returned rows is never hidden")
+    func undeclaredKindWithItemsStillRenders() {
+        let counts: [SidebarObjectKind: Int] = [.procedure: 2, .trigger: 1]
+        let visible = SidebarObjectKind.visible(
+            itemCounts: counts,
+            declaredKinds: [],
+            includingEmptyTables: false
+        )
+        #expect(visible == [.procedure, .trigger])
+    }
+
+    @Test("Declaring nothing leaves the old behaviour unchanged")
+    func emptyDeclarationMatchesCountOnlyRule() {
+        let counts: [SidebarObjectKind: Int] = [.view: 1, .function: 2]
+        for includingEmptyTables in [true, false] {
+            #expect(
+                SidebarObjectKind.visible(
+                    itemCounts: counts, declaredKinds: [], includingEmptyTables: includingEmptyTables
+                )
+                    == SidebarObjectKind.visible(
+                        itemCounts: counts, includingEmptyTables: includingEmptyTables
+                    )
+            )
+        }
+    }
+
+    @Test("Every kind belongs to exactly one category")
+    func categoriesPartitionTheKinds() {
+        #expect(SidebarObjectKind.allCases.filter { $0.category == .routine } == [.procedure, .function])
+        #expect(SidebarObjectKind.allCases.filter { $0.category == .trigger } == [.trigger])
+        #expect(
+            SidebarObjectKind.allCases.filter { $0.category == .table }
+                == [.table, .view, .materializedView, .foreignTable]
+        )
     }
 }

@@ -237,25 +237,53 @@ struct ForeignKeyInfo: Identifiable, Hashable {
 }
 
 struct TriggerInfo: Identifiable, Hashable {
-    var id: String { name }
     let name: String
     let timing: String
     let event: String
     let statement: String
     let enabled: Bool?
 
+    /// A trigger name is unique per table on PostgreSQL and Oracle, not per schema, so a
+    /// database-wide list keyed on the name alone loses one of any two tables that agree on it.
+    let table: String?
+    let schema: String?
+    let orientation: String?
+
+    /// The runnable CREATE TRIGGER text. `statement` is only the action body.
+    let definition: String?
+    let attributes: [ObjectAttribute]
+
+    var id: String {
+        [schema, table, name].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ".")
+    }
+
     init(
         name: String,
         timing: String,
         event: String,
         statement: String,
-        enabled: Bool? = nil
+        enabled: Bool? = nil,
+        table: String? = nil,
+        schema: String? = nil,
+        orientation: String? = nil,
+        definition: String? = nil,
+        attributes: [ObjectAttribute] = []
     ) {
         self.name = name
         self.timing = timing
         self.event = event
         self.statement = statement
         self.enabled = enabled
+        self.table = table
+        self.schema = schema
+        self.orientation = orientation
+        self.definition = definition
+        self.attributes = attributes
+    }
+
+    var qualifiedName: String {
+        guard let table, !table.isEmpty else { return name }
+        return "\(table).\(name)"
     }
 }
 

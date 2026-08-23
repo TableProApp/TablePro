@@ -35,6 +35,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal var nodeCache: [String: DatabaseTreeNode] = [:]
     internal var childrenCache: [String: [DatabaseTreeNode]] = [:]
     internal var objectBucketsCache: [DatabaseTreeContainerKey: DatabaseTreeObjectBuckets] = [:]
+    /// Whether a routine row shows its signature depends on the other rows in its own section, so
+    /// the label is decided where the section is built and looked up here when the row draws.
+    internal var routineDisplayLabels: [String: String] = [:]
     private var cachedRowContext: DatabaseTreeRowContext?
     private var cachedRowActions: DatabaseTreeRowActions?
     private var lastSelection: Set<DatabaseTreeTableRef> = []
@@ -207,16 +210,18 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 _ = service.schemaListState(connectionId: connectionId, database: metadata.name)
                 _ = service.tablesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
                 _ = service.routinesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
+                _ = service.triggersLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
             case .schema(let database, let schema):
                 _ = service.tablesLoadState(connectionId: connectionId, database: database, schema: schema)
                 _ = service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)
+                _ = service.triggersLoadState(connectionId: connectionId, database: database, schema: schema)
             case .hierarchicalSchemaSection(let schema):
                 _ = schemaService.schemaState(for: connectionId, schema: schema)
             case .table(let ref) where ref.table.type == .partitionedTable:
                 _ = service.partitionsLoadState(
                     connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
                 )
-            case .recentSection, .recentTable, .table, .routine, .status,
+            case .recentSection, .recentTable, .table, .routine, .trigger, .status,
                  .objectKindSection, .containerObjectKindSection,
                  .redisKeysSection, .redisNode:
                 break
@@ -229,6 +234,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         isReloading = true
         childrenCache.removeAll()
         objectBucketsCache.removeAll()
+        routineDisplayLabels.removeAll()
         invalidateRowConfiguration()
         outlineView.reloadData()
         applyDesiredExpansion()
@@ -500,6 +506,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             },
             objectKindTitle: { [databaseType] kind in
                 kind.title(tableEntityName: PluginManager.shared.tableEntityName(for: databaseType))
+            },
+            routineDisplayLabel: { [weak self] ref in
+                self?.routineDisplayLabels[ref.id] ?? ref.routine.name
             }
         )
     }
@@ -525,8 +534,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal func refreshObjectKind(_ kind: SidebarObjectKind) {
         guard let mainCoordinator else { return }
         switch kind {
-        case .procedure: Task { await mainCoordinator.refreshProcedures() }
-        case .function: Task { await mainCoordinator.refreshFunctions() }
+        case .procedure, .function: Task { await mainCoordinator.refreshRoutines() }
+        case .trigger: Task { await mainCoordinator.refreshTriggers() }
         case .table, .view, .materializedView, .foreignTable: Task { await mainCoordinator.refreshTables() }
         }
     }
@@ -534,14 +543,21 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal func refreshContainerObjectKind(_ group: DatabaseTreeObjectGroup) {
         let connectionId = connectionId
         Task {
-            if group.kind.isRoutine {
+            switch group.kind.category {
+            case .table:
+                await service.refreshTableObjects(
+                    connectionId: connectionId,
+                    database: group.database,
+                    schema: group.schema
+                )
+            case .routine:
                 await service.refreshRoutineObjects(
                     connectionId: connectionId,
                     database: group.database,
                     schema: group.schema
                 )
-            } else {
-                await service.refreshTableObjects(
+            case .trigger:
+                await service.refreshTriggerObjects(
                     connectionId: connectionId,
                     database: group.database,
                     schema: group.schema
@@ -588,6 +604,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             pendingOpenWork?.cancel()
             pendingOpenWork = nil
             open(ref, activateGridFocus: true, forceNonPreview: true)
+        case .openObjectSource(let objectRef):
+            mainCoordinator?.showObjectSource(objectRef)
         case .toggleDisclosure:
             if outlineView.isItemExpanded(node) {
                 outlineView.collapseItem(node)

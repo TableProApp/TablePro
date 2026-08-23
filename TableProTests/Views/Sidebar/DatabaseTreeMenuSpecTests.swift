@@ -400,7 +400,7 @@ struct DatabaseTreeMenuSpecTests {
             .table(tableRef("orders")),
             .routine(DatabaseTreeRoutineRef(
                 database: "app", schema: "public",
-                routine: RoutineInfo(name: "do_thing", schema: "public", kind: .function, signature: nil)
+                routine: RoutineInfo(name: "do_thing", kind: .function, schema: "public")
             )),
             .status(.loading),
             .recentSection,

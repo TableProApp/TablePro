@@ -157,13 +157,20 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation returns an empty set; drivers that support them override.
     func fetchExternalSchemaNames() async throws -> Set<String>
 
-    /// Fetch stored procedures for the given schema (or current schema if nil).
-    /// Default implementation returns an empty list; drivers that support routines override.
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo]
+    /// Fetch every stored procedure and function in the given schema (or the current schema if
+    /// nil), in one round trip. Callers that want one kind filter the result rather than asking
+    /// twice, so an engine is never queried twice for what a single catalog read answers.
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo]
 
-    /// Fetch user-defined functions for the given schema (or current schema if nil).
-    /// Default implementation returns an empty list; drivers that support routines override.
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo]
+    /// Fetch the source of one routine. The routine must be one this driver listed, because its
+    /// `identity` is the driver's own key for finding it again.
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String
+
+    /// Fetch every trigger in the given schema, across all its tables.
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo]
+
+    /// Fetch the source of one trigger.
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String
 
     /// Fetch metadata for a specific database (table count, size, etc.)
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata
@@ -482,9 +489,18 @@ extension DatabaseDriver {
         try await fetchTables()
     }
 
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] { [] }
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] { [] }
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
+        throw PluginObjectSourceError.unsupported(routine.name)
+    }
+
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] { [] }
+
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
+        if let definition = trigger.definition, !definition.isEmpty { return definition }
+        throw PluginObjectSourceError.unsupported(trigger.name)
+    }
 
     var supportsTransactions: Bool { true }
 
